@@ -178,18 +178,29 @@ output are not used for content-type matching.
 `--agentic` swaps the single dense pass for an LLM-driven ReAct loop: the agent
 issues several retrieval sub-queries, fuses the candidates, and selects a final
 ranking. It searches the same LanceDB table built by `retriever ingest`, so it is
-a drop-in alternative to standard retrieval — add `--agentic` and name the chat
-model the agent drives with `--agentic-llm-model` (required):
+a drop-in alternative to standard retrieval.
+
+By default, agentic retrieval runs the agent LLM in process with local vLLM and
+`nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU
+host and the local extras installed. Use `--agentic-llm-backend openai_compatible`
+when you want a custom model or a separately hosted OpenAI-compatible endpoint.
 
 ```bash
+# default local vLLM agent LLM: nemotron-8b
+retriever query "how does the ingestion pipeline handle tables?" \
+  --agentic
+
+# larger supported local profile
 retriever query "how does the ingestion pipeline handle tables?" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5
+  --agentic-llm-model super-49b \
+  --agentic-local-tensor-parallel-size 2
 
-# remote agent + embedding endpoints, fewer reasoning rounds
+# custom/self-hosted model through an OpenAI-compatible endpoint
 retriever query "summarize the deployment options" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-llm-backend openai_compatible \
+  --agentic-llm-model custom-remote-model \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --embed-invoke-url http://localhost:8000/v1 \
   --agentic-react-max-steps 5
@@ -201,8 +212,8 @@ produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
 `--embed-model-name` options as standard retrieval.
 
-**How it works.** Each agentic query runs `Query → ReActAgentOperator → (RRF
-fusion) → SelectionAgentOperator → ranked results`:
+**How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
+fusion) -> SelectionAgentOperator -> ranked results`:
 
 - `ReActAgentOperator` runs the per-query ReAct loop; every `retrieve` tool call
   delegates to the standard `Retriever`, so the agent searches the same vector
@@ -214,10 +225,25 @@ fusion) → SelectionAgentOperator → ranked results`:
 
 Agentic-only knobs (apply only with `--agentic`):
 
+- `--agentic-llm-backend` (default `in_process`) — use local in-process vLLM, or
+  set `openai_compatible` for a hosted/self-hosted chat-completions endpoint.
+- `--agentic-llm-model` — local profile alias/model ID for `in_process`
+  (`nemotron-8b` by default; `super-49b` also supported), or the remote model ID
+  when using `openai_compatible`.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM; defaults to the operators' built-in endpoint when omitted.
+  agent LLM; used only with `--agentic-llm-backend openai_compatible`.
+- `--agentic-local-llm-backend` (default `vllm`) — local runtime for in-process
+  agent LLMs. Other local runtimes are not supported yet.
+- `--agentic-local-device` — CUDA device ids for local vLLM, for example `0`,
+  `cuda:0`, or `0,1`.
+- `--agentic-local-gpu-memory-utilization` (default `0.8`) — vLLM GPU memory
+  utilization for the local agent LLM.
+- `--agentic-local-tensor-parallel-size` (default `1`) — tensor parallel size for
+  local vLLM.
+- `--agentic-local-max-model-len` and `--agentic-local-max-num-seqs` — optional
+  vLLM engine overrides for the local agent LLM.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
-  agentic LLM calls.
+  OpenAI-compatible agentic LLM calls; ignored by the local adapter.
 - `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
   per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.

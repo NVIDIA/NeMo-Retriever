@@ -273,7 +273,6 @@ def create_local_agent_llm(
     tensor_parallel_size: int = 1,
     max_model_len: int | None = None,
     max_num_seqs: int | None = None,
-    tool_call_parser: str | None = None,
 ) -> Any:
     """Create a cached local agent LLM chat-completion callable.
 
@@ -295,7 +294,6 @@ def create_local_agent_llm(
             tensor_parallel_size=tensor_parallel_size,
             max_model_len=max_model_len,
             max_num_seqs=max_num_seqs,
-            tool_call_parser=tool_call_parser,
         )
 
     raise ValueError(f"Unsupported local agent LLM backend {backend!r}")

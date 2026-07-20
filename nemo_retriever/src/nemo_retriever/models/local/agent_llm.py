@@ -11,7 +11,6 @@ import random
 import string
 import threading
 from copy import deepcopy
-from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
@@ -20,28 +19,45 @@ from nemo_retriever.models.model import BaseModel, ModelRunMode
 
 logger = logging.getLogger(__name__)
 
+# Conservative cap for short tool-call JSON responses. Larger evals should
+# tune this with completion-token, truncation, and tool-parse telemetry.
 _DEFAULT_MAX_TOKENS = 512
 _LOCAL_AGENT_LLM_CACHE: dict[tuple[Any, ...], "VLLMAgentChatLLM"] = {}
 _LOCAL_AGENT_LLM_CACHE_LOCK = threading.Lock()
 
 
-@dataclass(frozen=True)
-class AgentLLMProfile:
-    """Metadata for local agent LLMs with known offline tool-call behavior."""
+def _normalize_name(name: str) -> str:
+    return name.strip().casefold()
 
-    model_id: str
-    aliases: tuple[str, ...] = ()
-    engine_kwargs: Mapping[str, Any] = field(default_factory=dict)
-    request_extras: Mapping[str, Any] = field(default_factory=dict)
-    tool_call_parser: str = "json"
-    tool_prompt_format: str = "none"
-    pass_tools_to_chat_template: bool = True
 
-    def engine_kwargs_for_local(self) -> dict[str, Any]:
-        return _mutable_copy(self.engine_kwargs)
+_NANO_8B_MODEL_ID = "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
+_SUPER_49B_MODEL_ID = "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+_NANO_8B_ALIASES = (
+    "llama-3.1-nemotron-nano-8b-v1",
+    "nemotron-nano-8b",
+    "nemotron-8b",
+    "nvidia/llama-3.1-nemotron-nano-8b-v1",
+)
+_SUPER_49B_ALIASES = (
+    "llama-3.3-nemotron-super-49b-v1",
+    "nemotron-super-49b",
+    "super-49b",
+    "nvidia/llama-3.3-nemotron-super-49b-v1",
+    "nvidia/llama-3_3-nemotron-super-49b-v1",
+)
 
-    def request_extras_for_local(self) -> dict[str, Any]:
-        return _mutable_copy(self.request_extras)
+# Supported local agent LLM names. Keep this intentionally small: V1 only
+# supports internal/NVIDIA models whose local tool-call behavior we have tested.
+_AGENT_LLM_MODEL_ALIASES: dict[str, str] = {
+    _normalize_name(name): _NANO_8B_MODEL_ID for name in (_NANO_8B_MODEL_ID, *_NANO_8B_ALIASES)
+}
+_AGENT_LLM_MODEL_ALIASES.update(
+    {_normalize_name(name): _SUPER_49B_MODEL_ID for name in (_SUPER_49B_MODEL_ID, *_SUPER_49B_ALIASES)}
+)
+_SUPPORTED_AGENT_LLM_NAMES = tuple(
+    sorted((_NANO_8B_MODEL_ID, *_NANO_8B_ALIASES, _SUPER_49B_MODEL_ID, *_SUPER_49B_ALIASES))
+)
+_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS = {"chat_template_kwargs": {"tools_in_user_message": True}}
 
 
 def _mutable_copy(value: Any) -> Any:
@@ -52,64 +68,26 @@ def _mutable_copy(value: Any) -> Any:
     return deepcopy(value)
 
 
-def _normalize_name(name: str) -> str:
-    return name.strip().casefold()
+def supported_agent_llm_names() -> tuple[str, ...]:
+    """Return supported local agent LLM model IDs and aliases."""
+
+    return _SUPPORTED_AGENT_LLM_NAMES
 
 
-_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS = {"chat_template_kwargs": {"tools_in_user_message": True}}
-
-_AGENT_LLM_PROFILES: tuple[AgentLLMProfile, ...] = (
-    AgentLLMProfile(
-        model_id="nvidia/Llama-3.1-Nemotron-Nano-8B-v1",
-        aliases=(
-            "llama-3.1-nemotron-nano-8b-v1",
-            "nemotron-nano-8b",
-            "nemotron-8b",
-            "nvidia/llama-3.1-nemotron-nano-8b-v1",
-        ),
-        request_extras=_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS,
-        tool_prompt_format="json",
-    ),
-    AgentLLMProfile(
-        model_id="nvidia/Llama-3_3-Nemotron-Super-49B-v1",
-        aliases=(
-            "llama-3.3-nemotron-super-49b-v1",
-            "nemotron-super-49b",
-            "super-49b",
-            "nvidia/llama-3.3-nemotron-super-49b-v1",
-            "nvidia/llama-3_3-nemotron-super-49b-v1",
-        ),
-        request_extras=_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS,
-        tool_prompt_format="json",
-    ),
-)
-
-_PROFILE_LOOKUP: dict[str, AgentLLMProfile] = {}
-for _profile in _AGENT_LLM_PROFILES:
-    _PROFILE_LOOKUP[_normalize_name(_profile.model_id)] = _profile
-    for _alias in _profile.aliases:
-        _PROFILE_LOOKUP[_normalize_name(_alias)] = _profile
+def _supported_agent_llm_names_for_error() -> str:
+    return ", ".join(supported_agent_llm_names())
 
 
-def _supported_agent_llm_names() -> str:
-    names: list[str] = []
-    for profile in _AGENT_LLM_PROFILES:
-        names.append(profile.model_id)
-        names.extend(profile.aliases)
-    return ", ".join(sorted(names))
+def is_supported_agent_llm_model(name: str) -> bool:
+    """Return whether *name* is a supported in-process local agent LLM."""
 
-
-def get_agent_llm_profile(name: str) -> AgentLLMProfile | None:
-    """Return a supported local agent LLM profile, or ``None`` when unsupported."""
-
-    return _PROFILE_LOOKUP.get(_normalize_name(name))
+    return _normalize_name(name) in _AGENT_LLM_MODEL_ALIASES
 
 
 def resolve_agent_llm_model_name(name: str) -> str:
     """Resolve a local agent LLM alias to its Hugging Face model ID."""
 
-    profile = get_agent_llm_profile(name)
-    return profile.model_id if profile is not None else name
+    return _AGENT_LLM_MODEL_ALIASES.get(_normalize_name(name), name)
 
 
 class VLLMAgentChatLLM(BaseModel):
@@ -132,18 +110,19 @@ class VLLMAgentChatLLM(BaseModel):
         max_model_len: Optional[int] = None,
         max_num_seqs: Optional[int] = None,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
-        tool_call_parser: Optional[str] = None,
     ) -> None:
         super().__init__()
 
-        profile = get_agent_llm_profile(model_path)
-        if profile is None:
+        resolved_model_path = resolve_agent_llm_model_name(model_path)
+        if resolved_model_path == model_path and not is_supported_agent_llm_model(model_path):
             raise ValueError(
                 f"Unsupported local agent LLM model {model_path!r}. "
-                f"Supported models and aliases: {_supported_agent_llm_names()}."
+                "Custom in-process agent LLMs are not supported yet. "
+                "Use llm_backend='openai_compatible' with invoke_url for a custom/self-hosted endpoint, "
+                f"or choose one of: {_supported_agent_llm_names_for_error()}."
             )
 
-        model_path = profile.model_id
+        model_path = resolved_model_path
         cuda_visible_devices = _cuda_visible_devices_from_device(device)
         if cuda_visible_devices is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
@@ -158,16 +137,13 @@ class VLLMAgentChatLLM(BaseModel):
         _raise_if_cuda_unavailable()
         self._model_path = model_path
         self._max_tokens = int(max_tokens)
-        self._tool_call_parser = (tool_call_parser or profile.tool_call_parser or "json").strip().lower()
-        self._request_extras = profile.request_extras_for_local()
-        self._tool_prompt_format = profile.tool_prompt_format
-        self._pass_tools_to_chat_template = profile.pass_tools_to_chat_template
+        self._request_extras = _mutable_copy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
         self._lock = threading.Lock()
 
         configure_global_hf_cache_base(hf_cache_dir)
-        revision = get_hf_revision(model_path, strict=False)
+        revision = get_hf_revision(model_path)
 
-        engine_kwargs = profile.engine_kwargs_for_local()
+        engine_kwargs: dict[str, Any] = {}
         if max_model_len is not None:
             engine_kwargs["max_model_len"] = int(max_model_len)
         if max_num_seqs is not None:
@@ -209,7 +185,7 @@ class VLLMAgentChatLLM(BaseModel):
         )
         chat_kwargs = self._build_chat_kwargs(extra_body)
         active_tools = tools if tools and tool_choice != "none" else None
-        if active_tools and self._pass_tools_to_chat_template:
+        if active_tools:
             chat_kwargs["tools"] = active_tools
 
         local_messages = self._normalize_messages(messages, tools=active_tools)
@@ -220,10 +196,7 @@ class VLLMAgentChatLLM(BaseModel):
         request_output = outputs[0]
         completion = request_output.outputs[0]
         text = str(getattr(completion, "text", "") or "").strip()
-        tool_calls = _tool_calls_from_completion(completion) or parse_tool_calls_from_text(
-            text,
-            parser=self._tool_call_parser,
-        )
+        tool_calls = _tool_calls_from_completion(completion) or parse_tool_calls_from_text(text)
         finish_reason = "tool_calls" if tool_calls else str(getattr(completion, "finish_reason", None) or "stop")
 
         message: dict[str, Any] = {"role": "assistant"}
@@ -263,7 +236,7 @@ class VLLMAgentChatLLM(BaseModel):
         tools: Optional[Sequence[dict[str, Any]]] = None,
     ) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
-        tool_prompt = _json_tool_prompt(tools) if tools and self._tool_prompt_format == "json" else None
+        tool_prompt = _json_tool_prompt(tools) if tools else None
         for idx, message in enumerate(messages):
             msg = dict(message)
             content = msg.get("content")
@@ -359,7 +332,6 @@ def create_cached_vllm_agent_chat_llm(
     tensor_parallel_size: int = 1,
     max_model_len: Optional[int] = None,
     max_num_seqs: Optional[int] = None,
-    tool_call_parser: Optional[str] = None,
 ) -> VLLMAgentChatLLM:
     """Create or reuse a local agent LLM keyed by heavyweight load settings."""
 
@@ -371,7 +343,6 @@ def create_cached_vllm_agent_chat_llm(
         int(tensor_parallel_size),
         int(max_model_len) if max_model_len is not None else None,
         int(max_num_seqs) if max_num_seqs is not None else None,
-        (tool_call_parser or "").strip().lower() or None,
     )
     with _LOCAL_AGENT_LLM_CACHE_LOCK:
         cached = _LOCAL_AGENT_LLM_CACHE.get(key)
@@ -384,7 +355,6 @@ def create_cached_vllm_agent_chat_llm(
                 tensor_parallel_size=tensor_parallel_size,
                 max_model_len=max_model_len,
                 max_num_seqs=max_num_seqs,
-                tool_call_parser=tool_call_parser,
             )
             _LOCAL_AGENT_LLM_CACHE[key] = cached
         return cached
@@ -401,11 +371,9 @@ def unload_cached_vllm_agent_chat_llms() -> None:
         model.unload()
 
 
-def parse_tool_calls_from_text(text: str, *, parser: str = "json") -> list[dict[str, Any]]:
+def parse_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
     """Parse common offline tool-call JSON into OpenAI ``tool_calls`` shape."""
 
-    if parser not in {"auto", "json"}:
-        raise ValueError(f"Unsupported local tool-call parser {parser!r}; supported parsers: auto, json")
     payload = _load_json_payload(text)
     if payload is None:
         return []

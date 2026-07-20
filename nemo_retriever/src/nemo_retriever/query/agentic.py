@@ -57,9 +57,10 @@ AGENTIC_RRF_K = 60
 AGENTIC_REACT_MAX_STEPS = 50
 AGENTIC_TEMPERATURE = 0.0  # agent LLM sampling temperature (0.0 = greedy)
 AGENTIC_MAX_TOKENS: Optional[int] = None
-AGENTIC_LLM_BACKEND = "openai_compatible"
+AGENTIC_LLM_BACKEND = "in_process"
 AGENTIC_LLM_BACKENDS = frozenset({"openai_compatible", "in_process"})
 AGENTIC_LOCAL_LLM_BACKEND = "vllm"
+AGENTIC_LOCAL_LLM_MODEL = "nemotron-8b"
 AGENTIC_LOCAL_LLM_BACKENDS = frozenset({"vllm"})
 
 
@@ -153,7 +154,6 @@ class AgenticRetrievalConfig:
     local_tensor_parallel_size: int = 1
     local_max_model_len: Optional[int] = None
     local_max_num_seqs: Optional[int] = None
-    local_tool_call_parser: Optional[str] = None
     api_key: Optional[str] = None
     react_max_steps: int = AGENTIC_REACT_MAX_STEPS
     text_truncation: int = AGENTIC_TEXT_TRUNCATION
@@ -193,8 +193,25 @@ class AgenticRetrievalConfig:
         )
         object.__setattr__(self, "local_llm_backend", local_llm_backend)
 
-        if self.llm_model is None or not str(self.llm_model).strip():
-            raise ValueError("Agentic retrieval requires a non-empty llm_model.")
+        llm_model = str(self.llm_model or "").strip()
+        if not llm_model:
+            if llm_backend == "in_process":
+                llm_model = AGENTIC_LOCAL_LLM_MODEL
+            else:
+                raise ValueError("Agentic retrieval requires a non-empty llm_model.")
+
+        if llm_backend == "in_process":
+            from nemo_retriever.models.local.agent_llm import is_supported_agent_llm_model, supported_agent_llm_names
+
+            if not is_supported_agent_llm_model(llm_model):
+                supported = ", ".join(supported_agent_llm_names())
+                raise ValueError(
+                    f"Unsupported in-process agentic LLM model {llm_model!r}. "
+                    "Custom in-process agent LLMs are not supported yet. "
+                    "Use llm_backend='openai_compatible' with invoke_url for a custom/self-hosted endpoint, "
+                    f"or choose one of: {supported}."
+                )
+        object.__setattr__(self, "llm_model", llm_model)
         object.__setattr__(
             self,
             "enforce_top_k",
@@ -315,7 +332,6 @@ def _build_agent_chat_completion_fn(cfg: AgenticRetrievalConfig) -> Any | None:
             tensor_parallel_size=int(cfg.local_tensor_parallel_size),
             max_model_len=cfg.local_max_model_len,
             max_num_seqs=cfg.local_max_num_seqs,
-            tool_call_parser=cfg.local_tool_call_parser,
         )
 
     raise ValueError(f"Unsupported agentic llm_backend {cfg.llm_backend!r}")

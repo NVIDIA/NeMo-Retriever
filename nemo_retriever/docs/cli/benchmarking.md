@@ -58,20 +58,53 @@ The agentic harness path runs the same ReAct retrieval graph used by root query,
 but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
 `retriever pipeline run` does not expose agentic evaluation flags.
 
+By default, agentic harness evaluation uses the in-process local vLLM backend
+with `nemotron-8b`. Custom LLMs are not supported in process yet; run them behind
+an OpenAI-compatible chat-completions endpoint and set
+`query.agentic_llm_backend=openai_compatible`.
+
 Minimal BEIR override example:
 
 ```bash
 retriever harness run jp20_beir \
+  --set query.agentic=true
+```
+
+Larger supported local profile:
+
+```bash
+retriever harness run jp20_beir \
   --set query.agentic=true \
-  --set query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
+  --set query.agentic_llm_model=super-49b \
+  --set query.agentic_local_tensor_parallel_size=2
+```
+
+Custom/self-hosted OpenAI-compatible endpoint:
+
+```bash
+retriever harness run jp20_beir \
+  --set query.agentic=true \
+  --set query.agentic_llm_backend=openai_compatible \
+  --set query.agentic_llm_model=custom-remote-model \
+  --set query.agentic_invoke_url=http://localhost:9000/v1/chat/completions
 ```
 
 Useful agentic query overrides:
 
-- `query.agentic_llm_model` — chat model used by the ReAct and selection agents;
-  required when `query.agentic=true`.
-- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint. Omit
-  to use the built-in NVIDIA endpoint.
+- `query.agentic_llm_backend` — `in_process` by default, or
+  `openai_compatible` for hosted/self-hosted chat-completions endpoints.
+- `query.agentic_llm_model` — local profile alias/model ID for `in_process`
+  (`nemotron-8b` by default; `super-49b` also supported), or the remote model ID
+  when using `openai_compatible`.
+- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint; used
+  only with `query.agentic_llm_backend=openai_compatible`.
+- `query.agentic_local_llm_backend` — local runtime for in-process agent LLMs;
+  currently only `vllm` is supported.
+- `query.agentic_local_hf_cache_dir`, `query.agentic_local_device`,
+  `query.agentic_local_gpu_memory_utilization`,
+  `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
+  and `query.agentic_local_max_num_seqs` — local vLLM loading and scheduling
+  controls.
 - `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
   call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
 - `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
@@ -80,9 +113,9 @@ Useful agentic query overrides:
   the agent; `0` disables truncation.
 - `query.agentic_num_concurrent` — number of queries the agent batch runs
   concurrently (defaults to `1`).
-- `query.agentic_temperature` — defaults to `0.0`; hosted/default NVIDIA
-  endpoints are validated as `0.0..1.0`, while other OpenAI-compatible endpoints
-  allow `0.0..2.0`.
+- `query.agentic_temperature` — defaults to `0.0`; local and non-NVIDIA
+  OpenAI-compatible endpoints allow `0.0..2.0`, while hosted/default NVIDIA
+  endpoints are validated as `0.0..1.0`.
 - `query.agentic_reasoning_effort` — optional provider-specific field forwarded
   only when configured.
 

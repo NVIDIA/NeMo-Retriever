@@ -28,10 +28,7 @@ def test_vllm_agent_llm_rejects_unsupported_profile_before_vllm_import() -> None
 def test_parse_json_tool_call_output() -> None:
     from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
 
-    calls = parse_tool_calls_from_text(
-        json.dumps([{"name": "retrieve", "arguments": {"query": "monetary policy"}}]),
-        parser="json",
-    )
+    calls = parse_tool_calls_from_text(json.dumps([{"name": "retrieve", "arguments": {"query": "monetary policy"}}]))
 
     assert calls == [
         {
@@ -81,15 +78,6 @@ def test_parse_plain_text_returns_no_tool_calls() -> None:
     from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
 
     assert parse_tool_calls_from_text("I should search again") == []
-
-
-def test_parse_tool_calls_rejects_unsupported_parser() -> None:
-    import pytest
-
-    from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
-
-    with pytest.raises(ValueError, match="supported parsers: auto, json"):
-        parse_tool_calls_from_text("[]", parser="mistral")
 
 
 def test_collapse_parallel_tool_results_for_local_chat_template() -> None:

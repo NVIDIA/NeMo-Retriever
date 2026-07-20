@@ -187,7 +187,15 @@ def _local_command(
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
     agentic_llm_model: opts.AgenticLlmModelOption = None,
+    agentic_llm_backend: opts.AgenticLlmBackendOption = "in_process",
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
+    agentic_local_llm_backend: opts.AgenticLocalLlmBackendOption = "vllm",
+    agentic_local_hf_cache_dir: opts.AgenticLocalHfCacheDirOption = None,
+    agentic_local_device: opts.AgenticLocalDeviceOption = None,
+    agentic_local_gpu_memory_utilization: opts.AgenticLocalGpuMemoryUtilizationOption = 0.8,
+    agentic_local_tensor_parallel_size: opts.AgenticLocalTensorParallelSizeOption = 1,
+    agentic_local_max_model_len: opts.AgenticLocalMaxModelLenOption = None,
+    agentic_local_max_num_seqs: opts.AgenticLocalMaxNumSeqsOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
@@ -201,16 +209,31 @@ def _local_command(
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
-    if agentic and not agentic_llm_model:
-        typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
-        raise typer.Exit(1)
-
     if agentic:
+        normalized_agentic_llm_backend = str(agentic_llm_backend or "in_process").strip().lower()
+        if normalized_agentic_llm_backend not in {"in_process", "openai_compatible"}:
+            typer.echo(
+                "Error: --agentic-llm-backend must be one of ['in_process', 'openai_compatible'].",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if normalized_agentic_llm_backend == "in_process" and not agentic_llm_model:
+            agentic_llm_model = "nemotron-8b"
+        if normalized_agentic_llm_backend == "openai_compatible" and not agentic_llm_model:
+            typer.echo(
+                "Error: --agentic-llm-backend openai_compatible requires --agentic-llm-model.",
+                err=True,
+            )
+            raise typer.Exit(1)
+
         backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
         if backend_error:
             typer.echo(f"Error: {backend_error}", err=True)
             raise typer.Exit(1)
-        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        temperature_invoke_url = (
+            agentic_invoke_url if normalized_agentic_llm_backend == "openai_compatible" else "local://in-process"
+        )
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
         if temperature_error:
             typer.echo(f"Error: {temperature_error}", err=True)
             raise typer.Exit(1)
@@ -248,7 +271,15 @@ def _local_command(
                 agentic=QueryAgenticOptions(
                     enabled=agentic,
                     llm_model=agentic_llm_model,
+                    llm_backend=normalized_agentic_llm_backend,
                     invoke_url=agentic_invoke_url,
+                    local_llm_backend=agentic_local_llm_backend,
+                    local_hf_cache_dir=agentic_local_hf_cache_dir,
+                    local_device=agentic_local_device,
+                    local_gpu_memory_utilization=agentic_local_gpu_memory_utilization,
+                    local_tensor_parallel_size=agentic_local_tensor_parallel_size,
+                    local_max_model_len=agentic_local_max_model_len,
+                    local_max_num_seqs=agentic_local_max_num_seqs,
                     reasoning_effort=agentic_reasoning_effort,
                     backend_top_k=agentic_backend_top_k,
                     react_max_steps=agentic_react_max_steps,

@@ -41,7 +41,15 @@ def test_query_override_paths_include_agentic_fields() -> None:
     for key in (
         "query.agentic",
         "query.agentic_llm_model",
+        "query.agentic_llm_backend",
         "query.agentic_invoke_url",
+        "query.agentic_local_llm_backend",
+        "query.agentic_local_hf_cache_dir",
+        "query.agentic_local_device",
+        "query.agentic_local_gpu_memory_utilization",
+        "query.agentic_local_tensor_parallel_size",
+        "query.agentic_local_max_model_len",
+        "query.agentic_local_max_num_seqs",
         "query.agentic_reasoning_effort",
         "query.agentic_backend_top_k",
         "query.agentic_react_max_steps",
@@ -59,7 +67,15 @@ def test_build_query_request_populates_agentic() -> None:
                 "top_k": 10,
                 "agentic": True,
                 "agentic_llm_model": "test-model",
+                "agentic_llm_backend": "openai_compatible",
                 "agentic_invoke_url": "https://example.invalid/v1",
+                "agentic_local_llm_backend": "vllm",
+                "agentic_local_hf_cache_dir": "/tmp/hf",
+                "agentic_local_device": "0",
+                "agentic_local_gpu_memory_utilization": 0.6,
+                "agentic_local_tensor_parallel_size": 2,
+                "agentic_local_max_model_len": 8192,
+                "agentic_local_max_num_seqs": 4,
                 "agentic_reasoning_effort": "high",
                 "agentic_backend_top_k": 25,
                 "agentic_react_max_steps": 12,
@@ -73,7 +89,15 @@ def test_build_query_request_populates_agentic() -> None:
     agentic = request.agentic
     assert agentic.enabled is True
     assert agentic.llm_model == "test-model"
+    assert agentic.llm_backend == "openai_compatible"
     assert agentic.invoke_url == "https://example.invalid/v1"
+    assert agentic.local_llm_backend == "vllm"
+    assert agentic.local_hf_cache_dir == "/tmp/hf"
+    assert agentic.local_device == "0"
+    assert agentic.local_gpu_memory_utilization == pytest.approx(0.6)
+    assert agentic.local_tensor_parallel_size == 2
+    assert agentic.local_max_model_len == 8192
+    assert agentic.local_max_num_seqs == 4
     assert agentic.reasoning_effort == "high"
     assert agentic.backend_top_k == 25
     assert agentic.react_max_steps == 12
@@ -94,6 +118,7 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
         agentic=QueryAgenticOptions(
             enabled=True,
             llm_model="test-model",
+            llm_backend="openai_compatible",
             backend_top_k=20,
             num_concurrent=4,
             temperature=0.0,
@@ -104,6 +129,16 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
     assert cfg.top_k == 10  # harness sets this to the deepest BEIR k
     assert cfg.backend_top_k == 20
     assert cfg.num_concurrent == 4
+
+
+def test_build_agentic_config_defaults_to_local_vllm_nemotron_8b() -> None:
+    request = QueryRequest(query="q", agentic=QueryAgenticOptions(enabled=True))
+
+    cfg = build_agentic_config(request, top_k=10)
+
+    assert cfg.llm_backend == "in_process"
+    assert cfg.local_llm_backend == "vllm"
+    assert cfg.llm_model == "nemotron-8b"
 
 
 def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
@@ -123,7 +158,14 @@ def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
         "query": {},
     }
     request = build_query_request(
-        _resolved({"top_k": 10, "agentic": True, "agentic_llm_model": "test-model"}),
+        _resolved(
+            {
+                "top_k": 10,
+                "agentic": True,
+                "agentic_llm_model": "test-model",
+                "agentic_llm_backend": "openai_compatible",
+            }
+        ),
         "",
     )
 
@@ -174,7 +216,7 @@ def test_run_beir_queries_invalid_agentic_config_is_structured_failure(tmp_path)
         "query": {},
     }
     request = build_query_request(
-        _resolved({"top_k": 10, "agentic": True, "agentic_llm_model": "m", "agentic_backend_top_k": 5}),
+        _resolved({"top_k": 10, "agentic": True, "agentic_llm_model": "nemotron-8b", "agentic_backend_top_k": 5}),
         "",
     )
     dataset = BeirDataset(dataset_name="demo", query_ids=["q1"], queries=["t1"], qrels={"q1": {"d1": 1}})
