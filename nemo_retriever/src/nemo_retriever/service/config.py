@@ -224,9 +224,7 @@ class AuthConfig(RichModel):
     scope_token_file: str | None = None
     allow_unscoped_dev: bool = True
     header_name: str = "Authorization"
-    bypass_paths: list[str] = Field(
-        default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"]
-    )
+    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
 
 class MCPConfig(RichModel):
@@ -235,9 +233,7 @@ class MCPConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    path: str = Field(
-        default="/mcp", description="HTTP mount path for the service FastMCP app."
-    )
+    path: str = Field(default="/mcp", description="HTTP mount path for the service FastMCP app.")
     base_url: str | None = Field(
         default=None,
         description=(
@@ -256,9 +252,7 @@ class MCPConfig(RichModel):
         if not self.path.startswith("/"):
             raise ValueError("mcp.path must start with '/'")
         if self.path == "/":
-            raise ValueError(
-                "mcp.path must not be '/' because it would shadow service routes"
-            )
+            raise ValueError("mcp.path must not be '/' because it would shadow service routes")
         if self.path.endswith("/"):
             raise ValueError("mcp.path must not end with '/'")
         return self
@@ -275,12 +269,8 @@ class GatewayConfig(RichModel):
 
     realtime_url: str = "http://nemo-retriever-realtime:7670"
     batch_url: str = "http://nemo-retriever-batch:7670"
-    timeout_s: float = Field(
-        default=300.0, description="Per-request forwarding timeout in seconds"
-    )
-    max_connections: int = Field(
-        default=100, description="httpx connection pool limit per backend"
-    )
+    timeout_s: float = Field(default=300.0, description="Per-request forwarding timeout in seconds")
+    max_connections: int = Field(default=100, description="httpx connection pool limit per backend")
 
 
 class PipelinePoolConfig(RichModel):
@@ -298,15 +288,9 @@ class PipelinePoolConfig(RichModel):
         ge=1,
         description="Concurrent workers for low-latency page processing",
     )
-    realtime_queue_size: int = Field(
-        default=2048, ge=1, description="Max queued items before realtime pool rejects"
-    )
-    batch_workers: int = Field(
-        default=16, ge=1, description="Concurrent workers for bulk document processing"
-    )
-    batch_queue_size: int = Field(
-        default=4096, ge=1, description="Max queued items before batch pool rejects"
-    )
+    realtime_queue_size: int = Field(default=2048, ge=1, description="Max queued items before realtime pool rejects")
+    batch_workers: int = Field(default=16, ge=1, description="Concurrent workers for bulk document processing")
+    batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
 
 
 class WorkQueueConfig(RichModel):
@@ -498,9 +482,7 @@ class ServiceConfig(RichModel):
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
-    pipeline_overrides: PipelineOverridesConfig = Field(
-        default_factory=PipelineOverridesConfig
-    )
+    pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -584,9 +566,7 @@ def load_config(
     if scope_file := os.environ.get("NRL_SCOPE_TOKEN_FILE"):
         raw.setdefault("auth", {})["scope_token_file"] = scope_file
     internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN")
-    if not internal_token and (
-        internal_token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")
-    ):
+    if not internal_token and (internal_token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
         internal_token = Path(internal_token_file).read_text(encoding="utf-8").strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
@@ -597,9 +577,7 @@ def load_config(
 
     config = ServiceConfig(**raw)
 
-    _REDACTED_FIELDS = frozenset(
-        {"api_key", "api_token", "internal_api_token", "password", "secret"}
-    )
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
 
     from rich.console import Console
     from rich.tree import Tree
@@ -610,11 +588,7 @@ def load_config(
         if isinstance(section_value, RichModel):
             branch = tree.add(f"[cyan]{section_name}[/cyan]")
             for field_name, field_value in section_value:
-                display = (
-                    "****"
-                    if field_name in _REDACTED_FIELDS and field_value
-                    else repr(field_value)
-                )
+                display = "****" if field_name in _REDACTED_FIELDS and field_value else repr(field_value)
                 branch.add(f"[dim]{field_name}[/dim] = [white]{display}[/white]")
         else:
             tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")

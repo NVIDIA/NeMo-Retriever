@@ -74,9 +74,7 @@ def _callback_status_is_retryable(status_code: int) -> bool:
     return status_code in (408, 425, 429) or 500 <= status_code < 600
 
 
-def _safe_extract_trace_context(
-    carrier: Mapping[str, str] | None, *, pool_name: str, item_id: str
-) -> Any | None:
+def _safe_extract_trace_context(carrier: Mapping[str, str] | None, *, pool_name: str, item_id: str) -> Any | None:
     """Best-effort W3C trace context extraction for worker processing."""
     from nemo_retriever.service import tracing
 
@@ -158,9 +156,7 @@ async def _fire_gateway_callback(
         payload["lease_generation"] = lease_generation
 
     try:
-        async with httpx.AsyncClient(
-            timeout=10.0, headers=dict(callback_headers or {})
-        ) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=dict(callback_headers or {})) as client:
             for attempt in range(len(_CALLBACK_RETRY_DELAYS_S) + 1):
                 retry_after_s: float | None = None
                 try:
@@ -196,16 +192,10 @@ async def _fire_gateway_callback(
                         exc,
                     )
                 if attempt < len(_CALLBACK_RETRY_DELAYS_S):
-                    delay_s = (
-                        retry_after_s
-                        if retry_after_s is not None
-                        else _CALLBACK_RETRY_DELAYS_S[attempt]
-                    )
+                    delay_s = retry_after_s if retry_after_s is not None else _CALLBACK_RETRY_DELAYS_S[attempt]
                     await asyncio.sleep(delay_s)
     except Exception as exc:
-        logger.warning(
-            "Unable to initialize gateway callback client for item %s: %s", item_id, exc
-        )
+        logger.warning("Unable to initialize gateway callback client for item %s: %s", item_id, exc)
     return _CallbackDeliveryOutcome.RETRYABLE
 
 
@@ -271,9 +261,7 @@ class _Pool:
         self._queue = None if self._pull_client is not None else asyncio.Queue(maxsize=self._max_queue_size)
         self._handoff_slots = asyncio.BoundedSemaphore(self._num_workers)
         self._running = True
-        self._workers = [
-            asyncio.create_task(self._worker_loop(i)) for i in range(self._num_workers)
-        ]
+        self._workers = [asyncio.create_task(self._worker_loop(i)) for i in range(self._num_workers)]
 
         # Publish startup-constant metrics so prometheus-adapter can join
         # depth (Gauge) with capacity (Gauge) at query time.
@@ -300,8 +288,7 @@ class _Pool:
         except RuntimeError:
             self._reporter_task = None
             logger.debug(
-                "Pool '%s' started outside a running event loop; "
-                "skipping periodic queue-depth reporter",
+                "Pool '%s' started outside a running event loop; " "skipping periodic queue-depth reporter",
                 self._name,
             )
 
@@ -400,9 +387,7 @@ class _Pool:
                 try:
                     finished.result()
                 except Exception:
-                    logger.exception(
-                        "Deferred gateway callback task failed for item %s", item_id
-                    )
+                    logger.exception("Deferred gateway callback task failed for item %s", item_id)
 
         task.add_done_callback(_remove_finished)
 
@@ -521,9 +506,7 @@ class _Pool:
                     "delivery.attempt": item.delivery_attempt,
                 },
             ) as span:
-                if item.enqueued_at_monotonic_s is not None and hasattr(
-                    span, "set_attribute"
-                ):
+                if item.enqueued_at_monotonic_s is not None and hasattr(span, "set_attribute"):
                     span.set_attribute(
                         "queue.wait_ms",
                         (time.monotonic() - item.enqueued_at_monotonic_s) * 1000.0,
@@ -551,9 +534,7 @@ class _Pool:
                     if not retain_results and item.job_id:
                         tracker_lookup = get_job_tracker()
                         if tracker_lookup is not None:
-                            retain_results = tracker_lookup.should_retain_results(
-                                item.job_id
-                            )
+                            retain_results = tracker_lookup.should_retain_results(item.job_id)
 
                     if item.callback_url:
                         if retain_results:
@@ -567,11 +548,7 @@ class _Pool:
                             item.id,
                             "completed",
                             result_rows=result_rows,
-                            result_worker_ip=(
-                                os.environ.get("POD_IP")
-                                if retain_results and result_rows > 0
-                                else None
-                            ),
+                            result_worker_ip=(os.environ.get("POD_IP") if retain_results and result_rows > 0 else None),
                             callback_headers=item.callback_headers,
                             lease_id=item.lease_id,
                             lease_generation=item.lease_generation,
@@ -592,9 +569,7 @@ class _Pool:
                                 status="completed",
                                 result_rows=result_rows,
                                 result_worker_ip=(
-                                    os.environ.get("POD_IP")
-                                    if retain_results and result_rows > 0
-                                    else None
+                                    os.environ.get("POD_IP") if retain_results and result_rows > 0 else None
                                 ),
                                 callback_headers=item.callback_headers,
                                 retain_results=retain_results,
@@ -708,8 +683,7 @@ class _Pool:
             )
             if still_pending:
                 logger.warning(
-                    "Pool '%s': %d workers did not exit within %.1fs — "
-                    "force-cancelling",
+                    "Pool '%s': %d workers did not exit within %.1fs — " "force-cancelling",
                     self._name,
                     len(still_pending),
                     timeout,

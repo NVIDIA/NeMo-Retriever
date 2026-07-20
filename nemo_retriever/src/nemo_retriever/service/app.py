@@ -55,9 +55,7 @@ def _apply_resource_limits(config: ServiceConfig) -> None:
 
     if res.gpu_devices:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(res.gpu_devices)
-        logger.info(
-            "CUDA_VISIBLE_DEVICES set to %s", os.environ["CUDA_VISIBLE_DEVICES"]
-        )
+        logger.info("CUDA_VISIBLE_DEVICES set to %s", os.environ["CUDA_VISIBLE_DEVICES"])
 
     if res.max_cpu_cores is not None:
         try:
@@ -174,14 +172,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             create_realtime_work_fn,
         )
 
-        rt_fn = (
-            create_realtime_work_fn(config)
-            if mode in ("standalone", "realtime")
-            else None
-        )
-        bt_fn = (
-            create_batch_work_fn(config) if mode in ("standalone", "batch") else None
-        )
+        rt_fn = create_realtime_work_fn(config) if mode in ("standalone", "realtime") else None
+        bt_fn = create_batch_work_fn(config) if mode in ("standalone", "batch") else None
         app.state.proxy = None
         app.state.work_broker = None
         app.state.pipeline_pool = init_pipeline_pool(
@@ -236,9 +228,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 class _RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a unique ``request_id`` to every incoming HTTP request."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request.state.request_id = uuid.uuid4().hex
         response = await call_next(request)
         return response
@@ -365,12 +355,8 @@ def create_app(config: ServiceConfig) -> FastAPI:
         return base
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
-        logger.exception(
-            "Unhandled exception on %s %s", request.method, request.url.path
-        )
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
         return JSONResponse(
             status_code=500,
             content={

@@ -28,8 +28,15 @@ class QueryRequest(BaseModel):
     def _reject_raw_storage_keys(cls, value: Any) -> Any:
         if isinstance(value, dict):
             raw_keys = {
-                "table_name", "table", "physical_table", "lancedb_uri", "lance_uri",
-                "uri", "table_path", "database_uri", "vdb_uri",
+                "table_name",
+                "table",
+                "physical_table",
+                "lancedb_uri",
+                "lance_uri",
+                "uri",
+                "table_path",
+                "database_uri",
+                "vdb_uri",
             }
             supplied = sorted(raw_keys.intersection(value))
             if supplied:

@@ -64,9 +64,7 @@ class ScopeAuthorizer:
         try:
             payload: Any = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise ValueError(
-                f"Unable to load scope-token secret file {path!r}: {exc}"
-            ) from exc
+            raise ValueError(f"Unable to load scope-token secret file {path!r}: {exc}") from exc
         records = payload.get("tokens") if isinstance(payload, dict) else None
         if not isinstance(records, list):
             raise ValueError("scope-token secret file must contain a 'tokens' list")
@@ -76,24 +74,16 @@ class ScopeAuthorizer:
             token = str(record.get("token") or "").strip()
             scopes = record.get("scopes")
             if not token or not isinstance(scopes, list) or not scopes:
-                raise ValueError(
-                    "scope-token records require a non-empty token and scopes list"
-                )
+                raise ValueError("scope-token records require a non-empty token and scopes list")
             self._records.append(
                 (
                     token,
-                    frozenset(
-                        str(scope).strip() for scope in scopes if str(scope).strip()
-                    ),
+                    frozenset(str(scope).strip() for scope in scopes if str(scope).strip()),
                 )
             )
 
-    def authorize(
-        self, provided_token: str, requested_scope: str | None
-    ) -> tuple[str | None, int | None]:
-        requested = (
-            requested_scope or self.default_scope
-        ).strip() or self.default_scope
+    def authorize(self, provided_token: str, requested_scope: str | None) -> tuple[str | None, int | None]:
+        requested = (requested_scope or self.default_scope).strip() or self.default_scope
         if not self._records:
             if self.allow_unscoped_dev:
                 return requested, None
@@ -133,9 +123,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
         if path.startswith("/v1/internal/") and self._internal_api_token:
             supplied = request.headers.get(_INTERNAL_TOKEN_HEADER, "").strip()
-            if not supplied or not hmac.compare_digest(
-                supplied, self._internal_api_token
-            ):
+            if not supplied or not hmac.compare_digest(supplied, self._internal_api_token):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Missing or invalid internal credential."},
@@ -145,9 +133,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
         provided = request.headers.get(self._header, "")
         provided_token = _strip_bearer(provided)
-        scope, failure = self._authorizer.authorize(
-            provided_token, request.headers.get("X-NRL-Scope")
-        )
+        scope, failure = self._authorizer.authorize(provided_token, request.headers.get("X-NRL-Scope"))
         if failure == 401:
             return JSONResponse(
                 status_code=401,
@@ -155,9 +141,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         if failure == 404:
-            return JSONResponse(
-                status_code=404, content={"detail": "Resource not found."}
-            )
+            return JSONResponse(status_code=404, content={"detail": "Resource not found."})
 
         request.state.authorized_scope = scope
         return await call_next(request)
