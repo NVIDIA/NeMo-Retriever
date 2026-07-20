@@ -77,6 +77,8 @@ from nemo_retriever.ingest.plan import (
     resolve_ingest_plan,
 )
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.common.input_files import resolve_input_patterns
+from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
 from nemo_retriever.common.params import (
     CaptionParams,
     DedupParams,
@@ -87,7 +89,6 @@ from nemo_retriever.common.params import (
     VdbUploadParams,
 )
 from nemo_retriever.common.params.models import BatchTuningParams
-from nemo_retriever.common.input_files import resolve_input_patterns
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 logger = logging.getLogger(__name__)
@@ -806,8 +807,12 @@ def run(
         None, "--caption-invoke-url", rich_help_panel=_PANEL_DEDUP_CAPTION
     ),
     caption_model_name: str = typer.Option(
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        DEFAULT_LOCAL_CAPTION_MODEL_ID,
         "--caption-model-name",
+        help=(
+            "VLM caption model. Defaults to Nemotron 3 Nano Omni 30B BF16 for local vLLM execution; "
+            "use an API model ID when --caption-invoke-url targets a hosted or deployed endpoint."
+        ),
         rich_help_panel=_PANEL_DEDUP_CAPTION,
     ),
     caption_device: Optional[str] = typer.Option(None, "--caption-device", rich_help_panel=_PANEL_DEDUP_CAPTION),

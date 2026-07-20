@@ -275,3 +275,7 @@ spool/
 
 # Local git worktrees
 .worktrees/
+
+# Local huggingface cache and build directories
+.work*/
+dist*

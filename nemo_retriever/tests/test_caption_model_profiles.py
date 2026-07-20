@@ -21,6 +21,21 @@ OMNI_BF16 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"
 OMNI_FP8 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+
+
+def test_canonical_caption_defaults_are_omni():
+    from nemo_retriever.common.modality.caption.model_profiles import (
+        DEFAULT_LOCAL_CAPTION_MODEL_ID,
+        DEFAULT_REMOTE_CAPTION_MODEL_ID,
+    )
+    from nemo_retriever.common.params import CaptionParams
+
+    assert DEFAULT_LOCAL_CAPTION_MODEL_ID == OMNI_BF16
+    assert DEFAULT_REMOTE_CAPTION_MODEL_ID == OMNI_REMOTE
+    assert CaptionParams().model_name == OMNI_BF16
+    assert "approximately 62 GiB" in CaptionParams.model_json_schema()["properties"]["model_name"]["description"]
+
+
 _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = (
     "nemo_retriever.models.local.nemotron_vlm_captioner",
     "nemo_retriever.common.nvtx",
@@ -465,7 +480,9 @@ def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_caption
 
     from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
-    captioner = NemotronVLMCaptioner(model_path=OMNI_BF16)
+    captioner = NemotronVLMCaptioner()
+
+    assert captioner.model_name == OMNI_BF16
 
     assert captioner.caption_batch(["abc123"]) == ["generated caption"]
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]

@@ -134,7 +134,7 @@ Some deployments use a different vector store than the default LanceDB path on t
 | Vector store | Where to configure or implement |
 |--------------|--------------------------------|
 | **[Elasticsearch](https://www.elastic.co/elasticsearch)** | [Configure Elasticsearch as Your Vector Database for NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/change-vectordb.html) — compose profiles, environment variables, and Helm notes for the RAG Blueprint. |
-| **[Pinecone](https://www.pinecone.io/)** | [Customize your vector database (Pinecone + NVIDIA RAG)](https://github.com/pinecone-io/nvidia-pinecone-rag/blob/main/docs/vector-database.md) in the [`pinecone-io/nvidia-pinecone-rag`](https://github.com/pinecone-io/nvidia-pinecone-rag) repository. |
+| **[Pinecone](https://www.pinecone.io/)** | [Pinecone Configuration for Pinecone Enterprise RAG Blueprint](https://github.com/pinecone-io/nvidia-rag/blob/main/docs/pinecone-configuration.md) in the [`pinecone-io/nvidia-rag`](https://github.com/pinecone-io/nvidia-rag) repository. |
 | **[Teradata](https://www.teradata.com/)** | [TeradataVDB (NVIDIA NIM Ingest integration)](https://docs.teradata.com/r/VMware/Teradata-Package-for-Generative-AI-Function-Reference/Vector-Store/NVIDIA-NIM-Ingest-Integration/TeradataVDB) — `teradatagenai.vector_store.teradataVDB.TeradataVDB` implements the NeMo Retriever ingestion `VDB` abstract class for Teradata Vector Store. |
 
 Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.

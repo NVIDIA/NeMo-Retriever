@@ -2,8 +2,9 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
+import inspect
 import json
+import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -11,15 +12,24 @@ import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
-import nemo_retriever.ingest.execution as ingest_execution
-import nemo_retriever.examples.graph_pipeline as batch_pipeline
-import nemo_retriever.models as model_module
 import nemo_retriever.cli.pipeline.__main__ as pipeline_main
-import nemo_retriever.tools.recall.beir as beir_module
 import nemo_retriever.common.detection_summary as detection_summary_module
+import nemo_retriever.examples.graph_pipeline as batch_pipeline
+import nemo_retriever.ingest.execution as ingest_execution
+import nemo_retriever.models as model_module
+import nemo_retriever.tools.recall.beir as beir_module
 from nemo_retriever.common.input_files import resolve_input_patterns
 
 RUNNER = CliRunner()
+
+
+def test_staged_pipeline_caption_default_and_help_are_omni() -> None:
+    option = inspect.signature(pipeline_main.run).parameters["caption_model_name"].default
+    result = RUNNER.invoke(pipeline_main.app, ["run", "--help"])
+
+    assert option.default == "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"
+    assert result.exit_code == 0
+    assert "Omni 30B BF16" in result.output
 
 
 class _FakeDataset:
