@@ -27,24 +27,24 @@ is the upstream HTTP status. Exception wording and upstream response bodies are
 not stable API fields and should not be parsed programmatically.
 
 In many row-level payloads, the HTTP status appears only inside
-`error.message` (for example `HTTP 503 from …`), not as a separate
-`status_code` field. Parse `exc.records` or inspect the failing DataFrame
-column when troubleshooting.
+`error.message` (for example `HTTP 503 from ...`), not as a separate
+`status_code` field. Inspect `exc.records` or the failing DataFrame column
+when troubleshooting. The `error` value can be a nested object or a string.
 
-### Coverage limits of `error_policy`
+### Coverage limits of the raise error policy
 
 `error_policy="raise"` scans only remote NIM stages with an explicitly
 configured invoke URL: Page Elements, OCR, Table Structure, Nemotron Parse,
-and embedding. It does **not** automatically raise for:
+and embedding. It does not automatically raise for:
 
 - Local-only pipelines (`pdfium` without remote URLs), even when rows contain
   `metadata.error` or column-level error payloads.
 - Caption or remote VLM stages. Missing credentials fail at actor setup;
   inference failures can abort the entire ingest.
-- Audio or video ASR over gRPC/HTTP. Failures can drop individual rows and
+- Audio or video ASR over gRPC or HTTP. Failures can drop individual rows and
   log warnings instead of raising `GraphIngestionError`.
 
-For those paths, use `error_policy="collect"`, `return_failures=True`, or
+For those paths, use `error_policy="collect"`, pass `return_failures=True`, or
 inspect row columns and service logs directly.
 
 ### Error signals and first response
@@ -89,35 +89,34 @@ downstream stage rather than from PDFium.
 
 ### Collect diagnostics safely
 
-Before escalating, collect:
+Before escalating, collect the following:
 
-1. The exact Python package version, service/container image tag, Helm chart
-   version when applicable, and `run_mode`.
-2. The exception class and complete sanitized message. For
-   `GraphIngestionError`, include sanitized `exc.records`. For row-level
-   failures, include the `stage`, `type`, and `message` fields from the
-   affected column when present.
-3. The extraction method and enabled stages, plus endpoint hostnames with
-   credentials and signed query parameters removed.
-4. The HTTP or gRPC status, response detail, job ID, document ID, trace ID,
-   and timestamp when available.
+1. Package, image or Helm versions, and `run_mode`.
+2. Exception class and sanitized message. For `GraphIngestionError`, include
+   sanitized `exc.records`. For row-level failures, include `stage`, `type`,
+   and `message` when present.
+3. Extraction method, enabled stages, and endpoint hostnames with credentials
+   and signed query parameters removed.
+4. HTTP or gRPC status, response detail, job ID, document ID, trace ID, and
+   timestamp when available.
 5. Whether the endpoint readiness check succeeds from the worker or service
    pod.
-6. A minimal non-confidential input that reproduces the issue, or input
-   characteristics such as format, page count, dimensions, and size.
-7. Relevant client, service, Ray, NIM, and Kubernetes logs around the same
+6. A minimal non-confidential reproducing input, or characteristics such as
+   format, page count, dimensions, and size.
+7. Relevant client, service, Ray, NIM, and Kubernetes logs for the same
    timestamp.
 
 Never include API keys, bearer tokens, document contents, or unredacted signed
 URLs in logs or support cases.
 
 Escalate to NVIDIA L3 when the failure is reproducible on a supported,
-version-aligned configuration after L1/L2 has verified input validity,
-credentials, endpoint readiness, connectivity, and resource availability.
-Escalate immediately for repeatable crashes, incorrect successful output, or a
-`5xx` from a healthy NVIDIA-owned NIM with a minimal valid input. Keep
-configuration, dependency, customer network, quota, and malformed-input issues
-with L1/L2 unless the documented behavior is incorrect.
+version-aligned configuration after L1 and L2 support has verified input
+validity, credentials, endpoint readiness, connectivity, and resource
+availability. Escalate immediately for repeatable crashes, incorrect
+successful output, or a `5xx` from a healthy NVIDIA-owned NIM with a minimal
+valid input. Keep configuration, dependency, customer network, quota, and
+malformed-input issues with L1 and L2 support unless the documented behavior
+is incorrect.
 
 !!! note "Older NV-Ingest releases"
 

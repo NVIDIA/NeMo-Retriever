@@ -39,11 +39,11 @@ all output columns for row-level error fields so local failures are still
 visible. In service mode, failures are also available from
 `ServiceIngestResult.failures`.
 
-### What `error_policy="raise"` covers
+### What the raise error policy covers
 
 The strict policy applies only to stages where you explicitly configure a
 remote NIM invoke URL. It does not raise for local-only PDFium parsing,
-caption, audio/video, or ASR failures, even when those stages populate
+caption, audio or video, or ASR failures, even when those stages populate
 row-level error fields.
 
 | Configured invoke URL | DataFrame column scanned | Stage label in messages |
@@ -103,15 +103,26 @@ try:
     result = pipeline.ingest()
 except GraphIngestionError as exc:
     # Records can contain source paths, endpoint details, and upstream
-    # response text. Extract only the known-safe diagnostic fields before
-    # logging or sending to your support workflow.
+    # response text. Extract only known-safe diagnostic fields before
+    # logging or sending them to your support workflow.
     for record in exc.records:
-        error_info = record.get("error", {}) if isinstance(record, dict) else {}
-        print({
-            "stage": error_info.get("stage"),
-            "type": error_info.get("type"),
-            "message": error_info.get("message"),
-        })
+        payload = record.get("error") if isinstance(record, dict) else record
+        if isinstance(payload, dict):
+            print(
+                {
+                    "column": record.get("column"),
+                    "stage": payload.get("stage"),
+                    "type": payload.get("type"),
+                    "message": payload.get("message"),
+                }
+            )
+        else:
+            print(
+                {
+                    "column": record.get("column") if isinstance(record, dict) else None,
+                    "message": str(payload),
+                }
+            )
 ```
 
 For a support-oriented mapping of extraction paths, error signals, corrective
