@@ -124,6 +124,33 @@ ingestor = (
 )
 ```
 
+### Ingest inline text
+
+Python callers can pass raw text documents directly to the same text splitting,
+embedding, and vector database graph without creating temporary files. Inline
+text is supported in `inprocess` and `batch` run modes.
+
+```python
+from nemo_retriever import create_ingestor
+
+texts = ["some text", "another longer text"]
+
+chunks = (
+  create_ingestor(run_mode="batch")
+  .texts(texts)
+  .embed()
+  .vdb_upload()
+  .ingest()
+)
+```
+
+Each string is treated as a raw document and split with `TextChunkParams`
+defaults. Add `.extract_txt(custom_params)` after `.texts(...)` to override
+the chunk size or overlap. Inline text cannot be mixed with files or buffers in
+one ingestor, and service run mode does not yet transport inline text. Inline
+corpora remain resident in driver memory, so prefer file ingestion when the
+corpus may exceed the driver's available memory.
+
 ### Optional extras
 
 - **`multimedia`** — Audio/video extraction and SVG rendering support. Install this extra when using Parakeet ASR through `extract_method="audio"` so audio decoding and resampling dependencies are available:

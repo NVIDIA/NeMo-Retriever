@@ -18,7 +18,7 @@ from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
-from nemo_retriever.common.modality.txt.split import txt_bytes_to_chunks_df
+from nemo_retriever.common.modality.txt.split import empty_text_chunks_df, text_to_chunks_df, txt_bytes_to_chunks_df
 
 
 @designer_component(
@@ -70,9 +70,9 @@ class TextChunkCPUActor(AbstractOperator, CPUOperator):
 )
 class TxtSplitCPUActor(AbstractOperator, CPUOperator):
     """
-    Ray Data map_batches callable: DataFrame with bytes, path -> DataFrame of chunks.
+    Ray Data map_batches callable: DataFrame with bytes/text, path -> DataFrame of chunks.
 
-    Each output row has: text, path, page_number, metadata (same shape as txt_file_to_chunks_df).
+    Each output row has: text, content, path, page_number, metadata (same shape as txt_file_to_chunks_df).
     """
 
     def __init__(self, params: TextChunkParams | None = None) -> None:
@@ -81,7 +81,7 @@ class TxtSplitCPUActor(AbstractOperator, CPUOperator):
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         if not isinstance(data, pd.DataFrame) or data.empty:
-            return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
+            return empty_text_chunks_df()
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
@@ -98,14 +98,18 @@ class TxtSplitCPUActor(AbstractOperator, CPUOperator):
                 continue
             path_str = str(path) if path is not None else ""
             try:
-                payload = raw or text.encode("utf-8")
-                chunk_df = txt_bytes_to_chunks_df(payload, path_str, params=params)
+                if raw is not None:
+                    chunk_df = txt_bytes_to_chunks_df(raw, path_str, params=params)
+                elif isinstance(text, str):
+                    chunk_df = text_to_chunks_df(text, path_str, params=params)
+                else:
+                    continue
                 if not chunk_df.empty:
                     out_dfs.append(chunk_df)
             except Exception:
                 continue
         if not out_dfs:
-            return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
+            return empty_text_chunks_df()
         return pd.concat(out_dfs, ignore_index=True)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

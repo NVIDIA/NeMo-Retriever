@@ -22,6 +22,11 @@ DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 
 
+def empty_text_chunks_df() -> pd.DataFrame:
+    """Return the canonical empty result for raw text ingestion."""
+    return pd.DataFrame(columns=["text", "content", "path", "page_number", "metadata"]).astype({"page_number": "int64"})
+
+
 def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN201
     """Lazy-load HuggingFace tokenizer."""
     from transformers import AutoTokenizer
@@ -206,30 +211,36 @@ def txt_file_to_chunks_df(
         Columns: text, path, page_number, metadata.
     """
     chunk_params = params or TextChunkParams()
-    max_tokens = chunk_params.max_tokens
-    overlap_tokens = chunk_params.overlap_tokens
-    tokenizer_model_id = chunk_params.tokenizer_model_id
-    encoding = chunk_params.encoding
-    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
     path = str(Path(path).resolve())
-    raw = Path(path).read_text(encoding=encoding, errors="replace")
-    if not raw or not raw.strip():
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
-    model_id = tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
-    tokenizer = _get_tokenizer(model_id, cache_dir=tokenizer_cache_dir)
-    chunk_texts = split_text_by_tokens(
-        raw,
-        tokenizer=tokenizer,
-        max_tokens=max_tokens,
-        overlap_tokens=overlap_tokens,
-    )
+    raw = Path(path).read_text(encoding=chunk_params.encoding, errors="replace")
+    return text_to_chunks_df(raw, path, params=chunk_params)
 
+
+def text_to_chunks_df(
+    text: str,
+    source_id: str,
+    params: TextChunkParams | None = None,
+) -> pd.DataFrame:
+    """Split decoded text while preserving its logical source identifier.
+
+    Unlike the file and byte adapters, this helper deliberately does not
+    resolve ``source_id`` as a filesystem path. This permits identifiers such
+    as ``inline://00000000`` to survive through embedding and vector storage.
+    """
+    chunk_params = params or TextChunkParams()
+    if not text or not text.strip():
+        return empty_text_chunks_df()
+
+    model_id = chunk_params.tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
+    tokenizer = _get_tokenizer(model_id, cache_dir=chunk_params.tokenizer_cache_dir)
+    chunk_texts = split_text_by_tokens(
+        text,
+        tokenizer=tokenizer,
+        max_tokens=chunk_params.max_tokens,
+        overlap_tokens=chunk_params.overlap_tokens,
+    )
     if not chunk_texts:
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
+        return empty_text_chunks_df()
 
     rows: List[Dict[str, Any]] = []
     for i, chunk in enumerate(chunk_texts):
@@ -237,10 +248,10 @@ def txt_file_to_chunks_df(
             {
                 "text": chunk,
                 "content": chunk,
-                "path": path,
+                "path": source_id,
                 "page_number": i + 1,
                 "metadata": {
-                    "source_path": path,
+                    "source_path": source_id,
                     "chunk_index": i,
                     "content_metadata": {"type": "text"},
                     "content": chunk,
@@ -261,41 +272,6 @@ def txt_bytes_to_chunks_df(
     Used by batch TxtSplitActor when input is bytes + path from read_binary_files.
     """
     chunk_params = params or TextChunkParams()
-    max_tokens = chunk_params.max_tokens
-    overlap_tokens = chunk_params.overlap_tokens
-    tokenizer_model_id = chunk_params.tokenizer_model_id
-    encoding = chunk_params.encoding
-    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
     path = str(Path(path).resolve())
-    raw = content_bytes.decode(encoding, errors="replace")
-    model_id = tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
-    tokenizer = _get_tokenizer(model_id, cache_dir=tokenizer_cache_dir)
-    chunk_texts = split_text_by_tokens(
-        raw,
-        tokenizer=tokenizer,
-        max_tokens=max_tokens,
-        overlap_tokens=overlap_tokens,
-    )
-
-    if not chunk_texts:
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
-
-    rows: List[Dict[str, Any]] = []
-    for i, chunk in enumerate(chunk_texts):
-        rows.append(
-            {
-                "text": chunk,
-                "content": chunk,
-                "path": path,
-                "page_number": i + 1,
-                "metadata": {
-                    "source_path": path,
-                    "chunk_index": i,
-                    "content_metadata": {"type": "text"},
-                    "content": chunk,
-                },
-            }
-        )
-    return pd.DataFrame(rows)
+    raw = content_bytes.decode(chunk_params.encoding, errors="replace")
+    return text_to_chunks_df(raw, path, params=chunk_params)

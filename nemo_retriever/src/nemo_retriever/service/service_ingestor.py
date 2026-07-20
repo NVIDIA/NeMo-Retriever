@@ -60,6 +60,8 @@ Fluent methods that *do* take effect by writing to the spec:
 
 Methods that intentionally remain unsupported in service run_mode:
 
+* ``.texts(...)`` — inline payload transport is not implemented; use
+  ``run_mode='inprocess'`` or ``run_mode='batch'``
 * ``.udf(...)`` — named UDFs deferred to a follow-up phase;
   arbitrary-code execution is the canonical trust-boundary violation
   and needs a server-side registry first
@@ -78,7 +80,7 @@ import time
 import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 import httpx
 
@@ -562,6 +564,12 @@ class ServiceIngestor(ingestor):
         else:
             self._documents.extend(documents)
         return self
+
+    def texts(self, texts: Union[str, Sequence[str]]) -> Self:
+        """Reject inline text until the service transport supports it."""
+        raise NotImplementedError(
+            "ServiceIngestor.texts() is not supported; use run_mode='inprocess' or run_mode='batch'."
+        )
 
     def buffers(
         self,

@@ -609,7 +609,7 @@ class TestTxtSplitActor:
     def test_preprocess_empty(self):
         actor = self._make()
         result = actor.preprocess(pd.DataFrame())
-        assert list(result.columns) == ["text", "path", "page_number", "metadata"]
+        assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
     def test_postprocess_passthrough(self):
         actor = self._make()
