@@ -163,7 +163,13 @@ def test_make_work_fn_continues_when_trace_capture_fails(
             max_tasks_per_child=None,
             model_dump=lambda *args, **kwargs: {},
         ),
-        vectordb=SimpleNamespace(enabled=False, vectordb_url=None),
+        vectordb=SimpleNamespace(
+            enabled=False,
+            vectordb_url=None,
+            internal_api_token=None,
+            collection_artifact_root=None,
+            artifact_storage_options_file=None,
+        ),
         pipeline=SimpleNamespace(
             realtime_workers=1,
             batch_workers=1,

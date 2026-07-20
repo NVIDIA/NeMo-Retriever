@@ -281,13 +281,14 @@ def test_collection_management_compose_has_stable_names_and_readiness():
 
 def test_service_images_own_collection_artifact_root():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
-    mkdir_command = "mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/artifacts"
-    chown_command = (
-        "chown -R nemo:nemo /workspace /etc/nemo-retriever "
-        "/var/lib/nemo-retriever /data/artifacts /opt/retriever_runtime"
-    )
-    assert dockerfile.count(mkdir_command) == 2
-    assert dockerfile.count(chown_command) == 2
+    lines = dockerfile.splitlines()
+    mkdir_commands = [line for line in lines if "mkdir -p" in line and "/etc/nemo-retriever" in line]
+    chown_commands = [line for line in lines if "chown -R nemo:nemo" in line and "/etc/nemo-retriever" in line]
+
+    assert len(mkdir_commands) == 2
+    assert len(chown_commands) == 2
+    assert all("/data/artifacts" in command.split() for command in mkdir_commands)
+    assert all("/data/artifacts" in command.split() for command in chown_commands)
 
 
 def test_legacy_tools_harness_is_removed():

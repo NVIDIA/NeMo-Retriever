@@ -137,6 +137,7 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
         {
             "url": "http://vectordb:7671/v1/query",
             "json": {"query": "What generates answers?", "top_k": 2},
+            "headers": {"X-NRL-Scope": "default"},
         }
     ]
     from_kwargs.assert_called_once_with(
