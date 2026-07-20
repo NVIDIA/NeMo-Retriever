@@ -102,10 +102,16 @@ pipeline = (
 try:
     result = pipeline.ingest()
 except GraphIngestionError as exc:
-    # Send sanitized records to your support workflow. Records can contain
-    # source paths, endpoint details, and upstream response text.
+    # Records can contain source paths, endpoint details, and upstream
+    # response text. Extract only the known-safe diagnostic fields before
+    # logging or sending to your support workflow.
     for record in exc.records:
-        print(record)
+        error_info = record.get("error", {}) if isinstance(record, dict) else {}
+        print({
+            "stage": error_info.get("stage"),
+            "type": error_info.get("type"),
+            "message": error_info.get("message"),
+        })
 ```
 
 For a support-oriented mapping of extraction paths, error signals, corrective
