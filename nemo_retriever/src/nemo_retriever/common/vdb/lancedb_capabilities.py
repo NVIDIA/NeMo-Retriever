@@ -11,10 +11,12 @@ from typing import Any, Literal
 
 import pyarrow as pa
 
-from nemo_retriever.common.vdb.lancedb_metadata import read_index_metadata
-
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
 
+_RETRIEVAL_MODE_METADATA_KEYS = (
+    "retrieval_mode",
+    "nemo_retriever.retrieval_mode",
+)
 _RETRIEVAL_MODES: dict[str, LanceRetrievalMode] = {
     "dense": "dense",
     "hybrid": "hybrid",
@@ -29,14 +31,23 @@ class LanceTableCapabilities:
     retrieval_mode: LanceRetrievalMode
     vector_column: str | None
     text_column: str | None
-    index_format_version: str | None = None
-    producer_version: str | None = None
-    embedding_model_name: str | None = None
 
 
 def _table_schema(table: Any) -> pa.Schema:
     schema = table.schema
     return schema() if callable(schema) else schema
+
+
+def _metadata_retrieval_mode(schema: pa.Schema) -> LanceRetrievalMode | None:
+    metadata = schema.metadata or {}
+    for key in _RETRIEVAL_MODE_METADATA_KEYS:
+        value = metadata.get(key.encode("utf-8"))
+        if value is None:
+            continue
+        normalized = value.decode("utf-8", errors="replace").strip().lower()
+        if normalized in _RETRIEVAL_MODES:
+            return _RETRIEVAL_MODES[normalized]
+    return None
 
 
 def _is_vector_type(data_type: pa.DataType) -> bool:
@@ -116,15 +127,13 @@ def inspect_lancedb_table(uri: str, table_name: str) -> LanceTableCapabilities:
 
 def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
     schema = _table_schema(table)
-    index_metadata = read_index_metadata(schema)
     fts_columns = _detect_fts_columns(table)
     vector_column = _detect_vector_column(schema)
     text_column = _detect_text_column(schema, fts_columns)
     has_vector = vector_column is not None
     has_fts = bool(fts_columns)
 
-    metadata_mode = (index_metadata.retrieval_mode or "").lower()
-    retrieval_mode = _RETRIEVAL_MODES.get(metadata_mode) or _mode_from_capabilities(has_vector, has_fts)
+    retrieval_mode = _metadata_retrieval_mode(schema) or _mode_from_capabilities(has_vector, has_fts)
 
     return LanceTableCapabilities(
         has_vector=has_vector,
@@ -132,7 +141,4 @@ def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
         retrieval_mode=retrieval_mode,
         vector_column=vector_column,
         text_column=text_column,
-        index_format_version=index_metadata.index_format_version,
-        producer_version=index_metadata.producer_version,
-        embedding_model_name=index_metadata.embedding_model_name,
     )

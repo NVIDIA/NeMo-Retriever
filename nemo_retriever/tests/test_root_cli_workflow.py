@@ -1769,8 +1769,6 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     assert "vector" not in table.schema.names
     assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
     assert table.schema.metadata[b"nemo_retriever.retrieval_mode"] == b"sparse"
-    assert table.schema.metadata[b"nemo_retriever.index_format_version"] == b"1"
-    assert table.schema.metadata[b"nemo_retriever.producer_version"]
     assert b"nemo_retriever.embedding_model_name" not in table.schema.metadata
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)

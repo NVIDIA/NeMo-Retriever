@@ -16,7 +16,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from nemo_retriever.common.vdb.adt_vdb import VDB
-from nemo_retriever.common.vdb.lancedb_metadata import INDEX_FORMAT_VERSION, read_index_metadata, with_index_metadata
 
 
 logger = logging.getLogger(__name__)
@@ -24,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_VECTOR_DIM: Final[int] = 2048
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
+_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
+_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
+_EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -115,10 +117,26 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
     return min(int(requested), max(1, cap))
 
 
+def _with_retrieval_mode_metadata(
+    schema: pa.Schema,
+    retrieval_mode: str | None,
+    embedding_model_name: str | None = None,
+) -> pa.Schema:
+    if retrieval_mode is None:
+        return schema
+    metadata = dict(schema.metadata or {})
+    encoded_mode = str(retrieval_mode).encode("utf-8")
+    metadata[_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
+    metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
+    if embedding_model_name:
+        metadata[_EMBEDDING_MODEL_METADATA_KEY] = embedding_model_name.encode("utf-8")
+    return schema.with_metadata(metadata)
+
+
 def _lancedb_arrow_schema(
     vector_dim: int,
     *,
-    retrieval_mode: str,
+    retrieval_mode: str | None = None,
     embedding_model_name: str | None = None,
 ) -> pa.Schema:
     schema = pa.schema(
@@ -130,14 +148,10 @@ def _lancedb_arrow_schema(
             pa.field("id", pa.string()),
         ]
     )
-    return with_index_metadata(
-        schema,
-        retrieval_mode=retrieval_mode,
-        embedding_model_name=embedding_model_name,
-    )
+    return _with_retrieval_mode_metadata(schema, retrieval_mode, embedding_model_name)
 
 
-def _sparse_lancedb_arrow_schema() -> pa.Schema:
+def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
     schema = pa.schema(
         [
             pa.field("text", pa.string()),
@@ -146,7 +160,7 @@ def _sparse_lancedb_arrow_schema() -> pa.Schema:
             pa.field("id", pa.string()),
         ]
     )
-    return with_index_metadata(schema, retrieval_mode="sparse", embedding_model_name=None)
+    return _with_retrieval_mode_metadata(schema, retrieval_mode)
 
 
 def _table_schema(table: Any) -> pa.Schema:
@@ -154,47 +168,24 @@ def _table_schema(table: Any) -> pa.Schema:
     return schema() if callable(schema) else schema
 
 
-def _validate_append_schema(table: Any, append_schema: pa.Schema, *, table_name: str, uri: str) -> None:
+def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_name: str, uri: str) -> None:
     """Fail before append when an existing table cannot accept this writer's rows."""
-    table_schema = _table_schema(table)
-    table_fields = {field.name: field for field in table_schema}
+    existing_schema = _table_schema(table)
+    existing_fields = {field.name: field for field in existing_schema}
 
-    for append_field in append_schema:
-        table_field = table_fields.get(append_field.name)
-        if table_field is None:
+    for expected_field in expected_schema:
+        existing_field = existing_fields.get(expected_field.name)
+        if existing_field is None:
             raise ValueError(
                 f"LanceDB table {table_name!r} at {uri!r} is missing required field "
-                f"{append_field.name!r}; use overwrite=True to replace the table."
+                f"{expected_field.name!r}; use overwrite=True to replace the table."
             )
-        if table_field.type != append_field.type:
+        if existing_field.type != expected_field.type:
             raise ValueError(
                 f"LanceDB table {table_name!r} at {uri!r} has incompatible field "
-                f"{append_field.name!r}: got {table_field.type}, expected {append_field.type}; "
+                f"{expected_field.name!r}: got {existing_field.type}, expected {expected_field.type}; "
                 "use overwrite=True to replace the table."
             )
-
-    table_metadata = read_index_metadata(table_schema)
-    append_metadata = read_index_metadata(append_schema)
-    if table_metadata.index_format_version is None:
-        logger.warning(
-            "Appending to legacy LanceDB table %r at %s without NeMo Retriever index metadata; "
-            "index-format and embedding compatibility cannot be verified.",
-            table_name,
-            uri,
-        )
-    elif table_metadata.index_format_version != INDEX_FORMAT_VERSION:
-        raise ValueError(
-            f"LanceDB table {table_name!r} at {uri!r} uses unsupported index format "
-            f"{table_metadata.index_format_version!r}; this writer requires {INDEX_FORMAT_VERSION!r}."
-        )
-
-    table_model = table_metadata.embedding_model_name
-    append_model = append_metadata.embedding_model_name
-    if table_model and append_model and table_model != append_model:
-        raise ValueError(
-            f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
-            f"{table_model!r}, but this append uses {append_model!r}."
-        )
 
 
 def _is_missing_lancedb_table_error(exc: ValueError) -> bool:
@@ -464,6 +455,19 @@ class LanceDB(VDB):
         self.fill_value = float(fill_value)
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
+
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Read one NeMo Retriever metadata value from the selected table."""
+        uri = str(kwargs.get("table_path") or kwargs.get("uri") or kwargs.get("lancedb_uri") or self.uri)
+        table_name = str(kwargs.get("table_name") or kwargs.get("lancedb_table") or self.table_name)
+        table = lancedb.connect(uri=uri).open_table(table_name)
+        metadata = _table_schema(table).metadata or {}
+        value = metadata.get(f"nemo_retriever.{key}".encode("utf-8"))
+        if value is None and key == "retrieval_mode":
+            value = metadata.get(_RETRIEVAL_MODE_METADATA_KEY)
+        if value is None:
+            return None
+        return value.decode("utf-8", errors="replace").strip() or None
 
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.

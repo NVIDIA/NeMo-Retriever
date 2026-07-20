@@ -21,7 +21,6 @@ from nemo_retriever.common.vdb.lancedb_capabilities import (
     LanceTableCapabilities,
     inspect_lancedb_table,
 )
-from nemo_retriever.common.vdb.lancedb_metadata import INDEX_FORMAT_VERSION
 from nemo_retriever.common.vdb.records import RetrievalHit, normalize_retrieval_results
 from nemo_retriever.query.shaping import shape_query_hits
 from nemo_retriever.operators.vdb import RetrieveVdbOperator
@@ -272,11 +271,6 @@ class Retriever:
         )
         table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nv-ingest")
         caps = self._inspect_lancedb_capabilities(uri, table_name)
-        if caps.index_format_version is not None and caps.index_format_version != INDEX_FORMAT_VERSION:
-            raise ValueError(
-                f"LanceDB table {table_name!r} at {uri!r} uses unsupported NeMo Retriever index format "
-                f"{caps.index_format_version!r}; this reader supports {INDEX_FORMAT_VERSION!r}."
-            )
 
         mode_override = str(lancedb_kwargs.get("retrieval_mode") or "auto").strip().lower()
         if mode_override not in {"auto", "dense", "hybrid", "sparse"}:
@@ -317,33 +311,21 @@ class Retriever:
                 return value
         return None
 
-    def _resolve_lancedb_embed_kwargs(
+    def _resolve_embed_kwargs(
         self,
-        caps: LanceTableCapabilities,
+        index_model: str | None,
         runtime_embed_kwargs: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Choose the query model: explicit override, table metadata, or default."""
+        """Choose the query model: explicit override, index metadata, or default."""
         resolved = dict(runtime_embed_kwargs or {})
-        override_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
-        if override_model is None:
-            override_model = self._embedding_model_from_kwargs(self.embed_kwargs)
-        if override_model:
-            override_model = resolve_embed_model(override_model)
-
-        table_model = caps.embedding_model_name
-        if table_model:
-            table_model = resolve_embed_model(table_model)
-
-        query_model = override_model or table_model or VL_EMBED_MODEL
-        if override_model and table_model and override_model != table_model:
-            logger.warning(
-                "Explicit embedding model %r conflicts with table embedding model %r; preserving the override.",
-                override_model,
-                table_model,
-            )
-
-        resolved["model_name"] = query_model
-        resolved["embed_model_name"] = query_model
+        model_name = (
+            self._embedding_model_from_kwargs(runtime_embed_kwargs)
+            or self._embedding_model_from_kwargs(self.embed_kwargs)
+            or index_model
+        )
+        model_name = resolve_embed_model(model_name)
+        resolved["model_name"] = model_name
+        resolved["embed_model_name"] = model_name
         return resolved
 
     def _execute_sparse_lancedb_queries(
@@ -443,6 +425,14 @@ class Retriever:
         retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 
         vdb_call_kwargs = dict(vdb_kwargs or {})
+        index_model: str | None = None
+        explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
+            self.embed_kwargs
+        )
+        if self.graph is None and explicit_model is None:
+            metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
+            index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
+
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
@@ -472,7 +462,8 @@ class Retriever:
                 vdb_call_kwargs["hybrid"] = False
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
-            embed_kwargs = self._resolve_lancedb_embed_kwargs(caps, embed_kwargs)
+        if self.graph is None:
+            embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs)
 
         raw_hits = self._execute_queries_graph(
             query_texts,

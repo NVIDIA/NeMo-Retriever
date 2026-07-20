@@ -84,6 +84,20 @@ class TestQueriesGraphExecution:
         p = r._merge_embed_params({"model_name": "call"})
         assert p.model_name == "call"
 
+    def test_index_model_keeps_constructor_provider_prefix(self) -> None:
+        retriever = _make_retriever(
+            embed_kwargs={
+                "embed_invoke_url": "https://embed.example.com/v1/embeddings",
+                "embed_model_provider_prefix": "nvidia",
+            }
+        )
+
+        resolved = retriever._resolve_embed_kwargs("nvidia/llama-nemotron-embed-vl-1b-v2", None)
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
+        assert params.embed_model_provider_prefix == "nvidia"
+
     def test_local_query_embedding_defaults_to_hf(self) -> None:
         p = _make_retriever()._merge_embed_params()
         assert p.local_ingest_embed_backend == "hf"
