@@ -54,7 +54,17 @@ export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 The launcher writes artifacts under `/raid/$USER/retriever-nightly-artifacts`.
 No configuration file is required. On a host without the standard dataset
 layout, copy and edit `nemo_retriever/harness/dataset_paths.example.yaml`, then
-export `RETRIEVER_DATASET_PATHS` with that path.
+pass the resulting YAML file to `--dataset-paths`. The option takes the YAML
+file itself, not a dataset directory:
+
+```bash
+cp nemo_retriever/harness/dataset_paths.example.yaml \
+  /raid/$USER/retriever-dataset-paths.yaml
+${EDITOR:-vi} /raid/$USER/retriever-dataset-paths.yaml
+./ops/retriever-nightly/run-nightly.sh \
+  --dataset-paths /raid/$USER/retriever-dataset-paths.yaml \
+  --dry-run
+```
 
 ## 3. Verify ViDoRe Evaluation Access
 

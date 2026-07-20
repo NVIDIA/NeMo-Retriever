@@ -168,6 +168,8 @@ def test_help_does_not_require_configuration_or_fetch(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "current checkout" in result.stdout
     assert "--ref REF" in result.stdout
+    assert "--dataset-paths YAML_FILE" in result.stdout
+    assert "YAML file" in result.stdout
 
 
 def test_explicit_ref_runs_local_commit_without_fetching(latest_main_fixture) -> None:

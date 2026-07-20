@@ -211,6 +211,19 @@ def test_manual_dry_run_launches_full_batch_suite_without_slack(nightly_launcher
     assert tuple(invocation[-len(DEFAULT_RUNFILES) :]) == DEFAULT_RUNFILES
 
 
+def test_dataset_paths_rejects_a_directory_with_actionable_error(nightly_launcher, tmp_path: Path) -> None:
+    run, calls = nightly_launcher
+    dataset_directory = tmp_path / "jp20"
+    dataset_directory.mkdir()
+
+    result = run("--dataset-paths", str(dataset_directory), "--dry-run")
+
+    assert result.returncode == 64
+    assert calls() == []
+    assert "--dataset-paths expects a YAML file, not a directory" in result.stderr
+    assert str(dataset_directory) in result.stderr
+
+
 def test_access_preflight_checks_vidore_without_starting_a_session(nightly_launcher) -> None:
     run, calls = nightly_launcher
 

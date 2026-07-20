@@ -74,7 +74,7 @@ optional `nightly.env` accepts only two secrets and one optional path override:
 | --- | --- | --- |
 | `HF_TOKEN` | yes | Read-only access to ViDoRe evaluation data. |
 | `SLACK_WEBHOOK_URL` | no | Enables one terminal Slack post for real runs. |
-| `RETRIEVER_DATASET_PATHS` | nonstandard hosts only | Replaces the checked-in `/datasets/nv-ingest` map. |
+| `RETRIEVER_DATASET_PATHS` | nonstandard hosts only | Path to a YAML file that replaces the checked-in `/datasets/nv-ingest` map. |
 
 On hosts with a writable `/raid/$USER`, the launcher automatically keeps its
 private configuration, artifacts, and managed Git checkouts there.
@@ -99,10 +99,49 @@ chmod 600 "$RETRIEVER_NIGHTLY_CONFIG_DIR/nightly.env"
 ${EDITOR:-vi} "$RETRIEVER_NIGHTLY_CONFIG_DIR/nightly.env"
 ```
 
-The checked-in `dataset_paths.datasets.yaml` already describes the standard
-`/datasets/nv-ingest` layout. Only hosts with a different layout need to copy
-and edit `nemo_retriever/harness/dataset_paths.example.yaml`, then set
-`RETRIEVER_DATASET_PATHS` in `nightly.env`.
+### Dataset Paths On A Nonstandard Host
+
+The checked-in `dataset_paths.datasets.yaml` describes the standard
+`/datasets/nv-ingest` layout. Do not pass `--dataset-paths` on a host with that
+layout.
+
+On any other host, `--dataset-paths` takes the path to a YAML configuration
+file, not a dataset directory. Copy the complete twelve-dataset template
+outside the checkout, replace its paths, and pass the resulting file:
+
+```bash
+cp nemo_retriever/harness/dataset_paths.example.yaml \
+  /raid/$USER/retriever-dataset-paths.yaml
+${EDITOR:-vi} /raid/$USER/retriever-dataset-paths.yaml
+./ops/retriever-nightly/run-nightly.sh \
+  --dataset-paths /raid/$USER/retriever-dataset-paths.yaml \
+  --dry-run
+```
+
+For a JP20-only canary, the YAML file may contain only its local dataset and
+ground-truth query paths:
+
+```yaml
+schema_version: 1
+datasets:
+  jp20:
+    path: /raid/data/jp20
+    query_file: /raid/data/jp20_query_gt.csv
+```
+
+Run that one benchmark by also supplying its runfile:
+
+```bash
+./ops/retriever-nightly/run-nightly.sh \
+  --dataset-paths /raid/data/retriever-dataset-paths.yaml \
+  --no-slack \
+  nemo_retriever/harness/runfiles/jp20_beir.json
+```
+
+Keep the machine-local YAML outside the repository. For repeated runs, export
+`RETRIEVER_DATASET_PATHS=/raid/$USER/retriever-dataset-paths.yaml` or set the
+same value in the optional `nightly.env`; the command-line flag is simplest for
+a one-off run.
 
 The launcher sources the detected file only when it exists; otherwise it uses
 the current environment. An existing secrets file must be owned by the

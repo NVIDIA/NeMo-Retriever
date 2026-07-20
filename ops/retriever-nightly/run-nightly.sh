@@ -25,7 +25,8 @@ RUNFILE arguments, all 12 checked-in nightly runfiles are executed.
 
 Options:
   --ref REF             Run a clean checkout of a Git ref. Remote refs are fetched.
-  --dataset-paths PATH  Machine-local dataset path map.
+  --dataset-paths YAML_FILE
+                        YAML file mapping benchmark names to local dataset paths.
   --artifact-root PATH  Parent directory for timestamped session artifacts.
   --check-vidore-access Validate authenticated ViDoRe evaluation-data access and exit.
   --dry-run             Resolve and validate the suite without executing it.
@@ -389,8 +390,12 @@ if ((check_vidore_access)); then
     "$uv_bin" run --frozen --project nemo_retriever retriever harness check-vidore-access
     exit $?
 fi
+if [[ -d "$dataset_paths" ]]; then
+    log "--dataset-paths expects a YAML file, not a directory: $dataset_paths"
+    exit "$EXIT_CONFIG"
+fi
 if [[ ! -f "$dataset_paths" ]]; then
-    log "dataset path map is missing: $dataset_paths"
+    log "dataset paths YAML file is missing: $dataset_paths"
     exit "$EXIT_CONFIG"
 fi
 post_slack=0
