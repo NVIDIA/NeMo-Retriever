@@ -15,10 +15,6 @@ Format names and internal stages are not root commands. Use `retriever ingest`
 for PDF, HTML, TXT, image, Office, audio, and video inputs; it owns extraction,
 embedding, and index creation as one workflow.
 
-`retriever pipeline run` remains callable as hidden compatibility while existing
-development callers migrate. It is not shown in root help and is not the
-preferred product ingest path.
-
 ## Public ingest shape
 
 `retriever ingest` defaults to local, in-process ingest:
@@ -349,16 +345,3 @@ Ingested 20 file(s) -> 1940 row(s) through retriever service http://localhost:76
 
 Use `--dry-run` on any ingest mode to inspect the resolved request without
 creating an ingestor or contacting the service.
-
-## Development / compatibility command
-
-`retriever pipeline run` remains available, but hidden from root help, for
-pipeline-specific behavior such as:
-
-- `--save-intermediate` Parquet artifacts.
-- runtime metrics and pipeline reports.
-- eval, recall, harness, or BEIR/QA workflows.
-- legacy compatibility while callers migrate to `retriever ingest` and
-  `retriever query`.
-
-Run `retriever pipeline run --help` for the compatibility command flag list.

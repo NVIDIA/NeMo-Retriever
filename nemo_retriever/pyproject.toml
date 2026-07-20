@@ -81,7 +81,7 @@ dependencies = [
 [project.optional-dependencies]
 
 # Core ``pip install nemo-retriever`` (no extras) supports remote HTTP NIM and the
-# ``retriever pipeline`` CLI without ``tritonclient``. Triton gRPC is imported only
+# ``retriever ingest`` / ``retriever query`` CLIs without ``tritonclient``. Triton gRPC is imported only
 # when a gRPC client is constructed; install ``nemo-retriever[local]`` for on-box
 # Triton + GPU stacks (``tritonclient`` is listed under ``local``).
 

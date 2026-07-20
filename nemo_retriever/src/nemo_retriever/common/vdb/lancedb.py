@@ -32,8 +32,7 @@ def _normalize_on_bad_vectors(value: str) -> str:
 
     LanceDB's ``Table.create`` accepts a fixed set of policies for handling rows
     whose vector column does not match the declared fixed-size schema. We
-    surface the same vocabulary on this wrapper so callers can configure the
-    behavior through ``--vdb-kwargs-json``.
+    surface the same vocabulary on this wrapper for direct SDK configuration.
 
     Args:
         value: User-supplied policy name. Whitespace and case are ignored.
