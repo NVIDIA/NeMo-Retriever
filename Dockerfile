@@ -173,10 +173,10 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
          > /etc/sudoers.d/nemo-ffmpeg \
     && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
     && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
-    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /data/artifacts \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /data/artifacts /opt/retriever_runtime
 
 EXPOSE 7670
 
@@ -215,10 +215,10 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
          > /etc/sudoers.d/nemo-ffmpeg \
     && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
     && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
-    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /data/artifacts \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /data/artifacts /opt/retriever_runtime
 
 EXPOSE 7670
 

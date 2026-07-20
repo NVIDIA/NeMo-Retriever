@@ -49,15 +49,21 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from nemo_retriever.common.schemas.collections import (
-    CollectionDeleteResult,
     CollectionCreateRequest,
+    CollectionDeleteResult,
     CollectionInfo,
     CollectionPage,
     CollectionUpdateRequest,
-    DocumentId,
     DocumentDeleteResult,
+    DocumentId,
     DocumentInfo,
     DocumentPage,
+)
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.lancedb_capabilities import (
+    LanceRetrievalMode,
+    LanceTableCapabilities,
+    inspect_lancedb_table_object,
 )
 
 from nemo_retriever.query.evidence import build_evidence_result
@@ -69,10 +75,14 @@ from nemo_retriever.service.query_schema import (
     QueryResult,
 )
 
-# /v1/query is dense vector search only; report that honestly in coverage.
-_QUERY_STRATEGIES = ["dense"]
-
 logger = logging.getLogger(__name__)
+
+
+def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | str) -> list[str]:
+    if mode == "hybrid":
+        return ["hybrid"]
+    return ["dense"]
+
 
 # ── Request / response models ────────────────────────────────────────
 
@@ -238,11 +248,11 @@ class VectorDBState:
         self._collection_tables: dict[tuple[str, str], str] = {}
         self._opened_tables: dict[str, Any] = {}
         self._table_exists = False
-        try:
+        if self.table_name in self._db.list_tables().tables:
             self._db.open_table(table_name)
             self._table_exists = True
             logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
-        except Exception:
+        else:
             logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
         self._ensure_catalogs()
 
@@ -575,6 +585,42 @@ class VectorDBState:
     def table_exists(self) -> bool:
         return self._table_exists
 
+    def _table_capabilities(self, table_name: str | None = None) -> LanceTableCapabilities | None:
+        resolved_name = table_name or self.table_name
+        if not self._has_table(resolved_name):
+            return None
+        return inspect_lancedb_table_object(self._open_table(resolved_name))
+
+    def resolve_effective_retrieval_mode(
+        self,
+        caps: LanceTableCapabilities | None = None,
+        *,
+        table_name: str | None = None,
+    ) -> LanceRetrievalMode:
+        resolved_name = table_name or self.table_name
+        table_exists = self._has_table(resolved_name) if table_name is not None else self._table_exists
+        if not table_exists:
+            return "dense"
+        if caps is None:
+            caps = self._table_capabilities(resolved_name)
+            if caps is None:
+                raise ValueError(
+                    f"Unable to inspect LanceDB table {resolved_name!r} at {self.lancedb_uri!r}: "
+                    "capabilities could not be determined."
+                )
+        mode: LanceRetrievalMode = caps.retrieval_mode
+        if mode == "unknown":
+            raise ValueError(
+                f"LanceDB table {resolved_name!r} at {self.lancedb_uri!r} is not queryable: "
+                "no vector column or FTS index was detected."
+            )
+        if mode == "sparse":
+            raise ValueError(
+                f"LanceDB table {resolved_name!r} at {self.lancedb_uri!r} has an FTS index but no vector "
+                "column; sparse-only retrieval is not supported by the VectorDB service."
+            )
+        return mode
+
     def write_rows(
         self,
         rows: list[dict[str, Any]],
@@ -600,10 +646,10 @@ class VectorDBState:
 
         table_name = self.table_name
         collection_mode = collection_name is not None
-        if collection_mode:
-            table_name = self._resolved_table(scope or "default", collection_name)
 
         with self._write_lock:
+            if collection_mode:
+                table_name = self._resolved_table(scope or "default", collection_name)
             existing: list[dict[str, Any]] = []
             version = str(rows[0].get("document_version") or content_sha256 or "1")
             if collection_mode and document_id:
@@ -639,7 +685,9 @@ class VectorDBState:
                         .when_matched_update_all()
                         .execute([marker])
                     )
-            table_exists = self._table_exists if not collection_mode else self._has_table(table_name)
+            # Use raw on-disk presence so transient open failures are never
+            # mistaken for an absent table followed by a destructive overwrite.
+            table_exists = table_name in self._db.list_tables().tables
             if not table_exists:
                 dim = infer_vector_dim(rows)
                 if dim == 0:
@@ -717,45 +765,63 @@ class VectorDBState:
         return len(rows)
 
     def total_rows(self, *, scope: str | None = None, collection_name: str | None = None) -> int:
-        table_name = self.table_name
-        exists = self._table_exists
-        if collection_name:
-            table_name = self._resolved_table(scope or "default", collection_name)
-            exists = self._has_table(table_name)
-        if not exists:
-            return 0
-        try:
-            table = self._open_table(table_name)
-            return table.count_rows()
-        except Exception:
-            return 0
+        with self._write_lock:
+            table_name = self.table_name
+            if collection_name:
+                table_name = self._resolved_table(scope or "default", collection_name)
+            table_exists = self._has_table(table_name) if collection_name else self._table_exists
+            if not table_exists:
+                return 0
+            try:
+                return self._open_table(table_name).count_rows()
+            except Exception:
+                logger.warning(
+                    "Failed to count rows in LanceDB table at %s; reporting 0 to health",
+                    self.lancedb_uri,
+                    exc_info=True,
+                )
+                return 0
 
     def search(
         self,
         vectors: list[list[float]],
+        query_texts: list[str],
         top_k: int,
         *,
         scope: str | None = None,
         collection_name: str | None = None,
-    ) -> list[list[dict[str, Any]]]:
-        """Search the LanceDB table with precomputed query vectors."""
-        table_name = self.table_name
-        exists = self._table_exists
-        if collection_name:
-            table_name = self._resolved_table(scope or "default", collection_name)
-            exists = self._has_table(table_name)
-        if not exists:
-            return [[] for _ in vectors]
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Search one resolved table while excluding concurrent lifecycle mutation."""
+        with self._write_lock:
+            table_name = self.table_name
+            if collection_name:
+                table_name = self._resolved_table(scope or "default", collection_name)
+            table_exists = self._has_table(table_name) if collection_name else self._table_exists
+            if not table_exists:
+                return [[] for _ in vectors], _strategies_for_retrieval_mode("dense")
 
-        from nemo_retriever.common.vdb.records import normalize_retrieval_results
+            caps = self._table_capabilities(table_name if collection_name else None)
+            mode = self.resolve_effective_retrieval_mode(caps, table_name=table_name if collection_name else None)
+            strategies = _strategies_for_retrieval_mode(mode)
 
-        table = self._open_table(table_name)
-        raw_results = []
-        for vector in vectors:
-            results = table.search(vector).limit(top_k).to_list()
-            raw_results.append(results)
+            from nemo_retriever.common.vdb.lancedb import LanceDB
+            from nemo_retriever.common.vdb.records import normalize_retrieval_results
 
-        return normalize_retrieval_results(raw_results)
+            hybrid = mode == "hybrid"
+            vdb = LanceDB(
+                uri=self.lancedb_uri,
+                table_name=table_name,
+                overwrite=False,
+                hybrid=hybrid,
+            )
+            retrieval_kwargs: dict[str, Any] = {"top_k": top_k, "hybrid": hybrid}
+            if hybrid:
+                retrieval_kwargs["query_texts"] = query_texts
+            if caps is not None and caps.vector_column and caps.vector_column != "vector":
+                retrieval_kwargs["vector_column_name"] = caps.vector_column
+
+            raw_results = vdb.retrieval(vectors, **retrieval_kwargs)
+            return normalize_retrieval_results(raw_results), strategies
 
     def list_documents(self, scope: str, collection: str, limit: int, token: str | None) -> DocumentPage:
         self._resolved_table(scope, collection)
@@ -897,27 +963,25 @@ class VectorDBState:
             return False
 
     def delete_document(self, scope: str, collection: str, document_id: str, if_exists: bool) -> DocumentDeleteResult:
-        table_name = self._resolved_table(scope, collection)
-        try:
-            self.get_document(scope, collection, document_id)
-        except HTTPException:
-            if if_exists:
-                return DocumentDeleteResult(
-                    document_id=document_id,
-                    collection_name=collection,
-                    scope=scope,
-                    existed=False,
-                    deleted=False,
-                    status="deleted",
-                    cleanup_pending=False,
-                )
-            raise
         with self._write_lock:
+            table_name = self._resolved_table(scope, collection)
             rows = self._rows(
                 _DOCUMENTS_TABLE,
                 f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)} "
                 f"AND document_id = {_quoted(document_id)}",
             )
+            if not rows:
+                if if_exists:
+                    return DocumentDeleteResult(
+                        document_id=document_id,
+                        collection_name=collection,
+                        scope=scope,
+                        existed=False,
+                        deleted=False,
+                        status="deleted",
+                        cleanup_pending=False,
+                    )
+                raise HTTPException(404, "Document not found")
             row = rows[0]
             if row.get("recovery_state") not in (
                 "deleting_chunks",
@@ -1180,11 +1244,22 @@ def create_vectordb_app(
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         rows = _state.total_rows() if _state else 0
+        effective_mode: str | None = None
+        if _state is not None and _state.table_exists:
+            try:
+                effective_mode = _state.resolve_effective_retrieval_mode()
+            except Exception:
+                effective_mode = "unknown"
+                logger.warning(
+                    "Failed to resolve effective retrieval mode; reporting unknown to health",
+                    exc_info=True,
+                )
         health_payload = {
             "status": "ok",
             "total_rows": rows,
             "table_exists": _state.table_exists if _state else False,
             "embed_mode": _state.embed_mode if _state else "none",
+            "effective_retrieval_mode": effective_mode,
         }
         if _state:
             health_payload.update(_state.operational_health())
@@ -1400,19 +1475,23 @@ def create_vectordb_app(
                 return EvidenceQueryResponse(results=[])
             return QueryResponse(results=[])
 
-        async with _query_semaphore:
-            vectors = await asyncio.to_thread(_state.embed_queries, queries)
-            hits_per_query = await asyncio.to_thread(
-                _state.search,
-                vectors,
-                req.top_k,
-                scope=_scope(x_nrl_scope),
-                collection_name=req.collection_name,
-            )
+        try:
+            async with _query_semaphore:
+                vectors = await asyncio.to_thread(_state.embed_queries, queries)
+                hits_per_query, strategies = await asyncio.to_thread(
+                    _state.search,
+                    vectors,
+                    queries,
+                    req.top_k,
+                    scope=_scope(x_nrl_scope),
+                    collection_name=req.collection_name,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES)) for hits in hits_per_query]
+                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
             )
 
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
@@ -1437,7 +1516,11 @@ def main() -> None:
         default="",
         help="Optional LiteLLM provider prefix",
     )
-    parser.add_argument("--embed-api-key", default="")
+    parser.add_argument(
+        "--embed-api-key",
+        default="",
+        help="Remote embedding API key (defaults to NVIDIA_API_KEY, then NGC_API_KEY).",
+    )
     parser.add_argument(
         "--internal-api-token",
         default=internal_token,
@@ -1500,7 +1583,7 @@ def main() -> None:
         embed_endpoint=args.embed_endpoint,
         embed_model=args.embed_model,
         embed_model_provider_prefix=args.embed_model_provider_prefix or None,
-        embed_api_key=args.embed_api_key,
+        embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,
         hf_cache_dir=args.hf_cache_dir or None,

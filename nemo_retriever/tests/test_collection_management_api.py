@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, patch
 
@@ -453,6 +454,59 @@ def test_keyset_cursors_are_stable_and_context_bound(tmp_path) -> None:
     assert documents.next_token
     with pytest.raises(Exception, match="context"):
         state.list_documents("scope", "b", 1, documents.next_token)
+
+
+def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch) -> None:
+    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
+    state.create_collection("scope", CollectionCreateRequest(name="research"))
+    state.write_rows(
+        [_row("chunk", "doc", "searchable text")],
+        scope="scope",
+        collection_name="research",
+        document_id="doc",
+        filename="report.pdf",
+        content_sha256="v1",
+    )
+
+    search_entered = threading.Event()
+    release_search = threading.Event()
+    delete_entered = threading.Event()
+    original_capabilities = state._table_capabilities
+
+    def blocked_capabilities(table_name=None):
+        search_entered.set()
+        assert release_search.wait(5)
+        return original_capabilities(table_name)
+
+    def observed_cleanup(_row):
+        delete_entered.set()
+        return True
+
+    monkeypatch.setattr(state, "_table_capabilities", blocked_capabilities)
+    monkeypatch.setattr(state, "_cleanup_collection_locked", observed_cleanup)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        search = pool.submit(
+            state.search,
+            [[1.0, 0.0]],
+            ["searchable text"],
+            1,
+            scope="scope",
+            collection_name="research",
+        )
+        assert search_entered.wait(5)
+        delete = pool.submit(state.delete_collection, "scope", "research", False)
+
+        assert not delete_entered.wait(0.25)
+        release_search.set()
+
+        results, strategies = search.result(timeout=5)
+        deleted = delete.result(timeout=5)
+
+    assert results[0][0]["document_id"] == "doc"
+    assert strategies == ["dense"]
+    assert delete_entered.is_set()
+    assert deleted.deleted
 
 
 def test_replacement_marker_recovers_after_catalog_finalize_failure(tmp_path, monkeypatch) -> None:
