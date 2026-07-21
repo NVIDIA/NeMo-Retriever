@@ -28,7 +28,6 @@ def main():
         # Use quiet=False to see verbose startup logs
         _ = run_pipeline(
             block=True,
-            disable_dynamic_scaling=True,
             run_in_subprocess=True,
         )
     except KeyboardInterrupt:
