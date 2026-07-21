@@ -18,6 +18,10 @@ spec:
       size: {{ .Values.nimOperator.page_elements.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.page_elements.storage.pvc.volumeAccessMode }}
   resources: {}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
