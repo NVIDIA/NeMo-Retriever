@@ -6,6 +6,13 @@ build-backend = "setuptools.build_meta"
 managed = true
 package = true
 no-build-package = ["nemotron-ocr"]
+# The complete dependency graph, including `local`, must resolve on both Linux
+# architectures. Windows x64 and macOS x64/ARM64 support only the base install
+# and are validated separately by CI.
+required-environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
