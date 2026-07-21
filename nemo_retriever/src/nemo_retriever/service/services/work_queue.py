@@ -317,6 +317,7 @@ class WorkBroker:
         if not record.spool_path.is_file():
             condition = self._conditions[record.pool]
             async with condition:
+                record = self._current(work_id, lease_id, generation)
                 self._requeue_or_exhaust_locked(record, "payload_fetch")
                 condition.notify_all()
             raise StaleLease(f"Payload for work {work_id!r} is unavailable")
@@ -326,6 +327,7 @@ class WorkBroker:
         record = self._current(work_id, lease_id, generation)
         condition = self._conditions[record.pool]
         async with condition:
+            record = self._current(work_id, lease_id, generation)
             self._requeue_or_exhaust_locked(record, reason)
             self._publish_metrics()
             condition.notify_all()
