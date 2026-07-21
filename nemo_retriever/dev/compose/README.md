@@ -89,8 +89,7 @@ configurable host port. Variables follow the service prefix, for example
 `NIM_OCR_GPU_ID`, `NIM_OCR_HOST_PORT`, `NIM_OCR_CACHE_VOLUME`,
 `NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. The defaults form a
 collision-free assignment for the combined-profile example: core NIMs use GPUs
-0, 2, and 3 (object detection, OCR, and embedding; GPU 1 is free now that
-page-elements and table-structure are combined into one NIM), reranker uses 4,
+0, 1, 2, and 3 (page-elements, table-structure, OCR, and embedding), reranker uses 4,
 parse uses 5, caption uses 6, answer uses 7-8, and audio uses 9. Change the
 defaults to match the active profiles and host before
 startup; for example, an answer-only run on a two-GPU host can set

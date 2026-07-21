@@ -1,0 +1,53 @@
+{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.page_elements.enabled true) -}}
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMCache
+metadata:
+  name: nemotron-page-elements-v3
+  {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
+spec:
+  source:
+    ngc:
+      modelPuller: "{{ .Values.nimOperator.page_elements.image.repository }}:{{ .Values.nimOperator.page_elements.image.tag }}"
+      pullSecret: "{{ index .Values.nimOperator.page_elements.image.pullSecrets 0 }}"
+      authSecret: {{ .Values.nimOperator.page_elements.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "page_elements") | nindent 6 }}
+  storage:
+    pvc:
+      create: {{ .Values.nimOperator.page_elements.storage.pvc.create }}
+      storageClass: {{ .Values.nimOperator.page_elements.storage.pvc.storageClass | quote }}
+      size: {{ .Values.nimOperator.page_elements.storage.pvc.size }}
+      volumeAccessMode: {{ .Values.nimOperator.page_elements.storage.pvc.volumeAccessMode }}
+  resources: {}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
+---
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMService
+metadata:
+  name: nemotron-page-elements-v3
+spec:
+  image:
+    repository: {{ .Values.nimOperator.page_elements.image.repository }}
+    tag: {{ .Values.nimOperator.page_elements.image.tag | toString | quote }}
+    pullPolicy: {{ .Values.nimOperator.page_elements.image.pullPolicy }}
+    pullSecrets:
+{{ toYaml .Values.nimOperator.page_elements.image.pullSecrets | indent 6 }}
+  authSecret: {{ .Values.nimOperator.page_elements.authSecret }}
+  storage:
+    nimCache:
+      name: nemotron-page-elements-v3
+      profile: ''
+  replicas: {{ .Values.nimOperator.page_elements.replicas }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.page_elements.resources) | nindent 2 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
+  expose:
+{{ toYaml .Values.nimOperator.page_elements.expose | indent 4 }}
+  env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "page_elements" "name" "nemotron-page-elements-v3") | nindent 4 }}
+{{ toYaml .Values.nimOperator.page_elements.env | indent 4 }}
+{{- end }}

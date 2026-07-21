@@ -17,7 +17,9 @@ nims:
   enabled: true
 
 nimOperator:
-  object_detection:
+  page_elements:
+    enabled: true
+  table_structure:
     enabled: true
   ocr:
     enabled: true

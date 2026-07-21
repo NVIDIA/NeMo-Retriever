@@ -56,7 +56,8 @@ services:
     volumes: [retriever_data:/var/lib/nemo-retriever]
     depends_on:
       vectordb: {condition: service_healthy}
-      nim-object-detection: {condition: service_healthy, required: false}
+      nim-page-elements: {condition: service_healthy, required: false}
+      nim-table-structure: {condition: service_healthy, required: false}
       nim-ocr: {condition: service_healthy, required: false}
       nim-embedding: {condition: service_healthy, required: false}
       nim-reranker: {condition: service_healthy, required: false}
@@ -89,25 +90,41 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Combined object-detection NIM (page-elements + table-structure merged into
-  # a single SKU). Both the page-element and table-structure extraction stages
-  # of the retriever pipeline call this one service.
-  nim-object-detection:
+  # Page-elements and table-structure are separate Compose services (matching
+  # Helm) but both run the combined nemotron-object-detection:2.0.0 image.
+  nim-page-elements:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_OBJECT_DETECTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_OBJECT_DETECTION_TAG:-2.0.0}
-    ports: ["${NIM_OBJECT_DETECTION_HOST_PORT:-8001}:8000"]
+    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_PAGE_ELEMENTS_TAG:-2.0.0}
+    ports: ["${NIM_PAGE_ELEMENTS_HOST_PORT:-8001}:8000"]
     environment:
       <<: *nim-environment
       NIM_HTTP_API_PORT: "8000"
-      NIM_OTEL_SERVICE_NAME: nemotron-object-detection
+      NIM_OTEL_SERVICE_NAME: nemotron-page-elements-v3
       NIM_TRITON_LOG_VERBOSE: "1"
       NIM_TRITON_MAX_BATCH_SIZE: "32"
       NIM_TRITON_CPU_THREADS_PRE_PROCESSOR: "2"
       NIM_TRITON_CPU_THREADS_POST_PROCESSOR: "1"
       OMP_NUM_THREADS: "2"
-    volumes: ["nim_object_detection_cache:${NIM_OBJECT_DETECTION_CACHE_PATH:-/opt/nim/.cache}"]
-    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_OBJECT_DETECTION_GPU_ID:-0}"]}]}}}
+    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_PAGE_ELEMENTS_GPU_ID:-0}"]}]}}}
+
+  nim-table-structure:
+    <<: *nim-service
+    profiles: [nims-core]
+    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_TABLE_STRUCTURE_TAG:-2.0.0}
+    ports: ["${NIM_TABLE_STRUCTURE_HOST_PORT:-8002}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: nemotron-table-structure-v1
+      NIM_TRITON_LOG_VERBOSE: "1"
+      NIM_TRITON_MAX_BATCH_SIZE: "32"
+      NIM_TRITON_CPU_THREADS_PRE_PROCESSOR: "2"
+      NIM_TRITON_CPU_THREADS_POST_PROCESSOR: "1"
+      OMP_NUM_THREADS: "2"
+    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_TABLE_STRUCTURE_GPU_ID:-1}"]}]}}}
 
   nim-ocr:
     <<: *nim-service
@@ -237,9 +254,9 @@ configs:
         file: "/var/lib/nemo-retriever/retriever-service.log"
         format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
       nim_endpoints:
-        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-object-detection}"
-        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-object-detection}"
-        ocr_invoke_url: "${NIM_OCR_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2}"
+        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-http://nim-page-elements:8000/v1/infer}"
+        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-http://nim-table-structure:8000/v1/infer}"
+        ocr_invoke_url: "${NIM_OCR_URL-http://nim-ocr:8000/v1/infer}"
         embed_invoke_url: "${NIM_EMBED_URL-https://integrate.api.nvidia.com/v1/embeddings}"
         embed_model_name: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
         caption_invoke_url: ${NIM_CAPTION_URL:-null}
@@ -318,7 +335,8 @@ configs:
 volumes:
   retriever_data:
   vectordb_data:
-  nim_object_detection_cache: {name: "${NIM_OBJECT_DETECTION_CACHE_VOLUME:-nemo-retriever-nim-object-detection-cache}"}
+  nim_page_elements_cache: {name: "${NIM_PAGE_ELEMENTS_CACHE_VOLUME:-nemo-retriever-nim-page-elements-cache}"}
+  nim_table_structure_cache: {name: "${NIM_TABLE_STRUCTURE_CACHE_VOLUME:-nemo-retriever-nim-table-structure-cache}"}
   nim_ocr_cache: {name: "${NIM_OCR_CACHE_VOLUME:-nemo-retriever-nim-ocr-cache}"}
   nim_embedding_cache: {name: "${NIM_EMBED_CACHE_VOLUME:-nemo-retriever-nim-embedding-cache}"}
   nim_reranker_cache: {name: "${NIM_RERANK_CACHE_VOLUME:-nemo-retriever-nim-reranker-cache}"}

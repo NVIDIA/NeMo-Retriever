@@ -894,12 +894,11 @@ nimOperator:
     keepOnUninstall: true
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
-    # nemotron-page-elements-v3 and nemotron-table-structure-v1 were superseded by
-    # the combined nemotron-object-detection NIM (see nimOperator.object_detection).
+    # nemotron-object-detection was a short-lived single-NIM chart name; page_elements
+    # and table_structure now share that container image under their legacy names.
     pruneRetiredNimResources:
       - nemotron-ocr-v1
-      - nemotron-page-elements-v3
-      - nemotron-table-structure-v1
+      - nemotron-object-detection
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -972,7 +971,8 @@ nimOperator:
   # extraction pipeline (26.05)"):
   #
   #   Core (enabled: true by default, auto-wired into the service config):
-  #     - object_detection  (combined page-elements + table-structure detector)
+  #     - page_elements
+  #     - table_structure
   #     - ocr
   #     - vlm_embed
   #
@@ -1001,16 +1001,61 @@ nimOperator:
   # ``1.7.0-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
-  # Combined object-detection NIM (Nemotron Object Detection). Supersedes the
-  # separate page-elements and table-structure NIMs, which were merged into a
-  # single SKU. Both the page-element extraction stage and the table extraction
-  # stage of the ingest pipeline call this one NIM; the chart auto-wires both
-  # `serviceConfig.nimEndpoints.pageElementsInvokeUrl` and
-  # `serviceConfig.nimEndpoints.tableStructureInvokeUrl` to its in-cluster URL.
-  object_detection:
+  # Page-element detector. Uses the combined nemotron-object-detection NIM image
+  # but keeps the legacy in-cluster Service name so the retriever pipeline's
+  # page_elements_invoke_url continues to resolve independently.
+  page_elements:
     enabled: true
-    # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: nemotron-object-detection
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "25Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
+    resources: {}
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: NIM_TRITON_MAX_BATCH_SIZE
+        value: "32"
+      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
+        value: "2"
+      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "2"
+
+  # Table structure detector. Uses the same nemotron-object-detection NIM image
+  # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
+  table_structure:
+    enabled: true
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
       tag: "2.0.0"

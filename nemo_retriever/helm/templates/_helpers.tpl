@@ -525,9 +525,8 @@ file name under templates/nims/<model>.yaml) so the retriever-service
 config can address each NIM as `http://<service-name>:<port><invokePath>`.
 
 Mapping (key -> Service name, default invokePath):
-  object_detection                       -> nemotron-object-detection                /v1/infer
-    (combined page-elements + table-structure detector; both the
-     pageElementsInvokeUrl and tableStructureInvokeUrl endpoints resolve here)
+  page_elements                          -> nemotron-page-elements-v3                /v1/infer
+  table_structure                        -> nemotron-table-structure-v1              /v1/infer
   ocr                                    -> nemotron-ocr-v2                          /v1/infer
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
@@ -594,7 +593,7 @@ Usage inside ``templates/nims/<file>.yaml``:
         pullSecret: "..."
         authSecret: ...
         {{- include "nemo-retriever.nimcache.modelBlock"
-              (dict "context" $ "key" "object_detection") | nindent 6 }}
+              (dict "context" $ "key" "page_elements") | nindent 6 }}
 */}}
 {{- define "nemo-retriever.nimcache.modelBlock" -}}
 {{- $ctx := .context -}}
@@ -626,8 +625,8 @@ nemo-retriever.nimOperator.url
   Usage:
     {{ include "nemo-retriever.nimOperator.url" (dict
          "context" $
-         "key" "object_detection"
-         "serviceName" "nemotron-object-detection"
+         "key" "page_elements"
+         "serviceName" "nemotron-page-elements-v3"
          "invokePath" "/v1/infer") }}
 */}}
 {{- define "nemo-retriever.nimOperator.url" -}}
@@ -657,8 +656,8 @@ nemo-retriever.nim.endpointURL
   Usage:
     {{ include "nemo-retriever.nim.endpointURL" (dict
          "context" $
-         "key" "object_detection"
-         "serviceName" "nemotron-object-detection"
+         "key" "page_elements"
+         "serviceName" "nemotron-page-elements-v3"
          "configKey" "pageElementsInvokeUrl"
          "invokePath" "/v1/infer") }}
 */}}

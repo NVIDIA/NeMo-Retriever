@@ -29,7 +29,8 @@ class HelmServiceManager:
     SENSITIVE_KEY_PARTS = ("password", "token", "secret", "api_key", "apikey", "dockerconfigjson")
     SENSITIVE_FLAGS = ("--password", "--token", "--api-key", "--api_key")
     NIM_OPERATOR_RESOURCES = (
-        "nemotron-object-detection",
+        "nemotron-page-elements-v3",
+        "nemotron-table-structure-v1",
         "nemotron-ocr-v2",
         "llama-nemotron-embed-vl-1b-v2",
         "llama-nemotron-rerank-1b-v2",
