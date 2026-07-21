@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import threading
+from typing import Any
 from unittest.mock import MagicMock
 
 
@@ -192,26 +193,102 @@ def test_vllm_agent_llm_unload_releases_engine() -> None:
 
     from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
 
+    engine_core = MagicMock()
+    llm_engine = MagicMock()
+    llm_engine.engine_core = engine_core
+    vllm_llm = MagicMock()
+    vllm_llm.llm_engine = llm_engine
+
     llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
-    llm._llm = object()
+    llm._llm = vllm_llm
     llm._lock = threading.Lock()
 
     llm.unload()
 
+    engine_core.shutdown.assert_called_once_with(timeout=30.0)
     assert llm._llm is None
     with pytest.raises(RuntimeError, match="unloaded"):
         llm._require_loaded()
 
 
-def test_unload_cached_vllm_agent_chat_llms_clears_cache() -> None:
-    from nemo_retriever.models.local import agent_llm
+def test_vllm_agent_llm_unload_falls_back_when_shutdown_rejects_timeout() -> None:
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
 
-    cached = MagicMock()
-    with agent_llm._LOCAL_AGENT_LLM_CACHE_LOCK:
-        agent_llm._LOCAL_AGENT_LLM_CACHE.clear()
-        agent_llm._LOCAL_AGENT_LLM_CACHE[("model",)] = cached
+    calls: list[dict[str, Any]] = []
 
-    agent_llm.unload_cached_vllm_agent_chat_llms()
+    def shutdown(**kwargs: Any) -> None:
+        calls.append(kwargs)
+        if "timeout" in kwargs:
+            raise TypeError("shutdown() got an unexpected keyword argument 'timeout'")
 
-    cached.unload.assert_called_once_with()
-    assert agent_llm._LOCAL_AGENT_LLM_CACHE == {}
+    engine_core = MagicMock()
+    engine_core.shutdown.side_effect = shutdown
+    llm_engine = MagicMock()
+    llm_engine.engine_core = engine_core
+    vllm_llm = MagicMock()
+    vllm_llm.llm_engine = llm_engine
+
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+    llm._llm = vllm_llm
+    llm._lock = threading.Lock()
+
+    llm.unload()
+
+    assert calls == [{"timeout": 30.0}, {}]
+    assert llm._llm is None
+
+
+def test_create_vllm_agent_chat_llm_returns_fresh_instance() -> None:
+    from nemo_retriever.models.local import agent_llm as agent_llm_mod
+    from nemo_retriever.models.local.agent_llm import LocalAgentLLMConfig, create_vllm_agent_chat_llm
+
+    created: list[Any] = []
+
+    def fake_ctor(config: LocalAgentLLMConfig) -> Any:
+        obj = MagicMock(name="VLLMAgentChatLLM")
+        obj.config = config
+        created.append(obj)
+        return obj
+
+    original = agent_llm_mod.VLLMAgentChatLLM
+    agent_llm_mod.VLLMAgentChatLLM = fake_ctor  # type: ignore[misc,assignment]
+    try:
+        first = create_vllm_agent_chat_llm(LocalAgentLLMConfig(model_path="nemotron-8b"))
+        second = create_vllm_agent_chat_llm(LocalAgentLLMConfig(model_path="nemotron-8b"))
+    finally:
+        agent_llm_mod.VLLMAgentChatLLM = original
+
+    assert first is not second
+    assert len(created) == 2
+
+
+def test_agentic_retriever_unload_releases_owned_llm() -> None:
+    from unittest.mock import patch
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    owned = MagicMock()
+    with patch("nemo_retriever.query.agentic.Retriever"):
+        retriever = AgenticRetriever(AgenticRetrievalConfig(llm_model="nemotron-8b"))
+        retriever._chat_completion_fn = owned
+        retriever.unload()
+
+    assert retriever._chat_completion_fn is None
+    owned.unload.assert_called_once_with()
+
+
+def test_agentic_retriever_unload_noop_when_no_local_llm() -> None:
+    from unittest.mock import patch
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    with patch("nemo_retriever.query.agentic.Retriever"):
+        retriever = AgenticRetriever(
+            AgenticRetrievalConfig(
+                llm_model="remote-model",
+                invoke_url="http://localhost/v1/chat/completions",
+            )
+        )
+        retriever.unload()
+
+    assert retriever._chat_completion_fn is None

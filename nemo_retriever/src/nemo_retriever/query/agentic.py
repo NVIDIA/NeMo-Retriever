@@ -354,8 +354,28 @@ class AgenticRetriever:
             return None
         with self._lock:
             if self._chat_completion_fn is None:
+                # Instance-owned, same pattern as Retriever's cached embed/rerank
+                # graph: load once per AgenticRetriever and reuse across queries.
                 self._chat_completion_fn = _build_agent_chat_completion_fn(self._cfg)
             return self._chat_completion_fn
+
+    def unload(self) -> None:
+        """Release the in-process agent LLM owned by this retriever.
+
+        OpenAI-compatible endpoint mode is a no-op. Local vLLM mode shuts down
+        this instance's EngineCore so CLI/harness jobs can exit cleanly. Embed
+        and rerank models stay on ``self._retriever`` and are released with the
+        process, matching dense harness BEIR behavior.
+        """
+
+        with self._lock:
+            chat_fn = self._chat_completion_fn
+            self._chat_completion_fn = None
+        if chat_fn is None:
+            return
+        unload = getattr(chat_fn, "unload", None)
+        if callable(unload):
+            unload()
 
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
@@ -596,7 +616,11 @@ def run_agentic_audio_recall_evaluation(
     queries = df_query["query"].astype(str).tolist()
     gold_doc_ids = df_query["golden_answer"].astype(str).tolist()
 
-    result = AgenticRetriever(cfg, match_mode="audio_segment").retrieve(query_ids, queries)
+    retriever = AgenticRetriever(cfg, match_mode="audio_segment")
+    try:
+        result = retriever.retrieve(query_ids, queries)
+    finally:
+        retriever.unload()
     retrieved_doc_ids = _agentic_result_to_ranked_doc_ids(query_ids, result)
     ks_sorted = sorted({int(k) for k in ks if int(k) > 0})
     if not ks_sorted:
@@ -656,9 +680,13 @@ def agentic_beir_retrieve(
     that already hold a loaded dataset (e.g. the harness) reuse the agent's
     retrieve+rank step without re-loading or re-implementing it.
     """
-    result = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field).retrieve(
-        list(dataset.query_ids),
-        list(dataset.queries),
-    )
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field)
+    try:
+        result = retriever.retrieve(
+            list(dataset.query_ids),
+            list(dataset.queries),
+        )
+    finally:
+        retriever.unload()
     ranked_doc_ids = _agentic_result_to_ranked_doc_ids(list(dataset.query_ids), result)
     return result, ranked_doc_ids

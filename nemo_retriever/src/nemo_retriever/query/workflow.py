@@ -227,18 +227,24 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
     tool. Reranking therefore applies per agent retrieval hop.
     """
-    result = build_agentic_retriever(request).retrieve(["0"], [str(request.query)])
-    if "rank" in result.columns:
-        result = result.sort_values("rank")
-    ranked: list[dict[str, Any]] = []
-    for _, row in result.iterrows():
-        ranked.append(
-            {
-                "rank": int(row.get("rank", len(ranked) + 1)),
-                "doc_id": str(row.get("doc_id", "")),
-                "result_source": str(row.get("result_source", "")),
-            }
-        )
-        if len(ranked) >= request.retrieval.top_k:
-            break
-    return ranked
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.retrieve(["0"], [str(request.query)])
+        if "rank" in result.columns:
+            result = result.sort_values("rank")
+        ranked: list[dict[str, Any]] = []
+        for _, row in result.iterrows():
+            ranked.append(
+                {
+                    "rank": int(row.get("rank", len(ranked) + 1)),
+                    "doc_id": str(row.get("doc_id", "")),
+                    "result_source": str(row.get("result_source", "")),
+                }
+            )
+            if len(ranked) >= request.retrieval.top_k:
+                break
+        return ranked
+    finally:
+        # One-shot CLI/Python entry: tear down cached local vLLM EngineCore so the
+        # process can exit instead of hanging on a live child worker.
+        retriever.unload()

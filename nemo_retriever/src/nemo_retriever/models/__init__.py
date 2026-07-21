@@ -273,19 +273,21 @@ def create_local_agent_llm(
     max_model_len: int | None = None,
     max_num_seqs: int | None = None,
 ) -> Any:
-    """Create a cached local agent LLM chat-completion callable.
+    """Create a local agent LLM chat-completion callable owned by the caller.
 
     The callable mirrors ``invoke_chat_completion_step`` and returns an
     OpenAI-compatible chat-completions response dict. V1 supports the in-process
     vLLM backend and uses process-level vLLM placement (for example,
-    ``CUDA_VISIBLE_DEVICES`` plus ``tensor_parallel_size``).
+    ``CUDA_VISIBLE_DEVICES`` plus ``tensor_parallel_size``). Callers (typically
+    ``AgenticRetriever``) should reuse one instance for a harness/CLI job and
+    call ``unload()`` when the job finishes.
     """
 
     b = normalize_backend(backend, _LOCAL_AGENT_LLM_BACKENDS, field_name="backend", default="vllm")
     if b == "vllm":
-        from nemo_retriever.models.local.agent_llm import LocalAgentLLMConfig, create_cached_vllm_agent_chat_llm
+        from nemo_retriever.models.local.agent_llm import LocalAgentLLMConfig, create_vllm_agent_chat_llm
 
-        return create_cached_vllm_agent_chat_llm(
+        return create_vllm_agent_chat_llm(
             LocalAgentLLMConfig(
                 model_path=model_name,
                 hf_cache_dir=hf_cache_dir,

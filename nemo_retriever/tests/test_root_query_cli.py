@@ -368,6 +368,9 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
                 ]
             )
 
+        def unload(self) -> None:
+            return None
+
     monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
     monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
 
@@ -446,6 +449,9 @@ def test_root_query_agentic_openai_compatible_allows_custom_model(monkeypatch) -
         def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
             return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
 
+        def unload(self) -> None:
+            return None
+
     monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
     monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
 
@@ -487,6 +493,9 @@ def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
 
         def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
             return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
 
     monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
     monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)

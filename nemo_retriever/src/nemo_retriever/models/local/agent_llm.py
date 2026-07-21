@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 # Conservative cap for short tool-call JSON responses. Larger evals should
 # tune this with completion-token, truncation, and tool-parse telemetry.
 _DEFAULT_MAX_TOKENS = 512
-_LOCAL_AGENT_LLM_CACHE: dict[tuple[Any, ...], "VLLMAgentChatLLM"] = {}
-_LOCAL_AGENT_LLM_CACHE_LOCK = threading.Lock()
+# Bound EngineCore join so a wedged child cannot hang process exit forever.
+_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S = 30.0
 
 
 def _normalize_name(name: str) -> str:
@@ -113,12 +113,14 @@ class VLLMAgentChatLLM(BaseModel):
             )
 
         try:
+            from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
             from vllm import LLM, SamplingParams
         except ImportError as e:
             raise ImportError(
                 'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
             ) from e
 
+        apply_vllm_startup_defaults()
         _raise_if_cuda_unavailable()
         self._model_path = model_path
         self._max_tokens = int(config.max_tokens)
@@ -248,16 +250,26 @@ class VLLMAgentChatLLM(BaseModel):
         return _collapse_consecutive_tool_messages(normalized)
 
     def unload(self) -> None:
-        """Release GPU memory held by the local vLLM engine."""
+        """Shut down the EngineCore child and release GPU memory.
+
+        Unlike embed/rerank holders that only ``del`` the ``LLM`` and rely on
+        process exit, the agent chat path must call ``engine_core.shutdown()``:
+        vLLM V1 generation spawns a multiprocess ``VLLM::EngineCore`` that can
+        keep the parent process alive after results are returned.
+        """
 
         with self._lock:
-            had_llm = self._llm is not None
-            if had_llm:
-                del self._llm
-                self._llm = None
+            llm = self._llm
+            self._llm = None
 
-        if not had_llm:
+        if llm is None:
             return
+
+        _shutdown_vllm_engine(llm)
+        try:
+            del llm
+        except Exception:
+            logger.debug("Ignoring error while deleting local agent vLLM LLM", exc_info=True)
 
         try:
             import torch
@@ -309,35 +321,43 @@ def _raise_if_cuda_unavailable() -> None:
         )
 
 
-def create_cached_vllm_agent_chat_llm(config: LocalAgentLLMConfig) -> VLLMAgentChatLLM:
-    """Create or reuse a local agent LLM keyed by heavyweight load settings."""
-
-    key = (
-        resolve_agent_llm_model_name(config.model_path),
-        config.hf_cache_dir,
-        float(config.gpu_memory_utilization),
-        int(config.tensor_parallel_size),
-        int(config.max_model_len) if config.max_model_len is not None else None,
-        int(config.max_num_seqs) if config.max_num_seqs is not None else None,
-        int(config.max_tokens),
-    )
-    with _LOCAL_AGENT_LLM_CACHE_LOCK:
-        cached = _LOCAL_AGENT_LLM_CACHE.get(key)
-        if cached is None or cached._llm is None:
-            cached = VLLMAgentChatLLM(config)
-            _LOCAL_AGENT_LLM_CACHE[key] = cached
-        return cached
+def _call_shutdown(shutdown: Any, *, timeout_s: float) -> None:
+    try:
+        shutdown(timeout=timeout_s)
+    except TypeError:
+        shutdown()
 
 
-def unload_cached_vllm_agent_chat_llms() -> None:
-    """Unload and forget all cached local agent vLLM engines."""
+def _shutdown_vllm_engine(llm: Any) -> None:
+    """Best-effort vLLM V1 EngineCore / executor shutdown before dropping the LLM."""
 
-    with _LOCAL_AGENT_LLM_CACHE_LOCK:
-        cached_models = list(_LOCAL_AGENT_LLM_CACHE.values())
-        _LOCAL_AGENT_LLM_CACHE.clear()
+    try:
+        engine = getattr(llm, "llm_engine", None)
+        if engine is None:
+            return
+        engine_core = getattr(engine, "engine_core", None)
+        shutdown = getattr(engine_core, "shutdown", None) if engine_core is not None else None
+        if callable(shutdown):
+            _call_shutdown(shutdown, timeout_s=_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S)
+            return
+        shutdown = getattr(engine, "shutdown", None)
+        if callable(shutdown):
+            _call_shutdown(shutdown, timeout_s=_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S)
+    except Exception:
+        logger.warning(
+            "Local agent vLLM engine shutdown failed; dropping the LLM reference anyway",
+            exc_info=True,
+        )
 
-    for model in cached_models:
-        model.unload()
+
+def create_vllm_agent_chat_llm(config: LocalAgentLLMConfig) -> VLLMAgentChatLLM:
+    """Create a local agent LLM owned by the caller (no process-global cache).
+
+    Mirrors embed/rerank: the harness/CLI job holds one instance for the whole
+    run and calls ``unload()`` when the job finishes.
+    """
+
+    return VLLMAgentChatLLM(config)
 
 
 def parse_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
