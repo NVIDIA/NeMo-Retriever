@@ -10,6 +10,7 @@ nim_endpoints:
 auth:
   default_scope: default
   allow_unscoped_dev: false
+  api_token: ${NRL_API_TOKEN}
 
 vectordb:
   enabled: true

@@ -10,10 +10,18 @@ required for optional dependencies and inline configs.
 ## Collection management service
 
 The collection-management helper starts the public gateway and its private
-VectorDB. Set the required embedding endpoint and protected secret-file paths
-described in the
-[collection-management API reference](../../../docs/docs/reference/collection-management-api.md),
-then wait for both services to become healthy:
+VectorDB. Set the required embedding endpoint, public API token, and separate
+internal VectorDB token described in the
+[collection-management API reference](../../../docs/docs/reference/collection-management-api.md).
+Supply tokens at runtime and do not commit them:
+
+```bash
+export NRL_EMBED_ENDPOINT=https://your-embedding-endpoint/v1/embeddings
+export NRL_API_TOKEN=<public-api-token>
+export NRL_INTERNAL_VDB_TOKEN=<internal-service-token>
+```
+
+Then wait for both services to become healthy:
 
 ```bash
 docker compose -f nemo_retriever/dev/compose/collection-management.compose.yaml up -d --wait

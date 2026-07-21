@@ -282,6 +282,12 @@ def test_collection_management_compose_has_stable_names_and_readiness():
     assert gateway["depends_on"]["vectordb"]["condition"] == "service_healthy"
     assert "/v1/health" in gateway["healthcheck"]["test"][-1]
     assert gateway["healthcheck"]["start_period"] == "5s"
+    assert gateway["environment"]["NRL_API_TOKEN"] == "${NRL_API_TOKEN:?set NRL_API_TOKEN}"
+    assert gateway["environment"]["NRL_INTERNAL_VDB_TOKEN"] == ("${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}")
+    assert compose_data["services"]["vectordb"]["environment"]["NRL_INTERNAL_VDB_TOKEN"] == (
+        "${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}"
+    )
+    assert "secrets" not in compose_data
 
 
 @requires_dockerfile

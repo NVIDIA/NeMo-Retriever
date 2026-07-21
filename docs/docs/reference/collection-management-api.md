@@ -146,10 +146,12 @@ names and tenant identifiers are never emitted as public values or labels.
 ## Docker Compose operations
 
 The local Compose example lives at
-`nemo_retriever/dev/compose/collection-management.compose.yaml`. Copy the
-development secret examples to protected files, set `NRL_EMBED_ENDPOINT`, and
-override the three `*_FILE` environment variables before starting it. The
-same SDK workflow targets `http://localhost:7670`.
+`nemo_retriever/dev/compose/collection-management.compose.yaml`. Set
+`NRL_EMBED_ENDPOINT`, `NRL_API_TOKEN`, and the separate
+`NRL_INTERNAL_VDB_TOKEN` at runtime before starting it; do not commit token
+values. The single public API token is bound to `default_scope`. Production
+deployments can continue to use the service's Secret-backed multi-scope token
+file support. The same SDK workflow targets `http://localhost:7670`.
 
 ## Application integration and query-result contract
 
