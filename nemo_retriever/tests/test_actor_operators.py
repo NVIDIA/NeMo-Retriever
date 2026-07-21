@@ -634,6 +634,20 @@ class TestTxtSplitActor:
         result = actor(pd.DataFrame({"bytes": [b"hello"], "path": ["/a.txt"]}))
         pd.testing.assert_frame_equal(result, expected)
 
+    @patch(
+        "nemo_retriever.operators.extract.txt.ray_data.text_to_chunks_df",
+        side_effect=RuntimeError("tokenizer failed"),
+    )
+    def test_inline_failure_is_logged_with_source(self, mock_fn, caplog):
+        actor = self._make()
+
+        with caplog.at_level("WARNING", logger="nemo_retriever.operators.extract.txt.ray_data"):
+            result = actor.process(pd.DataFrame({"text": ["hello"], "path": ["inline://00000000"]}))
+
+        assert result.empty
+        record = next(record for record in caplog.records if "inline://00000000" in record.getMessage())
+        assert record.exc_info is not None
+
 
 # ---------------------------------------------------------------------------
 # 11. HtmlSplitActor

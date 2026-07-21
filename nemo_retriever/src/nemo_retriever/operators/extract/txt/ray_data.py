@@ -8,6 +8,7 @@ Ray Data adapter for .txt: TxtSplitActor turns bytes+path batches into chunk row
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List  # noqa: F401
 
 import pandas as pd
@@ -19,6 +20,8 @@ from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 from nemo_retriever.common.modality.txt.split import empty_text_chunks_df, text_to_chunks_df, txt_bytes_to_chunks_df
+
+logger = logging.getLogger(__name__)
 
 
 @designer_component(
@@ -107,6 +110,7 @@ class TxtSplitCPUActor(AbstractOperator, CPUOperator):
                 if not chunk_df.empty:
                     out_dfs.append(chunk_df)
             except Exception:
+                logger.warning("Failed to split text source %r", path_str, exc_info=True)
                 continue
         if not out_dfs:
             return empty_text_chunks_df()

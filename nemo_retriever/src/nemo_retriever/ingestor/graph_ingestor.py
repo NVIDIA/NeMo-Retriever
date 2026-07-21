@@ -784,7 +784,12 @@ class GraphIngestor(ingestor):
         return_failures = self._resolve_return_failures(params, kwargs)
         if self._inline_texts is not None and not any(text.strip() for text in self._inline_texts):
             result = empty_text_chunks_df()
-            self._rd_dataset = result if self._run_mode == "batch" else None
+            if self._run_mode == "batch":
+                ray, _cluster_resources = self._ensure_batch_runtime()
+                result = ray.data.from_pandas(result)
+                self._rd_dataset = result
+            else:
+                self._rd_dataset = None
             return self._finalize_ingest_result(result, return_failures=return_failures)
 
         default_branches = self._plan_default_extraction_branches()

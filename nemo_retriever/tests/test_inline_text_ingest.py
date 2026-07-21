@@ -130,6 +130,34 @@ def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch) -> None
     assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
+def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch) -> None:
+    captured: dict[str, pd.DataFrame] = {}
+    dataset = object()
+
+    class _FakeRayData:
+        @staticmethod
+        def from_pandas(frame: pd.DataFrame) -> object:
+            captured["frame"] = frame
+            return dataset
+
+    class _FakeRay:
+        data = _FakeRayData()
+
+    ingestor = GraphIngestor(run_mode="batch").texts(["", "  \n"])
+    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (_FakeRay(), object()))
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.graph_ingestor.build_graph",
+        lambda *args, **kwargs: pytest.fail("empty inline corpus should not execute the graph"),
+    )
+
+    result = ingestor.ingest()
+
+    assert result is dataset
+    assert ingestor.get_dataset() is dataset
+    assert captured["frame"].empty
+    assert list(captured["frame"].columns) == ["text", "content", "path", "page_number", "metadata"]
+
+
 def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch) -> None:
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _MockTokenizer()

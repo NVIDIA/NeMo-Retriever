@@ -226,6 +226,28 @@ def text_to_chunks_df(
     Unlike the file and byte adapters, this helper deliberately does not
     resolve ``source_id`` as a filesystem path. This permits identifiers such
     as ``inline://00000000`` to survive through embedding and vector storage.
+
+    Parameters
+    ----------
+    text : str
+        Decoded source document. Empty or whitespace-only text produces an
+        empty result without loading the tokenizer.
+    source_id : str
+        Logical source identity copied to ``path`` and
+        ``metadata.source_path`` on every chunk.
+    params : TextChunkParams, optional
+        Tokenizer, chunk-size, and overlap configuration.
+
+    Returns
+    -------
+    pd.DataFrame
+        Chunk rows with ``text``, ``content``, ``path``, ``page_number``, and
+        ``metadata`` columns. Empty input returns the same typed empty schema.
+
+    Raises
+    ------
+    ValueError
+        If the configured maximum token count is not positive.
     """
     chunk_params = params or TextChunkParams()
     if not text or not text.strip():
