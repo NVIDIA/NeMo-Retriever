@@ -10,10 +10,15 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 REUSABLE_PRE_COMMIT = "./.github/workflows/reusable-pre-commit.yml"
 REUSABLE_DOCKER_BUILD_AND_TEST = "./.github/workflows/reusable-docker-build-and-test.yml"
 THIS_FILE = Path(__file__).resolve()
+DOCKERFILE = REPO_ROOT / "Dockerfile"
 
 requires_workflows = pytest.mark.skipif(
     not WORKFLOWS.exists(),
     reason="Workflow files are not present in the Docker image test environment.",
+)
+requires_dockerfile = pytest.mark.skipif(
+    not DOCKERFILE.is_file(),
+    reason="The source Dockerfile is not present in the runtime image test environment.",
 )
 
 IGNORED_SCAN_DIRS = {
@@ -279,8 +284,9 @@ def test_collection_management_compose_has_stable_names_and_readiness():
     assert gateway["healthcheck"]["start_period"] == "5s"
 
 
+@requires_dockerfile
 def test_service_images_own_collection_artifact_root():
-    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     lines = dockerfile.splitlines()
     mkdir_commands = [line for line in lines if "mkdir -p" in line and "/etc/nemo-retriever" in line]
     chown_commands = [line for line in lines if "chown -R nemo:nemo" in line and "/etc/nemo-retriever" in line]
@@ -289,6 +295,21 @@ def test_service_images_own_collection_artifact_root():
     assert len(chown_commands) == 2
     assert all("/data/artifacts" in command.split() for command in mkdir_commands)
     assert all("/data/artifacts" in command.split() for command in chown_commands)
+
+
+def test_service_image_can_write_collection_artifact_root():
+    if not os.environ.get("NEMO_RETRIEVER_SERVICE_CONFIG"):
+        pytest.skip("This runtime contract applies only to NeMo Retriever service images.")
+
+    artifact_root = Path(os.environ.get("NRL_COLLECTION_ARTIFACT_ROOT", "/data/artifacts"))
+    assert artifact_root.is_dir(), f"Collection artifact root is missing: {artifact_root}"
+
+    probe = artifact_root / f".nrl-write-probe-{os.getpid()}"
+    try:
+        probe.write_text("writable", encoding="utf-8")
+        assert probe.read_text(encoding="utf-8") == "writable"
+    finally:
+        probe.unlink(missing_ok=True)
 
 
 def test_legacy_tools_harness_is_removed():
