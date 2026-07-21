@@ -315,31 +315,29 @@ Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
 
-The agent LLM supports hosted NVIDIA inference or a local OpenAI-compatible
-chat-completions endpoint. Pass `--agentic-invoke-url` for a local vLLM or
-self-hosted NIM server; when omitted, the agent uses the built-in NVIDIA hosted
-endpoint. Embedding follows the same local/remote split as dense retrieval:
-CPU-only hosts default to hosted endpoints; GPU-capable hosts use local GPU
-embedding unless you pass `--embed-invoke-url`, for example
-`--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`.
+By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
+(`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
+`[local]` extra. GPU placement follows process-level vLLM behavior, so set
+`CUDA_VISIBLE_DEVICES` before starting the command. Embedding follows the same
+local/remote split as dense retrieval; pass `--embed-invoke-url` to use a remote
+embedding endpoint.
 
-**Hosted inference.** For [build.nvidia.com](https://build.nvidia.com/) hosted
-inference, set `NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor
-and agent LLM use the hosted NVIDIA endpoints by default:
+**Local in-process vLLM agent LLM.** Omit `--agentic-invoke-url` to load the
+supported local agent LLM directly in the Python process. `nemotron-8b` is the
+default; `super-49b` is also supported when the process has enough visible GPUs.
 
 ```bash
-export NVIDIA_API_KEY=nvapi-...
-
-retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
+CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-**Local agent LLM.** Point `--agentic-invoke-url` at your OpenAI-compatible
-chat-completions server (for example vLLM or a self-hosted NIM):
+**OpenAI-compatible agent endpoint.** Pass `--agentic-invoke-url` when you want a
+custom model or a separately hosted chat-completions server, such as vLLM server
+mode or a self-hosted NIM. When an invoke URL is provided, `--agentic-llm-model`
+is required and is sent as the remote model ID.
 
 ```bash
 retriever query "What is RAG?" \
@@ -351,18 +349,14 @@ retriever query "What is RAG?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-Native local Hugging Face LLM inference for the agent is in active development;
-this README will be updated when that path ships.
-
 Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
 text-enriched hits.
 
 For a quick smoke test, reduce agent work:
 
 ```bash
-retriever query "What is RAG?" \
+CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
@@ -371,9 +365,9 @@ retriever query "What is RAG?" \
   --agentic-backend-top-k 1
 ```
 
-You can run the same flow from Python. Set `NVIDIA_API_KEY` for hosted inference,
-or pass `invoke_url` on `QueryAgenticOptions` for a local chat-completions
-endpoint.
+You can run the same flow from Python. Omit `invoke_url` for the default local
+in-process vLLM backend, or pass `invoke_url` on `QueryAgenticOptions` for a
+separate OpenAI-compatible chat-completions endpoint.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
@@ -385,8 +379,8 @@ from nemo_retriever.query.options import (
     QueryStorageOptions,
 )
 
-# Hosted: set NVIDIA_API_KEY=nvapi-... in the environment.
-# Local agent LLM: pass invoke_url="http://localhost:9000/v1/chat/completions".
+# Local in-process vLLM: set CUDA_VISIBLE_DEVICES before starting Python.
+# Remote agent LLM: pass invoke_url="http://localhost:9000/v1/chat/completions".
 results = agentic_query_documents(
     QueryRequest(
         query="What is RAG?",
@@ -400,7 +394,10 @@ results = agentic_query_documents(
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
-            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            llm_model="nemotron-8b",
+            local_llm_backend="vllm",
+            local_gpu_memory_utilization=0.8,
+            local_tensor_parallel_size=1,
         ),
     )
 )
