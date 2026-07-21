@@ -6,6 +6,7 @@
 
 import base64
 import io
+import os
 import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -14,7 +15,11 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from nemo_retriever.models.inference.vllm import embed_multimodal_with_vllm_llm, embed_with_vllm_llm
+from nemo_retriever.models.inference.vllm import (
+    apply_vllm_startup_defaults,
+    embed_multimodal_with_vllm_llm,
+    embed_with_vllm_llm,
+)
 from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
 
 
@@ -191,6 +196,32 @@ class TestCreateVllmLlm:
             create_vllm_llm("some-model", limit_mm_per_prompt={"image": 1})
         _, kwargs = mock_llm_cls.call_args
         assert kwargs.get("limit_mm_per_prompt") == {"image": 1}
+
+    def test_applies_vllm_startup_defaults_before_constructing_llm(self, monkeypatch):
+        monkeypatch.delenv("VLLM_DEEP_GEMM_WARMUP", raising=False)
+        with patch("vllm.LLM") as mock_llm_cls:
+            mock_llm_cls.return_value = MagicMock()
+            from nemo_retriever.models.inference.vllm import create_vllm_llm
+
+            create_vllm_llm("some-model")
+
+        assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "skip"
+
+
+class TestVllmStartupDefaults:
+    def test_deep_gemm_warmup_defaults_to_skip(self, monkeypatch):
+        monkeypatch.delenv("VLLM_DEEP_GEMM_WARMUP", raising=False)
+
+        apply_vllm_startup_defaults()
+
+        assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "skip"
+
+    def test_deep_gemm_warmup_respects_user_override(self, monkeypatch):
+        monkeypatch.setenv("VLLM_DEEP_GEMM_WARMUP", "full")
+
+        apply_vllm_startup_defaults()
+
+        assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "full"
 
 
 class TestVLLMEmbedderImages:
