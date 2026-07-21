@@ -515,17 +515,14 @@ cd "$checkout" || exit "$EXIT_CONFIG"
 
 run_rc=0
 dry_run_args=()
-isolation_args=(--isolate-runs)
 if ((dry_run)); then
     dry_run_args=(--dry-run)
-    isolation_args=()
 fi
 "$uv_bin" run --frozen --project nemo_retriever retriever harness run-files \
     --session-name "$session_name" \
     --output-dir "$session_dir" \
     --dataset-paths "$dataset_paths" \
     --mode "$run_mode" \
-    "${isolation_args[@]}" \
     "${dry_run_args[@]}" \
     "${runfiles[@]}" || run_rc=$?
 

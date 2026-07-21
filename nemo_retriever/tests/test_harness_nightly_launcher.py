@@ -208,6 +208,7 @@ def test_manual_dry_run_launches_full_batch_suite_without_slack(nightly_launcher
     assert invocation[invocation.index("--mode") + 1] == "batch"
     assert "--dry-run" in invocation
     assert "--isolate-runs" not in invocation
+    assert "--child-timeout-seconds" not in invocation
     assert tuple(invocation[-len(DEFAULT_RUNFILES) :]) == DEFAULT_RUNFILES
 
 
@@ -259,7 +260,8 @@ def test_configured_webhook_posts_terminal_session_to_slack(nightly_launcher, tm
     assert len(calls()) == 2
     run_invocation, post_invocation = calls()
     session_dir = Path(run_invocation[run_invocation.index("--output-dir") + 1])
-    assert "--isolate-runs" in run_invocation
+    assert "--isolate-runs" not in run_invocation
+    assert "--child-timeout-seconds" not in run_invocation
     assert "post-slack" in post_invocation
     assert post_invocation[-1] == str(session_dir)
     assert (session_dir / ".slack_post_attempted").exists()

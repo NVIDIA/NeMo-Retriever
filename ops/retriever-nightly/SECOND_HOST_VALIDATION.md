@@ -99,7 +99,8 @@ the dry-run does not materialize batch data.
 ```
 
 Confirm that the command exits zero and the session summary contains one
-successful run with `isolate_runs: true`. The launcher defaults the optional
+successful run with `isolate_runs: true`. Real `run-files` sessions isolate
+each sequential child automatically. The launcher defaults the optional
 DeepGEMM warmup to `skip`; no host setting is needed.
 
 ## 6. Capture the Handoff Evidence

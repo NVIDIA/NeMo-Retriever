@@ -24,7 +24,7 @@ from nemo_retriever.harness.revamp_runner import (
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
 from nemo_retriever.harness.runfile import load_runfile
-from nemo_retriever.harness.runsets import DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS, run_runfiles, run_runset
+from nemo_retriever.harness.runsets import run_runfiles, run_runset
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
     build_slack_payload,
@@ -300,18 +300,6 @@ def run_files_command(
         bool,
         typer.Option("--dry-run", help="Resolve configuration and write plans without executing ingest or query."),
     ] = False,
-    isolate_runs: Annotated[
-        bool,
-        typer.Option("--isolate-runs", help="Run each child in a fresh process to release batch memory."),
-    ] = False,
-    child_timeout_seconds: Annotated[
-        float,
-        typer.Option(
-            "--child-timeout-seconds",
-            min=1.0,
-            help="Maximum wall time for each isolated child before it is terminated.",
-        ),
-    ] = DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
     """Run one or more runfiles, optionally with machine-local dataset paths."""
@@ -326,8 +314,6 @@ def run_files_command(
             overrides=set_values or (),
             requirements=requirements or (),
             dry_run=dry_run,
-            isolate_runs=isolate_runs,
-            isolated_child_timeout_seconds=child_timeout_seconds,
         )
     except HarnessRunError as exc:
         typer.echo(exc.failure.message, err=True)

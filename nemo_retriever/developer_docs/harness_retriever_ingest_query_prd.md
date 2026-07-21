@@ -4,11 +4,11 @@ Last updated: 2026-07-21
 
 ## Implementation Status
 
-The current implementation includes the core runner described here plus four
+The current implementation includes the core runner described here plus three
 orchestration-neutral extensions: `run-files` applies a machine-local dataset
-path map to one or more checked-in runfiles; `--isolate-runs` gives each child a
-fresh process; `check-vidore-access` validates remote ViDoRe evaluation data;
-and `post-slack` renders or posts completed artifacts. It does not include
+path map to one or more checked-in runfiles and gives each real child a fresh
+process; `check-vidore-access` validates remote ViDoRe evaluation data; and
+`post-slack` renders or posts completed artifacts. It does not include
 recurring scheduling, deployment, locking, retry policy, or secret
 distribution. The harness README is the normative user and agent guide; this
 PRD records the design rationale.
@@ -738,9 +738,9 @@ validation through the CLI and artifact contract.
 - `retriever harness run-set <name>` expands a code-owned ablation and writes
   `expanded_runs.json`.
 - `retriever harness run-files` runs one or more checked-in requests with an
-  optional machine-local dataset path map.
-- `retriever harness run-files --isolate-runs` executes each child in a fresh
-  process while retaining one terminal session summary.
+  optional machine-local dataset path map. Real children execute sequentially
+  in fresh processes while retaining one terminal session summary; dry-runs
+  stay in the parent process.
 - `retriever harness check-vidore-access` validates authenticated access to the
   ViDoRe queries, qrels, and corpus partitions without downloading them.
 - `retriever harness post-slack --preview` reads artifacts without requiring a

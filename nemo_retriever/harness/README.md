@@ -207,12 +207,12 @@ default dataset paths are mounted. Prefer the checked-in runfiles for nightly
 or other orchestrated sessions because they carry per-dataset integrity gates
 and accept a machine-local path map.
 
-Add `--isolate-runs` to a real multi-run `run-files` session when each child
-should execute in a fresh spawned process. The process boundary releases Ray
-and materialized dataframe memory before the next benchmark while preserving
-one parent-owned `session_summary.json`. Isolated children have a six-hour
-wall-time limit by default so one hung child cannot block the session forever;
-use `--child-timeout-seconds` to adjust that limit for an unusually long run.
+Real `run-files` sessions execute children sequentially, each in a fresh spawned
+process. The process boundary releases Ray and materialized dataframe memory
+before the next benchmark while preserving one parent-owned
+`session_summary.json`. A code-owned six-hour child deadline prevents one hung
+benchmark from blocking the session forever. Dry-runs stay in the parent
+process because they do not materialize batch data.
 
 `run-files` owns the session layout and execution mode. Runfiles passed to this
 command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the
