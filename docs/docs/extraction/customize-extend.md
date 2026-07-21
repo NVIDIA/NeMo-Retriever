@@ -12,6 +12,7 @@ The following table maps common needs to the right section:
 | Add a small Python transformation between pipeline stages | [User-defined functions (UDFs)](#user-defined-functions-udfs) |
 | Build or reuse operators stage-by-stage | [Custom graph pipelines](#custom-graph-pipelines) |
 | Store vectors in a backend other than LanceDB | [Custom vector databases](#custom-vector-databases) |
+| Drive ingestion and retrieval from an AI agent (MCP) | [MCP access for agents](#mcp-access-for-agents) |
 
 ## On this page { #on-this-page }
 
@@ -19,6 +20,7 @@ The following table maps common needs to the right section:
 - [User-defined functions (UDFs)](#user-defined-functions-udfs)
 - [Custom graph pipelines](#custom-graph-pipelines)
 - [Custom vector databases](#custom-vector-databases)
+- [MCP access for agents](#mcp-access-for-agents)
 - [Related Topics](#related-topics)
 
 ## Start with task configuration { #start-with-task-configuration }
@@ -57,6 +59,30 @@ To integrate a different vector store, implement the [`VDB`](https://github.com/
 - [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
+
+## MCP access for agents { #mcp-access-for-agents }
+
+**Agentic retrieval** patterns—where a planner or tool-using agent queries retrieval systems in a loop instead of sending a single static query—can drive NeMo Retriever Library through its Model Context Protocol (MCP) endpoint.
+
+`retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default. Agents use that endpoint to call the running service for health checks, pipeline introspection, document ingestion, job status, vector database query, and answer generation. If service auth is enabled, the MCP endpoint uses the same bearer-token middleware as the REST API.
+
+For local stdio-based agents, run the MCP server as a shim that points at an existing retriever service:
+
+```bash
+retriever service mcp-stdio \
+  --service-url http://localhost:7670 \
+  --api-token "$NEMO_RETRIEVER_API_TOKEN"
+```
+
+For remote agents, expose the retriever service URL and configure the agent to connect to:
+
+```text
+https://<retriever-service-host>/mcp
+```
+
+The `ingest_documents` MCP tool accepts either paths visible to the MCP server process or inline `content_base64` document bytes. Use inline base64 for remote agents whose local files are not present on the service host.
+
+For retrieval quality, reranking, and evaluation guidance to pair with your orchestration layer, refer to [Semantic retrieval](vdbs.md#semantic-retrieval), [Metadata and filtering](vdbs.md#metadata-and-filtering), and [Evaluate on your data](evaluate-on-your-data.md).
 
 ## Related Topics { #related-topics }
 
