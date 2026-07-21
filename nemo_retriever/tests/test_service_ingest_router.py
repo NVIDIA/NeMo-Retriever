@@ -33,7 +33,7 @@ from nemo_retriever.service.config import (
     ServiceConfig,
 )
 from nemo_retriever.service import tracing
-from nemo_retriever.service.services.pipeline_pool import WorkItem
+from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
 from .conftest import create_test_job
 
 
@@ -642,6 +642,35 @@ def test_upload_to_missing_job_returns_404(app_with_stub_pool: TestClient) -> No
         data={"metadata": "{}"},
     )
     assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.anyio
+async def test_gateway_enqueue_unregisters_pending_when_broker_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    from nemo_retriever.service.routers import ingest
+    from nemo_retriever.service.services import work_queue
+
+    unregistered: list[str] = []
+    monkeypatch.setattr(work_queue, "get_work_broker", lambda: None)
+    monkeypatch.setattr(
+        ingest,
+        "get_job_tracker",
+        lambda: type("Tracker", (), {"unregister_pending": staticmethod(unregistered.append)})(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await ingest._gateway_enqueue(
+            None,  # type: ignore[arg-type]
+            PoolType.BATCH,
+            work_id="work-id",
+            job_id="job-id",
+            payload=b"payload",
+            filename="document.pdf",
+        )
+
+    assert exc_info.value.status_code == 503
+    assert unregistered == ["work-id"]
 
 
 def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:

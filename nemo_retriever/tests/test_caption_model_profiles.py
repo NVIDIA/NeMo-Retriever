@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.abc
+import os
 import sys
 from types import ModuleType
 
@@ -388,6 +389,7 @@ def _install_fake_vllm():
 
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.deep_gemm_warmup = os.environ.get("VLLM_DEEP_GEMM_WARMUP")
             self.chat_calls = []
             FakeLLM.instances.append(self)
 
@@ -458,6 +460,19 @@ def test_local_captioner_uses_profile_metadata(
     if model_name in {NANO_FP8, OMNI_FP8}:
         assert "quantization" not in llm_kwargs
         assert "hf_overrides" not in llm_kwargs
+
+
+def test_local_captioner_applies_vllm_startup_defaults_before_constructing_llm(
+    isolated_local_captioner_imports, monkeypatch
+):
+    monkeypatch.delenv("VLLM_DEEP_GEMM_WARMUP", raising=False)
+    FakeLLM, _FakeSamplingParams = _install_fake_vllm()
+
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+
+    NemotronVLMCaptioner(model_path=OMNI_BF16)
+
+    assert FakeLLM.instances[-1].deep_gemm_warmup == "skip"
 
 
 def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_captioner_imports):
