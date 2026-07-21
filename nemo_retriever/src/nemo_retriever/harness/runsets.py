@@ -29,6 +29,8 @@ from nemo_retriever.harness.json_io import artifact_write_error, write_json
 from nemo_retriever.harness.runfile import load_runfile
 
 _SESSION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS = 6 * 60 * 60
+_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -237,7 +239,24 @@ def _isolated_run_worker(connection: Any, run: PreparedRun, *, output_dir: str, 
         connection.close()
 
 
-def _run_prepared_benchmark_isolated(run: PreparedRun, *, output_dir: str, run_id: str) -> RunOutcome:
+def _stop_isolated_process(process: multiprocessing.Process) -> None:
+    """Best-effort bounded cleanup for an isolated benchmark process."""
+
+    if process.is_alive():
+        process.terminate()
+    process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+
+
+def _run_prepared_benchmark_isolated(
+    run: PreparedRun,
+    *,
+    output_dir: str,
+    run_id: str,
+    timeout_seconds: float = DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS,
+) -> RunOutcome:
     """Run one child with a process boundary that releases Ray and dataframe memory."""
 
     context = multiprocessing.get_context("spawn")
@@ -262,19 +281,25 @@ def _run_prepared_benchmark_isolated(run: PreparedRun, *, output_dir: str, run_i
 
     message: tuple[str, Any] | None = None
     try:
+        if not receive_connection.poll(timeout_seconds):
+            raise TimeoutError(f"isolated benchmark {run.name!r} exceeded the {timeout_seconds:g}-second child timeout")
         try:
             message = receive_connection.recv()
         except EOFError:
             pass
     except BaseException:
-        if process.is_alive():
-            process.terminate()
-        process.join()
+        _stop_isolated_process(process)
         raise
     finally:
         receive_connection.close()
 
-    process.join()
+    process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+    if process.is_alive():
+        _stop_isolated_process(process)
+        raise RuntimeError(
+            f"isolated benchmark {run.name!r} returned an outcome but did not exit within "
+            f"{_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS} seconds"
+        )
     if process.exitcode != 0:
         raise RuntimeError(f"isolated benchmark process exited with code {process.exitcode}")
     if message is None:
@@ -323,6 +348,7 @@ def _run_session(
     dry_run: bool,
     summary_extra: Mapping[str, Any],
     isolate_runs: bool = False,
+    isolated_child_timeout_seconds: float = DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS,
 ) -> RunOutcome:
     try:
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -342,6 +368,7 @@ def _run_session(
                     run,
                     output_dir=str(artifact_dir),
                     run_id=run_id,
+                    timeout_seconds=isolated_child_timeout_seconds,
                 )
             else:
                 outcome = run_prepared_benchmark(
@@ -452,9 +479,12 @@ def run_runfiles(
     requirements: Sequence[str] = (),
     dry_run: bool = False,
     isolate_runs: bool = False,
+    isolated_child_timeout_seconds: float = DEFAULT_ISOLATED_CHILD_TIMEOUT_SECONDS,
 ) -> RunOutcome:
     if not runfiles:
         raise _invalid_runfile("At least one runfile path is required.")
+    if isolated_child_timeout_seconds <= 0:
+        raise _invalid_runfile("--child-timeout-seconds must be greater than zero.")
 
     session_name = _validate_session_label(session_name, field="--session-name")
     run_commit = last_commit()
@@ -524,6 +554,7 @@ def run_runfiles(
             "working_tree_dirty": source_worktree_dirty,
             "dataset_paths_file": dataset_paths_value,
             "isolate_runs": bool(isolate_runs),
+            "isolated_child_timeout_seconds": isolated_child_timeout_seconds if isolate_runs else None,
             "runfiles": expanded_runs,
         },
         run_commit=run_commit,
@@ -532,7 +563,9 @@ def run_runfiles(
             "session_name": session_name,
             "dataset_paths_file": dataset_paths_value,
             "isolate_runs": bool(isolate_runs),
+            "isolated_child_timeout_seconds": isolated_child_timeout_seconds if isolate_runs else None,
             "working_tree_dirty": source_worktree_dirty,
         },
         isolate_runs=isolate_runs,
+        isolated_child_timeout_seconds=isolated_child_timeout_seconds,
     )

@@ -326,7 +326,9 @@ per domain. Per-domain throughput and timing remain in the session artifacts.
 If one runtime child fails, `run-files` continues the remaining datasets and
 writes a failed session summary. When Slack is configured, the launcher still
 attempts one report and returns the harness status. If the harness succeeds but
-Slack fails, it returns the Slack command's nonzero status.
+Slack fails, it returns the Slack command's nonzero status. Process-isolated
+children also have a six-hour wall-time limit; a child that exceeds it is
+terminated, recorded as failed, and does not prevent later datasets from running.
 
 The launcher defaults `VLLM_DEEP_GEMM_WARMUP=skip` unless the caller explicitly
 sets another vLLM-supported mode. This skips the optional compatibility-sensitive

@@ -210,7 +210,9 @@ and accept a machine-local path map.
 Add `--isolate-runs` to a real multi-run `run-files` session when each child
 should execute in a fresh spawned process. The process boundary releases Ray
 and materialized dataframe memory before the next benchmark while preserving
-one parent-owned `session_summary.json`.
+one parent-owned `session_summary.json`. Isolated children have a six-hour
+wall-time limit by default so one hung child cannot block the session forever;
+use `--child-timeout-seconds` to adjust that limit for an unusually long run.
 
 `run-files` owns the session layout and execution mode. Runfiles passed to this
 command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the

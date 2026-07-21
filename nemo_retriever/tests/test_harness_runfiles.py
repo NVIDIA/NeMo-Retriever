@@ -4,17 +4,19 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
+    EXIT_INTERNAL_ERROR,
     EXIT_MISSING_INPUT,
     FailurePayload,
     HarnessRunError,
     RunOutcome,
 )
-from nemo_retriever.harness.runsets import run_runfiles, run_runset
+from nemo_retriever.harness.runsets import _run_prepared_benchmark_isolated, run_runfiles, run_runset
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -204,8 +206,8 @@ def test_run_files_can_isolate_each_child_process(monkeypatch, tmp_path):
 
     isolated_calls = []
 
-    def fake_isolated_run(run, *, output_dir, run_id):
-        isolated_calls.append((run.prepared.benchmark, run_id))
+    def fake_isolated_run(run, *, output_dir, run_id, timeout_seconds):
+        isolated_calls.append((run.prepared.benchmark, run_id, timeout_seconds))
         return _successful_outcome(run.prepared.benchmark, output_dir)
 
     monkeypatch.setattr(
@@ -229,10 +231,126 @@ def test_run_files_can_isolate_each_child_process(monkeypatch, tmp_path):
     assert outcome.exit_code == 0
     assert outcome.results["isolate_runs"] is True
     assert isolated_calls == [
-        ("jp20_beir", "isolated_001_jp20_beir"),
-        ("bo767_beir", "isolated_002_bo767_beir"),
+        ("jp20_beir", "isolated_001_jp20_beir", 6 * 60 * 60),
+        ("bo767_beir", "isolated_002_bo767_beir", 6 * 60 * 60),
     ]
     assert len(outcome.results["runs"]) == 2
+
+
+def test_run_files_isolated_timeout_records_failure_and_continues(monkeypatch, tmp_path):
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+
+    isolated_calls = []
+
+    def fake_isolated_run(run, *, output_dir, run_id, timeout_seconds):
+        isolated_calls.append((run.prepared.benchmark, timeout_seconds))
+        if run.prepared.benchmark == "jp20_beir":
+            raise TimeoutError("isolated benchmark exceeded the child timeout")
+        return _successful_outcome(run.prepared.benchmark, output_dir)
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets._run_prepared_benchmark_isolated",
+        fake_isolated_run,
+    )
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+        isolate_runs=True,
+        isolated_child_timeout_seconds=17,
+    )
+
+    assert outcome.exit_code == EXIT_INTERNAL_ERROR
+    assert isolated_calls == [("jp20_beir", 17), ("bo767_beir", 17)]
+    assert [run["success"] for run in outcome.results["runs"]] == [False, True]
+    assert "TimeoutError" in outcome.results["runs"][0]["failure_reason"]
+    assert outcome.results["isolated_child_timeout_seconds"] == 17
+
+
+def test_isolated_child_timeout_uses_bounded_terminate_and_kill(monkeypatch):
+    class FakeConnection:
+        def __init__(self, *, readable):
+            self.readable = readable
+            self.closed = False
+            self.poll_timeout = None
+
+        def poll(self, timeout):
+            self.poll_timeout = timeout
+            return self.readable
+
+        def recv(self):
+            raise AssertionError("recv should not be called when poll times out")
+
+        def close(self):
+            self.closed = True
+
+    class FakeProcess:
+        def __init__(self):
+            self.alive = True
+            self.exitcode = None
+            self.started = False
+            self.terminated = False
+            self.killed = False
+            self.join_timeouts = []
+
+        def start(self):
+            self.started = True
+
+        def is_alive(self):
+            return self.alive
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+            self.alive = False
+            self.exitcode = -9
+
+        def join(self, timeout):
+            self.join_timeouts.append(timeout)
+
+    receive_connection = FakeConnection(readable=False)
+    send_connection = FakeConnection(readable=False)
+    process = FakeProcess()
+
+    class FakeContext:
+        @staticmethod
+        def Pipe(*, duplex):
+            assert duplex is False
+            return receive_connection, send_connection
+
+        @staticmethod
+        def Process(**_kwargs):
+            return process
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.multiprocessing.get_context",
+        lambda method: FakeContext(),
+    )
+
+    run = SimpleNamespace(name="hung", artifact_name="hung")
+    with pytest.raises(TimeoutError, match="exceeded the 1-second child timeout"):
+        _run_prepared_benchmark_isolated(
+            run,
+            output_dir="/tmp/unused",
+            run_id="hung",
+            timeout_seconds=1,
+        )
+
+    assert process.started is True
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.join_timeouts == [30, 30]
+    assert receive_connection.poll_timeout == 1
+    assert receive_connection.closed is True
+    assert send_connection.closed is True
 
 
 def test_run_files_spawned_child_writes_terminal_summary(tmp_path):
