@@ -154,6 +154,39 @@ def test_collapse_parallel_tool_results_for_local_chat_template() -> None:
     assert "Error: doc_ids must be a list." in collapsed[3]["content"]
 
 
+def test_normalize_messages_serializes_assistant_tool_calls_for_local_templates() -> None:
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
+
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+
+    normalized = llm._normalize_messages(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "retrieve", "arguments": '{"query": "inflation"}'},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert normalized[0]["tool_calls"][0]["function"]["name"] == "retrieve"
+    assert normalized[0]["content"].startswith("Assistant tool calls:")
+    assert "inflation" in normalized[0]["content"]
+
+
+def test_malformed_string_tool_arguments_remain_malformed() -> None:
+    from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
+
+    calls = parse_tool_calls_from_text(json.dumps([{"name": "retrieve", "arguments": "query=inflation"}]))
+
+    assert calls[0]["function"]["arguments"] == "query=inflation"
+
+
 def test_vllm_agent_llm_unload_releases_engine() -> None:
     import pytest
 

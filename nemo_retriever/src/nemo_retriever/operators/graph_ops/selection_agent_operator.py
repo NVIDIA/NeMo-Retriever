@@ -597,6 +597,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
                     )
                     continue
+                if not isinstance(fn_args, dict):
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": "Error: tool arguments must be a JSON object.",
+                        }
+                    )
+                    continue
 
                 if fn.get("name") == "think":
                     # Agent thoughts can quote document text/PII; keep content at DEBUG

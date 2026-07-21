@@ -164,6 +164,27 @@ def _make_tool_call_response(fn_name: str, fn_args: dict, tc_id: str = "call_1")
     }
 
 
+def _make_raw_arguments_tool_call_response(fn_name: str, arguments: str, tc_id: str = "call_1") -> dict:
+    """Build a canned chat-completions response with raw function arguments."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tc_id,
+                            "type": "function",
+                            "function": {"name": fn_name, "arguments": arguments},
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ]
+    }
+
+
 class TestSelectionAgentOperator:
     def _make_input(self):
         return pd.DataFrame(
@@ -224,6 +245,25 @@ class TestSelectionAgentOperator:
         assert mock_step.call_count == 2
         assert result["doc_id"].tolist() == ["d1", "d2"]
         assert result["message"].tolist() == ["corrected", "corrected"]
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_non_object_tool_arguments_are_reported_and_fall_back(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        mock_step.return_value = _make_raw_arguments_tool_call_response(
+            "log_selected_documents", json.dumps("doc_ids=d1")
+        )
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+            max_steps=1,
+        )
+        result = op.run(self._make_input())
+
+        assert result["doc_id"].tolist() == ["d1", "d2"]
+        assert result["result_source"].tolist() == ["candidate_ranking", "candidate_ranking"]
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_think_then_select(self, mock_step):
@@ -449,6 +489,26 @@ class TestReActAgentOperator:
         assert local_chat.call_count == 1
         assert local_chat.call_args.kwargs["max_tokens"] == 123
         assert result[result["doc_id"] == "d1"]["is_final_result"].astype(bool).any()
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_non_object_tool_arguments_are_reported_without_crashing(self, mock_step):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_step.return_value = _make_raw_arguments_tool_call_response("retrieve", json.dumps("query=inflation"))
+        retriever = MagicMock(return_value=[{"doc_id": "d1", "text": "monetary policy"}])
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="with_results",
+            target_top_k=1,
+            max_steps=1,
+        )
+        result = op.run(self._make_input())
+
+        assert result["doc_id"].tolist() == ["d1"]
+        assert not result["is_final_result"].astype(bool).any()
 
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_with_results_mode_initial_retrieval(self, mock_step):

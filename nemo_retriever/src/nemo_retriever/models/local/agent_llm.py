@@ -237,6 +237,8 @@ class VLLMAgentChatLLM(BaseModel):
             content = msg.get("content")
             if isinstance(content, list):
                 msg["content"] = _flatten_text_content(content)
+            if msg.get("role") == "assistant" and msg.get("tool_calls") and not msg.get("content"):
+                msg["content"] = _format_assistant_tool_calls_content(msg.get("tool_calls") or [])
             if tool_prompt and idx == 0 and msg.get("role") == "system":
                 msg["content"] = f"{tool_prompt}\n\n{msg.get('content') or ''}"
                 tool_prompt = None
@@ -426,10 +428,6 @@ def _coerce_single_tool_call(item: Any) -> dict[str, Any] | None:
 
 def _arguments_to_json_string(arguments: Any) -> str:
     if isinstance(arguments, str):
-        try:
-            json.loads(arguments)
-        except json.JSONDecodeError:
-            return json.dumps(arguments)
         return arguments
     return json.dumps(arguments if arguments is not None else {})
 
@@ -514,6 +512,26 @@ def _format_tool_message_content(message: Mapping[str, Any], tool_names_by_id: M
     if tool_call_id:
         return f"Tool result for {tool_name} ({tool_call_id}):\n{content}"
     return f"Tool result for {tool_name}:\n{content}"
+
+
+def _format_assistant_tool_calls_content(tool_calls: Sequence[Any]) -> str:
+    """Render OpenAI assistant tool calls for local templates that read only content."""
+
+    serializable_calls: list[dict[str, Any]] = []
+    for tool_call in tool_calls:
+        if not isinstance(tool_call, Mapping):
+            continue
+        function = tool_call.get("function") or {}
+        if not isinstance(function, Mapping):
+            continue
+        serializable_calls.append(
+            {
+                "id": tool_call.get("id"),
+                "name": function.get("name"),
+                "arguments": function.get("arguments"),
+            }
+        )
+    return "Assistant tool calls:\n" + json.dumps(serializable_calls, ensure_ascii=False)
 
 
 def _new_tool_call_id() -> str:
