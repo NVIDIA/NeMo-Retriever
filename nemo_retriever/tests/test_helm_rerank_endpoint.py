@@ -130,7 +130,7 @@ class HelmRerankEndpointTests(TestCase):
         self.assertIn(expected_url, proc.stdout)
         self.assertIn(expected_model, proc.stdout)
         # Resolving a URL auto-enables reranking on /v1/answer.
-        self.assertIn("rerank:\n  enabled: true", proc.stdout)
+        self.assertIn("    rerank:\n      enabled: true", proc.stdout)
 
     def test_helm_template_rerank_null_when_operator_disabled(self) -> None:
         proc = _helm_template(
@@ -140,7 +140,7 @@ class HelmRerankEndpointTests(TestCase):
         _assert_helm_ok(self, proc)
         self.assertIn("rerank_invoke_url: null", proc.stdout)
         self.assertIn("rerank_model_name: null", proc.stdout)
-        self.assertIn("rerank:\n  enabled: false", proc.stdout)
+        self.assertIn("    rerank:\n      enabled: false", proc.stdout)
 
     def test_helm_template_explicit_rerank_url_wins(self) -> None:
         proc = _helm_template(
