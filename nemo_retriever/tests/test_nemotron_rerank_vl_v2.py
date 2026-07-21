@@ -11,6 +11,7 @@ required.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,6 +72,22 @@ class TestNemotronRerankVLV2VLLMProperties:
                 dtype="bfloat16",
                 gpu_memory_utilization=0.7,
             )
+
+    def test_applies_vllm_startup_defaults_before_constructing_llm(self, monkeypatch):
+        from nemo_retriever.models.local import nemotron_rerank_vl_v2 as mod
+
+        monkeypatch.delenv("VLLM_DEEP_GEMM_WARMUP", raising=False)
+
+        def assert_startup_defaults(**_kwargs):
+            assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "skip"
+            return MagicMock()
+
+        with (
+            patch.object(mod, "configure_global_hf_cache_base"),
+            patch.object(mod, "get_hf_revision", return_value=None),
+            patch("vllm.LLM", side_effect=assert_startup_defaults),
+        ):
+            mod.NemotronRerankVLV2VLLM()
 
 
 # ---------------------------------------------------------------------------
