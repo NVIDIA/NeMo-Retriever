@@ -289,6 +289,31 @@ class PipelinePoolConfig(RichModel):
     batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
 
 
+class WorkQueueConfig(RichModel):
+    """Gateway-owned split-topology work broker configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    gateway_url: str = Field(
+        default="http://nemo-retriever-gateway:7670",
+        description="Gateway Service URL used by split-mode workers.",
+    )
+    spool_directory: str = "/tmp/nemo-retriever-work"
+    spool_limit_bytes: int = Field(default=20 * 1024**3, ge=1)
+    claim_timeout_s: float = Field(default=30.0, gt=0)
+    lease_ttl_s: float = Field(default=60.0, gt=0)
+    heartbeat_interval_s: float = Field(default=20.0, gt=0)
+    max_delivery_attempts: int = Field(default=3, ge=1)
+    max_active_leases_realtime: int = Field(default=8, ge=1)
+    max_active_leases_batch: int = Field(default=48, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_heartbeat(self) -> "WorkQueueConfig":
+        if self.heartbeat_interval_s >= self.lease_ttl_s / 2:
+            raise ValueError("work_queue.heartbeat_interval_s must be below half work_queue.lease_ttl_s")
+        return self
+
+
 class VectorDbConfig(RichModel):
     """Configuration for the dedicated VectorDB pod (LanceDB + query endpoint)."""
 
@@ -433,6 +458,7 @@ class ServiceConfig(RichModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
+    work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 
