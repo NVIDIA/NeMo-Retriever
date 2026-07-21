@@ -109,11 +109,7 @@ when available, and an embedding vector.
 The root ingest entrypoint expands inputs, builds a manifest, resolves the
 selected profile into typed ingest options, and calls the canonical ingest
 execution path. The manifest planner routes PDF/document, image, text, HTML,
-audio, and video branches without relying on `retriever pipeline run`.
-
-`retriever pipeline run` remains callable, but hidden from root help, for legacy
-or development behavior such as intermediate Parquet artifacts, pipeline
-reports, eval, recall, or harness work.
+audio, and video branches through the same supported interface.
 
 ## Common failure modes
 

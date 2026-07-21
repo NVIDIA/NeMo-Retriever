@@ -25,8 +25,7 @@ the harness.
 - `service` is a system-under-test mode that uses an endpoint supplied by the
   caller; Helm is only an optional outer provisioning mechanism.
 
-The harness must not route these commands through `retriever pipeline run` or
-`nemo_retriever.examples.graph_pipeline`.
+The harness calls the shared ingest and query workflow modules directly.
 
 ## Implementation Map
 

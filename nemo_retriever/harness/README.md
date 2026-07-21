@@ -76,8 +76,8 @@ uses the product service APIs for ingest and query while preserving the same
   overrides.
 - `run-set`: expand a code-owned benchmark group using registry paths.
 - `run-files`: execute one or more runfiles with an optional machine-local
-  dataset path map and optional per-child process isolation. This is the
-  portable entry point for the checked-in suite.
+  dataset path map. Real children run sequentially in fresh processes. This is
+  the portable entry point for the checked-in suite.
 - `check-vidore-access`: validate authenticated access to the queries, qrels,
   and corpus objects for all eight ViDoRe v3 datasets without downloading them.
 - `post-slack`: preview or post existing artifacts; it never executes a run.
@@ -87,7 +87,7 @@ For the opinionated twelve-benchmark workstation workflow, including Git
 selection, dataset defaults, Slack, and daily recurrence, use the
 [Retriever nightly launcher](../../ops/retriever-nightly/README.md).
 
-Legacy graph-pipeline, sweep, recurring-job, runner, reporting-UI, and portal
+Legacy sweep, recurring-job, runner, reporting-UI, and portal
 commands are not part of this CLI surface. Scheduling and deployment belong to
 separate infrastructure, not the benchmark harness.
 
@@ -392,9 +392,8 @@ plans before launching an expensive run.
 
 ## Implementation Boundary
 
-The harness does not shell out to `retriever ingest`, `retriever query`, or
-`retriever pipeline run`. It calls the same Python workflow/planning APIs used
-by the CLI:
+The harness does not shell out to `retriever ingest` or `retriever query`. It
+calls the same Python workflow/planning modules used by the CLI:
 
 - ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
 - query: `resolve_query_plan(...)` and shared query workflow objects
