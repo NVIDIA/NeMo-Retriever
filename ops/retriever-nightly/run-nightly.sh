@@ -35,6 +35,49 @@ Options:
 EOF
 }
 
+load_config_defaults() {
+    local path="$1"
+    local name
+    local -a supported_variables=(
+        HF_TOKEN
+        HUGGING_FACE_HUB_TOKEN
+        SLACK_WEBHOOK_URL
+        RETRIEVER_ARTIFACT_ROOT
+        RETRIEVER_CHECKOUT
+        RETRIEVER_DATASET_PATHS
+        RETRIEVER_LATEST_CHECKOUT_ROOT
+        RETRIEVER_LATEST_KEEP_CHECKOUTS
+        RETRIEVER_MODE
+        RETRIEVER_SESSION_NAME
+        RETRIEVER_SLACK_TITLE
+        RETRIEVER_UPDATE_REPOSITORY
+        RETRIEVER_UV_BIN
+        UV_PROJECT_ENVIRONMENT
+        VLLM_DEEP_GEMM_WARMUP
+    )
+    local -A inherited=()
+    local -A inherited_values=()
+
+    for name in "${supported_variables[@]}"; do
+        if [[ -v "$name" ]]; then
+            inherited["$name"]=1
+            inherited_values["$name"]="${!name}"
+        fi
+    done
+
+    set -a
+    # shellcheck disable=SC1090
+    source "$path"
+    set +a
+
+    for name in "${supported_variables[@]}"; do
+        if [[ "${inherited[$name]:-}" == "1" ]]; then
+            printf -v "$name" '%s' "${inherited_values[$name]}"
+            export "$name"
+        fi
+    done
+}
+
 run_checkout() {
     local selected_checkout="$1"
     local selection_label="$2"
@@ -235,10 +278,7 @@ if [[ -f "$config_file" ]]; then
         log "nightly configuration must be owned by the invoking user with mode 600"
         exit "$EXIT_CONFIG"
     fi
-    set -a
-    # shellcheck disable=SC1090
-    source "$config_file"
-    set +a
+    load_config_defaults "$config_file"
 fi
 slack_webhook_url="${SLACK_WEBHOOK_URL:-}"
 unset SLACK_WEBHOOK_URL

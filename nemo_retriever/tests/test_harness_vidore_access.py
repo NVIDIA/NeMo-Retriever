@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
@@ -126,6 +127,14 @@ def test_check_vidore_access_requires_queries_qrels_and_corpus() -> None:
 
     with pytest.raises(VidoreAccessError, match="missing evaluation partitions: qrels, corpus"):
         check_vidore_access(dataset_names=("vidore_v3_hr",), token="hf-secret", api=api, get=lambda *a, **k: None)
+
+
+def test_check_vidore_access_missing_token_recommends_direct_export(monkeypatch) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    with pytest.raises(VidoreAccessError, match="export HF_TOKEN"):
+        check_vidore_access(dataset_names=("vidore_v3_hr",))
 
 
 def test_check_vidore_access_rejects_an_empty_success_response() -> None:

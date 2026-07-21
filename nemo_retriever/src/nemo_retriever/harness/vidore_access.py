@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Fast authenticated access checks for remote ViDoRe evaluation data."""
@@ -81,9 +82,7 @@ def check_vidore_access(
 
     effective_token = token or os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     if require_token and not effective_token:
-        raise VidoreAccessError(
-            "HF_TOKEN is not set; add it to the mode-600 nightly configuration before checking ViDoRe access"
-        )
+        raise VidoreAccessError("HF_TOKEN is not set; export HF_TOKEN before checking ViDoRe access")
 
     if api is None:
         from huggingface_hub import HfApi

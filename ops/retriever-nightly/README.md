@@ -72,7 +72,7 @@ optional `nightly.env` accepts only two secrets and one optional path override:
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
-| `HF_TOKEN` | yes | Read-only access to ViDoRe evaluation data. |
+| `HF_TOKEN` | every real launcher run | Read-only access for the automatic ViDoRe preflight. |
 | `SLACK_WEBHOOK_URL` | no | Enables one terminal Slack post for real runs. |
 | `RETRIEVER_DATASET_PATHS` | nonstandard hosts only | Path to a YAML file that replaces the checked-in `/datasets/nv-ingest` map. |
 
@@ -82,7 +82,8 @@ Other hosts use `$HOME`.
 
 Direct exports are the smallest configuration interface. A private file is
 optional for operators who do not want to export the same values in every
-shell. To create it:
+shell. Already-exported supported settings take precedence over values in that
+file. To create it:
 
 ```bash
 if [[ -d /raid/$USER && -w /raid/$USER ]]; then
@@ -143,10 +144,11 @@ Keep the machine-local YAML outside the repository. For repeated runs, export
 same value in the optional `nightly.env`; the command-line flag is simplest for
 a one-off run.
 
-The launcher sources the detected file only when it exists; otherwise it uses
-the current environment. An existing secrets file must be owned by the
-invoking user with mode `600`. The launcher does not discover a repository
-`.env` file. `RETRIEVER_CONFIG_FILE` remains an optional advanced path override.
+The launcher loads the detected file only when it exists and uses its values as
+defaults for settings that were not already exported. An existing secrets file
+must be owned by the invoking user with mode `600`. The launcher does not
+discover a repository `.env` file. `RETRIEVER_CONFIG_FILE` remains an optional
+advanced path override.
 
 Verify the token and read one byte from one remote parquet object in every
 ViDoRe evaluation partition before starting GPU work:
@@ -178,6 +180,9 @@ Use one positional runfile for a smaller real canary before the full run:
   --no-slack \
   nemo_retriever/harness/runfiles/jp20_beir.json
 ```
+
+The launcher performs the ViDoRe access preflight before every real invocation,
+including a JP20-only canary, so `HF_TOKEN` is still required for this command.
 
 Run the complete suite from the current checkout with no positional runfiles:
 
@@ -295,9 +300,10 @@ that flag suppresses webhook validation and posting. Dry-runs and access checks
 never post. The launcher removes the URL from the benchmark child environment
 and exposes it only to the final Slack command.
 
-Command-line flags override values loaded from `RETRIEVER_CONFIG_FILE`; those
-values override the launcher defaults. Run the launcher with `--help` for its
-supported interface.
+Configuration precedence is, from highest to lowest: command-line flags,
+supported variables already exported when the launcher starts, values loaded
+from `RETRIEVER_CONFIG_FILE`, and launcher defaults. Run the launcher with
+`--help` for its supported interface.
 
 ## Runtime Contract
 

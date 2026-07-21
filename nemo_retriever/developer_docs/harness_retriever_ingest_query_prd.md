@@ -1,15 +1,17 @@
 # Retriever Harness PRD: End-to-End Ingest/Query Benchmarks
 
-Last updated: 2026-07-01
+Last updated: 2026-07-21
 
 ## Implementation Status
 
-The current implementation includes the core runner described here plus two
+The current implementation includes the core runner described here plus four
 orchestration-neutral extensions: `run-files` applies a machine-local dataset
-path map to one or more checked-in runfiles, and `post-slack` renders or posts
-completed artifacts. It does not include recurring scheduling, deployment,
-locking, retry policy, or secret distribution. The harness README is the
-normative user and agent guide; this PRD records the design rationale.
+path map to one or more checked-in runfiles; `--isolate-runs` gives each child a
+fresh process; `check-vidore-access` validates remote ViDoRe evaluation data;
+and `post-slack` renders or posts completed artifacts. It does not include
+recurring scheduling, deployment, locking, retry policy, or secret
+distribution. The harness README is the normative user and agent guide; this
+PRD records the design rationale.
 
 ## Summary
 
@@ -737,6 +739,10 @@ validation through the CLI and artifact contract.
   `expanded_runs.json`.
 - `retriever harness run-files` runs one or more checked-in requests with an
   optional machine-local dataset path map.
+- `retriever harness run-files --isolate-runs` executes each child in a fresh
+  process while retaining one terminal session summary.
+- `retriever harness check-vidore-access` validates authenticated access to the
+  ViDoRe queries, qrels, and corpus partitions without downloading them.
 - `retriever harness post-slack --preview` reads artifacts without requiring a
   webhook or contacting Slack.
 - Every run writes `status.json`, `events.jsonl`, and `results.json`.

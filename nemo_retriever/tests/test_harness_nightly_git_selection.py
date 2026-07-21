@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from __future__ import annotations
@@ -59,6 +60,10 @@ def latest_main_fixture(tmp_path: Path):
                 'if [[ -n "${EXPECT_SLACK_WEBHOOK_URL+x}" && '
                 '"${SLACK_WEBHOOK_URL:-}" != "$EXPECT_SLACK_WEBHOOK_URL" ]]; then',
                 "    exit 96",
+                "fi",
+                'if [[ -n "${EXPECT_DATASET_PATHS+x}" && '
+                '"${RETRIEVER_DATASET_PATHS:-}" != "$EXPECT_DATASET_PATHS" ]]; then',
+                "    exit 95",
                 "fi",
                 'checkout="$(git -C "$(dirname -- "$0")" rev-parse --show-toplevel)"',
                 'commit="$(git -C "$checkout" rev-parse HEAD)"',
@@ -197,6 +202,37 @@ def test_launcher_selection_uses_exported_secrets_without_config_file(latest_mai
             "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
             "EXPECT_HF_TOKEN": "exported-read-token",
             "EXPECT_SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert calls() == [(initial_commit, "--dry-run", "")]
+
+
+def test_exported_settings_override_optional_config_file(latest_main_fixture, tmp_path: Path) -> None:
+    run, calls, _source, _controller, _checkout_root, initial_commit, _latest_commit = latest_main_fixture
+    config_file = tmp_path / "config" / "nightly.env"
+    config_file.write_text(
+        "\n".join(
+            (
+                "HF_TOKEN=file-read-token",
+                "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/file/webhook/value",
+                "RETRIEVER_DATASET_PATHS=/file/dataset-paths.yaml",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    result = run(
+        "--dry-run",
+        extra_env={
+            "HF_TOKEN": "exported-read-token",
+            "EXPECT_HF_TOKEN": "exported-read-token",
+            "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+            "EXPECT_SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+            "RETRIEVER_DATASET_PATHS": "/exported/dataset-paths.yaml",
+            "EXPECT_DATASET_PATHS": "/exported/dataset-paths.yaml",
         },
     )
 
