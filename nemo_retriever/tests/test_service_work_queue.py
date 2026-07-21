@@ -120,17 +120,13 @@ async def test_release_revalidates_lease_after_acquiring_condition(tmp_path):
     await broker.start()
     try:
         record = await _enqueue(broker, "raced-release")
-        claim = await broker.claim(
-            PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1"
-        )
+        claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
         assert claim is not None and claim.lease is not None
         lease_id = claim.lease.lease_id
         generation = claim.lease.generation
         condition = broker._conditions[PoolType.BATCH]
         async with condition:
-            release = asyncio.create_task(
-                broker.release(record.work_id, lease_id, generation)
-            )
+            release = asyncio.create_task(broker.release(record.work_id, lease_id, generation))
             await asyncio.sleep(0)
             assert not release.done()
             assert record.lease is not None
@@ -155,18 +151,14 @@ async def test_missing_payload_revalidates_lease_after_acquiring_condition(tmp_p
     await broker.start()
     try:
         record = await _enqueue(broker, "raced-payload")
-        claim = await broker.claim(
-            PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1"
-        )
+        claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
         assert claim is not None and claim.lease is not None
         lease_id = claim.lease.lease_id
         generation = claim.lease.generation
         record.spool_path.unlink()
         condition = broker._conditions[PoolType.BATCH]
         async with condition:
-            payload = asyncio.create_task(
-                broker.payload_path(record.work_id, lease_id, generation)
-            )
+            payload = asyncio.create_task(broker.payload_path(record.work_id, lease_id, generation))
             await asyncio.sleep(0)
             assert not payload.done()
             assert record.lease is not None
