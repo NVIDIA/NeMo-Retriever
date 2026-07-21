@@ -110,41 +110,51 @@ class VLLMAgentChatLLM(BaseModel):
                 f"or choose one of: {', '.join(supported_agent_llm_names())}."
             )
 
+        self._previous_cuda_visible_devices: Optional[str] = None
+        self._cuda_visible_devices_overridden = False
         cuda_visible_devices = _cuda_visible_devices_from_device(device)
         if cuda_visible_devices is not None:
+            self._previous_cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+            self._cuda_visible_devices_overridden = True
             os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
 
         try:
-            from vllm import LLM, SamplingParams  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
-            ) from e
+            try:
+                from vllm import LLM, SamplingParams
+            except ImportError as e:
+                raise ImportError(
+                    'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
+                ) from e
 
-        _raise_if_cuda_unavailable()
-        self._model_path = model_path
-        self._max_tokens = int(max_tokens)
-        self._request_extras = deepcopy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
-        self._lock = threading.Lock()
+            _raise_if_cuda_unavailable()
+            self._model_path = model_path
+            self._max_tokens = int(max_tokens)
+            self._request_extras = deepcopy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
+            self._lock = threading.Lock()
 
-        configure_global_hf_cache_base(hf_cache_dir)
-        revision = get_hf_revision(model_path)
+            configure_global_hf_cache_base(hf_cache_dir)
+            revision = get_hf_revision(model_path)
 
-        engine_kwargs: dict[str, Any] = {}
-        if max_model_len is not None:
-            engine_kwargs["max_model_len"] = int(max_model_len)
-        if max_num_seqs is not None:
-            engine_kwargs["max_num_seqs"] = int(max_num_seqs)
+            engine_kwargs: dict[str, Any] = {}
+            if max_model_len is not None:
+                engine_kwargs["max_model_len"] = int(max_model_len)
+            if max_num_seqs is not None:
+                engine_kwargs["max_num_seqs"] = int(max_num_seqs)
 
-        self._sampling_params_cls = SamplingParams
-        self._llm: Any | None = LLM(
-            model=model_path,
-            revision=revision,
-            trust_remote_code=True,
-            tensor_parallel_size=int(tensor_parallel_size),
-            gpu_memory_utilization=float(gpu_memory_utilization),
-            **engine_kwargs,
-        )
+            self._sampling_params_cls = SamplingParams
+            self._llm: Any | None = LLM(
+                model=model_path,
+                revision=revision,
+                # Safe for this local path: supported model names are hard-allowlisted
+                # above and revisions are pinned in hf_model_registry.py.
+                trust_remote_code=True,
+                tensor_parallel_size=int(tensor_parallel_size),
+                gpu_memory_utilization=float(gpu_memory_utilization),
+                **engine_kwargs,
+            )
+        except Exception:
+            self._restore_cuda_visible_devices()
+            raise
 
     def __call__(
         self,
@@ -241,10 +251,14 @@ class VLLMAgentChatLLM(BaseModel):
         """Release GPU memory held by the local vLLM engine."""
 
         with self._lock:
-            if self._llm is None:
-                return
-            del self._llm
-            self._llm = None
+            had_llm = self._llm is not None
+            if had_llm:
+                del self._llm
+                self._llm = None
+
+        self._restore_cuda_visible_devices()
+        if not had_llm:
+            return
 
         try:
             import torch
@@ -252,6 +266,16 @@ class VLLMAgentChatLLM(BaseModel):
             return
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    def _restore_cuda_visible_devices(self) -> None:
+        if not getattr(self, "_cuda_visible_devices_overridden", False):
+            return
+        previous = getattr(self, "_previous_cuda_visible_devices", None)
+        if previous is None:
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = previous
+        self._cuda_visible_devices_overridden = False
 
     def _require_loaded(self) -> None:
         if self._llm is None:

@@ -225,6 +225,9 @@ Agentic-only knobs (apply only with `--agentic`):
   agent LLM. Providing it routes agent LLM calls to that remote endpoint.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
+- `--agentic-temperature` (default `0.0`) — sampling temperature for agent LLM
+  calls. Local and non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`;
+  NVIDIA-hosted endpoints allow up to `1.0`.
 - `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
   per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.

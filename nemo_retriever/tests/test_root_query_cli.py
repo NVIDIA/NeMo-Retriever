@@ -383,6 +383,8 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
             "/tmp/lancedb",
             "--table-name",
             "docs",
+            "--agentic-temperature",
+            "1.25",
         ],
     )
 
@@ -394,6 +396,7 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     assert "llm_backend" not in cfg
     assert cfg["local_llm_backend"] == "vllm"
     assert cfg["llm_model"] == "nemotron-8b"
+    assert cfg["temperature"] == 1.25
     # --top-k is honored end-to-end: plumbed into the agentic config (drives the
     # ReAct target / RRF / selection cut), not just applied as a post-filter.
     assert cfg["top_k"] == 2

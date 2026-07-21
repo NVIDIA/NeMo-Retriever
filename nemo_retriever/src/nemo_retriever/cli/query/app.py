@@ -16,7 +16,7 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
-from nemo_retriever.query.agentic_options import agentic_backend_top_k_error
+from nemo_retriever.query.agentic_options import agentic_backend_top_k_error, agentic_temperature_error
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -189,6 +189,7 @@ def _local_command(
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
     agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
+    agentic_temperature: opts.AgenticTemperatureOption = 0.0,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
@@ -210,6 +211,11 @@ def _local_command(
         backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
         if backend_error:
             typer.echo(f"Error: {backend_error}", err=True)
+            raise typer.Exit(1)
+        temperature_invoke_url = agentic_invoke_url or "local://in-process"
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
+        if temperature_error:
+            typer.echo(f"Error: {temperature_error}", err=True)
             raise typer.Exit(1)
 
     try:
@@ -250,6 +256,7 @@ def _local_command(
                     backend_top_k=agentic_backend_top_k,
                     react_max_steps=agentic_react_max_steps,
                     text_truncation=agentic_text_truncation,
+                    temperature=agentic_temperature,
                 ),
             )
             with quiet_capture():

@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import threading
 from unittest.mock import MagicMock
 
@@ -165,6 +167,46 @@ def test_vllm_agent_llm_unload_releases_engine() -> None:
     assert llm._llm is None
     with pytest.raises(RuntimeError, match="unloaded"):
         llm._require_loaded()
+
+
+def test_vllm_agent_llm_unload_restores_cuda_visible_devices(monkeypatch) -> None:
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+    llm._llm = object()
+    llm._lock = threading.Lock()
+    llm._cuda_visible_devices_overridden = True
+    llm._previous_cuda_visible_devices = "2,3"
+
+    llm.unload()
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+    llm._llm = object()
+    llm._lock = threading.Lock()
+    llm._cuda_visible_devices_overridden = True
+    llm._previous_cuda_visible_devices = None
+
+    llm.unload()
+
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+
+def test_vllm_agent_llm_restores_cuda_visible_devices_on_init_failure(monkeypatch) -> None:
+    import pytest
+
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,3")
+    monkeypatch.setitem(sys.modules, "vllm", None)
+
+    with pytest.raises(ImportError, match="requires vLLM"):
+        VLLMAgentChatLLM("nemotron-8b", device="0,1")
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "2,3"
 
 
 def test_unload_cached_vllm_agent_chat_llms_clears_cache() -> None:
