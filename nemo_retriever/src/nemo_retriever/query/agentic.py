@@ -42,7 +42,11 @@ from nemo_retriever.tools.recall.core import (
     _recall_at_k,
 )
 from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.query.agentic_trace import AgenticTraceWriter, make_agentic_trace_path
+from nemo_retriever.query.agentic_trace import (
+    log_agentic_trace,
+    make_agentic_trace_logger,
+    make_agentic_trace_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,12 +249,11 @@ class AgenticRetriever:
         )
         self._lock = threading.Lock()
         self._retrieve_lock = threading.Lock()
-        self._trace_writer: AgenticTraceWriter | None = None
         self._trace_event: Callable[[dict[str, Any]], None] | None = None
         if cfg.trace_enabled:
             trace_path = Path(cfg.trace_path).expanduser() if cfg.trace_path else make_agentic_trace_path()
-            self._trace_writer = AgenticTraceWriter(trace_path)
-            self._trace_event = self._trace_writer.event
+            trace_logger = make_agentic_trace_logger(trace_path)
+            self._trace_event = lambda payload: log_agentic_trace(trace_logger, payload)
         # Full hits keyed by doc_id, captured at the retrieval boundary (before the
         # agent loop reduces them to doc_id/text/score) so the final output can
         # re-hydrate the metadata the agent drops. Reset at the start of retrieve().

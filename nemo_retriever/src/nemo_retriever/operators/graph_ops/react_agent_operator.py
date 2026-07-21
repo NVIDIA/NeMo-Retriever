@@ -19,6 +19,7 @@ import pandas as pd
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
+from nemo_retriever.query.agentic_trace import bind_trace_emitter, trace_documents
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +419,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._reasoning_effort = reasoning_effort
         self._backend_top_k = backend_top_k
         self._temperature = temperature
-        self._trace_event = trace_event
+        self._emit_trace = bind_trace_emitter(trace_event, operator="react_agent")
 
     def _build_extra_body(self) -> Optional[Dict[str, Any]]:
         """Assemble per-call extra payload fields (parallel_tool_calls, reasoning_effort)."""
@@ -428,25 +429,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         if self._reasoning_effort:
             extra["reasoning_effort"] = self._reasoning_effort
         return extra or None
-
-    def _emit_trace(self, event: str, **payload: Any) -> None:
-        if self._trace_event is None:
-            return
-        try:
-            self._trace_event({"event": event, "operator": "react_agent", **payload})
-        except Exception as exc:
-            logger.warning("ReActAgentOperator: trace event failed: %s", exc, exc_info=True)
-
-    def _trace_documents(self, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [
-            {
-                "rank": rank,
-                "doc_id": str(doc.get("doc_id", doc.get("id", ""))),
-                "score": doc.get("score"),
-                "text": str(doc.get("text", "")),
-            }
-            for rank, doc in enumerate(docs, start=1)
-        ]
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -570,7 +552,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 "react.initial_retrieve",
                 query_id=query_id,
                 query=query_text,
-                documents=self._trace_documents(init_docs),
+                documents=trace_documents(init_docs),
                 seen_doc_count=len(seen_doc_ids),
             )
             doc_content = _docs_to_message_content(init_docs)
@@ -768,7 +750,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         step=_step,
                         tool_index=tool_index,
                         subquery=subquery,
-                        documents=self._trace_documents(retrieved),
+                        documents=trace_documents(retrieved),
                         seen_after=len(seen_doc_ids),
                     )
                     doc_content = _docs_to_message_content(retrieved)

@@ -97,22 +97,24 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
 
 
 def test_agentic_trace_omits_mapping_none_values_but_preserves_list_nulls(tmp_path):
-    from nemo_retriever.query.agentic_trace import AgenticTraceWriter
+    from nemo_retriever.query.agentic_trace import log_agentic_trace, make_agentic_trace_logger
 
     trace_path = tmp_path / "trace" / "agentic_trace.jsonl"
-    writer = AgenticTraceWriter(trace_path)
+    trace_logger = make_agentic_trace_logger(trace_path)
 
-    writer.event(
+    log_agentic_trace(
+        trace_logger,
         {
             "event": "trace.test",
             "unset": None,
             "nested": {"drop": None, "keep": "value"},
             "items": ["first", None, {"drop": None, "keep": "nested-list-value"}],
-        }
+        },
     )
 
     event = json.loads(trace_path.read_text().splitlines()[0])
 
+    assert trace_logger.propagate is False
     assert "unset" not in event
     assert event["nested"] == {"keep": "value"}
     assert event["items"] == ["first", None, {"keep": "nested-list-value"}]

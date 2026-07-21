@@ -18,6 +18,7 @@ import pandas as pd
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
+from nemo_retriever.query.agentic_trace import bind_trace_emitter, trace_documents
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +208,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
-        self._trace_event = trace_event
+        self._emit_trace = bind_trace_emitter(trace_event, operator="selection_agent")
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -222,25 +223,6 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             self._invoke_url = base_url.rstrip("/") + "/v1/chat/completions"
         else:
             self._invoke_url = self._NVIDIA_BUILD_ENDPOINT
-
-    def _emit_trace(self, event: str, **payload: Any) -> None:
-        if self._trace_event is None:
-            return
-        try:
-            self._trace_event({"event": event, "operator": "selection_agent", **payload})
-        except Exception as exc:
-            logger.warning("SelectionAgentOperator: trace event failed: %s", exc, exc_info=True)
-
-    def _trace_documents(self, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [
-            {
-                "rank": rank,
-                "doc_id": str(doc.get("id", doc.get("doc_id", ""))),
-                "score": doc.get("score"),
-                "text": str(doc.get("text", "")),
-            }
-            for rank, doc in enumerate(docs, start=1)
-        ]
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -502,7 +484,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             top_k=self._top_k,
             feasible_k=feasible_k,
             valid_doc_ids=valid_ids,
-            documents=self._trace_documents(docs),
+            documents=trace_documents(docs, id_fields=("id", "doc_id")),
         )
 
         messages: List[Dict[str, Any]] = [

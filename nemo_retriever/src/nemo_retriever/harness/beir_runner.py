@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-
 from pathlib import Path
 import time
 from typing import Any, Mapping, Sequence
@@ -222,12 +221,6 @@ def _agentic_retrieve(
     if query_request.agentic.trace_enabled:
         trace_path = query_request.agentic.trace_path or str(writer.path("agentic_trace.jsonl"))
         query_request = replace(query_request, agentic=replace(query_request.agentic, trace_path=trace_path))
-        writer.event(
-            "query",
-            "agentic_trace_enabled",
-            "Writing agentic trace",
-            {"path": str(Path(trace_path).name)},
-        )
 
     try:
         cfg = build_agentic_config(query_request, top_k=agentic_target_top_k("beir", list(ks)))
