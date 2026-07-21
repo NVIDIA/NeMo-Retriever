@@ -153,6 +153,17 @@ pipeline:
   batch_workers: {{ .Values.serviceConfig.pipeline.batchWorkers }}
   batch_queue_size: {{ .Values.serviceConfig.pipeline.batchQueueSize }}
 
+work_queue:
+  gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.serviceConfig.server.port }}"
+  spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
+  spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
+  claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
+  lease_ttl_s: {{ .Values.serviceConfig.workQueue.leaseTtlS }}
+  heartbeat_interval_s: {{ .Values.serviceConfig.workQueue.heartbeatIntervalS }}
+  max_delivery_attempts: {{ .Values.serviceConfig.workQueue.maxDeliveryAttempts }}
+  max_active_leases_realtime: {{ .Values.serviceConfig.workQueue.maxActiveLeases.realtime }}
+  max_active_leases_batch: {{ .Values.serviceConfig.workQueue.maxActiveLeases.batch }}
+
 resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
   max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
@@ -180,6 +191,7 @@ vectordb:
 
 {{- $vectordbSvc := printf "%s-vectordb" (include "nemo-retriever.fullname" .) -}}
 {{- $vectordbPort := ((.Values.topology.vectordb).port | default 7671) -}}
+{{- $gatewaySvc := printf "%s-gateway" (include "nemo-retriever.fullname" .) -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ConfigMap with mode: standalone
@@ -193,7 +205,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -221,6 +233,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

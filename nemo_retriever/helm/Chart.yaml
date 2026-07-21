@@ -13,9 +13,9 @@ description: |
   templates short-circuit when the operator CRDs are absent, so the
   chart degrades gracefully into "external NIM URLs only" mode.
 
-  Persistence today uses SQLite on a PersistentVolumeClaim, which caps
-  the service at a single replica. A future iteration will introduce a
-  shared PostgreSQL backend so the service can scale horizontally.
+  Gateway scheduler state is process-local and ephemeral. Split mode uses one
+  gateway replica with a Recreate strategy; gateway replacement loses accepted
+  work and status history.
 
 type: application
 version: "26.5.0"

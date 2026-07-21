@@ -12,7 +12,7 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -132,6 +132,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
     from nemo_retriever.service.services.sidecar_store import init_sidecar_store, shutdown_sidecar_store
     from nemo_retriever.service.services.worker_result_store import validate_result_store
+    from nemo_retriever.service.services.work_queue import init_work_broker, shutdown_work_broker
 
     validate_result_store()
 
@@ -147,6 +148,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if mode == "gateway":
         app.state.proxy = init_proxy(config.gateway)
+        app.state.work_broker = await init_work_broker(config.work_queue, config.pipeline)
         app.state.pipeline_pool = None
     else:
         from nemo_retriever.service.services.pipeline_executor import (
@@ -157,11 +159,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         rt_fn = create_realtime_work_fn(config) if mode in ("standalone", "realtime") else None
         bt_fn = create_batch_work_fn(config) if mode in ("standalone", "batch") else None
         app.state.proxy = None
+        app.state.work_broker = None
         app.state.pipeline_pool = init_pipeline_pool(
             config.pipeline,
             mode=mode,
             realtime_work_fn=rt_fn,
             batch_work_fn=bt_fn,
+            work_queue_config=config.work_queue,
+            auth_config=config.auth,
         )
 
         if (
@@ -190,6 +195,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from nemo_retriever.service.services.pipeline_executor import shutdown_process_executors
 
     shutdown_process_executors()
+    await shutdown_work_broker()
     await shutdown_proxy()
     await shutdown_pipeline_pool()
     shutdown_sidecar_store()
@@ -206,52 +212,6 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
         request.state.request_id = uuid.uuid4().hex
         response = await call_next(request)
         return response
-
-
-class _GatewayBodyCacheMiddleware:
-    """Pure ASGI middleware: buffer POST bodies so the proxy can forward them.
-
-    FastAPI's dependency injection parses ``UploadFile`` / ``Form`` parameters
-    by consuming the ASGI body stream *before* the route handler runs.  When
-    the gateway's proxy later calls ``request.body()`` the stream is already
-    exhausted and Starlette raises ``RuntimeError: Stream consumed``.
-
-    This middleware reads the entire body once, stores it on the ASGI scope
-    as ``scope["_cached_body"]``, and replays it through a synthetic
-    ``receive`` callable so that form parsing works normally.  The proxy
-    then reads from ``request.scope["_cached_body"]`` directly.
-
-    Only active for ``POST`` requests; ``GET`` / ``OPTIONS`` etc. pass through
-    untouched.
-    """
-
-    def __init__(self, app: Any) -> None:
-        self.app = app
-
-    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
-        if scope["type"] != "http" or scope.get("method", "GET") != "POST":
-            await self.app(scope, receive, send)
-            return
-
-        body_parts: list[bytes] = []
-        while True:
-            message = await receive()
-            body_parts.append(message.get("body", b""))
-            if not message.get("more_body", False):
-                break
-        body = b"".join(body_parts)
-        scope["_cached_body"] = body
-
-        replayed = False
-
-        async def replay_receive() -> dict:
-            nonlocal replayed
-            if not replayed:
-                replayed = True
-                return {"type": "http.request", "body": body, "more_body": False}
-            return await receive()
-
-        await self.app(scope, replay_receive, send)
 
 
 def create_app(config: ServiceConfig) -> FastAPI:
@@ -291,10 +251,6 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     app.add_middleware(_RequestIdMiddleware)
 
-    if config.mode == "gateway":
-        app.add_middleware(_GatewayBodyCacheMiddleware)
-        logger.info("Gateway body-cache middleware ENABLED")
-
     if config.auth.api_token:
         from nemo_retriever.service.auth import BearerAuthMiddleware
 
@@ -311,7 +267,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
         app.mount(config.mcp.path, mcp_asgi_app)
         logger.info("FastMCP service endpoint mounted at %s", config.mcp.path)
 
-    from nemo_retriever.service.routers import admin, ingest, metrics
+    from nemo_retriever.service.routers import admin, ingest, metrics, work
     from nemo_retriever.service.services.prometheus import instrument_app
 
     app.include_router(ingest.router, prefix="/v1")
@@ -319,6 +275,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
     # Admin/internal endpoints — pool_stats etc. Registered on every
     # role; the handler self-reports an empty pool dict on gateway pods.
     app.include_router(admin.router, prefix="/v1")
+    app.include_router(work.router, prefix="/v1")
     instrument_app(app, role=config.mode)
 
     if config.mode == "gateway":

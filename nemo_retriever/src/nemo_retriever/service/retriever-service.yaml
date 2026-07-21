@@ -116,6 +116,19 @@ pipeline:
   batch_workers: 16
   batch_queue_size: 4096
 
+# Split-mode gateway pull scheduler. The gateway owns queue metadata and
+# atomically spools upload bodies; worker execution slots long-poll it.
+work_queue:
+  gateway_url: "http://nemo-retriever-gateway:7670"
+  spool_directory: "/tmp/nemo-retriever-work"
+  spool_limit_bytes: 21474836480
+  claim_timeout_s: 30.0
+  lease_ttl_s: 60.0
+  heartbeat_interval_s: 20.0
+  max_delivery_attempts: 3
+  max_active_leases_realtime: 8
+  max_active_leases_batch: 48
+
 # Dedicated LanceDB pod used by standalone/gateway modes for /v1/query.
 # Workers POST embedding rows to vectordb_url; the gateway proxies queries.
 vectordb:

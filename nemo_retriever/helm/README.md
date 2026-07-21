@@ -30,9 +30,11 @@ The chart ships two deployable layers behind feature flags:
 > NIMService template short-circuits and the service falls back to
 > external NIM URLs supplied via `serviceConfig.nimEndpoints.*`.
 
-> **Persistence today is SQLite on a single ReadWriteOnce PVC**, which caps
-> the service at one replica. The chart already exposes the HPA scaffolding
-> so it's a one-line change once the planned PostgreSQL backend lands.
+> **Gateway scheduler state is explicitly ephemeral.** Split mode enforces one
+> gateway replica and uses a `Recreate` rollout so independent in-memory
+> schedulers never overlap. A gateway restart, rollout, eviction, or node failure
+> loses every accepted job, queued item, active lease, status record, and SSE
+> catch-up event owned by that process. Drain accepted work before any rollout.
 
 > For behavioral consistency between local HuggingFace deployments and Helm service deployments: 
 > `results = ingestor.ingest(...return_results=True)
@@ -62,7 +64,7 @@ nemo_retriever/helm/
     ├── hpa.yaml                               # optional HorizontalPodAutoscaler
     ├── servicemonitor.yaml                    # optional Prometheus ServiceMonitor
     ├── serviceaccount.yaml
-    ├── pvc.yaml                               # SQLite database PVC
+    ├── pvc.yaml                               # general persistence PVC
     ├── secrets.yaml                           # ngc-secret + ngc-api
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
@@ -290,7 +292,7 @@ short list of knobs you'll touch first.
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | GA NGC image; override to pin a different build or use a local registry. |
 | `service.image.tag`           | `26.5.0`                           |       |
-| `service.replicas`            | `1`                                | Hard cap = 1 while SQLite is the backend. |
+| `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
@@ -693,11 +695,39 @@ when the OCR service runs outside the operator sub-stack.
 
 | Path                       | Default                       | Notes |
 |----------------------------|-------------------------------|-------|
-| `persistence.enabled`      | `true`                        |       |
+| `persistence.enabled`      | `true`                        | Mount the pre-existing general PVC for logs and other non-scheduler uses. |
 | `persistence.size`         | `50Gi`                        |       |
-| `persistence.accessModes`  | `[ReadWriteOnce]`             | Required by SQLite. |
+| `persistence.accessModes`  | `[ReadWriteOnce]`             | Access mode for the general PVC. |
 | `persistence.storageClass` | `""`                          | Use cluster default unless set. Use `"-"` to disable a `storageClassName`. |
-| `persistence.mountPath`    | `/var/lib/nemo-retriever`     | Both DB and log file are written here. |
+| `persistence.mountPath`    | `/var/lib/nemo-retriever`     | General persistent files only; scheduler state and payloads are never stored here. |
+
+The gateway enforces active-lease budgets independently of worker replicas.
+`serviceConfig.workQueue.maxActiveLeases.realtime` defaults to `8` and
+`.batch` defaults to `48`; treat these as explicit downstream-capacity budgets,
+not values inferred from pod or NIM counts.
+
+#### Scheduler loss boundary and upgrade from durable releases
+
+The work spool always uses `serviceConfig.workQueue.spoolDirectory` under the
+gateway `/tmp` `emptyDir`; `persistence.enabled` does not change scheduler
+behavior. During one gateway lifetime, FIFO order, lease caps, delivery attempts,
+generations, stale-lease rejection, worker recovery after lease expiry, and
+queued-plus-active demand metrics remain available.
+
+Replacing the gateway loses accepted jobs, queued payloads, active leases, job
+status history, and SSE catch-up state. After replacement, status and event
+requests for old jobs return not found, and old callbacks and heartbeats return
+`409`. Clients must create a new job and submit the documents again. Worker loss
+remains recoverable through lease expiry only while the same gateway process is
+alive. Public ingest and worker HTTP wire formats are unchanged.
+
+Before upgrading from a release with durable scheduler checkpoints, drain the
+gateway. The ephemeral implementation neither reads nor automatically deletes
+`gateway-state.sqlite3` or payload files left under an older PVC. After rollback
+to that release is no longer required, operators may manually remove its old
+`work-queue` directory from the general PVC. The removed
+`work_queue.persistence_enabled` key was internal and unreleased; delete it from
+custom service configuration files.
 
 ### Secrets
 
@@ -717,7 +747,7 @@ when the OCR service runs outside the operator sub-stack.
 |-------------------|---------------------------------|---------|
 | Ingress           | `ingress.enabled`               | `true`  |
 | Autoscaling (HPA) | `autoscaling.enabled`           | `false` (max=1 anyway) |
-| ServiceMonitor    | `serviceMonitor.enabled`        | `false` (auto-enabled in split mode) |
+| ServiceMonitor    | `serviceMonitor.enabled`        | `false` |
 
 ---
 
@@ -848,10 +878,10 @@ while workers are still processing; see the commented example on
 ## Queue-depth autoscaling (split mode)
 
 In `topology.mode: split` deployments the realtime and batch worker
-pods scale horizontally based on **queue fill ratio** and
-**95th-percentile processing latency**. Both signals come straight out
-of the pods' `/metrics` endpoint — the publisher is always on (see
-`nemo_retriever_pool_queue_depth_ratio` in
+pods scale horizontally based on the gateway's **central outstanding demand** and
+**95th-percentile processing latency**. Demand is queued records plus active leases from the gateway while
+latency comes from workers; both publishers are always on (see
+`nemo_retriever_work_queue_demand` in
 [`prometheus.py`](../src/nemo_retriever/service/services/prometheus.py)).
 The only choice you have to make is **how the metrics get from
 Prometheus into the Kubernetes HPA**.
@@ -901,7 +931,7 @@ Then verify both metrics show up in the External Metrics API:
 
 ```bash
 kubectl get --raw \
-  "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/nemo_retriever_pool_queue_depth_ratio_avg?labelSelector=pool%3Drealtime" \
+  "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/nemo_retriever_gateway_work_queue_backlog?labelSelector=pool%3Drealtime" \
   | jq .
 ```
 
@@ -923,13 +953,13 @@ topology:
   realtime:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: false }
+        queueBacklog: { enabled: false }
         processingLatencyP95: { enabled: false }
         cpu: { enabled: true, targetUtilizationPercentage: 60 }
   batch:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: false }
+        queueBacklog: { enabled: false }
         processingLatencyP95: { enabled: false }
         cpu: { enabled: true, targetUtilizationPercentage: 80 }
 ```
@@ -1005,20 +1035,24 @@ topology:
   realtime:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: true, target: "500m" }   # 0.5
+        queueBacklog: { enabled: true, target: "24" }
         processingLatencyP95: { enabled: true, targetSeconds: "30" }
   batch:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: true, target: "700m" }   # 0.7 — batch can run hot
+        queueBacklog: { enabled: true, target: "48" }
         processingLatencyP95: { enabled: true, targetSeconds: "120" }
 ```
 
-Quantity-string conventions are k8s standard: `500m == 0.5`, `2`, `2k`,
-etc. The `target` is **per-replica** because the HPA template uses
-`type: AverageValue` for both External metrics — that's what makes
-"scale up when *average* queue fill across pods exceeds 0.5" work
-without baking the pod count into the publisher.
+The demand `target` is outstanding documents per replica because the HPA uses
+`type: AverageValue`. When migrating an existing values file, rename
+`metrics.queueDepthRatio` to `metrics.queueBacklog`, choose a document-count
+target near the role's execution-slot count, and rename
+`prometheusAdapter.queueDepthRatioMetric` to `queueBacklogMetric`. Both legacy
+keys remain aliases for this release: legacy enable/disable values win, legacy
+metric names name the new demand metric, and fractional ratio targets are
+replaced by the role's backlog-count default with an HPA annotation and NOTES
+warning. The aliases are scheduled for removal in the following release.
 
 ### Verifying it scales
 
@@ -1219,15 +1253,12 @@ Record `repository@sha256:...` digests for regulated environments.
 
 ## Roadmap
 
-1. **PostgreSQL backend** — replace `service.db.engine.DatabaseEngine` with
-   a SQLAlchemy/asyncpg-based engine, then bump the chart to deploy a
-   PostgreSQL StatefulSet (or take a sub-chart dependency on Bitnami's
-   chart) and lift `service.replicas` to N.
-2. **NetworkPolicies** restricting the service Pod to the NIM Pods + DB
+1. **External scheduler backend** — introduce shared job, queue, lease, and
+   SSE state before allowing more than one gateway replica.
+2. **NetworkPolicies** restricting the service Pod to the NIM Pods
    only.
 3. **Gateway autoscaling** on inflight-uploads (currently fixed
-   `topology.gateway.replicas`) — sticky-routing story for SSE
-   subscribers needs to land first.
+   `topology.gateway.replicas`) — shared scheduler and SSE ownership must land first.
 
 ---
 
