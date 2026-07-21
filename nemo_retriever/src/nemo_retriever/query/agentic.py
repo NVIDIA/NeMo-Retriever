@@ -144,7 +144,7 @@ class AgenticRetrievalConfig:
     reranker_api_key: str = ""
     local_reranker_backend: str = "vllm"
     embed_modality: str = "text"
-    llm_backend: str = AGENTIC_LLM_BACKEND
+    llm_backend: Optional[str] = None
     llm_model: str = ""
     invoke_url: Optional[str] = None
     local_llm_backend: str = AGENTIC_LOCAL_LLM_BACKEND
@@ -171,18 +171,25 @@ class AgenticRetrievalConfig:
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
-    # When true, ReAct final_results must contain exactly top_k doc IDs. Keep this
-    # strict by default for existing eval behavior, but allow local/smaller LLMs to
-    # return partial final_results when explicitly requested.
-    enforce_top_k: bool = True
 
     def __post_init__(self) -> None:
-        llm_backend = _normalize_agentic_choice(
-            self.llm_backend,
-            AGENTIC_LLM_BACKENDS,
-            field_name="llm_backend",
-            default=AGENTIC_LLM_BACKEND,
-        )
+        invoke_url = _none_if_empty(self.invoke_url)
+        object.__setattr__(self, "invoke_url", invoke_url)
+
+        explicit_llm_backend = str(self.llm_backend or "").strip().lower()
+        if explicit_llm_backend and explicit_llm_backend not in AGENTIC_LLM_BACKENDS:
+            raise ValueError(f"llm_backend must be one of {sorted(AGENTIC_LLM_BACKENDS)}; got {self.llm_backend!r}")
+        inferred_llm_backend = "openai_compatible" if invoke_url else AGENTIC_LLM_BACKEND
+        llm_backend = explicit_llm_backend or inferred_llm_backend
+        if invoke_url and llm_backend != "openai_compatible":
+            raise ValueError(
+                "invoke_url selects the openai_compatible agentic LLM backend; "
+                "omit invoke_url for in-process local LLMs."
+            )
+        if not invoke_url and llm_backend == "openai_compatible":
+            raise ValueError(
+                "llm_backend='openai_compatible' requires invoke_url. Omit llm_backend to use in-process local LLMs."
+            )
         object.__setattr__(self, "llm_backend", llm_backend)
 
         local_llm_backend = _normalize_agentic_choice(
@@ -198,7 +205,7 @@ class AgenticRetrievalConfig:
             if llm_backend == "in_process":
                 llm_model = AGENTIC_LOCAL_LLM_MODEL
             else:
-                raise ValueError("Agentic retrieval requires a non-empty llm_model.")
+                raise ValueError("Agentic retrieval with invoke_url requires a non-empty llm_model.")
 
         if llm_backend == "in_process":
             from nemo_retriever.models.local.agent_llm import is_supported_agent_llm_model, supported_agent_llm_names
@@ -208,15 +215,10 @@ class AgenticRetrievalConfig:
                 raise ValueError(
                     f"Unsupported in-process agentic LLM model {llm_model!r}. "
                     "Custom in-process agent LLMs are not supported yet. "
-                    "Use llm_backend='openai_compatible' with invoke_url for a custom/self-hosted endpoint, "
+                    "Provide invoke_url for a custom/self-hosted OpenAI-compatible endpoint, "
                     f"or choose one of: {supported}."
                 )
         object.__setattr__(self, "llm_model", llm_model)
-        object.__setattr__(
-            self,
-            "enforce_top_k",
-            _agentic_bool_value(self.enforce_top_k, field_name="enforce_top_k"),
-        )
         for field_name, value, min_value in (
             ("react_max_steps", self.react_max_steps, 1),
             ("text_truncation", self.text_truncation, 0),
@@ -282,18 +284,6 @@ def _normalize_agentic_choice(value: object, valid: frozenset[str], *, field_nam
     if normalized not in valid:
         raise ValueError(f"{field_name} must be one of {sorted(valid)}; got {value!r}")
     return normalized
-
-
-def _agentic_bool_value(value: object, *, field_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "y", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "n", "off"}:
-            return False
-    raise ValueError(f"{field_name} must be a boolean")
 
 
 def _agentic_float_range_value(
@@ -426,7 +416,6 @@ class AgenticRetriever:
                 num_concurrent=int(self._cfg.num_concurrent),
                 reasoning_effort=self._cfg.reasoning_effort,
                 backend_top_k=self._cfg.backend_top_k,
-                enforce_top_k=bool(self._cfg.enforce_top_k),
                 temperature=float(self._cfg.temperature),
                 max_tokens=self._cfg.max_tokens,
                 chat_completion_fn=chat_completion_fn,

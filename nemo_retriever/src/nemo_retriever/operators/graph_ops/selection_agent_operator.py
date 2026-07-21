@@ -617,11 +617,41 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                             raw_doc_ids = json.loads(raw_doc_ids)
                         except json.JSONDecodeError:
                             raw_doc_ids = []
-                    doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
+                    if not isinstance(raw_doc_ids, list):
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": "Error: `doc_ids` must be a list of candidate document IDs.",
+                            }
+                        )
+                        continue
+
+                    invalid_doc_ids = [doc_id for doc_id in raw_doc_ids if doc_id not in valid_id_set]
+                    if invalid_doc_ids:
+                        logger.warning(
+                            "SelectionAgentOperator: LLM returned doc_id(s) outside the candidate set "
+                            "for query %r: %s",
+                            query_text,
+                            invalid_doc_ids[:_LOG_DOC_ID_LIMIT],
+                        )
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": (
+                                    "Error: `doc_ids` contains IDs that are not candidate documents: "
+                                    f"{invalid_doc_ids[:_LOG_DOC_ID_LIMIT]}. Use only valid candidate IDs."
+                                ),
+                            }
+                        )
+                        continue
+
+                    doc_ids = raw_doc_ids[:feasible_k]
                     logger.info(
                         "SelectionAgentOperator: step=%d log_selected_documents raw=%s accepted=%s",
                         _step,
-                        raw_doc_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_doc_ids, list) else raw_doc_ids,
+                        raw_doc_ids[:_LOG_DOC_ID_LIMIT],
                         doc_ids[:_LOG_DOC_ID_LIMIT],
                     )
                     # Message can quote document text/PII; keep content at DEBUG.
@@ -630,15 +660,6 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         _step,
                         _preview_text(fn_args.get("message")),
                     )
-                    if not doc_ids and raw_doc_ids:
-                        logger.warning(
-                            "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
-                            "but none matched the candidate set — possible hallucination. "
-                            "Returned IDs: %s",
-                            len(raw_doc_ids),
-                            query_text,
-                            raw_doc_ids[:10],
-                        )
                     end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
                     should_end = True
 

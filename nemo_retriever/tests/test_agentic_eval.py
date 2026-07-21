@@ -102,11 +102,11 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
 def test_agentic_config_validates_max_tokens():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    cfg = AgenticRetrievalConfig(llm_model="test-model", llm_backend="openai_compatible", max_tokens="128")
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", max_tokens="128")
 
     assert cfg.max_tokens == 128
     with pytest.raises(ValueError, match="max_tokens"):
-        AgenticRetrievalConfig(llm_model="test-model", llm_backend="openai_compatible", max_tokens=0)
+        AgenticRetrievalConfig(llm_model="nemotron-8b", max_tokens=0)
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -127,7 +127,6 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
 
     cfg = AgenticRetrievalConfig(
         llm_model="test-model",
-        llm_backend="openai_compatible",
         invoke_url="http://localhost/v1/chat/completions",
         max_tokens=77,
     )
@@ -159,7 +158,6 @@ def test_agentic_retriever_honors_top_k(mock_react_step, mock_selection_step):
 
     cfg = AgenticRetrievalConfig(
         llm_model="test-model",
-        llm_backend="openai_compatible",
         invoke_url="http://localhost/v1/chat/completions",
         top_k=5,
     )
@@ -205,7 +203,7 @@ def test_agentic_retriever_builds_in_process_llm_lazily(mock_create_local_agent_
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_can_accept_partial_react_final_results(mock_react_step, mock_selection_step):
+def test_agentic_retriever_rejects_partial_react_final_results(mock_react_step, mock_selection_step):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     mock_react_step.return_value = _make_tool_call_response(
@@ -219,15 +217,14 @@ def test_agentic_retriever_can_accept_partial_react_final_results(mock_react_ste
 
     cfg = AgenticRetrievalConfig(
         llm_model="test-model",
-        llm_backend="openai_compatible",
         invoke_url="http://localhost/v1/chat/completions",
         top_k=5,
-        enforce_top_k=False,
+        react_max_steps=1,
     )
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
-    assert result["doc_id"].tolist() == ["doc_1"]
-    assert result["result_source"].tolist() == ["final_results"]
+    assert len(result) == 5
+    assert "final_results" not in set(result["result_source"])
     mock_selection_step.assert_not_called()
 
 
@@ -258,9 +255,7 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(mock_react_step, m
         {"doc_ids": [audio_doc_id], "message": "clip is best"},
     )
 
-    cfg = AgenticRetrievalConfig(
-        llm_model="test-model", llm_backend="openai_compatible", invoke_url="http://localhost/v1/chat/completions"
-    )
+    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
     df_query, result, gold, retrieved, metrics = run_agentic_audio_recall_evaluation(
         query_csv=query_csv,
         cfg=cfg,
@@ -297,9 +292,7 @@ def test_run_agentic_beir_evaluation_loads_queries_and_qrels(mock_react_step, mo
         queries=["find doc"],
         qrels={"q1": {"doc": 1}},
     )
-    cfg = AgenticRetrievalConfig(
-        llm_model="test-model", llm_backend="openai_compatible", invoke_url="http://localhost/v1/chat/completions"
-    )
+    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
 
     with patch("nemo_retriever.query.agentic.load_beir_dataset", return_value=beir_dataset) as mock_loader:
         df_query, result, qrels, run, metrics = run_agentic_beir_evaluation(
@@ -334,17 +327,17 @@ def test_agentic_config_requires_llm_model_for_openai_compatible():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="llm_model"):
-        AgenticRetrievalConfig(llm_model="", llm_backend="openai_compatible")
+        AgenticRetrievalConfig(llm_model="", invoke_url="http://localhost/v1/chat/completions")
     # None must not slip through as the literal string "None".
     with pytest.raises(ValueError, match="llm_model"):
-        AgenticRetrievalConfig(llm_model=None, llm_backend="openai_compatible")
+        AgenticRetrievalConfig(llm_model=None, invoke_url="http://localhost/v1/chat/completions")
 
 
 def test_agentic_config_rejects_custom_in_process_llm_model():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="Custom in-process agent LLMs are not supported yet"):
-        AgenticRetrievalConfig(llm_model="custom/local-model", llm_backend="in_process")
+        AgenticRetrievalConfig(llm_model="custom/local-model")
 
 
 def test_agentic_config_rejects_nonpositive_top_k():
@@ -366,7 +359,6 @@ def test_agentic_config_normalizes_integer_like_values():
 
     cfg = AgenticRetrievalConfig(
         llm_model="m",
-        llm_backend="openai_compatible",
         invoke_url="http://localhost/v1/chat/completions",
         top_k="5.0",
         backend_top_k="6.0",
@@ -389,7 +381,11 @@ def test_agentic_config_rejects_nvidia_temperature_above_max():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="between 0.0 and 1.0"):
-        AgenticRetrievalConfig(llm_model="m", llm_backend="openai_compatible", temperature=1.5)
+        AgenticRetrievalConfig(
+            llm_model="m",
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            temperature=1.5,
+        )
 
 
 def test_agentic_config_rejects_nonfinite_temperature():
@@ -402,7 +398,7 @@ def test_agentic_config_rejects_nonfinite_temperature():
 def test_agentic_config_accepts_in_process_temperature_above_nvidia_limit():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", llm_backend="in_process", temperature=1.5)
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", temperature=1.5)
 
     assert cfg.llm_backend == "in_process"
     assert cfg.temperature == pytest.approx(1.5)
@@ -412,7 +408,7 @@ def test_agentic_config_rejects_invalid_local_llm_backend():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="local_llm_backend"):
-        AgenticRetrievalConfig(llm_model="nemotron-8b", llm_backend="in_process", local_llm_backend="hf")
+        AgenticRetrievalConfig(llm_model="nemotron-8b", local_llm_backend="hf")
 
 
 def test_agentic_config_validates_local_vllm_knobs():
@@ -420,7 +416,6 @@ def test_agentic_config_validates_local_vllm_knobs():
 
     cfg = AgenticRetrievalConfig(
         llm_model="nemotron-8b",
-        llm_backend="in_process",
         local_gpu_memory_utilization="0.6",
         local_tensor_parallel_size="2.0",
         local_max_model_len="8192",

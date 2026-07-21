@@ -160,16 +160,9 @@ AgenticLlmModelOption = Annotated[
     typer.Option(
         "--agentic-llm-model",
         help=(
-            "Chat model the agent drives. Defaults to nemotron-8b for --agentic-llm-backend=in_process; "
-            "required for openai_compatible endpoints."
+            "Chat model the agent drives. Defaults to nemotron-8b for local in-process runs; "
+            "required when --agentic-invoke-url is provided."
         ),
-    ),
-]
-AgenticLlmBackendOption = Annotated[
-    str,
-    typer.Option(
-        "--agentic-llm-backend",
-        help="Agent LLM backend: in_process (default) or openai_compatible.",
     ),
 ]
 AgenticInvokeUrlOption = Annotated[

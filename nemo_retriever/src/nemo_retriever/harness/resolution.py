@@ -128,7 +128,6 @@ QUERY_OVERRIDE_PATHS = {
     "query.table_name",
     "query.agentic",
     "query.agentic_llm_model",
-    "query.agentic_llm_backend",
     "query.agentic_invoke_url",
     "query.agentic_local_gpu_memory_utilization",
     "query.agentic_local_tensor_parallel_size",
@@ -442,7 +441,6 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         agentic=QueryAgenticOptions(
             enabled=bool(query.get("agentic", False)),
             llm_model=query.get("agentic_llm_model"),
-            llm_backend=str(query.get("agentic_llm_backend") or "in_process"),
             invoke_url=query.get("agentic_invoke_url"),
             local_gpu_memory_utilization=float(query.get("agentic_local_gpu_memory_utilization") or 0.8),
             local_tensor_parallel_size=int(query.get("agentic_local_tensor_parallel_size") or 1),

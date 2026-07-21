@@ -174,7 +174,6 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
-        "llm_backend": request.agentic.llm_backend,
         "invoke_url": request.agentic.invoke_url,
         "local_llm_backend": request.agentic.local_llm_backend,
         "local_hf_cache_dir": request.agentic.local_hf_cache_dir,
@@ -191,6 +190,8 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "num_concurrent": int(request.agentic.num_concurrent),
         "temperature": float(request.agentic.temperature),
     }
+    if request.agentic.llm_backend:
+        cfg_kwargs["llm_backend"] = request.agentic.llm_backend
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
     if request.embed.embed_model_provider_prefix:

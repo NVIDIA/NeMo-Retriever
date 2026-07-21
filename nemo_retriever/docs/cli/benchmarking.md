@@ -60,8 +60,7 @@ but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
 
 By default, agentic harness evaluation uses the in-process local vLLM backend
 with `nemotron-8b`. Custom LLMs are not supported in process yet; run them behind
-an OpenAI-compatible chat-completions endpoint and set
-`query.agentic_llm_backend=openai_compatible`.
+an OpenAI-compatible chat-completions endpoint and set `query.agentic_invoke_url`.
 
 Minimal BEIR override example:
 
@@ -84,20 +83,17 @@ Custom/self-hosted OpenAI-compatible endpoint:
 ```bash
 retriever harness run jp20_beir \
   --set query.agentic=true \
-  --set query.agentic_llm_backend=openai_compatible \
   --set query.agentic_llm_model=custom-remote-model \
   --set query.agentic_invoke_url=http://localhost:9000/v1/chat/completions
 ```
 
 Useful agentic query overrides:
 
-- `query.agentic_llm_backend` — `in_process` by default, or
-  `openai_compatible` for hosted/self-hosted chat-completions endpoints.
-- `query.agentic_llm_model` — local profile alias/model ID for `in_process`
-  (`nemotron-8b` by default; `super-49b` also supported), or the remote model ID
-  when using `openai_compatible`.
-- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint; used
-  only with `query.agentic_llm_backend=openai_compatible`.
+- `query.agentic_llm_model` — local profile alias/model ID when no invoke URL is
+  provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
+  model ID when `query.agentic_invoke_url` is provided.
+- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint.
+  Providing it routes agent LLM calls to that remote endpoint.
 - `query.agentic_local_gpu_memory_utilization`,
   `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
   and `query.agentic_local_max_num_seqs` — harness-only local vLLM resource and

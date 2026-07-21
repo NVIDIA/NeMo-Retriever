@@ -184,7 +184,6 @@ def _local_command(
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
     agentic_llm_model: opts.AgenticLlmModelOption = None,
-    agentic_llm_backend: opts.AgenticLlmBackendOption = "in_process",
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
@@ -199,21 +198,14 @@ def _local_command(
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:
-        normalized_agentic_llm_backend = str(agentic_llm_backend or "in_process").strip().lower()
-        if normalized_agentic_llm_backend not in {"in_process", "openai_compatible"}:
+        if agentic_invoke_url and not agentic_llm_model:
             typer.echo(
-                "Error: --agentic-llm-backend must be one of ['in_process', 'openai_compatible'].",
+                "Error: --agentic-invoke-url requires --agentic-llm-model.",
                 err=True,
             )
             raise typer.Exit(1)
-        if normalized_agentic_llm_backend == "in_process" and not agentic_llm_model:
+        if not agentic_invoke_url and not agentic_llm_model:
             agentic_llm_model = "nemotron-8b"
-        if normalized_agentic_llm_backend == "openai_compatible" and not agentic_llm_model:
-            typer.echo(
-                "Error: --agentic-llm-backend openai_compatible requires --agentic-llm-model.",
-                err=True,
-            )
-            raise typer.Exit(1)
 
         backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
         if backend_error:
@@ -253,7 +245,6 @@ def _local_command(
                 agentic=QueryAgenticOptions(
                     enabled=agentic,
                     llm_model=agentic_llm_model,
-                    llm_backend=normalized_agentic_llm_backend,
                     invoke_url=agentic_invoke_url,
                     reasoning_effort=agentic_reasoning_effort,
                     backend_top_k=agentic_backend_top_k,

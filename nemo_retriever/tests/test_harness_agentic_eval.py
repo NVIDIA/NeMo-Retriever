@@ -41,7 +41,6 @@ def test_query_override_paths_include_agentic_fields() -> None:
     for key in (
         "query.agentic",
         "query.agentic_llm_model",
-        "query.agentic_llm_backend",
         "query.agentic_invoke_url",
         "query.agentic_local_gpu_memory_utilization",
         "query.agentic_local_tensor_parallel_size",
@@ -64,7 +63,6 @@ def test_build_query_request_populates_agentic() -> None:
                 "top_k": 10,
                 "agentic": True,
                 "agentic_llm_model": "test-model",
-                "agentic_llm_backend": "openai_compatible",
                 "agentic_invoke_url": "https://example.invalid/v1",
                 "agentic_local_gpu_memory_utilization": 0.6,
                 "agentic_local_tensor_parallel_size": 2,
@@ -83,7 +81,7 @@ def test_build_query_request_populates_agentic() -> None:
     agentic = request.agentic
     assert agentic.enabled is True
     assert agentic.llm_model == "test-model"
-    assert agentic.llm_backend == "openai_compatible"
+    assert agentic.llm_backend is None
     assert agentic.invoke_url == "https://example.invalid/v1"
     assert agentic.local_llm_backend == "vllm"
     assert agentic.local_gpu_memory_utilization == pytest.approx(0.6)
@@ -110,7 +108,7 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
         agentic=QueryAgenticOptions(
             enabled=True,
             llm_model="test-model",
-            llm_backend="openai_compatible",
+            invoke_url="http://localhost/v1/chat/completions",
             backend_top_k=20,
             num_concurrent=4,
             temperature=0.0,
@@ -118,6 +116,7 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
     )
     cfg = build_agentic_config(request, top_k=10)
     assert cfg.llm_model == "test-model"
+    assert cfg.llm_backend == "openai_compatible"
     assert cfg.top_k == 10  # harness sets this to the deepest BEIR k
     assert cfg.backend_top_k == 20
     assert cfg.num_concurrent == 4
@@ -155,7 +154,7 @@ def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
                 "top_k": 10,
                 "agentic": True,
                 "agentic_llm_model": "test-model",
-                "agentic_llm_backend": "openai_compatible",
+                "agentic_invoke_url": "http://localhost/v1/chat/completions",
             }
         ),
         "",

@@ -391,7 +391,7 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     cfg = config_calls[0]
     assert cfg["vdb_op"] == "lancedb"
     assert cfg["vdb_kwargs"] == {"uri": "/tmp/lancedb", "table_name": "docs"}
-    assert cfg["llm_backend"] == "in_process"
+    assert "llm_backend" not in cfg
     assert cfg["local_llm_backend"] == "vllm"
     assert cfg["llm_model"] == "nemotron-8b"
     # --top-k is honored end-to-end: plumbed into the agentic config (drives the
@@ -412,17 +412,17 @@ def test_root_query_agentic_rejects_custom_in_process_llm_model() -> None:
 
     assert result.exit_code == 1
     assert "Custom in-process agent LLMs are not supported yet" in result.output
-    assert "--agentic-llm-backend openai_compatible" in result.output or "openai_compatible" in result.output
+    assert "--agentic-invoke-url" in result.output or "invoke_url" in result.output
 
 
-def test_root_query_agentic_openai_compatible_requires_llm_model() -> None:
+def test_root_query_agentic_invoke_url_requires_llm_model() -> None:
     result = RUNNER.invoke(
         cli_main.app,
-        ["query", "hello", "--agentic", "--agentic-llm-backend", "openai_compatible"],
+        ["query", "hello", "--agentic", "--agentic-invoke-url", "http://localhost:8000/v1/chat/completions"],
     )
 
     assert result.exit_code == 1
-    assert "openai_compatible requires --agentic-llm-model" in result.output
+    assert "--agentic-invoke-url requires --agentic-llm-model" in result.output
 
 
 def test_root_query_agentic_openai_compatible_allows_custom_model(monkeypatch) -> None:
@@ -452,8 +452,6 @@ def test_root_query_agentic_openai_compatible_allows_custom_model(monkeypatch) -
             "query",
             "q",
             "--agentic",
-            "--agentic-llm-backend",
-            "openai_compatible",
             "--agentic-llm-model",
             "custom-remote-model",
             "--agentic-invoke-url",
@@ -462,7 +460,7 @@ def test_root_query_agentic_openai_compatible_allows_custom_model(monkeypatch) -
     )
 
     assert result.exit_code == 0
-    assert config_calls[-1]["llm_backend"] == "openai_compatible"
+    assert "llm_backend" not in config_calls[-1]
     assert config_calls[-1]["llm_model"] == "custom-remote-model"
     assert config_calls[-1]["invoke_url"] == "http://localhost:8000/v1/chat/completions"
 

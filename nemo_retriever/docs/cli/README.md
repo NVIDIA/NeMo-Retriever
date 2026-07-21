@@ -182,8 +182,8 @@ a drop-in alternative to standard retrieval.
 
 By default, agentic retrieval runs the agent LLM in process with local vLLM and
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU
-host and the local extras installed. Use `--agentic-llm-backend openai_compatible`
-when you want a custom model or a separately hosted OpenAI-compatible endpoint.
+host and the local extras installed. Provide `--agentic-invoke-url` when you want
+a custom model or a separately hosted OpenAI-compatible endpoint.
 
 ```bash
 # default local vLLM agent LLM: nemotron-8b
@@ -193,7 +193,6 @@ retriever query "how does the ingestion pipeline handle tables?" \
 # custom/self-hosted model through an OpenAI-compatible endpoint
 retriever query "summarize the deployment options" \
   --agentic \
-  --agentic-llm-backend openai_compatible \
   --agentic-llm-model custom-remote-model \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --embed-invoke-url http://localhost:8000/v1 \
@@ -219,13 +218,11 @@ fusion) -> SelectionAgentOperator -> ranked results`:
 
 Agentic-only knobs (apply only with `--agentic`):
 
-- `--agentic-llm-backend` (default `in_process`) — use local in-process vLLM, or
-  set `openai_compatible` for a hosted/self-hosted chat-completions endpoint.
-- `--agentic-llm-model` — local profile alias/model ID for `in_process`
-  (`nemotron-8b` by default; `super-49b` also supported), or the remote model ID
-  when using `openai_compatible`.
+- `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
+  provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
+  model ID when `--agentic-invoke-url` is provided.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM; used only with `--agentic-llm-backend openai_compatible`.
+  agent LLM. Providing it routes agent LLM calls to that remote endpoint.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
 - `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB

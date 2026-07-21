@@ -106,7 +106,7 @@ class VLLMAgentChatLLM(BaseModel):
             raise ValueError(
                 f"Unsupported local agent LLM model {requested_model_path!r}. "
                 "Custom in-process agent LLMs are not supported yet. "
-                "Use llm_backend='openai_compatible' with invoke_url for a custom/self-hosted endpoint, "
+                "Provide invoke_url for a custom/self-hosted OpenAI-compatible endpoint, "
                 f"or choose one of: {', '.join(supported_agent_llm_names())}."
             )
 
@@ -293,7 +293,7 @@ def _cuda_visible_devices_from_device(device: Optional[str]) -> str | None:
     if normalized.casefold() == "cpu":
         raise ValueError(
             "The local agent LLM vLLM backend requires CUDA. Pass GPU ids such as '0' or '0,1', "
-            "or use llm_backend='openai_compatible' for a remote endpoint."
+            "or provide invoke_url for a remote OpenAI-compatible endpoint."
         )
     return normalized.split(":", 1)[1] if normalized.startswith("cuda:") else normalized
 
@@ -306,7 +306,7 @@ def _raise_if_cuda_unavailable() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError(
             "The local agent LLM vLLM backend requires CUDA, but torch reports no available CUDA device. "
-            "Run on a GPU host or use llm_backend='openai_compatible' for a remote endpoint."
+            "Run on a GPU host or provide invoke_url for a remote OpenAI-compatible endpoint."
         )
 
 
