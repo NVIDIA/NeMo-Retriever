@@ -150,11 +150,8 @@ resources:
   max_upload_bytes: {{ $maxUploadBytes }}
 
 auth:
-  api_token: null
+  api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
   header_name: {{ .Values.serviceConfig.auth.headerName | quote }}
-  default_scope: {{ .Values.serviceConfig.auth.defaultScope | quote }}
-  scope_token_file: {{ if or .Values.serviceConfig.auth.scopeTokenSecret.create .Values.serviceConfig.auth.scopeTokenSecret.name }}"/etc/nrl-secrets/scope-tokens/{{ .Values.serviceConfig.auth.scopeTokenSecret.key }}"{{ else }}null{{ end }}
-  allow_unscoped_dev: {{ .Values.serviceConfig.auth.allowUnscopedDev }}
   bypass_paths: {{ toJson .Values.serviceConfig.auth.bypassPaths }}
 
 {{- if .Values.serviceConfig.vectordb.enabled }}
@@ -165,11 +162,6 @@ vectordb:
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
-  internal_api_token: null
-  collection_artifact_root: {{ if .Values.serviceConfig.vectordb.collectionArtifactRoot }}{{ .Values.serviceConfig.vectordb.collectionArtifactRoot | quote }}{{ else }}null{{ end }}
-  artifact_storage_options_file: {{ if or .Values.serviceConfig.vectordb.artifactStorageOptionsSecret.create .Values.serviceConfig.vectordb.artifactStorageOptionsSecret.name }}"/etc/nrl-secrets/artifact-storage/{{ .Values.serviceConfig.vectordb.artifactStorageOptionsSecret.key }}"{{ else }}null{{ end }}
-  reconciliation_interval_seconds: {{ .Values.serviceConfig.vectordb.reconciliationIntervalSeconds }}
-  expiration_cleanup_enabled: {{ .Values.serviceConfig.vectordb.expirationCleanupEnabled }}
 {{- else }}
 vectordb:
   enabled: false

@@ -335,11 +335,6 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
-| `serviceConfig.vectordb.internalTokenSecret`      | disabled | Dedicated gateway/worker-to-VectorDB credential from a Kubernetes Secret. |
-| `serviceConfig.vectordb.collectionArtifactRoot`   | `""` | Operator-owned fsspec root for collection StoreOperator artifacts. |
-| `serviceConfig.vectordb.artifactStorageOptionsSecret` | disabled | Secret-mounted JSON fsspec storage options. |
-| `serviceConfig.vectordb.reconciliationIntervalSeconds` | `60` | Local lifecycle/expiration reconciliation interval; requires one VectorDB replica. Set to `0` only when an external reconciler owns cleanup. |
-| `serviceConfig.vectordb.expirationCleanupEnabled` | `true` | Delete expired collections through the retryable lifecycle state machine. |
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
 
@@ -352,42 +347,6 @@ deployment that silently breaks retrieval.
 
 To prevent this, the chart now refuses to render
 `deployment-vectordb.yaml` when no embed endpoint can be resolved.
-
-Collection management adds two reserved catalogs to the same LanceDB database
-and keeps using one table per logical collection. The local reconciler resumes
-replacement and cleanup markers and deletes expired collections. The chart
-fails rendering when the reconciler is enabled with more than one VectorDB
-replica because distributed leader election is outside this feature.
-
-Production collection deployments should configure three Secret-backed
-boundaries:
-
-```yaml
-serviceConfig:
-  auth:
-    allowUnscopedDev: false
-    scopeTokenSecret:
-      create: false
-      name: nrl-scope-tokens       # scope-tokens.json key
-      key: scope-tokens.json
-  vectordb:
-    internalTokenSecret:
-      create: false
-      name: nrl-vectordb-internal  # token key
-      key: token
-    collectionArtifactRoot: s3://company-nrl/collections
-    artifactStorageOptionsSecret:
-      create: false
-      name: nrl-artifact-storage   # storage-options.json key
-      key: storage-options.json
-```
-
-The scope-token file format is
-`{"tokens":[{"token":"<secret>","scopes":["workspace-123"]}]}`.
-These values are mounted from Secrets and are not rendered into the service
-ConfigMap or included in public health/metric labels. An existing single-token
-non-Helm configuration remains supported through `auth.api_token` bound to
-`auth.default_scope`.
 `helm install` / `helm upgrade --install` fails with a message listing
 the three supported escape valves:
 

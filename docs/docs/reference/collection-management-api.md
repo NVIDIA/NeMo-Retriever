@@ -11,7 +11,7 @@ import time
 from nemo_retriever import RetrieverServiceClient
 
 client = RetrieverServiceClient(
-    base_url="http://nemo-retriever:7670",  # Helm service DNS
+    base_url="http://nemo-retriever:7670",  # Published service endpoint
     api_token="...",
     scope="workspace-123",
 )
@@ -40,9 +40,10 @@ client.delete_collection(collection.name)
 ```
 
 For local Docker Compose deployments, use the published gateway address, such
-as `http://localhost:7670`. In Helm, use the gateway Kubernetes Service DNS from
-the calling pod. Authentication, tracing, retryable upload handling, collection
-routing, and result normalization remain server/SDK responsibilities.
+as `http://localhost:7670`. For other deployments, use the published gateway
+endpoint reachable by the calling application. Authentication, tracing,
+retryable upload handling, collection routing, and result normalization remain
+server/SDK responsibilities.
 
 ## Sync and async methods
 
@@ -142,20 +143,13 @@ active/deleting/expired counts, pending cleanup count and oldest age,
 reconciliation successes/failures, and open-table cache size. Physical table
 names and tenant identifiers are never emitted as public values or labels.
 
-## Docker Compose and Helm operations
+## Docker Compose operations
 
 The local Compose example lives at
 `nemo_retriever/dev/compose/collection-management.compose.yaml`. Copy the
 development secret examples to protected files, set `NRL_EMBED_ENDPOINT`, and
 override the three `*_FILE` environment variables before starting it. The
 same SDK workflow targets `http://localhost:7670`.
-
-For Helm, configure `serviceConfig.auth.scopeTokenSecret`,
-`serviceConfig.vectordb.internalTokenSecret`,
-`serviceConfig.vectordb.collectionArtifactRoot`, and optionally
-`serviceConfig.vectordb.artifactStorageOptionsSecret`. Token contents and
-fsspec credentials render only into Kubernetes Secrets. Keep
-`topology.vectordb.replicas: 1` while reconciliation is enabled.
 
 ## Application integration and query-result contract
 
@@ -169,5 +163,5 @@ must not open LanceDB directly or reproduce the ingestion pipeline.
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
 `text`, normalized `score` in `[0, 1]`, filename, one-based page number when
 known, content type, source/source ID, stored image URI, bounding box, and
-metadata. This contract is identical whether the service is reached through a
-Helm Service or Docker Compose networking.
+metadata. This contract is identical regardless of the network path used to
+reach the service.

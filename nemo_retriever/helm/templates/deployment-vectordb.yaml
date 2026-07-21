@@ -6,15 +6,6 @@
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 {{- $localEmbed := include "nemo-retriever.localEmbed.enabled" . | eq "true" -}}
 {{- $localModels := .Values.serviceConfig.localModels -}}
-{{- $internalSecret := .Values.serviceConfig.vectordb.internalTokenSecret -}}
-{{- $internalSecretEnabled := or $internalSecret.create $internalSecret.name -}}
-{{- $internalSecretName := default (printf "%s-vectordb-internal" $fullname) $internalSecret.name -}}
-{{- $storageSecret := .Values.serviceConfig.vectordb.artifactStorageOptionsSecret -}}
-{{- $storageSecretEnabled := or $storageSecret.create $storageSecret.name -}}
-{{- $storageSecretName := default (printf "%s-artifact-storage" $fullname) $storageSecret.name -}}
-{{- if and (gt (.Values.serviceConfig.vectordb.reconciliationIntervalSeconds | int) 0) (ne ($vdb.replicas | int) 1) }}
-{{- fail "topology.vectordb.replicas must be 1 while the local collection reconciler is enabled" -}}
-{{- end }}
 {{- /*
   Fail-fast guard: rendering a vectordb Deployment without any query-time
   embedding backend produces a "healthy" Pod whose first /v1/query request
@@ -51,7 +42,6 @@ spec:
         {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "vectordb") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "nemo-retriever.serviceAccountName" . }}
       {{- include "nemo-retriever.imagePullSecrets" . | nindent 6 }}
@@ -111,19 +101,6 @@ spec:
             {{- end }}
             - --port
             - {{ $vdb.port | quote }}
-            - --reconciliation-interval-seconds
-            - {{ .Values.serviceConfig.vectordb.reconciliationIntervalSeconds | quote }}
-            {{- if .Values.serviceConfig.vectordb.collectionArtifactRoot }}
-            - --collection-artifact-root
-            - {{ .Values.serviceConfig.vectordb.collectionArtifactRoot | quote }}
-            {{- end }}
-            {{- if $storageSecretEnabled }}
-            - --artifact-storage-options-file
-            - "/etc/nrl-secrets/artifact-storage/{{ $storageSecret.key }}"
-            {{- end }}
-            {{- if not .Values.serviceConfig.vectordb.expirationCleanupEnabled }}
-            - --disable-expiration-cleanup
-            {{- end }}
             {{- if $embedURL }}
             - --embed-api-key
             - $(NVIDIA_API_KEY)
@@ -133,13 +110,6 @@ spec:
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
-            {{- if $internalSecretEnabled }}
-            - name: NRL_INTERNAL_VDB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $internalSecretName }}
-                  key: {{ $internalSecret.key }}
-            {{- end }}
             {{- if $embedURL }}
             - name: NVIDIA_API_KEY
               valueFrom:
@@ -166,11 +136,6 @@ spec:
               mountPath: {{ .Values.serviceConfig.vectordb.lancedbUri }}
             - name: tmp
               mountPath: /tmp
-            {{- if $storageSecretEnabled }}
-            - name: artifact-storage-options
-              mountPath: /etc/nrl-secrets/artifact-storage
-              readOnly: true
-            {{- end }}
           startupProbe:
             httpGet:
               path: /v1/health
@@ -198,11 +163,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if $storageSecretEnabled }}
-        - name: artifact-storage-options
-          secret:
-            secretName: {{ $storageSecretName }}
-        {{- end }}
         {{- if $vdb.persistence.enabled }}
         - name: vectordb-data
           persistentVolumeClaim:
