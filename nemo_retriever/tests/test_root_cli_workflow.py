@@ -93,15 +93,9 @@ def test_root_help_lists_only_product_workflows() -> None:
         assert f"│ {developer_command} " not in result.output
 
 
-def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
-    result = RUNNER.invoke(cli_main.app, ["pipeline", "--help"])
-
-    assert result.exit_code == 0
-
-
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])

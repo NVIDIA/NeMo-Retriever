@@ -38,7 +38,6 @@ _LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
     ("benchmark", "nemo_retriever.tools.benchmark", "app", True),
     ("recall", "nemo_retriever.tools.recall", "app", True),
     ("skill-eval", "nemo_retriever.tools.skill_eval", "app", True),
-    ("pipeline", "nemo_retriever.cli.pipeline.__main__", "app", True),
 ]
 
 for _name, _module, _attr, _hidden in _LAZY_SUBAPPS:

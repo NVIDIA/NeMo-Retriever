@@ -126,7 +126,7 @@ def _generate_batches(prompts: Iterable[str], batch_size: int = 100) -> List[Lis
 
 def _text_from_row(row: pd.Series, *, text_column: str) -> Optional[str]:
     """
-    Extract text from a row with small fallbacks for graph-pipeline inputs.
+    Extract text from a row with small fallbacks for graph-ingest inputs.
     """
     v = row.get(text_column)
     if isinstance(v, str) and v.strip():

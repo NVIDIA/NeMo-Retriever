@@ -56,7 +56,6 @@ enabled in the resolved benchmark query config. Set `query.agentic: true` in a
 code-owned benchmark or runfile, or use repeatable `--set` overrides on the CLI.
 The agentic harness path runs the same ReAct retrieval graph used by root query,
 but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
-`retriever pipeline run` does not expose agentic evaluation flags.
 
 By default, agentic harness evaluation uses the in-process local vLLM backend
 with `nemotron-8b`. Custom LLMs are not supported in process yet; run them behind
@@ -117,10 +116,8 @@ Useful agentic query overrides:
 ### Image storage
 
 For normal ingest, configure image persistence on `retriever ingest` with
-`--store-images-uri <uri>` (local path or fsspec URI). The harness does not
-configure store directly; `retriever pipeline run --store-images-uri <uri>`
-remains available for pipeline-specific compatibility workflows. Stored assets
-follow `--embed-granularity` (page vs element images).
+`--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
+`--embed-granularity` (page vs element images).
 
 ## Per-stage micro-benchmarks
 
