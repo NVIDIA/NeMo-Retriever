@@ -23,7 +23,7 @@ starts the pipline
     # Start the pipeline subprocess for library mode
     config = PipelineCreationSchema()
 
-    run_pipeline(config, block=False, disable_dynamic_scaling=True, run_in_subprocess=True)
+    run_pipeline(config, block=False, run_in_subprocess=True)
 
 Then, connect the client to the pipeline with :func:`~nv_ingest_client.client.NvIngestClient`
 
