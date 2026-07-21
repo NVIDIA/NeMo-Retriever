@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence, cast
 
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type, normalize_content_type_allowlist
+from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type, normalize_content_type_values
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
 
@@ -67,7 +67,8 @@ def shape_query_hits(
     content_types: str | Sequence[str] | None = None,
 ) -> list[RetrievalHit]:
     """Apply query-time filtering, page deduplication, and final truncation."""
-    allowed_types = normalize_content_type_allowlist(content_types)
+    allowed_values = normalize_content_type_values(content_types)
+    allowed_types = set(allowed_values) if allowed_values is not None else None
     shaped: list[RetrievalHit] = []
     seen_pages: set[tuple[str, int]] = set()
 

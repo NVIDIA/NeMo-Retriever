@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type_filter
+from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type_values
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.models import VL_RERANK_MODEL
@@ -112,7 +112,8 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
         embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
     )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
-    content_types = normalize_content_type_filter(request.retrieval.content_types)
+    content_type_values = normalize_content_type_values(request.retrieval.content_types)
+    content_types = ",".join(content_type_values) if content_type_values is not None else None
     return ResolvedQueryPlan(
         top_k=int(request.retrieval.top_k),
         candidate_k=request.retrieval.candidate_k,
@@ -166,13 +167,14 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
+    content_type_values = normalize_content_type_values(request.retrieval.content_types)
     cfg_kwargs: dict[str, Any] = {
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "candidate_k": request.retrieval.candidate_k,
         "page_dedup": bool(request.retrieval.page_dedup),
-        "content_types": normalize_content_type_filter(request.retrieval.content_types),
+        "content_types": ",".join(content_type_values) if content_type_values is not None else None,
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,

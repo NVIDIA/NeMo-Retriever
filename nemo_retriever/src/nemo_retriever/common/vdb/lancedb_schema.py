@@ -166,22 +166,6 @@ def normalize_content_type_values(content_types: str | Sequence[Any] | None) -> 
     return normalized
 
 
-def normalize_content_type_filter(content_types: str | Sequence[Any] | None) -> str | None:
-    """Return a normalized comma-separated content-type filter."""
-    normalized = normalize_content_type_values(content_types)
-    if normalized is None:
-        return None
-    return ",".join(normalized)
-
-
-def normalize_content_type_allowlist(content_types: str | Sequence[Any] | None) -> set[str] | None:
-    """Return normalized content types as a membership set for hit filtering."""
-    normalized = normalize_content_type_values(content_types)
-    if normalized is None:
-        return None
-    return set(normalized)
-
-
 def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:
     normalized = normalize_content_type(content_type)
     if normalized is None:
