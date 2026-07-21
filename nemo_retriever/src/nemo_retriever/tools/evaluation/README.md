@@ -385,7 +385,20 @@ retriever eval run --from-env
 | `LITELLM_DEBUG` | `0` | Set `1` for full request/response logging |
 | `MIN_COVERAGE` | `0.0` | Abort if retrieval covers fewer queries (0.0-1.0, e.g. `0.8`) |
 
-**API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` when unset. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers.
+**API key resolution:** `GEN_API_KEY` and `JUDGE_API_KEY` each fall back to `NVIDIA_API_KEY` in the `--from-env` CLI path. Set only `NVIDIA_API_KEY` if generator and judge share the same provider. Set individual keys when they use different providers.
+
+For Python constructors and YAML model blocks, `api_key: null` (or an omitted `api_key`) means NeMo Retriever does not pass an explicit key; LiteLLM performs provider-native environment lookup on the worker, such as `OPENAI_API_KEY` for an OpenAI model. Use `api_key: "${VARIABLE_NAME}"` when configuration loading should require a specific variable, or `api_key="os.environ/VARIABLE_NAME"` in a persisted operator graph. For an unauthenticated local endpoint, pass `NO_API_KEY` explicitly; `None` does not mean “disable authentication.”
+
+```python
+from nemo_retriever.common.params import NO_API_KEY
+from nemo_retriever.models.llm import LiteLLMClient
+
+local_client = LiteLLMClient.from_kwargs(
+    model="openai/local-model",
+    api_base="http://localhost:8000/v1",
+    api_key=NO_API_KEY,
+)
+```
 
 **Auto-timestamped output:** Results are written to `{RESULTS_DIR}/qa_results_{dataset}_{generator}_{judge}_{YYYYMMDD_HHMMSS}.json` so consecutive runs never overwrite each other.
 
@@ -725,8 +738,8 @@ execution:
 
 | Section | Purpose |
 |---------|---------|
-| `models` | Dict of model definitions keyed by short name. Fields: `model` (litellm string), `api_base`, `api_key`, `temperature`, `max_tokens`, `extra_params`, `num_retries`. |
-| `evaluations` | List of generator+judge combos. Each entry references model names and has an optional `runs` count (default: `execution.runs`, then 1). Per-evaluation `temperature`/`max_tokens` overrides are supported. |
+| `models` | Dict of model definitions keyed by short name. Fields: `model` (LiteLLM string), `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `reasoning_enabled`, `extra_params`, and `num_retries`. |
+| `evaluations` | List of generator+judge combos. Each entry references model names and has an optional `runs` count (default: `execution.runs`, then 1). Per-evaluation `temperature`, `top_p`, `max_tokens`, and `reasoning_enabled` overrides are supported by the sweep runner. |
 | `execution` | Shared settings: `top_k`, `max_workers`, `runs` (default for evaluations that omit it), `min_coverage` (abort if retrieval covers fewer queries than this fraction, default 0.0). |
 | `output` | Optional `results_dir` (default: `data/eval`). |
 
@@ -865,12 +878,12 @@ automatic in-memory build.
 
 ### Mixing providers per component
 
-Every component (`Retriever`, `LiteLLMClient`, `LLMJudge`) takes its own `(model, api_base, api_key)` triple, so you can point different stages at different endpoints without any extra wiring. Unset `api_key` fields auto-resolve from `NVIDIA_API_KEY` / `NGC_API_KEY`, so the common single-provider path stays a one-liner; only reach for explicit `api_key=...` when a stage needs a distinct credential.
+Every component (`Retriever`, `LiteLLMClient`, `LLMJudge`) takes its own `(model, api_base, api_key)` triple, so you can point different stages at different endpoints without any extra wiring. For LLM clients, an unset `api_key` is left to LiteLLM's provider-native environment lookup on the worker. Only provide an explicit `api_key` when a stage needs a distinct credential or an explicit environment reference.
 
 ```python
 import os
 from nemo_retriever.retriever import Retriever
-from nemo_retriever.llm import LiteLLMClient, LLMJudge
+from nemo_retriever.models.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
     vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
@@ -909,9 +922,29 @@ print(f"generation_failure_rate = {df.attrs['generation_failure_rate']:.2%}")
 
 `generation_failure_rate` is the fraction of rows whose `gen_error` column is non-null; it is only attached when the `.generate()` step ran.
 
+### Generation run metadata
+
+Sweep result JSON includes a secret-free `generation_config` object containing the effective `model`, `temperature`, `top_p`, `max_tokens`, and `reasoning_enabled` values. Per-evaluation overrides are resolved before this object is written, so result files can be compared without reopening the input config. API keys, endpoint credentials, and `extra_params` are intentionally excluded.
+
+### Generation error codes
+
+`gen_error` is `null` on success. The reusable text-generation lifecycle emits these stable values on failure:
+
+| Code | Meaning |
+|------|---------|
+| `empty_input` | A task rejected an empty source value before calling the provider. |
+| `request_error` | Input validation or provider-neutral request construction failed. |
+| `transport_error` | The provider request failed after the configured client retry behavior. |
+| `unsupported_response` | The provider returned tools, multiple choices, non-text content, or another unsupported text-response shape. |
+| `parse_error` | The task could not convert returned text into its expected text result. |
+| `empty_output` | A generic text task produced no usable text after parsing. |
+| `thinking_truncated` | RAG answer generation contained only model reasoning and no final answer, usually because the token budget was exhausted. |
+
+Errors are sanitized before they enter a DataFrame or result JSON; raw provider exception text is not persisted.
+
 ### Stable public surface
 
-`nemo_retriever.llm.__all__` is the supported integration point for the client + types layer. Import the Protocols, result dataclasses, `LiteLLMClient`, `LLMJudge`, and the `LLMInferenceParams` / `LLMRemoteClientParams` models from `nemo_retriever.llm`; deeper submodule paths (`llm.clients.litellm`, `llm.text_utils`, ...) are implementation details and may be reorganised without notice.
+`nemo_retriever.models.llm.__all__` is the supported integration point for the client + types layer. Import the Protocols, result dataclasses, `LiteLLMClient`, `LLMJudge`, and the `LLMInferenceParams` / `LLMRemoteClientParams` models from `nemo_retriever.models.llm`; deeper submodule paths (`models.llm.clients.litellm`, `models.llm.text_utils`, ...) are implementation details and may be reorganised without notice.
 
 The previously-provided `nemo-retriever[eval]` install extra was removed in favor of `nemo-retriever[llm]`; pin the new extra in any requirements files that still reference `[eval]`.
 
@@ -1045,7 +1078,7 @@ The same pattern works for custom failure classifiers, alternative judge prompts
 ### Custom Retriever
 
 ```python
-from nemo_retriever.llm.types import RetrieverStrategy, RetrievalResult
+from nemo_retriever.models.llm.types import RetrieverStrategy, RetrievalResult
 
 class MyRetriever:
     def retrieve(self, query: str, top_k: int) -> RetrievalResult:
@@ -1056,7 +1089,7 @@ class MyRetriever:
 ### Custom LLM Client
 
 ```python
-from nemo_retriever.llm.types import LLMClient, GenerationResult
+from nemo_retriever.models.llm.types import LLMClient, GenerationResult
 
 class MyClient:
     def generate(self, query: str, chunks: list[str]) -> GenerationResult:
@@ -1067,7 +1100,7 @@ class MyClient:
 ### Custom Judge
 
 ```python
-from nemo_retriever.llm.types import AnswerJudge, JudgeResult
+from nemo_retriever.models.llm.types import AnswerJudge, JudgeResult
 
 class MyJudge:
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:

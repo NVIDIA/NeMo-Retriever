@@ -5,16 +5,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
 from nemo_retriever.common.params import build_embed_option_kwargs
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
-from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.models import VL_RERANK_MODEL
+from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 
-_LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+_LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
 
 
 @dataclass(frozen=True)
@@ -101,7 +105,11 @@ class ResolvedQueryPlan:
 
 def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
     """Resolve root query options once so callers can reuse a Retriever."""
-    embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
+    embed_kwargs = build_embed_option_kwargs(
+        request.embed.embed_invoke_url,
+        request.embed.embed_model_name,
+        embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
+    )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
     content_types = request.retrieval.content_types
     if content_types is not None and not isinstance(content_types, str):
@@ -142,6 +150,62 @@ def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     return query_documents_with_metadata(request).hits
 
 
+def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> "AgenticRetrievalConfig":
+    """Build an :class:`AgenticRetrievalConfig` from a :class:`QueryRequest`.
+
+    Shared by the single-query CLI path (:func:`agentic_query_documents`) and the
+    batch harness BEIR path so agentic config derivation lives in one place. The
+    LanceDB ``uri``/``table_name``, embedding config, and (when ``rerank`` is
+    enabled) reranker config are passed straight through to the wrapped
+    ``Retriever`` that backs the agent's ``retrieve`` tool. ``top_k`` overrides the
+    final document count the agent targets (the harness sets this to the deepest
+    BEIR metric ``k`` so recall at the largest cutoff is computable).
+    """
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    api_key = resolve_remote_api_key()
+    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
+    cfg_kwargs: dict[str, Any] = {
+        "vdb_op": "lancedb",
+        "vdb_kwargs": vdb_kwargs,
+        "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
+        "embedding_endpoint": request.embed.embed_invoke_url,
+        "embedding_api_key": api_key or "",
+        "llm_model": request.agentic.llm_model,
+        "invoke_url": request.agentic.invoke_url,
+        "api_key": api_key,
+        "reasoning_effort": request.agentic.reasoning_effort,
+        "backend_top_k": int(request.agentic.backend_top_k),
+        "react_max_steps": int(request.agentic.react_max_steps),
+        "text_truncation": int(request.agentic.text_truncation),
+        "num_concurrent": int(request.agentic.num_concurrent),
+        "temperature": float(request.agentic.temperature),
+    }
+    if request.embed.embed_model_name:
+        cfg_kwargs["query_embedder"] = request.embed.embed_model_name
+    if request.embed.embed_model_provider_prefix:
+        cfg_kwargs["query_embedder_provider_prefix"] = request.embed.embed_model_provider_prefix
+    if request.rerank.enabled:
+        # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
+        # model name, so fall back to the default model when only --rerank is given.
+        cfg_kwargs["reranker"] = request.rerank.reranker_model_name or _LOCAL_VL_RERANK_MODEL
+        cfg_kwargs["reranker_endpoint"] = request.rerank.reranker_invoke_url
+        cfg_kwargs["reranker_api_key"] = resolve_remote_api_key(request.rerank.reranker_api_key) or ""
+        if request.rerank.reranker_backend:
+            cfg_kwargs["local_reranker_backend"] = request.rerank.reranker_backend
+
+    return AgenticRetrievalConfig(**cfg_kwargs)
+
+
+def build_agentic_retriever(request: QueryRequest) -> "AgenticRetriever":
+    """Construct an :class:`AgenticRetriever` from a :class:`QueryRequest`."""
+    from nemo_retriever.query.agentic import AgenticRetriever
+
+    return AgenticRetriever(build_agentic_config(request))
+
+
 def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     """Run agentic (ReAct) retrieval for a single query and return the agent's
     ranked document IDs.
@@ -155,39 +219,7 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
     tool. Reranking therefore applies per agent retrieval hop.
     """
-    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
-
-    api_key = resolve_remote_api_key()
-    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
-    if request.retrieval.retrieval_mode != "auto":
-        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
-    cfg_kwargs: dict[str, Any] = {
-        "vdb_op": "lancedb",
-        "vdb_kwargs": vdb_kwargs,
-        "top_k": int(request.retrieval.top_k),
-        "embedding_endpoint": request.embed.embed_invoke_url,
-        "embedding_api_key": api_key or "",
-        "llm_model": request.agentic.llm_model,
-        "invoke_url": request.agentic.invoke_url,
-        "api_key": api_key,
-        "reasoning_effort": request.agentic.reasoning_effort,
-        "backend_top_k": int(request.agentic.backend_top_k),
-        "react_max_steps": int(request.agentic.react_max_steps),
-        "text_truncation": int(request.agentic.text_truncation),
-        "temperature": float(request.agentic.temperature),
-    }
-    if request.embed.embed_model_name:
-        cfg_kwargs["query_embedder"] = request.embed.embed_model_name
-    if request.rerank.enabled:
-        # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
-        # model name, so fall back to the default model when only --rerank is given.
-        cfg_kwargs["reranker"] = request.rerank.reranker_model_name or _LOCAL_VL_RERANK_MODEL
-        cfg_kwargs["reranker_endpoint"] = request.rerank.reranker_invoke_url
-        cfg_kwargs["reranker_api_key"] = resolve_remote_api_key(request.rerank.reranker_api_key) or ""
-        if request.rerank.reranker_backend:
-            cfg_kwargs["local_reranker_backend"] = request.rerank.reranker_backend
-
-    result = AgenticRetriever(AgenticRetrievalConfig(**cfg_kwargs)).retrieve(["0"], [str(request.query)])
+    result = build_agentic_retriever(request).retrieve(["0"], [str(request.query)])
     if "rank" in result.columns:
         result = result.sort_values("rank")
     ranked: list[dict[str, Any]] = []

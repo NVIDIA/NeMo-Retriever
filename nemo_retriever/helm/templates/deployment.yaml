@@ -18,6 +18,9 @@
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
+{{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
+{{- fail "split mode requires topology.gateway.replicas=1 (process-local scheduler)" -}}
+{{- end -}}
 {{- if and $svc.installFfmpeg $svc.env -}}
 {{- range $env := $svc.env }}
 {{- if and (hasKey $env "name") (eq $env.name "INSTALL_FFMPEG") }}
@@ -85,8 +88,8 @@ spec:
       {{- end }}
       containers:
         - name: nemo-retriever
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" . }}:{{ include "nemo-retriever.runtime.image.tag" . }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" . }}
           {{- with $svc.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -104,6 +107,12 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            {{- if .Values.retrieverResults.enabled }}
+            - name: NEMO_RETRIEVER_RESULTS_DIR
+              value: {{ .Values.retrieverResults.mountPath | quote }}
+            - name: NEMO_RETRIEVER_RESULTS_TTL_SECONDS
+              value: {{ .Values.retrieverResults.ttlSeconds | quote }}
+            {{- end }}
             - name: NGC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -134,8 +143,11 @@ spec:
           {{- end }}
           resources:
             {{- $resources := deepCopy $svc.resources }}
-            {{- if $svc.gpu.enabled }}
-            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $svc.gpu.count -}}
+            {{- $gpuEnabled := or $svc.gpu.enabled .Values.serviceConfig.localModels.enabled }}
+            {{- if $gpuEnabled }}
+            {{- $gpuCount := $svc.gpu.count | int }}
+            {{- if eq $gpuCount 0 }}{{- $gpuCount = 1 }}{{- end }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $gpuCount -}}
             {{- end }}
             {{- toYaml $resources | nindent 12 }}
           volumeMounts:
@@ -205,7 +217,7 @@ spec:
   replicas: {{ $roleCfg.replicas }}
   {{- end }}
   strategy:
-    type: RollingUpdate
+    type: {{ if eq $role "gateway" }}Recreate{{ else }}RollingUpdate{{ end }}
   selector:
     matchLabels:
       {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}
@@ -254,8 +266,8 @@ spec:
       {{- end }}
       containers:
         - name: nemo-retriever
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" $ }}:{{ include "nemo-retriever.runtime.image.tag" $ }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" $ }}
           args:
             - retriever
             - service
@@ -269,10 +281,22 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            {{- if $.Values.retrieverResults.enabled }}
+            - name: NEMO_RETRIEVER_RESULTS_TTL_SECONDS
+              value: {{ $.Values.retrieverResults.ttlSeconds | quote }}
+            {{- if eq $role "gateway" }}
+            - name: NEMO_RETRIEVER_RESULTS_DIR
+              value: {{ $.Values.retrieverResults.mountPath | quote }}
+            {{- end }}
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: NGC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -299,14 +323,28 @@ spec:
             {{- end }}
           resources:
             {{- $resources := deepCopy $roleCfg.resources }}
-            {{- if and (hasKey $roleCfg "gpu") (index $roleCfg "gpu").enabled }}
-            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" (index $roleCfg "gpu").count -}}
+            {{- $roleGpuEnabled := and (hasKey $roleCfg "gpu") (index $roleCfg "gpu").enabled }}
+            {{- $gpuEnabled := or $roleGpuEnabled (and (ne $role "gateway") $.Values.serviceConfig.localModels.enabled) }}
+            {{- if $gpuEnabled }}
+            {{- $gpuCount := 0 }}
+            {{- if $roleGpuEnabled }}{{- $gpuCount = (index $roleCfg "gpu").count | int }}{{- end }}
+            {{- if and (not $roleGpuEnabled) $.Values.serviceConfig.localModels.enabled }}{{- $gpuCount = 1 }}{{- end }}
+            {{- if and $roleGpuEnabled (eq $gpuCount 0) }}{{- $gpuCount = 1 }}{{- end }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $gpuCount -}}
             {{- end }}
             {{- toYaml $resources | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: /etc/nemo-retriever
               readOnly: true
+            {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+            - name: data
+              mountPath: {{ $.Values.persistence.mountPath }}
+            {{- end }}
+            {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
+            - name: retriever-results
+              mountPath: {{ $.Values.retrieverResults.mountPath }}
+            {{- end }}
             - name: tmp
               mountPath: /tmp
           {{- if $svc.startupProbe.enabled }}
@@ -326,6 +364,19 @@ spec:
           configMap:
             name: {{ include "nemo-retriever.role.configMapName" (dict "context" $ "role" $role) }}
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            {{- if eq $role "gateway" }}
+            sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
+            {{- end }}
+        {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.pvcName" $ }}
+        {{- end }}
+        {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
+        - name: retriever-results
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.retrieverResultsPvcName" $ }}
+        {{- end }}
 {{- end }}
 {{- end }}

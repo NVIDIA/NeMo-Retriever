@@ -202,16 +202,22 @@ class Retriever:
         # with the embedded rows produced from ``df``. If this query graph grows
         # distributed/shuffled stages, carry row-local query text or IDs instead.
         graph = self._get_graph(embed_extra=embed_extra)
-        if not callable(getattr(graph, "resolve_for_local_execution", None)):
-            raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
 
         exec_kwargs: dict[str, Any] = {
             **filter_retrieval_kwargs(dict(vdb_call_kwargs or {})),
             "top_k": int(retrieval_top_k),
             "query_texts": query_texts,
         }
-        resolved = graph.resolve_for_local_execution()
-        leaves = resolved.execute(df, **exec_kwargs)
+        if self.graph is None:
+            leaves = graph.execute_in_place(df, **exec_kwargs)
+        else:
+            # Preserve resolve-per-query behavior for caller-owned graphs, which
+            # may be mutated between calls.
+            resolve = getattr(graph, "resolve_for_local_execution", None)
+            if not callable(resolve):
+                raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
+            resolved = resolve()
+            leaves = resolved.execute(df, **exec_kwargs)
         if len(leaves) != 1:
             raise RuntimeError(
                 f"Retriever query graph must yield exactly one leaf output; got {len(leaves)}. "

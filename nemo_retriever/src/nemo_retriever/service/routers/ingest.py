@@ -18,13 +18,15 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
@@ -59,13 +61,17 @@ from nemo_retriever.service.services.pipeline_pool import (
     get_pipeline_pool,
 )
 from nemo_retriever.service.services.prometheus import (
-    GATEWAY_FORWARD_DURATION,
     INGEST_BYTES_TOTAL,
     INGEST_DOCUMENTS_TOTAL,
     INGEST_PAGES_TOTAL,
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
+from nemo_retriever.service.services.worker_result_store import (
+    ResultStoreTemporarilyUnavailable,
+    get_result_data,
+    store_result_data,
+)
 from nemo_retriever.service.utils.file_type import (
     FileCategory,
     FileClassifier,
@@ -73,6 +79,7 @@ from nemo_retriever.service.utils.file_type import (
 )
 
 _RETRY_AFTER_SECONDS = "5"
+_RESULT_RETRY_AFTER_SECONDS = 60
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
 _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
@@ -120,9 +127,8 @@ def _mode(request: Request) -> str:
 def _is_dry_run(request: Request) -> bool:
     """Return ``True`` when the client sends the dry-run header.
 
-    When present (any truthy value), worker pods skip pipeline enqueue
-    and return an immediate 202.  The gateway forwards the header to the
-    backend unchanged so the worker still sees it.
+    When present (any truthy value), page and whole-document routes skip
+    queue admission and return an immediate 202.
     """
     val = request.headers.get(_DRY_RUN_HEADER, "").strip().lower()
     return val not in ("", "0", "false", "no")
@@ -168,10 +174,11 @@ def _work_item_retain_results(request: Request, *, job_id: str | None) -> bool:
     return _job_retain_results(job_id)
 
 
-def _gateway_retain_results_headers(job_id: str) -> dict[str, str]:
-    if _job_retain_results(job_id):
-        return {_GATEWAY_RETAIN_RESULTS_HEADER: "true"}
-    return {}
+def _internal_auth_headers(request: Request) -> dict[str, str]:
+    """Return service credentials for pod-to-pod callback traffic."""
+    from nemo_retriever.service.auth import auth_headers
+
+    return auth_headers(request.app.state.config.auth)
 
 
 def _record_prometheus(
@@ -253,107 +260,148 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
 
 
 async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, Any]] | None:
-    """Pull cached rows from the batch/realtime pod that processed *document_id*."""
-    proxy = get_proxy()
-    if proxy is None:
-        return None
-    for pool_type in (PoolType.BATCH, PoolType.REALTIME):
-        client = proxy._client_for(pool_type)
+    """Read rows already handed off to this gateway's retained store."""
+    try:
+        rows = await asyncio.to_thread(get_result_data, document_id)
+    except ResultStoreTemporarilyUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": str(_RESULT_RETRY_AFTER_SECONDS)},
+        ) from exc
+    if rows is not None:
+        return rows
+    raise HTTPException(
+        status_code=503,
+        detail=f"Retained result data for {document_id!r} is temporarily unavailable",
+        headers={"Retry-After": str(_RESULT_RETRY_AFTER_SECONDS)},
+    )
+
+
+def _worker_result_url(
+    request: Request,
+    document_id: str,
+    worker_ip_value: Any,
+    callback_worker_ip: Any = None,
+) -> str:
+    """Build a fixed-path owner URL from a validated worker pod IP."""
+    if not isinstance(worker_ip_value, str):
+        raise HTTPException(status_code=503, detail="Completion callback is missing result worker identity")
+    try:
+        worker_ip = ipaddress.ip_address(worker_ip_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
+    if worker_ip.is_unspecified or worker_ip.is_multicast or worker_ip.is_loopback or worker_ip.is_link_local:
+        raise HTTPException(status_code=400, detail="Completion callback has an unroutable result worker IP")
+
+    if callback_worker_ip is not None:
         try:
-            resp = await client.get(f"/v1/internal/document-result/{document_id}")
-        except Exception as exc:
-            logger.debug(
-                "Worker result fetch from %s failed for %s: %s",
-                pool_type.value,
-                document_id,
-                exc,
-            )
-            continue
-        if resp.status_code == 404:
-            continue
-        if resp.status_code != 200:
-            logger.warning(
-                "Worker result fetch from %s returned HTTP %d for %s",
-                pool_type.value,
-                resp.status_code,
-                document_id,
-            )
-            continue
-        rows = resp.json().get("result_data")
-        if rows is not None:
-            return rows
-    return None
+            advertised_ip = ipaddress.ip_address(callback_worker_ip)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
+        if advertised_ip != worker_ip:
+            raise HTTPException(status_code=409, detail="Result worker IP does not match lease owner")
 
+    peer_value = request.client.host if request.client is not None else ""
+    try:
+        peer_ip = ipaddress.ip_address(peer_value)
+    except ValueError:
+        peer_ip = None
+    if peer_ip is not None and not peer_ip.is_loopback and peer_ip != worker_ip:
+        raise HTTPException(status_code=400, detail="Result worker IP does not match callback peer")
 
-def _build_callback_url(request: Request) -> str:
-    """Build the internal callback URL pointing to THIS specific gateway pod.
-
-    Uses ``POD_IP`` env (Kubernetes downward API) so the worker calls
-    back to the exact gateway pod that accepted the upload, not the
-    Service VIP which might route to a different replica.
-    """
-    pod_ip = os.environ.get("POD_IP")
+    host = f"[{worker_ip}]" if worker_ip.version == 6 else str(worker_ip)
     port = request.app.state.config.server.port
-    if pod_ip:
-        return f"http://{pod_ip}:{port}/v1/internal/job-callback"
-    return f"http://localhost:{port}/v1/internal/job-callback"
+    return f"http://{host}:{port}/v1/internal/document-result/{quote(document_id, safe='')}"
 
 
-async def _gateway_forward(
+async def _pull_and_store_worker_result(
+    request: Request,
+    document_id: str,
+    worker_ip: Any,
+    callback_worker_ip: Any = None,
+) -> None:
+    """Copy rows from the exact completing worker into the gateway store."""
+    url = _worker_result_url(request, document_id, worker_ip, callback_worker_ip)
+    try:
+        async with httpx.AsyncClient(timeout=10.0, headers=_internal_auth_headers(request)) as client:
+            response = await client.get(url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to fetch retained result for {document_id!r} from its worker",
+            headers={"Retry-After": "1"},
+        ) from exc
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Worker returned HTTP {response.status_code} for retained result {document_id!r}",
+            headers={"Retry-After": "1"},
+        )
+    try:
+        payload = response.json()
+        rows = payload.get("result_data") if isinstance(payload, dict) else None
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"Worker returned invalid result data for {document_id!r}") from exc
+    if not rows or not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise HTTPException(status_code=503, detail=f"Worker returned invalid result data for {document_id!r}")
+    try:
+        await asyncio.to_thread(store_result_data, document_id, rows)
+    except (OSError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to retain result data for {document_id!r} on the gateway",
+            headers={"Retry-After": "1"},
+        ) from exc
+
+
+async def _gateway_enqueue(
     request: Request,
     pool_type: PoolType,
     *,
-    extra_headers: dict[str, str] | None = None,
-) -> Response:
-    """Proxy the entire HTTP request to the backend for *pool_type*."""
-    import time
+    work_id: str,
+    job_id: str,
+    payload: bytes,
+    filename: str | None,
+    pipeline_spec: PipelineSpec | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Admit split-mode work to the gateway broker after atomic spooling."""
+    from nemo_retriever.service.services.work_queue import WorkQueueFull, get_work_broker
 
-    proxy = get_proxy()
-    if proxy is None:
-        raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-    t0 = time.monotonic()
+    broker = get_work_broker()
+    if broker is None:
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.unregister_pending(work_id)
+        raise HTTPException(status_code=503, detail="Gateway work broker not initialised")
     try:
-        resp = await proxy.forward(request, pool_type, extra_headers=extra_headers)
-    except Exception as exc:
-        logger.exception(
-            "Gateway forward to %s failed for %s %s",
-            pool_type.value,
-            request.method,
-            request.url.path,
+        await broker.enqueue(
+            pool_type,
+            work_id=work_id,
+            job_id=job_id,
+            payload=payload,
+            filename=filename,
+            retain_results=_job_retain_results(job_id),
+            pipeline_spec=pipeline_spec.model_dump(mode="json") if pipeline_spec is not None else None,
+            trace_context=_safe_inject_trace_context(),
+            extra=extra,
         )
-        INGEST_REQUESTS_TOTAL.labels(
-            role="gateway",
-            endpoint=request.url.path,
-            status="5xx",
-        ).inc()
+    except WorkQueueFull as exc:
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.unregister_pending(work_id)
         raise HTTPException(
-            status_code=502,
-            detail=(f"Gateway failed to forward request to {pool_type.value} backend: " f"{type(exc).__name__}: {exc}"),
-        )
-    elapsed = time.monotonic() - t0
-    GATEWAY_FORWARD_DURATION.labels(backend=pool_type.value).observe(elapsed)
-    INGEST_REQUESTS_TOTAL.labels(
-        role="gateway",
-        endpoint=request.url.path,
-        status=f"{resp.status_code // 100}xx",
-    ).inc()
-    return resp
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": _RETRY_AFTER_SECONDS},
+        ) from exc
 
 
-def _file_size_from_upload(file: UploadFile, request: Request | None = None) -> int:
-    """Best-effort file size without reading bytes.
-
-    Checks ``UploadFile.size`` first, then falls back to the total cached
-    body size stored by the gateway body-cache middleware.  The cached body
-    includes multipart framing so it slightly overestimates, but it's good
-    enough for throughput metrics.
-    """
+def _file_size_from_upload(file: UploadFile) -> int:
+    """Best-effort upload size without reading bytes."""
     if file.size is not None:
         return file.size
-    if request is not None:
-        cached = request.scope.get("_cached_body")
-        if cached:
-            return len(cached)
     return 0
 
 
@@ -756,8 +804,8 @@ async def get_job_document(
 ) -> Response:
     """Single-document detail nested under the owning job.
 
-    Returns HTTP 200 when the document is terminal (consumes
-    ``result_data`` so memory is freed for the caller) and HTTP 202
+    Returns HTTP 200 when the document is terminal (including retained
+    ``result_data`` when requested for the job) and HTTP 202
     while still pending/processing. A 404 is returned if either the
     job is unknown or the document does not belong to this job — the
     latter prevents leaking document existence across tenants.
@@ -775,7 +823,15 @@ async def get_job_document(
             detail=f"Document {document_id!r} not found in job {job_id!r}",
         )
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
-    result_data = tracker.consume_result_data(document_id) if is_terminal else None
+    result_data = tracker.get_result_data(document_id) if is_terminal else None
+    if (
+        is_terminal
+        and result_data is None
+        and rec.result_rows
+        and _job_retain_results(rec.job_id)
+        and _is_gateway(request)
+    ):
+        result_data = await _fetch_result_data_from_workers(document_id)
     body = _document_to_response(rec, result_data=result_data).model_dump()
     return JSONResponse(content=body, status_code=200 if is_terminal else 202)
 
@@ -822,7 +878,7 @@ async def submit_document_to_job(
         if _is_gateway(request):
             classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             file_bytes = await file.read()
             route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
@@ -832,25 +888,15 @@ async def submit_document_to_job(
             now = datetime.now(timezone.utc).isoformat()
 
             _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(document_id)
-
-            callback_url = _build_callback_url(request)
-            extra_headers = {
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_JOB_ID_HEADER: job_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-                **_gateway_retain_results_headers(job_id),
-            }
-            if validated_spec is not None:
-                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-            resp = await _gateway_forward(request, route, extra_headers=extra_headers)
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            await _gateway_enqueue(
+                request,
+                route,
+                work_id=document_id,
+                job_id=job_id,
+                payload=file_bytes,
+                filename=file.filename,
+                pipeline_spec=validated_spec,
+            )
 
             _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
@@ -899,6 +945,7 @@ async def submit_document_to_job(
                 payload=file_bytes,
                 filename=file.filename,
                 callback_url=gw_callback_url,
+                callback_headers=_internal_auth_headers(request),
                 job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
                 retain_results=_work_item_retain_results(request, job_id=gw_job_id),
@@ -950,35 +997,30 @@ async def submit_page_to_job(
 
     with _start_accept_span(request, job_id, "ingest.page.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=filename)
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             page_id = uuid.uuid4().hex
-            content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
+            file_bytes = await file.read()
+            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(page_id)
-
-            callback_url = _build_callback_url(request)
-            resp = await _gateway_forward(
-                request,
-                PoolType.REALTIME,
-                extra_headers={
-                    _GATEWAY_DOC_ID_HEADER: page_id,
-                    _GATEWAY_JOB_ID_HEADER: job_id,
-                    _GATEWAY_CALLBACK_HEADER: callback_url,
-                    **_gateway_retain_results_headers(job_id),
-                },
-            )
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(page_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            if not dry_run:
+                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.REALTIME,
+                    work_id=page_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    extra={
+                        "source_document_id": document_id,
+                        "page_number": page_number,
+                    },
+                )
 
             _record_prometheus(
                 request,
@@ -1032,6 +1074,7 @@ async def submit_page_to_job(
                     payload=file_bytes,
                     filename=file.filename,
                     callback_url=gw_callback_url,
+                    callback_headers=_internal_auth_headers(request),
                     job_id=gw_job_id,
                     retain_results=_work_item_retain_results(request, job_id=gw_job_id),
                 ),
@@ -1087,35 +1130,27 @@ async def submit_whole_document_to_job(
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             document_id = uuid.uuid4().hex
             file_bytes = await file.read()
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(document_id)
-
-            callback_url = _build_callback_url(request)
-            extra_headers = {
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_JOB_ID_HEADER: job_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-                **_gateway_retain_results_headers(job_id),
-            }
-            if validated_spec is not None:
-                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-            resp = await _gateway_forward(request, PoolType.BATCH, extra_headers=extra_headers)
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            if not dry_run:
+                _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.BATCH,
+                    work_id=document_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    pipeline_spec=validated_spec,
+                )
 
             _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
@@ -1165,6 +1200,7 @@ async def submit_whole_document_to_job(
                     payload=file_bytes,
                     filename=file.filename,
                     callback_url=gw_callback_url,
+                    callback_headers=_internal_auth_headers(request),
                     job_id=gw_job_id,
                     pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
                     retain_results=_work_item_retain_results(request, job_id=gw_job_id),
@@ -1206,9 +1242,8 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
     """Look up document status and return the appropriate HTTP code.
 
     Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
-    When returning a terminal (200) response, result_data is consumed from the
-    tracker (or, in gateway mode, from the worker pod that ran the pipeline)
-    so memory is freed after the client has retrieved it.
+    Terminal result data is read idempotently from the tracker or, in gateway
+    mode, from the shared worker result store.
     """
     from nemo_retriever.service.services.job_tracker import DocumentStatus
 
@@ -1223,8 +1258,14 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail=f"No tracked document with id={item_id!r}")
 
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
-    result_data = tracker.consume_result_data(item_id) if is_terminal else None
-    if is_terminal and result_data is None and rec.result_rows and _is_gateway(request):
+    result_data = tracker.get_result_data(item_id) if is_terminal else None
+    if (
+        is_terminal
+        and result_data is None
+        and rec.result_rows
+        and _job_retain_results(rec.job_id)
+        and _is_gateway(request)
+    ):
         result_data = await _fetch_result_data_from_workers(item_id)
 
     body = JobStatusResponse(
@@ -1608,7 +1649,7 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity",
+    summary="Search ingested documents by semantic similarity or hybrid retrieval",
 )
 async def query(request: Request) -> Response:
     """Proxy a query request to the VectorDB service.
@@ -1672,9 +1713,14 @@ async def query(request: Request) -> Response:
 )
 async def worker_document_result(document_id: str) -> JSONResponse:
     """Return rows stored by the worker pool after pipeline completion."""
-    from nemo_retriever.service.services.worker_result_store import consume_result_data
-
-    rows = consume_result_data(document_id)
+    try:
+        rows = get_result_data(document_id)
+    except ResultStoreTemporarilyUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": str(_RESULT_RETRY_AFTER_SECONDS)},
+        ) from exc
     if rows is None:
         raise HTTPException(
             status_code=404,
@@ -1706,6 +1752,22 @@ async def job_callback(request: Request) -> JSONResponse:
     if not item_id:
         raise HTTPException(status_code=400, detail="Missing 'id' field")
 
+    broker = None
+    lease_record = None
+    if _is_gateway(request):
+        from nemo_retriever.service.services.work_queue import StaleLease, get_work_broker
+
+        broker = get_work_broker()
+        lease_id = body.get("lease_id")
+        lease_generation = body.get("lease_generation")
+        if lease_id is not None or lease_generation is not None:
+            try:
+                lease_record = broker.validate_callback(item_id, lease_id, int(lease_generation)) if broker else None
+            except (StaleLease, TypeError, ValueError) as exc:
+                raise HTTPException(status_code=409, detail="Work lease has been superseded") from exc
+        elif broker is not None and broker.has_record(item_id):
+            raise HTTPException(status_code=409, detail="Missing work lease identity")
+
     if body.get("result_data") is not None:
         logger.warning(
             "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
@@ -1731,9 +1793,40 @@ async def job_callback(request: Request) -> JSONResponse:
             elapsed_s=body.get("elapsed_s"),
         )
     else:
+        result_rows = body.get("result_rows", 0)
+        if pre_rec is None and result_rows and body.get("result_worker_ip"):
+            logger.warning(
+                "Permanently rejecting retained result handoff for unknown document %s",
+                item_id,
+            )
+            raise HTTPException(
+                status_code=410,
+                detail=f"Gateway has no tracked document {item_id!r} for retained result handoff",
+            )
+        if pre_rec is not None and result_rows and tracker.should_retain_results(pre_rec.job_id):
+            try:
+                retained_rows = await asyncio.to_thread(get_result_data, item_id)
+            except ResultStoreTemporarilyUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=str(exc),
+                    headers={"Retry-After": "1"},
+                ) from exc
+            if retained_rows is None:
+                owner_ip = (
+                    lease_record.lease.worker_ip
+                    if lease_record is not None and lease_record.lease
+                    else body.get("result_worker_ip")
+                )
+                await _pull_and_store_worker_result(
+                    request,
+                    item_id,
+                    owner_ip,
+                    body.get("result_worker_ip") if lease_record is not None else None,
+                )
         outcome = tracker.mark_completed(
             item_id,
-            result_rows=body.get("result_rows", 0),
+            result_rows=result_rows,
             elapsed_s=body.get("elapsed_s"),
         )
 
@@ -1755,6 +1848,14 @@ async def job_callback(request: Request) -> JSONResponse:
         body.get("result_rows", 0),
         sub_count,
     )
+    if broker is not None and lease_record is not None:
+        try:
+            await broker.acknowledge(item_id, body["lease_id"], int(body["lease_generation"]))
+        except StaleLease:
+            logger.warning(
+                "Work lease for %s was already superseded at acknowledge; tracker already updated",
+                item_id,
+            )
     return JSONResponse(content={"ok": True})
 
 

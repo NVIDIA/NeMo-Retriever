@@ -13,6 +13,7 @@ from PIL import Image
 
 from nemo_retriever.common.modality.caption.model_profiles import (
     CaptionTarget,
+    DEFAULT_LOCAL_CAPTION_MODEL_ID,
     caption_model_aliases,
     caption_model_revisions,
     get_caption_model_profile,
@@ -49,11 +50,13 @@ class NemotronVLMCaptioner(BaseModel):
 
     Supported models:
 
-    * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16`` (default, BFloat16)
+    * ``nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`` (default,
+      BFloat16; approximately 62 GiB of model weights)
+    * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16`` (BFloat16)
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8``  (FP8 quantised)
     * ``nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD`` (NVFP4 quantised,
       requires GPU compute capability >= 8.9, e.g. Ada Lovelace / Hopper)
-    * Nemotron 3 Nano Omni BF16, FP8, and NVFP4 profiles and aliases
+    * Nemotron 3 Nano Omni FP8 and NVFP4 profiles and aliases
 
     Uses vLLM for inference with batched scheduling.
 
@@ -72,7 +75,7 @@ class NemotronVLMCaptioner(BaseModel):
 
     def __init__(
         self,
-        model_path: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        model_path: str = DEFAULT_LOCAL_CAPTION_MODEL_ID,
         device: Optional[str] = None,
         hf_cache_dir: Optional[str] = None,
         max_new_tokens: int = 1024,
@@ -84,6 +87,9 @@ class NemotronVLMCaptioner(BaseModel):
         profile = get_caption_model_profile(model_path, target="local")
         model_path = profile.local_model_id
 
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+
+        apply_vllm_startup_defaults()
         try:
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:

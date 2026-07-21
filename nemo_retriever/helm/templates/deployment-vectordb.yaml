@@ -4,23 +4,25 @@
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $vdbName := printf "%s-vectordb" $fullname -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- $localEmbed := include "nemo-retriever.localEmbed.enabled" . | eq "true" -}}
+{{- $localModels := .Values.serviceConfig.localModels -}}
 {{- /*
-  Fail-fast guard: rendering a vectordb Deployment without an embed
-  endpoint produces a "healthy" Pod (its /v1/health probe only inspects
-  LanceDB state) whose first /v1/query request then dies with HTTP 501
-  ("No embedding endpoint configured."). Refuse to install in that
-  configuration so the user gets a clear, actionable error at
-  `helm install` / `helm upgrade` time instead of after ingestion.
+  Fail-fast guard: rendering a vectordb Deployment without any query-time
+  embedding backend produces a "healthy" Pod whose first /v1/query request
+  then dies with HTTP 501. Refuse to install in that configuration.
 
-  The embed endpoint can be supplied either explicitly via
-  `serviceConfig.nimEndpoints.embedInvokeUrl`, or implicitly by enabling
-  the in-cluster NIM Operator-managed embed NIM
-  (`nimOperator.vlm_embed.enabled=true`, with the
-  `apps.nvidia.com/v1alpha1` CRDs installed).
+  Supported backends:
+    1. Explicit serviceConfig.nimEndpoints.embedInvokeUrl
+    2. Operator-managed vlm_embed NIM (nimOperator.vlm_embed.enabled=true)
+    3. In-pod Hugging Face query embedding
+       (serviceConfig.localModels.enabled + localModels.embed.enabled)
 */}}
-{{- if not $embedURL }}
-{{- fail "serviceConfig.vectordb.enabled=true but the embed endpoint could not be resolved. The vectordb Pod's /v1/query handler requires a NIM embedding endpoint. Pick one of: (1) set an explicit URL via --set serviceConfig.nimEndpoints.embedInvokeUrl=http://<host>:<port>/v1/embeddings; (2) enable the in-cluster embed NIM via --set nimOperator.vlm_embed.enabled=true (requires the apps.nvidia.com/v1alpha1 CRDs); or (3) disable the vectordb sub-stack via --set serviceConfig.vectordb.enabled=false. See nemo_retriever/helm/README.md section 'VectorDB and the embed endpoint' for details." -}}
+{{- if and (not $embedURL) (not $localEmbed) }}
+{{- fail "serviceConfig.vectordb.enabled=true but no query embedding backend could be resolved. The vectordb Pod's /v1/query handler needs one of: (1) set an explicit URL via --set serviceConfig.nimEndpoints.embedInvokeUrl=http://<host>:<port>/v1/embeddings; (2) enable the in-cluster embed NIM via --set nimOperator.vlm_embed.enabled=true (requires the apps.nvidia.com/v1alpha1 CRDs); (3) enable in-pod HF query embedding via --set serviceConfig.localModels.enabled=true --set serviceConfig.localModels.embed.enabled=true (requires the service-gpu image and topology.vectordb.gpu.enabled=true); or (4) disable the vectordb sub-stack via --set serviceConfig.vectordb.enabled=false. See nemo_retriever/helm/README.md section 'VectorDB and the embed endpoint' for details." -}}
 {{- end }}
+{{- $vdbGpu := or $vdb.gpu.enabled $localEmbed -}}
+{{- $vdbGpuCount := $vdb.gpu.count | int -}}
+{{- if and $vdbGpu (eq $vdbGpuCount 0) }}{{- $vdbGpuCount = 1 }}{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,8 +64,8 @@ spec:
       {{- end }}
       containers:
         - name: vectordb
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" . }}:{{ include "nemo-retriever.runtime.image.tag" . }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" . }}
           command:
             - python
             - -m
@@ -73,27 +75,62 @@ spec:
             - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
             - --table-name
             - {{ .Values.serviceConfig.vectordb.tableName | quote }}
+            {{- if $embedURL }}
             - --embed-endpoint
             - {{ $embedURL | quote }}
+            {{- else if $localEmbed }}
+            - --local-embed
+            - --local-embed-backend
+            - {{ $localModels.embed.localIngestEmbedBackend | quote }}
+            {{- if $localModels.hfCacheDir }}
+            - --hf-cache-dir
+            - {{ $localModels.hfCacheDir | quote }}
+            {{- end }}
+            {{- if $localModels.device }}
+            - --device
+            - {{ $localModels.device | quote }}
+            {{- end }}
+            - --gpu-memory-utilization
+            - {{ $localModels.embed.gpuMemoryUtilization | quote }}
+            {{- end }}
             - --embed-model
-            - {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+            - {{ .Values.serviceConfig.vectordb.embedModel | default $localModels.embed.modelName | quote }}
+            {{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
+            - --embed-model-provider-prefix
+            - {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
+            {{- end }}
             - --port
             - {{ $vdb.port | quote }}
+            {{- if $embedURL }}
             - --embed-api-key
             - $(NVIDIA_API_KEY)
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
+            {{- if $embedURL }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- end }}
+            {{- if and $localEmbed $localModels.device }}
+            - name: CUDA_VISIBLE_DEVICES
+              value: {{ $localModels.device | quote }}
+            {{- else if and $localEmbed .Values.serviceConfig.resources.gpuDevices }}
+            - name: CUDA_VISIBLE_DEVICES
+              value: {{ join "," .Values.serviceConfig.resources.gpuDevices | quote }}
+            {{- end }}
           resources:
-            {{- toYaml $vdb.resources | nindent 12 }}
+            {{- $resources := deepCopy $vdb.resources }}
+            {{- if $vdbGpu }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $vdbGpuCount -}}
+            {{- end }}
+            {{- toYaml $resources | nindent 12 }}
           volumeMounts:
             - name: vectordb-data
               mountPath: {{ .Values.serviceConfig.vectordb.lancedbUri }}

@@ -8,6 +8,11 @@ from typing import Annotated
 
 import typer
 
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+
+DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
+
 
 QueryArgument = Annotated[str, typer.Argument(..., help="Query text.")]
 TopKOption = Annotated[
@@ -46,14 +51,14 @@ LanceDbUriOption = Annotated[
     str,
     typer.Option(
         "--lancedb-uri",
-        help="LanceDB database URI to read; match the value used for retriever ingest local --lancedb-uri.",
+        help="LanceDB database URI to read; match the value used for retriever ingest --lancedb-uri.",
     ),
 ]
 TableNameOption = Annotated[
     str,
     typer.Option(
         "--table-name",
-        help="LanceDB table name to read; match the value used for retriever ingest local --table-name.",
+        help="LanceDB table name to read; match the value used for retriever ingest --table-name.",
     ),
 ]
 EmbedInvokeUrlOption = Annotated[
@@ -62,7 +67,17 @@ EmbedInvokeUrlOption = Annotated[
 ]
 EmbedModelNameOption = Annotated[
     str | None,
-    typer.Option("--embed-model-name", help="Optional embedding model name override."),
+    typer.Option(
+        "--embed-model-name",
+        help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+    ),
+]
+EmbedModelProviderPrefixOption = Annotated[
+    str | None,
+    typer.Option(
+        "--embed-model-provider-prefix",
+        help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
+    ),
 ]
 RerankerInvokeUrlOption = Annotated[
     str | None,
@@ -82,7 +97,7 @@ RerankerModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--reranker-model-name",
-        help="Optional reranker model name override (used by the local GPU reranker).",
+        help=("Optional reranker model name override. When reranking locally, " f"defaults to {DEFAULT_RERANK_MODEL}."),
     ),
 ]
 RerankerBackendOption = Annotated[
@@ -116,14 +131,6 @@ RetrievalModeOption = Annotated[
         ),
     ),
 ]
-HybridOption = Annotated[
-    bool,
-    typer.Option(
-        "--hybrid",
-        help="Deprecated alias for --retrieval-mode hybrid.",
-        hidden=True,
-    ),
-]
 OutputFormatOption = Annotated[
     str,
     typer.Option(
@@ -145,7 +152,7 @@ AgenticOption = Annotated[
     bool,
     typer.Option(
         "--agentic",
-        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default dense pass.",
+        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
     ),
 ]
 AgenticLlmModelOption = Annotated[

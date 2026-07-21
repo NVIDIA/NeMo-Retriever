@@ -3,19 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Standalone text embedding helper for retriever-local pandas DataFrames.
+Text embedding helper for NeMo Retriever pandas DataFrames.
 
-Goal:
-- Mirror (as closely as practical) the batching/runner logic from
-  `nemo_retriever.api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
-  but adapt it to the **retriever-local** DataFrame structure used by
-  `nemo_retriever.text_embed.text_embed.embed_text_1b_v2`.
-
-Key differences vs the API transform:
-- This module operates on a simple pandas.DataFrame that typically contains:
+This module owns the batching and runner logic used by the graph pipeline. It
+operates on a pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- Uses ``nemo_retriever.api`` for shared HTTP embedding URL normalization (with pandas/httpx).
+It uses the shared HTTP embedding URL normalization helpers with pandas/httpx.
 
 Usage:
 
@@ -48,14 +42,17 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
-from nemo_retriever.common.api.util.string_processing import ensure_openai_embeddings_http_url
+from nemo_retriever.common.api.util.string_processing import (
+    ensure_openai_embeddings_http_url,
+    prepend_model_provider_prefix,
+)
 
 from nemo_retriever.models import _DEFAULT_EMBED_MODEL
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
 logger = logging.getLogger(__name__)
 
-# Keep HTTP client logging quiet by default (parity with API transform).
+# Keep HTTP client logging quiet by default.
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
 
@@ -65,13 +62,14 @@ EmbeddingCallable = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 @dataclass(slots=True)
 class TextEmbeddingConfig:
     """
-    Minimal config surface mirroring the API's TextEmbeddingSchema fields used by the transform.
+    Configuration for DataFrame text embedding.
     """
 
     # Remote / NIM-like settings
     api_key: Optional[str] = None
     embedding_nim_endpoint: Optional[str] = None  # e.g. "http://host:8000/v1"
     embedding_model: str = _DEFAULT_EMBED_MODEL
+    embedding_model_provider_prefix: Optional[str] = None
     encoding_format: str = "float"  # OpenAI-compatible embeddings often accept "float"
     input_type: str = "passage"
     truncate: str = "END"
@@ -91,7 +89,7 @@ class TextEmbeddingConfig:
 
 
 # ------------------------------------------------------------------------------
-# Batch Processing Utilities (copied from API transform with minimal edits)
+# Batch processing utilities
 # ------------------------------------------------------------------------------
 
 
@@ -99,8 +97,7 @@ def _batch_generator(iterable: Iterable[Any], batch_size: int = 10) -> Iterable[
     """
     Yield list batches from any iterable.
 
-    The API transform assumes sized/sliceable inputs; for robustness we also accept
-    generators/iterators by materializing them once.
+    Accept generators and iterators by materializing them once.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be > 0")
@@ -129,7 +126,7 @@ def _generate_batches(prompts: Iterable[str], batch_size: int = 100) -> List[Lis
 
 def _text_from_row(row: pd.Series, *, text_column: str) -> Optional[str]:
     """
-    Extract text from a row with small fallbacks (mirrors `nemo_retriever.text_embed.text_embed`).
+    Extract text from a row with small fallbacks for graph-pipeline inputs.
     """
     v = row.get(text_column)
     if isinstance(v, str) and v.strip():
@@ -293,6 +290,7 @@ def _http_embed_openai_compat(
     encoding_format: str,
     input_type: str,
     truncate: str,
+    model_provider_prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
 ) -> List[Optional[List[float]]]:
@@ -308,6 +306,7 @@ def _http_embed_openai_compat(
         raise RuntimeError("Remote embedding requested but `httpx` is not installed.") from e
 
     url = _normalize_embeddings_endpoint(_pick_embed_endpoint(endpoint_url))
+    model_name = prepend_model_provider_prefix(model_name, model_provider_prefix) or model_name
     headers: Dict[str, str] = {"accept": "application/json", "content-type": "application/json"}
     token = (api_key or "").strip()
     if token:
@@ -353,6 +352,7 @@ def _make_async_request(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -362,7 +362,7 @@ def _make_async_request(
     timeout_s: float = 600.0,
 ) -> dict:
     """
-    Mirrors the API transform's request wrapper, but uses HTTP OpenAI-compatible embeddings.
+    Send an HTTP OpenAI-compatible embedding request.
 
     Notes:
     - `input_type` and `truncate` are sent as top-level JSON fields, matching the effective
@@ -377,6 +377,7 @@ def _make_async_request(
             api_key=api_key,
             endpoint_url=str(embedding_nim_endpoint),
             model_name=str(embedding_model),
+            model_provider_prefix=embedding_model_provider_prefix,
             encoding_format=str(encoding_format),
             input_type=str(input_type),
             truncate=str(truncate),
@@ -399,6 +400,7 @@ def _async_request_handler(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -420,6 +422,7 @@ def _async_request_handler(
                 api_key=api_key or None,
                 embedding_nim_endpoint=str(embedding_nim_endpoint),
                 embedding_model=str(embedding_model),
+                embedding_model_provider_prefix=embedding_model_provider_prefix,
                 encoding_format=str(encoding_format),
                 input_type=str(input_type),
                 truncate=str(truncate),
@@ -440,6 +443,7 @@ def _async_runner(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -454,6 +458,7 @@ def _async_runner(
         api_key,
         embedding_nim_endpoint,
         embedding_model,
+        embedding_model_provider_prefix,
         encoding_format,
         input_type,
         truncate,
@@ -533,7 +538,7 @@ def _add_embeddings_retriever_df(
 
 
 # ------------------------------------------------------------------------------
-# Public API (mirrors the API transform's surface, but for retriever-local df schema)
+# Public API
 # ------------------------------------------------------------------------------
 
 
@@ -554,7 +559,7 @@ def create_text_embeddings_for_df(
         - `text` (or provide `transform_config.text_column`)
         - `metadata` (optional dict; created if missing when writing embeddings)
     task_config:
-        Controls runtime behavior. Keys (compatible with the API transform):
+        Controls runtime behavior. Supported keys:
         - **api_key**: optional str
         - **endpoint_url**: optional str; if set, remote HTTP embeddings are used
         - **model_name**: optional str
@@ -574,12 +579,17 @@ def create_text_embeddings_for_df(
     if transform_config is None:
         transform_config = TextEmbeddingConfig()
 
-    # Allow task_config to explicitly override values with None by checking key presence (API parity).
+    # Allow task_config to explicitly override values with None by checking key presence.
     api_key = task_config["api_key"] if "api_key" in task_config else transform_config.api_key
     endpoint_url = (
         task_config["endpoint_url"] if "endpoint_url" in task_config else transform_config.embedding_nim_endpoint
     )
     model_name = task_config["model_name"] if "model_name" in task_config else transform_config.embedding_model
+    model_provider_prefix = (
+        task_config["model_provider_prefix"]
+        if "model_provider_prefix" in task_config
+        else task_config.get("embed_model_provider_prefix", transform_config.embedding_model_provider_prefix)
+    )
     dimensions = task_config["dimensions"] if "dimensions" in task_config else transform_config.dimensions
 
     endpoint_url = endpoint_url.strip() if isinstance(endpoint_url, str) else endpoint_url
@@ -671,6 +681,7 @@ def create_text_embeddings_for_df(
                 api_key,
                 str(endpoint_url),
                 str(model_name),
+                model_provider_prefix,
                 str(transform_config.encoding_format),
                 str(transform_config.input_type),
                 str(transform_config.truncate),
@@ -693,6 +704,7 @@ def create_text_embeddings_for_df(
                     api_key,
                     str(endpoint_url),
                     str(model_name),
+                    model_provider_prefix,
                     str(transform_config.encoding_format),
                     str(transform_config.input_type),
                     str(transform_config.truncate),

@@ -5,6 +5,14 @@ NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, an
 NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content,
 and can store vectors in [LanceDB](https://lancedb.com/) for the recommended embedded path when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
 
+## NVIDIA AI Enterprise (NVAIE) support { #nvidia-ai-enterprise-nvaie-support }
+
+!!! warning "The NeMo Retriever Library is not supported under NVIDIA AI Enterprise (NVAIE)"
+
+    NVIDIA AI Enterprise (NVAIE) support does **not** cover the NeMo Retriever Library. This applies to the NeMo Retriever Library Python package, its container image, and its Helm chart artifacts.
+
+    Some individual NIM microservices and models that the library calls—for example, the default NIMs in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#default-helm-nims)—may be covered by NVAIE on their own. That coverage applies only to those individual NIMs and models. It does **not** extend to the NeMo Retriever Library or its end-to-end extraction workflow. Using NVAIE-supported NIMs or models through the NeMo Retriever Library does not make the library, its container, or its chart NVAIE-supported.
+
 ## What NeMo Retriever Library Is ✔️
 
 The following diagram shows the retriever pipeline.
@@ -48,6 +56,5 @@ NeMo Retriever Library supports the following file types:
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
 - [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
-- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported Helm charts)
 - [Notebooks](starter-kits.md)
 - [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)); for integration pathways, refer to [Starter kits](starter-kits.md).

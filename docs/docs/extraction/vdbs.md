@@ -134,7 +134,7 @@ Some deployments use a different vector store than the default LanceDB path on t
 | Vector store | Where to configure or implement |
 |--------------|--------------------------------|
 | **[Elasticsearch](https://www.elastic.co/elasticsearch)** | [Configure Elasticsearch as Your Vector Database for NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/change-vectordb.html) — compose profiles, environment variables, and Helm notes for the RAG Blueprint. |
-| **[Pinecone](https://www.pinecone.io/)** | [Customize your vector database (Pinecone + NVIDIA RAG)](https://github.com/pinecone-io/nvidia-pinecone-rag/blob/main/docs/vector-database.md) in the [`pinecone-io/nvidia-pinecone-rag`](https://github.com/pinecone-io/nvidia-pinecone-rag) repository. |
+| **[Pinecone](https://www.pinecone.io/)** | [Pinecone Configuration for Pinecone Enterprise RAG Blueprint](https://github.com/pinecone-io/nvidia-rag/blob/main/docs/pinecone-configuration.md) in the [`pinecone-io/nvidia-rag`](https://github.com/pinecone-io/nvidia-rag) repository. |
 | **[Teradata](https://www.teradata.com/)** | [TeradataVDB (NVIDIA NIM Ingest integration)](https://docs.teradata.com/r/VMware/Teradata-Package-for-Generative-AI-Function-Reference/Vector-Store/NVIDIA-NIM-Ingest-Integration/TeradataVDB) — `teradatagenai.vector_store.teradataVDB.TeradataVDB` implements the NeMo Retriever ingestion `VDB` abstract class for Teradata Vector Store. |
 
 Testing and release cadence for these integrations follow the owning project (RAG Blueprint, Pinecone sample repo, or Teradata Generative AI package), not the first-party LanceDB operator validated for NeMo Retriever Library on this page.
@@ -150,11 +150,12 @@ Testing and release cadence for these integrations follow the owning project (RA
 
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
-To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb).
+To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb). For an overview of all customization paths (UDFs, graph pipelines, and embeddings), refer to [Customize & extend](customize-extend.md).
 
 ## Related Topics { #related-topics }
 
 - [Metadata and filtering](#metadata-and-filtering)
+- [Customize & extend](customize-extend.md)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)

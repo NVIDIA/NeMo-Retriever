@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
+from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
+
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
@@ -50,6 +52,12 @@ def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     if "embed_invoke_url" in normalized:
         normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
+    endpoint = normalized.get("embedding_endpoint") or normalized.get("embed_invoke_url")
+    model_provider_prefix = normalized.pop("embed_model_provider_prefix", None)
+    if endpoint and model_provider_prefix:
+        for key in ("model_name", "embed_model_name"):
+            if key in normalized:
+                normalized[key] = prepend_model_provider_prefix(normalized[key], str(model_provider_prefix))
     return normalized
 
 
@@ -58,6 +66,7 @@ def build_embed_option_kwargs(
     embed_model_name: str | None,
     local_ingest_embed_backend: str | None = None,
     embed_api_key: str | None = None,
+    embed_model_provider_prefix: str | None = None,
     embed_modality: str | None = None,
     text_elements_modality: str | None = None,
     structured_elements_modality: str | None = None,
@@ -79,6 +88,8 @@ def build_embed_option_kwargs(
         embed_kwargs["local_ingest_embed_backend"] = local_ingest_embed_backend
     if embed_api_key is not None:
         embed_kwargs["api_key"] = embed_api_key
+    if embed_model_provider_prefix is not None:
+        embed_kwargs["embed_model_provider_prefix"] = embed_model_provider_prefix
     if embed_modality is not None:
         embed_kwargs["embed_modality"] = embed_modality
     if text_elements_modality is not None:

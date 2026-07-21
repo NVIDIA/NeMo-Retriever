@@ -77,6 +77,8 @@ from nemo_retriever.ingest.plan import (
     resolve_ingest_plan,
 )
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.common.input_files import resolve_input_patterns
+from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
 from nemo_retriever.common.params import (
     CaptionParams,
     DedupParams,
@@ -87,7 +89,6 @@ from nemo_retriever.common.params import (
     VdbUploadParams,
 )
 from nemo_retriever.common.params.models import BatchTuningParams
-from nemo_retriever.common.input_files import resolve_input_patterns
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,6 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
     ("--page-elements-invoke-url", "page_elements_invoke_url"),
     ("--ocr-invoke-url", "ocr_invoke_url"),
     ("--ocr-lang", "ocr_lang"),
-    ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
     ("--table-structure-invoke-url", "table_structure_invoke_url"),
     ("--caption-invoke-url", "caption_invoke_url"),
     ("--caption-model-name", "caption_model_name"),
@@ -347,7 +347,6 @@ def _build_extract_params(
     extract_infographics: Optional[bool],
     extract_page_as_image: Optional[bool],
     use_page_elements: Optional[bool],
-    use_graphic_elements: Optional[bool],
     use_table_structure: Optional[bool],
     table_output_format: Optional[str],
     extract_remote_api_key: Optional[str],
@@ -355,7 +354,6 @@ def _build_extract_params(
     ocr_invoke_url: Optional[str],
     ocr_version: str,
     ocr_lang: Optional[str],
-    graphic_elements_invoke_url: Optional[str],
     table_structure_invoke_url: Optional[str],
     pdf_split_batch_size: int,
     pdf_extract_batch_size: Optional[int],
@@ -423,9 +421,7 @@ def _build_extract_params(
                 "ocr_invoke_url": ocr_invoke_url,
                 "ocr_version": ocr_version,
                 "ocr_lang": ocr_lang,
-                "graphic_elements_invoke_url": graphic_elements_invoke_url,
                 "table_structure_invoke_url": table_structure_invoke_url,
-                "use_graphic_elements": use_graphic_elements,
                 "use_table_structure": use_table_structure,
                 "table_output_format": table_output_format,
                 "inference_batch_size": page_elements_batch_size or None,
@@ -754,11 +750,10 @@ def run(
         rich_help_panel=_PANEL_EXTRACT,
         help=(
             "Run PageElementDetection (layout/yolox). Auto-skipped when no downstream stage "
-            "(TableStructure, GraphicElements, OCR) consumes its output. Pass --no-use-page-elements "
+            "(TableStructure or OCR) consumes its output. Pass --no-use-page-elements "
             "to force-skip for a faster text-only ingest."
         ),
     ),
-    use_graphic_elements: Optional[bool] = typer.Option(None, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
     use_table_structure: Optional[bool] = typer.Option(None, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
     table_output_format: Optional[str] = typer.Option(None, "--table-output-format", rich_help_panel=_PANEL_EXTRACT),
     # --- Remote NIM endpoints --------------------------------------------
@@ -783,9 +778,6 @@ def run(
         "--ocr-lang",
         help="OCR language selector for v2: 'multi' (default) or 'english'. Not valid with --ocr-version v1.",
         rich_help_panel=_PANEL_REMOTE,
-    ),
-    graphic_elements_invoke_url: Optional[str] = typer.Option(
-        None, "--graphic-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
     ),
     table_structure_invoke_url: Optional[str] = typer.Option(
         None, "--table-structure-invoke-url", rich_help_panel=_PANEL_REMOTE
@@ -815,8 +807,12 @@ def run(
         None, "--caption-invoke-url", rich_help_panel=_PANEL_DEDUP_CAPTION
     ),
     caption_model_name: str = typer.Option(
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        DEFAULT_LOCAL_CAPTION_MODEL_ID,
         "--caption-model-name",
+        help=(
+            "VLM caption model. Defaults to Nemotron 3 Nano Omni 30B BF16 for local vLLM execution; "
+            "use an API model ID when --caption-invoke-url targets a hosted or deployed endpoint."
+        ),
         rich_help_panel=_PANEL_DEDUP_CAPTION,
     ),
     caption_device: Optional[str] = typer.Option(None, "--caption-device", rich_help_panel=_PANEL_DEDUP_CAPTION),
@@ -1244,7 +1240,6 @@ def run(
                 (
                     page_elements_invoke_url,
                     ocr_invoke_url,
-                    graphic_elements_invoke_url,
                     table_structure_invoke_url,
                     embed_invoke_url,
                 )
@@ -1299,7 +1294,6 @@ def run(
                 extract_infographics=extract_infographics,
                 extract_page_as_image=extract_page_as_image,
                 use_page_elements=use_page_elements,
-                use_graphic_elements=use_graphic_elements,
                 use_table_structure=use_table_structure,
                 table_output_format=table_output_format,
                 extract_remote_api_key=extract_remote_api_key,
@@ -1307,7 +1301,6 @@ def run(
                 ocr_invoke_url=ocr_invoke_url,
                 ocr_version=ocr_version,
                 ocr_lang=ocr_lang,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
                 table_structure_invoke_url=table_structure_invoke_url,
                 pdf_split_batch_size=pdf_split_batch_size,
                 pdf_extract_batch_size=pdf_extract_batch_size,
@@ -1394,13 +1387,11 @@ def run(
                         extract_infographics=extract_infographics,
                         extract_page_as_image=extract_page_as_image,
                         use_page_elements=use_page_elements,
-                        use_graphic_elements=use_graphic_elements,
                         use_table_structure=use_table_structure,
                         page_elements_invoke_url=page_elements_invoke_url,
                         ocr_invoke_url=ocr_invoke_url,
                         ocr_version=ocr_version,
                         ocr_lang=ocr_lang,
-                        graphic_elements_invoke_url=graphic_elements_invoke_url,
                         table_structure_invoke_url=table_structure_invoke_url,
                         table_output_format=table_output_format,
                         extract_api_key=extract_remote_api_key,

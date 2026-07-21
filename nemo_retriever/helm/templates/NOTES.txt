@@ -4,6 +4,19 @@ Release name : {{ .Release.Name }}
 Namespace    : {{ .Release.Namespace }}
 Topology     : {{ .Values.topology.mode }}
 
+Scheduler    : EPHEMERAL — gateway replacement loses accepted work and status history.
+Action       : Drain the gateway before rollout; clients must create and submit a new job after replacement.
+{{- range $role := list "realtime" "batch" }}
+{{- $metrics := (index $.Values.topology $role).hpa.metrics | default dict }}
+{{- if hasKey $metrics "queueDepthRatio" }}
+Compatibility: {{ $role }} metrics.queueDepthRatio is deprecated. Fractional ratio targets
+               are replaced with that role's queueBacklog count default.
+{{- end }}
+{{- end }}
+{{- if .Values.autoscaling.queueDepth.prometheusAdapter.queueDepthRatioMetric }}
+Compatibility: queueDepthRatioMetric is deprecated and currently names the demand metric.
+{{- end }}
+
 {{- if eq .Values.topology.mode "standalone" }}
 Service name : {{ include "nemo-retriever.fullname" . }}
 {{- else }}

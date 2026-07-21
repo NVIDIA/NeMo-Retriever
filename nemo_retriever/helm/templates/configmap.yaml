@@ -52,6 +52,14 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- end -}}
 
 {{- define "nemo-retriever.configBody" -}}
+{{- $rawMaxUploadBytes := .Values.serviceConfig.resources.maxUploadBytes -}}
+{{- $maxUploadBytes := toString $rawMaxUploadBytes -}}
+{{- if kindIs "float64" $rawMaxUploadBytes -}}
+{{- $maxUploadBytes = printf "%.0f" $rawMaxUploadBytes -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]*$" $maxUploadBytes)) (and (kindIs "float64" $rawMaxUploadBytes) (ne $rawMaxUploadBytes (float64 $maxUploadBytes))) -}}
+{{- fail "serviceConfig.resources.maxUploadBytes must be a positive integer" -}}
+{{- end -}}
 server:
   host: {{ .Values.serviceConfig.server.host | quote }}
   port: {{ .Values.serviceConfig.server.port }}
@@ -67,10 +75,41 @@ nim_endpoints:
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
   api_key: null
+
+local_models:
+  enabled: {{ .Values.serviceConfig.localModels.enabled }}
+  hf_cache_dir: {{ if .Values.serviceConfig.localModels.hfCacheDir }}{{ .Values.serviceConfig.localModels.hfCacheDir | quote }}{{ else }}null{{ end }}
+  device: {{ if .Values.serviceConfig.localModels.device }}{{ .Values.serviceConfig.localModels.device | quote }}{{ else }}null{{ end }}
+  warmup_on_startup: {{ .Values.serviceConfig.localModels.warmupOnStartup }}
+  max_tasks_per_child: {{ if .Values.serviceConfig.localModels.maxTasksPerChild }}{{ .Values.serviceConfig.localModels.maxTasksPerChild }}{{ else }}null{{ end }}
+  max_process_pool_workers: {{ .Values.serviceConfig.localModels.maxProcessPoolWorkers }}
+  extract:
+    enabled: {{ .Values.serviceConfig.localModels.extract.enabled }}
+    use_table_structure: {{ .Values.serviceConfig.localModels.extract.useTableStructure }}
+    ocr_version: {{ .Values.serviceConfig.localModels.extract.ocrVersion | quote }}
+    ocr_lang: {{ if .Values.serviceConfig.localModels.extract.ocrLang }}{{ .Values.serviceConfig.localModels.extract.ocrLang | quote }}{{ else }}null{{ end }}
+  embed:
+    enabled: {{ .Values.serviceConfig.localModels.embed.enabled }}
+    model_name: {{ .Values.serviceConfig.localModels.embed.modelName | quote }}
+    local_ingest_embed_backend: {{ .Values.serviceConfig.localModels.embed.localIngestEmbedBackend | quote }}
+    gpu_memory_utilization: {{ .Values.serviceConfig.localModels.embed.gpuMemoryUtilization }}
+  asr:
+    enabled: {{ .Values.serviceConfig.localModels.asr.enabled }}
+
+mcp:
+  enabled: {{ .Values.serviceConfig.mcp.enabled }}
+  path: {{ .Values.serviceConfig.mcp.path | quote }}
+  base_url: {{ if .Values.serviceConfig.mcp.baseUrl }}{{ .Values.serviceConfig.mcp.baseUrl | quote }}{{ else }}null{{ end }}
+  enable_write_tools: {{ .Values.serviceConfig.mcp.enableWriteTools }}
+  max_concurrency: {{ .Values.serviceConfig.mcp.maxConcurrency }}
+  request_timeout_s: {{ .Values.serviceConfig.mcp.requestTimeoutS }}
+  ingest_timeout_s: {{ .Values.serviceConfig.mcp.ingestTimeoutS }}
+  poll_interval_s: {{ .Values.serviceConfig.mcp.pollIntervalS }}
 
 llm:
   enabled: {{ if .llmEnabled }}true{{ else }}false{{ end }}
@@ -93,10 +132,22 @@ pipeline:
   batch_workers: {{ .Values.serviceConfig.pipeline.batchWorkers }}
   batch_queue_size: {{ .Values.serviceConfig.pipeline.batchQueueSize }}
 
+work_queue:
+  gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.serviceConfig.server.port }}"
+  spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
+  spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
+  claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
+  lease_ttl_s: {{ .Values.serviceConfig.workQueue.leaseTtlS }}
+  heartbeat_interval_s: {{ .Values.serviceConfig.workQueue.heartbeatIntervalS }}
+  max_delivery_attempts: {{ .Values.serviceConfig.workQueue.maxDeliveryAttempts }}
+  max_active_leases_realtime: {{ .Values.serviceConfig.workQueue.maxActiveLeases.realtime }}
+  max_active_leases_batch: {{ .Values.serviceConfig.workQueue.maxActiveLeases.batch }}
+
 resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
   max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
   gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
+  max_upload_bytes: {{ $maxUploadBytes }}
 
 auth:
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
@@ -109,6 +160,7 @@ vectordb:
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
 vectordb:
@@ -118,6 +170,7 @@ vectordb:
 
 {{- $vectordbSvc := printf "%s-vectordb" (include "nemo-retriever.fullname" .) -}}
 {{- $vectordbPort := ((.Values.topology.vectordb).port | default 7671) -}}
+{{- $gatewaySvc := printf "%s-gateway" (include "nemo-retriever.fullname" .) -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ConfigMap with mode: standalone
@@ -131,7 +184,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -159,6 +212,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

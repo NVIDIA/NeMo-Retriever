@@ -4,6 +4,8 @@
 # syntax=docker/dockerfile:1.3
 #
 # Build from repo root: docker build -f Dockerfile -t nemo-retriever .
+# Service (NIM-forwarding): docker build -f Dockerfile --target service -t nemo-retriever-service .
+# Service + in-pod HF:      docker build -f Dockerfile --target service-gpu -t nemo-retriever-service-gpu .
 # Runtime ffmpeg/ffprobe install for service image: docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
@@ -116,6 +118,22 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     . /opt/retriever_runtime/bin/activate \
     && uv pip install -e "./nemo_retriever[service]"
 
+# GPU service install: in-pod Hugging Face models + multimedia (ASR, SVG).
+# Build target: service-gpu
+FROM base AS install-service-gpu
+
+WORKDIR /workspace
+
+ENV PYTHONUNBUFFERED=1
+ENV VIRTUAL_ENV=/opt/retriever_runtime
+ENV PATH=/opt/retriever_runtime/bin:$PATH
+
+SHELL ["/bin/bash", "-c"]
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    . /opt/retriever_runtime/bin/activate \
+    && uv pip install -e "./nemo_retriever[service,local,multimedia]"
+
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
 
@@ -155,10 +173,52 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
          > /etc/sudoers.d/nemo-ffmpeg \
     && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
     && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
-    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+
+EXPOSE 7670
+
+USER nemo
+
+ENTRYPOINT ["/usr/local/bin/retriever-service-entrypoint"]
+
+CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever-service.yaml"]
+
+# ---------------------------------------------------------------------------
+# GPU service profile: FastAPI ingest service with in-pod Hugging Face models.
+#
+# Build:  docker build -f Dockerfile --target service-gpu \
+#             -t nemo-retriever-service-gpu .
+#
+# Run (requires --gpus all and local_models.enabled in config):
+#   docker run --rm --gpus all -p 7670:7670 \
+#     -v /host/retriever-service.yaml:/etc/nemo-retriever/retriever-service.yaml:ro \
+#     nemo-retriever-service-gpu
+# ---------------------------------------------------------------------------
+FROM install-service-gpu AS service-gpu
+
+ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
+
+ENV PATH=/opt/retriever_runtime/bin:$PATH
+
+COPY docker/scripts/retriever_service_entrypoint.sh /usr/local/bin/retriever-service-entrypoint
+COPY docker/scripts/retriever_install_ffmpeg.sh /usr/local/sbin/retriever-install-ffmpeg
+
+RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-service-entrypoint \
+        /usr/local/sbin/retriever-install-ffmpeg \
+    && chmod -R a+rX /opt/uv \
+    && groupadd -r -g 1000 nemo && useradd -r -u 1000 -g nemo -d /workspace -s /sbin/nologin nemo \
+    && printf '%s\n' \
+         'nemo ALL=(root) NOPASSWD: /usr/local/sbin/retriever-install-ffmpeg' \
+         > /etc/sudoers.d/nemo-ffmpeg \
+    && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
+    && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
+    && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
+            "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
 
 EXPOSE 7670
 
