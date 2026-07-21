@@ -12,7 +12,6 @@ the standard retrieval path.
 from __future__ import annotations
 
 import logging
-import math
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +23,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
     agentic_backend_top_k_error,
+    agentic_float_range_value,
     agentic_int_min_error,
     agentic_int_value,
     agentic_temperature_error,
@@ -149,7 +149,6 @@ class AgenticRetrievalConfig:
     invoke_url: Optional[str] = None
     local_llm_backend: str = AGENTIC_LOCAL_LLM_BACKEND
     local_hf_cache_dir: Optional[str] = None
-    local_device: Optional[str] = None
     local_gpu_memory_utilization: float = 0.8
     local_tensor_parallel_size: int = 1
     local_max_model_len: Optional[int] = None
@@ -259,7 +258,7 @@ class AgenticRetrievalConfig:
                 raise ValueError(integer_error)
             object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
 
-        local_gpu_memory_utilization = _agentic_float_range_value(
+        local_gpu_memory_utilization = agentic_float_range_value(
             self.local_gpu_memory_utilization,
             field_name="local_gpu_memory_utilization",
             min_value=0.0,
@@ -286,26 +285,6 @@ def _normalize_agentic_choice(value: object, valid: frozenset[str], *, field_nam
     return normalized
 
 
-def _agentic_float_range_value(
-    value: object,
-    *,
-    field_name: str,
-    min_value: float,
-    max_value: float,
-    min_exclusive: bool = False,
-) -> float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{field_name} must be a number") from None
-    if not math.isfinite(parsed):
-        raise ValueError(f"{field_name} must be finite")
-    if parsed > max_value or (parsed <= min_value if min_exclusive else parsed < min_value):
-        operator = ">" if min_exclusive else ">="
-        raise ValueError(f"{field_name} must be {operator} {min_value} and <= {max_value}")
-    return parsed
-
-
 def _build_agent_chat_completion_fn(cfg: AgenticRetrievalConfig) -> Any | None:
     if cfg.llm_backend == "openai_compatible":
         return None
@@ -316,7 +295,6 @@ def _build_agent_chat_completion_fn(cfg: AgenticRetrievalConfig) -> Any | None:
         return create_local_agent_llm(
             str(cfg.llm_model),
             backend=str(cfg.local_llm_backend),
-            device=_none_if_empty(cfg.local_device),
             hf_cache_dir=_none_if_empty(cfg.local_hf_cache_dir),
             gpu_memory_utilization=float(cfg.local_gpu_memory_utilization),
             tensor_parallel_size=int(cfg.local_tensor_parallel_size),

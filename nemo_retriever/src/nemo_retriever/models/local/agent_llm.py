@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import uuid
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
@@ -77,6 +77,19 @@ def resolve_agent_llm_model_name(name: str) -> str:
     return _AGENT_LLM_MODEL_ALIASES.get(_normalize_name(name), name)
 
 
+@dataclass(frozen=True)
+class LocalAgentLLMConfig:
+    """Local vLLM configuration for the agent chat LLM."""
+
+    model_path: str
+    hf_cache_dir: Optional[str] = None
+    gpu_memory_utilization: float = 0.8
+    tensor_parallel_size: int = 1
+    max_model_len: Optional[int] = None
+    max_num_seqs: Optional[int] = None
+    max_tokens: int = _DEFAULT_MAX_TOKENS
+
+
 class VLLMAgentChatLLM(BaseModel):
     """In-process vLLM chat-completions adapter for agentic retrieval.
 
@@ -86,21 +99,10 @@ class VLLMAgentChatLLM(BaseModel):
     semantics.
     """
 
-    def __init__(
-        self,
-        model_path: str,
-        *,
-        device: Optional[str] = None,
-        hf_cache_dir: Optional[str] = None,
-        gpu_memory_utilization: float = 0.8,
-        tensor_parallel_size: int = 1,
-        max_model_len: Optional[int] = None,
-        max_num_seqs: Optional[int] = None,
-        max_tokens: int = _DEFAULT_MAX_TOKENS,
-    ) -> None:
+    def __init__(self, config: LocalAgentLLMConfig) -> None:
         super().__init__()
 
-        requested_model_path = model_path
+        requested_model_path = config.model_path
         model_path = resolve_agent_llm_model_name(requested_model_path)
         if not is_supported_agent_llm_model(model_path):
             raise ValueError(
@@ -110,51 +112,39 @@ class VLLMAgentChatLLM(BaseModel):
                 f"or choose one of: {', '.join(supported_agent_llm_names())}."
             )
 
-        self._previous_cuda_visible_devices: Optional[str] = None
-        self._cuda_visible_devices_overridden = False
-        cuda_visible_devices = _cuda_visible_devices_from_device(device)
-        if cuda_visible_devices is not None:
-            self._previous_cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-            self._cuda_visible_devices_overridden = True
-            os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
-
         try:
-            try:
-                from vllm import LLM, SamplingParams
-            except ImportError as e:
-                raise ImportError(
-                    'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
-                ) from e
+            from vllm import LLM, SamplingParams
+        except ImportError as e:
+            raise ImportError(
+                'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
+            ) from e
 
-            _raise_if_cuda_unavailable()
-            self._model_path = model_path
-            self._max_tokens = int(max_tokens)
-            self._request_extras = deepcopy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
-            self._lock = threading.Lock()
+        _raise_if_cuda_unavailable()
+        self._model_path = model_path
+        self._max_tokens = int(config.max_tokens)
+        self._request_extras = deepcopy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
+        self._lock = threading.Lock()
 
-            configure_global_hf_cache_base(hf_cache_dir)
-            revision = get_hf_revision(model_path)
+        configure_global_hf_cache_base(config.hf_cache_dir)
+        revision = get_hf_revision(model_path)
 
-            engine_kwargs: dict[str, Any] = {}
-            if max_model_len is not None:
-                engine_kwargs["max_model_len"] = int(max_model_len)
-            if max_num_seqs is not None:
-                engine_kwargs["max_num_seqs"] = int(max_num_seqs)
+        engine_kwargs: dict[str, Any] = {}
+        if config.max_model_len is not None:
+            engine_kwargs["max_model_len"] = int(config.max_model_len)
+        if config.max_num_seqs is not None:
+            engine_kwargs["max_num_seqs"] = int(config.max_num_seqs)
 
-            self._sampling_params_cls = SamplingParams
-            self._llm: Any | None = LLM(
-                model=model_path,
-                revision=revision,
-                # Safe for this local path: supported model names are hard-allowlisted
-                # above and revisions are pinned in hf_model_registry.py.
-                trust_remote_code=True,
-                tensor_parallel_size=int(tensor_parallel_size),
-                gpu_memory_utilization=float(gpu_memory_utilization),
-                **engine_kwargs,
-            )
-        except Exception:
-            self._restore_cuda_visible_devices()
-            raise
+        self._sampling_params_cls = SamplingParams
+        self._llm: Any | None = LLM(
+            model=model_path,
+            revision=revision,
+            # Safe for this local path: supported model names are hard-allowlisted
+            # above and revisions are pinned in hf_model_registry.py.
+            trust_remote_code=True,
+            tensor_parallel_size=int(config.tensor_parallel_size),
+            gpu_memory_utilization=float(config.gpu_memory_utilization),
+            **engine_kwargs,
+        )
 
     def __call__(
         self,
@@ -233,7 +223,15 @@ class VLLMAgentChatLLM(BaseModel):
         tools: Optional[Sequence[dict[str, Any]]] = None,
     ) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
-        tool_prompt = _json_tool_prompt(tools) if tools else None
+        tool_prompt = (
+            "You have access to the following tools. Your entire response must be a JSON array of one or more "
+            "tool calls. Each item must be shaped as "
+            '{"name": "tool_name", "arguments": {"arg_name": "arg_value"}}. '
+            "Use only the listed tool names. Do not include prose, markdown, or text outside the JSON array.\n"
+            f"<AVAILABLE_TOOLS>{json.dumps(list(tools), ensure_ascii=False)}</AVAILABLE_TOOLS>"
+            if tools
+            else None
+        )
         for idx, message in enumerate(messages):
             msg = dict(message)
             content = msg.get("content")
@@ -256,7 +254,6 @@ class VLLMAgentChatLLM(BaseModel):
                 del self._llm
                 self._llm = None
 
-        self._restore_cuda_visible_devices()
         if not had_llm:
             return
 
@@ -266,16 +263,6 @@ class VLLMAgentChatLLM(BaseModel):
             return
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
-    def _restore_cuda_visible_devices(self) -> None:
-        if not getattr(self, "_cuda_visible_devices_overridden", False):
-            return
-        previous = getattr(self, "_previous_cuda_visible_devices", None)
-        if previous is None:
-            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-        else:
-            os.environ["CUDA_VISIBLE_DEVICES"] = previous
-        self._cuda_visible_devices_overridden = False
 
     def _require_loaded(self) -> None:
         if self._llm is None:
@@ -308,20 +295,6 @@ class VLLMAgentChatLLM(BaseModel):
         return 1
 
 
-def _cuda_visible_devices_from_device(device: Optional[str]) -> str | None:
-    if device is None:
-        return None
-    normalized = str(device).strip()
-    if not normalized:
-        return None
-    if normalized.casefold() == "cpu":
-        raise ValueError(
-            "The local agent LLM vLLM backend requires CUDA. Pass GPU ids such as '0' or '0,1', "
-            "or provide invoke_url for a remote OpenAI-compatible endpoint."
-        )
-    return normalized.split(":", 1)[1] if normalized.startswith("cuda:") else normalized
-
-
 def _raise_if_cuda_unavailable() -> None:
     try:
         import torch
@@ -334,39 +307,22 @@ def _raise_if_cuda_unavailable() -> None:
         )
 
 
-def create_cached_vllm_agent_chat_llm(
-    model_name: str,
-    *,
-    device: Optional[str] = None,
-    hf_cache_dir: Optional[str] = None,
-    gpu_memory_utilization: float = 0.8,
-    tensor_parallel_size: int = 1,
-    max_model_len: Optional[int] = None,
-    max_num_seqs: Optional[int] = None,
-) -> VLLMAgentChatLLM:
+def create_cached_vllm_agent_chat_llm(config: LocalAgentLLMConfig) -> VLLMAgentChatLLM:
     """Create or reuse a local agent LLM keyed by heavyweight load settings."""
 
     key = (
-        resolve_agent_llm_model_name(model_name),
-        device,
-        hf_cache_dir,
-        float(gpu_memory_utilization),
-        int(tensor_parallel_size),
-        int(max_model_len) if max_model_len is not None else None,
-        int(max_num_seqs) if max_num_seqs is not None else None,
+        resolve_agent_llm_model_name(config.model_path),
+        config.hf_cache_dir,
+        float(config.gpu_memory_utilization),
+        int(config.tensor_parallel_size),
+        int(config.max_model_len) if config.max_model_len is not None else None,
+        int(config.max_num_seqs) if config.max_num_seqs is not None else None,
+        int(config.max_tokens),
     )
     with _LOCAL_AGENT_LLM_CACHE_LOCK:
         cached = _LOCAL_AGENT_LLM_CACHE.get(key)
         if cached is None or cached._llm is None:
-            cached = VLLMAgentChatLLM(
-                model_path=model_name,
-                device=device,
-                hf_cache_dir=hf_cache_dir,
-                gpu_memory_utilization=gpu_memory_utilization,
-                tensor_parallel_size=tensor_parallel_size,
-                max_model_len=max_model_len,
-                max_num_seqs=max_num_seqs,
-            )
+            cached = VLLMAgentChatLLM(config)
             _LOCAL_AGENT_LLM_CACHE[key] = cached
         return cached
 
@@ -558,16 +514,6 @@ def _format_tool_message_content(message: Mapping[str, Any], tool_names_by_id: M
     if tool_call_id:
         return f"Tool result for {tool_name} ({tool_call_id}):\n{content}"
     return f"Tool result for {tool_name}:\n{content}"
-
-
-def _json_tool_prompt(tools: Sequence[Mapping[str, Any]]) -> str:
-    return (
-        "You have access to the following tools. Your entire response must be a JSON array of one or more tool calls. "
-        "Each item must be shaped as "
-        '{"name": "tool_name", "arguments": {"arg_name": "arg_value"}}. '
-        "Use only the listed tool names. Do not include prose, markdown, or text outside the JSON array.\n"
-        f"<AVAILABLE_TOOLS>{json.dumps(list(tools), ensure_ascii=False)}</AVAILABLE_TOOLS>"
-    )
 
 
 def _new_tool_call_id() -> str:

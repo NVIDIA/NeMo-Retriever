@@ -177,7 +177,6 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "invoke_url": request.agentic.invoke_url,
         "local_llm_backend": request.agentic.local_llm_backend,
         "local_hf_cache_dir": request.agentic.local_hf_cache_dir,
-        "local_device": request.agentic.local_device,
         "local_gpu_memory_utilization": request.agentic.local_gpu_memory_utilization,
         "local_tensor_parallel_size": request.agentic.local_tensor_parallel_size,
         "local_max_model_len": request.agentic.local_max_model_len,

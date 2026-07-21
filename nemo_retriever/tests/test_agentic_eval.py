@@ -189,7 +189,6 @@ def test_agentic_retriever_builds_in_process_llm_lazily(mock_create_local_agent_
     mock_create_local_agent_llm.assert_called_once_with(
         "nemotron-8b",
         backend="vllm",
-        device=None,
         hf_cache_dir=None,
         gpu_memory_utilization=0.8,
         tensor_parallel_size=1,
