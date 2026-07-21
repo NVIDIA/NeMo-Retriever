@@ -76,7 +76,10 @@ uses the product service APIs for ingest and query while preserving the same
   overrides.
 - `run-set`: expand a code-owned benchmark group using registry paths.
 - `run-files`: execute one or more runfiles with an optional machine-local
-  dataset path map. This is the portable entry point for the checked-in suite.
+  dataset path map. This is the portable session engine for the checked-in
+  suite and does not provision infrastructure.
+- `run-helm`: optionally provision a Helm service around one portable
+  `run-files` session, then collect failure logs and tear the service down.
 - `post-slack`: preview or post existing artifacts; it never executes a run.
 - `diff`: compare two run artifact directories by `results.json` summary metrics.
 
@@ -212,12 +215,12 @@ underscores, and hyphens. Other characters fail validation before execution.
 ## Provision A Service With Helm
 
 Helm is one way to provision the service under test; it is not a benchmark
-execution mode or part of the runfile schema. `helm_runner` loads the non-secret
+execution mode or part of the runfile schema. `run-helm` loads the non-secret
 deployment settings in
 [`examples/managed-helm-main.yaml`](examples/managed-helm-main.yaml), deploys an
 explicit immutable image, waits for readiness and establishes a port-forward,
-invokes `run-files` with an existing portable runfile, collects `service_logs/`
-on failure, and always tears the release down.
+invokes the portable `run-files` engine with an existing runfile, collects
+`service_logs/` on failure, and always tears the release down.
 
 Set `HARNESS_HELM_SERVICE_IMAGE_REPOSITORY` and
 `HARNESS_HELM_SERVICE_IMAGE_TAG` to an immutable image built from the checkout.
@@ -226,8 +229,7 @@ The external scheduler owns recurrence and the output directory. For JP20, run:
 ```bash
 export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/helm-jp20-$(date -u +%Y%m%d_%H%M%S_UTC)
 
-uv run --project nemo_retriever \
-  python -m nemo_retriever.harness.helm_runner \
+uv run --project nemo_retriever retriever-harness run-helm \
   --config nemo_retriever/harness/examples/managed-helm-main.yaml \
   --output-dir "$RETRIEVER_SESSION_DIR" \
   --session-name helm_jp20 \
@@ -235,12 +237,19 @@ uv run --project nemo_retriever \
   nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
-`helm_runner` overrides the runfile mode to `service`; the shared JP20 runfile
+`run-helm` overrides the runfile mode to `service`; the shared JP20 runfile
 continues to own its dataset-integrity gates. Recall and nDCG are recorded in
 the standard artifacts without adding Helm-specific quality gates. The runner
 never reads a Slack webhook. After the terminal session exists, read each
 child's `results.json` for metrics and optionally invoke `post-slack --preview`
 or `post-slack` as a separate operation.
+
+The legacy module invocation remains supported for compatibility:
+
+```bash
+uv run --project nemo_retriever \
+  python -m nemo_retriever.harness.helm_runner --help
+```
 
 ## Post Results to Slack
 
