@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import lancedb
@@ -690,3 +690,16 @@ def test_catalog_startup_fails_fast_on_incompatible_schema(tmp_path) -> None:
     )
     with pytest.raises(RuntimeError, match="Incompatible"):
         VectorDBState(str(tmp_path), "legacy", "", "model", "")
+
+
+def test_catalog_startup_does_not_recreate_an_unreadable_existing_table(tmp_path) -> None:
+    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
+    db = Mock(wraps=state._db)
+    db.list_tables.return_value = state._db.list_tables()
+    db.open_table.side_effect = RuntimeError("catalog unreadable")
+    state._db = db
+
+    with pytest.raises(RuntimeError, match="catalog unreadable"):
+        state._ensure_catalogs()
+
+    db.create_table.assert_not_called()

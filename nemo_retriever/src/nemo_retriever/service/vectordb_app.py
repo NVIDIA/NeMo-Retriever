@@ -314,9 +314,9 @@ class VectorDBState:
             (_COLLECTIONS_TABLE, collection_schema),
             (_DOCUMENTS_TABLE, document_schema),
         ):
-            try:
+            if self._has_table(name):
                 table = self._db.open_table(name)
-            except Exception:
+            else:
                 table = self._db.create_table(name, schema=schema, mode="create")
             existing = {field.name: field for field in table.schema}
             for field in schema:

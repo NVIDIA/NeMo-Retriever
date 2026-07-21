@@ -247,6 +247,20 @@ def _register_document_under_job(
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
 
 
+def _resolve_stable_document_id(
+    attempt_id: str,
+    *,
+    collection_name: str | None,
+    target_document_id: str | None,
+) -> str:
+    """Keep legacy IDs pollable while separating collection document identity."""
+    if target_document_id:
+        return target_document_id
+    if collection_name:
+        return uuid.uuid4().hex
+    return attempt_id
+
+
 def _validate_manifest_entry(job, manifest_entry_id: str | None, filename: str, content_sha256: str) -> None:
     """Bind an upload to exactly one immutable entry in its job manifest."""
     if not job.document_manifest:
@@ -1047,7 +1061,11 @@ async def submit_document_to_job(
             attempt_id = uuid.uuid4().hex
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
-            stable_document_id = job.target_document_id or uuid.uuid4().hex
+            stable_document_id = _resolve_stable_document_id(
+                attempt_id,
+                collection_name=job.collection_name,
+                target_document_id=job.target_document_id,
+            )
             now = datetime.now(timezone.utc).isoformat()
 
             rec, created = _register_document_under_job(
@@ -1124,7 +1142,11 @@ async def submit_document_to_job(
         attempt_id = gw_doc_id or uuid.uuid4().hex
         stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
         if local_job:
-            stable_document_id = local_job.target_document_id or uuid.uuid4().hex
+            stable_document_id = _resolve_stable_document_id(
+                attempt_id,
+                collection_name=local_job.collection_name,
+                target_document_id=local_job.target_document_id,
+            )
         stable_document_id = stable_document_id or attempt_id
 
         worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
@@ -1384,7 +1406,11 @@ async def submit_whole_document_to_job(
             file_bytes = await file.read()
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
-            stable_document_id = job.target_document_id or uuid.uuid4().hex
+            stable_document_id = _resolve_stable_document_id(
+                attempt_id,
+                collection_name=job.collection_name,
+                target_document_id=job.target_document_id,
+            )
             now = datetime.now(timezone.utc).isoformat()
 
             if not dry_run:
@@ -1464,7 +1490,11 @@ async def submit_whole_document_to_job(
         attempt_id = gw_doc_id or uuid.uuid4().hex
         stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
         if local_job:
-            stable_document_id = local_job.target_document_id or uuid.uuid4().hex
+            stable_document_id = _resolve_stable_document_id(
+                attempt_id,
+                collection_name=local_job.collection_name,
+                target_document_id=local_job.target_document_id,
+            )
         stable_document_id = stable_document_id or attempt_id
 
         worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec

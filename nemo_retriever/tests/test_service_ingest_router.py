@@ -189,7 +189,11 @@ def test_ingest_without_spec_falls_back_to_legacy_pipeline(
     assert resp.status_code == 202, resp.text
     body = resp.json()
     assert "document_id" in body
+    assert body["document_id"] == body["attempt_id"]
     assert body["job_id"] == job_id
+
+    status = app_with_stub_pool.get(f"/v1/ingest/job/{job_id}/document/{body['document_id']}")
+    assert status.status_code in (200, 202), status.text
 
     # Wait briefly for the async worker loop to consume the queued item.
     import time as _time
@@ -515,6 +519,8 @@ def test_job_upload_routes_emit_accept_spans(
     assert document_resp.status_code == 202, document_resp.text
     assert page_resp.status_code == 202, page_resp.text
     assert whole_resp.status_code == 202, whole_resp.text
+    assert document_resp.json()["document_id"] == document_resp.json()["attempt_id"]
+    assert whole_resp.json()["document_id"] == whole_resp.json()["attempt_id"]
     _wait_for_items(captured_items, 3)
 
     names = {span.name for span in exported_spans}
@@ -746,6 +752,7 @@ def test_collection_whole_propagates_server_storage_context(
     assert item.collection_name == "research"
     assert item.storage_document_id == response.json()["document_id"]
     assert item.id == response.json()["attempt_id"]
+    assert response.json()["document_id"] != response.json()["attempt_id"]
 
 
 def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:
