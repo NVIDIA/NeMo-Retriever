@@ -19,6 +19,10 @@ spec:
       storageClass: {{ $cfg.storage.pvc.storageClass | quote }}
       size: {{ $cfg.storage.pvc.size }}
       volumeAccessMode: {{ $cfg.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml $cfg.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml $cfg.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
