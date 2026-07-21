@@ -127,9 +127,8 @@ def _mode(request: Request) -> str:
 def _is_dry_run(request: Request) -> bool:
     """Return ``True`` when the client sends the dry-run header.
 
-    When present (any truthy value), worker pods skip pipeline enqueue
-    and return an immediate 202.  The gateway forwards the header to the
-    backend unchanged so the worker still sees it.
+    When present (any truthy value), page and whole-document routes skip
+    queue admission and return an immediate 202.
     """
     val = request.headers.get(_DRY_RUN_HEADER, "").strip().lower()
     return val not in ("", "0", "false", "no")
@@ -998,6 +997,7 @@ async def submit_page_to_job(
 
     with _start_accept_span(request, job_id, "ingest.page.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=filename)
             enforce_media_dependencies(classification)
             file_size = _file_size_from_upload(file)
@@ -1007,19 +1007,20 @@ async def submit_page_to_job(
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
-            await _gateway_enqueue(
-                request,
-                PoolType.REALTIME,
-                work_id=page_id,
-                job_id=job_id,
-                payload=file_bytes,
-                filename=file.filename,
-                extra={
-                    "source_document_id": document_id,
-                    "page_number": page_number,
-                },
-            )
+            if not dry_run:
+                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.REALTIME,
+                    work_id=page_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    extra={
+                        "source_document_id": document_id,
+                        "page_number": page_number,
+                    },
+                )
 
             _record_prometheus(
                 request,
@@ -1129,6 +1130,7 @@ async def submit_whole_document_to_job(
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
             file_size = _file_size_from_upload(file)
@@ -1138,16 +1140,17 @@ async def submit_whole_document_to_job(
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-            await _gateway_enqueue(
-                request,
-                PoolType.BATCH,
-                work_id=document_id,
-                job_id=job_id,
-                payload=file_bytes,
-                filename=file.filename,
-                pipeline_spec=validated_spec,
-            )
+            if not dry_run:
+                _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.BATCH,
+                    work_id=document_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    pipeline_spec=validated_spec,
+                )
 
             _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:

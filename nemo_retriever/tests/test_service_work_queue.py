@@ -419,6 +419,57 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         )
 
 
+def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
+    config = ServiceConfig(
+        mode="gateway",
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        mcp=MCPConfig(enabled=False),
+        pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
+        work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        created = client.post("/v1/ingest/job", json={"expected_documents": 2})
+        assert created.status_code == 201
+        job_id = created.json()["job_id"]
+        headers = {"X-Nemo-Dry-Run": "true"}
+
+        page = client.post(
+            f"/v1/ingest/job/{job_id}/page",
+            headers=headers,
+            files={"file": ("page.png", b"page", "image/png")},
+            data={"document_id": "source-doc", "page_number": "1", "filename": "source.pdf"},
+        )
+        whole = client.post(
+            f"/v1/ingest/job/{job_id}/whole",
+            headers=headers,
+            files={"file": ("document.txt", b"whole", "text/plain")},
+            data={"metadata": "{}"},
+        )
+
+        assert page.status_code == 202
+        assert whole.status_code == 202
+        page_status = client.get(f"/v1/ingest/job/{job_id}/document/{page.json()['page_id']}")
+        whole_status = client.get(f"/v1/ingest/job/{job_id}/document/{whole.json()['document_id']}")
+        assert page_status.status_code == 404
+        assert whole_status.status_code == 404
+        assert (
+            client.post(
+                "/v1/internal/work/claim",
+                json={"pool": "realtime", "worker_uid": "pod-uid"},
+            ).status_code
+            == 204
+        )
+        assert (
+            client.post(
+                "/v1/internal/work/claim",
+                json={"pool": "batch", "worker_uid": "pod-uid"},
+            ).status_code
+            == 204
+        )
+        assert not list((tmp_path / "spool").glob("*.payload"))
+
+
 def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
     results_dir = tmp_path / "results"
     results_dir.mkdir()
