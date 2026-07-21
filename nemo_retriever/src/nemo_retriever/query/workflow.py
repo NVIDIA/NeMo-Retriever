@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
+from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type_filter
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.models import VL_RERANK_MODEL
@@ -33,12 +34,6 @@ def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]
     if mode == "sparse":
         return ["lexical"]
     return ["semantic"]
-
-
-def _normalize_content_types(content_types: Any) -> str | None:
-    if content_types is None or isinstance(content_types, str):
-        return content_types
-    return ",".join(str(value) for value in content_types)
 
 
 def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
@@ -117,7 +112,7 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
         embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
     )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
-    content_types = _normalize_content_types(request.retrieval.content_types)
+    content_types = normalize_content_type_filter(request.retrieval.content_types)
     return ResolvedQueryPlan(
         top_k=int(request.retrieval.top_k),
         candidate_k=request.retrieval.candidate_k,
@@ -177,7 +172,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "candidate_k": request.retrieval.candidate_k,
         "page_dedup": bool(request.retrieval.page_dedup),
-        "content_types": _normalize_content_types(request.retrieval.content_types),
+        "content_types": normalize_content_type_filter(request.retrieval.content_types),
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,

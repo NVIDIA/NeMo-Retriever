@@ -73,7 +73,7 @@ def _jsonable(value: Any) -> Any:
         return f"{value[:_TRACE_TEXT_LIMIT]}...[truncated {omitted} chars]"
     if isinstance(value, Mapping):
         items = list(value.items())
-        out = {str(key): _jsonable(nested) for key, nested in items[:_TRACE_COLLECTION_LIMIT]}
+        out = {str(key): _jsonable(nested) for key, nested in items[:_TRACE_COLLECTION_LIMIT] if nested is not None}
         if len(items) > _TRACE_COLLECTION_LIMIT:
             out["_truncated_items"] = len(items) - _TRACE_COLLECTION_LIMIT
         return out

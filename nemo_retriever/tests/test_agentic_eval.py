@@ -96,6 +96,28 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
         build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1"]])
 
 
+def test_agentic_trace_omits_mapping_none_values_but_preserves_list_nulls(tmp_path):
+    from nemo_retriever.query.agentic_trace import AgenticTraceWriter
+
+    trace_path = tmp_path / "trace" / "agentic_trace.jsonl"
+    writer = AgenticTraceWriter(trace_path)
+
+    writer.event(
+        {
+            "event": "trace.test",
+            "unset": None,
+            "nested": {"drop": None, "keep": "value"},
+            "items": ["first", None, {"drop": None, "keep": "nested-list-value"}],
+        }
+    )
+
+    event = json.loads(trace_path.read_text().splitlines()[0])
+
+    assert "unset" not in event
+    assert event["nested"] == {"keep": "value"}
+    assert event["items"] == ["first", None, {"keep": "nested-list-value"}]
+
+
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
@@ -171,7 +193,7 @@ def test_build_agentic_config_normalizes_content_type_sequences():
     cfg = build_agentic_config(
         QueryRequest(
             query="q",
-            retrieval=QueryRetrievalOptions(content_types=["text", "image"]),
+            retrieval=QueryRetrievalOptions(content_types=["text", "images"]),
             agentic=QueryAgenticOptions(llm_model="m"),
         )
     )

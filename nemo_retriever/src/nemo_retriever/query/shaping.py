@@ -6,27 +6,9 @@ from __future__ import annotations
 
 from typing import Any, Sequence, cast
 
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type
+from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type, normalize_content_type_allowlist
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
-
-
-def normalize_query_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
-    """Normalize query-time content type filters to stored hit metadata values."""
-    if content_types is None:
-        return None
-    raw_values: list[str]
-    if isinstance(content_types, str):
-        raw_values = content_types.split(",")
-    else:
-        raw_values = []
-        for value in content_types:
-            raw_values.extend(str(value).split(","))
-
-    normalized = {content_type for value in raw_values if (content_type := normalize_content_type(value)) is not None}
-    if not normalized:
-        raise ValueError("content_types must include at least one non-empty content type.")
-    return normalized
 
 
 def resolve_hit_content_type(hit: dict[str, Any]) -> str | None:
@@ -85,7 +67,7 @@ def shape_query_hits(
     content_types: str | Sequence[str] | None = None,
 ) -> list[RetrievalHit]:
     """Apply query-time filtering, page deduplication, and final truncation."""
-    allowed_types = normalize_query_content_type_allowlist(content_types)
+    allowed_types = normalize_content_type_allowlist(content_types)
     shaped: list[RetrievalHit] = []
     seen_pages: set[tuple[str, int]] = set()
 
