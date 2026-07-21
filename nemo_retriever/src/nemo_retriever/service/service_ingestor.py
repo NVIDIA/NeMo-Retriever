@@ -86,6 +86,7 @@ import httpx
 
 from nemo_retriever.ingestor.results import ResultSchema, concat_ingest_results
 from nemo_retriever.ingestor import _merge_params, ingestor
+from nemo_retriever.ingestor.core import _inline_source_id, _normalize_inline_texts
 from nemo_retriever.common.params import (
     CaptionParams,
     IngestExecuteParams,
@@ -95,6 +96,7 @@ from nemo_retriever.common.params import (
     VdbUploadParams,
     WebhookParams,
 )
+from nemo_retriever.service.client import InMemoryUpload, RetrieverServiceClient, UploadInput
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +203,18 @@ def _normalize_files(files: Union[str, List[str], List[Path]]) -> list[Path]:
     if isinstance(files, (str, Path)):
         return [Path(files)]
     return [Path(f) for f in files]
+
+
+def _empty_inline_text_dataframe(result_schema: ResultSchema) -> Any:
+    """Return the empty public result schema for inline text."""
+    import pandas as pd
+
+    columns = (
+        ["text", "source_id", "element_type", "page_number"]
+        if result_schema == "compact"
+        else ["text", "content", "path", "page_number", "metadata"]
+    )
+    return pd.DataFrame(columns=columns).astype({"page_number": "int64"})
 
 
 # ----------------------------------------------------------------------
@@ -575,18 +589,7 @@ class ServiceIngestor(ingestor):
         if "extract" in self._pipeline_spec["stage_order"] and self._pipeline_spec["extraction_mode"] != "text":
             raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
 
-        if isinstance(texts, str):
-            values = [texts]
-        elif isinstance(texts, Sequence):
-            values = list(texts)
-        else:
-            raise TypeError(f"texts must be a string or sequence of strings, got {type(texts).__name__}")
-
-        for index, value in enumerate(values):
-            if not isinstance(value, str):
-                raise TypeError(f"texts[{index}] must be a string, got {type(value).__name__}")
-
-        self._inline_texts = values
+        self._inline_texts = _normalize_inline_texts(texts)
         self._pipeline_spec["extraction_mode"] = "text"
         self._record_stage("extract")
         return self
@@ -1164,6 +1167,19 @@ class ServiceIngestor(ingestor):
             self._resolve_execute_flags(params, kwargs)
         )
         del params, kwargs
+        if self._inline_texts is not None and not any(text.strip() for text in self._inline_texts):
+            self._document_ids.clear()
+            self._last_run_elapsed_s = 0.0
+            self._last_job_id = None
+            result = ServiceIngestResult()
+            if return_results:
+                result.dataframe = _empty_inline_text_dataframe(result_schema)
+            if return_failures and return_traces:
+                return result, [], []
+            if return_failures or return_traces:
+                return result, []
+            return result
+
         retain_results = return_results or self._save_to_disk_dir is not None
         if retain_results and result_schema == "legacy":
             warnings.warn(_LEGACY_RESULT_SCHEMA_DEPRECATION, DeprecationWarning, stacklevel=2)
@@ -1452,15 +1468,13 @@ class ServiceIngestor(ingestor):
 
     async def _aingest_stream_impl(
         self,
-        files: list[Path],
+        files: list[UploadInput],
         *,
         retain_results: bool = False,
         result_schema: ResultSchema = "legacy",
         return_embeddings: bool = False,
         return_images: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
-        from nemo_retriever.service.client import RetrieverServiceClient
-
         client = RetrieverServiceClient(
             base_url=self._base_url,
             max_concurrency=self._max_concurrency,
@@ -1570,11 +1584,12 @@ class ServiceIngestor(ingestor):
         if self._inline_texts is not None:
             raise ValueError(f"{method_name}() cannot be combined with texts(); use a separate ingestor.")
 
-    def _collect_inputs(self) -> list[Any]:
+    def _collect_inputs(self) -> list[UploadInput]:
         """Gather filesystem and in-memory inputs for the service client."""
-        from nemo_retriever.service.client import _InMemoryUpload
+        if self._inline_texts is not None and not any(text.strip() for text in self._inline_texts):
+            return []
 
-        files: list[Any] = [Path(p) for p in self._documents]
+        files: list[UploadInput] = [Path(p) for p in self._documents]
 
         if self._buffers:
             import tempfile
@@ -1586,9 +1601,9 @@ class ServiceIngestor(ingestor):
                 files.append(target)
 
         for index, text in enumerate(self._inline_texts or []):
-            source_id = f"inline://{index:08d}"
+            source_id = _inline_source_id(index)
             files.append(
-                _InMemoryUpload(
+                InMemoryUpload(
                     filename=source_id,
                     content=text.encode("utf-8"),
                     content_type="text/plain; charset=utf-8",

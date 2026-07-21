@@ -44,6 +44,7 @@ from nemo_retriever.ingestor.manifest import (
     resolve_branch_extraction_inputs,
 )
 from nemo_retriever.ingestor import ingestor
+from nemo_retriever.ingestor.core import _inline_source_id, _normalize_inline_texts
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -507,18 +508,7 @@ class GraphIngestor(ingestor):
         if "extract" in self._stage_order and self._extraction_mode != "text":
             raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
 
-        if isinstance(texts, str):
-            values = [texts]
-        elif isinstance(texts, Sequence):
-            values = list(texts)
-        else:
-            raise TypeError(f"texts must be a string or sequence of strings, got {type(texts).__name__}")
-
-        for index, value in enumerate(values):
-            if not isinstance(value, str):
-                raise TypeError(f"texts[{index}] must be a string, got {type(value).__name__}")
-
-        self._inline_texts = values
+        self._inline_texts = _normalize_inline_texts(texts)
         self._extraction_mode = "text"
         self._text_params = self._text_params or TextChunkParams()
         self._record_stage("extract")
@@ -840,7 +830,7 @@ class GraphIngestor(ingestor):
         *,
         post_extract_order: tuple[str, ...],
     ) -> Any:
-        _ray, cluster_resources = self._ensure_batch_runtime()
+        ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
             extract_params=effective_extraction.extract_params,
@@ -878,7 +868,7 @@ class GraphIngestor(ingestor):
             num_gpus=self._num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
         )
-        executor_input = self._inline_text_dataset() if self._inline_texts is not None else self._documents
+        executor_input = self._inline_text_dataset(ray.data) if self._inline_texts is not None else self._documents
         result = executor.ingest(executor_input)
         self._rd_dataset = result
         return result
@@ -975,17 +965,15 @@ class GraphIngestor(ingestor):
             raise ValueError(f"{method_name}() is incompatible with texts(); use extract_txt() to configure chunking.")
 
     def _inline_text_rows(self) -> list[dict[str, str]]:
-        return [{"text": text, "path": f"inline://{index:08d}"} for index, text in enumerate(self._inline_texts or [])]
+        return [{"text": text, "path": _inline_source_id(index)} for index, text in enumerate(self._inline_texts or [])]
 
     def _inline_text_dataframe(self) -> Any:
         import pandas as pd
 
         return pd.DataFrame(self._inline_text_rows(), columns=["text", "path"])
 
-    def _inline_text_dataset(self) -> Any:
-        import ray.data as rd
-
-        return rd.from_items(self._inline_text_rows())
+    def _inline_text_dataset(self, ray_data: Any) -> Any:
+        return ray_data.from_items(self._inline_text_rows())
 
     def _configured_input_paths(self) -> list[str]:
         paths: list[str] = []
@@ -998,6 +986,8 @@ class GraphIngestor(ingestor):
         return paths
 
     def _classified_input_paths(self) -> list[tuple[str, str | None]]:
+        # Service workers receive inline text as a named byte buffer. Keep the
+        # logical URI as its source path while classifying it as decoded text.
         return [
             (path, "txt" if path.startswith("inline://") else input_type_for_path(path))
             for path in self._configured_input_paths()

@@ -47,9 +47,9 @@ import httpx
 import pytest
 
 from nemo_retriever.service.client import (
+    InMemoryUpload,
     RetrieverServiceClient,
     RetrieverServiceCompatibilityError,
-    _InMemoryUpload,
     _compat_error_message,
     _is_api_mismatch_status,
 )
@@ -256,7 +256,7 @@ def test_upload_one_sends_inline_text_from_memory_with_classification_metadata()
         return httpx.Response(202, json={"document_id": "doc-inline", "job_id": "JOB-1"})
 
     rc = RetrieverServiceClient(base_url="http://nrl:7670")
-    source = _InMemoryUpload(
+    source = InMemoryUpload(
         filename="inline://00000003",
         content="café".encode(),
         content_type="text/plain; charset=utf-8",

@@ -74,7 +74,7 @@ class _CreatedJob(NamedTuple):
     trace_id: str | None = None
 
 
-class _InMemoryUpload(NamedTuple):
+class InMemoryUpload(NamedTuple):
     """Document bytes that should be uploaded without a temporary file."""
 
     filename: str
@@ -83,10 +83,10 @@ class _InMemoryUpload(NamedTuple):
     classification_filename: str | None = None
 
 
-_UploadInput = Path | _InMemoryUpload
+UploadInput = Path | InMemoryUpload
 
 
-def _upload_filename(source: _UploadInput) -> str:
+def _upload_filename(source: UploadInput) -> str:
     return source.name if isinstance(source, Path) else source.filename
 
 
@@ -324,7 +324,7 @@ class RetrieverServiceClient:
     async def _upload_one(
         self,
         client: httpx.AsyncClient,
-        source: _UploadInput,
+        source: UploadInput,
         *,
         job_id: str,
         metadata: dict[str, Any] | None = None,
@@ -598,7 +598,7 @@ class RetrieverServiceClient:
 
     async def ingest_documents(
         self,
-        files: list[_UploadInput],
+        files: list[UploadInput],
         *,
         on_file_submitted: Callable[[str, str], Any] | None = None,
         show_progress: bool = True,
@@ -641,7 +641,7 @@ class RetrieverServiceClient:
             upload_sem = asyncio.Semaphore(self._max_concurrency)
             upload_failures: list[tuple[str, str]] = []
 
-            async def _upload_one_file(source: _UploadInput) -> None:
+            async def _upload_one_file(source: UploadInput) -> None:
                 filename = _upload_filename(source)
                 async with upload_sem:
                     try:
@@ -711,7 +711,7 @@ class RetrieverServiceClient:
 
     async def aingest_documents_stream(
         self,
-        files: list[_UploadInput],
+        files: list[UploadInput],
         *,
         pipeline_spec: dict[str, Any] | None = None,
         retain_results: bool = False,
@@ -757,7 +757,7 @@ class RetrieverServiceClient:
             yield event
             upload_sem = asyncio.Semaphore(self._max_concurrency)
 
-            async def _upload_one_file(source: _UploadInput) -> None:
+            async def _upload_one_file(source: UploadInput) -> None:
                 filename = _upload_filename(source)
                 async with upload_sem:
                     try:

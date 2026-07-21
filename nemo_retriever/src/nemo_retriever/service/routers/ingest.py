@@ -442,11 +442,10 @@ def _route_by_page_count(
 
     * Audio / video files are always routed to **batch** — they involve
       heavyweight ASR / frame-extraction pipelines.
-    * Image files are always routed to **realtime** — they are single-page
-      and latency-sensitive.
-    * Documents (PDF, DOCX, PPTX) and other types use the original
-      page-count heuristic: small docs (<threshold pages) go to realtime,
-      larger ones to batch.
+    * Text, HTML, and image files are always routed to **realtime** — they do
+      not need PDF page counting.
+    * Documents (PDF, DOCX, PPTX) use the original page-count heuristic:
+      small docs (<threshold pages) go to realtime, larger ones to batch.
 
     When the client requested PDF page-chunking via
     :attr:`PipelineSpec.pdf_split`, we route to **batch** as soon as the
@@ -455,7 +454,7 @@ def _route_by_page_count(
     """
     if file_category in (FileCategory.AUDIO, FileCategory.VIDEO):
         return PoolType.BATCH
-    if file_category == FileCategory.IMAGE:
+    if file_category in (FileCategory.TEXT, FileCategory.HTML, FileCategory.IMAGE):
         return PoolType.REALTIME
     if meta.page_number is not None:
         return PoolType.REALTIME

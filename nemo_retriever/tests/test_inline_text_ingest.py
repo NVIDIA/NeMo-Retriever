@@ -4,19 +4,17 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import Any
 
 import pandas as pd
 import pytest
 
-from nemo_retriever import create_ingestor
 from nemo_retriever.common.params import TextChunkParams
 from nemo_retriever.graph import Graph
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
-from nemo_retriever.service.client import _InMemoryUpload
-from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 class _MockTokenizer:
@@ -53,7 +51,7 @@ class _FakeVdbOperator(AbstractOperator):
         return data
 
 
-def test_texts_accepts_scalar(monkeypatch) -> None:
+def test_texts_accepts_scalar(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _MockTokenizer()
     )
@@ -64,7 +62,7 @@ def test_texts_accepts_scalar(monkeypatch) -> None:
     assert result["path"].tolist() == ["inline://00000000"]
 
 
-def test_texts_replaces_prior_inline_corpus(monkeypatch) -> None:
+def test_texts_replaces_prior_inline_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _MockTokenizer()
     )
@@ -97,7 +95,7 @@ def test_texts_cannot_mix_with_files_or_buffers(tmp_path) -> None:
     with pytest.raises(ValueError, match="cannot be combined"):
         GraphIngestor(run_mode="inprocess").texts(["inline"]).files([str(document)])
     with pytest.raises(ValueError, match="cannot be combined"):
-        GraphIngestor(run_mode="inprocess").texts(["inline"]).buffers(("document.txt", object()))
+        GraphIngestor(run_mode="inprocess").texts(["inline"]).buffers(("document.txt", BytesIO(b"document")))
 
 
 @pytest.mark.parametrize(
@@ -117,7 +115,7 @@ def test_texts_rejects_preconfigured_non_text_extraction() -> None:
         ingestor.texts(["inline"])
 
 
-def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch) -> None:
+def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     ingestor = GraphIngestor(run_mode="inprocess").texts(["", "  \n"])
     monkeypatch.setattr(
         "nemo_retriever.ingestor.graph_ingestor.build_graph",
@@ -130,7 +128,7 @@ def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch) -> None
     assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
-def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch) -> None:
+def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, pd.DataFrame] = {}
     dataset = object()
 
@@ -158,7 +156,53 @@ def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch) -> Non
     assert list(captured["frame"].columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
-def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch) -> None:
+def test_batch_inline_text_constructs_ray_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    input_dataset = object()
+    output_dataset = object()
+
+    class _FakeRayData:
+        @staticmethod
+        def from_items(items: list[dict[str, str]]) -> object:
+            captured["items"] = items
+            return input_dataset
+
+    class _FakeRay:
+        data = _FakeRayData()
+
+    class _FakeResources:
+        @staticmethod
+        def available_gpu_count() -> int:
+            return 0
+
+    class _FakeExecutor:
+        def __init__(self, graph: object, **kwargs: object) -> None:
+            captured["graph"] = graph
+
+        def ingest(self, dataset: object) -> object:
+            captured["dataset"] = dataset
+            return output_dataset
+
+    ingestor = GraphIngestor(run_mode="batch").texts(["first", "second"])
+    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (_FakeRay(), _FakeResources()))
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.build_graph", lambda **kwargs: object())
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.graph_ingestor.batch_tuning_to_node_overrides", lambda *args, **kwargs: {}
+    )
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.RayDataExecutor", _FakeExecutor)
+
+    result = ingestor.ingest()
+
+    assert captured["items"] == [
+        {"text": "first", "path": "inline://00000000"},
+        {"text": "second", "path": "inline://00000001"},
+    ]
+    assert captured["dataset"] is input_dataset
+    assert result is output_dataset
+    assert ingestor.get_dataset() is output_dataset
+
+
+def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _MockTokenizer()
     )
@@ -189,53 +233,6 @@ def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch) -> None:
     assert result["stored"].tolist() == [True, True, True, True]
     assert captured["embed_params"] is not None
     assert captured["vdb_upload_params"] is not None
-
-
-def test_service_mode_collects_inline_text_without_temporary_files(monkeypatch) -> None:
-    ingestor = create_ingestor(run_mode="service", base_url="http://retriever.example")
-    monkeypatch.setattr("tempfile.mkdtemp", lambda *args, **kwargs: pytest.fail("inline text must remain in memory"))
-
-    ingestor.texts(["first", "first"]).extract_txt(TextChunkParams(max_tokens=12))
-    inputs = ingestor._collect_inputs()
-
-    assert inputs == [
-        _InMemoryUpload(
-            filename="inline://00000000",
-            content=b"first",
-            content_type="text/plain; charset=utf-8",
-            classification_filename="inline-00000000.txt",
-        ),
-        _InMemoryUpload(
-            filename="inline://00000001",
-            content=b"first",
-            content_type="text/plain; charset=utf-8",
-            classification_filename="inline-00000001.txt",
-        ),
-    ]
-    assert ingestor._pipeline_payload()["extraction_mode"] == "text"
-    assert ingestor._pipeline_payload()["split_config"] == {"text": {"max_tokens": 12}}
-
-
-def test_service_mode_texts_replaces_and_validates_inputs() -> None:
-    ingestor = ServiceIngestor(base_url="http://retriever.example").texts("first").texts(["second"])
-
-    assert [item.filename for item in ingestor._collect_inputs()] == ["inline://00000000"]
-    assert [item.content for item in ingestor._collect_inputs()] == [b"second"]
-
-    with pytest.raises(TypeError, match=r"texts\[1\] must be a string"):
-        ServiceIngestor(base_url="http://retriever.example").texts(["valid", None])
-
-
-def test_service_mode_texts_rejects_source_mixing_and_non_text_extraction(tmp_path) -> None:
-    document = tmp_path / "document.txt"
-    document.write_text("document", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="cannot be combined"):
-        ServiceIngestor(base_url="http://retriever.example", documents=[str(document)]).texts(["inline"])
-    with pytest.raises(ValueError, match="cannot be combined"):
-        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).files(str(document))
-    with pytest.raises(ValueError, match="incompatible with texts"):
-        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).extract_image_files()
 
 
 @pytest.mark.integration
