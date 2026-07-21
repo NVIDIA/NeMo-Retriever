@@ -128,7 +128,7 @@ ingestor = (
 
 Python callers can pass raw text documents directly to the same text splitting,
 embedding, and vector database graph without creating temporary files. Inline
-text is supported in `inprocess` and `batch` run modes.
+text is supported in `inprocess`, `batch`, and `service` run modes.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -147,9 +147,8 @@ chunks = (
 Each string is treated as a raw document and split with `TextChunkParams`
 defaults. Add `.extract_txt(custom_params)` after `.texts(...)` to override
 the chunk size or overlap. Inline text cannot be mixed with files or buffers in
-one ingestor, and service run mode does not yet transport inline text. Inline
-corpora remain resident in driver memory, so prefer file ingestion when the
-corpus may exceed the driver's available memory.
+one ingestor. Inline corpora remain resident in client or driver memory, so
+prefer file ingestion when the corpus may exceed the available memory.
 
 ### Optional extras
 

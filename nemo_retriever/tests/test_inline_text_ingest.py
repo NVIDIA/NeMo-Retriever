@@ -15,6 +15,8 @@ from nemo_retriever.graph import Graph
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
+from nemo_retriever.service.client import _InMemoryUpload
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 class _MockTokenizer:
@@ -161,11 +163,51 @@ def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch) -> None:
     assert captured["vdb_upload_params"] is not None
 
 
-def test_service_mode_rejects_inline_text() -> None:
+def test_service_mode_collects_inline_text_without_temporary_files(monkeypatch) -> None:
     ingestor = create_ingestor(run_mode="service", base_url="http://retriever.example")
+    monkeypatch.setattr("tempfile.mkdtemp", lambda *args, **kwargs: pytest.fail("inline text must remain in memory"))
 
-    with pytest.raises(NotImplementedError, match="run_mode='inprocess'.*run_mode='batch'"):
-        ingestor.texts(["inline"])
+    ingestor.texts(["first", "first"]).extract_txt(TextChunkParams(max_tokens=12))
+    inputs = ingestor._collect_inputs()
+
+    assert inputs == [
+        _InMemoryUpload(
+            filename="inline://00000000",
+            content=b"first",
+            content_type="text/plain; charset=utf-8",
+            classification_filename="inline-00000000.txt",
+        ),
+        _InMemoryUpload(
+            filename="inline://00000001",
+            content=b"first",
+            content_type="text/plain; charset=utf-8",
+            classification_filename="inline-00000001.txt",
+        ),
+    ]
+    assert ingestor._pipeline_payload()["extraction_mode"] == "text"
+    assert ingestor._pipeline_payload()["split_config"] == {"text": {"max_tokens": 12}}
+
+
+def test_service_mode_texts_replaces_and_validates_inputs() -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example").texts("first").texts(["second"])
+
+    assert [item.filename for item in ingestor._collect_inputs()] == ["inline://00000000"]
+    assert [item.content for item in ingestor._collect_inputs()] == [b"second"]
+
+    with pytest.raises(TypeError, match=r"texts\[1\] must be a string"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["valid", None])
+
+
+def test_service_mode_texts_rejects_source_mixing_and_non_text_extraction(tmp_path) -> None:
+    document = tmp_path / "document.txt"
+    document.write_text("document", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ServiceIngestor(base_url="http://retriever.example", documents=[str(document)]).texts(["inline"])
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).files(str(document))
+    with pytest.raises(ValueError, match="incompatible with texts"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).extract_image_files()
 
 
 @pytest.mark.integration

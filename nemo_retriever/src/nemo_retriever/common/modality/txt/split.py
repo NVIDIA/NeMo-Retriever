@@ -270,8 +270,12 @@ def txt_bytes_to_chunks_df(
     Decode bytes to text and return a DataFrame of chunks (same shape as txt_file_to_chunks_df).
 
     Used by batch TxtSplitActor when input is bytes + path from read_binary_files.
+    Service-mode inline text also crosses HTTP as bytes; its ``inline://``
+    identity is preserved and its transport encoding is always UTF-8.
     """
     chunk_params = params or TextChunkParams()
-    path = str(Path(path).resolve())
-    raw = content_bytes.decode(chunk_params.encoding, errors="replace")
-    return text_to_chunks_df(raw, path, params=chunk_params)
+    is_inline = path.startswith("inline://")
+    source_id = path if is_inline else str(Path(path).resolve())
+    encoding = "utf-8" if is_inline else chunk_params.encoding
+    raw = content_bytes.decode(encoding, errors="replace")
+    return text_to_chunks_df(raw, source_id, params=chunk_params)

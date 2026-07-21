@@ -993,7 +993,10 @@ class GraphIngestor(ingestor):
         return paths
 
     def _classified_input_paths(self) -> list[tuple[str, str | None]]:
-        return [(path, input_type_for_path(path)) for path in self._configured_input_paths()]
+        return [
+            (path, "txt" if path.startswith("inline://") else input_type_for_path(path))
+            for path in self._configured_input_paths()
+        ]
 
     @staticmethod
     def _input_type_examples(paths: Iterable[str], *, limit: int = 3) -> str:

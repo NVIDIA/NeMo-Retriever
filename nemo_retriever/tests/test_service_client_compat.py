@@ -49,6 +49,7 @@ import pytest
 from nemo_retriever.service.client import (
     RetrieverServiceClient,
     RetrieverServiceCompatibilityError,
+    _InMemoryUpload,
     _compat_error_message,
     _is_api_mismatch_status,
 )
@@ -245,6 +246,38 @@ def test_stream_job_created_event_includes_trace_id(monkeypatch: pytest.MonkeyPa
 # ----------------------------------------------------------------------
 # _upload_one — guards the mid-rollout case (new gateway, stale worker)
 # ----------------------------------------------------------------------
+
+
+def test_upload_one_sends_inline_text_from_memory_with_classification_metadata() -> None:
+    requests: list[httpx.Request] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(202, json={"document_id": "doc-inline", "job_id": "JOB-1"})
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    source = _InMemoryUpload(
+        filename="inline://00000003",
+        content="café".encode(),
+        content_type="text/plain; charset=utf-8",
+        classification_filename="inline-00000003.txt",
+    )
+
+    async def _call() -> dict[str, object]:
+        async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
+            return await rc._upload_one(
+                client,
+                source,
+                job_id="JOB-1",
+                pipeline_spec={"extraction_mode": "text", "stage_order": ["extract"]},
+            )
+
+    assert _run_async(_call())["document_id"] == "doc-inline"
+    body = requests[0].content
+    assert b'filename="inline://00000003"' in body
+    assert "café".encode() in body
+    assert b'"filename": "inline-00000003.txt"' in body
+    assert b'"extraction_mode": "text"' in body
 
 
 def test_upload_one_raises_compat_error_on_404(tmp_path: Path) -> None:

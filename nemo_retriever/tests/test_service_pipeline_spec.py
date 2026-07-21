@@ -570,6 +570,33 @@ def test_run_pipeline_in_process_html_txt_produce_rows(monkeypatch: pytest.Monke
     assert txt_rows >= 1
 
 
+def test_run_pipeline_in_process_preserves_service_inline_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *_, **__: _TinyTokenizer())
+
+    row_count, rows, _ = _run_pipeline_in_process(
+        "inline://00000003",
+        "café service".encode("utf-8"),
+        {},
+        None,
+        None,
+        {
+            "extraction_mode": "text",
+            "stage_order": ["extract"],
+            "result_schema": "compact",
+        },
+    )
+
+    assert row_count == 1
+    assert rows == [
+        {
+            "text": "café service",
+            "source_id": "inline://00000003",
+            "element_type": "text",
+            "page_number": 1,
+        }
+    ]
+
+
 def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> None:
     """When the worker has no ASR endpoint, nothing should be attached
     regardless of filename or extraction mode.

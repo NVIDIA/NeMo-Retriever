@@ -16,6 +16,7 @@ from nemo_retriever.common.modality.txt.split import (
     TextChunkParams,
     split_text_by_tokens,
     text_to_chunks_df,
+    txt_bytes_to_chunks_df,
     txt_file_to_chunks_df,
 )
 
@@ -109,6 +110,22 @@ def test_text_to_chunks_df_preserves_logical_source_id(monkeypatch):
         "inline://00000000",
         "inline://00000000",
     ]
+
+
+def test_txt_bytes_preserves_service_inline_identity_and_utf8_transport(monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+
+    df = txt_bytes_to_chunks_df(
+        "café document".encode("utf-8"),
+        "inline://00000007",
+        params=TextChunkParams(max_tokens=10, encoding="utf-16"),
+    )
+
+    assert df["text"].tolist() == ["café document"]
+    assert df["path"].tolist() == ["inline://00000007"]
+    assert df["metadata"].iloc[0]["source_path"] == "inline://00000007"
 
 
 def test_file_and_decoded_text_helpers_produce_equivalent_chunks(tmp_path: Path, monkeypatch):

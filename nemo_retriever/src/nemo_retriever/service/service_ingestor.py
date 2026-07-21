@@ -44,6 +44,8 @@ client.
 Fluent methods that *do* take effect by writing to the spec:
 
 * ``.extract(...)`` — per-request extraction knobs (DPI, OCR enable, …)
+* ``.texts(...)`` / ``.extract_txt(...)`` — inline text payloads and
+  optional text chunking configuration
 * ``.embed(...)`` — embedding model/dim overrides bounded by the
   operator's allow-list
 * ``.dedup(...)``, ``.split(...)``, ``.filter()`` — shape knobs
@@ -60,8 +62,6 @@ Fluent methods that *do* take effect by writing to the spec:
 
 Methods that intentionally remain unsupported in service run_mode:
 
-* ``.texts(...)`` — inline payload transport is not implemented; use
-  ``run_mode='inprocess'`` or ``run_mode='batch'``
 * ``.udf(...)`` — named UDFs deferred to a follow-up phase;
   arbitrary-code execution is the canonical trust-boundary violation
   and needs a server-side registry first
@@ -91,6 +91,7 @@ from nemo_retriever.common.params import (
     IngestExecuteParams,
     PdfSplitParams,
     StoreParams,
+    TextChunkParams,
     VdbUploadParams,
     WebhookParams,
 )
@@ -427,6 +428,7 @@ class ServiceIngestor(ingestor):
         self._max_concurrency = max_concurrency
         self._request_timeout_s = request_timeout_s
         self._api_token = (api_token or "").strip() or None
+        self._inline_texts: list[str] | None = None
         self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
         self._last_job_id: str | None = None
@@ -559,6 +561,7 @@ class ServiceIngestor(ingestor):
 
     def files(self, documents: Union[str, List[str]]) -> "ServiceIngestor":
         """Add document paths/URIs for processing."""
+        self._reject_inline_source_mix("files")
         if isinstance(documents, str):
             self._documents.append(documents)
         else:
@@ -566,10 +569,27 @@ class ServiceIngestor(ingestor):
         return self
 
     def texts(self, texts: Union[str, Sequence[str]]) -> Self:
-        """Reject inline text until the service transport supports it."""
-        raise NotImplementedError(
-            "ServiceIngestor.texts() is not supported; use run_mode='inprocess' or run_mode='batch'."
-        )
+        """Set raw inline text documents for upload to the service."""
+        if self._documents or self._buffers:
+            raise ValueError("texts() cannot be combined with files() or buffers(); use a separate ingestor.")
+        if "extract" in self._pipeline_spec["stage_order"] and self._pipeline_spec["extraction_mode"] != "text":
+            raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
+
+        if isinstance(texts, str):
+            values = [texts]
+        elif isinstance(texts, Sequence):
+            values = list(texts)
+        else:
+            raise TypeError(f"texts must be a string or sequence of strings, got {type(texts).__name__}")
+
+        for index, value in enumerate(values):
+            if not isinstance(value, str):
+                raise TypeError(f"texts[{index}] must be a string, got {type(value).__name__}")
+
+        self._inline_texts = values
+        self._pipeline_spec["extraction_mode"] = "text"
+        self._record_stage("extract")
+        return self
 
     def buffers(
         self,
@@ -580,6 +600,7 @@ class ServiceIngestor(ingestor):
         Each buffer must be ``(filename, BytesIO)`` so the server can record
         a meaningful source filename.
         """
+        self._reject_inline_source_mix("buffers")
         if isinstance(buffers, tuple):
             buffers = [buffers]
         for name, buf in buffers:
@@ -661,6 +682,8 @@ class ServiceIngestor(ingestor):
         service's server-owned defaults (and the allow-list is not tripped
         by client-side model defaults).
         """
+        if self._inline_texts is not None and extraction_mode != "text":
+            raise ValueError("extract() is incompatible with texts() unless extraction_mode='text'.")
         if params is not None or kwargs:
             from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
 
@@ -678,10 +701,33 @@ class ServiceIngestor(ingestor):
         self._record_stage("extract")
         return self
 
+    def extract_txt(self, params: TextChunkParams | None = None, **kwargs: Any) -> Self:
+        """Configure plain-text extraction and optional chunking overrides."""
+        self._pipeline_spec["extraction_mode"] = "text"
+        split_config = dict(self._pipeline_spec.get("split_config") or {})
+        if params is not None or kwargs:
+            from nemo_retriever.common.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
+
+            merged = _merge_params(params, kwargs)
+            split_config["text"] = _filter_policy_allowed(
+                _params_to_dict(merged),
+                _DEFAULT_ALLOWED_SPLIT_KEYS,
+            )
+        else:
+            split_config.pop("text", None)
+        if split_config:
+            self._pipeline_spec["split_config"] = split_config
+        else:
+            self._pipeline_spec.pop("split_config", None)
+        self._record_stage("extract")
+        return self
+
     def extract_image_files(
         self, params: Any = None, *, split_config: Optional[dict[str, Any]] = None, **kwargs: Any
     ) -> "ServiceIngestor":
         """Record image-file extraction (``extraction_mode='image'``)."""
+        if self._inline_texts is not None:
+            raise ValueError("extract_image_files() is incompatible with texts(); use extract_txt().")
         if params is not None or kwargs:
             from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
 
@@ -1520,9 +1566,15 @@ class ServiceIngestor(ingestor):
     # Internals
     # ------------------------------------------------------------------
 
-    def _collect_inputs(self) -> list[Path]:
-        """Gather both file paths and any in-memory buffers into Paths."""
-        files = [Path(p) for p in self._documents]
+    def _reject_inline_source_mix(self, method_name: str) -> None:
+        if self._inline_texts is not None:
+            raise ValueError(f"{method_name}() cannot be combined with texts(); use a separate ingestor.")
+
+    def _collect_inputs(self) -> list[Any]:
+        """Gather filesystem and in-memory inputs for the service client."""
+        from nemo_retriever.service.client import _InMemoryUpload
+
+        files: list[Any] = [Path(p) for p in self._documents]
 
         if self._buffers:
             import tempfile
@@ -1532,5 +1584,16 @@ class ServiceIngestor(ingestor):
                 target = tmp_dir / name
                 target.write_bytes(buf.getvalue())
                 files.append(target)
+
+        for index, text in enumerate(self._inline_texts or []):
+            source_id = f"inline://{index:08d}"
+            files.append(
+                _InMemoryUpload(
+                    filename=source_id,
+                    content=text.encode("utf-8"),
+                    content_type="text/plain; charset=utf-8",
+                    classification_filename=f"inline-{index:08d}.txt",
+                )
+            )
 
         return files
