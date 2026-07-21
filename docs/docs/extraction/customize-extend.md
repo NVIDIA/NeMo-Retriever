@@ -1,3 +1,21 @@
+---
+title: "Customize and extend"
+content_type: explanation
+audience: advanced
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - customization
+technologies:
+  - python
+prerequisites:
+  - extraction/workflow-document-ingestion.md
+  - extraction/nemo-retriever-api-reference.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Customize & extend
 
 NeMo Retriever Library ships with defaults tuned for strong recall on common document types. When those defaults are not enough, you can extend the library at several levels—from task keyword arguments on the fluent ingestor API through custom graph operators and vector-database adapters.

@@ -1,3 +1,19 @@
+---
+title: "Troubleshoot NeMo Retriever Library"
+content_type: troubleshooting
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - support
+technologies: []
+prerequisites:
+  - extraction/deployment-options.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Troubleshoot NeMo Retriever Library
 
 Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](overview.md).
