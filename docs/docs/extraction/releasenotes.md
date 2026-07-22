@@ -19,14 +19,14 @@ Highlights for the 26.05 release include:
 
 ### Pipeline and ingestion
 
-- Legacy `nv-ingest` code paths removed; `graph_pipeline` and the graph stage registry are the canonical ingestion path  
+- Legacy `nv-ingest` and compatibility pipeline CLI code paths removed; `retriever ingest` and the graph stage registry are the canonical ingestion paths
 - Manifest-based ingest routing replaces input-type routing; `retriever ingest` is input-aware for PDF, image, audio, video, text, HTML, DOCX/PPTX, SVG, and related types  
 - `allow_no_gpu` option to skip GPU requirement during ingest for CPU-only experimentation  
 
 ### CLI
 
 - Root CLI adds first-class `retriever ingest` and `retriever query` commands with NIM URL flags, batch tuning, and LanceDB overwrite/append controls
-- For product ingest and retrieval, prefer `retriever ingest` and `retriever query`; `retriever pipeline run` remains available for compatibility and development workflows. Other top-level subcommands—including `pdf`, `html`, `eval`, `benchmark`, `harness`, `online`, `compare`, `image`, and `skill-eval`—are development and experimental
+- `retriever ingest` and `retriever query` replace the retired compatibility pipeline command. Other top-level subcommands—including `eval`, `benchmark`, `harness`, and `skill-eval`—are development and experimental
 
 ### Retriever Service and deployment
 

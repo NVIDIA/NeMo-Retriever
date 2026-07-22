@@ -33,8 +33,7 @@ def _normalize_on_bad_vectors(value: str) -> str:
 
     LanceDB's ``Table.create`` accepts a fixed set of policies for handling rows
     whose vector column does not match the declared fixed-size schema. We
-    surface the same vocabulary on this wrapper so callers can configure the
-    behavior through ``--vdb-kwargs-json``.
+    surface the same vocabulary on this wrapper for direct SDK configuration.
 
     Args:
         value: User-supplied policy name. Whitespace and case are ignored.
@@ -166,6 +165,12 @@ def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa
 def _table_schema(table: Any) -> pa.Schema:
     schema = table.schema
     return schema() if callable(schema) else schema
+
+
+def lancedb_row_count(uri: str, table_name: str) -> int:
+    """Return the number of rows in a LanceDB table."""
+    table = lancedb.connect(uri).open_table(table_name)
+    return int(table.count_rows())
 
 
 def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_name: str, uri: str) -> None:

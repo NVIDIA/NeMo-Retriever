@@ -228,8 +228,7 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
 def run_qa_sweep_from_config_dict(cfg: dict) -> int:
     """Run a QA evaluation sweep from a loaded config dict (0 = success, 1 = failure).
 
-    Used by ``retriever eval run`` and by ``retriever pipeline run`` when
-    ``--evaluation-mode=qa`` so the LLM sweep stays in one implementation.
+    Used by ``retriever eval run`` so the LLM sweep stays in one implementation.
     """
     from nemo_retriever.tools.evaluation.ground_truth import get_qa_dataset_loader
     from nemo_retriever.tools.evaluation.retrievers import FileRetriever

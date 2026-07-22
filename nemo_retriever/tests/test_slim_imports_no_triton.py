@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Ensure core pipeline / API imports never load ``tritonclient`` at import time.
+"""Ensure core ingest imports never load ``tritonclient`` at import time.
 
 Remote-NIM and slim installs omit ``tritonclient``; gRPC code paths import it lazily.
 """
@@ -33,14 +33,13 @@ builtins.__import__ = _guard
 
 from nemo_retriever.models.nim.util import create_inference_client  # noqa: F401
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor  # noqa: F401
-from nemo_retriever.cli.pipeline import __main__ as _pipeline_main  # noqa: F401
 
 print("slim_imports_ok")
 """
 
 
 def test_core_imports_do_not_require_tritonclient_at_import_time() -> None:
-    """Fresh interpreter: block tritonclient, then import hot paths used by remote pipeline."""
+    """Fresh interpreter: block tritonclient, then import remote-ingest paths."""
     root = Path(__file__).resolve().parents[1]
     src = root / "src"
     env = os.environ.copy()

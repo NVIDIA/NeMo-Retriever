@@ -80,7 +80,7 @@ uses the product service APIs for ingest and query while preserving the same
 - `post-slack`: preview or post existing artifacts; it never executes a run.
 - `diff`: compare two run artifact directories by `results.json` summary metrics.
 
-Legacy graph-pipeline, sweep, recurring-job, runner, reporting-UI, and portal
+Legacy sweep, recurring-job, runner, reporting-UI, and portal
 commands are not part of this CLI surface. Scheduling and deployment belong to
 separate infrastructure, not the benchmark harness.
 
@@ -369,9 +369,8 @@ plans before launching an expensive run.
 
 ## Implementation Boundary
 
-The harness does not shell out to `retriever ingest`, `retriever query`, or
-`retriever pipeline run`. It calls the same Python workflow/planning APIs used
-by the CLI:
+The harness does not shell out to `retriever ingest` or `retriever query`. It
+calls the same Python workflow/planning modules used by the CLI:
 
 - ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
 - query: `resolve_query_plan(...)` and shared query workflow objects

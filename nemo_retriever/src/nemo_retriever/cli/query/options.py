@@ -164,7 +164,10 @@ AgenticLlmModelOption = Annotated[
     str | None,
     typer.Option(
         "--agentic-llm-model",
-        help="Chat model the agent drives. Required when --agentic is set.",
+        help=(
+            "Chat model the agent drives. Defaults to nemotron-8b for local in-process runs; "
+            "required when --agentic-invoke-url is provided."
+        ),
     ),
 ]
 AgenticInvokeUrlOption = Annotated[
