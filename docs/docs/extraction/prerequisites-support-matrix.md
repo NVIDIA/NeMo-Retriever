@@ -8,8 +8,8 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 
 ## Software Requirements { #software-requirements }
 
-- Linux operating systems (Ubuntu 22.04 or later recommended)
-- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `580`, CUDA >= `13.0`)
+- Linux operating systems (Ubuntu 22.04 or later recommended) for supported local GPU inference. For remote NIM inference, the base package can also be installed on Windows x64 and macOS x64/ARM64; local GPU inference is not supported on those platforms.
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (local GPU inference only; NVIDIA Driver >= `580`, CUDA >= `13.0`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
