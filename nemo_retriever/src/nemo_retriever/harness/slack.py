@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.json_io import read_json_object
+from nemo_retriever.harness.release_reference import ReleaseReference
 
 DEFAULT_USERNAME = "nemo_retriever Harness"
 DEFAULT_ICON_EMOJI = ":satellite:"
@@ -483,7 +484,67 @@ def _run_display_label(run: HarnessRunReport, repeated_datasets: set[str]) -> st
     return f"{run.dataset} ({workload_gpu_count} workload {gpu_label})"
 
 
-def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
+def _release_reference_blocks(
+    report: HarnessSessionReport,
+    references: list[ReleaseReference],
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for reference in references:
+        for run in report.results:
+            if not run.success or run.dataset != reference.dataset:
+                continue
+            rows = [_three_column_row("METRIC", "CURRENT", reference.release.upper(), bold=True)]
+            for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
+                current_value = run.run_metadata.get(key)
+                reference_value = reference.environment.get(key)
+                if current_value is None and reference_value is None:
+                    continue
+                rows.append(
+                    _three_column_row(
+                        _format_metric_label(key),
+                        _format_metric_value(key, current_value),
+                        _format_metric_value(key, reference_value),
+                    )
+                )
+            for metric_name, reference_value in reference.metrics.items():
+                rows.append(
+                    _three_column_row(
+                        _format_metric_label(metric_name),
+                        _format_metric_value(metric_name, run.metrics.get(metric_name)),
+                        _format_metric_value(metric_name, reference_value),
+                    )
+                )
+            workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
+            if workload_gpu_count is None:
+                workload_label = ""
+            else:
+                gpu_label = "GPU" if workload_gpu_count == 1 else "GPUs"
+                workload_label = f" ({workload_gpu_count} workload {gpu_label})"
+            blocks.extend(
+                [
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*{reference.release} reference — {run.dataset}{workload_label}*\n"
+                                "Observed values only; hardware may differ and no pass/fail threshold is applied."
+                            ),
+                        },
+                    },
+                    {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
+                ]
+            )
+    return blocks
+
+
+def build_slack_payload(
+    report: HarnessSessionReport,
+    slack_config: dict[str, Any],
+    *,
+    release_references: list[ReleaseReference] | None = None,
+) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     vidore_v3_runs = _vidore_v3_runs(report.results)
@@ -621,6 +682,7 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
                 {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
             ]
         )
+    blocks.extend(_release_reference_blocks(report, release_references or []))
 
     return {
         "username": DEFAULT_USERNAME,
@@ -660,7 +722,8 @@ def post_report_to_slack(
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
+    release_references: list[ReleaseReference] | None = None,
 ) -> dict[str, Any]:
-    payload = build_slack_payload(report, slack_config)
+    payload = build_slack_payload(report, slack_config, release_references=release_references)
     post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload

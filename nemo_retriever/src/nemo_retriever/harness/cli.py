@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from nemo_retriever.harness.revamp_runner import (
 )
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
+from nemo_retriever.harness.release_reference import load_release_references
 from nemo_retriever.harness.runfile import load_runfile
 from nemo_retriever.harness.runsets import run_runfiles, run_runset
 from nemo_retriever.harness.slack import (
@@ -345,6 +347,13 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = False,
+    reference_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--reference-file",
+            help="Current release reference snapshot to show beside observed results.",
+        ),
+    ] = None,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -359,7 +368,11 @@ def post_slack_command(
             "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": post_artifact_paths,
         }
-        payload = build_slack_payload(report, slack_config)
+        configured_reference = reference_file
+        if configured_reference is None and (reference_path := os.environ.get("RETRIEVER_HARNESS_REFERENCE_FILE")):
+            configured_reference = Path(reference_path)
+        release_references = load_release_references(configured_reference) if configured_reference else None
+        payload = build_slack_payload(report, slack_config, release_references=release_references)
         if not preview:
             post_slack_payload(payload, resolve_slack_webhook_url())
     except Exception as exc:
