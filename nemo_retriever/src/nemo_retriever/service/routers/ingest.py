@@ -21,6 +21,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -49,6 +50,7 @@ from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.models.llm.types import (
     AnswerRequest as CoreAnswerRequest,
     AnswerResult,
+    GenerationResult,
     RetrievalResult,
     build_answer_result,
 )
@@ -1508,15 +1510,8 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
 
 
-@router.post(
-    "/answer",
-    response_model=AnswerResult,
-    summary="Search ingested documents and generate an answer",
-)
-async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
-    """Retrieve context from VectorDB and answer with the configured LLM."""
-    import httpx
-
+def _validate_answer_request(request: Request) -> None:
+    """Raise HTTP 404 when query/answer prerequisites are missing on this pod."""
     config = request.app.state.config
 
     if not config.vectordb.enabled:
@@ -1538,33 +1533,35 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             detail="Answer endpoint is not available on worker pods. Use the gateway.",
         )
 
-    answer_req = CoreAnswerRequest(
-        query=req.query,
-        top_k=req.top_k,
-        reasoning_enabled=req.reasoning_enabled,
-        reference=req.reference,
-        judge_enabled=req.judge,
-    )
 
+async def _fetch_retrieval_for_answer(
+    request: Request,
+    *,
+    query: str,
+    top_k: int,
+) -> tuple[RetrievalResult | None, Response | None, float]:
+    """Query VectorDB and return retrieval context plus retrieval latency."""
+    config = request.app.state.config
     vectordb_url = config.vectordb.vectordb_url.rstrip("/")
     target = f"{vectordb_url}/v1/query"
+    started_at = time.monotonic()
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(target, json={"query": answer_req.query, "top_k": answer_req.top_k})
+            resp = await client.post(target, json={"query": query, "top_k": top_k})
     except Exception as exc:
         logger.exception("Failed to query vectordb at %s for answer generation", target)
         raise HTTPException(
             status_code=502,
             detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
-        )
+        ) from exc
 
     if resp.status_code != 200:
-        return Response(
+        return None, Response(
             content=resp.content,
             status_code=resp.status_code,
             media_type=resp.headers.get("content-type", "application/json"),
-        )
+        ), 0.0
 
     payload = resp.json()
     result_sets = payload.get("results") or []
@@ -1573,10 +1570,14 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
         chunks=[_text_from_hit(hit) for hit in hits],
         metadata=[_metadata_from_hit(hit) for hit in hits],
     )
+    return retrieval, None, time.monotonic() - started_at
 
-    from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
 
-    llm_cfg = config.llm
+def _resolve_answer_llm(request: Request):
+    """Return the cached answer LLM client, creating it from config when needed."""
+    from nemo_retriever.models.llm.clients import LiteLLMClient
+
+    llm_cfg = request.app.state.config.llm
     llm = getattr(request.app.state, "answer_llm_client", None)
     if llm is None:
         llm = LiteLLMClient.from_kwargs(
@@ -1594,6 +1595,58 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             reasoning_enabled=llm_cfg.reasoning_enabled,
         )
         request.app.state.answer_llm_client = llm
+    return llm
+
+
+def _resolve_answer_judge(request: Request):
+    """Return the cached judge client when answer scoring is requested."""
+    from nemo_retriever.models.llm.clients import LLMJudge
+
+    llm_cfg = request.app.state.config.llm
+    judge = getattr(request.app.state, "answer_judge_client", None)
+    if judge is None:
+        judge = LLMJudge.from_kwargs(
+            model=llm_cfg.model,
+            api_base=llm_cfg.api_base,
+            api_key=llm_cfg.api_key,
+            extra_params=dict(llm_cfg.extra_params),
+            num_retries=llm_cfg.num_retries,
+            timeout=llm_cfg.timeout,
+        )
+        request.app.state.answer_judge_client = judge
+    return judge
+
+
+def _format_answer_sse_event(event_type: str, payload: dict[str, Any]) -> str:
+    return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
+
+
+@router.post(
+    "/answer",
+    response_model=AnswerResult,
+    summary="Search ingested documents and generate an answer",
+)
+async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
+    """Retrieve context from VectorDB and answer with the configured LLM."""
+    _validate_answer_request(request)
+
+    answer_req = CoreAnswerRequest(
+        query=req.query,
+        top_k=req.top_k,
+        reasoning_enabled=req.reasoning_enabled,
+        reference=req.reference,
+        judge_enabled=req.judge,
+    )
+
+    retrieval, error_response, _retrieval_latency = await _fetch_retrieval_for_answer(
+        request,
+        query=answer_req.query,
+        top_k=answer_req.top_k,
+    )
+    if error_response is not None:
+        return error_response
+
+    llm = _resolve_answer_llm(request)
 
     generate_kwargs: dict[str, Any] = {}
     if answer_req.reasoning_enabled is not None:
@@ -1611,19 +1664,7 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             detail=f"LLM answer generation failed: {gen.error}",
         )
 
-    judge = None
-    if answer_req.judge_enabled:
-        judge = getattr(request.app.state, "answer_judge_client", None)
-        if judge is None:
-            judge = LLMJudge.from_kwargs(
-                model=llm_cfg.model,
-                api_base=llm_cfg.api_base,
-                api_key=llm_cfg.api_key,
-                extra_params=dict(llm_cfg.extra_params),
-                num_retries=llm_cfg.num_retries,
-                timeout=llm_cfg.timeout,
-            )
-            request.app.state.answer_judge_client = judge
+    judge = _resolve_answer_judge(request) if answer_req.judge_enabled else None
 
     result = await asyncio.to_thread(
         build_answer_result,
@@ -1639,6 +1680,118 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             "chunks": result.chunks if req.include_chunks else None,
             "metadata": result.metadata if req.include_metadata else None,
         }
+    )
+
+
+@router.post(
+    "/answer/stream",
+    summary="Search ingested documents and stream an answer over SSE",
+    response_model=None,
+)
+async def answer_stream(req: ServiceAnswerRequest, request: Request) -> Response | StreamingResponse:
+    """Stream retrieval and LLM answer tokens to the client as Server-Sent Events."""
+    _validate_answer_request(request)
+
+    answer_req = CoreAnswerRequest(
+        query=req.query,
+        top_k=req.top_k,
+        reasoning_enabled=req.reasoning_enabled,
+        reference=req.reference,
+        judge_enabled=req.judge,
+    )
+
+    retrieval, error_response, retrieval_latency_s = await _fetch_retrieval_for_answer(
+        request,
+        query=answer_req.query,
+        top_k=answer_req.top_k,
+    )
+    if error_response is not None:
+        return error_response
+
+    llm = _resolve_answer_llm(request)
+    generate_kwargs: dict[str, Any] = {}
+    if answer_req.reasoning_enabled is not None:
+        generate_kwargs["reasoning_enabled"] = answer_req.reasoning_enabled
+
+    async def event_generator():
+        retrieval_payload: dict[str, Any] = {
+            "query": answer_req.query,
+            "chunk_count": len(retrieval.chunks),
+            "retrieval_latency_s": retrieval_latency_s,
+        }
+        if req.include_chunks:
+            retrieval_payload["chunks"] = retrieval.chunks
+        if req.include_metadata:
+            retrieval_payload["metadata"] = retrieval.metadata
+        yield _format_answer_sse_event("retrieval_done", retrieval_payload)
+
+        generation: GenerationResult | None = None
+        try:
+            async for event_type, payload in llm.stream_generate(
+                answer_req.query,
+                retrieval.chunks,
+                **generate_kwargs,
+            ):
+                if await request.is_disconnected():
+                    logger.info("SSE answer stream client disconnected (query=%r)", answer_req.query)
+                    break
+
+                if event_type == "metrics":
+                    yield _format_answer_sse_event("metrics", payload)
+                    continue
+
+                if event_type == "token":
+                    yield _format_answer_sse_event("token", payload)
+                    continue
+
+                if event_type == "complete":
+                    if payload.get("error"):
+                        logger.error(
+                            "LLM answer streaming failed for model %s: %s",
+                            payload.get("model"),
+                            payload.get("error"),
+                        )
+                        yield _format_answer_sse_event(
+                            "error",
+                            {"detail": f"LLM answer generation failed: {payload['error']}"},
+                        )
+                        return
+
+                    generation = GenerationResult(
+                        answer=str(payload.get("answer") or ""),
+                        latency_s=float(payload.get("latency_s") or 0.0),
+                        model=str(payload.get("model") or llm.model),
+                        error=payload.get("error"),
+                    )
+        except Exception as exc:
+            logger.exception("Unexpected failure while streaming answer for query=%r", answer_req.query)
+            yield _format_answer_sse_event(
+                "error",
+                {"detail": f"LLM answer generation failed: {type(exc).__name__}: {exc}"},
+            )
+            return
+
+        if generation is None or await request.is_disconnected():
+            return
+
+        judge = _resolve_answer_judge(request) if answer_req.judge_enabled else None
+        result = await asyncio.to_thread(
+            build_answer_result,
+            query=answer_req.query,
+            retrieval=retrieval,
+            generation=generation,
+            reference=answer_req.reference,
+            judge=judge,
+        )
+        done_payload = result.model_dump()
+        done_payload["chunks"] = result.chunks if req.include_chunks else None
+        done_payload["metadata"] = result.metadata if req.include_metadata else None
+        yield _format_answer_sse_event("done", done_payload)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
