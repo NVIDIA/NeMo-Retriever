@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -31,6 +32,11 @@ HF_RUNTIME_ENV_KEYS: tuple[str, ...] = (
 )
 
 
+def _has_legacy_default_cache(cache_base: Path) -> bool:
+    """Return whether the pre-standard-layout cache contains model snapshots."""
+    return any(path.is_dir() for path in cache_base.glob("models--*"))
+
+
 def resolve_hf_cache_dir(explicit_hf_cache_dir: Optional[str] = None) -> str:
     """Resolve the cache directory used for Hugging Face model snapshots.
 
@@ -55,11 +61,12 @@ def resolve_hf_cache_dir(explicit_hf_cache_dir: Optional[str] = None) -> str:
 def configure_global_hf_cache_base(explicit_hf_cache_dir: Optional[str] = None) -> str:
     """Configure Hugging Face cache env vars and return the model cache dir."""
     override = explicit_hf_cache_dir or os.getenv(ENV_HF_CACHE_BASE_DIR)
+    configured_home = os.getenv("HF_HOME")
+    configured_hub = os.getenv("HF_HUB_CACHE")
     if override:
         cache_base = str(Path(override).expanduser())
         hub_cache = str(Path(cache_base) / "hub")
     else:
-        configured_home = os.getenv("HF_HOME")
         cache_base = (
             str(Path(configured_home).expanduser()) if configured_home else str(Path.home() / ".cache" / "huggingface")
         )
@@ -69,6 +76,16 @@ def configure_global_hf_cache_base(explicit_hf_cache_dir: Optional[str] = None) 
     os.environ.setdefault("HF_HUB_CACHE", hub_cache)
     if override:
         os.environ.setdefault("TRANSFORMERS_CACHE", str(Path(cache_base) / "transformers"))
+
+    if not override and not configured_home and not configured_hub and _has_legacy_default_cache(Path(cache_base)):
+        warnings.warn(
+            f"Using legacy Hugging Face model cache at {cache_base}; "
+            f"move its models--* directories to {hub_cache} to adopt the standard layout.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return cache_base
+
     return str(Path(override).expanduser()) if override else hub_cache
 
 

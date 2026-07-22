@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 from nemo_retriever.models.hf_cache import (
     collect_hf_runtime_env,
     configure_global_hf_cache_base,
@@ -46,6 +48,20 @@ def test_configure_global_hf_cache_base_uses_hf_home_hub(monkeypatch):
     assert "TRANSFORMERS_CACHE" not in os.environ
 
 
+def test_configure_global_hf_cache_base_uses_hf_defaults(monkeypatch, tmp_path):
+    cache_base = tmp_path / ".cache" / "huggingface"
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("NEMO_RETRIEVER_HF_CACHE_DIR", raising=False)
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_CACHE", raising=False)
+
+    assert configure_global_hf_cache_base() == str(cache_base / "hub")
+    assert os.environ["HF_HOME"] == str(cache_base)
+    assert os.environ["HF_HUB_CACHE"] == str(cache_base / "hub")
+    assert "TRANSFORMERS_CACHE" not in os.environ
+
+
 def test_configure_global_hf_cache_base_preserves_nemo_override(monkeypatch):
     monkeypatch.setenv("NEMO_RETRIEVER_HF_CACHE_DIR", "/cache/nemo")
     monkeypatch.delenv("HF_HOME", raising=False)
@@ -56,6 +72,23 @@ def test_configure_global_hf_cache_base_preserves_nemo_override(monkeypatch):
     assert os.environ["HF_HOME"] == "/cache/nemo"
     assert os.environ["HF_HUB_CACHE"] == "/cache/nemo/hub"
     assert os.environ["TRANSFORMERS_CACHE"] == "/cache/nemo/transformers"
+
+
+def test_configure_global_hf_cache_base_reuses_legacy_default_cache(monkeypatch, tmp_path):
+    cache_base = tmp_path / ".cache" / "huggingface"
+    (cache_base / "models--nvidia--parakeet-ctc-1.1b").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("NEMO_RETRIEVER_HF_CACHE_DIR", raising=False)
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_CACHE", raising=False)
+
+    with pytest.warns(UserWarning, match="legacy Hugging Face model cache"):
+        assert configure_global_hf_cache_base() == str(cache_base)
+
+    assert os.environ["HF_HOME"] == str(cache_base)
+    assert os.environ["HF_HUB_CACHE"] == str(cache_base / "hub")
+    assert "TRANSFORMERS_CACHE" not in os.environ
 
 
 def test_collect_hf_runtime_env_defaults_to_online(monkeypatch):
