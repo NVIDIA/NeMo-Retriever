@@ -1,6 +1,8 @@
 # Pre-Requisites & Support Matrix
 
-Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
+Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance on this page.
+
+**Platform summary:** Supported **local GPU inference** requires **Linux** and CUDA 13. For **remote NIM inference**, the base Python package also installs on **Windows x64** and **macOS x64/ARM64**; local GPU inference is not supported on those platforms.
 
 !!! note "NVIDIA AI Enterprise (NVAIE) support"
 
