@@ -324,6 +324,134 @@ def test_slack_baseline_workload_count_selects_matching_run(tmp_path):
     ]
 
 
+def test_slack_baseline_comparison_skips_failed_run_and_preserves_failure_context(tmp_path):
+    failed_run = HarnessRunReport(
+        run_name="bo767_beir",
+        dataset="bo767",
+        preset=None,
+        success=False,
+        return_code=42,
+        failure_reason="embedding crashed",
+        artifact_dir=None,
+        metrics={},
+        run_metadata={"gpu_count": 8, "workload_gpu_count": 8},
+    )
+    report = HarnessSessionReport(
+        session_name="bo767-failed",
+        session_dir=tmp_path,
+        session_type="artifact_replay",
+        timestamp=None,
+        latest_commit="abc1234",
+        all_passed=False,
+        dry_run=False,
+        results=[failed_run],
+    )
+    baseline = HarnessBaseline(
+        name="RC26.05 Perflab",
+        dataset="bo767",
+        environment={"gpu_count": 8, "workload_gpu_count": 8},
+        metrics={"ingest_secs": 120.0},
+    )
+
+    payload = build_slack_payload(
+        report,
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+        baselines=[baseline],
+    )
+
+    sections = [block["text"]["text"] for block in payload["blocks"] if block["type"] == "section"]
+    assert not any("RC26.05 Perflab comparison" in section for section in sections)
+    main_rows = _table_rows(payload["blocks"][3])
+    assert ["-    bo767", "FAIL"] in main_rows
+    assert ["-    return_code", "42"] in main_rows
+    assert ["-    failure_reason", "embedding crashed"] in main_rows
+
+
+def test_slack_baseline_comparison_distinguishes_uncollected_metric_from_failed_run(tmp_path):
+    successful_run = HarnessRunReport(
+        run_name="bo767_beir",
+        dataset="bo767",
+        preset=None,
+        success=True,
+        return_code=0,
+        failure_reason=None,
+        artifact_dir=None,
+        metrics={},
+        run_metadata={"gpu_count": 8, "workload_gpu_count": 8},
+    )
+    report = HarnessSessionReport(
+        session_name="bo767-missing-metric",
+        session_dir=tmp_path,
+        session_type="artifact_replay",
+        timestamp=None,
+        latest_commit="abc1234",
+        all_passed=True,
+        dry_run=False,
+        results=[successful_run],
+    )
+    baseline = HarnessBaseline(
+        name="RC26.05 Perflab",
+        dataset="bo767",
+        environment={"gpu_count": 8, "workload_gpu_count": 8},
+        metrics={"ingest_secs": 120.0},
+    )
+
+    payload = build_slack_payload(
+        report,
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+        baselines=[baseline],
+    )
+
+    assert payload["blocks"][-2]["text"]["text"] == "*RC26.05 Perflab comparison — bo767*"
+    assert _table_rows(payload["blocks"][-1])[-1] == [
+        "ingest_s",
+        "N/A",
+        "120.00s (02m : 00.00s)",
+        "N/A",
+    ]
+
+
+def test_slack_baseline_workload_count_requires_current_metadata(tmp_path):
+    run = HarnessRunReport(
+        run_name="bo767_beir",
+        dataset="bo767",
+        preset=None,
+        success=True,
+        return_code=0,
+        failure_reason=None,
+        artifact_dir=None,
+        metrics={"ingest_secs": 100.0},
+        run_metadata={"gpu_count": 8},
+    )
+    report = HarnessSessionReport(
+        session_name="bo767-missing-workload-count",
+        session_dir=tmp_path,
+        session_type="artifact_replay",
+        timestamp=None,
+        latest_commit="abc1234",
+        all_passed=True,
+        dry_run=False,
+        results=[run],
+    )
+    baseline = HarnessBaseline(
+        name="RC26.05 Perflab",
+        dataset="bo767",
+        environment={"gpu_count": 8, "workload_gpu_count": 8},
+        metrics={"ingest_secs": 120.0},
+    )
+
+    payload = build_slack_payload(
+        report,
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+        baselines=[baseline],
+    )
+
+    assert not any(
+        block["type"] == "section" and "RC26.05 Perflab comparison" in block["text"]["text"]
+        for block in payload["blocks"]
+    )
+
+
 def test_slack_payload_adds_automatic_gpu_scaling_table(tmp_path):
     def scaling_run(workload_gpu_count: int, ingest_secs: float, pages_per_sec: float) -> HarnessRunReport:
         return HarnessRunReport(
@@ -409,6 +537,47 @@ def test_load_baselines_validates_private_reference_file(tmp_path):
     assert baselines[0].dataset == "bo767"
     assert baselines[0].metrics == {"ingest_secs": 4000.0}
     assert baselines[0].source == {"release": "26.05"}
+
+
+@pytest.mark.parametrize(
+    ("payload_overrides", "baseline_overrides", "error_match"),
+    [
+        ({"schema_version": 2}, {}, "schema_version"),
+        ({"baselines": []}, {}, "non-empty list"),
+        ({"baselines": ["not-an-object"]}, {}, "must be an object"),
+        ({}, {"metrics": {}}, "non-empty 'metrics'"),
+        ({}, {"metrics": {"ingest_secs": True}}, "non-numeric metric values"),
+        ({}, {"environment": []}, "'environment' must be an object"),
+        ({}, {"source": []}, "'source' must be an object"),
+        ({}, {"comparability": " "}, "'comparability' must be non-empty text"),
+        ({}, {"notes": 26}, "'notes' must be text"),
+        ({}, {"name": ""}, "non-empty 'name'"),
+        ({}, {"dataset": ""}, "non-empty 'dataset'"),
+    ],
+)
+def test_load_baselines_rejects_malformed_reference_file(
+    tmp_path,
+    payload_overrides,
+    baseline_overrides,
+    error_match,
+):
+    baseline = {
+        "name": "release reference",
+        "dataset": "bo767",
+        "environment": {"gpu_count": 8, "workload_gpu_count": 8},
+        "metrics": {"ingest_secs": 4000.0},
+        "comparability": "directional_only",
+        "notes": "Reference measurement.",
+        "source": {"release": "26.05"},
+    }
+    baseline.update(baseline_overrides)
+    payload = {"schema_version": 1, "baselines": [baseline]}
+    payload.update(payload_overrides)
+    baseline_path = tmp_path / "baselines.json"
+    _write_json(baseline_path, payload)
+
+    with pytest.raises(ValueError, match=error_match):
+        load_baselines(baseline_path)
 
 
 def test_slack_payload_summarizes_complete_vidore_v3_suite(tmp_path):

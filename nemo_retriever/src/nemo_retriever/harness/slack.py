@@ -578,7 +578,7 @@ def _baseline_comparison_blocks(
 ) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for baseline in baselines:
-        matching_runs = [run for run in report.results if run.dataset == baseline.dataset]
+        matching_runs = [run for run in report.results if run.success and run.dataset == baseline.dataset]
         baseline_workload_gpu_count = _gpu_count(baseline.environment.get("workload_gpu_count"))
         if baseline_workload_gpu_count is not None:
             matching_runs = [
