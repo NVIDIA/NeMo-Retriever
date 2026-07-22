@@ -4,6 +4,7 @@
 
 from contextlib import contextmanager
 import json
+import subprocess
 
 import pytest
 
@@ -29,6 +30,35 @@ from nemo_retriever.harness.execution import _concise_message, _run_result_paylo
 
 def _write_json(path, payload):
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_last_commit_preserves_the_full_git_sha(monkeypatch):
+    import nemo_retriever.harness.artifacts as artifacts
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout=f"{full_sha}\n", stderr=""),
+    )
+
+    assert artifacts.last_commit() == full_sha
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected"),
+    [(0, "", False), (0, " M local.py\n", True), (128, "", None)],
+)
+def test_working_tree_dirty_reports_git_state(monkeypatch, returncode, stdout, expected):
+    import nemo_retriever.harness.artifacts as artifacts
+
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], returncode, stdout=stdout, stderr=""),
+    )
+
+    assert artifacts.working_tree_dirty() is expected
 
 
 def test_artifact_manifest_uses_relative_paths_and_includes_lancedb(tmp_path):

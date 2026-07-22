@@ -76,9 +76,16 @@ uses the product service APIs for ingest and query while preserving the same
   overrides.
 - `run-set`: expand a code-owned benchmark group using registry paths.
 - `run-files`: execute one or more runfiles with an optional machine-local
-  dataset path map. This is the portable entry point for the checked-in suite.
+  dataset path map. Real children run sequentially in fresh processes. This is
+  the portable entry point for the checked-in suite.
+- `check-vidore-access`: validate authenticated access to the queries, qrels,
+  and corpus objects for all eight ViDoRe v3 datasets without downloading them.
 - `post-slack`: preview or post existing artifacts; it never executes a run.
 - `diff`: compare two run artifact directories by `results.json` summary metrics.
+
+For the opinionated twelve-benchmark workstation workflow, including Git
+selection, dataset defaults, Slack, and daily recurrence, use the
+[Retriever nightly launcher](../../ops/retriever-nightly/README.md).
 
 Legacy sweep, recurring-job, runner, reporting-UI, and portal
 commands are not part of this CLI surface. Scheduling and deployment belong to
@@ -154,9 +161,18 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
-The ViDoRe v3 library follows the same runfile-first contract. Each benchmark
-uses the VL embed model with `text_image` page embeddings and page-level BEIR
-scoring. Run one domain while validating a machine or configuration:
+The ViDoRe v3 library follows the same runfile-first contract. Before GPU work,
+export a Hugging Face read token and validate all remote evaluation partitions:
+
+```bash
+export HF_TOKEN=...
+uv run --project nemo_retriever retriever harness check-vidore-access
+```
+
+The check streams one byte from each queries, qrels, and corpus partition; it
+does not download the complete parquet objects. Each benchmark uses the VL
+embed model with `text_image` page embeddings and page-level BEIR scoring. Run
+one domain while validating a machine or configuration:
 
 ```bash
 uv run --project nemo_retriever retriever harness run-files \
@@ -190,6 +206,13 @@ The code-owned `vidore_v3_all` runset is also available when the registry's
 default dataset paths are mounted. Prefer the checked-in runfiles for nightly
 or other orchestrated sessions because they carry per-dataset integrity gates
 and accept a machine-local path map.
+
+Real `run-files` sessions execute children sequentially, each in a fresh spawned
+process. The process boundary releases Ray and materialized dataframe memory
+before the next benchmark while preserving one parent-owned
+`session_summary.json`. A code-owned six-hour child deadline prevents one hung
+benchmark from blocking the session forever. Dry-runs stay in the parent
+process because they do not materialize batch data.
 
 `run-files` owns the session layout and execution mode. Runfiles passed to this
 command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the
@@ -417,8 +440,12 @@ results:
 {
   "session_type": "runfiles",
   "session_name": "library_beir",
+  "run_commit": "0123456789abcdef0123456789abcdef01234567",
+  "working_tree_dirty": false,
   "success": true,
   "exit_code": 0,
+  "dry_run": false,
+  "isolate_runs": true,
   "runs": [
     {
       "benchmark": "jp20_beir",
