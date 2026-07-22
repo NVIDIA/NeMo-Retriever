@@ -92,8 +92,12 @@ At minimum, changes should cover:
 - One-run and multi-run terminal artifact shapes.
 - Missing inputs, invalid overrides, and metric-gate failures.
 - Dataset path precedence and secret redaction.
-- Slack preview without a webhook and transport errors without secret leakage.
+- Slack preview without a webhook, current-release reference rendering, and
+  transport errors without secret leakage.
 - A real benchmark smoke run when execution behavior changes.
 
 Use `EXPECTED_RESULTS.md` for dataset facts and observed metric ranges. Do not
 turn hardware-sensitive reference numbers into implicit global pass/fail policy.
+A configured release snapshot is presentation input only: show it beside the
+current nightly with hardware context, but do not maintain history or assign a
+verdict in the harness.

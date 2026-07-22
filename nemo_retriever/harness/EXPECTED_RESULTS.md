@@ -119,8 +119,8 @@ Observed `bo767_beir` metrics on an eight-H100 80GB HBM3 host:
 
 The RC26.05 Perflab artifact recorded eight physical GPUs but did not
 distinguish the workload-visible GPU count. The checked-in BO767 runfile leaves
-worker counts and batch sizes automatic so
-the batch planner can scale to the GPUs available to the workload. Do not use
+worker counts and batch sizes automatic so the batch planner can scale to the
+GPUs available to the workload. Do not use
 the legacy worker-capped result as evidence of eight-GPU scaling. The automatic
 one- and eight-GPU runs differed by one output row; keep quality and row counts
 visible when comparing performance results.
