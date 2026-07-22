@@ -669,7 +669,11 @@ class YoloxPageElementsModelInterface(YoloxModelInterfaceBase):
 
         if annotation_dicts and running_v3:
             annotation_dicts = [
-                postprocess_page_elements_v3(annotation_dict, labels=YOLOX_PAGE_V3_CLASS_LABELS)
+                postprocess_page_elements_v3(
+                    annotation_dict,
+                    labels=YOLOX_PAGE_V3_CLASS_LABELS,
+                    final_score=final_score,
+                )
                 for annotation_dict in annotation_dicts
             ]
         else:
@@ -857,12 +861,14 @@ def expand_chart_bboxes(annotation_dict, labels=None):
     return annotation_dict
 
 
-def postprocess_page_elements_v3(annotation_dict, labels=None):
+def postprocess_page_elements_v3(annotation_dict, labels=None, final_score=None):
     """
     Expand bounding boxes of tables/charts/infographics and titles based on the bounding boxes of the other class.
     Args:
         annotation_dict: output of postprocess_results, a dictionary with keys:
         "table", "chart", "infographics", "title", "paragraph", "header_footer".
+        labels: ordered class labels corresponding to the annotation dictionary.
+        final_score: per-class thresholds used by the final output filter.
 
     Returns:
         annotation_dict: same as input, with expanded bboxes for page elements.
@@ -870,6 +876,8 @@ def postprocess_page_elements_v3(annotation_dict, labels=None):
     """
     if not labels:
         labels = list(annotation_dict.keys())
+    if final_score is None:
+        final_score = YOLOX_PAGE_V3_FINAL_SCORE
 
     if not annotation_dict:
         return annotation_dict
@@ -897,6 +905,17 @@ def postprocess_page_elements_v3(annotation_dict, labels=None):
     label_idxs = np.concatenate(label_idxs)
 
     bboxes, confidences, label_idxs = remove_overlapping_boxes_using_wbf(bboxes, confidences, label_idxs)
+
+    # Boxes that cannot survive the final per-class score gate must not
+    # participate in cross-class matching. In particular, a low-confidence
+    # page-sized table can otherwise consume a valid title and then be removed
+    # itself by the final filter, silently dropping both detections.
+    final_thresholds = np.array([final_score.get(labels[int(label_idx)], 0.0) for label_idx in label_idxs])
+    keep = confidences >= final_thresholds
+    bboxes, confidences, label_idxs = bboxes[keep], confidences[keep], label_idxs[keep]
+    if not len(bboxes):
+        return {label: [] for label in labels}
+
     bboxes, confidences, label_idxs, found_title = match_structured_boxes_with_title(
         bboxes, confidences, label_idxs, labels
     )
