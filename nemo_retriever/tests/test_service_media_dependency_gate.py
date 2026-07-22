@@ -32,15 +32,13 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from nemo_retriever.common.schemas.requests import IngestRequest
 from nemo_retriever.service.app import _check_media_dependencies, create_app
 from nemo_retriever.service.config import (
     PipelineOverridesConfig,
     PipelinePoolConfig,
     ServiceConfig,
 )
-from nemo_retriever.service.routers.ingest import _route_by_page_count
-from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
+from nemo_retriever.service.services.pipeline_pool import WorkItem
 from nemo_retriever.service.utils.file_type import (
     FileCategory,
     FileClassification,
@@ -87,16 +85,6 @@ def test_enforce_media_dependencies_passes_through_non_media() -> None:
         ):
             enforce_media_dependencies(_classification(category))
     assert not is_avail.called, "FFmpeg probe must not run for non-media uploads"
-
-
-@pytest.mark.parametrize("category", [FileCategory.TEXT, FileCategory.HTML, FileCategory.IMAGE])
-def test_non_pdf_categories_skip_pdf_page_count(monkeypatch: pytest.MonkeyPatch, category: FileCategory) -> None:
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._count_pdf_pages",
-        lambda _: pytest.fail("non-PDF uploads must not be parsed as PDFs"),
-    )
-
-    assert _route_by_page_count(b"not a PDF", IngestRequest(), category) is PoolType.REALTIME
 
 
 def test_enforce_media_dependencies_passes_when_ffmpeg_available() -> None:

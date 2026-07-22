@@ -24,6 +24,14 @@ from nemo_retriever.common.params import (
 )
 
 
+class _InlineTextTokenizer:
+    def encode(self, text: str, add_special_tokens: bool = False) -> list[str]:
+        return text.split()
+
+    def decode(self, ids: list[str], skip_special_tokens: bool = True) -> str:
+        return " ".join(ids)
+
+
 def _graph_node_names(graph) -> list[str]:
     names: list[str] = []
 
@@ -110,6 +118,111 @@ def test_create_ingestor_rejects_unknown_kwargs() -> None:
 def test_create_ingestor_rejects_unknown_run_modes() -> None:
     with pytest.raises(ValueError, match="supports run modes"):
         create_ingestor(run_mode="parallel")  # type: ignore[arg-type]
+
+
+def test_texts_accepts_scalar(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _InlineTextTokenizer()
+    )
+
+    result = create_ingestor(run_mode="inprocess").texts("first").ingest()
+
+    assert result["text"].tolist() == ["first"]
+    assert result["path"].tolist() == ["inline://00000000"]
+
+
+def test_texts_replaces_prior_inline_corpus(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _InlineTextTokenizer()
+    )
+
+    result = create_ingestor(run_mode="inprocess").texts("first").texts(["second", "third"]).ingest()
+
+    assert result["text"].tolist() == ["second", "third"]
+    assert result["path"].tolist() == ["inline://00000000", "inline://00000001"]
+
+
+@pytest.mark.parametrize("values", [["valid", None], ["valid", 3], [object()]])
+def test_texts_rejects_non_string_values_with_index(values) -> None:
+    bad_index = next(index for index, value in enumerate(values) if not isinstance(value, str))
+
+    with pytest.raises(TypeError, match=rf"texts\[{bad_index}\] must be a string"):
+        create_ingestor(run_mode="inprocess").texts(values)
+
+
+def test_texts_rejects_non_sequence_input() -> None:
+    with pytest.raises(TypeError, match="string or sequence of strings"):
+        create_ingestor(run_mode="inprocess").texts(iter(["one", "two"]))
+
+
+def test_texts_cannot_mix_with_files_or_buffers(tmp_path) -> None:
+    document = tmp_path / "document.txt"
+    document.write_text("document", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        create_ingestor(run_mode="inprocess", documents=[str(document)]).texts(["inline"])
+    with pytest.raises(ValueError, match="cannot be combined"):
+        create_ingestor(run_mode="inprocess").texts(["inline"]).files([str(document)])
+    with pytest.raises(ValueError, match="cannot be combined"):
+        create_ingestor(run_mode="inprocess").texts(["inline"]).buffers(("document.txt", BytesIO(b"document")))
+
+
+@pytest.mark.parametrize(
+    "method_name", ["extract", "extract_image_files", "extract_html", "extract_audio", "extract_video"]
+)
+def test_texts_rejects_incompatible_extraction_methods(method_name: str) -> None:
+    ingestor = create_ingestor(run_mode="inprocess").texts(["inline"])
+
+    with pytest.raises(ValueError, match="use extract_txt"):
+        getattr(ingestor, method_name)()
+
+
+def test_texts_rejects_preconfigured_non_text_extraction() -> None:
+    ingestor = create_ingestor(run_mode="inprocess").extract_html()
+
+    with pytest.raises(ValueError, match="only supports text extraction"):
+        ingestor.texts(["inline"])
+
+
+def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch: pytest.MonkeyPatch) -> None:
+    ingestor = create_ingestor(run_mode="inprocess").texts(["", "  \n"])
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.graph_ingestor.build_graph",
+        lambda *args, **kwargs: pytest.fail("empty inline corpus should not execute the graph"),
+    )
+
+    result = ingestor.embed().vdb_upload().ingest()
+
+    assert result.empty
+    assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
+
+
+def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, pd.DataFrame] = {}
+    dataset = object()
+
+    class _FakeRayData:
+        @staticmethod
+        def from_pandas(frame: pd.DataFrame) -> object:
+            captured["frame"] = frame
+            return dataset
+
+    class _FakeRay:
+        data = _FakeRayData()
+
+    ingestor = create_ingestor(run_mode="batch").texts(["", "  \n"])
+    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (_FakeRay(), object()))
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.graph_ingestor.build_graph",
+        lambda *args, **kwargs: pytest.fail("empty inline corpus should not execute the graph"),
+    )
+
+    result = ingestor.ingest()
+
+    assert result is dataset
+    assert ingestor.get_dataset() is dataset
+    assert captured["frame"].empty
+    assert list(captured["frame"].columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
 def test_graph_ingestor_action_methods_materialize_default_params() -> None:

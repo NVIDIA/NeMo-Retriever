@@ -86,7 +86,7 @@ import httpx
 
 from nemo_retriever.ingestor.results import ResultSchema, concat_ingest_results
 from nemo_retriever.ingestor import _merge_params, ingestor
-from nemo_retriever.ingestor.core import _inline_source_id, _normalize_inline_texts
+from nemo_retriever.common.inline_text import inline_text_source_id, normalize_inline_texts
 from nemo_retriever.common.params import (
     CaptionParams,
     IngestExecuteParams,
@@ -589,7 +589,7 @@ class ServiceIngestor(ingestor):
         if "extract" in self._pipeline_spec["stage_order"] and self._pipeline_spec["extraction_mode"] != "text":
             raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
 
-        self._inline_texts = _normalize_inline_texts(texts)
+        self._inline_texts = normalize_inline_texts(texts)
         self._pipeline_spec["extraction_mode"] = "text"
         self._record_stage("extract")
         return self
@@ -1601,7 +1601,7 @@ class ServiceIngestor(ingestor):
                 files.append(target)
 
         for index, text in enumerate(self._inline_texts or []):
-            source_id = _inline_source_id(index)
+            source_id = inline_text_source_id(index)
             files.append(
                 InMemoryUpload(
                     filename=source_id,

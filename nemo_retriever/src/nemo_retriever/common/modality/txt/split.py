@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from nemo_retriever.common.inline_text import is_inline_text_source
 from nemo_retriever.common.params import TextChunkParams
 
 DEFAULT_TOKENIZER_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
@@ -296,7 +297,7 @@ def txt_bytes_to_chunks_df(
     identity is preserved and its transport encoding is always UTF-8.
     """
     chunk_params = params or TextChunkParams()
-    is_inline = path.startswith("inline://")
+    is_inline = is_inline_text_source(path)
     source_id = path if is_inline else str(Path(path).resolve())
     encoding = "utf-8" if is_inline else chunk_params.encoding
     raw = content_bytes.decode(encoding, errors="replace")

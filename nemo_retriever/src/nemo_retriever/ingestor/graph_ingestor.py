@@ -44,7 +44,7 @@ from nemo_retriever.ingestor.manifest import (
     resolve_branch_extraction_inputs,
 )
 from nemo_retriever.ingestor import ingestor
-from nemo_retriever.ingestor.core import _inline_source_id, _normalize_inline_texts
+from nemo_retriever.common.inline_text import inline_text_source_id, is_inline_text_source, normalize_inline_texts
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -508,7 +508,7 @@ class GraphIngestor(ingestor):
         if "extract" in self._stage_order and self._extraction_mode != "text":
             raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
 
-        self._inline_texts = _normalize_inline_texts(texts)
+        self._inline_texts = normalize_inline_texts(texts)
         self._extraction_mode = "text"
         self._text_params = self._text_params or TextChunkParams()
         self._record_stage("extract")
@@ -965,7 +965,9 @@ class GraphIngestor(ingestor):
             raise ValueError(f"{method_name}() is incompatible with texts(); use extract_txt() to configure chunking.")
 
     def _inline_text_rows(self) -> list[dict[str, str]]:
-        return [{"text": text, "path": _inline_source_id(index)} for index, text in enumerate(self._inline_texts or [])]
+        return [
+            {"text": text, "path": inline_text_source_id(index)} for index, text in enumerate(self._inline_texts or [])
+        ]
 
     def _inline_text_dataframe(self) -> Any:
         import pandas as pd
@@ -989,7 +991,7 @@ class GraphIngestor(ingestor):
         # Service workers receive inline text as a named byte buffer. Keep the
         # logical URI as its source path while classifying it as decoded text.
         return [
-            (path, "txt" if path.startswith("inline://") else input_type_for_path(path))
+            (path, "txt" if is_inline_text_source(path) else input_type_for_path(path))
             for path in self._configured_input_paths()
         ]
 

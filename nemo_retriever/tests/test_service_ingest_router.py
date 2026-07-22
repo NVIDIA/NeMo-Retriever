@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
+from nemo_retriever.common.schemas.requests import IngestRequest
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
     PipelineOverridesConfig,
@@ -33,7 +34,9 @@ from nemo_retriever.service.config import (
     ServiceConfig,
 )
 from nemo_retriever.service import tracing
+from nemo_retriever.service.routers.ingest import _route_by_page_count
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
+from nemo_retriever.service.utils.file_type import FileCategory
 from .conftest import create_test_job
 
 
@@ -166,6 +169,16 @@ def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
 def _make_pdf_bytes() -> bytes:
     """Return a 1-byte non-PDF payload — the worker is stubbed so content doesn't matter."""
     return b"%PDF-1.4\n%stub\n"
+
+
+@pytest.mark.parametrize("category", [FileCategory.TEXT, FileCategory.HTML, FileCategory.IMAGE])
+def test_non_pdf_categories_skip_pdf_page_count(monkeypatch: pytest.MonkeyPatch, category: FileCategory) -> None:
+    monkeypatch.setattr(
+        "nemo_retriever.service.routers.ingest._count_pdf_pages",
+        lambda _: pytest.fail("non-PDF uploads must not be parsed as PDFs"),
+    )
+
+    assert _route_by_page_count(b"not a PDF", IngestRequest(), category) is PoolType.REALTIME
 
 
 def _wait_for_items(captured_items: list[WorkItem], count: int) -> None:

@@ -41,26 +41,6 @@ def _merge_params[T](params: T | None, kwargs: dict[str, Any]) -> T:
     return params
 
 
-def _normalize_inline_texts(texts: str | Sequence[str]) -> list[str]:
-    """Copy and validate raw inline documents."""
-    if isinstance(texts, str):
-        values = [texts]
-    elif isinstance(texts, Sequence):
-        values = list(texts)
-    else:
-        raise TypeError(f"texts must be a string or sequence of strings, got {type(texts).__name__}")
-
-    for index, value in enumerate(values):
-        if not isinstance(value, str):
-            raise TypeError(f"texts[{index}] must be a string, got {type(value).__name__}")
-    return values
-
-
-def _inline_source_id(index: int) -> str:
-    """Return the stable logical identity for an inline document."""
-    return f"inline://{index:08d}"
-
-
 def create_ingestor(
     *,
     run_mode: IngestorRunMode = "inprocess",
