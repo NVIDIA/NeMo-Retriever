@@ -427,7 +427,7 @@ query vectors land in the same embedding space as the stored chunks.
 
 ```python
 from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.llm import LiteLLMClient
+from nemo_retriever.models.llm import LiteLLMClient
 
 retriever = Retriever(
     vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
@@ -457,7 +457,7 @@ the bundled `VL_EMBED_MODEL`.
 
 Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python
-from nemo_retriever.llm import LLMJudge
+from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
