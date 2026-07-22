@@ -11,11 +11,11 @@ or LanceDB-specific names.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints, field_validator
 
+from nemo_retriever.common.api.util.converters.datetools import normalize_timezone_aware_iso8601_to_utc
 from nemo_retriever.common.schemas.base import RichModel
 
 CollectionStatus = Literal["active", "deleting"]
@@ -34,13 +34,7 @@ DocumentId = Annotated[
 def _normalize_expires_at(value: str | None) -> str | None:
     if value is None:
         return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("expires_at must be RFC3339") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("expires_at must include a timezone offset")
-    return parsed.astimezone(timezone.utc).isoformat()
+    return normalize_timezone_aware_iso8601_to_utc(value)
 
 
 class CollectionCreateRequest(RichModel):
