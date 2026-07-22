@@ -49,7 +49,12 @@ secrets; a read Hugging Face token is sufficient:
 ```bash
 export HF_TOKEN=...
 export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+export RETRIEVER_HARNESS_REFERENCE_FILE=/datasets/nv-ingest/nrl_rc_baselines/nrl-26.05-bo767.json
 ```
+
+The reference file contains the currently selected RC observations shown beside
+matching nightly results. Replace the path or file contents when advancing to
+the next RC; the harness does not maintain reference history or apply a verdict.
 
 The launcher writes artifacts under `/raid/$USER/retriever-nightly-artifacts`.
 No configuration file is required. On a host without the standard dataset
@@ -143,6 +148,7 @@ tmux new -s retriever-nightly
 
 export HF_TOKEN=...
 export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+export RETRIEVER_HARNESS_REFERENCE_FILE=/datasets/nv-ingest/nrl_rc_baselines/nrl-26.05-bo767.json
 
 interval=86400
 while true; do
