@@ -185,31 +185,24 @@ def txt_file_to_chunks_df(
     path: str,
     params: TextChunkParams | None = None,
 ) -> pd.DataFrame:
-    """
-    Read a .txt file and return a DataFrame of chunks (one row per chunk).
+    """Read a text file and return one row per token-bounded chunk.
 
-    Columns: text, path, page_number (chunk index, 1-based), metadata.
-    Shape is compatible with embed_text_from_primitives_df and LanceDB row build.
+    The file path is resolved before being copied to ``path`` and
+    ``metadata.source_path``. Empty or whitespace-only files return the same
+    typed schema without loading a tokenizer.
 
     Parameters
     ----------
     path : str
-        Path to the .txt file.
-    max_tokens : int
-        Max tokens per chunk (default 512).
-    overlap_tokens : int
-        Overlap between consecutive chunks (default 0).
-    tokenizer_model_id : str, optional
-        HuggingFace model id for tokenizer (default: same as embedder).
-    encoding : str
-        File encoding (default utf-8).
-    tokenizer_cache_dir : str, optional
-        HuggingFace cache directory for tokenizer.
+        Path to the text file.
+    params : TextChunkParams, optional
+        File encoding, tokenizer, chunk-size, and overlap configuration.
 
     Returns
     -------
     pd.DataFrame
-        Columns: text, path, page_number, metadata.
+        Columns: ``text``, ``content``, ``path``, ``page_number``, and
+        ``metadata``.
     """
     chunk_params = params or TextChunkParams()
     path = str(Path(path).resolve())

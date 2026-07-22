@@ -567,7 +567,8 @@ class GraphIngestor(ingestor):
         configuration belongs on :class:`ASRParams` (pass ``asr_params=``
         or use :meth:`extract_audio`).
         """
-        self._reject_incompatible_inline_extraction("extract")
+        if self._inline_texts is not None and extraction_mode != "text":
+            raise ValueError("extract() is incompatible with texts() unless extraction_mode='text'; use extract_txt().")
         unknown = set(kwargs) - set(ExtractParams.model_fields)
         if unknown:
             raise TypeError(
@@ -763,9 +764,7 @@ class GraphIngestor(ingestor):
 
         Returns
         -------
-        ``run_mode='batch'``
-            A materialized ``ray.data.Dataset``.
-        ``run_mode='inprocess'``
+        ``run_mode='batch'`` or ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         ``return_failures=True``
             ``(result, failures)`` where ``failures`` is a list of
@@ -775,8 +774,6 @@ class GraphIngestor(ingestor):
         if self._inline_texts is not None and not any(text.strip() for text in self._inline_texts):
             result = empty_text_chunks_df()
             if self._run_mode == "batch":
-                ray, _cluster_resources = self._ensure_batch_runtime()
-                result = ray.data.from_pandas(result)
                 self._rd_dataset = result
             else:
                 self._rd_dataset = None

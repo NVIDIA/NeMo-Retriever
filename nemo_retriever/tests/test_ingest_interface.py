@@ -177,6 +177,21 @@ def test_texts_rejects_incompatible_extraction_methods(method_name: str) -> None
         getattr(ingestor, method_name)()
 
 
+def test_texts_allows_explicit_text_extraction(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *args, **kwargs: _InlineTextTokenizer()
+    )
+
+    result = (
+        create_ingestor(run_mode="inprocess")
+        .texts(["one two"])
+        .extract(extraction_mode="text", text_params=TextChunkParams(max_tokens=1))
+        .ingest()
+    )
+
+    assert result["text"].tolist() == ["one", "two"]
+
+
 def test_texts_rejects_preconfigured_non_text_extraction() -> None:
     ingestor = create_ingestor(run_mode="inprocess").extract_html()
 
@@ -197,21 +212,13 @@ def test_empty_and_blank_inline_corpus_short_circuits_graph(monkeypatch: pytest.
     assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
-def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, pd.DataFrame] = {}
-    dataset = object()
-
-    class _FakeRayData:
-        @staticmethod
-        def from_pandas(frame: pd.DataFrame) -> object:
-            captured["frame"] = frame
-            return dataset
-
-    class _FakeRay:
-        data = _FakeRayData()
-
+def test_empty_batch_inline_corpus_returns_dataframe_without_starting_ray(monkeypatch: pytest.MonkeyPatch) -> None:
     ingestor = create_ingestor(run_mode="batch").texts(["", "  \n"])
-    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (_FakeRay(), object()))
+    monkeypatch.setattr(
+        ingestor,
+        "_ensure_batch_runtime",
+        lambda: pytest.fail("empty inline corpus should not start Ray"),
+    )
     monkeypatch.setattr(
         "nemo_retriever.ingestor.graph_ingestor.build_graph",
         lambda *args, **kwargs: pytest.fail("empty inline corpus should not execute the graph"),
@@ -219,10 +226,10 @@ def test_empty_batch_inline_corpus_returns_ray_dataset_shape(monkeypatch: pytest
 
     result = ingestor.ingest()
 
-    assert result is dataset
-    assert ingestor.get_dataset() is dataset
-    assert captured["frame"].empty
-    assert list(captured["frame"].columns) == ["text", "content", "path", "page_number", "metadata"]
+    assert isinstance(result, pd.DataFrame)
+    assert ingestor.get_dataset() is result
+    assert result.empty
+    assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
 
 def test_graph_ingestor_action_methods_materialize_default_params() -> None:
