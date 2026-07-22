@@ -9,7 +9,6 @@ from typing import Annotated
 import typer
 
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.query.options import DEFAULT_AGENTIC_LLM_MODEL
 
 DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
 DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
@@ -160,10 +159,9 @@ AgenticLlmModelOption = Annotated[
     str | None,
     typer.Option(
         "--agentic-llm-model",
-        envvar="NEMO_RETRIEVER_AGENTIC_LLM_MODEL",
         help=(
-            f"Chat model the agent drives. Defaults to {DEFAULT_AGENTIC_LLM_MODEL}; "
-            "override here or via NEMO_RETRIEVER_AGENTIC_LLM_MODEL."
+            "Chat model the agent drives. Defaults to nemotron-8b for local in-process runs; "
+            "required when --agentic-invoke-url is provided."
         ),
     ),
 ]

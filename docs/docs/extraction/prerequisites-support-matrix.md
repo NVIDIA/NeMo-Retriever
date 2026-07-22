@@ -73,6 +73,10 @@ Optional advanced features—audio and video transcription, Nemotron Parse, Omni
 
 ### Default NIMs { #default-helm-nims }
 
+!!! important "NVAIE support applies to individual NIMs only"
+
+    A NIM or model listed in the default and optional NIM rows in the table below might be supported under NVIDIA AI Enterprise (NVAIE) as an individual product. That support does **not** cover its use through NeMo Retriever Library or extend to the library, its container image, its Helm chart, or the end-to-end extraction workflow.
+
 The production Helm chart reconciles NIM microservices through `nimOperator.<key>.enabled`. Four core NIMs are **enabled by default** and auto-wired into the retriever service; optional NIMs reconcile only when you opt in. For chart keys, image overrides, and enablement, refer to the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2605).
 
 | Helm flag | NIM | Default image (`repository:tag`) | Role | Enabled by default |
@@ -102,7 +106,7 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
 | nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `extract_method="nemotron_parse"` |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
-| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and agentic RAG; not part of the default extraction pipeline. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
+| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
 
 For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode).

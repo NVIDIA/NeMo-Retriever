@@ -19,14 +19,14 @@ Highlights for the 26.05 release include:
 
 ### Pipeline and ingestion
 
-- Legacy `nv-ingest` code paths removed; `graph_pipeline` and the graph stage registry are the canonical ingestion path  
+- Legacy `nv-ingest` and compatibility pipeline CLI code paths removed; `retriever ingest` and the graph stage registry are the canonical ingestion paths
 - Manifest-based ingest routing replaces input-type routing; `retriever ingest` is input-aware for PDF, image, audio, video, text, HTML, DOCX/PPTX, SVG, and related types  
 - `allow_no_gpu` option to skip GPU requirement during ingest for CPU-only experimentation  
 
 ### CLI
 
 - Root CLI adds first-class `retriever ingest` and `retriever query` commands with NIM URL flags, batch tuning, and LanceDB overwrite/append controls
-- For product ingest and retrieval, prefer `retriever ingest` and `retriever query`; `retriever pipeline run` remains available for compatibility and development workflows. Other top-level subcommands—including `pdf`, `html`, `eval`, `benchmark`, `harness`, `online`, `compare`, `image`, and `skill-eval`—are development and experimental
+- `retriever ingest` and `retriever query` replace the retired compatibility pipeline command. Other top-level subcommands—including `eval`, `benchmark`, `harness`, and `skill-eval`—are development and experimental
 
 ### Retriever Service and deployment
 
@@ -77,16 +77,10 @@ Highlights for the 26.05 release include:
 
 ## Release Notes for Previous Versions
 
-| [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
-| [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
-| [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)
-| [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes-nv-ingest/) 
-| [25.6.3](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/releasenotes-nv-ingest/) 
-| [25.6.2](https://docs.nvidia.com/nemo/retriever/25.6.2/extraction/releasenotes-nv-ingest/) 
-| [25.4.2](https://docs.nvidia.com/nemo/retriever/25.4.2/extraction/releasenotes-nv-ingest/) 
-| [25.3.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/) 
-| [24.12.1](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/#release-24121) 
-| [24.12.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/#release-2412) 
+- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/)
+- [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
+
+Release notes for earlier versions (26.1.2, 26.1.1, 25.9.0, 25.6.3, 25.6.2, 25.4.2, 25.3.0, 24.12.1, and 24.12.0) — *These links have been archived.*
 
 ## Related Topics
 

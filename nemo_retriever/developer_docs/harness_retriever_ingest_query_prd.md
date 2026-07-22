@@ -23,10 +23,10 @@ engineers. The harness should run the new library direction end to end:
 4. Emit stable `summary_metrics` and machine-readable artifacts for humans,
    agents, and downstream reporting.
 
-This is a total revamp, not a compatibility wrapper around the current harness.
-Assume `retriever pipeline run` is deleted in the next release. The current
-`sweep`, `compare`, and legacy graph-pipeline command builder can be rewritten
-or removed if they get in the way.
+This is a total revamp, not a compatibility wrapper around the old harness. The
+retired pipeline CLI is not part of the design. The old `sweep`, `compare`, and
+graph-pipeline command builder can be rewritten or removed if they get in the
+way.
 
 The most important design choice: use a small typed benchmark registry in code,
 not a sprawling YAML configuration system. YAML/runfiles can exist as an escape
@@ -745,8 +745,7 @@ validation through the CLI and artifact contract.
 - The harness has no user-facing `--engine` flag.
 - The harness does not duplicate Typer options from `retriever ingest` or
   `retriever query`.
-- No phase-one code path invokes `retriever pipeline run` or
-  `nemo_retriever.examples.graph_pipeline`.
+- No phase-one code path invokes a retired CLI adapter.
 - CLI text formatting is explicitly non-contractual; machine consumers use
   artifact files or `--json` read-only commands.
 - Validation combines focused contract tests with functional, artifact-driven

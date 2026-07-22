@@ -195,6 +195,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         reasoning_effort: Optional[str] = None,
         temperature: float = 0.0,
         trace_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+        chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
         self._reasoning_effort = reasoning_effort
@@ -209,6 +210,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
         self._emit_trace = bind_trace_emitter(trace_event, operator="selection_agent")
+        self._chat_completion_fn = chat_completion_fn
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -501,7 +503,8 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         for _step in range(self._max_steps):
             self._emit_trace("selection.step_start", query_id=query_id, step=_step)
             try:
-                response = invoke_chat_completion_step(
+                chat_completion_fn = self._chat_completion_fn or invoke_chat_completion_step
+                response = chat_completion_fn(
                     invoke_url=self._invoke_url,
                     messages=messages,
                     model=self._llm_model,
@@ -636,6 +639,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
                     )
                     continue
+                if not isinstance(fn_args, dict):
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": "Error: tool arguments must be a JSON object.",
+                        }
+                    )
+                    continue
 
                 fn_name = str(fn.get("name", ""))
                 self._emit_trace(
@@ -666,7 +678,55 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                             raw_doc_ids = json.loads(raw_doc_ids)
                         except json.JSONDecodeError:
                             raw_doc_ids = []
-                    doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
+                    if not isinstance(raw_doc_ids, list):
+                        self._emit_trace(
+                            "selection.log_selected_documents",
+                            query_id=query_id,
+                            step=_step,
+                            tool_index=tool_index,
+                            raw_doc_ids=raw_doc_ids,
+                            accepted_doc_ids=[],
+                            message=fn_args.get("message", ""),
+                            validation_error="doc_ids must be a list",
+                        )
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": "Error: `doc_ids` must be a list of candidate document IDs.",
+                            }
+                        )
+                        continue
+
+                    invalid_doc_ids = [doc_id for doc_id in raw_doc_ids if doc_id not in valid_id_set]
+                    if invalid_doc_ids:
+                        self._emit_trace(
+                            "selection.hallucinated_doc_ids",
+                            query_id=query_id,
+                            step=_step,
+                            tool_index=tool_index,
+                            raw_doc_ids=raw_doc_ids,
+                            invalid_doc_ids=invalid_doc_ids,
+                        )
+                        logger.warning(
+                            "SelectionAgentOperator: LLM returned doc_id(s) outside the candidate set "
+                            "for query %r: %s",
+                            query_text,
+                            invalid_doc_ids[:_LOG_DOC_ID_LIMIT],
+                        )
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": (
+                                    "Error: `doc_ids` contains IDs that are not candidate documents: "
+                                    f"{invalid_doc_ids[:_LOG_DOC_ID_LIMIT]}. Use only valid candidate IDs."
+                                ),
+                            }
+                        )
+                        continue
+
+                    doc_ids = raw_doc_ids[:feasible_k]
                     self._emit_trace(
                         "selection.log_selected_documents",
                         query_id=query_id,
@@ -676,22 +736,6 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         accepted_doc_ids=doc_ids,
                         message=fn_args.get("message", ""),
                     )
-                    if not doc_ids and raw_doc_ids:
-                        self._emit_trace(
-                            "selection.hallucinated_doc_ids",
-                            query_id=query_id,
-                            step=_step,
-                            tool_index=tool_index,
-                            raw_doc_ids=raw_doc_ids,
-                        )
-                        logger.warning(
-                            "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
-                            "but none matched the candidate set — possible hallucination. "
-                            "Returned IDs: %s",
-                            len(raw_doc_ids),
-                            query_text,
-                            raw_doc_ids[:10],
-                        )
                     end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
                     should_end = True
 

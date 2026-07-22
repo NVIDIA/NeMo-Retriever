@@ -23,6 +23,8 @@ from nemo_retriever.query.agentic_trace import bind_trace_emitter, trace_documen
 
 logger = logging.getLogger(__name__)
 
+_LOG_DOC_ID_LIMIT = 20
+
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 02_v1.j2, rendered via Python)
 # ---------------------------------------------------------------------------
@@ -78,7 +80,7 @@ the most similar documents.
 - If needed, revise your search queries based on the documents you find in previous steps.
 - Once you are confident that you have found all the related and somewhat related documents and there are \
 no more related documents in the corpus, call the "final_results" tool to finish the task.
-{enforce_top_k_line}\
+{final_results_count_line}\
 - When calling the "final_results" tool, the list of documents must be sorted in the decreasing level of \
 relevance to the query. I.e., the first document is the most relevant to the query, the second document is \
 the second most relevant to the query, and so on.
@@ -99,7 +101,6 @@ def _render_react_agent_prompt(
     top_k: int,
     *,
     with_init_docs: bool = True,
-    enforce_top_k: bool = True,
     extended_relevance: bool = False,
 ) -> str:
     """Render the ReAct agent system prompt (verbatim 02_v1.j2 logic)."""
@@ -113,16 +114,14 @@ def _render_react_agent_prompt(
         if extended_relevance
         else ""
     )
-    enforce_line = (
+    final_results_count_line = (
         f'- When calling "final_results", you must select exactly the {top_k} most relevant documents '
         "among all documents you have retrieved.\n"
-        if enforce_top_k
-        else ""
     )
     parts.append(
         _WORKFLOW_TEMPLATE.format(
             extended_relevance_line=ext_line,
-            enforce_top_k_line=enforce_line,
+            final_results_count_line=final_results_count_line,
         )
     )
 
@@ -203,10 +202,8 @@ def _make_retrieve_tool_spec(top_k: int) -> Dict[str, Any]:
     }
 
 
-def _make_final_results_tool_spec(top_k: Optional[int]) -> Dict[str, Any]:
-    tk_ins = ""
-    if top_k is not None:
-        tk_ins = f"- You must choose exactly {top_k} document IDs when calling this function.\n"
+def _make_final_results_tool_spec(top_k: int) -> Dict[str, Any]:
+    tk_ins = f"- You must choose exactly {top_k} document IDs when calling this function.\n"
 
     description = (
         "Signals the completion of the search process for the current query.\n\n"
@@ -286,8 +283,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     Rank Fusion.
 
     The system prompt is a verbatim Python rendering of the retrieval-bench
-    ``02_v1.j2`` template, including optional ``extended_relevance`` and
-    ``enforce_top_k`` blocks.
+    ``02_v1.j2`` template, including the optional ``extended_relevance`` block.
 
     Input DataFrame schema
     ----------------------
@@ -319,10 +315,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     target_top_k : int
         Number of final documents to select, communicated to the LLM via the
         system prompt and ``final_results`` tool spec.  Defaults to ``10``.
-    enforce_top_k : bool
-        When ``True``, the system prompt instructs the LLM to select exactly
-        ``target_top_k`` documents in its ``final_results`` call.
-        Defaults to ``True``.
     user_msg_type : {"with_results", "simple"}
         ``"with_results"`` (default): make one upfront retrieval call with the
         original query and include those documents in the first user message,
@@ -389,7 +381,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         retriever_fn: Callable[[str, int], List[Dict[str, Any]]],
         retriever_top_k: int = 500,
         target_top_k: int = 10,
-        enforce_top_k: bool = True,
         user_msg_type: Literal["with_results", "simple"] = "with_results",
         extended_relevance: bool = False,
         max_steps: int = 10,
@@ -401,6 +392,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         backend_top_k: Optional[int] = None,
         temperature: float = 0.0,
         trace_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+        chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
@@ -408,7 +400,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._retriever_fn = retriever_fn
         self._retriever_top_k = retriever_top_k
         self._target_top_k = target_top_k
-        self._enforce_top_k = enforce_top_k
         self._user_msg_type = user_msg_type
         self._extended_relevance = extended_relevance
         self._max_steps = max_steps
@@ -420,6 +411,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._backend_top_k = backend_top_k
         self._temperature = temperature
         self._emit_trace = bind_trace_emitter(trace_event, operator="react_agent")
+        self._chat_completion_fn = chat_completion_fn
 
     def _build_extra_body(self) -> Optional[Dict[str, Any]]:
         """Assemble per-call extra payload fields (parallel_tool_calls, reasoning_effort)."""
@@ -525,13 +517,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         system_prompt = _render_react_agent_prompt(
             self._target_top_k,
             with_init_docs=with_init_docs,
-            enforce_top_k=self._enforce_top_k,
             extended_relevance=self._extended_relevance,
         )
         tools = [
             _make_think_tool_spec(self._extended_relevance),
             _make_retrieve_tool_spec(self._retriever_top_k),
-            _make_final_results_tool_spec(self._target_top_k if self._enforce_top_k else None),
+            _make_final_results_tool_spec(self._target_top_k),
         ]
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -575,7 +566,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 retrieval_step_count=len(retrieval_log),
             )
             try:
-                response = invoke_chat_completion_step(
+                chat_completion_fn = self._chat_completion_fn or invoke_chat_completion_step
+                response = chat_completion_fn(
                     invoke_url=self._invoke_url,
                     messages=messages,
                     model=self._llm_model,
@@ -706,6 +698,15 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
                     )
                     continue
+                if not isinstance(fn_args, dict):
+                    tool_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": "Error: tool arguments must be a JSON object.",
+                        }
+                    )
+                    continue
 
                 self._emit_trace(
                     "react.tool_call",
@@ -761,7 +762,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
-                    validation_error = self._validate_final_results_args(fn_args)
+                    validation_error = self._validate_final_results_args(fn_args, valid_doc_ids=seen_doc_ids)
                     self._emit_trace(
                         "react.final_results",
                         query_id=query_id,
@@ -893,7 +894,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         return results
 
-    def _validate_final_results_args(self, fn_args: Dict[str, Any]) -> Optional[str]:
+    def _validate_final_results_args(
+        self,
+        fn_args: Dict[str, Any],
+        *,
+        valid_doc_ids: Optional[set[str]] = None,
+    ) -> Optional[str]:
         """Validate final_results tool args outside the prompt/schema."""
         message = fn_args.get("message")
         if not isinstance(message, str):
@@ -917,7 +923,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 f"`search_successful` must be one of `true`, `false`, or `partial`. Got `{search_successful}` instead."
             )
 
-        if self._enforce_top_k and len(doc_ids) != self._target_top_k:
+        if valid_doc_ids is not None:
+            invalid_doc_ids = [doc_id for doc_id in doc_ids if doc_id not in valid_doc_ids]
+            if invalid_doc_ids:
+                preview = invalid_doc_ids[:_LOG_DOC_ID_LIMIT]
+                return f"`doc_ids` contains IDs that were not retrieved: {preview}."
+
+        if len(doc_ids) != self._target_top_k:
             return (
                 f"`doc_ids` must contain exactly {self._target_top_k} documents. "
                 f"But got {len(doc_ids)} document IDs instead."

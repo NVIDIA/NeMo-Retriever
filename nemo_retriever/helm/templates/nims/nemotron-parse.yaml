@@ -17,6 +17,10 @@ spec:
       storageClass: {{ .Values.nimOperator.nemotron_parse.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.nemotron_parse.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.nemotron_parse.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_parse.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_parse.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService

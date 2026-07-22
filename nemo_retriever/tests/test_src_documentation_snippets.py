@@ -60,11 +60,6 @@ _PUBLIC_RETRIEVER_DOCS = (
     "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
     "nemo_retriever/src/nemo_retriever/common/vdb/README.md",
 )
-_PUBLIC_GRAPH_PIPELINE_DOCS = (
-    "docs/docs/extraction/workflow-document-ingestion.md",
-    "nemo_retriever/README.md",
-    "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
-)
 _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
     {
         "vdb",
@@ -76,7 +71,6 @@ _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
         "reranker",
     }
 )
-_UNSUPPORTED_GRAPH_PIPELINE_OPTIONS = frozenset({"--lancedb-uri"})
 
 
 def _public_doc_path(root: Path, rel_path: str) -> Path | None:
@@ -120,30 +114,6 @@ def _iter_public_retriever_doc_code() -> list[tuple[str, str]]:
     return blocks
 
 
-def _iter_public_graph_pipeline_commands() -> list[tuple[str, str]]:
-    root = _repo_root()
-    commands: list[tuple[str, str]] = []
-    for rel_path in _PUBLIC_GRAPH_PIPELINE_DOCS:
-        path = _public_doc_path(root, rel_path)
-        if path is None:
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for i, code in enumerate(re.findall(r"```bash\n(.*?)```", text, re.DOTALL)):
-            lines = code.splitlines()
-            command_idx = 0
-            for line_idx, line in enumerate(lines):
-                if "python -m nemo_retriever.examples.graph_pipeline" not in line:
-                    continue
-                command_lines = [line]
-                next_idx = line_idx + 1
-                while command_lines[-1].rstrip().endswith("\\") and next_idx < len(lines):
-                    command_lines.append(lines[next_idx])
-                    next_idx += 1
-                commands.append((f"{rel_path}#bash-{i}-cmd-{command_idx}", "\n".join(command_lines)))
-                command_idx += 1
-    return commands
-
-
 def _retriever_call_unsupported_kwargs(code: str) -> list[str]:
     tree = ast.parse(code)
     found: list[str] = []
@@ -180,17 +150,6 @@ def test_public_retriever_examples_do_not_use_unsupported_constructor_kwargs() -
             violations.append(f"{block_id}: {', '.join(sorted(set(unsupported_kwargs)))}")
 
     assert not violations, "Unsupported kwargs in public direct Retriever(...) examples:\n" + "\n".join(violations)
-
-
-def test_public_graph_pipeline_examples_do_not_use_unsupported_options() -> None:
-    """Public ``graph_pipeline`` examples should not use options that command rejects."""
-    violations = []
-    for block_id, command in _iter_public_graph_pipeline_commands():
-        unsupported_options = [option for option in _UNSUPPORTED_GRAPH_PIPELINE_OPTIONS if option in command]
-        if unsupported_options:
-            violations.append(f"{block_id}: {', '.join(sorted(unsupported_options))}")
-
-    assert not violations, "Unsupported options in public graph_pipeline examples:\n" + "\n".join(violations)
 
 
 def test_graph_readme_smallest_example() -> None:

@@ -179,6 +179,12 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
         "invoke_url": request.agentic.invoke_url,
+        "local_llm_backend": request.agentic.local_llm_backend,
+        "local_hf_cache_dir": request.agentic.local_hf_cache_dir,
+        "local_gpu_memory_utilization": request.agentic.local_gpu_memory_utilization,
+        "local_tensor_parallel_size": request.agentic.local_tensor_parallel_size,
+        "local_max_model_len": request.agentic.local_max_model_len,
+        "local_max_num_seqs": request.agentic.local_max_num_seqs,
         "api_key": api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
         "backend_top_k": int(request.agentic.backend_top_k),
@@ -189,6 +195,8 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "trace_enabled": bool(request.agentic.trace_enabled),
         "trace_path": request.agentic.trace_path,
     }
+    if request.agentic.llm_backend:
+        cfg_kwargs["llm_backend"] = request.agentic.llm_backend
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
     if request.embed.embed_model_provider_prefix:
@@ -224,21 +232,27 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     reranker config are passed through to the wrapped ``Retriever`` that backs the
     agent's ``retrieve`` tool; reranking applies per agent retrieval hop.
     """
-    result = build_agentic_retriever(request).retrieve(["0"], [str(request.query)])
-    if "rank" in result.columns:
-        result = result.sort_values("rank")
-    ranked: list[dict[str, Any]] = []
-    for _, row in result.iterrows():
-        hit = row.get("hit") if "hit" in result.columns else None
-        enriched: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}
-        enriched.update(
-            {
-                "doc_id": str(row.get("doc_id", "")),
-                "rank": int(row.get("rank", len(ranked) + 1)),
-                "result_source": str(row.get("result_source", "")),
-            }
-        )
-        ranked.append(enriched)
-        if len(ranked) >= request.retrieval.top_k:
-            break
-    return ranked
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.retrieve(["0"], [str(request.query)])
+        if "rank" in result.columns:
+            result = result.sort_values("rank")
+        ranked: list[dict[str, Any]] = []
+        for _, row in result.iterrows():
+            hit = row.get("hit") if "hit" in result.columns else None
+            enriched: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}
+            enriched.update(
+                {
+                    "doc_id": str(row.get("doc_id", "")),
+                    "rank": int(row.get("rank", len(ranked) + 1)),
+                    "result_source": str(row.get("result_source", "")),
+                }
+            )
+            ranked.append(enriched)
+            if len(ranked) >= request.retrieval.top_k:
+                break
+        return ranked
+    finally:
+        # One-shot CLI/Python entry: tear down cached local vLLM EngineCore so the
+        # process can exit instead of hanging on a live child worker.
+        retriever.unload()

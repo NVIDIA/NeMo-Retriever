@@ -16,10 +16,7 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
-from nemo_retriever.query.agentic_options import (
-    agentic_backend_top_k_error,
-    agentic_temperature_error,
-)
+from nemo_retriever.query.agentic_options import agentic_backend_top_k_error, agentic_temperature_error
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -28,7 +25,6 @@ from nemo_retriever.cli.shared import (
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.query.agentic_trace import make_agentic_trace_path
 from nemo_retriever.query.options import (
-    DEFAULT_AGENTIC_LLM_MODEL,
     QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
@@ -188,7 +184,7 @@ def _local_command(
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
-    agentic_llm_model: opts.AgenticLlmModelOption = DEFAULT_AGENTIC_LLM_MODEL,
+    agentic_llm_model: opts.AgenticLlmModelOption = None,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
@@ -207,16 +203,22 @@ def _local_command(
     if agentic_trace and not agentic:
         typer.echo("Error: --agentic-trace requires --agentic.", err=True)
         raise typer.Exit(1)
-    if agentic and not agentic_llm_model:
-        typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
-        raise typer.Exit(1)
-
     if agentic:
+        if agentic_invoke_url and not agentic_llm_model:
+            typer.echo(
+                "Error: --agentic-invoke-url requires --agentic-llm-model.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not agentic_invoke_url and not agentic_llm_model:
+            agentic_llm_model = "nemotron-8b"
+
         backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
         if backend_error:
             typer.echo(f"Error: {backend_error}", err=True)
             raise typer.Exit(1)
-        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        temperature_invoke_url = agentic_invoke_url or "local://in-process"
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
         if temperature_error:
             typer.echo(f"Error: {temperature_error}", err=True)
             raise typer.Exit(1)

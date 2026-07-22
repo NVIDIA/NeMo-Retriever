@@ -56,7 +56,6 @@ from nemo_retriever.ingest.service import (
     ServiceIngestSourceOptions,
 )
 from nemo_retriever.query.options import (
-    DEFAULT_AGENTIC_LLM_MODEL,
     QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
@@ -131,6 +130,10 @@ QUERY_OVERRIDE_PATHS = {
     "query.agentic_trace",
     "query.agentic_llm_model",
     "query.agentic_invoke_url",
+    "query.agentic_local_gpu_memory_utilization",
+    "query.agentic_local_tensor_parallel_size",
+    "query.agentic_local_max_model_len",
+    "query.agentic_local_max_num_seqs",
     "query.agentic_reasoning_effort",
     "query.agentic_backend_top_k",
     "query.agentic_react_max_steps",
@@ -439,8 +442,12 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         agentic=QueryAgenticOptions(
             enabled=bool(query.get("agentic", False)),
             trace_enabled=bool(query.get("agentic_trace", False)),
-            llm_model=query.get("agentic_llm_model", DEFAULT_AGENTIC_LLM_MODEL),
+            llm_model=query.get("agentic_llm_model"),
             invoke_url=query.get("agentic_invoke_url"),
+            local_gpu_memory_utilization=float(query.get("agentic_local_gpu_memory_utilization") or 0.8),
+            local_tensor_parallel_size=int(query.get("agentic_local_tensor_parallel_size") or 1),
+            local_max_model_len=query.get("agentic_local_max_model_len"),
+            local_max_num_seqs=query.get("agentic_local_max_num_seqs"),
             reasoning_effort=query.get("agentic_reasoning_effort"),
             backend_top_k=int(query.get("agentic_backend_top_k") or 20),
             react_max_steps=int(query.get("agentic_react_max_steps") or 50),

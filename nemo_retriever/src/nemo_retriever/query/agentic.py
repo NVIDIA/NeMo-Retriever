@@ -23,6 +23,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
     agentic_backend_top_k_error,
+    agentic_float_range_value,
     agentic_int_min_error,
     agentic_int_value,
     agentic_temperature_error,
@@ -60,6 +61,12 @@ AGENTIC_PARALLEL_TOOL_CALLS = False
 AGENTIC_RRF_K = 60
 AGENTIC_REACT_MAX_STEPS = 50
 AGENTIC_TEMPERATURE = 0.0  # agent LLM sampling temperature (0.0 = greedy)
+AGENTIC_MAX_TOKENS: Optional[int] = None
+AGENTIC_LLM_BACKEND = "in_process"
+AGENTIC_LLM_BACKENDS = frozenset({"openai_compatible", "in_process"})
+AGENTIC_LOCAL_LLM_BACKEND = "vllm"
+AGENTIC_LOCAL_LLM_MODEL = "nemotron-8b"
+AGENTIC_LOCAL_LLM_BACKENDS = frozenset({"vllm"})
 
 
 class AgenticQueryInputOperator(AbstractOperator):
@@ -142,8 +149,15 @@ class AgenticRetrievalConfig:
     reranker_api_key: str = ""
     local_reranker_backend: str = "vllm"
     embed_modality: str = "text"
+    llm_backend: Optional[str] = None
     llm_model: str = ""
     invoke_url: Optional[str] = None
+    local_llm_backend: str = AGENTIC_LOCAL_LLM_BACKEND
+    local_hf_cache_dir: Optional[str] = None
+    local_gpu_memory_utilization: float = 0.8
+    local_tensor_parallel_size: int = 1
+    local_max_model_len: Optional[int] = None
+    local_max_num_seqs: Optional[int] = None
     api_key: Optional[str] = None
     react_max_steps: int = AGENTIC_REACT_MAX_STEPS
     text_truncation: int = AGENTIC_TEXT_TRUNCATION
@@ -157,6 +171,8 @@ class AgenticRetrievalConfig:
     temperature: float = AGENTIC_TEMPERATURE
     trace_enabled: bool = False
     trace_path: Optional[str] = None
+    # Optional upper bound on tokens in each agent LLM response.
+    max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
@@ -168,14 +184,56 @@ class AgenticRetrievalConfig:
     content_types: str | Sequence[str] | None = None
 
     def __post_init__(self) -> None:
-        if self.llm_model is None or not str(self.llm_model).strip():
-            raise ValueError("Agentic retrieval requires a non-empty llm_model.")
         # The ReAct/selection operators POST to invoke_url verbatim, so a base URL
         # such as the common OPENAI_BASE_URL value ``https://host/v1`` must be
         # extended to the ``/chat/completions`` endpoint or the agent's first LLM
         # step fails with HTTP 404. Frozen dataclass -> object.__setattr__.
-        object.__setattr__(self, "invoke_url", _normalize_chat_completions_url(self.invoke_url))
+        invoke_url = _normalize_chat_completions_url(_none_if_empty(self.invoke_url))
+        object.__setattr__(self, "invoke_url", invoke_url)
 
+        explicit_llm_backend = str(self.llm_backend or "").strip().lower()
+        if explicit_llm_backend and explicit_llm_backend not in AGENTIC_LLM_BACKENDS:
+            raise ValueError(f"llm_backend must be one of {sorted(AGENTIC_LLM_BACKENDS)}; got {self.llm_backend!r}")
+        inferred_llm_backend = "openai_compatible" if invoke_url else AGENTIC_LLM_BACKEND
+        llm_backend = explicit_llm_backend or inferred_llm_backend
+        if invoke_url and llm_backend != "openai_compatible":
+            raise ValueError(
+                "invoke_url selects the openai_compatible agentic LLM backend; "
+                "omit invoke_url for in-process local LLMs."
+            )
+        if not invoke_url and llm_backend == "openai_compatible":
+            raise ValueError(
+                "llm_backend='openai_compatible' requires invoke_url. Omit llm_backend to use in-process local LLMs."
+            )
+        object.__setattr__(self, "llm_backend", llm_backend)
+
+        local_llm_backend = _normalize_agentic_choice(
+            self.local_llm_backend,
+            AGENTIC_LOCAL_LLM_BACKENDS,
+            field_name="local_llm_backend",
+            default=AGENTIC_LOCAL_LLM_BACKEND,
+        )
+        object.__setattr__(self, "local_llm_backend", local_llm_backend)
+
+        llm_model = str(self.llm_model or "").strip()
+        if not llm_model:
+            if llm_backend == "in_process":
+                llm_model = AGENTIC_LOCAL_LLM_MODEL
+            else:
+                raise ValueError("Agentic retrieval with invoke_url requires a non-empty llm_model.")
+
+        if llm_backend == "in_process":
+            from nemo_retriever.models.local.agent_llm import is_supported_agent_llm_model, supported_agent_llm_names
+
+            if not is_supported_agent_llm_model(llm_model):
+                supported = ", ".join(supported_agent_llm_names())
+                raise ValueError(
+                    f"Unsupported in-process agentic LLM model {llm_model!r}. "
+                    "Custom in-process agent LLMs are not supported yet. "
+                    "Provide invoke_url for a custom/self-hosted OpenAI-compatible endpoint, "
+                    f"or choose one of: {supported}."
+                )
+        object.__setattr__(self, "llm_model", llm_model)
         for field_name, value, min_value in (
             ("react_max_steps", self.react_max_steps, 1),
             ("text_truncation", self.text_truncation, 0),
@@ -196,14 +254,71 @@ class AgenticRetrievalConfig:
             raise ValueError(backend_error)
         object.__setattr__(self, "backend_top_k", agentic_int_value(self.backend_top_k, field_name="backend_top_k"))
 
+        local_tp_error = agentic_int_min_error(
+            self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1
+        )
+        if local_tp_error:
+            raise ValueError(local_tp_error)
+        object.__setattr__(
+            self,
+            "local_tensor_parallel_size",
+            agentic_int_value(self.local_tensor_parallel_size, field_name="local_tensor_parallel_size"),
+        )
+
+        for field_name in ("local_max_model_len", "local_max_num_seqs", "max_tokens"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            integer_error = agentic_int_min_error(value, field_name=field_name, min_value=1)
+            if integer_error:
+                raise ValueError(integer_error)
+            object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
+
+        local_gpu_memory_utilization = agentic_float_range_value(
+            self.local_gpu_memory_utilization,
+            field_name="local_gpu_memory_utilization",
+            min_value=0.0,
+            max_value=1.0,
+            min_exclusive=True,
+        )
+        object.__setattr__(self, "local_gpu_memory_utilization", local_gpu_memory_utilization)
+
+        temperature_invoke_url = self.invoke_url if self.llm_backend == "openai_compatible" else "local://in-process"
         temperature_error = agentic_temperature_error(
             self.temperature,
-            invoke_url=self.invoke_url,
+            invoke_url=temperature_invoke_url,
             field_name="temperature",
         )
         if temperature_error:
             raise ValueError(temperature_error)
         object.__setattr__(self, "temperature", float(self.temperature))
+
+
+def _normalize_agentic_choice(value: object, valid: frozenset[str], *, field_name: str, default: str) -> str:
+    normalized = str(value or default).strip().lower()
+    if normalized not in valid:
+        raise ValueError(f"{field_name} must be one of {sorted(valid)}; got {value!r}")
+    return normalized
+
+
+def _build_agent_chat_completion_fn(cfg: AgenticRetrievalConfig) -> Any | None:
+    if cfg.llm_backend == "openai_compatible":
+        return None
+
+    if cfg.llm_backend == "in_process":
+        from nemo_retriever.models import create_local_agent_llm
+
+        return create_local_agent_llm(
+            str(cfg.llm_model),
+            backend=str(cfg.local_llm_backend),
+            hf_cache_dir=_none_if_empty(cfg.local_hf_cache_dir),
+            gpu_memory_utilization=float(cfg.local_gpu_memory_utilization),
+            tensor_parallel_size=int(cfg.local_tensor_parallel_size),
+            max_model_len=cfg.local_max_model_len,
+            max_num_seqs=cfg.local_max_num_seqs,
+        )
+
+    raise ValueError(f"Unsupported agentic llm_backend {cfg.llm_backend!r}")
 
 
 class AgenticRetriever:
@@ -258,6 +373,35 @@ class AgenticRetriever:
         # agent loop reduces them to doc_id/text/score) so the final output can
         # re-hydrate the metadata the agent drops. Reset at the start of retrieve().
         self._hit_cache: dict[str, dict[str, Any]] = {}
+        self._chat_completion_fn: Any | None = None
+
+    def _get_chat_completion_fn(self) -> Any | None:
+        if self._cfg.llm_backend == "openai_compatible":
+            return None
+        with self._lock:
+            if self._chat_completion_fn is None:
+                # Instance-owned, same pattern as Retriever's cached embed/rerank
+                # graph: load once per AgenticRetriever and reuse across queries.
+                self._chat_completion_fn = _build_agent_chat_completion_fn(self._cfg)
+            return self._chat_completion_fn
+
+    def unload(self) -> None:
+        """Release the in-process agent LLM owned by this retriever.
+
+        OpenAI-compatible endpoint mode is a no-op. Local vLLM mode shuts down
+        this instance's EngineCore so CLI/harness jobs can exit cleanly. Embed
+        and rerank models stay on ``self._retriever`` and are released with the
+        process, matching dense harness BEIR behavior.
+        """
+
+        with self._lock:
+            chat_fn = self._chat_completion_fn
+            self._chat_completion_fn = None
+        if chat_fn is None:
+            return
+        unload = getattr(chat_fn, "unload", None)
+        if callable(unload):
+            unload()
 
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         with self._retrieve_lock:
@@ -284,6 +428,7 @@ class AgenticRetriever:
         # small top_k.
         target_top_k = int(self._cfg.top_k)
         per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, target_top_k)
+        chat_completion_fn = self._get_chat_completion_fn()
 
         pipeline = (
             AgenticQueryInputOperator()
@@ -303,6 +448,8 @@ class AgenticRetriever:
                 backend_top_k=self._cfg.backend_top_k,
                 temperature=float(self._cfg.temperature),
                 trace_event=self._trace_event,
+                max_tokens=self._cfg.max_tokens,
+                chat_completion_fn=chat_completion_fn,
             )
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
             >> SelectionAgentOperator(
@@ -316,6 +463,8 @@ class AgenticRetriever:
                 reasoning_effort=self._cfg.reasoning_effort,
                 temperature=float(self._cfg.temperature),
                 trace_event=self._trace_event,
+                max_tokens=self._cfg.max_tokens,
+                chat_completion_fn=chat_completion_fn,
             )
             >> AgenticSelectionOutputOperator()
         )
@@ -544,7 +693,11 @@ def run_agentic_audio_recall_evaluation(
     queries = df_query["query"].astype(str).tolist()
     gold_doc_ids = df_query["golden_answer"].astype(str).tolist()
 
-    result = AgenticRetriever(cfg, match_mode="audio_segment").retrieve(query_ids, queries)
+    retriever = AgenticRetriever(cfg, match_mode="audio_segment")
+    try:
+        result = retriever.retrieve(query_ids, queries)
+    finally:
+        retriever.unload()
     retrieved_doc_ids = _agentic_result_to_ranked_doc_ids(query_ids, result)
     ks_sorted = sorted({int(k) for k in ks if int(k) > 0})
     if not ks_sorted:
@@ -604,9 +757,13 @@ def agentic_beir_retrieve(
     that already hold a loaded dataset (e.g. the harness) reuse the agent's
     retrieve+rank step without re-loading or re-implementing it.
     """
-    result = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field).retrieve(
-        list(dataset.query_ids),
-        list(dataset.queries),
-    )
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field)
+    try:
+        result = retriever.retrieve(
+            list(dataset.query_ids),
+            list(dataset.queries),
+        )
+    finally:
+        retriever.unload()
     ranked_doc_ids = _agentic_result_to_ranked_doc_ids(list(dataset.query_ids), result)
     return result, ranked_doc_ids

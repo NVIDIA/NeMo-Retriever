@@ -106,7 +106,7 @@ class TestPromptRendering:
     def test_react_prompt_no_extended_relevance(self):
         from nemo_retriever.operators.graph_ops.react_agent_operator import _render_react_agent_prompt
 
-        prompt = _render_react_agent_prompt(10, with_init_docs=True, enforce_top_k=True, extended_relevance=False)
+        prompt = _render_react_agent_prompt(10, with_init_docs=True, extended_relevance=False)
         assert "<Goal>" in prompt
         assert "<WORKFLOW>" in prompt
         assert "<BEST_PRACTICES>" in prompt
@@ -117,9 +117,9 @@ class TestPromptRendering:
     def test_react_prompt_with_extended_relevance(self):
         from nemo_retriever.operators.graph_ops.react_agent_operator import _render_react_agent_prompt
 
-        prompt = _render_react_agent_prompt(5, with_init_docs=False, enforce_top_k=False, extended_relevance=True)
+        prompt = _render_react_agent_prompt(5, with_init_docs=False, extended_relevance=True)
         assert "RELEVANCE_DEFINITION" in prompt
-        assert "exactly the 5" not in prompt
+        assert "exactly the 5" in prompt
         assert "TIP" not in prompt
 
     def test_selection_prompt_no_extended_relevance(self):
@@ -166,6 +166,27 @@ def _make_tool_call_response(fn_name: str, fn_args: dict, tc_id: str = "call_1")
     }
 
 
+def _make_raw_arguments_tool_call_response(fn_name: str, arguments: str, tc_id: str = "call_1") -> dict:
+    """Build a canned chat-completions response with raw function arguments."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tc_id,
+                            "type": "function",
+                            "function": {"name": fn_name, "arguments": arguments},
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ]
+    }
+
+
 class TestSelectionAgentOperator:
     def _make_input(self):
         return pd.DataFrame(
@@ -201,6 +222,52 @@ class TestSelectionAgentOperator:
         assert result["result_source"].tolist() == ["selection_agent", "selection_agent"]
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_retries_when_selection_returns_invalid_doc_ids(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        mock_step.side_effect = [
+            _make_tool_call_response(
+                "log_selected_documents",
+                {"doc_ids": ["d1", "missing"], "message": "mixed valid and invalid"},
+            ),
+            _make_tool_call_response(
+                "log_selected_documents",
+                {"doc_ids": ["d1", "d2"], "message": "corrected"},
+            ),
+        ]
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+            max_steps=2,
+        )
+        result = op.run(self._make_input())
+
+        assert mock_step.call_count == 2
+        assert result["doc_id"].tolist() == ["d1", "d2"]
+        assert result["message"].tolist() == ["corrected", "corrected"]
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_non_object_tool_arguments_are_reported_and_fall_back(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        mock_step.return_value = _make_raw_arguments_tool_call_response(
+            "log_selected_documents", json.dumps("doc_ids=d1")
+        )
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+            max_steps=1,
+        )
+        result = op.run(self._make_input())
+
+        assert result["doc_id"].tolist() == ["d1", "d2"]
+        assert result["result_source"].tolist() == ["candidate_ranking", "candidate_ranking"]
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_think_then_select(self, mock_step, caplog):
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
@@ -233,6 +300,31 @@ class TestSelectionAgentOperator:
         assert "What causes inflation?" not in log_text
         assert "only d3" not in log_text
         assert "d3" not in log_text
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_injected_chat_completion_fn_replaces_http_call(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        local_chat = MagicMock(
+            return_value=_make_tool_call_response(
+                "log_selected_documents",
+                {"doc_ids": ["d1"], "message": "d1 is best"},
+            )
+        )
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=1,
+            max_tokens=234,
+            chat_completion_fn=local_chat,
+        )
+        result = op.run(self._make_input())
+
+        mock_step.assert_not_called()
+        assert local_chat.call_count == 1
+        assert local_chat.call_args.kwargs["max_tokens"] == 234
+        assert result["doc_id"].tolist() == ["d1"]
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_extended_relevance_in_prompt(self, mock_step):
@@ -432,6 +524,55 @@ class TestReActAgentOperator:
         assert "d1" in result["doc_id"].values
 
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_injected_chat_completion_fn_replaces_http_call(self, mock_step):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        local_chat = MagicMock(
+            return_value=_make_tool_call_response(
+                "final_results",
+                {"doc_ids": ["d1"], "message": "ok", "search_successful": "true"},
+            )
+        )
+        retriever = MagicMock(return_value=[{"doc_id": "d1", "text": "monetary policy"}])
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="with_results",
+            target_top_k=1,
+            max_tokens=123,
+            chat_completion_fn=local_chat,
+        )
+
+        result = op.run(self._make_input())
+
+        mock_step.assert_not_called()
+        assert local_chat.call_count == 1
+        assert local_chat.call_args.kwargs["max_tokens"] == 123
+        assert result[result["doc_id"] == "d1"]["is_final_result"].astype(bool).any()
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_non_object_tool_arguments_are_reported_without_crashing(self, mock_step):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_step.return_value = _make_raw_arguments_tool_call_response("retrieve", json.dumps("query=inflation"))
+        retriever = MagicMock(return_value=[{"doc_id": "d1", "text": "monetary policy"}])
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="with_results",
+            target_top_k=1,
+            max_steps=1,
+        )
+        result = op.run(self._make_input())
+
+        assert result["doc_id"].tolist() == ["d1"]
+        assert not result["is_final_result"].astype(bool).any()
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_with_results_mode_initial_retrieval(self, mock_step):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
@@ -486,18 +627,19 @@ class TestReActAgentOperator:
         assert result[1]["text"] == "new two"
 
     @pytest.mark.parametrize(
-        ("fn_args", "target_top_k", "enforce_top_k"),
+        ("fn_args", "target_top_k"),
         [
-            ({"doc_ids": [1], "message": "bad id type", "search_successful": "true"}, 1, False),
-            ({"doc_ids": [], "message": "empty", "search_successful": "false"}, 1, False),
-            ({"doc_ids": [""], "message": "empty-string id", "search_successful": "true"}, 1, False),
-            ({"doc_ids": ["  "], "message": "whitespace id", "search_successful": "true"}, 1, False),
-            ({"doc_ids": ["d1"], "message": "wrong count", "search_successful": "true"}, 2, True),
-            ({"doc_ids": ["d1"], "message": "bad status", "search_successful": "yes"}, 1, False),
+            ({"doc_ids": [1], "message": "bad id type", "search_successful": "true"}, 1),
+            ({"doc_ids": [], "message": "empty", "search_successful": "false"}, 1),
+            ({"doc_ids": [""], "message": "empty-string id", "search_successful": "true"}, 1),
+            ({"doc_ids": ["  "], "message": "whitespace id", "search_successful": "true"}, 1),
+            ({"doc_ids": ["d1"], "message": "wrong count", "search_successful": "true"}, 2),
+            ({"doc_ids": ["missing"], "message": "hallucinated id", "search_successful": "true"}, 1),
+            ({"doc_ids": ["d1"], "message": "bad status", "search_successful": "yes"}, 1),
         ],
     )
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
-    def test_invalid_final_results_are_rejected(self, mock_step, fn_args, target_top_k, enforce_top_k):
+    def test_invalid_final_results_are_rejected(self, mock_step, fn_args, target_top_k):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         mock_step.return_value = _make_tool_call_response("final_results", fn_args)
@@ -509,7 +651,6 @@ class TestReActAgentOperator:
             retriever_fn=retriever,
             user_msg_type="with_results",
             target_top_k=target_top_k,
-            enforce_top_k=enforce_top_k,
         )
         result = op.run(self._make_input())
 
