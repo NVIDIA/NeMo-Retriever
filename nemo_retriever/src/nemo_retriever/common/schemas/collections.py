@@ -15,7 +15,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints, field_validator
 
-from nemo_retriever.common.api.util.converters.datetools import normalize_timezone_aware_iso8601_to_utc
+from nemo_retriever.common.api.util.converters.datetools import (
+    normalize_timezone_aware_iso8601_to_utc,
+)
 from nemo_retriever.common.schemas.base import RichModel
 
 CollectionStatus = Literal["active", "deleting"]
@@ -121,19 +123,20 @@ class QueryHit(RichModel):
     chunk_id: str
     document_id: DocumentId
     text: str
-    score: float = Field(ge=0.0, le=1.0)
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Query-relative relevance; not a probability or comparable across queries.",
+    )
     filename: str
-    page_number: int | None = None
+    page_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="One-based human-facing document page, or null when not applicable.",
+    )
     content_type: str | None = None
     source: Any = None
     source_id: str | None = None
     stored_image_uri: str | None = None
     bbox: Any = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("page_number", mode="before")
-    @classmethod
-    def _normalize_page(cls, value: Any) -> int | None:
-        if value in (None, "", -1, 0):
-            return None
-        return max(1, int(value))

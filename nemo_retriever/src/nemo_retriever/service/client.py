@@ -526,19 +526,7 @@ class RetrieverServiceClient:
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
         if collection_name:
             payload["collection_name"] = collection_name
-        try:
-            with httpx.Client(
-                timeout=httpx.Timeout(300.0, connect=30.0),
-                headers=self._auth_headers,
-            ) as client:
-                resp = client.post(f"{self._base_url}/v1/query", json=payload)
-        except httpx.HTTPError as exc:
-            raise RetrieverServiceError(f"Service query transport failure: {exc}") from exc
-        self._raise_for_response(resp, "service query")
-        try:
-            body = resp.json()
-        except ValueError as exc:
-            raise RetrieverServiceError("Service query returned malformed JSON") from exc
+        body = self._request("POST", "/v1/query", json=payload)
 
         try:
             query_response = QueryResponse.model_validate(body)

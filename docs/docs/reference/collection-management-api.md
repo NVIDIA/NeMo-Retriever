@@ -163,7 +163,12 @@ scores, citation provenance, retries, idempotency, and lifecycle truth. Clients
 must not open LanceDB directly or reproduce the ingestion pipeline.
 
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
-`text`, normalized `score` in `[0, 1]`, filename, one-based page number when
-known, content type, source/source ID, stored image URI, bounding box, and
-metadata. This contract is identical regardless of the network path used to
-reach the service.
+`text`, a query-relative `score` in `[0, 1]`, filename, a one-based page number
+when known, content type, source/source ID, stored image URI, bounding box, and
+metadata. The score preserves ordering within one returned result set; it is
+not a confidence or probability and is not comparable across queries,
+collections, or retrieval modes. `page_number` is `null` for non-paginated
+content or invalid/unknown page provenance. Audio segments, video frames, and
+timestamps keep their existing modality-specific metadata rather than being
+converted into document pages. This contract is identical regardless of the
+network path used to reach the service.

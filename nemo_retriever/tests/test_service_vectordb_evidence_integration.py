@@ -75,8 +75,8 @@ def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
     assert ev["locator"] == {"kind": "page", "value": 12}
     assert ev["modality"] == "text"
     assert ev["fidelity"] == "verbatim"
-    # Score is the real LanceDB distance/relevance — present and numeric, value not asserted.
-    assert isinstance(ev["score"], (int, float))
+    # A single returned hit is the top of its query-relative result set.
+    assert ev["score"] == 1.0
 
     coverage = item["coverage"]
     assert coverage["strategies_used"] == ["dense"]

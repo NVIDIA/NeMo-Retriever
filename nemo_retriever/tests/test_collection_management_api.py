@@ -146,11 +146,14 @@ def test_public_sdk_and_citation_ready_query(tmp_path) -> None:
                     "content_sha256": "v1",
                 },
             )
-            hits = asyncio.run(sdk.aquery("finding", collection_name="research"))
-            assert hits[0].chunk_id == "chunk"
-            assert hits[0].text == "finding"
-            assert 0.0 <= hits[0].score <= 1.0
-            assert hits[0].filename == "report.pdf"
+            sync_hits = sdk.query("finding", top_k=10, collection_name="research")
+            async_hits = asyncio.run(sdk.aquery("finding", top_k=10, collection_name="research"))
+            assert sync_hits[0].model_dump() == async_hits[0].model_dump()
+            assert sync_hits[0].chunk_id == "chunk"
+            assert sync_hits[0].text == "finding"
+            assert sync_hits[0].score == 1.0
+            assert sync_hits[0].page_number == 1
+            assert sync_hits[0].filename == "report.pdf"
             assert sdk.list_documents("research").items[0].document_id == "doc"
 
 
@@ -692,7 +695,9 @@ def test_catalog_startup_fails_fast_on_incompatible_schema(tmp_path) -> None:
         VectorDBState(str(tmp_path), "legacy", "", "model", "")
 
 
-def test_catalog_startup_does_not_recreate_an_unreadable_existing_table(tmp_path) -> None:
+def test_catalog_startup_does_not_recreate_an_unreadable_existing_table(
+    tmp_path,
+) -> None:
     state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
     db = Mock(wraps=state._db)
     db.list_tables.return_value = state._db.list_tables()
