@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.harness.baselines import HarnessBaseline
 from nemo_retriever.harness.json_io import read_json_object
 
 DEFAULT_USERNAME = "nemo_retriever Harness"
@@ -380,22 +379,6 @@ def _three_column_row(left: str, middle: str, right: str, *, bold: bool = False)
     ]
 
 
-def _four_column_row(
-    first: str,
-    second: str,
-    third: str,
-    fourth: str,
-    *,
-    bold: bool = False,
-) -> list[dict[str, Any]]:
-    return [
-        _table_cell(first, bold=bold),
-        _table_cell(second, bold=bold),
-        _table_cell(third, bold=bold),
-        _table_cell(fourth, bold=bold),
-    ]
-
-
 def _vidore_v3_runs(results: list[HarnessRunReport]) -> list[HarnessRunReport]:
     runs_by_dataset: dict[str, list[HarnessRunReport]] = {}
     for run in results:
@@ -480,17 +463,6 @@ def _vidore_v3_performance(runs: list[HarnessRunReport]) -> tuple[float | None, 
     return total_ingest_secs, pages_per_sec
 
 
-def _format_percent_delta(current: Any, baseline: Any) -> str:
-    try:
-        current_value = float(current)
-        baseline_value = float(baseline)
-    except (TypeError, ValueError):
-        return "N/A"
-    if baseline_value == 0:
-        return "N/A"
-    return f"{((current_value - baseline_value) / abs(baseline_value)) * 100:+.1f}%"
-
-
 def _gpu_count(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -511,124 +483,7 @@ def _run_display_label(run: HarnessRunReport, repeated_datasets: set[str]) -> st
     return f"{run.dataset} ({workload_gpu_count} workload {gpu_label})"
 
 
-def _gpu_scaling_blocks(report: HarnessSessionReport) -> list[dict[str, Any]]:
-    runs_by_dataset: dict[str, dict[int, list[HarnessRunReport]]] = {}
-    for run in report.results:
-        workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
-        if not run.success or workload_gpu_count is None:
-            continue
-        runs_by_dataset.setdefault(run.dataset, {}).setdefault(workload_gpu_count, []).append(run)
-
-    blocks: list[dict[str, Any]] = []
-    for dataset, runs_by_count in runs_by_dataset.items():
-        if len(runs_by_count) < 2 or any(len(runs) != 1 for runs in runs_by_count.values()):
-            continue
-        lower_count = min(runs_by_count)
-        upper_count = max(runs_by_count)
-        lower_run = runs_by_count[lower_count][0]
-        upper_run = runs_by_count[upper_count][0]
-        lower_label = f"{lower_count} GPU" if lower_count == 1 else f"{lower_count} GPUs"
-        upper_label = f"{upper_count} GPU" if upper_count == 1 else f"{upper_count} GPUs"
-        rows = [_four_column_row("METRIC", lower_label, upper_label, f"{upper_count} VS {lower_count}", bold=True)]
-        for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
-            lower_value = lower_run.run_metadata.get(key)
-            upper_value = upper_run.run_metadata.get(key)
-            if lower_value is None and upper_value is None:
-                continue
-            delta = _format_percent_delta(upper_value, lower_value) if key == "workload_gpu_count" else "N/A"
-            rows.append(
-                _four_column_row(
-                    _format_metric_label(key),
-                    _format_metric_value(key, lower_value),
-                    _format_metric_value(key, upper_value),
-                    delta,
-                )
-            )
-        for metric_name in ("ingest_secs", "pages_per_sec_ingest", "recall_5", "recall_10", "ndcg_10"):
-            lower_value = lower_run.metrics.get(metric_name)
-            upper_value = upper_run.metrics.get(metric_name)
-            if lower_value is None and upper_value is None:
-                continue
-            rows.append(
-                _four_column_row(
-                    _format_metric_label(metric_name),
-                    _format_metric_value(metric_name, lower_value),
-                    _format_metric_value(metric_name, upper_value),
-                    _format_percent_delta(upper_value, lower_value),
-                )
-            )
-        context = (
-            f"*Automatic GPU scaling — {dataset}*\n"
-            "Same benchmark and automatic runfile; comparing "
-            f"{lower_count} to {upper_count} GPUs available to the workload."
-        )
-        blocks.extend(
-            [
-                {"type": "divider"},
-                {"type": "section", "text": {"type": "mrkdwn", "text": context}},
-                {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
-            ]
-        )
-    return blocks
-
-
-def _baseline_comparison_blocks(
-    report: HarnessSessionReport,
-    baselines: list[HarnessBaseline],
-) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = []
-    for baseline in baselines:
-        matching_runs = [run for run in report.results if run.success and run.dataset == baseline.dataset]
-        baseline_workload_gpu_count = _gpu_count(baseline.environment.get("workload_gpu_count"))
-        if baseline_workload_gpu_count is not None:
-            matching_runs = [
-                run
-                for run in matching_runs
-                if _gpu_count(run.run_metadata.get("workload_gpu_count")) == baseline_workload_gpu_count
-            ]
-        for run in matching_runs:
-            rows = [_four_column_row("METRIC", "CURRENT", baseline.name.upper(), "DELTA", bold=True)]
-            for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
-                current_value = run.run_metadata.get(key)
-                baseline_value = baseline.environment.get(key)
-                if current_value is None and baseline_value is None:
-                    continue
-                rows.append(
-                    _four_column_row(
-                        _format_metric_label(key),
-                        _format_metric_value(key, current_value),
-                        _format_metric_value(key, baseline_value),
-                        "N/A",
-                    )
-                )
-            for metric_name, baseline_value in baseline.metrics.items():
-                current_value = run.metrics.get(metric_name)
-                rows.append(
-                    _four_column_row(
-                        _format_metric_label(metric_name),
-                        _format_metric_value(metric_name, current_value),
-                        _format_metric_value(metric_name, baseline_value),
-                        _format_percent_delta(current_value, baseline_value),
-                    )
-                )
-
-            heading = f"*{baseline.name} comparison — {run.dataset}*"
-            blocks.extend(
-                [
-                    {"type": "divider"},
-                    {"type": "section", "text": {"type": "mrkdwn", "text": heading}},
-                    {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
-                ]
-            )
-    return blocks
-
-
-def build_slack_payload(
-    report: HarnessSessionReport,
-    slack_config: dict[str, Any],
-    *,
-    baselines: list[HarnessBaseline] | None = None,
-) -> dict[str, Any]:
+def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     vidore_v3_runs = _vidore_v3_runs(report.results)
@@ -766,8 +621,6 @@ def build_slack_payload(
                 {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
             ]
         )
-    blocks.extend(_gpu_scaling_blocks(report))
-    blocks.extend(_baseline_comparison_blocks(report, baselines or []))
 
     return {
         "username": DEFAULT_USERNAME,
@@ -807,8 +660,7 @@ def post_report_to_slack(
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
-    baselines: list[HarnessBaseline] | None = None,
 ) -> dict[str, Any]:
-    payload = build_slack_payload(report, slack_config, baselines=baselines)
+    payload = build_slack_payload(report, slack_config)
     post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload

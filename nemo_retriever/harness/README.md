@@ -282,34 +282,6 @@ machine.
 This separation lets you inspect a completed session before reporting it and
 reuse the same artifacts when report formatting changes.
 
-To compare a run with an approved historical reference, pass a local baseline
-file to `post-slack`:
-
-```bash
-uv run --project nemo_retriever retriever harness post-slack \
-  --baseline-file /private/path/retriever-baselines.json \
-  --preview \
-  /local/path/to/session
-```
-
-The JSON file uses `schema_version: 1` and a non-empty `baselines` list. Each
-entry has `name`, `dataset`, numeric `metrics`, and optional `environment`,
-`comparability`, `notes`, and `source` objects. Baselines match report runs by
-dataset. When baseline `environment` includes `workload_gpu_count`, comparison
-tables are limited to current runs with the same workload GPU count. Keep
-confidential references outside the repository: the harness reads
-the file only while rendering the report and does not copy it into artifacts.
-The reference name, environment, and selected metric values appear in the
-resulting Slack payload, so post only to an approved destination. Detailed
-`comparability`, `notes`, and `source` metadata stay in the local reference
-file so recurring posts remain concise.
-
-For a recurring nightly, set `RETRIEVER_HARNESS_REFERENCE_FILE` in the
-permissions-restricted nightly environment. `post-slack` automatically reads
-that file whenever `--baseline-file` is omitted, so each completed nightly
-report includes the current reference comparison without changing the
-runfiles or launcher command.
-
 ### Prerequisites
 
 Before you post a report, verify the following:
@@ -354,11 +326,6 @@ eight-domain suite also reports macro averages across the seven English
 datasets and across all datasets. Per-domain timing and other metadata remain
 available in the session artifacts. This format also applies when previewing or
 reposting completed artifacts; reporting never reruns ingestion or queries.
-
-When two successful artifacts for the same dataset have different
-`workload_gpu_count` values, passing both run directories to `post-slack` adds a
-separate automatic GPU-scaling table. It shows ingest time, pages/sec, and
-retrieval quality side by side for the smallest and largest workload GPU counts.
 
 ### Preview Report Formatting
 

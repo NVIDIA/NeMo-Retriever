@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Annotated
 
@@ -16,7 +15,6 @@ from nemo_retriever.harness.benchmark_registry import (
     list_benchmarks,
     list_runsets,
 )
-from nemo_retriever.harness.baselines import load_baselines
 from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_MISSING_INPUT, FailurePayload
 from nemo_retriever.harness.revamp_runner import (
     HarnessRunError,
@@ -347,13 +345,6 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = False,
-    baseline_file: Annotated[
-        Path | None,
-        typer.Option(
-            "--baseline-file",
-            help="Optional local JSON baseline file used only to render comparison tables.",
-        ),
-    ] = None,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -368,11 +359,7 @@ def post_slack_command(
             "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": post_artifact_paths,
         }
-        reference_file = baseline_file
-        if reference_file is None and (configured_reference := os.environ.get("RETRIEVER_HARNESS_REFERENCE_FILE")):
-            reference_file = Path(configured_reference)
-        baselines = load_baselines(reference_file) if reference_file is not None else None
-        payload = build_slack_payload(report, slack_config, baselines=baselines)
+        payload = build_slack_payload(report, slack_config)
         if not preview:
             post_slack_payload(payload, resolve_slack_webhook_url())
     except Exception as exc:

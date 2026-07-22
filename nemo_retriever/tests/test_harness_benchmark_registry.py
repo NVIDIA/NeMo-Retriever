@@ -13,7 +13,6 @@ from nemo_retriever.harness.benchmark_registry import (
     VIDORE_V3_EMBED_MODEL,
     VIDORE_V3_PUBLIC_DATASETS,
 )
-from nemo_retriever.harness.resolution import resolve_benchmark
 from nemo_retriever.harness.runfile import load_runfile
 
 
@@ -28,28 +27,6 @@ VIDORE_V3_DATASET_FACTS = {
     "vidore_v3_physics": (42, 1674, 1812),
 }
 RUNFILES_DIR = Path(__file__).resolve().parents[1] / "harness" / "runfiles"
-
-
-def test_checked_in_runfiles_leave_resource_tuning_automatic() -> None:
-    runfiles = sorted(RUNFILES_DIR.glob("*.json"))
-    explicit_tuning: dict[str, list[str]] = {}
-    for path in runfiles:
-        request = load_runfile(path)
-        resolved = resolve_benchmark(
-            request.benchmark,
-            mode=request.mode or "local",
-            overrides=request.overrides,
-        )
-        resource_overrides = [override.split("=", 1)[0] for override in request.overrides if ".batch." in override]
-        configured_batches = [
-            f"ingest.{stage}.batch"
-            for stage, config in resolved["ingest"].items()
-            if isinstance(config, dict) and config.get("batch")
-        ]
-        explicit_tuning[path.name] = [*resource_overrides, *configured_batches]
-
-    assert runfiles
-    assert explicit_tuning == {path.name: [] for path in runfiles}
 
 
 @pytest.mark.parametrize("dataset_name", VIDORE_V3_DATASET_FACTS)
