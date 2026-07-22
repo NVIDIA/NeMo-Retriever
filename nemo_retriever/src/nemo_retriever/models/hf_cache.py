@@ -32,20 +32,44 @@ HF_RUNTIME_ENV_KEYS: tuple[str, ...] = (
 
 
 def resolve_hf_cache_dir(explicit_hf_cache_dir: Optional[str] = None) -> str:
-    """Resolve Hugging Face cache dir from explicit arg, env, then default."""
+    """Resolve the cache directory used for Hugging Face model snapshots.
+
+    NeMo Retriever's explicit cache settings keep precedence for backwards
+    compatibility. Otherwise, follow the standard Hugging Face cache contract:
+    ``HF_HUB_CACHE`` names the Hub cache directly, while ``HF_HOME`` is its
+    parent directory.
+    """
     candidate = explicit_hf_cache_dir or os.getenv(ENV_HF_CACHE_BASE_DIR)
     if candidate:
         return str(Path(candidate).expanduser())
-    return str(Path.home() / ".cache" / "huggingface")
+
+    hub_cache = os.getenv("HF_HUB_CACHE")
+    if hub_cache:
+        return str(Path(hub_cache).expanduser())
+
+    hf_home = os.getenv("HF_HOME")
+    cache_base = Path(hf_home).expanduser() if hf_home else Path.home() / ".cache" / "huggingface"
+    return str(cache_base / "hub")
 
 
 def configure_global_hf_cache_base(explicit_hf_cache_dir: Optional[str] = None) -> str:
-    """Apply resolved HF cache base to standard Hugging Face env vars."""
-    cache_base = resolve_hf_cache_dir(explicit_hf_cache_dir)
+    """Configure Hugging Face cache env vars and return the model cache dir."""
+    override = explicit_hf_cache_dir or os.getenv(ENV_HF_CACHE_BASE_DIR)
+    if override:
+        cache_base = str(Path(override).expanduser())
+        hub_cache = str(Path(cache_base) / "hub")
+    else:
+        configured_home = os.getenv("HF_HOME")
+        cache_base = (
+            str(Path(configured_home).expanduser()) if configured_home else str(Path.home() / ".cache" / "huggingface")
+        )
+        hub_cache = resolve_hf_cache_dir()
+
     os.environ.setdefault("HF_HOME", cache_base)
-    os.environ.setdefault("HF_HUB_CACHE", str(Path(cache_base) / "hub"))
-    os.environ.setdefault("TRANSFORMERS_CACHE", str(Path(cache_base) / "transformers"))
-    return cache_base
+    os.environ.setdefault("HF_HUB_CACHE", hub_cache)
+    if override:
+        os.environ.setdefault("TRANSFORMERS_CACHE", str(Path(cache_base) / "transformers"))
+    return str(Path(override).expanduser()) if override else hub_cache
 
 
 def collect_hf_runtime_env(
