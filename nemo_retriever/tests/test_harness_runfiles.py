@@ -5,6 +5,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -294,6 +295,70 @@ def test_run_files_isolated_timeout_records_failure_and_continues(monkeypatch, t
     assert isolated_calls == ["jp20_beir", "bo767_beir"]
     assert [run["success"] for run in outcome.results["runs"]] == [False, True]
     assert "TimeoutError" in outcome.results["runs"][0]["failure_reason"]
+
+
+def _fake_exited_isolated_child(monkeypatch, *, message, exitcode):
+    receive_connection = Mock()
+    receive_connection.poll.return_value = True
+    if message is None:
+        receive_connection.recv.side_effect = EOFError
+    else:
+        receive_connection.recv.return_value = message
+    send_connection = Mock()
+    process = Mock(exitcode=exitcode)
+    process.is_alive.return_value = False
+    context = Mock()
+    context.Pipe.return_value = receive_connection, send_connection
+    context.Process.return_value = process
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.multiprocessing.get_context",
+        lambda method: context,
+    )
+    return process, receive_connection, send_connection
+
+
+def test_isolated_child_returns_valid_outcome_after_nonzero_process_exit(monkeypatch, tmp_path):
+    expected = _successful_outcome("jp20_beir", str(tmp_path / "jp20"))
+    process, receive_connection, send_connection = _fake_exited_isolated_child(
+        monkeypatch,
+        message=("outcome", expected),
+        exitcode=1,
+    )
+
+    run = SimpleNamespace(name="jp20_beir", artifact_name="jp20_beir")
+    outcome = _run_prepared_benchmark_isolated(
+        run,
+        output_dir=str(tmp_path),
+        run_id="jp20_beir",
+    )
+
+    assert outcome is expected
+    process.start.assert_called_once_with()
+    process.join.assert_called_once_with(timeout=30)
+    receive_connection.close.assert_called_once_with()
+    send_connection.close.assert_called_once_with()
+
+
+def test_isolated_child_reports_nonzero_process_exit_without_outcome(monkeypatch, tmp_path):
+    process, receive_connection, send_connection = _fake_exited_isolated_child(
+        monkeypatch,
+        message=None,
+        exitcode=1,
+    )
+
+    run = SimpleNamespace(name="jp20_beir", artifact_name="jp20_beir")
+    with pytest.raises(RuntimeError, match="isolated benchmark process exited with code 1"):
+        _run_prepared_benchmark_isolated(
+            run,
+            output_dir=str(tmp_path),
+            run_id="jp20_beir",
+        )
+
+    process.start.assert_called_once_with()
+    process.join.assert_called_once_with(timeout=30)
+    receive_connection.close.assert_called_once_with()
+    send_connection.close.assert_called_once_with()
 
 
 def test_isolated_child_timeout_uses_bounded_terminate_and_kill(monkeypatch):

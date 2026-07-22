@@ -302,9 +302,9 @@ def _run_prepared_benchmark_isolated(
             f"isolated benchmark {run.name!r} returned an outcome but did not exit within "
             f"{_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS} seconds"
         )
-    if process.exitcode != 0:
-        raise RuntimeError(f"isolated benchmark process exited with code {process.exitcode}")
     if message is None:
+        if process.exitcode != 0:
+            raise RuntimeError(f"isolated benchmark process exited with code {process.exitcode}")
         raise RuntimeError("isolated benchmark process returned no outcome")
 
     message_type, payload = message
