@@ -54,6 +54,8 @@ class QueryAgenticOptions:
     """Options for the agentic (ReAct) retrieval strategy."""
 
     enabled: bool = False
+    trace_enabled: bool = False
+    trace_path: str | None = None
     llm_model: str | None = None
     llm_backend: str | None = None
     invoke_url: str | None = None

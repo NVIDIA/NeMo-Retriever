@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
     "chart": "chart",
@@ -137,6 +137,33 @@ def normalize_content_type(value: Any) -> str | None:
     if not normalized:
         return None
     return _CONTENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def normalize_content_type_values(content_types: str | Sequence[Any] | None) -> list[str] | None:
+    """Normalize content-type filter strings/sequences to ordered canonical values."""
+    if content_types is None:
+        return None
+    raw_values: list[Any] = []
+    if isinstance(content_types, str):
+        raw_values.extend(content_types.split(","))
+    else:
+        for value in content_types:
+            if isinstance(value, str):
+                raw_values.extend(value.split(","))
+            else:
+                raw_values.append(value)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in raw_values:
+        content_type = normalize_content_type(value)
+        if content_type is None or content_type in seen:
+            continue
+        normalized.append(content_type)
+        seen.add(content_type)
+    if not normalized:
+        raise ValueError("content_types must include at least one non-empty content type.")
+    return normalized
 
 
 def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:

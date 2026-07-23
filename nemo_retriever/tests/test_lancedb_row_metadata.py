@@ -3,7 +3,11 @@ import json
 from types import SimpleNamespace
 
 from nemo_retriever.common.vdb.lancedb_bulk import _build_lancedb_rows_from_df
-from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row
+from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row, normalize_content_type_values
+
+
+def test_normalize_content_type_values_accepts_sequences_aliases_and_comma_values() -> None:
+    assert normalize_content_type_values([" text ", None, "images", "table,text"]) == ["text", "image", "table"]
 
 
 def test_build_lancedb_row_persists_normalized_content_type() -> None:

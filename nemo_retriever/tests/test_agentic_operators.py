@@ -11,6 +11,8 @@ Run with:
 from __future__ import annotations
 
 import json
+import logging
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -266,7 +268,7 @@ class TestSelectionAgentOperator:
         assert result["result_source"].tolist() == ["candidate_ranking", "candidate_ranking"]
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-    def test_think_then_select(self, mock_step):
+    def test_think_then_select(self, mock_step, caplog):
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         # First call: think; second call: log_selected_documents
@@ -275,15 +277,29 @@ class TestSelectionAgentOperator:
             _make_tool_call_response("log_selected_documents", {"doc_ids": ["d3"], "message": "only d3"}),
         ]
 
+        events: list[dict[str, Any]] = []
+        caplog.set_level(logging.INFO, logger="nemo_retriever.operators.graph_ops.selection_agent_operator")
         op = SelectionAgentOperator(
             llm_model="test-model",
             invoke_url="http://localhost/v1/chat/completions",
             top_k=1,
+            trace_event=events.append,
         )
         result = op.run(self._make_input())
 
         assert result["doc_id"].tolist() == ["d3"]
         assert mock_step.call_count == 2
+        event_names = [event["event"] for event in events]
+        assert "selection.query_start" in event_names
+        assert "selection.think" in event_names
+        assert "selection.log_selected_documents" in event_names
+        assert "selection.query_done" in event_names
+        log_text = "\n".join(record.getMessage() for record in caplog.records)
+        assert "SelectionAgentOperator: query=q1 start candidates=3 unique_candidates=3" in log_text
+        assert "SelectionAgentOperator: query=q1 done result_source=selection_agent selected_count=1" in log_text
+        assert "What causes inflation?" not in log_text
+        assert "only d3" not in log_text
+        assert "d3" not in log_text
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_injected_chat_completion_fn_replaces_http_call(self, mock_step):
@@ -432,6 +448,52 @@ class TestReActAgentOperator:
             return docs[:top_k]
 
         return retriever_fn
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_trace_events_cover_react_tool_flow(self, mock_step, caplog):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_step.side_effect = [
+            _make_tool_call_response("think", {"thought": "compare likely causes"}),
+            _make_tool_call_response("retrieve", {"query": "inflation monetary policy"}),
+            _make_tool_call_response(
+                "final_results",
+                {"doc_ids": ["d1", "d2"], "message": "found them", "search_successful": "true"},
+            ),
+        ]
+        events: list[dict[str, Any]] = []
+        caplog.set_level(logging.INFO, logger="nemo_retriever.operators.graph_ops.react_agent_operator")
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=self._make_retriever(),
+            user_msg_type="simple",
+            target_top_k=2,
+            trace_event=events.append,
+        )
+        result = op.run(self._make_input())
+
+        assert "d1" in result["doc_id"].values
+        event_names = [event["event"] for event in events]
+        assert "agentic.query_start" in event_names
+        assert "react.llm_response" in event_names
+        assert "react.think" in event_names
+        assert "react.retrieve_result" in event_names
+        assert "react.final_results" in event_names
+        assert "agentic.query_done" in event_names
+        retrieve_event = next(event for event in events if event["event"] == "react.retrieve_result")
+        assert retrieve_event["documents"][0]["doc_id"] == "d1"
+        final_event = next(event for event in events if event["event"] == "react.final_results")
+        assert final_event["raw_doc_ids"] == ["d1", "d2"]
+        log_text = "\n".join(record.getMessage() for record in caplog.records)
+        assert "ReActAgentOperator: query=q1 start max_steps=10 retriever_top_k=500 target_top_k=2" in log_text
+        assert "ReActAgentOperator: query=q1 done retrieval_steps=1 seen_docs=2 final_doc_count=2" in log_text
+        assert "What causes inflation?" not in log_text
+        assert "inflation monetary policy" not in log_text
+        assert "compare likely causes" not in log_text
+        assert "found them" not in log_text
+        assert "d1" not in log_text
 
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_simple_mode_retrieve_then_final(self, mock_step):

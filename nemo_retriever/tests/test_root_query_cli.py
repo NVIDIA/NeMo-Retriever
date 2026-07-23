@@ -410,6 +410,55 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     ]
 
 
+def test_root_query_agentic_trace_passes_tmp_path_and_prints_notice(monkeypatch) -> None:
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--agentic", "--agentic-trace", "--agentic-llm-model", "m"])
+
+    assert result.exit_code == 0
+    cfg = config_calls[0]
+    assert cfg["trace_enabled"] is True
+    assert "/artifacts/agentic_traces/" in cfg["trace_path"]
+    assert cfg["trace_path"].endswith("/agentic_trace.jsonl")
+    combined_output = result.output
+    try:
+        combined_output += result.stderr
+    except ValueError:
+        pass
+    assert "Agentic trace:" in combined_output
+    assert json.loads(result.output[result.output.find("[") :]) == [
+        {"rank": 1, "doc_id": "a.pdf", "result_source": "rrf"}
+    ]
+
+
+def test_root_query_agentic_trace_requires_agentic() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "hello", "--agentic-trace"])
+
+    assert result.exit_code == 1
+    assert "--agentic-trace requires --agentic" in result.output
+
+
 def test_root_query_agentic_rejects_custom_in_process_llm_model() -> None:
     result = RUNNER.invoke(
         cli_main.app,
