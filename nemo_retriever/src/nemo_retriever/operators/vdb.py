@@ -222,6 +222,10 @@ class RetrieveVdbOperator(AbstractOperator):
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
         self._explode_for_rerank = bool(explode_for_rerank)
 
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Read one index metadata value through the configured VDB."""
+        return self._vdb.get_index_metadata(key, **{**self._vdb_kwargs, **kwargs})
+
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         if isinstance(data, pd.DataFrame):
             return query_vectors_from_embedded_dataframe(data)

@@ -157,8 +157,16 @@ It must always be greater than or equal to `--top-k`.
 
 Page deduplication and content-type filtering are applied after vector
 retrieval, preserving retriever ranking order and truncating the final output to
-`--top-k`. When querying a local table ingested with an explicit embedding
-model, pass the same `--embed-model-name` to `retriever query`.
+`--top-k`. Local and batch ingest record the canonical embedding model on the
+LanceDB table, and non-service query uses that model automatically. Use
+`--embed-model-name` only as an explicit override or when querying a legacy or
+third-party table without model metadata. Endpoint URLs and provider prefixes
+remain runtime configuration, so continue to pass `--embed-invoke-url` and
+`--embed-model-provider-prefix` when the selected model must be routed remotely.
+For example, a table can store the canonical model
+`nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
+`nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
+are intentionally not persisted on the table.
 
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
@@ -199,7 +207,8 @@ Unlike the dense path (which returns text-enriched hits), agentic mode returns
 the agent's ranked document IDs as JSON, each annotated with the source that
 produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
-`--embed-model-name` options as standard retrieval.
+`--embed-model-name` options as standard retrieval. Agentic retrieval uses the
+selected table's model automatically when `--embed-model-name` is omitted.
 
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:

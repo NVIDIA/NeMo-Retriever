@@ -189,8 +189,9 @@ retriever ingest /your-example-dir \
 > v2 selector. Remote OCR NIM endpoints decide their own model and language
 > behavior, and the local OCR selectors are not added to remote request payloads.
 
-When you use the remote embedder, pair the `Retriever` with matching
-`embed_kwargs` overrides shown in [Run a recall query](#run-a-recall-query).
+When you use a remote embedder, the endpoint and provider prefix remain runtime
+configuration. The query model is read from LanceDB metadata when available;
+pass an explicit model only for an override or a legacy table without metadata.
 
 ### Inspect extracts
 You can inspect how recall accuracy optimized text chunks for various content types were extracted into text representations:

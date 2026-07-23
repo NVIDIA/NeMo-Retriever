@@ -14,10 +14,17 @@ pa = pytest.importorskip("pyarrow")
 
 import nemo_retriever.graph.retriever as retriever_module  # noqa: E402
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities, inspect_lancedb_table  # noqa: E402
+from nemo_retriever.common.vdb.lancedb import LanceDB  # noqa: E402
 from nemo_retriever.graph.retriever import Retriever  # noqa: E402
+from nemo_retriever.operators.vdb import RetrieveVdbOperator  # noqa: E402
 
 
-def _create_vector_table(uri: str, table_name: str, *, fts: bool = False) -> None:
+def _create_vector_table(
+    uri: str,
+    table_name: str,
+    *,
+    fts: bool = False,
+) -> None:
     schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), 2)),
@@ -92,6 +99,53 @@ def test_detector_returns_dense_for_vector_only_table(tmp_path) -> None:
     assert caps.vector_column == "vector"
     assert caps.text_column == "text"
     assert caps.retrieval_mode == "dense"
+
+
+def test_lancedb_metadata_round_trip_drives_query_model(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "content": "alpha safety manual",
+                    "embedding": [1.0, 0.0],
+                    "content_metadata": {"id": "alpha"},
+                    "source_metadata": {"source_id": "alpha.pdf"},
+                },
+            }
+        ]
+    ]
+    LanceDB(
+        uri=uri,
+        table_name="docs",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    ).run(records)
+
+    operator = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": uri, "table_name": "docs"})
+
+    assert operator.get_index_metadata("embedding_model_name") == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert operator.get_index_metadata("retrieval_mode") == "dense"
+
+    captured_embed_kwargs: dict[str, Any] = {}
+
+    def capture_query_model(
+        _self: Retriever,
+        _query_texts: list[str],
+        *,
+        embed_extra: dict[str, Any] | None,
+        **_kwargs: Any,
+    ) -> list[list[dict[str, Any]]]:
+        captured_embed_kwargs.update(embed_extra or {})
+        return [[{"text": "alpha safety manual", "source": "alpha.pdf"}]]
+
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", capture_query_model)
+
+    Retriever(vdb_kwargs={"uri": uri, "table_name": "docs"}).query("alpha", top_k=1)
+
+    assert captured_embed_kwargs["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 
 def test_detector_returns_hybrid_for_vector_plus_fts_table(tmp_path) -> None:

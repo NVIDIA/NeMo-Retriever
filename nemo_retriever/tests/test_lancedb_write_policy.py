@@ -84,6 +84,67 @@ def test_append_same_records_twice_doubles_row_count(tmp_path: Path, caplog: pyt
     assert "Append mode does not deduplicate" in caplog.text
 
 
+def test_append_with_matching_embedding_model_succeeds(tmp_path: Path) -> None:
+    model_name = "nvidia/embedding-model-a"
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        embedding_model_name=model_name,
+        create_index=False,
+    ).run(_records())
+
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        embedding_model_name=model_name,
+        overwrite=False,
+        create_index=False,
+    ).run(_records())
+
+    assert _count_rows(tmp_path) == 2
+
+
+def test_append_with_mismatched_embedding_model_fails_before_write(tmp_path: Path) -> None:
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        embedding_model_name="nvidia/embedding-model-a",
+        create_index=False,
+    ).run(_records())
+
+    op = LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        embedding_model_name="nvidia/embedding-model-b",
+        overwrite=False,
+        create_index=False,
+    )
+
+    with pytest.raises(ValueError, match="cannot append vectors"):
+        op.run(_records())
+
+    assert _count_rows(tmp_path) == 1
+
+
+def test_append_to_legacy_table_without_embedding_metadata_still_succeeds(tmp_path: Path) -> None:
+    LanceDB(uri=str(tmp_path), table_name="t", vector_dim=2, create_index=False).run(_records())
+
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        embedding_model_name="nvidia/embedding-model-a",
+        overwrite=False,
+        create_index=False,
+    ).run(_records())
+
+    assert _count_rows(tmp_path) == 2
+
+
 def test_append_incompatible_schema_raises_clear_error(tmp_path: Path) -> None:
     LanceDB(uri=str(tmp_path), table_name="t", vector_dim=3, create_index=False).run(_records(vector=[1.0, 0.0, 0.0]))
 
