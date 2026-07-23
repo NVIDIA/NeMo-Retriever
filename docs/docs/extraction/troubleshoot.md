@@ -133,6 +133,16 @@ Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
 To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
 
+## Nemotron Parse hosted Build endpoint returns HTTP 400: model does not support text input { #nemotron-parse-hosted-build-http-400 }
+
+When you run PDF extraction with `extract_method="nemotron_parse"` against the NVIDIA-hosted Build endpoint (`https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse`), the request can fail with an error similar to the following:
+
+```text
+HTTP 400: Content cannot be a plain string. The model does not support text input.
+```
+
+The hosted Build endpoint currently expects a different request contract than the self-hosted `nemotron-parse-v1.2` NIM that the library targets, so the text task prompt the library sends is rejected. Until the two are aligned, run Nemotron Parse against a self-hosted Helm NIM or a local Hugging Face model, or fall back to the default **pdfium** PDF extraction path. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
 [NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
