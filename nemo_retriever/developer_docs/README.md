@@ -9,6 +9,6 @@ architecture, subsystems, and developer-facing tools.
 |-------|-------------|
 | [Graph Pipeline Registry](graph_pipeline_registry.md) | Central registry for managing, inspecting, comparing, and serializing golden pipeline graphs. |
 | [NimClient and Custom NIM Endpoints](nimclient.md) | Developer guide for custom NIM integrations with `NimClient`, `ModelInterface`, and UDFs. |
-| [Retriever Harness README](../harness/README.md) | Operator and agent instructions for the artifact-first Retriever benchmark harness. |
-| [Retriever Harness PRD](harness_retriever_ingest_query_prd.md) | Product requirements for the artifact-first Retriever ingest/query benchmark harness revamp. |
+| [Retriever Harness](../harness/README.md) | Current user and agent guide for registered Retriever benchmarks. |
+| [Retriever Harness Design History](harness_retriever_ingest_query_prd.md) | Implemented design decisions and product boundaries. |
 | [Root Ingest CLI Design](root_ingest_cli_design.md) | Reviewer guide for the `retriever ingest` local, batch, and service CLI ownership split. |

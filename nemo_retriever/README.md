@@ -731,9 +731,12 @@ After installing the headers, restart the pipeline.
 
 ## Retriever Harness
 
-The developer harness runs code-owned benchmarks through `retriever harness`.
-Use `retriever harness list --runsets` to see available benchmark names and
-runsets, then run one benchmark with `retriever harness run <benchmark>`.
+The developer harness runs registered ingest and retrieval benchmarks through
+`retriever harness`. Start with the
+[harness guide](harness/README.md), then choose
+[library execution](harness/LIBRARY.md) or
+[service execution](harness/SERVICE.md). Recurring workstation runs use the
+[nightly launcher](../ops/retriever-nightly/README.md).
 
 ### Ingest image storage
 
