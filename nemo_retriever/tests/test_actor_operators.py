@@ -546,11 +546,36 @@ class TestNemotronParseActor:
         [
             ("https://integrate.api.nvidia.com/v1/chat/completions", None, "nvidia/nemotron-parse", "hosted_tool_call"),
             ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
-            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse", "nvidia/nemotron-parse", "hosted_tool_call"),
-            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.0", "nvidia/nemotron-parse-v1.0", "legacy_tool_call"),
-            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.1", "nvidia/nemotron-parse-v1.1", "legacy_tool_call"),
-            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.2", "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
-            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.10", "nvidia/nemotron-parse-v1.10", "v1_2_tagged"),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse",
+                "nvidia/nemotron-parse",
+                "hosted_tool_call",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.0",
+                "nvidia/nemotron-parse-v1.0",
+                "legacy_tool_call",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.1",
+                "nvidia/nemotron-parse-v1.1",
+                "legacy_tool_call",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.2",
+                "nvidia/nemotron-parse-v1.2",
+                "v1_2_tagged",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.10",
+                "nvidia/nemotron-parse-v1.10",
+                "v1_2_tagged",
+            ),
             ("http://parse:8000/v1/chat/completions", "custom/parse", "custom/parse", "v1_2_tagged"),
         ],
     )
@@ -565,10 +590,7 @@ class TestNemotronParseActor:
     def test_contract_resolution_rejects_mixed_endpoints_without_model(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
 
-        endpoints = (
-            "https://integrate.api.nvidia.com/v1/chat/completions,"
-            "http://parse:8000/v1/chat/completions"
-        )
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://parse:8000/v1/chat/completions"
         with pytest.raises(ValueError, match="cannot mix NVIDIA Build and self-hosted"):
             _resolve_nemotron_parse_contract(endpoints, None)
 
