@@ -156,9 +156,11 @@ class HelmServiceManager:
 
     def stop(self, *, uninstall: bool = True) -> int:
         self.stop_port_forwards()
+        cleanup_rc = 0 if not self.port_forward_processes else 1
         if not uninstall:
-            return 0
-        return self._run(self.helm_cmd + ["uninstall", self.release_name, "--namespace", self.namespace])
+            return cleanup_rc
+        uninstall_rc = self._run(self.helm_cmd + ["uninstall", self.release_name, "--namespace", self.namespace])
+        return uninstall_rc or cleanup_rc
 
     def _run(self, cmd: list[str]) -> int:
         logger.info("$ %s", self.format_command(cmd))
@@ -232,35 +234,28 @@ class HelmServiceManager:
         remaining_processes = []
         for proc in self.port_forward_processes:
             stopped = False
+            # start_port_forward creates a new session, so the launch PID is also
+            # the stable process-group ID even if a sudo/wrapper leader exits.
+            pgid = proc.pid
             try:
-                pgid = os.getpgid(proc.pid)
-            except ProcessLookupError:
-                stopped = proc.poll() is not None
-            else:
+                self._signal_port_forward_group(pgid, signal.SIGTERM)
                 try:
-                    os.killpg(pgid, signal.SIGTERM)
                     proc.wait(timeout=5)
-                    stopped = True
-                except PermissionError as exc:
-                    logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
                 except subprocess.TimeoutExpired:
+                    pass
+                if self._process_group_exists(pgid):
+                    self._signal_port_forward_group(pgid, signal.SIGKILL)
                     try:
-                        os.killpg(pgid, signal.SIGKILL)
                         proc.wait(timeout=5)
-                        stopped = True
-                    except PermissionError as exc:
-                        logger.warning(
-                            "Could not force-kill port-forward process group %s for pid %s: %s",
-                            pgid,
-                            proc.pid,
-                            exc,
-                        )
                     except subprocess.TimeoutExpired:
-                        logger.warning("Port-forward process %s did not exit after SIGKILL", proc.pid)
-                    except ProcessLookupError:
-                        stopped = proc.poll() is not None
-                except ProcessLookupError:
-                    stopped = proc.poll() is not None
+                        pass
+                stopped = self._wait_for_process_group_exit(pgid, timeout_s=5)
+                if not stopped:
+                    logger.warning("Port-forward process group %s for pid %s is still running", pgid, proc.pid)
+            except PermissionError as exc:
+                logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
+            except ProcessLookupError:
+                stopped = True
             if stopped:
                 output = self._port_forward_logs.pop(proc.pid, None)
                 if output is not None:
@@ -268,6 +263,38 @@ class HelmServiceManager:
             else:
                 remaining_processes.append(proc)
         self.port_forward_processes = remaining_processes
+
+    @staticmethod
+    def _process_group_exists(pgid: int) -> bool:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _wait_for_process_group_exit(self, pgid: int, *, timeout_s: float) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while self._process_group_exists(pgid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return not self._process_group_exists(pgid)
+
+    def _signal_port_forward_group(self, pgid: int, sent_signal: signal.Signals) -> None:
+        try:
+            os.killpg(pgid, sent_signal)
+        except PermissionError:
+            if not getattr(getattr(self, "config", None), "kubectl_sudo", False):
+                raise
+            signal_name = sent_signal.name.removeprefix("SIG")
+            result = subprocess.run(
+                ["sudo", "kill", f"-{signal_name}", "--", f"-{pgid}"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or f"sudo kill exited with {result.returncode}"
+                raise PermissionError(detail)
 
     def get_service_url(self, service: str = "api") -> str:
         base = f"http://localhost:{self.local_port}"

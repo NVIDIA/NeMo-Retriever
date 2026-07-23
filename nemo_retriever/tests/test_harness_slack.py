@@ -54,7 +54,9 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
         {
             "git_sha": "abc1234",
             "host": "benchmark-host",
+            "gpu_sku": "NVIDIA H100 NVL",
             "gpu_count": 8,
+            "workload_gpu_count": 8,
             "python": "3.12.12",
             "ray_version": "2.49.0",
         },
@@ -143,6 +145,8 @@ def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
     assert "nemo-retriever library benchmarks" in payload_text
     assert "recall@5" in payload_text
     assert str(tmp_path) not in payload_text
+    assert ["-    physical GPU SKU", "NVIDIA H100 NVL"] in _table_rows(payload["blocks"][3])
+    assert ["-    GPUs available to workload", "8"] in _table_rows(payload["blocks"][3])
 
 
 def test_slack_report_labels_dry_run_without_reporting_pass(tmp_path):
@@ -353,3 +357,38 @@ def test_slack_preview_matches_posted_payload_without_requiring_webhook(monkeypa
     assert preview_payload == posted[0][0]
     assert preview_payload == json.loads(post_result.stdout)
     assert str(session_dir) not in json.dumps(preview_payload)
+
+
+def test_post_slack_shows_current_release_reference_without_a_verdict(monkeypatch, tmp_path):
+    session_dir = _write_session(tmp_path)
+    reference_file = tmp_path / "current-release.json"
+    _write_json(
+        reference_file,
+        {
+            "baselines": [
+                {
+                    "name": "RC26.05 Perflab",
+                    "dataset": "jp20",
+                    "environment": {"gpu_sku": "NVIDIA H100 80GB HBM3", "gpu_count": 8},
+                    "metrics": {"pages": 1940},
+                }
+            ],
+        },
+    )
+    monkeypatch.setenv("RETRIEVER_HARNESS_REFERENCE_FILE", str(reference_file))
+
+    result = CliRunner().invoke(app, ["post-slack", "--preview", str(session_dir)])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["blocks"][-2]["text"]["text"] == (
+        "*RC26.05 Perflab reference — jp20 (8 workload GPUs)*\n"
+        "Observed values only; hardware may differ and no pass/fail threshold is applied."
+    )
+    assert _table_rows(payload["blocks"][-1]) == [
+        ["METRIC", "CURRENT", "RC26.05 PERFLAB"],
+        ["physical GPU SKU", "NVIDIA H100 NVL", "NVIDIA H100 80GB HBM3"],
+        ["physical GPU count", "8", "8"],
+        ["GPUs available to workload", "8", "N/A"],
+        ["pages", "1940", "1940"],
+    ]
