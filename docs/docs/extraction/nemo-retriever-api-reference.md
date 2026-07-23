@@ -1,5 +1,143 @@
 # NeMo Retriever API Reference
 
+## Error and failure contract { #error-and-failure-contract }
+
+The Python API does not define a separate set of numeric NeMo Retriever
+extraction error codes. Depending on the run mode and failing stage, callers
+observe one or more of the following:
+
+- Python configuration or dependency exceptions, such as `ValueError`,
+  `ImportError`, or `RuntimeError`.
+- `GraphIngestionError` for row-level failures from explicitly configured
+  remote NIM stages in `run_mode="inprocess"` or `"batch"` when
+  `error_policy="raise"` (the default).
+- HTTP status codes or gRPC errors returned by a remote NIM or by the
+  Retriever service. These are transport or upstream-service statuses, not
+  NeMo Retriever-specific error codes.
+- Per-document failures in `ServiceIngestResult.failures` when
+  `run_mode="service"`.
+
+The generated API signatures and parameter models below are the API contract.
+Exception text and upstream response bodies can change between releases; do
+not parse them as stable codes. The stable text-generation codes documented in
+[One-shot text generation](#one-shot-text-generation) apply to generation
+operator output columns, not to document extraction.
+
+### Choose raise or collect behavior
+
+For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when
+an explicitly configured remote NIM stage reports a row-level error. The
+exception retains the underlying records in `exc.records`. When available, its
+message identifies the stage, invoke URL, and HTTP status in a form similar to
+`[stage=OCR NIM url=https://... http=503]`, followed by a troubleshooting hint.
+
+Use `error_policy="collect"` when partial results are useful and your
+application inspects the error fields in every returned row. Alternatively,
+pass `return_failures=True` to `.ingest()` to receive a `(result, failures)`
+tuple. When no remote invoke URL is configured, `return_failures=True` scans
+all output columns for row-level error fields so local failures are still
+visible. In service mode, failures are also available from
+`ServiceIngestResult.failures`.
+
+### What the raise error policy covers
+
+The strict policy applies only to stages where you explicitly configure a
+remote NIM invoke URL. It does not raise for local-only PDFium parsing,
+caption, audio or video, or ASR failures, even when those stages populate
+row-level error fields.
+
+| Configured invoke URL | DataFrame column scanned | Stage label in messages |
+| --- | --- | --- |
+| `page_elements_invoke_url` | `output_column` (default `page_elements_v3`) | Page Elements NIM |
+| `ocr_invoke_url` | `ocr` | OCR NIM |
+| `table_structure_invoke_url` | `table_structure_ocr_v1` | Table Structure NIM |
+| `nemotron_parse_invoke_url` or `invoke_url` | `nemotron_parse_v1_2` | Nemotron Parse NIM |
+| `embed_invoke_url` or `embedding_endpoint` | `output_column` (default `text_embeddings_1b_v2`) | Embedding NIM |
+
+Caption and ASR use remote endpoints but are outside this raise path today.
+Remote caption failures can abort the whole ingest instead of returning a
+partial DataFrame. ASR failures can omit affected rows while logging a
+warning, which can look like an empty transcript unless you inspect logs.
+
+### Row-level error payloads
+
+Most extraction stages write errors into the result row instead of raising
+immediately. The common nested shape is:
+
+```json
+{
+  "error": {
+    "stage": "ocr_page_elements",
+    "type": "HTTPError",
+    "message": "HTTP 503 from https://example/v1/infer: ...",
+    "traceback": "..."
+  }
+}
+```
+
+The `stage` string is a semi-stable operator identifier (for example
+`remote_inference`, `nemotron_parse_pages`, or `split_pdf`). It is not a
+product-wide error-code enum. HTTP status codes usually appear inside
+`message` text rather than as a separate `status_code` field; when a
+structured status is present, `GraphIngestionError` can include it in the
+rendered exception.
+
+```python
+import os
+
+from nemo_retriever import GraphIngestionError, create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+pipeline = (
+    create_ingestor(run_mode="inprocess", error_policy="raise")
+    .files(["document.pdf"])
+    .extract(
+        ExtractParams(
+            method="ocr",
+            ocr_invoke_url=os.environ["OCR_INVOKE_URL"],
+        )
+    )
+)
+
+try:
+    result = pipeline.ingest()
+except GraphIngestionError as exc:
+    # Records can contain source paths, endpoint details, and upstream
+    # response text. Extract only known-safe diagnostic fields before
+    # logging or sending them to your support workflow.
+    for record in exc.records:
+        payload = record.get("error") if isinstance(record, dict) else record
+        if isinstance(payload, dict):
+            print(
+                {
+                    "column": record.get("column"),
+                    "stage": payload.get("stage"),
+                    "type": payload.get("type"),
+                    "message": payload.get("message"),
+                }
+            )
+        else:
+            print(
+                {
+                    "column": record.get("column") if isinstance(record, dict) else None,
+                    "message": str(payload),
+                }
+            )
+```
+
+For a support-oriented mapping of extraction paths, error signals, corrective
+actions, and escalation criteria, refer to
+[Python API error triage](troubleshoot.md#python-api-error-triage).
+
+!!! note "Version-specific behavior"
+
+    This reference describes the current NeMo Retriever Library. Older
+    NV-Ingest releases, including `25.4.2`, can use different exception text
+    and result shapes and might not include enriched `GraphIngestionError`
+    diagnostics. When troubleshooting an older deployment, use the package and
+    container versions from that deployment and include them in the support
+    case.
+
 ## PDF pre-splitting for parallel ingest { #pdf-pre-splitting-for-parallel-ingest }
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
