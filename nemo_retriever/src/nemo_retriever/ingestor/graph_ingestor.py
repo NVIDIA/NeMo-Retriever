@@ -30,7 +30,7 @@ import logging
 import os
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
@@ -44,6 +44,7 @@ from nemo_retriever.ingestor.manifest import (
     resolve_branch_extraction_inputs,
 )
 from nemo_retriever.ingestor import ingestor
+from nemo_retriever.common.inline_text import inline_text_source_id, is_inline_text_source, normalize_inline_texts
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -72,7 +73,7 @@ from nemo_retriever.common.input_files import (
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.ray_runtime import ensure_local_ray_runtime
 from nemo_retriever.common.ray_resource_hueristics import gather_cluster_resources
-
+from nemo_retriever.common.modality.txt.split import empty_text_chunks_df
 
 _ERROR_FIELD_KEYS = ("error", "errors", "exception", "traceback", "failed")
 _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
@@ -462,6 +463,7 @@ class GraphIngestor(ingestor):
         self._error_policy = error_policy
         self._rd_dataset: Any = None
         self._buffers: list[tuple[str, BytesIO]] = []
+        self._inline_texts: list[str] | None = None
 
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str | None = "pdf"
@@ -490,7 +492,26 @@ class GraphIngestor(ingestor):
 
     def files(self, documents: Union[str, List[str]]) -> "GraphIngestor":
         """Set the input file paths or glob patterns."""
+        self._reject_inline_source_mix("files")
         self._documents = [documents] if isinstance(documents, str) else list(documents)
+        return self
+
+    def texts(self, texts: Union[str, Sequence[str]]) -> Self:
+        """Set raw inline text documents as the graph input.
+
+        Each string is one logical source document. It receives a deterministic
+        ``inline://`` identifier and flows through the normal text splitter,
+        embedding, and sink stages without being written to a temporary file.
+        """
+        if self._documents or self._buffers:
+            raise ValueError("texts() cannot be combined with files() or buffers(); use a separate ingestor.")
+        if "extract" in self._stage_order and self._extraction_mode != "text":
+            raise ValueError("texts() only supports text extraction; configure it with extract_txt().")
+
+        self._inline_texts = normalize_inline_texts(texts)
+        self._extraction_mode = "text"
+        self._text_params = self._text_params or TextChunkParams()
+        self._record_stage("extract")
         return self
 
     def buffers(
@@ -505,6 +526,7 @@ class GraphIngestor(ingestor):
 
         Only supported for ``run_mode='inprocess'``.
         """
+        self._reject_inline_source_mix("buffers")
         if isinstance(buffers, tuple) and len(buffers) == 2 and isinstance(buffers[0], str):
             self._buffers = [buffers]
         else:
@@ -545,6 +567,8 @@ class GraphIngestor(ingestor):
         configuration belongs on :class:`ASRParams` (pass ``asr_params=``
         or use :meth:`extract_audio`).
         """
+        if self._inline_texts is not None and extraction_mode != "text":
+            raise ValueError("extract() is incompatible with texts() unless extraction_mode='text'; use extract_txt().")
         unknown = set(kwargs) - set(ExtractParams.model_fields)
         if unknown:
             raise TypeError(
@@ -582,6 +606,7 @@ class GraphIngestor(ingestor):
         **kwargs: Any,
     ) -> "GraphIngestor":
         """Configure image extraction (extraction_mode='image')."""
+        self._reject_incompatible_inline_extraction("extract_image_files")
         self._extraction_mode = "image"
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
         self._apply_split_config(split_config)
@@ -597,6 +622,7 @@ class GraphIngestor(ingestor):
 
     def extract_html(self, params: Optional[HtmlChunkParams] = None, **kwargs: Any) -> "GraphIngestor":
         """Configure HTML extraction (extraction_mode='html')."""
+        self._reject_incompatible_inline_extraction("extract_html")
         self._extraction_mode = "html"
         self._html_params = _coerce(params, kwargs, default_factory=HtmlChunkParams)
         self._record_stage("extract")
@@ -611,6 +637,7 @@ class GraphIngestor(ingestor):
         **kwargs: Any,
     ) -> "GraphIngestor":
         """Configure audio extraction (extraction_mode='audio')."""
+        self._reject_incompatible_inline_extraction("extract_audio")
         self._extraction_mode = "audio"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
         self._asr_params = asr_params or ASRParams()
@@ -647,6 +674,7 @@ class GraphIngestor(ingestor):
         video pipeline — for audio-only chunking, use :meth:`extract_audio`
         directly with that file.
         """
+        self._reject_incompatible_inline_extraction("extract_video")
         self._extraction_mode = "auto"
         self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
         self._asr_params = asr_params or ASRParams()
@@ -736,15 +764,21 @@ class GraphIngestor(ingestor):
 
         Returns
         -------
-        ``run_mode='batch'``
-            A materialized ``ray.data.Dataset``.
-        ``run_mode='inprocess'``
+        ``run_mode='batch'`` or ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         ``return_failures=True``
             ``(result, failures)`` where ``failures`` is a list of
             service-style ``(source, error)`` tuples.
         """
         return_failures = self._resolve_return_failures(params, kwargs)
+        if self._inline_texts is not None and not any(text.strip() for text in self._inline_texts):
+            result = empty_text_chunks_df()
+            if self._run_mode == "batch":
+                self._rd_dataset = result
+            else:
+                self._rd_dataset = None
+            return self._finalize_ingest_result(result, return_failures=return_failures)
+
         default_branches = self._plan_default_extraction_branches()
         if default_branches is None:
             single_effective = self._resolve_effective_extraction_inputs()
@@ -793,7 +827,7 @@ class GraphIngestor(ingestor):
         *,
         post_extract_order: tuple[str, ...],
     ) -> Any:
-        _ray, cluster_resources = self._ensure_batch_runtime()
+        ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
             extract_params=effective_extraction.extract_params,
@@ -831,7 +865,8 @@ class GraphIngestor(ingestor):
             num_gpus=self._num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
         )
-        result = executor.ingest(self._documents)
+        executor_input = self._inline_text_dataset(ray.data) if self._inline_texts is not None else self._documents
+        result = executor.ingest(executor_input)
         self._rd_dataset = result
         return result
 
@@ -862,6 +897,8 @@ class GraphIngestor(ingestor):
         )
         executor = InprocessExecutor(graph, show_progress=self._show_progress)
         self._rd_dataset = None
+        if self._inline_texts is not None:
+            return executor.ingest(self._inline_text_dataframe())
         if self._buffers:
             import pandas as pd
 
@@ -916,6 +953,27 @@ class GraphIngestor(ingestor):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _reject_inline_source_mix(self, method_name: str) -> None:
+        if self._inline_texts is not None:
+            raise ValueError(f"{method_name}() cannot be combined with texts(); use a separate ingestor.")
+
+    def _reject_incompatible_inline_extraction(self, method_name: str) -> None:
+        if self._inline_texts is not None:
+            raise ValueError(f"{method_name}() is incompatible with texts(); use extract_txt() to configure chunking.")
+
+    def _inline_text_rows(self) -> list[dict[str, str]]:
+        return [
+            {"text": text, "path": inline_text_source_id(index)} for index, text in enumerate(self._inline_texts or [])
+        ]
+
+    def _inline_text_dataframe(self) -> Any:
+        import pandas as pd
+
+        return pd.DataFrame(self._inline_text_rows(), columns=["text", "path"])
+
+    def _inline_text_dataset(self, ray_data: Any) -> Any:
+        return ray_data.from_items(self._inline_text_rows())
+
     def _configured_input_paths(self) -> list[str]:
         paths: list[str] = []
         for document in self._documents:
@@ -927,7 +985,12 @@ class GraphIngestor(ingestor):
         return paths
 
     def _classified_input_paths(self) -> list[tuple[str, str | None]]:
-        return [(path, input_type_for_path(path)) for path in self._configured_input_paths()]
+        # Service workers receive inline text as a named byte buffer. Keep the
+        # logical URI as its source path while classifying it as decoded text.
+        return [
+            (path, "txt" if is_inline_text_source(path) else input_type_for_path(path))
+            for path in self._configured_input_paths()
+        ]
 
     @staticmethod
     def _input_type_examples(paths: Iterable[str], *, limit: int = 3) -> str:

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
+from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
@@ -33,6 +33,7 @@ from nemo_retriever.service.services.pipeline_executor import (
 )
 from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
 from nemo_retriever.service.service_ingestor import ServiceIngestor
+from nemo_retriever.service.client import InMemoryUpload
 
 
 class _TinyTokenizer:
@@ -71,6 +72,82 @@ def test_compact_result_schema_populates_pipeline_payload() -> None:
     assert payload is not None
     assert payload["result_schema"] == "compact"
     assert PipelineSpec.model_validate(payload).result_schema == "compact"
+
+
+def test_service_inline_text_builds_in_memory_uploads(monkeypatch: pytest.MonkeyPatch) -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example")
+    monkeypatch.setattr("tempfile.mkdtemp", lambda *args, **kwargs: pytest.fail("inline text must remain in memory"))
+
+    ingestor.texts(["first", "first"]).extract_txt(TextChunkParams(max_tokens=12))
+
+    assert ingestor._collect_inputs() == [
+        InMemoryUpload(
+            filename="inline://00000000",
+            content=b"first",
+            content_type="text/plain; charset=utf-8",
+            classification_filename="inline-00000000.txt",
+        ),
+        InMemoryUpload(
+            filename="inline://00000001",
+            content=b"first",
+            content_type="text/plain; charset=utf-8",
+            classification_filename="inline-00000001.txt",
+        ),
+    ]
+    assert ingestor._pipeline_payload()["extraction_mode"] == "text"
+    assert ingestor._pipeline_payload()["split_config"] == {"text": {"max_tokens": 12}}
+
+
+def test_service_inline_text_replaces_and_validates_inputs() -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example").texts("first").texts(["second"])
+
+    assert [item.filename for item in ingestor._collect_inputs()] == ["inline://00000000"]
+    assert [item.content for item in ingestor._collect_inputs()] == [b"second"]
+
+    with pytest.raises(TypeError, match=r"texts\[1\] must be a string"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["valid", None])
+
+
+def test_service_inline_text_rejects_source_mixing_and_non_text_extraction(tmp_path) -> None:
+    document = tmp_path / "document.txt"
+    document.write_text("document", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ServiceIngestor(base_url="http://retriever.example", documents=[str(document)]).texts(["inline"])
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).files(str(document))
+    with pytest.raises(ValueError, match="incompatible with texts"):
+        ServiceIngestor(base_url="http://retriever.example").texts(["inline"]).extract_image_files()
+
+
+@pytest.mark.parametrize("values", [[], ["", "  \n"]])
+@pytest.mark.parametrize(
+    ("result_schema", "expected_columns"),
+    [
+        ("legacy", ["text", "content", "path", "page_number", "metadata"]),
+        ("compact", ["text", "source_id", "element_type", "page_number"]),
+    ],
+)
+def test_service_inline_empty_corpus_short_circuits_with_schema(
+    values: list[str],
+    result_schema: str,
+    expected_columns: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example").texts(values).embed()
+    monkeypatch.setattr(
+        ingestor,
+        "ingest_stream",
+        lambda **kwargs: pytest.fail("empty inline corpus must not contact the service"),
+    )
+
+    result = ingestor.ingest(result_schema=result_schema)
+
+    assert result.job_id is None
+    assert result.failures == []
+    assert result.dataframe.empty
+    assert result.dataframe.columns.tolist() == expected_columns
+    assert ingestor._collect_inputs() == []
 
 
 def test_legacy_pipeline_payload_disables_bulk_result_payloads() -> None:
@@ -568,6 +645,33 @@ def test_run_pipeline_in_process_html_txt_produce_rows(monkeypatch: pytest.Monke
     )
     assert html_rows >= 1
     assert txt_rows >= 1
+
+
+def test_run_pipeline_in_process_preserves_service_inline_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *_, **__: _TinyTokenizer())
+
+    row_count, rows, _ = _run_pipeline_in_process(
+        "inline://00000003",
+        "café service".encode("utf-8"),
+        {},
+        None,
+        None,
+        {
+            "extraction_mode": "text",
+            "stage_order": ["extract"],
+            "result_schema": "compact",
+        },
+    )
+
+    assert row_count == 1
+    assert rows == [
+        {
+            "text": "café service",
+            "source_id": "inline://00000003",
+            "element_type": "text",
+            "page_number": 1,
+        }
+    ]
 
 
 def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> None:

@@ -74,6 +74,22 @@ class _CreatedJob(NamedTuple):
     trace_id: str | None = None
 
 
+class InMemoryUpload(NamedTuple):
+    """Document bytes that should be uploaded without a temporary file."""
+
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+    classification_filename: str | None = None
+
+
+UploadInput = Path | InMemoryUpload
+
+
+def _upload_filename(source: UploadInput) -> str:
+    return source.name if isinstance(source, Path) else source.filename
+
+
 # ------------------------------------------------------------------
 # Errors
 # ------------------------------------------------------------------
@@ -308,7 +324,7 @@ class RetrieverServiceClient:
     async def _upload_one(
         self,
         client: httpx.AsyncClient,
-        file_path: Path,
+        source: UploadInput,
         *,
         job_id: str,
         metadata: dict[str, Any] | None = None,
@@ -321,9 +337,19 @@ class RetrieverServiceClient:
         key so the server can validate and apply it. Returns the parsed
         JSON response (contains ``document_id`` and ``job_id``).
         """
-        file_bytes = file_path.read_bytes()
-        filename = file_path.name
+        if isinstance(source, Path):
+            file_bytes = source.read_bytes()
+            filename = source.name
+            content_type = "application/octet-stream"
+            classification_filename = None
+        else:
+            file_bytes = source.content
+            filename = source.filename
+            content_type = source.content_type
+            classification_filename = source.classification_filename
         meta_payload: dict[str, Any] = dict(metadata or {})
+        if classification_filename is not None:
+            meta_payload.setdefault("filename", classification_filename)
         if pipeline_spec is not None:
             meta_payload["pipeline"] = pipeline_spec
         meta_json = json.dumps(meta_payload)
@@ -334,7 +360,7 @@ class RetrieverServiceClient:
             try:
                 resp = await client.post(
                     url,
-                    files={"file": (filename, file_bytes, "application/octet-stream")},
+                    files={"file": (filename, file_bytes, content_type)},
                     data={"metadata": meta_json},
                 )
             except _TRANSIENT_ERRORS as exc:
@@ -572,7 +598,7 @@ class RetrieverServiceClient:
 
     async def ingest_documents(
         self,
-        files: list[Path],
+        files: list[UploadInput],
         *,
         on_file_submitted: Callable[[str, str], Any] | None = None,
         show_progress: bool = True,
@@ -615,19 +641,20 @@ class RetrieverServiceClient:
             upload_sem = asyncio.Semaphore(self._max_concurrency)
             upload_failures: list[tuple[str, str]] = []
 
-            async def _upload_one_file(fpath: Path) -> None:
+            async def _upload_one_file(source: UploadInput) -> None:
+                filename = _upload_filename(source)
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
+                        resp_json = await self._upload_one(client, source, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
                             document_ids.append(doc_id)
                             if on_file_submitted:
-                                on_file_submitted(fpath.name, doc_id)
+                                on_file_submitted(filename, doc_id)
                     except Exception as exc:
-                        upload_failures.append((fpath.name, str(exc)))
-                        logger.error("Upload failed for %s: %s", fpath.name, exc)
+                        upload_failures.append((filename, str(exc)))
+                        logger.error("Upload failed for %s: %s", filename, exc)
 
             progress_ctx = _make_progress() if show_progress else None
 
@@ -684,7 +711,7 @@ class RetrieverServiceClient:
 
     async def aingest_documents_stream(
         self,
-        files: list[Path],
+        files: list[UploadInput],
         *,
         pipeline_spec: dict[str, Any] | None = None,
         retain_results: bool = False,
@@ -730,27 +757,28 @@ class RetrieverServiceClient:
             yield event
             upload_sem = asyncio.Semaphore(self._max_concurrency)
 
-            async def _upload_one_file(fpath: Path) -> None:
+            async def _upload_one_file(source: UploadInput) -> None:
+                filename = _upload_filename(source)
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
+                        resp_json = await self._upload_one(client, source, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
                         if doc_id:
                             pending.add(doc_id)
                             await event_queue.put(
                                 {
                                     "event": "upload_complete",
-                                    "filename": fpath.name,
+                                    "filename": filename,
                                     "document_id": doc_id,
                                     "job_id": job_id,
                                 }
                             )
                     except Exception as exc:
-                        logger.error("Upload failed for %s: %s", fpath.name, exc)
+                        logger.error("Upload failed for %s: %s", filename, exc)
                         await event_queue.put(
                             {
                                 "event": "upload_failed",
-                                "filename": fpath.name,
+                                "filename": filename,
                                 "error": str(exc),
                                 "job_id": job_id,
                             }

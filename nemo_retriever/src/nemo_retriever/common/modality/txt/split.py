@@ -15,11 +15,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from nemo_retriever.common.inline_text import is_inline_text_source
 from nemo_retriever.common.params import TextChunkParams
 
 DEFAULT_TOKENIZER_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
+
+
+def empty_text_chunks_df() -> pd.DataFrame:
+    """Return the canonical empty result for raw text ingestion."""
+    return pd.DataFrame(columns=["text", "content", "path", "page_number", "metadata"]).astype({"page_number": "int64"})
 
 
 def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN201
@@ -179,57 +185,78 @@ def txt_file_to_chunks_df(
     path: str,
     params: TextChunkParams | None = None,
 ) -> pd.DataFrame:
-    """
-    Read a .txt file and return a DataFrame of chunks (one row per chunk).
+    """Read a text file and return one row per token-bounded chunk.
 
-    Columns: text, path, page_number (chunk index, 1-based), metadata.
-    Shape is compatible with embed_text_from_primitives_df and LanceDB row build.
+    The file path is resolved before being copied to ``path`` and
+    ``metadata.source_path``. Empty or whitespace-only files return the same
+    typed schema without loading a tokenizer.
 
     Parameters
     ----------
     path : str
-        Path to the .txt file.
-    max_tokens : int
-        Max tokens per chunk (default 512).
-    overlap_tokens : int
-        Overlap between consecutive chunks (default 0).
-    tokenizer_model_id : str, optional
-        HuggingFace model id for tokenizer (default: same as embedder).
-    encoding : str
-        File encoding (default utf-8).
-    tokenizer_cache_dir : str, optional
-        HuggingFace cache directory for tokenizer.
+        Path to the text file.
+    params : TextChunkParams, optional
+        File encoding, tokenizer, chunk-size, and overlap configuration.
 
     Returns
     -------
     pd.DataFrame
-        Columns: text, path, page_number, metadata.
+        Columns: ``text``, ``content``, ``path``, ``page_number``, and
+        ``metadata``.
     """
     chunk_params = params or TextChunkParams()
-    max_tokens = chunk_params.max_tokens
-    overlap_tokens = chunk_params.overlap_tokens
-    tokenizer_model_id = chunk_params.tokenizer_model_id
-    encoding = chunk_params.encoding
-    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
     path = str(Path(path).resolve())
-    raw = Path(path).read_text(encoding=encoding, errors="replace")
-    if not raw or not raw.strip():
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
-    model_id = tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
-    tokenizer = _get_tokenizer(model_id, cache_dir=tokenizer_cache_dir)
-    chunk_texts = split_text_by_tokens(
-        raw,
-        tokenizer=tokenizer,
-        max_tokens=max_tokens,
-        overlap_tokens=overlap_tokens,
-    )
+    raw = Path(path).read_text(encoding=chunk_params.encoding, errors="replace")
+    return text_to_chunks_df(raw, path, params=chunk_params)
 
+
+def text_to_chunks_df(
+    text: str,
+    source_id: str,
+    params: TextChunkParams | None = None,
+) -> pd.DataFrame:
+    """Split decoded text while preserving its logical source identifier.
+
+    Unlike the file and byte adapters, this helper deliberately does not
+    resolve ``source_id`` as a filesystem path. This permits identifiers such
+    as ``inline://00000000`` to survive through embedding and vector storage.
+
+    Parameters
+    ----------
+    text : str
+        Decoded source document. Empty or whitespace-only text produces an
+        empty result without loading the tokenizer.
+    source_id : str
+        Logical source identity copied to ``path`` and
+        ``metadata.source_path`` on every chunk.
+    params : TextChunkParams, optional
+        Tokenizer, chunk-size, and overlap configuration.
+
+    Returns
+    -------
+    pd.DataFrame
+        Chunk rows with ``text``, ``content``, ``path``, ``page_number``, and
+        ``metadata`` columns. Empty input returns the same typed empty schema.
+
+    Raises
+    ------
+    ValueError
+        If the configured maximum token count is not positive.
+    """
+    chunk_params = params or TextChunkParams()
+    if not text or not text.strip():
+        return empty_text_chunks_df()
+
+    model_id = chunk_params.tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
+    tokenizer = _get_tokenizer(model_id, cache_dir=chunk_params.tokenizer_cache_dir)
+    chunk_texts = split_text_by_tokens(
+        text,
+        tokenizer=tokenizer,
+        max_tokens=chunk_params.max_tokens,
+        overlap_tokens=chunk_params.overlap_tokens,
+    )
     if not chunk_texts:
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
+        return empty_text_chunks_df()
 
     rows: List[Dict[str, Any]] = []
     for i, chunk in enumerate(chunk_texts):
@@ -237,10 +264,10 @@ def txt_file_to_chunks_df(
             {
                 "text": chunk,
                 "content": chunk,
-                "path": path,
+                "path": source_id,
                 "page_number": i + 1,
                 "metadata": {
-                    "source_path": path,
+                    "source_path": source_id,
                     "chunk_index": i,
                     "content_metadata": {"type": "text"},
                     "content": chunk,
@@ -259,43 +286,12 @@ def txt_bytes_to_chunks_df(
     Decode bytes to text and return a DataFrame of chunks (same shape as txt_file_to_chunks_df).
 
     Used by batch TxtSplitActor when input is bytes + path from read_binary_files.
+    Service-mode inline text also crosses HTTP as bytes; its ``inline://``
+    identity is preserved and its transport encoding is always UTF-8.
     """
     chunk_params = params or TextChunkParams()
-    max_tokens = chunk_params.max_tokens
-    overlap_tokens = chunk_params.overlap_tokens
-    tokenizer_model_id = chunk_params.tokenizer_model_id
-    encoding = chunk_params.encoding
-    tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
-    path = str(Path(path).resolve())
+    is_inline = is_inline_text_source(path)
+    source_id = path if is_inline else str(Path(path).resolve())
+    encoding = "utf-8" if is_inline else chunk_params.encoding
     raw = content_bytes.decode(encoding, errors="replace")
-    model_id = tokenizer_model_id or DEFAULT_TOKENIZER_MODEL_ID
-    tokenizer = _get_tokenizer(model_id, cache_dir=tokenizer_cache_dir)
-    chunk_texts = split_text_by_tokens(
-        raw,
-        tokenizer=tokenizer,
-        max_tokens=max_tokens,
-        overlap_tokens=overlap_tokens,
-    )
-
-    if not chunk_texts:
-        return pd.DataFrame(
-            columns=["text", "path", "page_number", "metadata"],
-        ).astype({"page_number": "int64"})
-
-    rows: List[Dict[str, Any]] = []
-    for i, chunk in enumerate(chunk_texts):
-        rows.append(
-            {
-                "text": chunk,
-                "content": chunk,
-                "path": path,
-                "page_number": i + 1,
-                "metadata": {
-                    "source_path": path,
-                    "chunk_index": i,
-                    "content_metadata": {"type": "text"},
-                    "content": chunk,
-                },
-            }
-        )
-    return pd.DataFrame(rows)
+    return text_to_chunks_df(raw, source_id, params=chunk_params)
