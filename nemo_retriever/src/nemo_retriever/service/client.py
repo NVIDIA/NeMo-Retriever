@@ -245,6 +245,58 @@ class RetrieverServiceClient:
         except (ValidationError, ValueError) as exc:
             raise RuntimeError(f"Service query returned invalid response: {exc}") from exc
 
+    async def aanswer_stream(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        include_chunks: bool = False,
+        include_metadata: bool = False,
+        reasoning_enabled: bool | None = None,
+        reference: str | None = None,
+        judge: bool = False,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream ``POST /v1/answer/stream`` SSE events for one answer request."""
+        url = f"{self._base_url}/v1/answer/stream"
+        body: dict[str, Any] = {
+            "query": query,
+            "top_k": top_k,
+            "include_chunks": include_chunks,
+            "include_metadata": include_metadata,
+            "judge": judge,
+        }
+        if reasoning_enabled is not None:
+            body["reasoning_enabled"] = reasoning_enabled
+        if reference is not None:
+            body["reference"] = reference
+
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(None, connect=30.0),
+            headers=self._auth_headers,
+        ) as client:
+            async with client.stream("POST", url, json=body) as response:
+                if response.status_code >= 400:
+                    detail = (await response.aread()).decode(errors="replace")[:500]
+                    raise RuntimeError(f"Service answer stream failed: HTTP {response.status_code}: {detail}")
+
+                event_type = ""
+                data_buf = ""
+                async for line in response.aiter_lines():
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
+                    elif line.startswith("data:"):
+                        data_buf = line[5:].strip()
+                    elif line == "" and data_buf:
+                        try:
+                            payload = json.loads(data_buf)
+                        except json.JSONDecodeError:
+                            data_buf = ""
+                            event_type = ""
+                            continue
+                        yield {"event": event_type or "message", **payload}
+                        data_buf = ""
+                        event_type = ""
+
     # ------------------------------------------------------------------
     # Job lifecycle
     # ------------------------------------------------------------------
