@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.vdb.factory import VDB_CONNECTION_URI_KEYS
 
 
 # ----------------------------------------------------------------------
@@ -311,12 +312,15 @@ class SinkUrlAllowlist:
                 "Operator must populate sinks.vdb_uri_schemes in retriever-service.yaml.",
                 status_code=403,
             )
+        from nemo_retriever.common.vdb.factory import extract_vdb_connection_uri
+
         vdb_kwargs = params.get("vdb_kwargs") or {}
-        uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")
+        uri = extract_vdb_connection_uri(vdb_kwargs)
         if uri is None:
             raise PolicyError(
-                "vdb_upload_params.vdb_kwargs must include a remote 'lancedb_uri' "
-                "(local LanceDB paths are not reachable from worker pods).",
+                "vdb_upload_params.vdb_kwargs must include a remote connection URI "
+                f"(one of {list(VDB_CONNECTION_URI_KEYS)!r}). Local paths are not "
+                "reachable from worker pods.",
                 status_code=400,
             )
         if "*" in self.vdb_uri_schemes:
@@ -324,7 +328,7 @@ class SinkUrlAllowlist:
         scheme = _scheme_of(uri)
         if scheme not in self.vdb_uri_schemes:
             raise PolicyError(
-                f"vdb_upload_params.vdb_kwargs.lancedb_uri scheme {scheme!r} is not "
+                f"vdb_upload_params.vdb_kwargs connection URI scheme {scheme!r} is not "
                 f"in the allowed list {sorted(self.vdb_uri_schemes)!r}.",
                 status_code=403,
             )
@@ -391,6 +395,7 @@ class PipelineOverridesPolicy:
         extra_vdb_upload_keys: frozenset[str] = frozenset(),
         extra_vdb_kwargs_keys: frozenset[str] = frozenset(),
         extra_caption_keys: frozenset[str] = frozenset(),
+        allowed_vdb_ops: frozenset[str] | None = None,
         sinks: SinkUrlAllowlist | None = None,
         caption_enabled: bool = False,
     ) -> None:
@@ -420,9 +425,12 @@ class PipelineOverridesPolicy:
         self.allowed_vdb_upload_keys = _DEFAULT_ALLOWED_VDB_UPLOAD_KEYS | extra_vdb_upload_keys
         self.allowed_vdb_kwargs_keys = _DEFAULT_ALLOWED_VDB_KWARGS_KEYS | extra_vdb_kwargs_keys
         self.allowed_caption_keys = _DEFAULT_ALLOWED_CAPTION_KEYS | extra_caption_keys
+        self.allowed_vdb_ops = allowed_vdb_ops if allowed_vdb_ops is not None else frozenset({"lancedb"})
 
     def describe(self) -> dict[str, Any]:
         """Render the policy as a JSON-safe dict for the introspection endpoint."""
+        from nemo_retriever.common.vdb.factory import list_vdb_ops
+
         return {
             "mode": self.mode,
             "allowed_stages": sorted(self.allowed_stages),
@@ -436,6 +444,8 @@ class PipelineOverridesPolicy:
             "allowed_vdb_upload_keys": sorted(self.allowed_vdb_upload_keys),
             "allowed_vdb_kwargs_keys": sorted(self.allowed_vdb_kwargs_keys),
             "allowed_caption_keys": sorted(self.allowed_caption_keys),
+            "allowed_vdb_ops": sorted(self.allowed_vdb_ops),
+            "registered_vdb_ops": list_vdb_ops(),
             "caption_enabled": self.caption_enabled,
             "denied_key_substrings": sorted(_DENYLIST_KEY_SUBSTRINGS),
             "sinks": self.sinks.describe(),
@@ -669,9 +679,13 @@ def validate_pipeline_spec(
     # destination). Strip the rest of the trust-sensitive surface but
     # leave that one through; the sink allowlist polices it next.
     _scrub_trust_sensitive_except(spec.webhook_params, "webhook", allow={"endpoint_url"})
-    # Same idea for store_params (storage_uri) and vdb_upload_params (lancedb_uri).
+    # Same idea for store_params (storage_uri) and vdb_upload_params (connection URI).
     _scrub_trust_sensitive_except(spec.store_params, "store", allow={"storage_uri"})
-    _scrub_trust_sensitive_except(spec.vdb_upload_params, "vdb_upload", allow={"lancedb_uri"})
+    _scrub_trust_sensitive_except(
+        spec.vdb_upload_params,
+        "vdb_upload",
+        allow={"lancedb_uri", "uri", "host", "url"},
+    )
 
     # Reject the local-path variant of sidecar metadata BEFORE the
     # generic allowlist check so callers get a specific pointer at
@@ -683,6 +697,16 @@ def validate_pipeline_spec(
             "/v1/ingest/sidecar and pass the returned id as meta_dataframe_id.",
             status_code=400,
         )
+
+    if spec.vdb_upload_params is not None:
+        vdb_op = str(spec.vdb_upload_params.get("vdb_op") or "lancedb")
+        if vdb_op not in policy.allowed_vdb_ops:
+            raise PolicyError(
+                f"vdb_upload_params.vdb_op {vdb_op!r} is not in the operator allowlist "
+                f"{sorted(policy.allowed_vdb_ops)!r}. Add it to "
+                "pipeline_overrides.allowed_vdb_ops in retriever-service.yaml.",
+                status_code=403,
+            )
 
     _enforce_allowlist(spec.extract_params, policy.allowed_extract_keys, "extract", mode=policy.mode)
     _enforce_allowlist(spec.embed_params, policy.allowed_embed_keys, "embed", mode=policy.mode)
@@ -697,7 +721,7 @@ def validate_pipeline_spec(
             path="vdb_upload_params.vdb_kwargs",
             allowed=policy.allowed_vdb_kwargs_keys,
             mode=policy.mode,
-            trust_allow={"lancedb_uri", "uri"},
+            trust_allow={"lancedb_uri", "uri", "host", "url", "endpoint_url"},
         )
     if spec.store_params is not None and spec.store_params.get("storage_options") is not None:
         _enforce_storage_options_locked(spec.store_params, policy)

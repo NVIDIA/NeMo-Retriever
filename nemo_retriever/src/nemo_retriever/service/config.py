@@ -363,7 +363,7 @@ class SinksConfig(RichModel):
     vdb_uri_schemes: list[str] = Field(
         default_factory=list,
         description=(
-            "URI schemes the worker is allowed to write LanceDB tables to "
+            "URI schemes the worker is allowed to write vector DB data to "
             "via .vdb_upload(...). Empty disables per-request VDB overrides "
             "(the server's preconfigured vectordb pod still receives writes)."
         ),
@@ -396,6 +396,14 @@ class PipelineOverridesConfig(RichModel):
     extra_vdb_upload_keys: list[str] = Field(default_factory=list)
     extra_vdb_kwargs_keys: list[str] = Field(default_factory=list)
     extra_caption_keys: list[str] = Field(default_factory=list)
+    allowed_vdb_ops: list[str] = Field(
+        default_factory=lambda: ["lancedb"],
+        description=(
+            "vdb_op values clients may request via .vdb_upload(...) in service "
+            "run_mode. The worker must have the backend installed (built-in or "
+            "via the nemo_retriever.vdb_operators entry-point group)."
+        ),
+    )
     sinks: SinksConfig = Field(default_factory=SinksConfig)
 
     def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
@@ -422,6 +430,7 @@ class PipelineOverridesConfig(RichModel):
             extra_vdb_upload_keys=frozenset(self.extra_vdb_upload_keys),
             extra_vdb_kwargs_keys=frozenset(self.extra_vdb_kwargs_keys),
             extra_caption_keys=frozenset(self.extra_caption_keys),
+            allowed_vdb_ops=frozenset(self.allowed_vdb_ops),
             sinks=SinkUrlAllowlist(
                 storage_uri_schemes=list(self.sinks.storage_uri_schemes),
                 webhook_url_prefixes=list(self.sinks.webhook_url_prefixes),

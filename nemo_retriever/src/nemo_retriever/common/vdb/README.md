@@ -5,7 +5,7 @@ This package wraps **vector database backends** behind a small `VDB` interface (
 - **`IngestVdbOperator`** — writes embedded pipeline rows into a VDB (ingestion).
 - **`RetrieveVdbOperator`** — runs similarity search given **precomputed query vectors** (retrieval).
 
-The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`.
+The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`. Additional backends register via the **`nemo_retriever.vdb_operators`** setuptools entry-point group (see below).
 
 The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not expose a backend-agnostic VDB configuration surface.
 
@@ -130,7 +130,7 @@ hits_per_query = op.process(
 
 The high-level **`Retriever`** class (`retriever.py`) uses **`RetrieveVdbOperator`** internally. Pass a flat LanceDB **`vdb_kwargs`** dict with `uri`, `table_name`, filters, etc., or the explicit nested shape `{"vdb_op": "lancedb", "vdb_kwargs": {...}}`.
 
-For non-LanceDB backends, implement the `VDB` interface in a backend module, register the backend in `factory.py`, and construct `Retriever` through the SDK with `{"vdb_op": "<backend>", "vdb_kwargs": {...}}` or a concrete `{"vdb": backend_instance}`. The root `retriever query` CLI remains LanceDB-only.
+For non-LanceDB backends, implement the `VDB` interface in a backend module and register it via the **`nemo_retriever.vdb_operators`** entry-point group (see [Register a custom backend](#register-a-custom-backend)). Construct `Retriever` through the SDK with `{"vdb_op": "<backend>", "vdb_kwargs": {...}}` or a concrete `{"vdb": backend_instance}`. The root `retriever query` CLI remains LanceDB-only.
 
 It **lazy-builds** the operator:
 
@@ -264,3 +264,37 @@ flowchart LR
 - **Retrieve**: strings → vectors → **`RetrieveVdbOperator`** → **`LanceDB.retrieval`** → hit lists.
 
 For implementation details, see `operators.py`, `lancedb.py`, `records.py`, `factory.py`, and `retriever.py`.
+
+---
+
+## Register a custom backend
+
+1. Subclass **`VDB`** and implement `create_index`, `write_to_index`, `retrieval`, and `run`.
+2. Publish a setuptools entry point in your package:
+
+```toml
+[project.entry-points."nemo_retriever.vdb_operators"]
+opensearch = "my_company.vdb.opensearch:OpenSearchVDB"
+```
+
+3. Install the package on any worker pod that should run the backend.
+4. For **service run_mode**, the cluster operator must:
+   - add the op to `pipeline_overrides.allowed_vdb_ops` in `retriever-service.yaml`;
+   - enable `sinks.vdb_uri_schemes` for the connection URIs clients will use;
+   - widen `pipeline_overrides.extra_vdb_kwargs_keys` for backend-specific constructor knobs.
+
+Clients then select the backend from the fluent ingestor:
+
+```python
+create_ingestor(run_mode="service", base_url="http://retriever:7670")
+  .files([...])
+  .extract(...)
+  .embed(...)
+  .vdb_upload(
+      vdb_op="opensearch",
+      vdb_kwargs={"host": "https://opensearch.example.com", "index": "corpus"},
+  )
+  .ingest()
+```
+
+Use `list_vdb_ops()` (or `GET /v1/ingest/pipeline-config` → `allowed_overrides.registered_vdb_ops`) to see which backends are installed on a worker.
