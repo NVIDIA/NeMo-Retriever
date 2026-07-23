@@ -76,14 +76,21 @@ uses the product service APIs for ingest and query while preserving the same
   overrides.
 - `run-set`: expand a code-owned benchmark group using registry paths.
 - `run-files`: execute one or more runfiles with an optional machine-local
-  dataset path map. This is the portable session engine for the checked-in
-  suite and does not provision infrastructure.
+  dataset path map. Real children run sequentially in fresh processes. This is
+  the portable session engine for the checked-in suite and does not provision
+  infrastructure.
 - `run-helm`: optionally provision a Helm service around one portable
   `run-files` session, then collect failure logs and tear the service down.
+- `check-vidore-access`: validate authenticated access to the queries, qrels,
+  and corpus objects for all eight ViDoRe v3 datasets without downloading them.
 - `post-slack`: preview or post existing artifacts; it never executes a run.
 - `diff`: compare two run artifact directories by `results.json` summary metrics.
 
-Legacy graph-pipeline, sweep, recurring-job, runner, reporting-UI, and portal
+For the opinionated twelve-benchmark workstation workflow, including Git
+selection, dataset defaults, Slack, and daily recurrence, use the
+[Retriever nightly launcher](../../ops/retriever-nightly/README.md).
+
+Legacy sweep, recurring-job, runner, reporting-UI, and portal
 commands are not part of this CLI surface. Scheduling and deployment belong to
 separate infrastructure, not the benchmark harness.
 
@@ -157,9 +164,18 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
-The ViDoRe v3 library follows the same runfile-first contract. Each benchmark
-uses the VL embed model with `text_image` page embeddings and page-level BEIR
-scoring. Run one domain while validating a machine or configuration:
+The ViDoRe v3 library follows the same runfile-first contract. Before GPU work,
+export a Hugging Face read token and validate all remote evaluation partitions:
+
+```bash
+export HF_TOKEN=...
+uv run --project nemo_retriever retriever harness check-vidore-access
+```
+
+The check streams one byte from each queries, qrels, and corpus partition; it
+does not download the complete parquet objects. Each benchmark uses the VL
+embed model with `text_image` page embeddings and page-level BEIR scoring. Run
+one domain while validating a machine or configuration:
 
 ```bash
 uv run --project nemo_retriever retriever harness run-files \
@@ -193,6 +209,13 @@ The code-owned `vidore_v3_all` runset is also available when the registry's
 default dataset paths are mounted. Prefer the checked-in runfiles for nightly
 or other orchestrated sessions because they carry per-dataset integrity gates
 and accept a machine-local path map.
+
+Real `run-files` sessions execute children sequentially, each in a fresh spawned
+process. The process boundary releases Ray and materialized dataframe memory
+before the next benchmark while preserving one parent-owned
+`session_summary.json`. A code-owned six-hour child deadline prevents one hung
+benchmark from blocking the session forever. Dry-runs stay in the parent
+process because they do not materialize batch data.
 
 `run-files` owns the session layout and execution mode. Runfiles passed to this
 command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the
@@ -258,8 +281,39 @@ writes local artifacts and never contacts Slack. `post-slack` reads an existing
 session or run artifact, builds a summary, and sends that summary without
 rerunning ingestion or queries.
 
+Each new run records `gpu_sku` and `gpu_count` from the physical inventory
+reported by `nvidia-smi`. It separately records `workload_gpu_count`, the number
+of GPUs available to that process after an explicit `CUDA_VISIBLE_DEVICES`
+constraint. Slack labels these as physical inventory versus GPUs available to
+the workload, so a partition of a larger host is not mistaken for the whole
+machine.
+
 This separation lets you inspect a completed session before reporting it and
 reuse the same artifacts when report formatting changes.
+
+To show the current release beside each nightly result, provide one external
+release-reference snapshot:
+
+```json
+{
+  "baselines": [
+    {
+      "name": "RC26.05 Perflab",
+      "dataset": "bo767",
+      "environment": {"gpu_sku": "NVIDIA H100 80GB HBM3", "gpu_count": 8},
+      "metrics": {"ingest_secs": 4036.85, "pages_per_sec_ingest": 13.56}
+    }
+  ]
+}
+```
+
+Pass it with `post-slack --reference-file PATH`, or set
+`RETRIEVER_HARNESS_REFERENCE_FILE` for recurring nightlies. Slack shows the
+observed nightly and release values side by side with their GPU context. It
+does not assign a verdict or use the reference for pass/fail. Keep the snapshot
+outside the repository; advancing to the next RC only requires replacing its
+release label and result values. The harness never appends to this file or
+maintains reference history.
 
 ### Prerequisites
 
@@ -378,9 +432,8 @@ plans before launching an expensive run.
 
 ## Implementation Boundary
 
-The harness does not shell out to `retriever ingest`, `retriever query`, or
-`retriever pipeline run`. It calls the same Python workflow/planning APIs used
-by the CLI:
+The harness does not shell out to `retriever ingest` or `retriever query`. It
+calls the same Python workflow/planning modules used by the CLI:
 
 - ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
 - query: `resolve_query_plan(...)` and shared query workflow objects
@@ -427,8 +480,12 @@ results:
 {
   "session_type": "runfiles",
   "session_name": "library_beir",
+  "run_commit": "0123456789abcdef0123456789abcdef01234567",
+  "working_tree_dirty": false,
   "success": true,
   "exit_code": 0,
+  "dry_run": false,
+  "isolate_runs": true,
   "runs": [
     {
       "benchmark": "jp20_beir",

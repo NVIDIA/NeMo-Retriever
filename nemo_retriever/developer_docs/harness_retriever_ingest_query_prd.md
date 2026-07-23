@@ -1,15 +1,17 @@
 # Retriever Harness PRD: End-to-End Ingest/Query Benchmarks
 
-Last updated: 2026-07-01
+Last updated: 2026-07-21
 
 ## Implementation Status
 
-The current implementation includes the core runner described here plus two
+The current implementation includes the core runner described here plus three
 orchestration-neutral extensions: `run-files` applies a machine-local dataset
-path map to one or more checked-in runfiles, and `post-slack` renders or posts
-completed artifacts. It does not include recurring scheduling, deployment,
-locking, retry policy, or secret distribution. The harness README is the
-normative user and agent guide; this PRD records the design rationale.
+path map to one or more checked-in runfiles and gives each real child a fresh
+process; `check-vidore-access` validates remote ViDoRe evaluation data; and
+`post-slack` renders or posts completed artifacts. It does not include
+recurring scheduling, deployment, locking, retry policy, or secret
+distribution. The harness README is the normative user and agent guide; this
+PRD records the design rationale.
 
 ## Summary
 
@@ -23,10 +25,10 @@ engineers. The harness should run the new library direction end to end:
 4. Emit stable `summary_metrics` and machine-readable artifacts for humans,
    agents, and downstream reporting.
 
-This is a total revamp, not a compatibility wrapper around the current harness.
-Assume `retriever pipeline run` is deleted in the next release. The current
-`sweep`, `compare`, and legacy graph-pipeline command builder can be rewritten
-or removed if they get in the way.
+This is a total revamp, not a compatibility wrapper around the old harness. The
+retired pipeline CLI is not part of the design. The old `sweep`, `compare`, and
+graph-pipeline command builder can be rewritten or removed if they get in the
+way.
 
 The most important design choice: use a small typed benchmark registry in code,
 not a sprawling YAML configuration system. YAML/runfiles can exist as an escape
@@ -736,7 +738,11 @@ validation through the CLI and artifact contract.
 - `retriever harness run-set <name>` expands a code-owned ablation and writes
   `expanded_runs.json`.
 - `retriever harness run-files` runs one or more checked-in requests with an
-  optional machine-local dataset path map.
+  optional machine-local dataset path map. Real children execute sequentially
+  in fresh processes while retaining one terminal session summary; dry-runs
+  stay in the parent process.
+- `retriever harness check-vidore-access` validates authenticated access to the
+  ViDoRe queries, qrels, and corpus partitions without downloading them.
 - `retriever harness post-slack --preview` reads artifacts without requiring a
   webhook or contacting Slack.
 - Every run writes `status.json`, `events.jsonl`, and `results.json`.
@@ -745,8 +751,7 @@ validation through the CLI and artifact contract.
 - The harness has no user-facing `--engine` flag.
 - The harness does not duplicate Typer options from `retriever ingest` or
   `retriever query`.
-- No phase-one code path invokes `retriever pipeline run` or
-  `nemo_retriever.examples.graph_pipeline`.
+- No phase-one code path invokes a retired CLI adapter.
 - CLI text formatting is explicitly non-contractual; machine consumers use
   artifact files or `--json` read-only commands.
 - Validation combines focused contract tests with functional, artifact-driven

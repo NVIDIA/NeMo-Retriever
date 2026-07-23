@@ -4,6 +4,8 @@
 
 from contextlib import contextmanager
 import json
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,12 +25,42 @@ from nemo_retriever.harness.contracts import (
     HarnessRunError,
 )
 from nemo_retriever.harness.diff import diff_artifact_dirs
+from nemo_retriever.harness import environment as harness_environment
 from nemo_retriever.harness.environment import collect_environment
 from nemo_retriever.harness.execution import _concise_message, _run_result_payload, _write_failure_result, run_benchmark
 
 
 def _write_json(path, payload):
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_last_commit_preserves_the_full_git_sha(monkeypatch):
+    import nemo_retriever.harness.artifacts as artifacts
+
+    full_sha = "abcdef0123456789abcdef0123456789abcdef01"
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, stdout=f"{full_sha}\n", stderr=""),
+    )
+
+    assert artifacts.last_commit() == full_sha
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected"),
+    [(0, "", False), (0, " M local.py\n", True), (128, "", None)],
+)
+def test_working_tree_dirty_reports_git_state(monkeypatch, returncode, stdout, expected):
+    import nemo_retriever.harness.artifacts as artifacts
+
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], returncode, stdout=stdout, stderr=""),
+    )
+
+    assert artifacts.working_tree_dirty() is expected
 
 
 def test_artifact_manifest_uses_relative_paths_and_includes_lancedb(tmp_path):
@@ -370,3 +402,42 @@ def test_environment_records_relevant_runtime_flags_without_credentials(monkeypa
     assert payload["runtime_environment"]["HF_HUB_OFFLINE"] == "1"
     assert payload["runtime_environment"]["NEMO_RETRIEVER_HF_CACHE_DIR"] == "/models/huggingface"
     assert "SLACK_WEBHOOK_URL" not in payload["runtime_environment"]
+
+
+def test_environment_records_gpu_sku_count_and_driver(monkeypatch):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setattr(
+        harness_environment.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="NVIDIA H100 NVL, 580.159.03\nNVIDIA H100 NVL, 580.159.03\n",
+            stderr="",
+        ),
+    )
+
+    payload = collect_environment()
+
+    assert payload["gpu_sku"] == "NVIDIA H100 NVL"
+    assert payload["gpu_count"] == 2
+    assert payload["workload_gpu_count"] == 2
+    assert payload["cuda_driver"] == "580.159.03"
+
+
+def test_environment_distinguishes_physical_and_workload_gpu_counts(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,5")
+    monkeypatch.setattr(
+        harness_environment.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="".join("NVIDIA H100 80GB HBM3, 580.159.03\n" for _ in range(8)),
+            stderr="",
+        ),
+    )
+
+    payload = collect_environment()
+
+    assert payload["gpu_count"] == 8
+    assert payload["workload_gpu_count"] == 2
+    assert payload["runtime_environment"]["CUDA_VISIBLE_DEVICES"] == "2,5"

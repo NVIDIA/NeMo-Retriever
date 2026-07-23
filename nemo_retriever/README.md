@@ -97,7 +97,6 @@ The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and i
 
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
-> `retriever pipeline run` remains callable for compatibility while existing callers migrate, but it is hidden from root help.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
@@ -147,22 +146,22 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 
 ### Ingest a test corpus (CLI)
 
-`graph_pipeline` is the canonical ingestion script for building a multi-document
-LanceDB corpus. Point it at a **directory** of PDFs to produce a ready-to-query table.
+Point `retriever ingest` at a **directory** of PDFs to produce a ready-to-query
+LanceDB table.
 
 > **Corpus size matters.** LanceDB's default IVF index needs at least 16
 > chunks to train its 16 k-means partitions. Single-PDF ingestion will fail
-> at the indexing step; point `graph_pipeline` at a directory with enough
+> at the indexing step; point `retriever ingest` at a directory with enough
 > documents to clear that threshold. Replace `/your-example-dir` below with
 > the path to your own corpus.
 
 ```bash
-python -m nemo_retriever.examples.graph_pipeline \
-  /your-example-dir \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
+retriever ingest /your-example-dir \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever
 ```
 
-Chunks land at `./lancedb/nemo-retriever`, which matches the `vdb_kwargs`
+Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
 `[local]` extra installed (see setup), defaults point at local-GPU extraction
 and embedding. Use enough documents in the directory to clear the LanceDB IVF
@@ -174,9 +173,9 @@ through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 ```bash
 export NVIDIA_API_KEY=nvapi-...
 
-python -m nemo_retriever.examples.graph_pipeline \
-  /your-example-dir \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
+retriever ingest /your-example-dir \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
@@ -228,7 +227,7 @@ Since the ingestion job automatically populated a lancedb table with all these c
 from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
-  # values used by the graph_pipeline example above
+  # values used by the retriever ingest example above
   vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
   top_k=5,
   rerank=False
@@ -315,31 +314,29 @@ Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
 
-The agent LLM supports hosted NVIDIA inference or a local OpenAI-compatible
-chat-completions endpoint. Pass `--agentic-invoke-url` for a local vLLM or
-self-hosted NIM server; when omitted, the agent uses the built-in NVIDIA hosted
-endpoint. Embedding follows the same local/remote split as dense retrieval:
-CPU-only hosts default to hosted endpoints; GPU-capable hosts use local GPU
-embedding unless you pass `--embed-invoke-url`, for example
-`--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`.
+By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
+(`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
+`[local]` extra. GPU placement follows process-level vLLM behavior, so set
+`CUDA_VISIBLE_DEVICES` before starting the command. Embedding follows the same
+local/remote split as dense retrieval; pass `--embed-invoke-url` to use a remote
+embedding endpoint.
 
-**Hosted inference.** For [build.nvidia.com](https://build.nvidia.com/) hosted
-inference, set `NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor
-and agent LLM use the hosted NVIDIA endpoints by default:
+**Local in-process vLLM agent LLM.** Omit `--agentic-invoke-url` to load the
+supported local agent LLM directly in the Python process. `nemotron-8b` is the
+default; `super-49b` is also supported when the process has enough visible GPUs.
 
 ```bash
-export NVIDIA_API_KEY=nvapi-...
-
-retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
+CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-**Local agent LLM.** Point `--agentic-invoke-url` at your OpenAI-compatible
-chat-completions server (for example vLLM or a self-hosted NIM):
+**OpenAI-compatible agent endpoint.** Pass `--agentic-invoke-url` when you want a
+custom model or a separately hosted chat-completions server, such as vLLM server
+mode or a self-hosted NIM. When an invoke URL is provided, `--agentic-llm-model`
+is required and is sent as the remote model ID.
 
 ```bash
 retriever query "What is RAG?" \
@@ -351,18 +348,14 @@ retriever query "What is RAG?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-Native local Hugging Face LLM inference for the agent is in active development;
-this README will be updated when that path ships.
-
 Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
 text-enriched hits.
 
 For a quick smoke test, reduce agent work:
 
 ```bash
-retriever query "What is RAG?" \
+CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
@@ -371,9 +364,9 @@ retriever query "What is RAG?" \
   --agentic-backend-top-k 1
 ```
 
-You can run the same flow from Python. Set `NVIDIA_API_KEY` for hosted inference,
-or pass `invoke_url` on `QueryAgenticOptions` for a local chat-completions
-endpoint.
+You can run the same flow from Python. Omit `invoke_url` for the default local
+in-process vLLM backend, or pass `invoke_url` on `QueryAgenticOptions` for a
+separate OpenAI-compatible chat-completions endpoint.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
@@ -385,8 +378,8 @@ from nemo_retriever.query.options import (
     QueryStorageOptions,
 )
 
-# Hosted: set NVIDIA_API_KEY=nvapi-... in the environment.
-# Local agent LLM: pass invoke_url="http://localhost:9000/v1/chat/completions".
+# Local in-process vLLM: set CUDA_VISIBLE_DEVICES before starting Python.
+# Remote agent LLM: pass invoke_url="http://localhost:9000/v1/chat/completions".
 results = agentic_query_documents(
     QueryRequest(
         query="What is RAG?",
@@ -400,7 +393,10 @@ results = agentic_query_documents(
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
-            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            llm_model="nemotron-8b",
+            local_llm_backend="vllm",
+            local_gpu_memory_utilization=0.8,
+            local_tensor_parallel_size=1,
         ),
     )
 )
@@ -454,8 +450,8 @@ print(len(result.chunks), "chunks from", {m.get("source") for m in result.metada
 print(f"{result.latency_s:.2f}s on {result.model}")
 ```
 
-Local-GPU shortcut: if you ingested with default `graph_pipeline` flags
-(`--embed` omitted, `[local]` extra installed), drop `embed_kwargs` to reuse
+Local-GPU shortcut: if you ingested with default `retriever ingest` flags
+(`[local]` extra installed), drop `embed_kwargs` to reuse
 the bundled `VL_EMBED_MODEL`.
 
 Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):

@@ -4,17 +4,20 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
+    EXIT_INTERNAL_ERROR,
     EXIT_MISSING_INPUT,
     FailurePayload,
     HarnessRunError,
     RunOutcome,
 )
-from nemo_retriever.harness.runsets import run_runfiles, run_runset
+from nemo_retriever.harness.runsets import _run_prepared_benchmark_isolated, run_runfiles, run_runset
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -74,6 +77,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         return _successful_outcome(prepared.benchmark, kwargs["output_dir"])
 
     monkeypatch.setattr("nemo_retriever.harness.runsets.run_prepared_benchmark", fake_run_benchmark)
+    monkeypatch.setattr("nemo_retriever.harness.runsets.working_tree_dirty", lambda: True)
 
     outcome = run_runfiles(
         [runfile],
@@ -82,6 +86,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         dataset_paths_file=dataset_paths,
         overrides=("query.top_k=20",),
         requirements=("pages==1940",),
+        dry_run=True,
     )
 
     prepared, kwargs = calls[0]
@@ -96,12 +101,14 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         "query.top_k=20",
     )
     assert outcome.results["session_name"] == "library_beir"
+    assert outcome.results["working_tree_dirty"] is True
     assert outcome.results["runs"][0]["dataset"] == "jp20"
     assert outcome.results["runs"][0]["artifact_dir"] == "001_jp20_beir"
     assert outcome.results["runs"][0]["results_path"] == "001_jp20_beir/results.json"
     assert "results" not in outcome.results
 
     expanded = json.loads((outcome.artifact_dir / "expanded_runs.json").read_text(encoding="utf-8"))
+    assert expanded["working_tree_dirty"] is True
     assert expanded["runfiles"][0]["dataset_paths"] == {
         "path": str(documents),
         "query_file": str(query_file),
@@ -190,6 +197,285 @@ def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypa
     assert outcome.exit_code == 10
     assert outcome.results["all_passed"] is False
     assert [run["exit_code"] for run in outcome.results["runs"]] == [10, 0]
+
+
+def test_real_run_files_automatically_isolate_each_child_process(monkeypatch, tmp_path):
+    from nemo_retriever.harness.execution import PreparedBenchmark
+
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+
+    isolated_calls = []
+
+    def fake_preflight(benchmark, **kwargs):
+        return PreparedBenchmark(
+            benchmark=benchmark,
+            mode=kwargs["mode"],
+            overrides=tuple(kwargs["overrides"]),
+            requirements=tuple(kwargs["requirements"]),
+            dry_run=kwargs["dry_run"],
+            resolved={"dataset": {"name": benchmark}, "ingest": {}},
+            dataset_path=tmp_path,
+        )
+
+    def fake_isolated_run(run, *, output_dir, run_id):
+        isolated_calls.append((run.prepared.benchmark, run_id))
+        return _successful_outcome(run.prepared.benchmark, output_dir)
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.preflight_benchmark", fake_preflight)
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets._run_prepared_benchmark_isolated",
+        fake_isolated_run,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.run_prepared_benchmark",
+        lambda *args, **kwargs: pytest.fail("in-process runner should not be used"),
+    )
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        session_name="isolated",
+        overrides=(f'dataset.path="{tmp_path}"',),
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.results["isolate_runs"] is True
+    assert isolated_calls == [
+        ("jp20_beir", "isolated_001_jp20_beir"),
+        ("bo767_beir", "isolated_002_bo767_beir"),
+    ]
+    assert len(outcome.results["runs"]) == 2
+
+
+def test_run_files_isolated_timeout_records_failure_and_continues(monkeypatch, tmp_path):
+    from nemo_retriever.harness.execution import PreparedBenchmark
+
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+
+    isolated_calls = []
+
+    def fake_preflight(benchmark, **kwargs):
+        return PreparedBenchmark(
+            benchmark=benchmark,
+            mode=kwargs["mode"],
+            overrides=tuple(kwargs["overrides"]),
+            requirements=tuple(kwargs["requirements"]),
+            dry_run=kwargs["dry_run"],
+            resolved={"dataset": {"name": benchmark}, "ingest": {}},
+            dataset_path=tmp_path,
+        )
+
+    def fake_isolated_run(run, *, output_dir, run_id):
+        isolated_calls.append(run.prepared.benchmark)
+        if run.prepared.benchmark == "jp20_beir":
+            raise TimeoutError("isolated benchmark exceeded the child timeout")
+        return _successful_outcome(run.prepared.benchmark, output_dir)
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.preflight_benchmark", fake_preflight)
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets._run_prepared_benchmark_isolated",
+        fake_isolated_run,
+    )
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+    )
+
+    assert outcome.exit_code == EXIT_INTERNAL_ERROR
+    assert isolated_calls == ["jp20_beir", "bo767_beir"]
+    assert [run["success"] for run in outcome.results["runs"]] == [False, True]
+    assert "TimeoutError" in outcome.results["runs"][0]["failure_reason"]
+
+
+def _fake_exited_isolated_child(monkeypatch, *, message, exitcode):
+    receive_connection = Mock()
+    receive_connection.poll.return_value = True
+    if message is None:
+        receive_connection.recv.side_effect = EOFError
+    else:
+        receive_connection.recv.return_value = message
+    send_connection = Mock()
+    process = Mock(exitcode=exitcode)
+    process.is_alive.return_value = False
+    context = Mock()
+    context.Pipe.return_value = receive_connection, send_connection
+    context.Process.return_value = process
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.multiprocessing.get_context",
+        lambda method: context,
+    )
+    return process, receive_connection, send_connection
+
+
+def test_isolated_child_returns_valid_outcome_after_nonzero_process_exit(monkeypatch, tmp_path):
+    expected = _successful_outcome("jp20_beir", str(tmp_path / "jp20"))
+    process, receive_connection, send_connection = _fake_exited_isolated_child(
+        monkeypatch,
+        message=("outcome", expected),
+        exitcode=1,
+    )
+
+    run = SimpleNamespace(name="jp20_beir", artifact_name="jp20_beir")
+    outcome = _run_prepared_benchmark_isolated(
+        run,
+        output_dir=str(tmp_path),
+        run_id="jp20_beir",
+    )
+
+    assert outcome is expected
+    process.start.assert_called_once_with()
+    process.join.assert_called_once_with(timeout=30)
+    receive_connection.close.assert_called_once_with()
+    send_connection.close.assert_called_once_with()
+
+
+def test_isolated_child_reports_nonzero_process_exit_without_outcome(monkeypatch, tmp_path):
+    process, receive_connection, send_connection = _fake_exited_isolated_child(
+        monkeypatch,
+        message=None,
+        exitcode=1,
+    )
+
+    run = SimpleNamespace(name="jp20_beir", artifact_name="jp20_beir")
+    with pytest.raises(RuntimeError, match="isolated benchmark process exited with code 1"):
+        _run_prepared_benchmark_isolated(
+            run,
+            output_dir=str(tmp_path),
+            run_id="jp20_beir",
+        )
+
+    process.start.assert_called_once_with()
+    process.join.assert_called_once_with(timeout=30)
+    receive_connection.close.assert_called_once_with()
+    send_connection.close.assert_called_once_with()
+
+
+def test_isolated_child_timeout_uses_bounded_terminate_and_kill(monkeypatch):
+    class FakeConnection:
+        def __init__(self, *, readable):
+            self.readable = readable
+            self.closed = False
+            self.poll_timeout = None
+
+        def poll(self, timeout):
+            self.poll_timeout = timeout
+            return self.readable
+
+        def recv(self):
+            raise AssertionError("recv should not be called when poll times out")
+
+        def close(self):
+            self.closed = True
+
+    class FakeProcess:
+        def __init__(self):
+            self.alive = True
+            self.exitcode = None
+            self.started = False
+            self.terminated = False
+            self.killed = False
+            self.join_timeouts = []
+
+        def start(self):
+            self.started = True
+
+        def is_alive(self):
+            return self.alive
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+            self.alive = False
+            self.exitcode = -9
+
+        def join(self, timeout):
+            self.join_timeouts.append(timeout)
+
+    receive_connection = FakeConnection(readable=False)
+    send_connection = FakeConnection(readable=False)
+    process = FakeProcess()
+
+    class FakeContext:
+        @staticmethod
+        def Pipe(*, duplex):
+            assert duplex is False
+            return receive_connection, send_connection
+
+        @staticmethod
+        def Process(**_kwargs):
+            return process
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.multiprocessing.get_context",
+        lambda method: FakeContext(),
+    )
+    monkeypatch.setattr("nemo_retriever.harness.runsets._ISOLATED_CHILD_TIMEOUT_SECONDS", 1)
+
+    run = SimpleNamespace(name="hung", artifact_name="hung")
+    with pytest.raises(TimeoutError, match="exceeded the 1-second child timeout"):
+        _run_prepared_benchmark_isolated(
+            run,
+            output_dir="/tmp/unused",
+            run_id="hung",
+        )
+
+    assert process.started is True
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.join_timeouts == [30, 30]
+    assert receive_connection.poll_timeout == 1
+    assert receive_connection.closed is True
+    assert send_connection.closed is True
+
+
+def test_run_files_dry_run_stays_in_process_and_writes_terminal_summary(tmp_path):
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    (documents / "sample.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    query_file = tmp_path / "queries.csv"
+    query_file.write_text("query_id,query\n1,test\n", encoding="utf-8")
+    dataset_paths = tmp_path / "dataset_paths.yaml"
+    dataset_paths.write_text(
+        "\n".join(
+            (
+                "schema_version: 1",
+                "datasets:",
+                "  jp20:",
+                f"    path: {documents}",
+                f"    query_file: {query_file}",
+            )
+        ),
+        encoding="utf-8",
+    )
+    runfile = tmp_path / "jp20_beir.json"
+    _write_json(runfile, {"schema_version": 1, "name": "jp20_beir", "benchmark": "jp20_beir"})
+
+    outcome = run_runfiles(
+        [runfile],
+        output_dir=str(tmp_path / "session"),
+        dataset_paths_file=dataset_paths,
+        mode="batch",
+        dry_run=True,
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.results["isolate_runs"] is False
+    assert outcome.results["runs"][0]["success"] is True
+    assert (outcome.artifact_dir / "001_jp20_beir" / "results.json").exists()
+    assert outcome.results_path == outcome.artifact_dir / "session_summary.json"
 
 
 def test_run_files_removes_stale_summary_before_child_execution(monkeypatch, tmp_path):

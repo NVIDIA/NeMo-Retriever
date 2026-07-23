@@ -14,10 +14,10 @@ Start with these guides and notebooks:
 - [Workflow: Ingest documents](https://docs.nvidia.com/nemo/retriever/latest/extraction/workflow-document-ingestion/)
 - [Adding Custom Metadata for Filtered Search/Retrieval](nemo_retriever_retriever_query_metadata_filter.ipynb) — also summarized on [Vector databases — Metadata and filtering](https://docs.nvidia.com/nemo/retriever/latest/extraction/vdbs/#metadata-and-filtering)
 
-For advanced scenarios, use these notebooks:
+For advanced scenarios, use these guides and notebooks:
 
 - [Build a Custom Vector Database Operator](building_vdb_operator.ipynb)
 - [Try Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
-- [Evaluate bo767 retrieval recall accuracy with NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.ipynb)
+- [Evaluate BO767 retrieval with the Retriever harness](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.md)
 - [Multimodal RAG with LangChain](langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](llama_index_multimodal_rag.ipynb)

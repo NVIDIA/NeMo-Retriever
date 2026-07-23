@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -15,7 +16,7 @@ from nemo_retriever.harness.benchmark_registry import (
     list_benchmarks,
     list_runsets,
 )
-from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload
+from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_MISSING_INPUT, FailurePayload
 from nemo_retriever.harness.revamp_runner import (
     HarnessRunError,
     run_benchmark,
@@ -23,6 +24,7 @@ from nemo_retriever.harness.revamp_runner import (
 )
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
+from nemo_retriever.harness.release_reference import load_release_references
 from nemo_retriever.harness.runfile import load_runfile
 from nemo_retriever.harness.runsets import run_runfiles, run_runset
 from nemo_retriever.harness.slack import (
@@ -32,6 +34,7 @@ from nemo_retriever.harness.slack import (
     post_slack_payload,
     resolve_slack_webhook_url,
 )
+from nemo_retriever.harness.vidore_access import VidoreAccessError, check_vidore_access
 
 app = typer.Typer(
     help=(
@@ -43,6 +46,42 @@ app = typer.Typer(
 
 def _echo_json(payload: object) -> None:
     typer.echo(json.dumps(payload, indent=2, sort_keys=False))
+
+
+@app.command("check-vidore-access")
+def check_vidore_access_command(
+    dataset_names: Annotated[
+        list[str] | None,
+        typer.Option("--dataset", help="Check one ViDoRe dataset name. Repeat to check multiple datasets."),
+    ] = None,
+    timeout_seconds: Annotated[
+        float,
+        typer.Option("--timeout-seconds", min=1.0, help="HTTP timeout for each streamed range request."),
+    ] = 20.0,
+    require_token: Annotated[
+        bool,
+        typer.Option("--require-token/--allow-anonymous", help="Require HF_TOKEN before checking public data."),
+    ] = True,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Verify ViDoRe queries, qrels, and corpus objects without downloading them."""
+
+    try:
+        results = check_vidore_access(
+            dataset_names=dataset_names,
+            timeout_seconds=timeout_seconds,
+            require_token=require_token,
+        )
+    except VidoreAccessError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=EXIT_MISSING_INPUT) from exc
+
+    payload = {"success": True, "datasets": [result.to_dict() for result in results]}
+    if json_output:
+        _echo_json(payload)
+        return
+    for result in results:
+        typer.echo(f"{result.dataset}: access ok ({', '.join(result.checked_partitions)})")
 
 
 @app.command("list")
@@ -339,6 +378,13 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = False,
+    reference_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--reference-file",
+            help="Current release reference snapshot to show beside observed results.",
+        ),
+    ] = None,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -353,7 +399,11 @@ def post_slack_command(
             "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": post_artifact_paths,
         }
-        payload = build_slack_payload(report, slack_config)
+        configured_reference = reference_file
+        if configured_reference is None and (reference_path := os.environ.get("RETRIEVER_HARNESS_REFERENCE_FILE")):
+            configured_reference = Path(reference_path)
+        release_references = load_release_references(configured_reference) if configured_reference else None
+        payload = build_slack_payload(report, slack_config, release_references=release_references)
         if not preview:
             post_slack_payload(payload, resolve_slack_webhook_url())
     except Exception as exc:
