@@ -52,8 +52,29 @@ Fluent methods that *do* take effect by writing to the spec:
 * ``.vdb_upload(...)`` — vector-DB sink, including sidecar metadata
   via the dedicated ``POST /v1/ingest/sidecar`` upload endpoint
 * ``.caption(...)`` — remote VLM captioning when the operator has wired
-  ``nim_endpoints.caption_invoke_url``; trust-sensitive fields like
-  endpoint_url / api_key / model_name stay server-owned
+  ``nim_endpoints.caption_invoke_url``. Behavioural knobs (prompt,
+  system_prompt, batch_size, …) are honored; passing ``endpoint_url`` /
+  ``model_name`` retargets the caption/VLM deployment for this job (see
+  endpoint overrides below).
+
+Per-request model-endpoint overrides
+------------------------------------
+Endpoint URLs, model names, and API keys are normally server-owned. A
+client can, however, point a stage at a *different* model deployment than
+the cluster default by passing the relevant endpoint fields directly to
+the stage method that owns that model:
+
+* ``.embed(embed_invoke_url=..., embed_model_name=...)`` — retarget the
+  embedding NIM.
+* ``.caption(endpoint_url=..., model_name=...)`` — retarget the caption
+  (VLM) NIM (and unlock the caption stage even when the cluster has no
+  VLM configured).
+
+These are collected into a dedicated, audited ``PipelineSpec.endpoint_overrides``
+field on the wire so the ordinary shape-params denylist stays intact. They
+are honored only when the operator opted in via
+``pipeline_overrides.endpoint_overrides`` in ``retriever-service.yaml``;
+otherwise the server responds with HTTP 403.
 * ``.save_to_disk(output_directory="...")`` — client-side persistence:
   fetches ``result_data`` from ``/v1/ingest/status/{id}`` for each
   completed document and writes JSON or gzipped JSON locally
@@ -446,6 +467,22 @@ class ServiceIngestor(ingestor):
         if name not in order:
             order.append(name)
 
+    def _record_endpoint_overrides(self, **fields: Any) -> None:
+        """Merge non-``None`` model-endpoint override fields onto the spec.
+
+        Stage methods (``.embed(...)`` / ``.caption(...)``) call this to route
+        the endpoint URL / model name they were handed into the dedicated,
+        audited ``endpoint_overrides`` channel — keeping those trust-sensitive
+        values out of the ordinary ``*_params`` blocks (which the server's
+        denylist rejects).
+        """
+        overrides = {k: v for k, v in fields.items() if v is not None}
+        if not overrides:
+            return
+        existing = dict(self._pipeline_spec.get("endpoint_overrides") or {})
+        existing.update(overrides)
+        self._pipeline_spec["endpoint_overrides"] = existing
+
     def _fetch_document_result_data(self, document_id: str) -> list[dict[str, Any]]:
         """Fetch ``result_data`` for *document_id* from the status endpoint.
 
@@ -539,6 +576,7 @@ class ServiceIngestor(ingestor):
                     "webhook_params",
                     "split_config",
                     "pdf_split",
+                    "endpoint_overrides",
                 )
             )
             and spec.get("result_schema", "legacy") == "legacy"
@@ -617,20 +655,41 @@ class ServiceIngestor(ingestor):
     def embed(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record an embed stage with optional :class:`EmbedParams` overrides.
 
-        Embedding endpoint URL and API key are server-owned and will be
-        rejected if set here.
+        Behavioural / shape knobs (batch size, input type, dimensions, …) are
+        bounded by the operator's allow-list. Passing an embedding endpoint
+        directly — ``embed_invoke_url`` (or ``embedding_endpoint``),
+        ``embed_model_name`` (or ``model_name``),
+        ``embed_model_provider_prefix`` — retargets the embedding NIM for this
+        job. Those fields are routed to the audited ``endpoint_overrides``
+        channel and honored only when the operator enabled
+        ``pipeline_overrides.endpoint_overrides.embed``.
         """
         if params is not None or kwargs:
             from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EMBED_KEYS
 
             merged = _merge_params(params, kwargs)
-            _wire_client_stage_params(
-                self._pipeline_spec,
-                "embed_params",
-                merged,
-                method="embed",
-                allowed=_DEFAULT_ALLOWED_EMBED_KEYS,
+            params_dict = _params_to_dict(merged)
+
+            # Peel off model-endpoint fields and route them to the endpoint
+            # override channel rather than the (denylisted) embed_params block.
+            embed_url = params_dict.pop("embed_invoke_url", None) or params_dict.pop("embedding_endpoint", None)
+            embed_model = params_dict.pop("embed_model_name", None) or params_dict.pop("model_name", None)
+            embed_prefix = params_dict.pop("embed_model_provider_prefix", None)
+            api_key = params_dict.pop("api_key", None)
+            has_embed_override = bool(embed_url or embed_model or embed_prefix)
+            self._record_endpoint_overrides(
+                embed_invoke_url=embed_url,
+                embed_model_name=embed_model,
+                embed_model_provider_prefix=embed_prefix,
+                embed_api_key=api_key if has_embed_override else None,
             )
+
+            # Remaining shape params still pass through the denylist + allowlist.
+            params_dict = _filter_policy_allowed(
+                _strip_server_owned(params_dict, "embed"),
+                _DEFAULT_ALLOWED_EMBED_KEYS,
+            )
+            _set_stage_params(self._pipeline_spec, "embed_params", params_dict)
         self._record_stage("embed")
         return self
 
@@ -953,23 +1012,28 @@ class ServiceIngestor(ingestor):
         return self
 
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        """Record a caption stage backed by the server's remote VLM endpoint.
+        """Record a caption stage backed by a remote VLM endpoint.
 
         Behavioural knobs — ``prompt``, ``system_prompt``, ``batch_size``,
         ``context_text_max_chars``, ``caption_infographics``, and generic
         sampling params (``temperature``, ``max_tokens``, ``top_p``,
-        ``top_k``) — are honored. Trust-sensitive fields
-        (``endpoint_url``, ``api_key``, ``model_name``) and
-        local-execution fields (``device``, ``hf_cache_dir``,
-        ``tensor_parallel_size``, ``gpu_memory_utilization``) are
-        rejected on the client; the operator-configured remote endpoint
-        is the only path to a caption NIM.
+        ``top_k``) — are honored.
 
-        We use Pydantic's ``model_fields_set`` to distinguish fields
-        the caller *explicitly* set from fields carrying their
-        ``CaptionParams`` default — only the former are rejected.
+        Passing ``endpoint_url`` and/or ``model_name`` retargets the caption
+        (VLM) deployment for this job: those fields (plus an accompanying
+        ``api_key``) are routed to the audited ``endpoint_overrides`` channel
+        and honored only when the operator enabled
+        ``pipeline_overrides.endpoint_overrides.caption``. Supplying
+        ``endpoint_url`` also unlocks the caption stage even when the cluster
+        has no VLM configured. Without an override, the stage runs against the
+        operator-configured caption endpoint.
+
+        Local-execution fields (``device``, ``hf_cache_dir``,
+        ``tensor_parallel_size``, ``gpu_memory_utilization``) have no effect
+        against a remote endpoint and are rejected. We use Pydantic's
+        ``model_fields_set`` to distinguish fields the caller *explicitly*
+        set from fields carrying their ``CaptionParams`` default.
         """
-        trust_sensitive = {"endpoint_url", "api_key", "model_name"}
         local_only = {
             "device",
             "hf_cache_dir",
@@ -977,47 +1041,40 @@ class ServiceIngestor(ingestor):
             "gpu_memory_utilization",
         }
 
-        # Identify which keys the caller actually meant to pass. The
-        # signal for kwargs is unambiguous (any key in **kwargs is by
-        # definition caller-provided); for a passed-in CaptionParams
-        # instance we compare against class defaults, with one wrinkle:
-        # ``api_key`` is auto-populated by the model validator from the
-        # NVIDIA_API_KEY env var, so we cannot distinguish "caller set
-        # this" from "validator set this" — we conservatively strip the
-        # value either way and only raise when the caller used kwargs.
         explicit_keys: set[str] = set(kwargs.keys())
         if isinstance(params, CaptionParams):
             class_defaults = {name: field.default for name, field in CaptionParams.model_fields.items()}
-            for k in trust_sensitive | local_only:
-                if k == "api_key":
-                    continue  # see comment above; the env-var auto-fill is ambiguous.
+            for k in local_only:
                 val = getattr(params, k, None)
                 if val is not None and val != class_defaults.get(k):
                     explicit_keys.add(k)
 
-        bad_trust = sorted(explicit_keys & trust_sensitive)
-        if bad_trust:
-            raise ValueError(
-                f"ServiceIngestor.caption(): keys {bad_trust!r} are server-owned in "
-                "run_mode='service'. The operator configures the caption "
-                "endpoint via retriever-service.yaml (nim_endpoints.caption_invoke_url)."
-            )
         bad_local = sorted(explicit_keys & local_only)
         if bad_local:
             raise ValueError(
                 f"ServiceIngestor.caption(): keys {bad_local!r} configure local "
                 "in-process GPU execution and have no effect against a remote "
-                "caption endpoint. Remove them and rely on the server-owned "
-                "model / endpoint."
+                "caption endpoint. Remove them and rely on the caption endpoint."
             )
 
         merged = _merge_params(params, kwargs) if (params or kwargs) else CaptionParams()
         params_dict = _params_to_dict(merged)
-        # Drop both classes of keys before the spec leaves the client —
-        # the server's allowlist rejects them anyway, but failing fast
-        # at the boundary keeps the network message small and the policy
-        # error rare in practice.
-        scrubbed = {k: v for k, v in params_dict.items() if k not in trust_sensitive | local_only}
+
+        # Peel off model-endpoint fields and route them to the endpoint
+        # override channel; behavioural knobs stay in caption_params.
+        caption_url = params_dict.pop("endpoint_url", None)
+        caption_model = params_dict.pop("model_name", None)
+        api_key = params_dict.pop("api_key", None)
+        has_caption_override = bool(caption_url or caption_model)
+        self._record_endpoint_overrides(
+            caption_invoke_url=caption_url,
+            caption_model_name=caption_model,
+            caption_api_key=api_key if has_caption_override else None,
+        )
+
+        # Drop local-execution keys before the spec leaves the client — the
+        # server's allowlist rejects them anyway.
+        scrubbed = {k: v for k, v in params_dict.items() if k not in local_only}
         self._pipeline_spec["caption_params"] = scrubbed
         self._record_stage("caption")
         return self

@@ -349,6 +349,97 @@ def _scheme_of(uri: str) -> str:
     return uri.split("://", 1)[0].lower() + "://"
 
 
+class EndpointOverridePolicy:
+    """Operator opt-in for per-request model-endpoint overrides.
+
+    Mirrors ``pipeline_overrides.endpoint_overrides`` in
+    ``retriever-service.yaml``. Every stage flag defaults to ``False`` so
+    the secure baseline (endpoints are server-owned) is preserved unless the
+    operator explicitly opts in. ``allowed_url_prefixes`` optionally pins
+    client-supplied URLs to trusted destinations; an empty list imposes no
+    URL restriction once the stage flag is enabled.
+    """
+
+    def __init__(
+        self,
+        *,
+        embed: bool = False,
+        caption: bool = False,
+        llm: bool = False,
+        rerank: bool = False,
+        allowed_url_prefixes: list[str] | None = None,
+    ) -> None:
+        self.embed = embed
+        self.caption = caption
+        self.llm = llm
+        self.rerank = rerank
+        self.allowed_url_prefixes = list(allowed_url_prefixes or [])
+
+    def _check_url_allowed(self, url: str | None, *, field: str) -> None:
+        if not url:
+            return
+        if not self.allowed_url_prefixes:
+            return
+        if not any(url.startswith(prefix) for prefix in self.allowed_url_prefixes):
+            raise PolicyError(
+                f"endpoint_overrides.{field} {url!r} does not match any allowed "
+                f"prefix in {self.allowed_url_prefixes!r}.",
+                status_code=403,
+            )
+
+    def check_embed(self, *, url: str | None) -> None:
+        if not self.embed:
+            raise PolicyError(
+                "endpoint_overrides: per-request embedding endpoint overrides are "
+                "disabled on this service. Ask the operator to set "
+                "pipeline_overrides.endpoint_overrides.embed: true in retriever-service.yaml.",
+                status_code=403,
+            )
+        self._check_url_allowed(url, field="embed_invoke_url")
+
+    def check_caption(self, *, url: str | None) -> None:
+        if not self.caption:
+            raise PolicyError(
+                "endpoint_overrides: per-request caption (VLM) endpoint overrides are "
+                "disabled on this service. Ask the operator to set "
+                "pipeline_overrides.endpoint_overrides.caption: true in retriever-service.yaml.",
+                status_code=403,
+            )
+        self._check_url_allowed(url, field="caption_invoke_url")
+
+    def check_llm(self, *, url: str | None) -> None:
+        if not self.llm:
+            raise PolicyError(
+                "endpoint_overrides: per-request LLM endpoint overrides are disabled "
+                "on this service. Ask the operator to set "
+                "pipeline_overrides.endpoint_overrides.llm: true in retriever-service.yaml.",
+                status_code=403,
+            )
+        self._check_url_allowed(url, field="llm_api_base")
+
+    def check_rerank(self, *, url: str | None) -> None:
+        if not self.rerank:
+            raise PolicyError(
+                "endpoint_overrides: per-request rerank endpoint overrides are disabled "
+                "on this service. Ask the operator to set "
+                "pipeline_overrides.endpoint_overrides.rerank: true in retriever-service.yaml.",
+                status_code=403,
+            )
+        self._check_url_allowed(url, field="rerank_invoke_url")
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "embed": self.embed,
+            "caption": self.caption,
+            "llm": self.llm,
+            "rerank": self.rerank,
+            "allowed_url_prefixes": self.allowed_url_prefixes,
+        }
+
+    def any_enabled(self) -> bool:
+        return self.embed or self.caption or self.llm or self.rerank
+
+
 class PolicyError(ValueError):
     """Raised by :func:`validate_pipeline_spec` when a client spec is rejected.
 
@@ -393,6 +484,7 @@ class PipelineOverridesPolicy:
         extra_caption_keys: frozenset[str] = frozenset(),
         sinks: SinkUrlAllowlist | None = None,
         caption_enabled: bool = False,
+        endpoint_overrides: EndpointOverridePolicy | None = None,
     ) -> None:
         if mode not in {"reject", "allow_list", "allow_all"}:
             raise ValueError(
@@ -401,6 +493,7 @@ class PipelineOverridesPolicy:
         self.mode = mode
         self.sinks = sinks or SinkUrlAllowlist()
         self.caption_enabled = caption_enabled
+        self.endpoint_overrides = endpoint_overrides or EndpointOverridePolicy()
         # The base stage set grows incrementally: sinks open up
         # ``store``/``webhook``; a configured caption endpoint opens up
         # ``caption``.
@@ -439,6 +532,7 @@ class PipelineOverridesPolicy:
             "caption_enabled": self.caption_enabled,
             "denied_key_substrings": sorted(_DENYLIST_KEY_SUBSTRINGS),
             "sinks": self.sinks.describe(),
+            "endpoint_overrides": self.endpoint_overrides.describe(),
         }
 
 
@@ -590,6 +684,72 @@ def _enforce_allowlist(
     )
 
 
+def _validate_endpoint_overrides(
+    overrides: Any,
+    policy: EndpointOverridePolicy,
+) -> None:
+    """Gate per-request model-endpoint overrides against the operator policy.
+
+    ``overrides`` is a
+    :class:`~nemo_retriever.common.schemas.pipeline_spec.EndpointOverrides`
+    or ``None``. Each stage group (embed / caption) is admitted only when the
+    operator enabled it; the URL is additionally checked against the
+    configured prefix allowlist. Raises :class:`PolicyError` (403) otherwise.
+    """
+    if overrides is None or overrides.is_empty():
+        return
+
+    embed_requested = any(
+        (
+            overrides.embed_invoke_url,
+            overrides.embed_model_name,
+            overrides.embed_model_provider_prefix,
+        )
+    )
+    caption_requested = any((overrides.caption_invoke_url, overrides.caption_model_name))
+
+    if embed_requested:
+        policy.check_embed(url=overrides.embed_invoke_url)
+    if caption_requested:
+        policy.check_caption(url=overrides.caption_invoke_url)
+
+    # A bare credential with no endpoint/model is meaningless — reject so the
+    # client gets a clear error instead of a silently ignored credential.
+    if (overrides.api_key or overrides.embed_api_key or overrides.caption_api_key) and not (
+        embed_requested or caption_requested
+    ):
+        raise PolicyError(
+            "endpoint_overrides embed/caption API key was set without any "
+            "endpoint or model override to apply it to.",
+            status_code=400,
+        )
+
+
+def _spec_has_only_endpoint_overrides(spec: PipelineSpec) -> bool:
+    """``True`` when ``endpoint_overrides`` is the sole client override.
+
+    Used to admit an endpoint-only job independently of ``mode`` (the mode
+    gate governs the shape-params / stage-order surface, not the separately
+    opted-in endpoint channel).
+    """
+    if spec.endpoint_overrides is None or spec.endpoint_overrides.is_empty():
+        return False
+    return (
+        spec.extract_params is None
+        and spec.embed_params is None
+        and spec.dedup_params is None
+        and spec.caption_params is None
+        and spec.store_params is None
+        and spec.vdb_upload_params is None
+        and spec.webhook_params is None
+        and spec.split_config is None
+        and spec.pdf_split is None
+        and not spec.stage_order
+        and not spec.return_embeddings
+        and not spec.return_images
+    )
+
+
 def validate_pipeline_spec(
     spec: PipelineSpec | None,
     policy: PipelineOverridesPolicy,
@@ -614,11 +774,21 @@ def validate_pipeline_spec(
         and spec.webhook_params is None
         and spec.split_config is None
         and spec.pdf_split is None
+        and (spec.endpoint_overrides is None or spec.endpoint_overrides.is_empty())
         and not spec.stage_order
         and not spec.return_embeddings
         and not spec.return_images
     )
     if result_schema_only:
+        return spec
+
+    # Model-endpoint overrides are an independent, explicitly gated channel.
+    # They are validated regardless of ``mode`` (which governs the shape
+    # params / stage_order surface). When they are the *only* thing the
+    # client supplied, a submitted job with endpoint overrides is admissible
+    # even under ``mode='reject'`` because the operator opted in separately.
+    _validate_endpoint_overrides(spec.endpoint_overrides, policy.endpoint_overrides)
+    if _spec_has_only_endpoint_overrides(spec):
         return spec
 
     if policy.mode == "reject":
@@ -629,23 +799,39 @@ def validate_pipeline_spec(
             status_code=403,
         )
 
+    # A client that supplied its own caption (VLM) endpoint — and whose
+    # operator allows caption endpoint overrides — unlocks the caption stage
+    # even when the cluster itself has no caption NIM configured.
+    client_caption_endpoint = bool(
+        spec.endpoint_overrides is not None
+        and spec.endpoint_overrides.caption_invoke_url
+        and policy.endpoint_overrides.caption
+    )
+    caption_enabled = policy.caption_enabled or client_caption_endpoint
+    allowed_stages = policy.allowed_stages
+    if client_caption_endpoint and "caption" not in allowed_stages:
+        allowed_stages = allowed_stages | {"caption"}
+
     for stage_name in spec.stage_order:
-        if stage_name not in policy.allowed_stages:
+        if stage_name not in allowed_stages:
             raise PolicyError(
                 f"stage {stage_name!r} is not in pipeline_overrides.allowed_stages. "
-                f"Allowed in this phase: {sorted(policy.allowed_stages)}.",
+                f"Allowed in this phase: {sorted(allowed_stages)}.",
                 status_code=403,
             )
 
     # caption_params is admitted only when the operator has configured a
-    # remote VLM endpoint. We also reject local-execution keys outright
-    # because the CPU worker pod cannot honor them — surfacing the
-    # mismatch immediately is friendlier than silently ignoring them.
+    # remote VLM endpoint (or the client supplied an allowed one). We also
+    # reject local-execution keys outright because the CPU worker pod cannot
+    # honor them — surfacing the mismatch immediately is friendlier than
+    # silently ignoring them.
     if spec.caption_params is not None:
-        if not policy.caption_enabled:
+        if not caption_enabled:
             raise PolicyError(
                 "caption_params overrides require an operator-configured caption "
-                "endpoint. Set caption.endpoint_url in retriever-service.yaml first.",
+                "endpoint. Set caption.endpoint_url in retriever-service.yaml first, "
+                "or supply endpoint_overrides.caption_invoke_url (when the operator "
+                "enables pipeline_overrides.endpoint_overrides.caption).",
                 status_code=403,
             )
         forbidden = [k for k in spec.caption_params if k in _CAPTION_FORBIDDEN_LOCAL_EXECUTION_KEYS]

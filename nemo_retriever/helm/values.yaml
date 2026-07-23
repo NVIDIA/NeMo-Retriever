@@ -545,6 +545,15 @@ serviceConfig:
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
     embedInvokeUrl: ""
+    # Optional remote reranking endpoint. Auto-wired from the in-cluster
+    # Service when `nimOperator.rerankqa.enabled=true` (and the NIM Operator
+    # CRDs are present). Set explicitly to point at a hosted endpoint. When a
+    # rerank URL is resolved, POST /v1/answer reranks retrieval hits (see the
+    # `rerank` section below).
+    rerankInvokeUrl: ""
+    # Model identifier passed to the remote reranking endpoint. Auto-set to
+    # the VL rerank model id when the operator-managed rerank NIM is enabled.
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
@@ -633,6 +642,16 @@ serviceConfig:
     # parameters. Set false for Nemotron endpoints that should receive the
     # portable no-reasoning controls.
     reasoningEnabled: true
+
+  # Reranking of retrieval hits on POST /v1/answer. The rerank endpoint /
+  # model live under nimEndpoints (rerankInvokeUrl / rerankModelName). This
+  # section only governs behaviour. When left disabled, reranking still turns
+  # on automatically if a rerank endpoint is resolved (operator NIM or an
+  # explicit rerankInvokeUrl).
+  rerank:
+    enabled: false
+    refineFactor: 4
+    maxLength: 8192
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.

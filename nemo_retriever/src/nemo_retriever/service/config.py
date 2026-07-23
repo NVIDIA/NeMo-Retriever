@@ -146,7 +146,21 @@ class NimEndpointsConfig(RichModel):
             "remote embedding endpoints that require namespaced model IDs."
         ),
     )
-    rerank_invoke_url: str | None = None
+    rerank_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote reranking NIM endpoint used to re-order retrieval hits on "
+            "POST /v1/answer (subject to rerank.enabled). When set, clients may "
+            "override it per-request only via pipeline_overrides.endpoint_overrides.rerank."
+        ),
+    )
+    rerank_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote reranking endpoint. "
+            "Server-owned — clients cannot override the deployed rerank NIM SKU."
+        ),
+    )
     audio_grpc_endpoint: str | None = Field(
         default=None,
         description=(
@@ -198,6 +212,44 @@ class LLMConfig(RichModel):
         if self.enabled and not self.model.strip():
             raise ValueError("llm.model must be set when llm.enabled is true")
         return self
+
+
+class RerankConfig(RichModel):
+    """Reranking behaviour for the service-mode ``/v1/answer`` retrieval step.
+
+    The rerank endpoint / model / API key live on
+    :class:`NimEndpointsConfig` (``rerank_invoke_url`` / ``rerank_model_name``
+    / ``api_key``) so they share the server-owned trust boundary with the
+    other NIM endpoints. This section only governs *behaviour*: whether the
+    answer path reranks by default and how many candidates to over-fetch
+    before reranking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Rerank retrieval hits on POST /v1/answer before answer generation. "
+            "Requires a rerank endpoint (nim_endpoints.rerank_invoke_url or a "
+            "per-request override). Clients may toggle this per-request via the "
+            "'rerank' field."
+        ),
+    )
+    refine_factor: int = Field(
+        default=4,
+        ge=1,
+        le=100,
+        description=(
+            "Over-fetch multiplier: retrieve top_k * refine_factor candidates "
+            "from the vector DB, rerank them, then keep the top_k best."
+        ),
+    )
+    max_length: int = Field(
+        default=8192,
+        ge=1,
+        description="Tokenizer truncation length forwarded to the rerank endpoint.",
+    )
 
 
 class ResourceLimitsConfig(RichModel):
@@ -370,6 +422,49 @@ class SinksConfig(RichModel):
     )
 
 
+class EndpointOverridesConfig(RichModel):
+    """Opt-in policy for per-request model-endpoint overrides.
+
+    By default every flag is ``False``, preserving the secure baseline
+    where endpoint URLs, model names, and API keys are exclusively
+    server-owned. When a flag is enabled, clients submitting a job may
+    ship a :class:`~nemo_retriever.common.schemas.pipeline_spec.EndpointOverrides`
+    that retargets that stage's model deployment.
+
+    ``allowed_url_prefixes`` optionally restricts which URLs a client may
+    point at. An empty list means "no additional URL restriction" (any URL
+    is accepted once the corresponding stage flag is enabled). Populate it
+    (e.g. ``["https://"]`` or a specific host) to pin overrides to trusted
+    destinations and reduce SSRF exposure in shared clusters.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    embed: bool = Field(
+        default=False,
+        description="Allow clients to override the embedding NIM endpoint / model per request.",
+    )
+    caption: bool = Field(
+        default=False,
+        description="Allow clients to override the caption (VLM) endpoint / model per request.",
+    )
+    llm: bool = Field(
+        default=False,
+        description="Allow clients to override the answer LLM api_base / model on POST /v1/answer.",
+    )
+    rerank: bool = Field(
+        default=False,
+        description="Allow clients to override the rerank endpoint / model on POST /v1/answer.",
+    )
+    allowed_url_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "URL prefixes the client-supplied endpoints must start with. "
+            "Empty means any URL is allowed once the stage flag is enabled."
+        ),
+    )
+
+
 class PipelineOverridesConfig(RichModel):
     """How permissively to accept per-request ``PipelineSpec`` overrides.
 
@@ -397,6 +492,7 @@ class PipelineOverridesConfig(RichModel):
     extra_vdb_kwargs_keys: list[str] = Field(default_factory=list)
     extra_caption_keys: list[str] = Field(default_factory=list)
     sinks: SinksConfig = Field(default_factory=SinksConfig)
+    endpoint_overrides: EndpointOverridesConfig = Field(default_factory=EndpointOverridesConfig)
 
     def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
         """Return a :class:`PipelineOverridesPolicy` configured from this section.
@@ -406,6 +502,7 @@ class PipelineOverridesConfig(RichModel):
         operator has actually wired up a VLM endpoint.
         """
         from nemo_retriever.common.policy import (
+            EndpointOverridePolicy,
             PipelineOverridesPolicy,
             SinkUrlAllowlist,
         )
@@ -428,6 +525,13 @@ class PipelineOverridesConfig(RichModel):
                 vdb_uri_schemes=list(self.sinks.vdb_uri_schemes),
             ),
             caption_enabled=caption_enabled,
+            endpoint_overrides=EndpointOverridePolicy(
+                embed=self.endpoint_overrides.embed,
+                caption=self.endpoint_overrides.caption,
+                llm=self.endpoint_overrides.llm,
+                rerank=self.endpoint_overrides.rerank,
+                allowed_url_prefixes=list(self.endpoint_overrides.allowed_url_prefixes),
+            ),
         )
 
 
@@ -453,6 +557,7 @@ class ServiceConfig(RichModel):
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
     local_models: LocalModelsConfig = Field(default_factory=LocalModelsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)

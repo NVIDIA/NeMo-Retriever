@@ -8,8 +8,12 @@ Captioning is the canonical example of "trust the operator, not the
 client": the remote VLM endpoint URL + API key + model name are
 configured by the service operator (``nim_endpoints.caption_invoke_url``
 in ``retriever-service.yaml``). Clients may submit behavioural knobs —
-``prompt``, ``system_prompt``, ``batch_size``, sampling params — but
-*never* redirect the destination.
+``prompt``, ``system_prompt``, ``batch_size``, sampling params — freely.
+A client can redirect the destination only through the dedicated,
+operator-gated ``endpoint_overrides`` channel (see
+``test_service_endpoint_overrides.py``); passing ``endpoint_url`` /
+``model_name`` to ``.caption(...)`` routes into that channel rather than
+the ordinary caption params.
 
 The CPU-only worker pod cannot honor local-execution params (``device``,
 ``hf_cache_dir``, ``tensor_parallel_size``, ``gpu_memory_utilization``)
@@ -79,23 +83,34 @@ def test_caption_populates_spec_with_behaviour_knobs_only() -> None:
     assert "caption" in payload["stage_order"]
 
 
-def test_caption_rejects_endpoint_url_via_kwargs() -> None:
-    """kwargs are unambiguous caller intent; the client rejects immediately."""
+def test_caption_routes_endpoint_url_via_kwargs_to_overrides() -> None:
+    """endpoint_url is now a per-request override, routed to endpoint_overrides.
+
+    The server still gates it behind pipeline_overrides.endpoint_overrides.caption
+    (see test_service_endpoint_overrides.py); the client no longer rejects it.
+    """
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(ValueError, match="server-owned"):
-        ing.caption(endpoint_url="http://attacker.evil/v1")
+    ing.caption(endpoint_url="http://client/v1")
+    payload = ing._pipeline_payload()
+    assert payload["endpoint_overrides"]["caption_invoke_url"] == "http://client/v1"
+    assert "endpoint_url" not in payload.get("caption_params", {})
 
 
-def test_caption_rejects_api_key_via_kwargs() -> None:
+def test_caption_bare_api_key_is_dropped_without_endpoint_override() -> None:
+    """A bare api_key (no endpoint/model override) stays server-owned: dropped."""
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(ValueError, match="server-owned"):
-        ing.caption(api_key="leaked-secret")
+    ing.caption(api_key="leaked-secret", prompt="describe")
+    payload = ing._pipeline_payload()
+    assert "endpoint_overrides" not in payload
+    assert "api_key" not in payload["caption_params"]
 
 
-def test_caption_rejects_model_name_via_kwargs() -> None:
+def test_caption_routes_model_name_via_kwargs_to_overrides() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(ValueError, match="server-owned"):
-        ing.caption(model_name="evil/model")
+    ing.caption(model_name="my/vlm")
+    payload = ing._pipeline_payload()
+    assert payload["endpoint_overrides"]["caption_model_name"] == "my/vlm"
+    assert "model_name" not in payload.get("caption_params", {})
 
 
 def test_caption_rejects_local_execution_keys_via_kwargs() -> None:
