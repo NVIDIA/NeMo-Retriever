@@ -1,40 +1,26 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-
-
-{% block extrahead %}
- 
-    <script src="https://assets.adobedtm.com/5d4962a43b79/c1061d2c5e7b/launch-191c2462b890.min.js"></script>
-
-{% endblock %}
-
-
-
-<!-- {% block outdated %}
+{#
+  docs.nvidia.com serves /nemo/retriever/ from Brightspot (product hub), not the
+  Mike root redirect. Material's default outdated banner climbs to site root
+  (href="../../.."), which lands on that hub. Point at /latest/ and preserve the
+  page path under the version segment.
+#}
+{% block outdated %}
   You're not viewing the latest version.
-  <a href="{{ '../' ~ base_url }}"> 
+  <a id="nrl-go-latest" href="/nemo/retriever/latest/">
     <strong>Click here to go to latest.</strong>
   </a>
-{% endblock %} -->
-
-
-
-{% block content %}
-
-    <div style="text-align: right;">
-        <a href="https://surveys.hotjar.com/4904bf71-6484-47a7-83ff-4715cceabdb5" id="openPopupButton">Is this page helpful?</a>
-    </div>
-
-    {{ super() }}
-
-{% endblock %}
-
-
-
-{% block footer %}
-
-    {{ super() }}
-
-    <script type="text/javascript">if (typeof _satellite !== "undefined") {_satellite.pageBottom();}</script>
- 
+  <script>
+    (function () {
+      var a = document.getElementById("nrl-go-latest");
+      if (!a) return;
+      var path = window.location.pathname || "";
+      var match = path.match(/^(.*?\/)(?:\d+\.\d+(?:\.\d+)?)\/(.*)$/);
+      if (match) {
+        a.href = match[1] + "latest/" + match[2] +
+          window.location.search + window.location.hash;
+      }
+    })();
+  </script>
 {% endblock %}
