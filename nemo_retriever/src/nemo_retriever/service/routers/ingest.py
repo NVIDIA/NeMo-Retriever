@@ -1557,11 +1557,15 @@ async def _fetch_retrieval_for_answer(
         ) from exc
 
     if resp.status_code != 200:
-        return None, Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            media_type=resp.headers.get("content-type", "application/json"),
-        ), 0.0
+        return (
+            None,
+            Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type=resp.headers.get("content-type", "application/json"),
+            ),
+            0.0,
+        )
 
     payload = resp.json()
     result_sets = payload.get("results") or []
