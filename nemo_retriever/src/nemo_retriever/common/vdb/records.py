@@ -41,6 +41,15 @@ _LEGACY_ENTITY_FIELDS = frozenset(
 _NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score", "_relevance_score"})
 
 
+class RetrievalRanking(TypedDict):
+    """Backend-neutral ordering metadata for a public collection hit."""
+
+    rank: int
+    value: float
+    kind: str
+    higher_is_better: bool
+
+
 class RetrievalHit(TypedDict, total=False):
     """Shape of a single hit returned by ``Retriever.query`` / ``Retriever.queries``.
 
@@ -51,8 +60,8 @@ class RetrievalHit(TypedDict, total=False):
 
     ``_distance`` is a backend-native vector distance, ``_score`` is a
     backend-native FTS/BM25 score, and ``_relevance_score`` is a native hybrid
-    reranker value. ``score`` is NRL's public query-relative relevance in
-    ``[0, 1]`` and is not a probability or comparable across queries.
+    reranker value. Collection REST responses replace those backend fields with
+    ``ranking`` metadata but do not reinterpret the native value.
 
     ``total=False`` because optional fields (``stored_image_uri``,
     ``content_type``, ``bbox_xyxy_norm``, scores) are only set when present.
@@ -72,7 +81,7 @@ class RetrievalHit(TypedDict, total=False):
     _distance: float
     _score: float
     _relevance_score: float
-    score: float
+    ranking: RetrievalRanking
     chunk_id: str
     document_id: str
     filename: str
@@ -346,44 +355,43 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
     return normalized
 
 
-def _normalize_query_scores(hits: list[RetrievalHit], retrieval_mode: LanceRetrievalMode) -> None:
-    """Attach query-relative public scores using the mode's native field."""
+def to_public_collection_hit(
+    hit: RetrievalHit,
+    *,
+    retrieval_mode: LanceRetrievalMode,
+    rank: int,
+) -> RetrievalHit:
+    """Describe native ordering without changing its retrieval semantics."""
 
-    if not hits:
-        return
     if retrieval_mode == "dense":
         field = "_distance"
-        lower_is_better = True
+        kind = "vector_distance"
+        higher_is_better = False
     elif retrieval_mode == "hybrid":
         field = "_relevance_score"
-        lower_is_better = False
+        kind = "hybrid_relevance"
+        higher_is_better = True
     else:
-        raise RetrievalContractError(f"unsupported retrieval mode for public scoring: {retrieval_mode}")
+        raise RetrievalContractError(f"unsupported collection retrieval mode: {retrieval_mode}")
 
-    values: list[float] = []
-    for index, hit in enumerate(hits):
-        raw = hit.get(field)
-        if isinstance(raw, bool):
-            raise RetrievalContractError(f"{retrieval_mode} hit {index} is missing a numeric {field}")
-        try:
-            value = float(raw)
-        except (TypeError, ValueError) as exc:
-            raise RetrievalContractError(f"{retrieval_mode} hit {index} is missing a numeric {field}") from exc
-        if not math.isfinite(value):
-            raise RetrievalContractError(f"{retrieval_mode} hit {index} has a non-finite {field}")
-        values.append(value)
+    raw = hit.get(field)
+    if isinstance(raw, bool):
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}") from exc
+    if not math.isfinite(value):
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} has a non-finite {field}")
 
-    minimum = min(values)
-    maximum = max(values)
-    span = maximum - minimum
-    for hit, value in zip(hits, values, strict=True):
-        if span == 0.0:
-            score = 1.0
-        elif lower_is_better:
-            score = (maximum - value) / span
-        else:
-            score = (value - minimum) / span
-        hit["score"] = max(0.0, min(1.0, score))
+    public_hit = RetrievalHit({key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS})
+    public_hit["ranking"] = {
+        "rank": rank,
+        "value": value,
+        "kind": kind,
+        "higher_is_better": higher_is_better,
+    }
+    return public_hit
 
 
 def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
@@ -402,10 +410,8 @@ def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
 
 def normalize_retrieval_results(
     results: Any,
-    *,
-    retrieval_mode: LanceRetrievalMode | None = None,
 ) -> list[list[RetrievalHit]]:
-    """Canonicalize backend results and optionally attach public scores."""
+    """Canonicalize backend result shapes without changing native scores."""
 
     if results is None:
         return []
@@ -420,13 +426,5 @@ def normalize_retrieval_results(
             hit_dict = _hit_to_dict(hit)
             if hit_dict is not None:
                 normalized_hits.append(_normalize_hit(hit_dict))
-        if retrieval_mode is not None:
-            _normalize_query_scores(normalized_hits, retrieval_mode)
         normalized.append(normalized_hits)
     return normalized
-
-
-def without_native_scores(hit: RetrievalHit) -> RetrievalHit:
-    """Return a public collection hit without backend-native score fields."""
-
-    return RetrievalHit({key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS})

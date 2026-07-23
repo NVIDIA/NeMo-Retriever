@@ -68,7 +68,7 @@ from nemo_retriever.common.vdb.lancedb_capabilities import (
 from nemo_retriever.common.vdb.records import (
     RetrievalContractError,
     normalize_retrieval_results,
-    without_native_scores,
+    to_public_collection_hit,
 )
 
 from nemo_retriever.query.evidence import build_evidence_result
@@ -826,7 +826,7 @@ class VectorDBState:
 
             raw_results = vdb.retrieval(vectors, **retrieval_kwargs)
             return (
-                normalize_retrieval_results(raw_results, retrieval_mode=mode),
+                normalize_retrieval_results(raw_results),
                 strategies,
             )
 
@@ -1493,14 +1493,21 @@ def create_vectordb_app(
                     scope=_scope(x_nrl_scope),
                     collection_name=req.collection_name,
                 )
+                if req.collection_name and req.format == "hits":
+                    mode: LanceRetrievalMode = "hybrid" if "hybrid" in strategies else "dense"
+                    hits_per_query = [
+                        [
+                            to_public_collection_hit(hit, retrieval_mode=mode, rank=rank)
+                            for rank, hit in enumerate(hits, start=1)
+                        ]
+                        for hits in hits_per_query
+                    ]
         except RetrievalContractError as exc:
             logger.exception("VectorDB retrieval contract violation")
             raise HTTPException(status_code=500, detail=f"VectorDB retrieval contract violation: {exc}") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        if req.collection_name:
-            hits_per_query = [[without_native_scores(hit) for hit in hits] for hits in hits_per_query]
         if req.format == "evidence":
             return EvidenceQueryResponse(
                 results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]

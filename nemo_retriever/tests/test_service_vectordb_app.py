@@ -320,7 +320,6 @@ def test_collection_query_omits_native_scores_while_legacy_query_preserves_them(
         "filename": "report.pdf",
         "document_version": "v1",
         "content_sha256": "sha",
-        "score": 0.75,
         "_distance": 0.2,
         "_score": 0.3,
         "_relevance_score": 0.4,
@@ -340,7 +339,12 @@ def test_collection_query_omits_native_scores_while_legacy_query_preserves_them(
     collection_hit = collection.json()["results"][0]["hits"][0]
     assert {"_distance", "_score", "_relevance_score"} <= legacy_hit.keys()
     assert not {"_distance", "_score", "_relevance_score"}.intersection(collection_hit)
-    assert collection_hit["score"] == 0.75
+    assert collection_hit["ranking"] == {
+        "rank": 1,
+        "value": 0.2,
+        "kind": "vector_distance",
+        "higher_is_better": False,
+    }
 
 
 def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
@@ -370,7 +374,8 @@ def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
 
     assert strategies == ["hybrid"]
     assert hits[0][0]["text"] == "hit"
-    assert hits[0][0]["score"] == 1.0
+    assert hits[0][0]["_relevance_score"] == 0.5
+    assert "score" not in hits[0][0]
     mock_vdb.retrieval.assert_called_once()
     call_kwargs = mock_vdb.retrieval.call_args.kwargs
     assert call_kwargs["top_k"] == 3

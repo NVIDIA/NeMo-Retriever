@@ -18,12 +18,12 @@ from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.vdb.records import (
     RetrievalContractError,
     normalize_retrieval_results,
-    without_native_scores,
+    to_public_collection_hit,
 )
 
 
-def _normalize_one(hit: dict, *, mode: str | None = None) -> dict:
-    return normalize_retrieval_results([[hit]], retrieval_mode=mode)[0][0]
+def _normalize_one(hit: dict) -> dict:
+    return normalize_retrieval_results([[hit]])[0][0]
 
 
 def test_legacy_entity_is_flattened_once_with_top_level_precedence() -> None:
@@ -99,7 +99,23 @@ def test_normalize_one_based_page_number_accepts_positive_integral_values(
 
 @pytest.mark.parametrize(
     "value",
-    [None, "", " ", True, False, 0, -1, -7, 1.5, "1.5", "bad", Decimal("1.5"), Fraction(3, 2), math.nan, math.inf],
+    [
+        None,
+        "",
+        " ",
+        True,
+        False,
+        0,
+        -1,
+        -7,
+        1.5,
+        "1.5",
+        "bad",
+        Decimal("1.5"),
+        Fraction(3, 2),
+        math.nan,
+        math.inf,
+    ],
 )
 def test_normalize_one_based_page_number_rejects_unknown_or_invalid_values(
     value,
@@ -122,64 +138,62 @@ def test_invalid_page_is_not_repaired_and_modality_metadata_is_preserved() -> No
 
 
 @pytest.mark.parametrize(
-    ("values", "expected"),
-    [([0.1, 0.3, 0.5], [1.0, 0.5, 0.0]), ([0.2, 0.2], [1.0, 1.0]), ([0.2], [1.0])],
+    ("mode", "native_field", "value", "expected"),
+    [
+        (
+            "dense",
+            "_distance",
+            4.2,
+            {
+                "rank": 2,
+                "value": 4.2,
+                "kind": "vector_distance",
+                "higher_is_better": False,
+            },
+        ),
+        (
+            "hybrid",
+            "_relevance_score",
+            1.7,
+            {
+                "rank": 2,
+                "value": 1.7,
+                "kind": "hybrid_relevance",
+                "higher_is_better": True,
+            },
+        ),
+    ],
 )
-def test_dense_scores_are_query_relative(values, expected) -> None:
-    hits = normalize_retrieval_results(
-        [[{"text": str(index), "_distance": value} for index, value in enumerate(values)]],
-        retrieval_mode="dense",
-    )[0]
+def test_public_collection_hit_describes_native_ranking_without_normalizing(
+    mode, native_field, value, expected
+) -> None:
+    hit = _normalize_one({"text": "hit", native_field: value, "_score": 0.3, "_distance": value})
 
-    assert [hit["score"] for hit in hits] == pytest.approx(expected)
+    public = to_public_collection_hit(hit, retrieval_mode=mode, rank=2)
+
+    assert public["ranking"] == expected
+    assert "score" not in public
+    assert not {"_distance", "_score", "_relevance_score"}.intersection(public)
 
 
+@pytest.mark.parametrize("mode,field", [("dense", "_distance"), ("hybrid", "_relevance_score")])
 @pytest.mark.parametrize("value", [None, True, math.nan, math.inf, -math.inf])
-def test_dense_scores_reject_missing_or_non_finite_distance(value) -> None:
+def test_public_collection_ranking_rejects_missing_or_non_finite_values(mode, field, value) -> None:
     raw = {"text": "bad"}
     if value is not None:
-        raw["_distance"] = value
+        raw[field] = value
 
-    with pytest.raises(RetrievalContractError, match="dense hit 0.*_distance"):
-        normalize_retrieval_results([[raw]], retrieval_mode="dense")
-
-
-@pytest.mark.parametrize(
-    ("values", "expected"),
-    [([0.1, 0.4, 0.7], [0.0, 0.5, 1.0]), ([0.4, 0.4], [1.0, 1.0]), ([0.4], [1.0])],
-)
-def test_hybrid_scores_are_query_relative(values, expected) -> None:
-    hits = normalize_retrieval_results(
-        [[{"text": str(index), "_relevance_score": value} for index, value in enumerate(values)]],
-        retrieval_mode="hybrid",
-    )[0]
-
-    assert [hit["score"] for hit in hits] == pytest.approx(expected)
+    with pytest.raises(RetrievalContractError, match=rf"{mode} hit 0.*{field}"):
+        to_public_collection_hit(_normalize_one(raw), retrieval_mode=mode, rank=1)
 
 
-def test_hybrid_score_does_not_substitute_native_fts_score() -> None:
+def test_hybrid_ranking_does_not_substitute_native_fts_score() -> None:
     with pytest.raises(RetrievalContractError, match="hybrid hit 0.*_relevance_score"):
-        normalize_retrieval_results([[{"text": "bad", "_score": 0.8}]], retrieval_mode="hybrid")
-
-
-def test_public_collection_hit_omits_native_score_diagnostics() -> None:
-    hit = normalize_retrieval_results(
-        [[{"text": "hit", "_distance": 0.2, "_score": 0.3, "_relevance_score": 0.4}]],
-        retrieval_mode="dense",
-    )[0][0]
-
-    assert hit["score"] == 1.0
-    assert without_native_scores(hit) == {
-        "text": "hit",
-        "metadata": {},
-        "source": "",
-        "source_id": "",
-        "path": "",
-        "page_number": None,
-        "pdf_basename": "",
-        "pdf_page": "",
-        "score": 1.0,
-    }
+        to_public_collection_hit(
+            _normalize_one({"text": "bad", "_score": 0.8}),
+            retrieval_mode="hybrid",
+            rank=1,
+        )
 
 
 def test_query_hit_validates_canonical_page_instead_of_repairing_it() -> None:
@@ -187,7 +201,12 @@ def test_query_hit_validates_canonical_page_instead_of_repairing_it() -> None:
         "chunk_id": "chunk",
         "document_id": "document",
         "text": "text",
-        "score": 1.0,
+        "ranking": {
+            "rank": 1,
+            "value": 0.2,
+            "kind": "vector_distance",
+            "higher_is_better": False,
+        },
         "filename": "document.pdf",
     }
 

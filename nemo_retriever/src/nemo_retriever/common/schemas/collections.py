@@ -117,17 +117,22 @@ class CollectionDeleteResult(RichModel):
     cleanup_pending: bool = False
 
 
+class QueryRanking(RichModel):
+    """Backend-neutral description of how a query hit was ordered."""
+
+    rank: int = Field(ge=1)
+    value: float = Field(allow_inf_nan=False)
+    kind: Literal["vector_distance", "hybrid_relevance"]
+    higher_is_better: bool
+
+
 class QueryHit(RichModel):
     """Citation-ready hit returned to agentic applications."""
 
     chunk_id: str
     document_id: DocumentId
     text: str
-    score: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Query-relative relevance; not a probability or comparable across queries.",
-    )
+    ranking: QueryRanking
     filename: str
     page_number: int | None = Field(
         default=None,

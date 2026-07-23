@@ -158,17 +158,19 @@ file support. The same SDK workflow targets `http://localhost:7670`.
 External applications should construct a `RetrieverServiceClient` from the
 service URL, token, and workspace scope, then call the SDK directly. Applications
 should orchestrate calls and translate their own configuration only; NeMo
-Retriever owns processing status, stable chunk/document identity, normalized
-scores, citation provenance, retries, idempotency, and lifecycle truth. Clients
+Retriever owns processing status, stable chunk/document identity, retrieval
+ordering, citation provenance, retries, idempotency, and lifecycle truth. Clients
 must not open LanceDB directly or reproduce the ingestion pipeline.
 
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
-`text`, a query-relative `score` in `[0, 1]`, filename, a one-based page number
+`text`, backend-neutral `ranking` metadata, filename, a one-based page number
 when known, content type, source/source ID, stored image URI, bounding box, and
-metadata. The score preserves ordering within one returned result set; it is
-not a confidence or probability and is not comparable across queries,
-collections, or retrieval modes. `page_number` is `null` for non-paginated
-content or invalid/unknown page provenance. Audio segments, video frames, and
-timestamps keep their existing modality-specific metadata rather than being
-converted into document pages. This contract is identical regardless of the
-network path used to reach the service.
+metadata. `ranking` contains the one-based result `rank`, the native finite
+`value`, a `kind` (`vector_distance` or `hybrid_relevance`), and
+`higher_is_better`. NRL does not reinterpret that value as a normalized
+similarity or confidence. Consumers that require a bounded score must translate
+the complete result set at their own adapter boundary. `page_number` is
+`null` for non-paginated content or invalid/unknown page provenance. Audio
+segments, video frames, and timestamps keep their existing modality-specific
+metadata rather than being converted into document pages. This contract is
+identical regardless of the network path used to reach the service.
