@@ -616,6 +616,8 @@ class TestNemotronParseActor:
         assert error["type"] == "ValueError"
         assert "model/contract mismatch" in error["message"]
         assert "nvidia/nemotron-parse" in error["message"]
+        assert "RuntimeError: Content cannot be a plain string" in error["traceback"]
+        assert "ValueError: Nemotron Parse model/contract mismatch" in error["traceback"]
 
     def test_image_wrapper_can_omit_repetition_penalty(self):
         from nemo_retriever.models.nim.nim import NIMClient

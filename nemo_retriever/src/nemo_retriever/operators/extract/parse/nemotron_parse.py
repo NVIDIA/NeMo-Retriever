@@ -433,13 +433,15 @@ def nemotron_parse_pages(
                 and contract.profile == _NemotronParseContractProfile.V1_2_TAGGED
                 and "text input" in str(e).lower()
             ):
-                e = ValueError(
+                hint = ValueError(
                     "Nemotron Parse model/contract mismatch: NVIDIA Build model "
                     "`nvidia/nemotron-parse` uses an image-only tool-call contract, but "
                     f"`{contract.model}` selected the v1.2 text-control-token contract. "
                     "Use `nemotron_parse_model='nvidia/nemotron-parse'` with Build, or send "
                     "the versioned v1.2 model to a compatible self-hosted endpoint."
                 )
+                hint.__cause__ = e
+                e = hint
             print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             err = {
                 "stage": "nemotron_parse_pages",
