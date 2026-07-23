@@ -343,7 +343,6 @@ def test_port_forward_permission_error_retains_process_for_retry(monkeypatch) ->
     manager.port_forward_processes = [proc]
     output = io.BytesIO()
     manager._port_forward_logs = {123: output}
-    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
     monkeypatch.setattr(
         "nemo_retriever.harness.helm_manager.os.killpg",
         lambda *_args: (_ for _ in ()).throw(PermissionError("denied")),
@@ -352,6 +351,50 @@ def test_port_forward_permission_error_retains_process_for_retry(monkeypatch) ->
     manager.stop_port_forwards()
     assert manager.port_forward_processes == [proc]
     assert not output.closed
+
+
+def test_port_forward_permission_error_uses_sudo_for_sudo_kubectl(monkeypatch) -> None:
+    manager = object.__new__(HelmServiceManager)
+    manager.config = SimpleNamespace(kubectl_sudo=True)
+
+    class SudoProcess:
+        pid = 123
+
+        def wait(_self, *, timeout):
+            assert timeout == 5
+
+    manager.port_forward_processes = [SudoProcess()]
+    output = io.BytesIO()
+    manager._port_forward_logs = {123: output}
+    group_alive = True
+
+    def fake_killpg(_pgid, sent_signal):
+        if sent_signal == 0:
+            if group_alive:
+                raise PermissionError("alive but root-owned")
+            raise ProcessLookupError
+        raise PermissionError("denied")
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.killpg", fake_killpg)
+    commands = []
+
+    def fake_run(command, **kwargs):
+        nonlocal group_alive
+        commands.append((command, kwargs))
+        if command[2] == "-KILL":
+            group_alive = False
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.subprocess.run", fake_run)
+
+    manager.stop_port_forwards()
+
+    assert commands == [
+        (["sudo", "kill", "-TERM", "--", "-123"], {"capture_output": True, "text": True}),
+        (["sudo", "kill", "-KILL", "--", "-123"], {"capture_output": True, "text": True}),
+    ]
+    assert manager.port_forward_processes == []
+    assert output.closed
 
 
 def test_port_forward_waits_after_sigkill(monkeypatch) -> None:
@@ -370,11 +413,15 @@ def test_port_forward_waits_after_sigkill(monkeypatch) -> None:
     output = io.BytesIO()
     manager._port_forward_logs = {123: output}
     signals = []
-    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
-    monkeypatch.setattr(
-        "nemo_retriever.harness.helm_manager.os.killpg",
-        lambda _pgid, sent_signal: signals.append(sent_signal),
-    )
+
+    def fake_killpg(_pgid, sent_signal):
+        if sent_signal == 0:
+            if signal.SIGKILL in signals:
+                raise ProcessLookupError
+            return
+        signals.append(sent_signal)
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.killpg", fake_killpg)
 
     manager.stop_port_forwards()
 

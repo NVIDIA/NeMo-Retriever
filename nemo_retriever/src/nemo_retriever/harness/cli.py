@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from nemo_retriever.harness.revamp_runner import (
 )
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
+from nemo_retriever.harness.release_reference import load_release_references
 from nemo_retriever.harness.runfile import load_runfile
 from nemo_retriever.harness.runsets import run_runfiles, run_runset
 from nemo_retriever.harness.slack import (
@@ -330,6 +332,37 @@ def run_files_command(
     raise typer.Exit(code=outcome.exit_code)
 
 
+@app.command("run-helm")
+def run_helm_command(
+    runfiles: Annotated[list[Path], typer.Argument(help="Runfile paths to execute as one managed Helm session.")],
+    config: Annotated[Path, typer.Option("--config", help="Non-secret Helm deployment YAML.")],
+    output_dir: Annotated[Path, typer.Option("--output-dir", help="Portable run-files session directory.")],
+    dataset_paths: Annotated[
+        Path | None,
+        typer.Option(
+            "--dataset-paths",
+            help="Machine-local YAML file that maps registered datasets to document and query paths.",
+        ),
+    ] = None,
+    session_name: Annotated[str, typer.Option("--session-name", help="Stable session label.")] = "helm_service",
+) -> None:
+    """Provision a Helm service around one portable run-files session."""
+    from nemo_retriever.harness.helm_runner import run_helm_session
+
+    try:
+        exit_code = run_helm_session(
+            config,
+            runfiles,
+            output_dir=output_dir,
+            session_name=session_name,
+            dataset_paths=dataset_paths,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=EXIT_INVALID) from exc
+    raise typer.Exit(code=exit_code)
+
+
 @app.command("post-slack")
 def post_slack_command(
     paths: Annotated[
@@ -345,6 +378,13 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = False,
+    reference_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--reference-file",
+            help="Current release reference snapshot to show beside observed results.",
+        ),
+    ] = None,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -359,7 +399,11 @@ def post_slack_command(
             "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": post_artifact_paths,
         }
-        payload = build_slack_payload(report, slack_config)
+        configured_reference = reference_file
+        if configured_reference is None and (reference_path := os.environ.get("RETRIEVER_HARNESS_REFERENCE_FILE")):
+            configured_reference = Path(reference_path)
+        release_references = load_release_references(configured_reference) if configured_reference else None
+        payload = build_slack_payload(report, slack_config, release_references=release_references)
         if not preview:
             post_slack_payload(payload, resolve_slack_webhook_url())
     except Exception as exc:
