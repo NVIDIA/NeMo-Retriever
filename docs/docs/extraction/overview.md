@@ -1,9 +1,8 @@
 # What is NeMo Retriever Library?
 
-NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, and scalable framework for content and metadata extraction from various media types (PDFs, HTML, Word docs, Powerpoint, audio, video, and image files). It supports both NVIDIA NIM microservices and a range of models to find, contextualize, and extract text, tables, charts, infographics, and transcripts for use in downstream generative and retrieval-augmented applications.
+NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Run it as a Python library or Kubernetes deployment, and route inference through NVIDIA NIM microservices or local Nemotron models for downstream RAG and generative applications.
 
-NeMo Retriever Library enables parallelization of splitting documents into pages where sub-page content is classified (such as text paragraphs, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a standard schema. From there, NeMo Retriever Library manages computation of embeddings for the extracted content,
-and can store vectors in [LanceDB](https://lancedb.com/) for the recommended embedded path when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
+NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
 
 ## NVIDIA AI Enterprise (NVAIE) support { #nvidia-ai-enterprise-nvaie-support }
 
@@ -21,13 +20,13 @@ The following diagram shows the retriever pipeline.
 
 NeMo Retriever Library does the following:
 
-- Accept directories of input files and a series of configurable ingestion tasks to perform on that input
-- Allow the extracted content be retrieved from a VDB containing discrete metadata element
+- Accept directories of input files and configurable ingestion tasks
+- Store extracted content in a vector database (VDB) with discrete metadata elements
 - Support multiple extraction methods per document type—for example, PDFs can use **pdfium** or [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate method (`extract_method="nemotron_parse"`)
-- Support various types of pre- and post- processing operations, including text splitting and chunking, transform and filtering, embedding generation, and image offloading to storage.
+- Apply pre- and post-processing: text splitting and chunking, transforms and filtering, embedding generation, and image offloading to storage
 
 !!! note
-    To use `extract_method="nemotron_parse"` with PDFs, install the Nemotron Parse client dependencies with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`.
+    To use `extract_method="nemotron_parse"` with PDFs, install the Nemotron Parse client dependencies with the `nemotron-parse` extra, for example `uv pip install "nemo-retriever[nemotron-parse]"`. You can use the equivalent `pip install` command if you do not use UV.
 
 NeMo Retriever Library supports the following file types:
 

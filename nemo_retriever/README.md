@@ -2,11 +2,12 @@
 
 NeMo Retriever Library is a retrieval-augmented generation (RAG) ingestion pipeline for documents that can parse text, tables, charts, and infographics. NeMo Retriever Library parses documents, creates embeddings, optionally stores embeddings in LanceDB, and performs recall evaluation.
 
-This quick start guide shows how to run NeMo Retriever Library as a library all within local Python processes without containers. NeMo Retriever Library supports two inference options:
-- Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your local GPU(s).
-- Make over the network inference calls to build.nvidia.com hosted or locally deployed NeMo Retriever NIM endpoints.
+This quick start guide shows how to run NeMo Retriever Library as a library in local Python processes without containers. Choose one inference path:
 
-You’ll set up a CUDA 13–compatible environment, install the library and its dependencies, and run GPU‑accelerated ingestion pipelines that convert PDFs, HTML, plain text, audio, or video into vector embeddings stored in LanceDB (on local disk), with Ray‑based scaling and built‑in recall benchmarking.
+- **Local GPU (Linux):** Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your GPU(s). Requires CUDA 13.x and the `[local]` extra.
+- **Remote NIM:** Call build.nvidia.com hosted or self-hosted NeMo Retriever NIM endpoints over the network. The base package installs on Linux, Windows x64, and macOS; no local GPU is required.
+
+The steps below cover environment setup, installation, and a first ingestion run. For Kubernetes or container deployments, refer to [Deployment at a glance](#deployment-at-a-glance) and the [Pre-Requisites & Support Matrix](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/).
 
 ## Deployment at a glance
 
@@ -16,12 +17,12 @@ For standalone service-image builds and local container runs, see **[`docker.md`
 
 ## Prerequisites
 
-Before starting, make sure your system meets the following requirements:
+Before starting, confirm requirements for your inference path (refer to the [Pre-Requisites & Support Matrix](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/)):
 
-- The host is running CUDA 13.x so that `libcudart.so.13` is available.
-- Your GPUs are visible to the system and compatible with CUDA 13.x.
-​
-If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline.
+- **Local GPU inference (Linux):** CUDA 13.x with `libcudart.so.13` available, and GPUs visible to the system.
+- **Remote NIM inference:** Python 3.12 and network access to your NIM endpoints; CUDA is not required on the client host.
+
+If optical character recognition (OCR) fails with a `libcudart.so.13` error on a local GPU path, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline.
 
 For example, the following command can be used to update the `LD_LIBRARY_PATH` value.
 
@@ -31,7 +32,7 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64
 
 ## Setup your environment
 
-Complete the following steps to setup your environment. You will create and activate isolated Python and project virtual environments, install the NeMo Retriever Library and its dependencies, and then run the provided ingestion snippets to validate your setup.
+Complete the following steps to set up your environment. You will create and activate isolated Python and project virtual environments, install the NeMo Retriever Library and its dependencies, and then run the provided ingestion snippets to validate your setup.
 
 1. Create and activate the NeMo Retriever Library environment
 
@@ -39,7 +40,9 @@ Before installing NeMo Retriever Library, create an isolated Python environment 
 
 In your terminal, run the following commands from any location.
 
-For **local GPU inference** (Nemotron models running on your GPU), install with the `[local]` extra, which includes the model packages, transformers, and GPU tooling:
+**Local GPU (Linux)**
+
+Install with the `[local]` extra, which includes Nemotron model packages, transformers, and GPU tooling:
 
 ```bash
 uv venv retriever --python 3.12
@@ -55,9 +58,9 @@ major-version windows, opt in with `--pre`:
 uv pip install --pre "nemo-retriever[local]==26.05-RC1"
 ```
 
-Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
+**Remote NIM (no local GPU)**
 
-For **remote NIM inference only** (no local GPU required), the base package is sufficient:
+The base package is sufficient when all inference runs through hosted or self-hosted NIM endpoints:
 
 ```bash
 uv python install 3.12
@@ -86,7 +89,7 @@ The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Li
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org/whl/cu130
 ```
 
 Skip this step if you are using remote NIM inference only.
@@ -426,7 +429,7 @@ query vectors land in the same embedding space as the stored chunks.
 
 ```python
 from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.llm import LiteLLMClient
+from nemo_retriever.models.llm import LiteLLMClient
 
 retriever = Retriever(
     vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
@@ -456,7 +459,7 @@ the bundled `VL_EMBED_MODEL`.
 
 Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python
-from nemo_retriever.llm import LLMJudge
+from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
