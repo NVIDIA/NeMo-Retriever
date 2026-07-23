@@ -450,7 +450,7 @@ class NIMClient:
         timeout_s: float = 120.0,
         task_prompt: Optional[str] = None,
         temperature: float = 0.0,
-        repetition_penalty: float = 1.1,
+        repetition_penalty: Optional[float] = 1.1,
         extra_body: Optional[Dict[str, Any]] = None,
         max_retries: int = 10,
         max_429_retries: int = 5,
@@ -473,7 +473,9 @@ class NIMClient:
             )
             messages_list.append([{"role": "user", "content": content}])
 
-        merged_extra: Dict[str, Any] = {"repetition_penalty": repetition_penalty}
+        merged_extra: Dict[str, Any] = {}
+        if repetition_penalty is not None:
+            merged_extra["repetition_penalty"] = repetition_penalty
         if extra_body:
             merged_extra.update(extra_body)
 

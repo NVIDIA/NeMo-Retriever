@@ -617,9 +617,14 @@ ingestor = (
 )
 ```
 
-You can use a different ingestion pipeline based on [Nemotron-Parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) combined with the default embedder:
+You can use a different ingestion pipeline based on [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) hosted on NVIDIA Build and combined with the default embedder:
+
 ```python
-ingestor = ingestor.files(documents).extract(method="nemotron_parse")
+ingestor = ingestor.files(documents).extract(
+  method="nemotron_parse",
+  nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+  nemotron_parse_model="nvidia/nemotron-parse",
+)
 ```
 
 ## Run with remote inference, no local GPU required:

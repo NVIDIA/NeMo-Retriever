@@ -5,9 +5,11 @@
 """Unit tests verifying all pipeline actors inherit from AbstractOperator."""
 
 import inspect
+import json
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 
@@ -441,6 +443,7 @@ class TestNemotronParseActor:
         assert client.kwargs["model"] == NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
         assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+        assert client.kwargs["repetition_penalty"] == 1.1
 
     def test_remote_chat_completions_supports_legacy_tool_call_protocol(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
@@ -472,6 +475,7 @@ class TestNemotronParseActor:
             "max_tokens": 8192,
             "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
         }
+        assert client.kwargs["repetition_penalty"] == 1.1
 
     def test_remote_chat_completions_does_not_treat_v1_10_as_legacy(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
@@ -498,6 +502,120 @@ class TestNemotronParseActor:
         assert result["text"].tolist() == ["Future text"]
         assert client.kwargs["task_prompt"] is not None
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+
+    def test_hosted_build_contract_is_image_only_and_routes_nested_tool_json(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                elements = [
+                    {"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, "text": "Hosted text"},
+                    {"type": "Table", "bbox": {"xmin": 1, "ymin": 1, "xmax": 2, "ymax": 2}, "text": "A | B"},
+                    {"type": "Chart", "bbox": {"xmin": 2, "ymin": 2, "xmax": 3, "ymax": 3}, "text": "Chart text"},
+                    {"type": "Picture", "bbox": {"xmin": 3, "ymin": 3, "xmax": 4, "ymax": 4}, "text": "Picture text"},
+                ]
+                return [json.dumps({"result": [elements]})]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            extract_text=True,
+            extract_tables=True,
+            extract_charts=True,
+            extract_infographics=True,
+            nim_client=client,
+        )
+
+        assert client.kwargs["model"] == "nvidia/nemotron-parse"
+        assert client.kwargs["task_prompt"] is None
+        assert client.kwargs["repetition_penalty"] is None
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+        assert result["text"].tolist() == ["Hosted text"]
+        assert len(result.at[0, "table"]) == 1
+        assert len(result.at[0, "chart"]) == 1
+        assert len(result.at[0, "infographic"]) == 1
+
+    @pytest.mark.parametrize(
+        ("endpoint", "model", "expected_model", "expected_profile"),
+        [
+            ("https://integrate.api.nvidia.com/v1/chat/completions", None, "nvidia/nemotron-parse", "hosted_tool_call"),
+            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse", "nvidia/nemotron-parse", "hosted_tool_call"),
+            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.0", "nvidia/nemotron-parse-v1.0", "legacy_tool_call"),
+            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.1", "nvidia/nemotron-parse-v1.1", "legacy_tool_call"),
+            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.2", "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", "nvidia/nemotron-parse-v1.10", "nvidia/nemotron-parse-v1.10", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", "custom/parse", "custom/parse", "v1_2_tagged"),
+        ],
+    )
+    def test_contract_resolution(self, endpoint, model, expected_model, expected_profile):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+        contract = _resolve_nemotron_parse_contract(endpoint, model)
+
+        assert contract.model == expected_model
+        assert contract.profile.value == expected_profile
+
+    def test_contract_resolution_rejects_mixed_endpoints_without_model(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+        endpoints = (
+            "https://integrate.api.nvidia.com/v1/chat/completions,"
+            "http://parse:8000/v1/chat/completions"
+        )
+        with pytest.raises(ValueError, match="cannot mix NVIDIA Build and self-hosted"):
+            _resolve_nemotron_parse_contract(endpoints, None)
+
+        contract = _resolve_nemotron_parse_contract(endpoints, "nvidia/nemotron-parse-v1.2")
+        assert contract.profile.value == "v1_2_tagged"
+
+    def test_forced_v1_2_build_text_rejection_reports_contract_mismatch(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _RejectingNIMClient:
+            def invoke_chat_completions_images(self, **kwargs):
+                raise RuntimeError("Content cannot be a plain string; model does not support text input")
+
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+            nim_client=_RejectingNIMClient(),
+        )
+
+        error = result.at[0, "nemotron_parse_v1_2"]["error"]
+        assert error["type"] == "ValueError"
+        assert "model/contract mismatch" in error["message"]
+        assert "nvidia/nemotron-parse" in error["message"]
+
+    def test_image_wrapper_can_omit_repetition_penalty(self):
+        from nemo_retriever.models.nim.nim import NIMClient
+
+        client = NIMClient(max_pool_workers=1)
+        try:
+            with patch.object(client, "invoke_chat_completions", return_value=["ok"]) as invoke:
+                result = client.invoke_chat_completions_images(
+                    invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+                    image_b64_list=["aW1hZ2U="],
+                    model="nvidia/nemotron-parse",
+                    repetition_penalty=None,
+                    extra_body={"max_tokens": 8192},
+                )
+            assert result == ["ok"]
+            payload_args = invoke.call_args.kwargs
+            assert payload_args["messages_list"][0][0]["content"] == [
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,aW1hZ2U="}}
+            ]
+            assert payload_args["extra_body"] == {"max_tokens": 8192}
+        finally:
+            client.shutdown()
 
     @patch(
         "nemo_retriever.operators.extract.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom")

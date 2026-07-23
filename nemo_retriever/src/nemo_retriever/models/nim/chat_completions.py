@@ -159,7 +159,7 @@ def invoke_chat_completions_images(
     timeout_s: float = 120.0,
     task_prompt: Optional[str] = None,
     temperature: float = 0.0,
-    repetition_penalty: float = 1.1,
+    repetition_penalty: Optional[float] = 1.1,
     extra_body: Optional[Dict[str, Any]] = None,
     max_pool_workers: int = 16,
     max_retries: int = 10,
