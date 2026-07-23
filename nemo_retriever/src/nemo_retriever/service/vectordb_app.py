@@ -247,6 +247,8 @@ class VectorDBState:
         self.reconciliation_successes = 0
         self.reconciliation_failures = 0
         self._write_lock = threading.Lock()
+        self._reader_condition = threading.Condition(self._write_lock)
+        self._active_table_readers: dict[str, int] = {}
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
         self._db = lancedb.connect(uri=lancedb_uri)
@@ -364,6 +366,22 @@ class VectorDBState:
             table = self._db.open_table(table_name)
             self._opened_tables[table_name] = table
         return table
+
+    def _acquire_table_reader_locked(self, table_name: str) -> None:
+        self._active_table_readers[table_name] = self._active_table_readers.get(table_name, 0) + 1
+
+    def _release_table_reader(self, table_name: str) -> None:
+        with self._reader_condition:
+            remaining = self._active_table_readers.get(table_name, 0) - 1
+            if remaining > 0:
+                self._active_table_readers[table_name] = remaining
+            else:
+                self._active_table_readers.pop(table_name, None)
+                self._reader_condition.notify_all()
+
+    def _wait_for_table_readers_locked(self, table_name: str) -> None:
+        while self._active_table_readers.get(table_name, 0):
+            self._reader_condition.wait()
 
     def _collection_row(self, scope: str, name: str, *, active: bool = False) -> dict[str, Any] | None:
         where = f"scope = {_quoted(scope)} AND name = {_quoted(name)}"
@@ -508,6 +526,7 @@ class VectorDBState:
         phase = str(row.get("deletion_phase") or "drop_table")
         try:
             if phase == "drop_table":
+                self._wait_for_table_readers_locked(row["physical_table"])
                 self._db.drop_table(row["physical_table"], ignore_missing=True)
                 self._opened_tables.pop(row["physical_table"], None)
                 row["deletion_phase"] = phase = "delete_artifacts"
@@ -796,7 +815,7 @@ class VectorDBState:
         scope: str | None = None,
         collection_name: str | None = None,
     ) -> tuple[list[list[dict[str, Any]]], list[str]]:
-        """Search one resolved table while excluding concurrent lifecycle mutation."""
+        """Search one resolved table while preventing its concurrent deletion."""
         with self._write_lock:
             table_name = self.table_name
             if collection_name:
@@ -824,11 +843,15 @@ class VectorDBState:
             if caps is not None and caps.vector_column and caps.vector_column != "vector":
                 retrieval_kwargs["vector_column_name"] = caps.vector_column
 
+            self._acquire_table_reader_locked(table_name)
+        try:
             raw_results = vdb.retrieval(vectors, **retrieval_kwargs)
             return (
                 normalize_retrieval_results(raw_results),
                 strategies,
             )
+        finally:
+            self._release_table_reader(table_name)
 
     def list_documents(self, scope: str, collection: str, limit: int, token: str | None) -> DocumentPage:
         self._resolved_table(scope, collection)
@@ -1019,11 +1042,20 @@ class VectorDBState:
         successes = 0
         failures = 0
         now = datetime.now(timezone.utc)
-        with self._write_lock:
-            documents = self._rows(_DOCUMENTS_TABLE)
-            for row in documents:
-                if not row.get("recovery_state"):
+        documents = self._rows(_DOCUMENTS_TABLE)
+        for candidate in documents:
+            if not candidate.get("recovery_state"):
+                continue
+            with self._write_lock:
+                rows = self._rows(
+                    _DOCUMENTS_TABLE,
+                    f"scope = {_quoted(candidate['scope'])} "
+                    f"AND collection_name = {_quoted(candidate['collection_name'])} "
+                    f"AND document_id = {_quoted(candidate['document_id'])}",
+                )
+                if not rows or not rows[0].get("recovery_state"):
                     continue
+                row = rows[0]
                 collection = self._collection_row(row["scope"], row["collection_name"])
                 if not collection:
                     continue
@@ -1032,8 +1064,12 @@ class VectorDBState:
                 else:
                     failures += 1
 
-            collections = self._rows(_COLLECTIONS_TABLE)
-            for row in collections:
+        collections = self._rows(_COLLECTIONS_TABLE)
+        for candidate in collections:
+            with self._write_lock:
+                row = self._collection_row(candidate["scope"], candidate["name"])
+                if not row:
+                    continue
                 if (
                     self.expiration_cleanup_enabled
                     and row.get("status") == "active"
@@ -1062,8 +1098,9 @@ class VectorDBState:
                     successes += 1
                 else:
                     failures += 1
-        self.reconciliation_successes += successes
-        self.reconciliation_failures += failures
+        with self._write_lock:
+            self.reconciliation_successes += successes
+            self.reconciliation_failures += failures
         return {"successes": successes, "failures": failures}
 
     def operational_health(self) -> dict[str, Any]:

@@ -731,6 +731,15 @@ def test_internal_auth_headers_use_only_the_dedicated_internal_credential() -> N
     assert internal_auth_headers("internal-secret") == {"X-NRL-Internal-Token": "internal-secret"}
 
 
+def test_service_auth_headers_preserve_worker_pull_credentials() -> None:
+    from nemo_retriever.service.auth import auth_headers
+    from nemo_retriever.service.config import AuthConfig
+
+    assert auth_headers(AuthConfig()) == {}
+    assert auth_headers(AuthConfig(api_token="secret")) == {"Authorization": "Bearer secret"}
+    assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
+
+
 def test_fire_gateway_callback_sends_internal_auth_headers() -> None:
     client_kwargs: dict[str, Any] = {}
 

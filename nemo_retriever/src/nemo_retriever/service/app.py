@@ -274,10 +274,6 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     app.add_middleware(_RequestIdMiddleware)
 
-    if config.mode == "gateway":
-        app.add_middleware(_GatewayBodyCacheMiddleware)
-        logger.info("Gateway body-cache middleware ENABLED")
-
     from nemo_retriever.service.auth import BearerAuthMiddleware
 
     app.add_middleware(

@@ -31,6 +31,15 @@ def _strip_bearer(value: str) -> str:
     return value.strip()
 
 
+def auth_headers(config: AuthConfig) -> dict[str, str]:
+    """Build the configured service-auth header for internal HTTP calls."""
+    token = (config.api_token or "").strip()
+    if not token:
+        return {}
+    value = f"Bearer {token}" if config.header_name.lower() == "authorization" else token
+    return {config.header_name: value}
+
+
 def internal_auth_headers(token: str | None) -> dict[str, str]:
     """Build headers for gateway/worker calls to the VectorDB service."""
     token = (token or "").strip()
@@ -95,7 +104,7 @@ class ScopeAuthorizer:
         if allowed is None:
             return None, 401
         if requested not in allowed:
-            return None, 404
+            return None, 401
         return requested, None
 
 
@@ -134,14 +143,12 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         provided = request.headers.get(self._header, "")
         provided_token = _strip_bearer(provided)
         scope, failure = self._authorizer.authorize(provided_token, request.headers.get("X-NRL-Scope"))
-        if failure == 401:
+        if failure is not None:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Missing or invalid bearer token."},
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if failure == 404:
-            return JSONResponse(status_code=404, content={"detail": "Resource not found."})
 
         request.state.authorized_scope = scope
         return await call_next(request)

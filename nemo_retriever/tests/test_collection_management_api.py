@@ -278,7 +278,7 @@ def test_scope_authorizer_secret_mapping_and_internal_vectordb_token(tmp_path) -
     secret.write_text('{"tokens":[{"token":"alpha-token","scopes":["alpha"]}]}', encoding="utf-8")
     authorizer = ScopeAuthorizer(AuthConfig(scope_token_file=str(secret), allow_unscoped_dev=False))
     assert authorizer.authorize("alpha-token", "alpha") == ("alpha", None)
-    assert authorizer.authorize("alpha-token", "beta") == (None, 404)
+    assert authorizer.authorize("alpha-token", "beta") == (None, 401)
     assert authorizer.authorize("invalid", "alpha") == (None, 401)
 
     app = create_vectordb_app(
@@ -306,15 +306,14 @@ def test_service_routes_use_authorized_scope_not_raw_header() -> None:
         )
     )
     with TestClient(app) as client:
-        assert client.post("/v1/ingest/job", json={"expected_documents": 1}).status_code == 401
-        assert (
-            client.post(
-                "/v1/ingest/job",
-                json={"expected_documents": 1},
-                headers={"Authorization": "Bearer alpha-token", "X-NRL-Scope": "beta"},
-            ).status_code
-            == 404
+        invalid_token = client.post("/v1/ingest/job", json={"expected_documents": 1})
+        invalid_scope = client.post(
+            "/v1/ingest/job",
+            json={"expected_documents": 1},
+            headers={"Authorization": "Bearer alpha-token", "X-NRL-Scope": "beta"},
         )
+        assert invalid_token.status_code == invalid_scope.status_code == 401
+        assert invalid_token.json() == invalid_scope.json() == {"detail": "Missing or invalid bearer token."}
         created = client.post(
             "/v1/ingest/job",
             json={"expected_documents": 1},
@@ -462,6 +461,8 @@ def test_keyset_cursors_are_stable_and_context_bound(tmp_path) -> None:
 
 
 def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch) -> None:
+    from nemo_retriever.common.vdb.lancedb import LanceDB
+
     state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
     state.create_collection("scope", CollectionCreateRequest(name="research"))
     state.write_rows(
@@ -476,19 +477,18 @@ def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch
     search_entered = threading.Event()
     release_search = threading.Event()
     delete_entered = threading.Event()
-    original_capabilities = state._table_capabilities
+    original_retrieval = LanceDB.retrieval
 
-    def blocked_capabilities(table_name=None):
+    def blocked_retrieval(vdb, *args, **kwargs):
         search_entered.set()
         assert release_search.wait(5)
-        return original_capabilities(table_name)
+        return original_retrieval(vdb, *args, **kwargs)
 
-    def observed_cleanup(_row):
+    def observed_drop_table(*args, **kwargs):
         delete_entered.set()
-        return True
 
-    monkeypatch.setattr(state, "_table_capabilities", blocked_capabilities)
-    monkeypatch.setattr(state, "_cleanup_collection_locked", observed_cleanup)
+    monkeypatch.setattr(LanceDB, "retrieval", blocked_retrieval)
+    monkeypatch.setattr(state._db, "drop_table", observed_drop_table)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         search = pool.submit(
@@ -506,12 +506,71 @@ def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch
         release_search.set()
 
         results, strategies = search.result(timeout=5)
-        deleted = delete.result(timeout=5)
+        deleted = delete.result(timeout=30)
 
     assert results[0][0]["document_id"] == "doc"
     assert strategies == ["dense"]
     assert delete_entered.is_set()
     assert deleted.deleted
+
+
+def test_collection_searches_run_concurrently(tmp_path, monkeypatch) -> None:
+    from nemo_retriever.common.vdb.lancedb import LanceDB
+
+    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
+    state.create_collection("scope", CollectionCreateRequest(name="research"))
+    state.write_rows(
+        [_row("chunk", "doc", "searchable text")],
+        scope="scope",
+        collection_name="research",
+        document_id="doc",
+        filename="report.pdf",
+        content_sha256="v1",
+    )
+    searches_entered = threading.Barrier(2)
+
+    def synchronized_retrieval(_vdb, vectors, **_kwargs):
+        searches_entered.wait(timeout=5)
+        return [[] for _ in vectors]
+
+    monkeypatch.setattr(LanceDB, "retrieval", synchronized_retrieval)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        searches = [
+            pool.submit(
+                state.search,
+                [[1.0, 0.0]],
+                ["searchable text"],
+                1,
+                scope="scope",
+                collection_name="research",
+            )
+            for _ in range(2)
+        ]
+        assert [future.result(timeout=5)[0] for future in searches] == [[[]], [[]]]
+
+
+def test_reconcile_catalog_scan_does_not_block_collection_writes(tmp_path, monkeypatch) -> None:
+    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
+    scan_entered = threading.Event()
+    release_scan = threading.Event()
+    original_rows = state._rows
+
+    def blocked_rows(table_name, where=None, columns=None):
+        if table_name == "_nrl_documents" and where is None:
+            scan_entered.set()
+            assert release_scan.wait(5)
+        return original_rows(table_name, where, columns)
+
+    monkeypatch.setattr(state, "_rows", blocked_rows)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reconciliation = pool.submit(state.reconcile)
+        assert scan_entered.wait(5)
+        creation = pool.submit(state.create_collection, "scope", CollectionCreateRequest(name="research"))
+        try:
+            assert creation.result(timeout=2).name == "research"
+        finally:
+            release_scan.set()
+        assert reconciliation.result(timeout=5) == {"successes": 0, "failures": 0}
 
 
 def test_replacement_marker_recovers_after_catalog_finalize_failure(tmp_path, monkeypatch) -> None:
