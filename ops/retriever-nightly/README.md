@@ -89,8 +89,9 @@ repository `.env`.
 
 The default map,
 [`dataset_paths.datasets.yaml`](dataset_paths.datasets.yaml), uses
-`/datasets/nv-ingest`. On another host, copy the portable template outside the
-repository:
+`/datasets/nv-ingest` for benchmark corpora. JP20 evaluation uses the checked-in
+`data/jp20_query_gt.csv`. On another host, copy the portable template outside
+the repository:
 
 ```bash
 cp nemo_retriever/harness/dataset_paths.example.yaml \

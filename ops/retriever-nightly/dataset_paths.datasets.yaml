@@ -5,7 +5,7 @@ schema_version: 1
 datasets:
   jp20:
     path: /datasets/nv-ingest/jp20
-    query_file: /datasets/nv-ingest/ground_truths/jp20_query_gt.csv
+    query_file: ../../data/jp20_query_gt.csv
   bo767:
     path: /datasets/nv-ingest/bo767
     query_file: /datasets/nv-ingest/ground_truths/bo767_query_gt.csv

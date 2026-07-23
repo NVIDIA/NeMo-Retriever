@@ -28,7 +28,9 @@ ${EDITOR:-vi} /local/path/to/dataset_paths.yaml
 ```
 
 Keep this file outside the repository. It maps registered dataset names to local
-document and query paths.
+corpus paths and any annotations that are not checked in. JP20 uses the
+repository's `data/jp20_query_gt.csv` unless `query_file` is explicitly
+overridden.
 
 ## Run One Benchmark
 
