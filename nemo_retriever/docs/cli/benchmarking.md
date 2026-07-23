@@ -1,131 +1,42 @@
-# Benchmarking with the `retriever` CLI
+# Benchmarking with the Retriever CLI
 
-`retriever benchmark` and `retriever harness` are development and experimental subcommands
-with no guarantees — refer to [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
+Retriever has two development benchmarking surfaces:
 
-This page covers benchmark workflows for NeMo Retriever Library. Also refer to
-[`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
-notes on `retriever harness`.
+| Goal | Command | Documentation |
+| --- | --- | --- |
+| End-to-end ingest, query, and retrieval evaluation | `retriever harness` | [Retriever Harness](../../harness/README.md) |
+| Throughput for one internal pipeline stage | `retriever benchmark` | [Stage micro-benchmarks](#stage-micro-benchmarks) |
 
-Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
-per-stage micro-benchmarks. `retriever benchmark` remains callable but is hidden
-from root help.
+For product workflows on your own inputs, use `retriever ingest` and
+`retriever query` instead.
 
-## Harness (development / experimental)
+## End-to-End Benchmarks
 
-Run from the repository root or any directory. The harness uses code-owned
-benchmark names from `nemo_retriever.harness.benchmark_registry`; use
-`retriever harness list` to discover the available benchmarks and runsets.
+The harness owns registered datasets, repeatable runfiles, metric gates, and
+stable artifacts. Start with:
 
 ```bash
-# List benchmark registry entries, optionally including runsets
-retriever harness list
 retriever harness list --runsets
-
-# Inspect one concrete benchmark spec
 retriever harness show jp20_beir
-
-# Run one benchmark and write stable artifacts
-retriever harness run jp20_beir
-
-# Run one benchmark in batch mode
-retriever harness run bo767_beir --mode batch
-
-# Override a resolved config key for this run
-retriever harness run bo767_beir --set query.top_k=5
-
-# Expand and run a code-owned benchmark runset
-retriever harness run-set jp20_core
 ```
 
-Related commands:
+Then choose the execution guide:
+
+- [Local and batch library runs](../../harness/docs/library.md)
+- [Existing-service and managed-Helm runs](../../harness/docs/service.md)
+- [Recurring workstation nightly](../../../ops/retriever-nightly/README.md)
+
+Agentic BEIR evaluation is documented under
+[library harness runs](../../harness/docs/library.md#evaluate-agentic-retrieval).
+
+## Stage Micro-Benchmarks
+
+`retriever benchmark` measures individual actors rather than an end-to-end
+Retriever result. It remains callable for development compatibility but is
+hidden from root help.
 
 ```bash
-retriever harness --help
-retriever harness list --help
-retriever harness show --help
-retriever harness run --help
-retriever harness run-set --help
-retriever harness diff --help
-```
-
-### Agentic BEIR evaluation
-
-Harness runs use the standard dense retrieval path unless agentic retrieval is
-enabled in the resolved benchmark query config. Set `query.agentic: true` in a
-code-owned benchmark or runfile, or use repeatable `--set` overrides on the CLI.
-The agentic harness path runs the same ReAct retrieval graph used by root query,
-but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
-
-By default, agentic harness evaluation uses the in-process local vLLM backend
-with `nemotron-8b`. Custom LLMs are not supported in process yet; run them behind
-an OpenAI-compatible chat-completions endpoint and set `query.agentic_invoke_url`.
-
-Minimal BEIR override example:
-
-```bash
-retriever harness run jp20_beir \
-  --set query.agentic=true
-```
-
-Larger supported local profile:
-
-```bash
-retriever harness run jp20_beir \
-  --set query.agentic=true \
-  --set query.agentic_llm_model=super-49b \
-  --set query.agentic_local_tensor_parallel_size=2
-```
-
-Custom/self-hosted OpenAI-compatible endpoint:
-
-```bash
-retriever harness run jp20_beir \
-  --set query.agentic=true \
-  --set query.agentic_llm_model=custom-remote-model \
-  --set query.agentic_invoke_url=http://localhost:9000/v1/chat/completions
-```
-
-Useful agentic query overrides:
-
-- `query.agentic_llm_model` — local profile alias/model ID when no invoke URL is
-  provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
-  model ID when `query.agentic_invoke_url` is provided.
-- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint.
-  Providing it routes agent LLM calls to that remote endpoint.
-- `query.agentic_local_gpu_memory_utilization`,
-  `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
-  and `query.agentic_local_max_num_seqs` — harness-only local vLLM resource and
-  scheduling controls for benchmark runs. Use environment variables such as
-  `CUDA_VISIBLE_DEVICES` and the standard Hugging Face cache environment for
-  placement and model cache control.
-- `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
-  call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
-- `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
-  (defaults to `50`).
-- `query.agentic_text_truncation` — max characters of each candidate shown to
-  the agent; `0` disables truncation.
-- `query.agentic_num_concurrent` — number of queries the agent batch runs
-  concurrently (defaults to `1`).
-- `query.agentic_temperature` — defaults to `0.0`; local and non-NVIDIA
-  OpenAI-compatible endpoints allow `0.0..2.0`, while hosted/default NVIDIA
-  endpoints are validated as `0.0..1.0`.
-- `query.agentic_reasoning_effort` — optional provider-specific field forwarded
-  only when configured.
-
-### Image storage
-
-For normal ingest, configure image persistence on `retriever ingest` with
-`--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
-`--embed-granularity` (page vs element images).
-
-## Per-stage micro-benchmarks
-
-Stage throughput benchmarks remain callable for compatibility even though they
-are hidden from root help:
-
-```bash
-retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
+retriever benchmark --help
 retriever benchmark split --help
 retriever benchmark extract --help
 retriever benchmark audio-extract --help
@@ -134,7 +45,7 @@ retriever benchmark ocr --help
 retriever benchmark all --help
 ```
 
-Example — PDF extraction actor:
+Example:
 
 ```bash
 retriever benchmark extract ./data/pdf_corpus \
@@ -142,15 +53,6 @@ retriever benchmark extract ./data/pdf_corpus \
   --pdf-extract-actors 4
 ```
 
-Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
-
-## Notes
-
-- **Configuration:** `retriever harness` uses code-owned benchmarks/runsets from
-  `nemo_retriever.harness.benchmark_registry`; use `--set KEY=VALUE` for small
-  per-run config overrides.
-- **Launcher:** for internal benchmarking, `retriever harness run BENCHMARK` and
-  `retriever harness run-set RUNSET` are the benchmark orchestration entry points
-  (development / experimental; no guarantees).
-- **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
-  covers per-stage throughput rather than full harness orchestration.
+Stage commands report rows per second, or chunk rows per second for audio. They
+do not produce the harness artifact contract and should not be used as retrieval
+quality evidence.

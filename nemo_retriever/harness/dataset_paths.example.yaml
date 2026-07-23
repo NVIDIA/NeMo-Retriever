@@ -1,10 +1,10 @@
 schema_version: 1
-# Copy this file outside the checkout, replace the paths for the host, and pass
-# the YAML file itself with --dataset-paths. Do not pass a dataset directory.
+# Copy this file outside the checkout, replace the corpus paths for the host,
+# and pass the YAML file itself with --dataset-paths. Keep query_file only for
+# annotations that are not checked into data/. Do not pass a dataset directory.
 datasets:
   jp20:
     path: /path/to/datasets/nv-ingest/jp20
-    query_file: /path/to/datasets/nv-ingest/jp20_query_gt.csv
   bo767:
     path: /path/to/datasets/nv-ingest/bo767
     query_file: /path/to/NeMo-Retriever/data/bo767_query_gt.csv
