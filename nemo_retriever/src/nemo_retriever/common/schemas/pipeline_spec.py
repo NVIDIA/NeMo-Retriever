@@ -71,10 +71,11 @@ class EndpointOverrides(RichModel):
 
     Fields left ``None`` fall back to the server-configured default for that
     stage. ``embed_*`` retarget the embedding NIM used by the ``embed`` stage;
-    ``caption_*`` retarget the VLM used by the ``caption`` stage. ``api_key``
-    is an optional credential applied to whichever endpoints the client
-    overrode (it never replaces the server key for stages left at their
-    defaults).
+    ``caption_*`` retarget the VLM used by the ``caption`` stage.
+    ``embed_api_key`` / ``caption_api_key`` are optional credentials for
+    those stages; ``api_key`` remains as a legacy fallback when only one
+    stage is overridden (never replaces the server key for stages left at
+    their defaults).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -99,9 +100,21 @@ class EndpointOverrides(RichModel):
         default=None,
         description="Model identifier passed to the overridden caption (VLM) endpoint.",
     )
+    embed_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for the client-overridden embedding endpoint only.",
+    )
+    caption_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for the client-overridden caption (VLM) endpoint only.",
+    )
     api_key: Optional[str] = Field(
         default=None,
-        description="Optional API key applied to the client-overridden endpoints only.",
+        description=(
+            "Legacy fallback API key when a single overridden stage supplies "
+            "no stage-specific key. Prefer embed_api_key / caption_api_key "
+            "when both stages need credentials."
+        ),
     )
 
     def is_empty(self) -> bool:
@@ -113,6 +126,8 @@ class EndpointOverrides(RichModel):
                 self.embed_model_provider_prefix,
                 self.caption_invoke_url,
                 self.caption_model_name,
+                self.embed_api_key,
+                self.caption_api_key,
                 self.api_key,
             )
         )

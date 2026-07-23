@@ -1551,6 +1551,11 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
 
 
+def _endpoint_override_policy(config: Any):
+    """Return the runtime :class:`EndpointOverridePolicy` for *config*."""
+    return config.pipeline_overrides.to_policy().endpoint_overrides
+
+
 def _resolve_rerank_settings(req: "ServiceAnswerRequest", config: Any) -> tuple[str | None, str | None, str | None]:
     """Resolve the (url, model, api_key) used to rerank this request.
 
@@ -1565,30 +1570,17 @@ def _resolve_rerank_settings(req: "ServiceAnswerRequest", config: Any) -> tuple[
     if not req.has_rerank_override():
         return nim.rerank_invoke_url, nim.rerank_model_name, nim.api_key
 
-    endpoint_policy = config.pipeline_overrides.endpoint_overrides
-    if not endpoint_policy.rerank:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Per-request rerank endpoint overrides are disabled on this service. "
-                "Ask the operator to set pipeline_overrides.endpoint_overrides.rerank: "
-                "true in retriever-service.yaml."
-            ),
-        )
-    prefixes = endpoint_policy.allowed_url_prefixes
-    if req.rerank_invoke_url and prefixes and not any(req.rerank_invoke_url.startswith(p) for p in prefixes):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"rerank_invoke_url {req.rerank_invoke_url!r} does not match any allowed "
-                f"prefix in {list(prefixes)!r}."
-            ),
-        )
-    return (
-        req.rerank_invoke_url or nim.rerank_invoke_url,
-        req.rerank_model_name or nim.rerank_model_name,
-        req.rerank_api_key or nim.api_key,
-    )
+    try:
+        _endpoint_override_policy(config).check_rerank(url=req.rerank_invoke_url)
+    except PolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    rerank_url = req.rerank_invoke_url or nim.rerank_invoke_url
+    rerank_model = req.rerank_model_name or nim.rerank_model_name
+    if req.rerank_invoke_url:
+        rerank_api_key = req.rerank_api_key
+    else:
+        rerank_api_key = req.rerank_api_key or nim.api_key
+    return (rerank_url, rerank_model, rerank_api_key)
 
 
 @router.post(
@@ -1711,28 +1703,15 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
     # client supplies a different model / api_base, build a one-off client
     # instead of reusing (or poisoning) the cached server-default client.
     if req.has_llm_override():
-        endpoint_policy = config.pipeline_overrides.endpoint_overrides
-        if not endpoint_policy.llm:
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "Per-request LLM endpoint overrides are disabled on this service. "
-                    "Ask the operator to set pipeline_overrides.endpoint_overrides.llm: "
-                    "true in retriever-service.yaml."
-                ),
-            )
-        prefixes = endpoint_policy.allowed_url_prefixes
-        if req.llm_api_base and prefixes and not any(req.llm_api_base.startswith(p) for p in prefixes):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    f"llm_api_base {req.llm_api_base!r} does not match any allowed " f"prefix in {list(prefixes)!r}."
-                ),
-            )
+        try:
+            _endpoint_override_policy(config).check_llm(url=req.llm_api_base)
+        except PolicyError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        llm_api_key = req.llm_api_key if req.llm_api_base else (req.llm_api_key or llm_cfg.api_key)
         llm = LiteLLMClient.from_kwargs(
             model=req.llm_model or llm_cfg.model,
             api_base=req.llm_api_base or llm_cfg.api_base,
-            api_key=req.llm_api_key or llm_cfg.api_key,
+            api_key=llm_api_key,
             temperature=llm_cfg.temperature,
             top_p=llm_cfg.top_p,
             max_tokens=llm_cfg.max_tokens,

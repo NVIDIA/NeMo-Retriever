@@ -389,9 +389,11 @@ def _apply_embed_endpoint_override(
         effective["embed_model_name"] = embed_model
     if embed_prefix:
         effective["embed_model_provider_prefix"] = embed_prefix
-    api_key = endpoint_overrides.get("api_key")
+    api_key = endpoint_overrides.get("embed_api_key") or endpoint_overrides.get("api_key")
     if api_key:
         effective["api_key"] = api_key
+    elif embed_url:
+        effective.pop("api_key", None)
     return effective
 
 
@@ -415,9 +417,11 @@ def _apply_caption_endpoint_override(
         effective["endpoint_url"] = caption_url
     if caption_model:
         effective["model_name"] = caption_model
-    api_key = endpoint_overrides.get("api_key")
+    api_key = endpoint_overrides.get("caption_api_key") or endpoint_overrides.get("api_key")
     if api_key:
         effective["api_key"] = api_key
+    elif caption_url:
+        effective.pop("api_key", None)
     return effective
 
 

@@ -179,6 +179,16 @@ def test_endpoint_only_override_allowed_under_reject_mode() -> None:
     assert validate_pipeline_spec(spec, cfg.to_policy()) is spec
 
 
+@pytest.mark.parametrize("extraction_mode", ["image", "text", "html", "audio"])
+def test_endpoint_only_override_allowed_for_non_pdf_extraction_modes(extraction_mode: str) -> None:
+    cfg = PipelineOverridesConfig(mode="reject", endpoint_overrides=EndpointOverridesConfig(embed=True))
+    spec = PipelineSpec(
+        extraction_mode=extraction_mode,
+        endpoint_overrides=EndpointOverrides(embed_invoke_url="http://x/embed"),
+    )
+    assert validate_pipeline_spec(spec, cfg.to_policy()) is spec
+
+
 def test_client_caption_endpoint_unlocks_caption_stage() -> None:
     """A client-supplied VLM endpoint enables caption even without a server NIM."""
     cfg = PipelineOverridesConfig(endpoint_overrides=EndpointOverridesConfig(caption=True))
@@ -228,6 +238,27 @@ def test_apply_caption_endpoint_override_creates_base_when_none() -> None:
     assert out == {"endpoint_url": "http://client/vlm", "model_name": "vlm-x", "api_key": "k"}
 
 
+def test_apply_embed_endpoint_override_clears_server_key_when_url_overridden_without_client_key() -> None:
+    base = {"embed_invoke_url": "http://server/embed", "model_name": "server-m", "api_key": "server-key"}
+    out = _apply_embed_endpoint_override(base, {"embed_invoke_url": "http://client/embed"})
+    assert out["embed_invoke_url"] == "http://client/embed"
+    assert "api_key" not in out
+
+
+def test_apply_embed_endpoint_override_keeps_server_key_for_model_only_override() -> None:
+    base = {"embed_invoke_url": "http://server/embed", "model_name": "server-m", "api_key": "server-key"}
+    out = _apply_embed_endpoint_override(base, {"embed_model_name": "client-m"})
+    assert out["model_name"] == "client-m"
+    assert out["api_key"] == "server-key"
+
+
+def test_apply_caption_endpoint_override_clears_server_key_when_url_overridden_without_client_key() -> None:
+    base = {"endpoint_url": "http://server/vlm", "model_name": "server-m", "api_key": "server-key"}
+    out = _apply_caption_endpoint_override(base, {"caption_invoke_url": "http://client/vlm"})
+    assert out["endpoint_url"] == "http://client/vlm"
+    assert "api_key" not in out
+
+
 def test_build_graph_ingestor_applies_embed_endpoint_override() -> None:
     base_embed = {"embed_invoke_url": "http://server/embed", "model_name": "server-m", "api_key": "server-key"}
     spec = {
@@ -245,8 +276,7 @@ def test_build_graph_ingestor_applies_embed_endpoint_override() -> None:
     assert ingestor._embed_params is not None
     assert ingestor._embed_params.embed_invoke_url == "http://client/embed"
     assert ingestor._embed_params.model_name == "client-m"
-    # Server key is preserved because the client did not override it.
-    assert ingestor._embed_params.api_key == "server-key"
+    assert ingestor._embed_params.api_key is None
 
 
 def test_build_graph_ingestor_applies_caption_endpoint_override_without_server_endpoint() -> None:
@@ -360,6 +390,23 @@ def test_embed_and_caption_endpoint_overrides_merge() -> None:
     ov = ing._pipeline_payload()["endpoint_overrides"]
     assert ov["embed_invoke_url"] == "http://client/embed"
     assert ov["caption_invoke_url"] == "http://client/vlm"
+
+
+def test_embed_and_caption_endpoint_overrides_keep_separate_api_keys() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.embed(embed_invoke_url="http://client/embed", api_key="embed-key").caption(
+        endpoint_url="http://client/vlm",
+        api_key="caption-key",
+    )
+    ov = ing._pipeline_payload()["endpoint_overrides"]
+    assert ov["embed_api_key"] == "embed-key"
+    assert ov["caption_api_key"] == "caption-key"
+    assert "api_key" not in ov
+
+    embed_out = _apply_embed_endpoint_override({"embed_invoke_url": "http://server/embed"}, ov)
+    caption_out = _apply_caption_endpoint_override(None, ov)
+    assert embed_out["api_key"] == "embed-key"
+    assert caption_out["api_key"] == "caption-key"
 
 
 # ----------------------------------------------------------------------
@@ -652,6 +699,53 @@ def test_answer_rerank_override_applied_when_enabled(monkeypatch: pytest.MonkeyP
     assert calls["kwargs"]["rerank_invoke_url"] == "http://client/rerank"
     assert calls["kwargs"]["model_name"] == "client/rerank"
     assert calls["kwargs"]["api_key"] == "client-key"
+
+
+def test_answer_rerank_url_override_does_not_forward_server_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(
+        monkeypatch,
+        tmp_path,
+        rerank_override=True,
+        server_rerank_url="http://rerank.svc/v1",
+    )
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    _stub_llm(monkeypatch)
+
+    calls: dict[str, Any] = {}
+
+    def _fake_rerank_hits(query, hits, **kwargs):
+        calls["kwargs"] = kwargs
+        return hits[: kwargs.get("top_n")]
+
+    monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _fake_rerank_hits)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/v1/answer",
+            json={"query": "q", "top_k": 3, "rerank_invoke_url": "http://client/rerank"},
+        )
+    assert resp.status_code == 200, resp.text
+    assert calls["kwargs"]["rerank_invoke_url"] == "http://client/rerank"
+    assert calls["kwargs"]["api_key"] == ""
+
+
+def test_answer_llm_url_override_does_not_forward_server_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_answer_app(monkeypatch, tmp_path, llm_override=True)
+    monkeypatch.setattr("httpx.AsyncClient", _AnswerFakeAsyncClient)
+
+    fake_llm = SimpleNamespace(
+        generate=lambda query, chunks, *, reasoning_enabled=None: GenerationResult(
+            answer="ok", latency_s=0.1, model="client/model"
+        )
+    )
+    with patch("nemo_retriever.models.llm.clients.LiteLLMClient.from_kwargs", return_value=fake_llm) as from_kwargs:
+        with TestClient(app) as client:
+            resp = client.post(
+                "/v1/answer",
+                json={"query": "q", "llm_api_base": "http://client-llm:8000/v1"},
+            )
+    assert resp.status_code == 200, resp.text
+    assert from_kwargs.call_args.kwargs["api_key"] is None
 
 
 def test_answer_rerank_override_prefix_allowlist_enforced(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

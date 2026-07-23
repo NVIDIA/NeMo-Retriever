@@ -681,7 +681,7 @@ class ServiceIngestor(ingestor):
                 embed_invoke_url=embed_url,
                 embed_model_name=embed_model,
                 embed_model_provider_prefix=embed_prefix,
-                api_key=api_key if has_embed_override else None,
+                embed_api_key=api_key if has_embed_override else None,
             )
 
             # Remaining shape params still pass through the denylist + allowlist.
@@ -1069,7 +1069,7 @@ class ServiceIngestor(ingestor):
         self._record_endpoint_overrides(
             caption_invoke_url=caption_url,
             caption_model_name=caption_model,
-            api_key=api_key if has_caption_override else None,
+            caption_api_key=api_key if has_caption_override else None,
         )
 
         # Drop local-execution keys before the spec leaves the client — the

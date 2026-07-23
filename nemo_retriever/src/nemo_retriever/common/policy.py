@@ -713,11 +713,14 @@ def _validate_endpoint_overrides(
     if caption_requested:
         policy.check_caption(url=overrides.caption_invoke_url)
 
-    # A bare api_key with no endpoint/model is meaningless — reject so the
+    # A bare credential with no endpoint/model is meaningless — reject so the
     # client gets a clear error instead of a silently ignored credential.
-    if overrides.api_key and not (embed_requested or caption_requested):
+    if (overrides.api_key or overrides.embed_api_key or overrides.caption_api_key) and not (
+        embed_requested or caption_requested
+    ):
         raise PolicyError(
-            "endpoint_overrides.api_key was set without any endpoint or model " "override to apply it to.",
+            "endpoint_overrides embed/caption API key was set without any "
+            "endpoint or model override to apply it to.",
             status_code=400,
         )
 
@@ -732,8 +735,7 @@ def _spec_has_only_endpoint_overrides(spec: PipelineSpec) -> bool:
     if spec.endpoint_overrides is None or spec.endpoint_overrides.is_empty():
         return False
     return (
-        spec.extraction_mode in ("pdf", "auto")
-        and spec.extract_params is None
+        spec.extract_params is None
         and spec.embed_params is None
         and spec.dedup_params is None
         and spec.caption_params is None
