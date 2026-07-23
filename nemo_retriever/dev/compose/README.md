@@ -45,7 +45,7 @@ Use the NVCR authentication described above before pulling a self-hosted NIM.
 Keep `NGC_API_KEY` exported so it is also available to the NIM containers. The
 hosted-only stack does not require `NGC_API_KEY` at runtime.
 
-Start the four core extraction/retrieval NIMs with their checked-in internal
+Start the three core extraction/retrieval NIMs with their checked-in internal
 endpoint wiring:
 
 ```bash
@@ -66,7 +66,7 @@ docker compose \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-To start all nine NIMs, layer the four wiring presets and select every NIM
+To start all eight NIMs, layer the four wiring presets and select every NIM
 profile:
 
 ```bash
@@ -89,8 +89,9 @@ configurable host port. Variables follow the service prefix, for example
 `NIM_OCR_GPU_ID`, `NIM_OCR_HOST_PORT`, `NIM_OCR_CACHE_VOLUME`,
 `NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. The defaults form a
 collision-free assignment for the combined-profile example: core NIMs use GPUs
-0-3, reranker uses 4, parse uses 5, caption uses 6, answer uses 7-8, and audio
-uses 9. Change the defaults to match the active profiles and host before
+0, 1, 2, and 3 (page-elements, table-structure, OCR, and embedding), reranker uses 4,
+parse uses 5, caption uses 6, answer uses 7-8, and audio uses 9. Change the
+defaults to match the active profiles and host before
 startup; for example, an answer-only run on a two-GPU host can set
 `NIM_ANSWER_GPU_ID_0=0` and `NIM_ANSWER_GPU_ID_1=1`. Compose lifecycle support
 means image pull, startup, readiness, persistent cache, restart, logs, and
@@ -164,7 +165,7 @@ These checks pull large images/models and require suitable NVIDIA GPUs. Use
 `docker compose config` for configuration-only validation without launching
 the stack.
 
-1. Core extraction/retrieval: start `nims-core.env`, wait for all six services
+1. Core extraction/retrieval: start `nims-core.env`, wait for all five services
    to report healthy, then ingest a representative PDF with the service CLI:
 
    ```bash

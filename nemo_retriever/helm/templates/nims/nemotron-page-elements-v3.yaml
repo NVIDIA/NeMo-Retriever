@@ -30,7 +30,7 @@ metadata:
 spec:
   image:
     repository: {{ .Values.nimOperator.page_elements.image.repository }}
-    tag: {{ .Values.nimOperator.page_elements.image.tag }}
+    tag: {{ .Values.nimOperator.page_elements.image.tag | toString | quote }}
     pullPolicy: {{ .Values.nimOperator.page_elements.image.pullPolicy }}
     pullSecrets:
 {{ toYaml .Values.nimOperator.page_elements.image.pullSecrets | indent 6 }}

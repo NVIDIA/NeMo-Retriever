@@ -90,10 +90,12 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Page-elements and table-structure are separate Compose services (matching
+  # Helm) but both run the combined nemotron-object-detection:2.0.0 image.
   nim-page-elements:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-page-elements-v3}:${NIM_PAGE_ELEMENTS_TAG:-1.8.0}
+    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_PAGE_ELEMENTS_TAG:-2.0.0}
     ports: ["${NIM_PAGE_ELEMENTS_HOST_PORT:-8001}:8000"]
     environment:
       <<: *nim-environment
@@ -110,24 +112,24 @@ services:
   nim-table-structure:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-table-structure-v1}:${NIM_TABLE_STRUCTURE_TAG:-1.8.0}
+    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_TABLE_STRUCTURE_TAG:-2.0.0}
     ports: ["${NIM_TABLE_STRUCTURE_HOST_PORT:-8002}:8000"]
     environment:
       <<: *nim-environment
       NIM_HTTP_API_PORT: "8000"
       NIM_OTEL_SERVICE_NAME: nemotron-table-structure-v1
       NIM_TRITON_LOG_VERBOSE: "1"
-      NIM_TRITON_RATE_LIMIT: "3"
       NIM_TRITON_MAX_BATCH_SIZE: "32"
-      NIM_TRITON_CUDA_MEMORY_POOL_MB: "2048"
-      OMP_NUM_THREADS: "1"
+      NIM_TRITON_CPU_THREADS_PRE_PROCESSOR: "2"
+      NIM_TRITON_CPU_THREADS_POST_PROCESSOR: "1"
+      OMP_NUM_THREADS: "2"
     volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/opt/nim/.cache}"]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_TABLE_STRUCTURE_GPU_ID:-1}"]}]}}}
 
   nim-ocr:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-1.4.0}
+    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-2.0.0}
     ports: ["${NIM_OCR_HOST_PORT:-8003}:8000"]
     environment:
       <<: *nim-environment
@@ -252,9 +254,9 @@ configs:
         file: "/var/lib/nemo-retriever/retriever-service.log"
         format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
       nim_endpoints:
-        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3}"
-        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1}"
-        ocr_invoke_url: "${NIM_OCR_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1}"
+        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-http://nim-page-elements:8000/v1/infer}"
+        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-http://nim-table-structure:8000/v1/infer}"
+        ocr_invoke_url: "${NIM_OCR_URL-http://nim-ocr:8000/v1/infer}"
         embed_invoke_url: "${NIM_EMBED_URL-https://integrate.api.nvidia.com/v1/embeddings}"
         embed_model_name: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
         caption_invoke_url: ${NIM_CAPTION_URL:-null}

@@ -876,7 +876,7 @@ nims:
 #
 # When auto-resolution is in effect, the chart populates
 # `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
-# (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
+# (e.g. http://nemotron-object-detection:8000/v1/infer). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
 # NIMCache resources may carry `helm.sh/resource-policy: keep` so model
@@ -894,8 +894,11 @@ nimOperator:
     keepOnUninstall: true
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
+    # nemotron-object-detection was a short-lived single-NIM chart name; page_elements
+    # and table_structure now share that container image under their legacy names.
     pruneRetiredNimResources:
       - nemotron-ocr-v1
+      - nemotron-object-detection
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -998,13 +1001,14 @@ nimOperator:
   # ``1.7.0-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
-  # Page-elements detector (YOLOX-style). Used by the page-element extraction
-  # stage of the ingest pipeline.
+  # Page-element detector. Uses the combined nemotron-object-detection NIM image
+  # but keeps the legacy in-cluster Service name so the retriever pipeline's
+  # page_elements_invoke_url continues to resolve independently.
   page_elements:
     enabled: true
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1048,12 +1052,13 @@ nimOperator:
       - name: OMP_NUM_THREADS
         value: "2"
 
-  # Table structure detector. Used by the table extraction stage.
+  # Table structure detector. Uses the same nemotron-object-detection NIM image
+  # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
   table_structure:
     enabled: true
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1088,14 +1093,14 @@ nimOperator:
         value: "8000"
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
       - name: NIM_TRITON_MAX_BATCH_SIZE
         value: "32"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
+      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
+        value: "2"
+      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
         value: "1"
+      - name: OMP_NUM_THREADS
+        value: "2"
 
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
@@ -1104,7 +1109,7 @@ nimOperator:
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "1.4.0"
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret

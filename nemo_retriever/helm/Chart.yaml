@@ -6,7 +6,7 @@ description: |
 
   This chart deploys the "service" run mode of nemo-retriever as a single
   scalable web endpoint that orchestrates document ingestion against
-  remote NIM endpoints (page-elements, table-structure, OCR, VLM embed).
+  remote NIM endpoints (object detection, OCR, VLM embed).
 
   In-cluster NIMs are provisioned via NVIDIA NIM Operator custom
   resources (NIMCache + NIMService, apps.nvidia.com/v1alpha1). The

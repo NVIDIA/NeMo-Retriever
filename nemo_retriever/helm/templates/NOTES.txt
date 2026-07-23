@@ -61,10 +61,12 @@ Services:
    the following NIMServices were submitted for reconciliation (each
    lands as a Deployment + Service owned by the operator):
 {{- if .Values.nimOperator.page_elements.enabled }}
-   - nemotron-page-elements-v3   → http://nemotron-page-elements-v3:{{ .Values.nimOperator.page_elements.expose.service.port }}/v1/infer
+   - nemotron-page-elements-v3 → http://nemotron-page-elements-v3:{{ .Values.nimOperator.page_elements.expose.service.port }}/v1/infer
+     (nemotron-object-detection image; auto-wired into nim_endpoints.page_elements_invoke_url)
 {{- end }}
 {{- if .Values.nimOperator.table_structure.enabled }}
    - nemotron-table-structure-v1 → http://nemotron-table-structure-v1:{{ .Values.nimOperator.table_structure.expose.service.port }}/v1/infer
+     (nemotron-object-detection image; auto-wired into nim_endpoints.table_structure_invoke_url)
 {{- end }}
 {{- if .Values.nimOperator.ocr.enabled }}
    - {{ .Values.nimOperator.ocr.nimServiceName }} → http://{{ .Values.nimOperator.ocr.nimServiceName }}:{{ .Values.nimOperator.ocr.expose.service.port }}/v1/infer
