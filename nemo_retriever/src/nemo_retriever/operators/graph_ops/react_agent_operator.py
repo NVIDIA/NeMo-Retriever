@@ -19,11 +19,23 @@ import pandas as pd
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
-from nemo_retriever.query.agentic_trace import bind_trace_emitter, trace_documents
 
 logger = logging.getLogger(__name__)
 
+_LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
+
+
+def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _preview_doc_ids(docs: List[Dict[str, Any]], *, limit: int = _LOG_DOC_ID_LIMIT) -> List[str]:
+    return [str(doc.get("doc_id", "")) for doc in docs[:limit]]
+
 
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 02_v1.j2, rendered via Python)
@@ -391,7 +403,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         reasoning_effort: Optional[str] = None,
         backend_top_k: Optional[int] = None,
         temperature: float = 0.0,
-        trace_event: Optional[Callable[[Dict[str, Any]], None]] = None,
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
@@ -410,7 +421,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._reasoning_effort = reasoning_effort
         self._backend_top_k = backend_top_k
         self._temperature = temperature
-        self._emit_trace = bind_trace_emitter(trace_event, operator="react_agent")
         self._chat_completion_fn = chat_completion_fn
 
     def _build_extra_body(self) -> Optional[Dict[str, Any]]:
@@ -496,23 +506,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     ) -> List[Dict[str, Any]]:
         """Run the full ReAct loop for one query; return a list of row dicts."""
         with_init_docs = self._user_msg_type == "with_results"
-        logger.info(
-            "ReActAgentOperator: query=%s start max_steps=%d retriever_top_k=%d target_top_k=%d user_msg_type=%s",
-            query_id,
-            self._max_steps,
-            self._retriever_top_k,
-            self._target_top_k,
-            self._user_msg_type,
-        )
-        self._emit_trace(
-            "agentic.query_start",
-            query_id=query_id,
-            query=query_text,
-            max_steps=self._max_steps,
-            retriever_top_k=self._retriever_top_k,
-            target_top_k=self._target_top_k,
-            user_msg_type=self._user_msg_type,
-        )
 
         system_prompt = _render_react_agent_prompt(
             self._target_top_k,
@@ -532,6 +525,15 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         seen_doc_ids: set[str] = set()
         step_counter = 0
 
+        logger.info(
+            "ReActAgentOperator: query=%s start max_steps=%d retriever_top_k=%d target_top_k=%d query=%r",
+            query_id,
+            self._max_steps,
+            self._retriever_top_k,
+            self._target_top_k,
+            _preview_text(query_text),
+        )
+
         # ------ optional initial retrieval (with_results mode) ------
         if with_init_docs:
             init_docs = self._call_retriever(query_text, seen_doc_ids, api_key)
@@ -539,13 +541,14 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             step_counter += 1
             for d in init_docs:
                 seen_doc_ids.add(d["doc_id"])
-            self._emit_trace(
-                "react.initial_retrieve",
-                query_id=query_id,
-                query=query_text,
-                documents=trace_documents(init_docs),
-                seen_doc_count=len(seen_doc_ids),
+            logger.info(
+                "ReActAgentOperator: query=%s initial_retrieve docs=%d seen=%d doc_ids=%s",
+                query_id,
+                len(init_docs),
+                len(seen_doc_ids),
+                _preview_doc_ids(init_docs),
             )
+
             doc_content = _docs_to_message_content(init_docs)
             user_msg_content: List[Dict[str, Any]] = [
                 {"type": "text", "text": f"Query:\n{query_text}\n\nRetrieved Documents:"}
@@ -558,13 +561,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         # ------ main ReAct loop ------
         for _step in range(self._max_steps):
-            self._emit_trace(
-                "react.step_start",
-                query_id=query_id,
-                step=_step,
-                seen_doc_count=len(seen_doc_ids),
-                retrieval_step_count=len(retrieval_log),
-            )
+            logger.info("ReActAgentOperator: query=%s step=%d begin seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
                 chat_completion_fn = self._chat_completion_fn or invoke_chat_completion_step
                 response = chat_completion_fn(
@@ -579,13 +576,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     extra_body=self._build_extra_body(),
                 )
             except TimeoutError as exc:
-                self._emit_trace(
-                    "react.llm_error",
-                    query_id=query_id,
-                    step=_step,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
                 logger.warning(
                     "ReActAgentOperator: LLM call timed out on step %d for query %r: %s",
                     _step,
@@ -595,13 +585,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except RuntimeError as exc:
-                self._emit_trace(
-                    "react.llm_error",
-                    query_id=query_id,
-                    step=_step,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
                 logger.warning(
                     "ReActAgentOperator: LLM retries exhausted on step %d for query %r: %s",
                     _step,
@@ -611,13 +594,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except requests.RequestException as exc:
-                self._emit_trace(
-                    "react.llm_error",
-                    query_id=query_id,
-                    step=_step,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
                 logger.warning(
                     "ReActAgentOperator: LLM HTTP error on step %d for query %r: %s",
                     _step,
@@ -627,13 +603,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except json.JSONDecodeError as exc:
-                self._emit_trace(
-                    "react.llm_error",
-                    query_id=query_id,
-                    step=_step,
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                )
                 logger.warning(
                     "ReActAgentOperator: LLM returned invalid JSON on step %d for query %r: %s",
                     _step,
@@ -644,7 +613,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 break
 
             if not response.get("choices"):
-                self._emit_trace("react.llm_empty_response", query_id=query_id, step=_step)
                 logger.warning(
                     "ReActAgentOperator: empty choices in API response on step %d for query %r", _step, query_id
                 )
@@ -653,15 +621,27 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             msg = choice["message"]
             finish_reason = choice.get("finish_reason")
             tool_calls = msg.get("tool_calls") or []
-            self._emit_trace(
-                "react.llm_response",
-                query_id=query_id,
-                step=_step,
-                finish_reason=finish_reason,
-                tool_names=[str((tc.get("function") or {}).get("name", "")) for tc in tool_calls],
-                usage=response.get("usage"),
-                assistant_content=msg.get("content"),
+            if msg.get("content"):
+                # Agent reasoning can quote document text/PII; keep content at DEBUG.
+                logger.debug(
+                    "ReActAgentOperator: query=%s step=%d assistant content=%r",
+                    query_id,
+                    _step,
+                    _preview_text(msg.get("content")),
+                )
+            usage = response.get("usage") or {}
+            logger.info(
+                "ReActAgentOperator: query=%s step=%d finish_reason=%s tool_calls=%s "
+                "prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+                query_id,
+                _step,
+                finish_reason,
+                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
+                usage.get("prompt_tokens"),
+                usage.get("completion_tokens"),
+                usage.get("total_tokens"),
             )
+
             # Append assistant turn
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
             if msg.get("content"):
@@ -671,29 +651,24 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
-                self._emit_trace("react.no_tool_call", query_id=query_id, step=_step, finish_reason=finish_reason)
+                logger.info(
+                    "ReActAgentOperator: query=%s step=%d no tool call; requesting continuation",
+                    query_id,
+                    _step,
+                )
                 messages.append({"role": "user", "content": _AUTO_USER_MSG})
                 continue
 
             tool_messages: List[Dict[str, Any]] = []
             loop_done = False
 
-            for tool_index, tc in enumerate(tool_calls):
+            for tc in tool_calls:
                 tc_id = tc.get("id", "")
                 fn = tc.get("function", {})
                 fn_name = fn.get("name", "")
                 try:
                     fn_args = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError as exc:
-                    self._emit_trace(
-                        "react.tool_call_parse_error",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        tool_name=fn_name,
-                        raw_arguments=fn.get("arguments", ""),
-                        error_message=str(exc),
-                    )
+                except json.JSONDecodeError:
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
                     )
@@ -708,22 +683,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     )
                     continue
 
-                self._emit_trace(
-                    "react.tool_call",
-                    query_id=query_id,
-                    step=_step,
-                    tool_index=tool_index,
-                    tool_name=fn_name,
-                    arguments=fn_args,
-                )
-
                 if fn_name == "think":
-                    self._emit_trace(
-                        "react.think",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        thought=str(fn_args.get("thought", "")),
+                    # Agent thoughts can quote document text/PII; keep content at DEBUG.
+                    logger.debug(
+                        "ReActAgentOperator: query=%s step=%d think=%r",
+                        query_id,
+                        _step,
+                        _preview_text(fn_args.get("thought")),
                     )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
@@ -731,28 +697,25 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
                 elif fn_name == "retrieve":
                     subquery = str(fn_args.get("query", query_text))
-                    seen_before = len(seen_doc_ids)
-                    self._emit_trace(
-                        "react.retrieve",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        subquery=subquery,
-                        seen_before=seen_before,
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve subquery=%r seen_before=%d",
+                        query_id,
+                        _step,
+                        _preview_text(subquery),
+                        len(seen_doc_ids),
                     )
                     retrieved = self._call_retriever(subquery, seen_doc_ids, api_key)
                     retrieval_log.append(retrieved)
                     step_counter += 1
                     for d in retrieved:
                         seen_doc_ids.add(d["doc_id"])
-                    self._emit_trace(
-                        "react.retrieve_result",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        subquery=subquery,
-                        documents=trace_documents(retrieved),
-                        seen_after=len(seen_doc_ids),
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve docs=%d seen_after=%d doc_ids=%s",
+                        query_id,
+                        _step,
+                        len(retrieved),
+                        len(seen_doc_ids),
+                        _preview_doc_ids(retrieved),
                     )
                     doc_content = _docs_to_message_content(retrieved)
                     tool_content: List[Dict[str, Any]] = [
@@ -763,15 +726,19 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
                     validation_error = self._validate_final_results_args(fn_args, valid_doc_ids=seen_doc_ids)
-                    self._emit_trace(
-                        "react.final_results",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        raw_doc_ids=raw_ids,
-                        message=fn_args.get("message"),
-                        search_successful=fn_args.get("search_successful"),
-                        validation_error=validation_error,
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d final_results search_successful=%s doc_ids=%s",
+                        query_id,
+                        _step,
+                        fn_args.get("search_successful"),
+                        raw_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_ids, list) else raw_ids,
+                    )
+                    # Message can quote document text/PII; keep content at DEBUG.
+                    logger.debug(
+                        "ReActAgentOperator: query=%s step=%d final_results message=%r",
+                        query_id,
+                        _step,
+                        _preview_text(fn_args.get("message")),
                     )
                     if validation_error is None:
                         final_doc_ids = list(raw_ids)
@@ -793,13 +760,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         )
 
                 else:
-                    self._emit_trace(
-                        "react.unknown_tool",
-                        query_id=query_id,
-                        step=_step,
-                        tool_index=tool_index,
-                        tool_name=fn_name,
-                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": f"Error: unknown tool '{fn_name}'."}
                     )
@@ -808,24 +768,14 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             if loop_done:
                 break
 
-        rows = _build_output_rows(query_id, query_text, retrieval_log, final_doc_ids)
         logger.info(
-            "ReActAgentOperator: query=%s done retrieval_steps=%d seen_docs=%d final_doc_count=%d output_rows=%d",
+            "ReActAgentOperator: query=%s done retrieval_steps=%d seen_docs=%d final_doc_ids=%s",
             query_id,
             len(retrieval_log),
             len(seen_doc_ids),
-            len(final_doc_ids or []),
-            len(rows),
+            final_doc_ids[:_LOG_DOC_ID_LIMIT] if final_doc_ids else [],
         )
-        self._emit_trace(
-            "agentic.query_done",
-            query_id=query_id,
-            final_doc_ids=final_doc_ids or [],
-            retrieval_step_count=len(retrieval_log),
-            seen_doc_count=len(seen_doc_ids),
-            output_row_count=len(rows),
-        )
-        return rows
+        return _build_output_rows(query_id, query_text, retrieval_log, final_doc_ids)
 
     def _call_retriever(
         self,

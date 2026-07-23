@@ -107,30 +107,6 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
         build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1"]])
 
 
-def test_agentic_trace_omits_mapping_none_values_but_preserves_list_nulls(tmp_path):
-    from nemo_retriever.query.agentic_trace import log_agentic_trace, make_agentic_trace_logger
-
-    trace_path = tmp_path / "trace" / "agentic_trace.jsonl"
-    trace_logger = make_agentic_trace_logger(trace_path)
-
-    log_agentic_trace(
-        trace_logger,
-        {
-            "event": "trace.test",
-            "unset": None,
-            "nested": {"drop": None, "keep": "value"},
-            "items": ["first", None, {"drop": None, "keep": "nested-list-value"}],
-        },
-    )
-
-    event = json.loads(trace_path.read_text().splitlines()[0])
-
-    assert trace_logger.propagate is False
-    assert "unset" not in event
-    assert event["nested"] == {"keep": "value"}
-    assert event["items"] == ["first", None, {"keep": "nested-list-value"}]
-
-
 def test_agentic_config_validates_max_tokens():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
@@ -144,7 +120,7 @@ def test_agentic_config_validates_max_tokens():
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step, tmp_path):
+def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     final_ids = ["doc_1", "other_2"] + [f"extra_{i}" for i in range(8)]
@@ -157,12 +133,9 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
         {"doc_ids": ["doc_1"], "message": "doc_1 is best"},
     )
 
-    trace_path = tmp_path / "trace" / "agentic_trace.jsonl"
     cfg = AgenticRetrievalConfig(
         llm_model="test-model",
         invoke_url="http://localhost/v1/chat/completions",
-        trace_enabled=True,
-        trace_path=str(trace_path),
         max_tokens=77,
     )
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
@@ -179,13 +152,6 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
     assert doc1_hit.get("page_number") == 1
     assert doc1_hit.get("metadata") == {"section": "summary"}
     assert "text" in doc1_hit
-    events = [json.loads(line) for line in trace_path.read_text().splitlines()]
-    event_names = [event["event"] for event in events]
-    assert "agentic.query_start" in event_names
-    assert "react.initial_retrieve" in event_names
-    assert "react.final_results" in event_names
-    assert "selection.query_start" in event_names
-    assert "selection.query_done" in event_names
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")

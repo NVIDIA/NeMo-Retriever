@@ -30,7 +30,6 @@ _ARTIFACT_NAMES = {
     "query_plan": "query_plan.json",
     "log": "run.log",
     "query_results": "query_results.jsonl",
-    "agentic_trace": "agentic_trace.jsonl",
     "beir_metrics": "beir_metrics.json",
     "beir_run": "beir_run.trec",
     "lancedb": "lancedb",

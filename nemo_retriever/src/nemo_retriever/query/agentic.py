@@ -15,7 +15,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import pandas as pd
 
@@ -43,11 +43,6 @@ from nemo_retriever.tools.recall.core import (
     _recall_at_k,
 )
 from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.query.agentic_trace import (
-    log_agentic_trace,
-    make_agentic_trace_logger,
-    make_agentic_trace_path,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +164,6 @@ class AgenticRetrievalConfig:
     backend_top_k: int = AGENTIC_BACKEND_TOP_K
     # Sampling temperature sent on every agent LLM call (0.0 = greedy).
     temperature: float = AGENTIC_TEMPERATURE
-    trace_enabled: bool = False
-    trace_path: Optional[str] = None
     # Optional upper bound on tokens in each agent LLM response.
     max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
     # Final number of documents the agent targets/selects and the pipeline returns.
@@ -364,11 +357,6 @@ class AgenticRetriever:
         )
         self._lock = threading.Lock()
         self._retrieve_lock = threading.Lock()
-        self._trace_event: Callable[[dict[str, Any]], None] | None = None
-        if cfg.trace_enabled:
-            trace_path = Path(cfg.trace_path).expanduser() if cfg.trace_path else make_agentic_trace_path()
-            trace_logger = make_agentic_trace_logger(trace_path)
-            self._trace_event = lambda payload: log_agentic_trace(trace_logger, payload)
         # Full hits keyed by doc_id, captured at the retrieval boundary (before the
         # agent loop reduces them to doc_id/text/score) so the final output can
         # re-hydrate the metadata the agent drops. Reset at the start of retrieve().
@@ -447,7 +435,6 @@ class AgenticRetriever:
                 reasoning_effort=self._cfg.reasoning_effort,
                 backend_top_k=self._cfg.backend_top_k,
                 temperature=float(self._cfg.temperature),
-                trace_event=self._trace_event,
                 max_tokens=self._cfg.max_tokens,
                 chat_completion_fn=chat_completion_fn,
             )
@@ -462,7 +449,6 @@ class AgenticRetriever:
                 text_truncation=int(self._cfg.text_truncation),
                 reasoning_effort=self._cfg.reasoning_effort,
                 temperature=float(self._cfg.temperature),
-                trace_event=self._trace_event,
                 max_tokens=self._cfg.max_tokens,
                 chat_completion_fn=chat_completion_fn,
             )

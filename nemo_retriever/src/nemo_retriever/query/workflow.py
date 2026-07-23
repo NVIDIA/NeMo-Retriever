@@ -192,8 +192,6 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
         "temperature": float(request.agentic.temperature),
-        "trace_enabled": bool(request.agentic.trace_enabled),
-        "trace_path": request.agentic.trace_path,
     }
     if request.agentic.llm_backend:
         cfg_kwargs["llm_backend"] = request.agentic.llm_backend

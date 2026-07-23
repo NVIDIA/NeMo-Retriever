@@ -35,14 +35,12 @@ def test_artifact_manifest_uses_relative_paths_and_includes_lancedb(tmp_path):
     writer = ArtifactWriter(artifact_dir=tmp_path, run_id="run-1", benchmark="jp20_beir")
     writer.status(status="running", phase="ingest")
     writer.path("environment.json").write_text("{}", encoding="utf-8")
-    writer.path("agentic_trace.jsonl").write_text("", encoding="utf-8")
     writer.path("lancedb").mkdir()
 
     assert artifact_paths(writer) == {
         "status": "status.json",
         "events": "events.jsonl",
         "environment": "environment.json",
-        "agentic_trace": "agentic_trace.jsonl",
         "lancedb": "lancedb",
     }
 

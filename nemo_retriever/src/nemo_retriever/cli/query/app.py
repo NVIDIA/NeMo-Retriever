@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import cast
 
@@ -23,7 +24,6 @@ from nemo_retriever.cli.shared import (
     silence_noisy_libraries,
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
-from nemo_retriever.query.agentic_trace import make_agentic_trace_path
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
     QueryEmbedOptions,
@@ -191,7 +191,6 @@ def _local_command(
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
     agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
     agentic_temperature: opts.AgenticTemperatureOption = 0.0,
-    agentic_trace: opts.AgenticTraceOption = False,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
@@ -200,9 +199,6 @@ def _local_command(
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
-    if agentic_trace and not agentic:
-        typer.echo("Error: --agentic-trace requires --agentic.", err=True)
-        raise typer.Exit(1)
     if agentic:
         if agentic_invoke_url and not agentic_llm_model:
             typer.echo(
@@ -228,9 +224,6 @@ def _local_command(
         effective_retrieval_mode = _validate_retrieval_mode(retrieval_mode)
 
         if agentic:
-            agentic_trace_path = make_agentic_trace_path() if agentic_trace else None
-            if agentic_trace_path is not None:
-                typer.echo(f"Agentic trace: {agentic_trace_path}", err=True)
             request = QueryRequest(
                 query=query,
                 retrieval=_retrieval_options(
@@ -258,8 +251,6 @@ def _local_command(
                 ),
                 agentic=QueryAgenticOptions(
                     enabled=agentic,
-                    trace_enabled=agentic_trace,
-                    trace_path=str(agentic_trace_path) if agentic_trace_path is not None else None,
                     llm_model=agentic_llm_model,
                     invoke_url=agentic_invoke_url,
                     reasoning_effort=agentic_reasoning_effort,
@@ -268,6 +259,14 @@ def _local_command(
                     text_truncation=agentic_text_truncation,
                     temperature=agentic_temperature,
                 ),
+            )
+            # Agentic retrieval is a multi-step ReAct loop, not a single dense pass, so
+            # surface per-query/step progress instead of running blind. Mirrors the
+            # `pipeline run` logging setup: INFO to stderr (stdout stays clean JSON).
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                force=True,
             )
             ranked = query_agentic_documents(request)
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
