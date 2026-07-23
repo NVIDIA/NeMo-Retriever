@@ -42,7 +42,11 @@ def _configure_logging(config: ServiceConfig) -> None:
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)
 
-    logger.info("Logging configured: level=%s file=%s", config.logging.level, config.logging.file)
+    logger.info(
+        "Logging configured: level=%s file=%s",
+        config.logging.level,
+        config.logging.file,
+    )
 
 
 def _apply_resource_limits(config: ServiceConfig) -> None:
@@ -95,7 +99,10 @@ def _check_media_dependencies(mode: str) -> None:
     )
 
     if is_media_available():
-        logger.info("Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=%s)", mode)
+        logger.info(
+            "Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=%s)",
+            mode,
+        )
         return
 
     missing = ", ".join(missing_media_dependencies()) or "ffmpeg, ffprobe"
@@ -125,10 +132,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     config: ServiceConfig = app.state.config
     mode = config.mode
 
-    from nemo_retriever.service.services.event_bus import init_event_bus, shutdown_event_bus
-    from nemo_retriever.service.services.job_tracker import init_job_tracker, shutdown_job_tracker
+    from nemo_retriever.service.services.event_bus import (
+        init_event_bus,
+        shutdown_event_bus,
+    )
+    from nemo_retriever.service.services.job_tracker import (
+        init_job_tracker,
+        shutdown_job_tracker,
+    )
     from nemo_retriever.service.services.metrics import init_metrics, shutdown_metrics
-    from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
+    from nemo_retriever.service.services.pipeline_pool import (
+        init_pipeline_pool,
+        shutdown_pipeline_pool,
+    )
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
     from nemo_retriever.service.services.sidecar_store import init_sidecar_store, shutdown_sidecar_store
     from nemo_retriever.service.services.worker_result_store import validate_result_store
@@ -176,7 +192,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ):
             import asyncio
 
-            from nemo_retriever.service.services.pipeline_executor import warmup_process_pool_workers
+            from nemo_retriever.service.services.pipeline_executor import (
+                warmup_process_pool_workers,
+            )
 
             warmup_status = await asyncio.to_thread(warmup_process_pool_workers)
             logger.info("Local model warmup status: %s", warmup_status)
@@ -192,7 +210,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    from nemo_retriever.service.services.pipeline_executor import shutdown_process_executors
+    from nemo_retriever.service.services.pipeline_executor import (
+        shutdown_process_executors,
+    )
 
     shutdown_process_executors()
     await shutdown_work_broker()
@@ -225,7 +245,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
         try:
             from fastmcp.utilities.lifespan import combine_lifespans
 
-            from nemo_retriever.service.mcp_server import build_mcp_app, settings_from_service_config
+            from nemo_retriever.service.mcp_server import (
+                build_mcp_app,
+                settings_from_service_config,
+            )
 
             mcp_asgi_app = build_mcp_app(settings_from_service_config(config))
             lifespan = combine_lifespans(_lifespan, mcp_asgi_app.lifespan)
@@ -251,26 +274,29 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     app.add_middleware(_RequestIdMiddleware)
 
-    if config.auth.api_token:
-        from nemo_retriever.service.auth import BearerAuthMiddleware
+    from nemo_retriever.service.auth import BearerAuthMiddleware
 
-        app.add_middleware(BearerAuthMiddleware, config=config.auth)
-        logger.info(
-            "Bearer-token authentication ENABLED (header=%s, bypass=%s)",
-            config.auth.header_name,
-            config.auth.bypass_paths,
-        )
-    else:
-        logger.info("Bearer-token authentication DISABLED (no api_token configured)")
+    app.add_middleware(
+        BearerAuthMiddleware,
+        config=config.auth,
+        internal_api_token=config.vectordb.internal_api_token,
+    )
+    logger.info(
+        "Scope authorization configured (header=%s, secret_file=%s, allow_unscoped_dev=%s)",
+        config.auth.header_name,
+        bool(config.auth.scope_token_file),
+        config.auth.allow_unscoped_dev,
+    )
 
     if mcp_asgi_app is not None:
         app.mount(config.mcp.path, mcp_asgi_app)
         logger.info("FastMCP service endpoint mounted at %s", config.mcp.path)
 
-    from nemo_retriever.service.routers import admin, ingest, metrics, work
+    from nemo_retriever.service.routers import admin, collections, ingest, metrics, work
     from nemo_retriever.service.services.prometheus import instrument_app
 
     app.include_router(ingest.router, prefix="/v1")
+    app.include_router(collections.router, prefix="/v1")
     app.include_router(metrics.router, prefix="/v1")
     # Admin/internal endpoints — pool_stats etc. Registered on every
     # role; the handler self-reports an empty pool dict on gateway pods.
@@ -302,7 +328,9 @@ def create_app(config: ServiceConfig) -> FastAPI:
             and config.local_models.enabled
             and config.local_models.warmup_on_startup
         ):
-            from nemo_retriever.service.services.pipeline_executor import get_service_warmup_status
+            from nemo_retriever.service.services.pipeline_executor import (
+                get_service_warmup_status,
+            )
 
             warmup = get_service_warmup_status()
             base["models_warm"] = bool(warmup.get("complete"))

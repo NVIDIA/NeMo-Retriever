@@ -47,6 +47,7 @@ import httpx
 import pytest
 
 from nemo_retriever.service.client import (
+    DocumentTracker,
     RetrieverServiceClient,
     RetrieverServiceCompatibilityError,
     _compat_error_message,
@@ -174,13 +175,13 @@ def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
     assert request_paths == ["/v1/ingest/job"], request_paths
 
 
-def test_create_job_500_still_raises_generic_http_status_error() -> None:
+def test_create_job_500_raises_typed_service_error() -> None:
     """A real server error must NOT be misreported as a version mismatch.
 
     If the deployed service is the right version but transiently broken
     (500/503/etc.) the SDK should surface the existing
-    :class:`httpx.HTTPStatusError` so retry/alerting logic in the
-    caller still triggers as before. Mis-coding this as a
+    typed service error so retry/alerting logic can use one SDK error
+    hierarchy. Mis-coding this as a
     ``RetrieverServiceCompatibilityError`` would hide a real outage.
     """
 
@@ -193,7 +194,9 @@ def test_create_job_500_still_raises_generic_http_status_error() -> None:
         async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
             await rc._create_job(client, expected_documents=1)
 
-    with pytest.raises(httpx.HTTPStatusError) as ei:
+    from nemo_retriever.service.errors import RetrieverServiceError
+
+    with pytest.raises(RetrieverServiceError) as ei:
         _run_async(_call())
     assert "HTTP 500" in str(ei.value)
 
@@ -240,6 +243,90 @@ def test_stream_job_created_event_includes_trace_id(monkeypatch: pytest.MonkeyPa
         "expected_documents": 0,
         "trace_id": "trace-123",
     }
+
+
+def test_sse_keepalive_after_uploads_falls_back_to_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missed terminal SSE event cannot block a completed ingestion forever."""
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    pending = {"doc-1"}
+    uploads_done = asyncio.Event()
+    uploads_done.set()
+    tracker = DocumentTracker()
+    fallback_calls: list[set[str]] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        async def aiter_lines(self):
+            yield ": keepalive"
+
+    class FakeStream:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class FakeClient:
+        def stream(self, *_args, **_kwargs):
+            return FakeStream()
+
+    async def fallback(_client, current, _tracker, _on_event):
+        fallback_calls.append(set(current))
+        current.clear()
+
+    monkeypatch.setattr(rc, "_bulk_poll_fallback", fallback)
+    _run_async(
+        rc._consume_sse(
+            FakeClient(),
+            pending,
+            uploads_done,
+            tracker,
+            job_id="JOB-1",
+        )
+    )
+    assert fallback_calls == [{"doc-1"}]
+    assert pending == set()
+
+
+def test_materialized_ingest_tracks_attempt_id_but_reports_stable_document_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Status tracking uses the attempt id returned by the job upload route."""
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    source = tmp_path / "doc.txt"
+    source.write_text("attempt id regression", encoding="utf-8")
+    submitted: list[tuple[str, str]] = []
+
+    async def create_job(*_args, **_kwargs):
+        return SimpleNamespace(job_id="JOB-1", trace_id=None)
+
+    async def upload_one(*_args, **_kwargs):
+        return {"document_id": "stable-1", "attempt_id": "attempt-1"}
+
+    async def consume_sse(_client, pending, uploads_done, tracker, **_kwargs):
+        await uploads_done.wait()
+        assert pending == {"attempt-1"}
+        tracker.mark_completed("attempt-1", {"id": "attempt-1", "status": "completed"})
+        pending.clear()
+
+    monkeypatch.setattr(rc, "_create_job", create_job)
+    monkeypatch.setattr(rc, "_upload_one", upload_one)
+    monkeypatch.setattr(rc, "_consume_sse", consume_sse)
+
+    results = _run_async(
+        rc.ingest_documents(
+            [source],
+            show_progress=False,
+            on_file_submitted=lambda filename, doc_id: submitted.append((filename, doc_id)),
+        )
+    )
+    assert submitted == [("doc.txt", "stable-1")]
+    assert results == [{"id": "attempt-1", "status": "completed"}]
 
 
 # ----------------------------------------------------------------------

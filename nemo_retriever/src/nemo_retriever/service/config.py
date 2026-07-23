@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from importlib import resources as importlib_resources
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -214,11 +215,14 @@ class ResourceLimitsConfig(RichModel):
 
 
 class AuthConfig(RichModel):
-    """Optional bearer-token authentication."""
+    """Bearer authentication and authorization for logical workspace scopes."""
 
     model_config = ConfigDict(extra="forbid")
 
     api_token: str | None = None
+    default_scope: str = "default"
+    scope_token_file: str | None = None
+    allow_unscoped_dev: bool = True
     header_name: str = "Authorization"
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
@@ -328,6 +332,24 @@ class VectorDbConfig(RichModel):
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",
     )
+    internal_api_token: str | None = Field(
+        default=None,
+        description="Dedicated gateway/worker credential for the VectorDB service.",
+    )
+    collection_artifact_root: str | None = Field(
+        default=None,
+        description="Operator-owned root for collection StoreOperator artifacts.",
+    )
+    artifact_storage_options_file: str | None = Field(
+        default=None,
+        description="Secret-mounted JSON object of fsspec storage options.",
+    )
+    reconciliation_interval_seconds: int = Field(
+        default=60,
+        ge=0,
+        description="Local lifecycle reconciliation interval; zero disables the loop.",
+    )
+    expiration_cleanup_enabled: bool = True
 
 
 class SinksConfig(RichModel):
@@ -525,7 +547,7 @@ def load_config(
     """Load a :class:`ServiceConfig` from YAML with optional CLI overrides."""
     path = _discover_config_path(config_path)
     if path is not None:
-        raw: dict[str, Any] = yaml.safe_load(path.read_text()) or {}
+        raw: dict[str, Any] = yaml.safe_load(os.path.expandvars(path.read_text())) or {}
     else:
         raw = {}
 
@@ -539,9 +561,23 @@ def load_config(
                 target = target.setdefault(part, {})
             target[parts[-1]] = value
 
+    # Secret-backed runtime values intentionally bypass ConfigMaps and the
+    # rendered configuration tree.
+    if scope_file := os.environ.get("NRL_SCOPE_TOKEN_FILE"):
+        raw.setdefault("auth", {})["scope_token_file"] = scope_file
+    internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN")
+    if not internal_token and (internal_token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
+        internal_token = Path(internal_token_file).read_text(encoding="utf-8").strip()
+    if internal_token:
+        raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
+    if artifact_root := os.environ.get("NRL_COLLECTION_ARTIFACT_ROOT"):
+        raw.setdefault("vectordb", {})["collection_artifact_root"] = artifact_root
+    if storage_file := os.environ.get("NRL_ARTIFACT_STORAGE_OPTIONS_FILE"):
+        raw.setdefault("vectordb", {})["artifact_storage_options_file"] = storage_file
+
     config = ServiceConfig(**raw)
 
-    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "password", "secret"})
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
 
     from rich.console import Console
     from rich.tree import Tree

@@ -21,14 +21,18 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import multiprocessing as mp
 import time
+from datetime import datetime, timezone
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     from nemo_retriever.service.config import (
@@ -279,21 +283,56 @@ def shutdown_process_executors() -> None:
     logger.info("All pipeline process executors shut down")
 
 
-def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filename: str) -> None:
-    """Fire-and-forget POST of LanceDB rows to the vectordb service."""
+def _post_rows_to_vectordb(
+    rows: list[dict[str, Any]],
+    vectordb_url: str,
+    filename: str,
+    *,
+    scope: str = "default",
+    collection_name: str | None = None,
+    document_id: str | None = None,
+    job_id: str | None = None,
+    content_sha256: str | None = None,
+    operation: str = "append",
+    internal_api_token: str | None = None,
+    artifact_prefix: str | None = None,
+) -> None:
+    """Post rows to VectorDB, preserving legacy best-effort behavior.
+
+    Collection-managed writes are lifecycle-authoritative and therefore fail
+    the job when storage rejects the write. Legacy fixed-table writes retain
+    their historical best-effort behavior.
+    """
     import json
     import urllib.request
     import urllib.error
 
     if not rows:
+        if collection_name:
+            raise ValueError(f"No vector rows were produced for collection document {filename}")
         return
 
     url = vectordb_url.rstrip("/") + "/internal/vectordb/write"
-    body = json.dumps({"rows": rows}).encode()
+    body = json.dumps(
+        {
+            "rows": rows,
+            "scope": scope,
+            "collection_name": collection_name,
+            "document_id": document_id,
+            "job_id": job_id,
+            "filename": filename,
+            "content_sha256": content_sha256,
+            "operation": operation,
+            "artifact_prefix": artifact_prefix,
+        }
+    ).encode()
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **({"X-NRL-Internal-Token": internal_api_token} if internal_api_token else {}),
+        },
         method="POST",
     )
     try:
@@ -311,6 +350,8 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
             filename,
             exc,
         )
+        if collection_name:
+            raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
 
 
 _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
@@ -403,6 +444,54 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     vdb_copy["_meta_dataframe_filename"] = entry.filename
     resolved["vdb_upload_params"] = vdb_copy
     return resolved
+
+
+def _load_artifact_storage_options(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {}
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Unable to load artifact storage-options secret file: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("artifact storage-options secret file must contain a JSON object")
+    return payload
+
+
+def _apply_collection_artifact_policy(
+    spec: dict[str, Any] | None,
+    *,
+    root: str | None,
+    storage_options: dict[str, Any],
+    scope: str,
+    collection_name: str | None,
+    document_id: str,
+    document_version: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Inject an operator-owned StoreOperator prefix for collection jobs."""
+    if not collection_name or not spec or spec.get("store_params") is None:
+        return spec, None
+    if not root:
+        raise ValueError("collection StoreOperator use requires vectordb.collection_artifact_root")
+    store_params = dict(spec["store_params"])
+    requested = str(store_params.get("storage_uri") or "").rstrip("/")
+    controlled_root = root.rstrip("/")
+    if requested and requested != controlled_root and not requested.startswith(controlled_root + "/"):
+        raise ValueError("collection artifact destination must be beneath the operator-configured root")
+    prefix = "/".join(
+        (
+            controlled_root,
+            quote(scope, safe=""),
+            quote(collection_name, safe=""),
+            quote(document_id, safe=""),
+            quote(document_version, safe=""),
+        )
+    )
+    store_params["storage_uri"] = prefix
+    store_params["storage_options"] = dict(storage_options)
+    resolved = dict(spec)
+    resolved["store_params"] = store_params
+    return resolved, prefix
 
 
 def _resolve_service_extraction_mode(
@@ -655,6 +744,14 @@ def _run_pipeline_in_process(
     trace_context: dict[str, str] | None = None,
     pool_label: str | None = None,
     service_role: str | None = None,
+    scope: str = "default",
+    collection_name: str | None = None,
+    document_id: str | None = None,
+    job_id: str | None = None,
+    content_sha256: str | None = None,
+    operation: str = "append",
+    internal_api_token: str | None = None,
+    artifact_prefix: str | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -721,7 +818,32 @@ def _run_pipeline_in_process(
         from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
-        _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
+        if collection_name and document_id and content_sha256:
+            created_at = datetime.now(timezone.utc).isoformat()
+            version = content_sha256
+            for index, row in enumerate(lancedb_rows):
+                row.update(
+                    {
+                        "document_id": document_id,
+                        "document_version": version,
+                        "content_sha256": content_sha256,
+                        "created_at": created_at,
+                        "chunk_id": hashlib.sha256(f"{document_id}\0{version}\0{index}".encode()).hexdigest(),
+                    }
+                )
+        _post_rows_to_vectordb(
+            lancedb_rows,
+            vectordb_url,
+            filename,
+            scope=scope,
+            collection_name=collection_name,
+            document_id=document_id,
+            job_id=job_id,
+            content_sha256=content_sha256,
+            operation=operation,
+            internal_api_token=internal_api_token,
+            artifact_prefix=artifact_prefix,
+        )
 
     result_options = pipeline_spec or {}
     result_schema = result_options.get("result_schema", "legacy")
@@ -901,6 +1023,7 @@ def _make_work_fn(
     embed_params = build_embed_params(config.nim_endpoints, config.local_models)
     caption_params = build_caption_params(config.nim_endpoints)
     asr_params = build_asr_params(config.nim_endpoints, config.local_models)
+    artifact_storage_options = _load_artifact_storage_options(config.vectordb.artifact_storage_options_file)
 
     vectordb_url: str | None = None
     if config.vectordb.enabled:
@@ -977,6 +1100,17 @@ def _make_work_fn(
         loop = asyncio.get_running_loop()
 
         resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
+        storage_document_id = getattr(item, "storage_document_id", None) or item.id
+        document_version = getattr(item, "content_sha256", None) or "1"
+        resolved_spec, artifact_prefix = _apply_collection_artifact_policy(
+            resolved_spec,
+            root=config.vectordb.collection_artifact_root,
+            storage_options=artifact_storage_options,
+            scope=getattr(item, "scope", "default"),
+            collection_name=getattr(item, "collection_name", None),
+            document_id=storage_document_id,
+            document_version=document_version,
+        )
 
         try:
             trace_context = _capture_trace_context_for_pipeline()
@@ -994,6 +1128,14 @@ def _make_work_fn(
                 trace_context,
                 label,
                 config.mode,
+                getattr(item, "scope", "default"),
+                getattr(item, "collection_name", None),
+                storage_document_id,
+                getattr(item, "job_id", None),
+                getattr(item, "content_sha256", None),
+                getattr(item, "operation", "append"),
+                config.vectordb.internal_api_token,
+                artifact_prefix,
             )
         except BrokenProcessPool:
             logger.error(

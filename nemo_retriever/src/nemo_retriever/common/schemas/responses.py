@@ -15,6 +15,7 @@ class IngestAccepted(RichModel):
     """Response for the general ``POST /v1/ingest`` endpoint."""
 
     document_id: str
+    attempt_id: str
     job_id: str | None = None
     content_sha256: str
     status: str
@@ -36,6 +37,7 @@ class DocumentIngestAccepted(RichModel):
     """Response for ``POST /v1/ingest/document`` (whole document upload)."""
 
     document_id: str
+    attempt_id: str
     filename: str
     file_size_bytes: int
     content_sha256: str
@@ -77,6 +79,8 @@ class JobCreatedResponse(RichModel):
     created_at: str
     label: str | None = None
     trace_id: str | None = None
+    collection_name: str | None = None
+    operation: str = "append"
 
 
 class JobAggregateResponse(RichModel):
@@ -100,6 +104,8 @@ class JobAggregateResponse(RichModel):
     counts: dict[str, int] = Field(default_factory=dict)
     document_ids: list[str] = Field(default_factory=list)
     documents: list[dict[str, Any]] | None = None
+    collection_name: str | None = None
+    operation: str = "append"
 
 
 class DocumentStatusResponse(RichModel):
@@ -112,6 +118,7 @@ class DocumentStatusResponse(RichModel):
     """
 
     document_id: str
+    attempt_id: str
     job_id: str
     status: str
     submitted_at: str
@@ -122,6 +129,8 @@ class DocumentStatusResponse(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+    collection_name: str | None = None
+    content_sha256: str | None = None
 
 
 class JobDocumentsPage(RichModel):

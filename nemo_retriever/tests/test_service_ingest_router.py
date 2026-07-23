@@ -23,6 +23,7 @@ import re
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
@@ -188,7 +189,11 @@ def test_ingest_without_spec_falls_back_to_legacy_pipeline(
     assert resp.status_code == 202, resp.text
     body = resp.json()
     assert "document_id" in body
+    assert body["document_id"] == body["attempt_id"]
     assert body["job_id"] == job_id
+
+    status = app_with_stub_pool.get(f"/v1/ingest/job/{job_id}/document/{body['document_id']}")
+    assert status.status_code in (200, 202), status.text
 
     # Wait briefly for the async worker loop to consume the queued item.
     import time as _time
@@ -235,7 +240,9 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
     assert item.pipeline_spec["stage_order"] == ["extract"]
 
 
-def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_trust_sensitive_override(
+    app_with_stub_pool: TestClient,
+) -> None:
     job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}}
     resp = app_with_stub_pool.post(
@@ -247,7 +254,9 @@ def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient)
     assert "trust-sensitive" in resp.json()["detail"]
 
 
-def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_caption_when_endpoint_not_configured(
+    app_with_stub_pool: TestClient,
+) -> None:
     """Without ``nim_endpoints.caption_invoke_url``, caption overrides are 403."""
     job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"caption_params": {"prompt": "Describe"}}}
@@ -260,10 +269,17 @@ def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool:
     assert "caption" in resp.json()["detail"].lower()
 
 
-def test_ingest_rejects_webhook_when_sinks_disabled(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_webhook_when_sinks_disabled(
+    app_with_stub_pool: TestClient,
+) -> None:
     """Without ``sinks.webhook_url_prefixes`` set, the ``webhook`` stage is not allowed."""
     job_id = create_test_job(app_with_stub_pool)
-    metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}, "stage_order": ["webhook"]}}
+    metadata = {
+        "pipeline": {
+            "webhook_params": {"endpoint_url": "http://x/"},
+            "stage_order": ["webhook"],
+        }
+    }
     resp = app_with_stub_pool.post(
         f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
@@ -290,7 +306,9 @@ def test_ingest_rejects_webhook_params_without_stage_when_sinks_disabled(
     assert "disabled" in resp.json()["detail"].lower()
 
 
-def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestClient) -> None:
+def test_create_job_returns_201_and_aggregate_fields(
+    app_with_stub_pool: TestClient,
+) -> None:
     """POST /v1/ingest/job opens a fresh aggregate with status=pending."""
     resp = app_with_stub_pool.post(
         "/v1/ingest/job",
@@ -486,7 +504,11 @@ def test_job_upload_routes_emit_accept_spans(
     page_resp = client.post(
         f"/v1/ingest/job/{job_id}/page",
         files={"file": ("page.png", b"page", "image/png")},
-        data={"document_id": "source-doc", "page_number": "1", "filename": "source.pdf"},
+        data={
+            "document_id": "source-doc",
+            "page_number": "1",
+            "filename": "source.pdf",
+        },
     )
     whole_resp = client.post(
         f"/v1/ingest/job/{job_id}/whole",
@@ -497,6 +519,8 @@ def test_job_upload_routes_emit_accept_spans(
     assert document_resp.status_code == 202, document_resp.text
     assert page_resp.status_code == 202, page_resp.text
     assert whole_resp.status_code == 202, whole_resp.text
+    assert document_resp.json()["document_id"] == document_resp.json()["attempt_id"]
+    assert whole_resp.json()["document_id"] == whole_resp.json()["attempt_id"]
     _wait_for_items(captured_items, 3)
 
     names = {span.name for span in exported_spans}
@@ -572,7 +596,9 @@ def test_job_upload_accept_span_prefers_inbound_traceparent_over_job_trace(
     assert captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
 
 
-def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClient, list[Any]]) -> None:
+def test_dashboard_job_views_include_trace_id(
+    traced_gateway_app: tuple[TestClient, list[Any]],
+) -> None:
     client, exported_spans = traced_gateway_app
 
     resp = client.post(
@@ -602,7 +628,9 @@ def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClie
     assert exported_spans
 
 
-def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:
+def test_create_job_retain_results_persisted_on_aggregate(
+    app_with_stub_pool: TestClient,
+) -> None:
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     resp = app_with_stub_pool.post(
@@ -672,6 +700,60 @@ async def test_gateway_enqueue_unregisters_pending_when_broker_unavailable(monke
     assert exc_info.value.status_code == 503
     assert unregistered == ["work-id"]
 
+def test_collection_page_is_rejected_before_registration(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+) -> None:
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+    tracker = get_job_tracker()
+    assert tracker is not None
+    tracker.register_job(
+        "collection-page",
+        expected_documents=1,
+        collection_name="research",
+        scope="default",
+    )
+    response = app_with_stub_pool.post(
+        "/v1/ingest/job/collection-page/page",
+        files={"file": ("page.png", b"page", "image/png")},
+        data={"document_id": "source", "page_number": "1", "filename": "source.pdf"},
+    )
+    assert response.status_code == 422
+    assert tracker.job_documents("collection-page") == []
+    assert captured_items == []
+
+
+def test_collection_whole_propagates_server_storage_context(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+) -> None:
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+    tracker = get_job_tracker()
+    assert tracker is not None
+    tracker.register_job(
+        "collection-whole",
+        expected_documents=1,
+        collection_name="research",
+        scope="workspace",
+        operation="append",
+    )
+    response = app_with_stub_pool.post(
+        "/v1/ingest/job/collection-whole/whole",
+        headers={"X-NRL-Scope": "workspace"},
+        files={"file": ("report.txt", b"finding", "text/plain")},
+        data={"metadata": "{}"},
+    )
+    assert response.status_code == 202, response.text
+    _wait_for_items(captured_items, 1)
+    item = captured_items[0]
+    assert item.scope == "workspace"
+    assert item.collection_name == "research"
+    assert item.storage_document_id == response.json()["document_id"]
+    assert item.id == response.json()["attempt_id"]
+    assert response.json()["document_id"] != response.json()["attempt_id"]
+
 
 def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:
     """The (expected_documents + 1)th upload must be rejected with 409."""
@@ -701,3 +783,21 @@ def test_pipeline_config_endpoint_reports_allowed_overrides(
     assert body["allowed_overrides"]["mode"] == "allow_list"
     assert "dpi" in body["allowed_overrides"]["allowed_extract_keys"]
     assert "ocr_invoke_url" in body["allowed_overrides"]["denied_key_substrings"]
+
+
+def test_document_registration_returns_503_if_tracker_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.routers import ingest
+
+    monkeypatch.setattr(ingest, "get_job_tracker", lambda: None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        ingest._register_document_under_job(
+            document_id="attempt",
+            job_id="job",
+            filename="document.pdf",
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Job tracker not available"

@@ -10,10 +10,15 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 REUSABLE_PRE_COMMIT = "./.github/workflows/reusable-pre-commit.yml"
 REUSABLE_DOCKER_BUILD_AND_TEST = "./.github/workflows/reusable-docker-build-and-test.yml"
 THIS_FILE = Path(__file__).resolve()
+DOCKERFILE = REPO_ROOT / "Dockerfile"
 
 requires_workflows = pytest.mark.skipif(
     not WORKFLOWS.exists(),
     reason="Workflow files are not present in the Docker image test environment.",
+)
+requires_dockerfile = pytest.mark.skipif(
+    not DOCKERFILE.is_file(),
+    reason="The source Dockerfile is not present in the runtime image test environment.",
 )
 
 IGNORED_SCAN_DIRS = {
@@ -262,6 +267,55 @@ def test_dev_compose_helpers_are_feature_scoped():
         REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "tabular_data" / "neo4j" / "SETUP.md"
     ).read_text(encoding="utf-8")
     assert "nemo_retriever/dev/compose/neo4j.compose.yaml" in neo4j_setup
+
+
+def test_collection_management_compose_has_stable_names_and_readiness():
+    compose_path = REPO_ROOT / "nemo_retriever" / "dev" / "compose" / "collection-management.compose.yaml"
+    compose_text = compose_path.read_text(encoding="utf-8")
+    compose_data = yaml.safe_load(compose_text)
+
+    assert compose_data["name"] == "${NRL_COMPOSE_PROJECT_NAME:-nrl}"
+    assert set(compose_data["services"]) == {"gateway", "vectordb"}
+    assert "container_name" not in compose_text
+
+    gateway = compose_data["services"]["gateway"]
+    assert gateway["depends_on"]["vectordb"]["condition"] == "service_healthy"
+    assert "/v1/health" in gateway["healthcheck"]["test"][-1]
+    assert gateway["healthcheck"]["start_period"] == "5s"
+    assert gateway["environment"]["NRL_API_TOKEN"] == "${NRL_API_TOKEN:?set NRL_API_TOKEN}"
+    assert gateway["environment"]["NRL_INTERNAL_VDB_TOKEN"] == ("${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}")
+    assert compose_data["services"]["vectordb"]["environment"]["NRL_INTERNAL_VDB_TOKEN"] == (
+        "${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}"
+    )
+    assert "secrets" not in compose_data
+
+
+@requires_dockerfile
+def test_service_images_own_collection_artifact_root():
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    lines = dockerfile.splitlines()
+    mkdir_commands = [line for line in lines if "mkdir -p" in line and "/etc/nemo-retriever" in line]
+    chown_commands = [line for line in lines if "chown -R nemo:nemo" in line and "/etc/nemo-retriever" in line]
+
+    assert len(mkdir_commands) == 2
+    assert len(chown_commands) == 2
+    assert all("/data/artifacts" in command.split() for command in mkdir_commands)
+    assert all("/data/artifacts" in command.split() for command in chown_commands)
+
+
+def test_service_image_can_write_collection_artifact_root():
+    if not os.environ.get("NEMO_RETRIEVER_SERVICE_CONFIG"):
+        pytest.skip("This runtime contract applies only to NeMo Retriever service images.")
+
+    artifact_root = Path(os.environ.get("NRL_COLLECTION_ARTIFACT_ROOT", "/data/artifacts"))
+    assert artifact_root.is_dir(), f"Collection artifact root is missing: {artifact_root}"
+
+    probe = artifact_root / f".nrl-write-probe-{os.getpid()}"
+    try:
+        probe.write_text("writable", encoding="utf-8")
+        assert probe.read_text(encoding="utf-8") == "writable"
+    finally:
+        probe.unlink(missing_ok=True)
 
 
 def test_legacy_tools_harness_is_removed():

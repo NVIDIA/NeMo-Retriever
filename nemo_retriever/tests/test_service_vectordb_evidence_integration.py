@@ -75,7 +75,7 @@ def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
     assert ev["locator"] == {"kind": "page", "value": 12}
     assert ev["modality"] == "text"
     assert ev["fidelity"] == "verbatim"
-    # Score is the real LanceDB distance/relevance — present and numeric, value not asserted.
+    # Preserve the real LanceDB distance/relevance on the legacy evidence path.
     assert isinstance(ev["score"], (int, float))
 
     coverage = item["coverage"]

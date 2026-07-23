@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import DocumentId, IngestOperation
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 
 
@@ -30,6 +31,14 @@ class IngestRequest(RichModel):
     # Per-request pipeline overrides (see PipelineSpec). When None, the
     # server falls back to the static config baked at startup.
     pipeline: PipelineSpec | None = None
+
+
+class DocumentManifestEntry(RichModel):
+    """One immutable file identity in a resumable ingestion job."""
+
+    manifest_entry_id: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    filename: str
+    content_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
 
 
 class JobCreateRequest(RichModel):
@@ -55,3 +64,36 @@ class JobCreateRequest(RichModel):
             "``result_data``."
         ),
     )
+    collection_name: str | None = Field(default=None, min_length=1, max_length=128)
+    operation: IngestOperation = "append"
+    target_document_id: DocumentId | None = None
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
+    document_manifest: list[DocumentManifestEntry] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_raw_storage_keys(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            raw_keys = {
+                "table_name",
+                "table",
+                "physical_table",
+                "lancedb_uri",
+                "lance_uri",
+                "uri",
+                "table_path",
+                "database_uri",
+                "vdb_uri",
+            }
+            supplied = sorted(raw_keys.intersection(value))
+            if supplied:
+                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
+        return value
+
+    @model_validator(mode="after")
+    def _reject_physical_collection_storage(self) -> "JobCreateRequest":
+        if self.document_manifest and len(self.document_manifest) != self.expected_documents:
+            raise ValueError("document_manifest length must match expected_documents")
+        if len({entry.manifest_entry_id for entry in self.document_manifest}) != len(self.document_manifest):
+            raise ValueError("document_manifest contains duplicate manifest_entry_id values")
+        return self

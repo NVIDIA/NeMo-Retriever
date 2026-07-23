@@ -7,9 +7,47 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
+
+from nemo_retriever.common.api.util.converters.pagetools import (
+    normalize_one_based_page_number,
+)
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
+
+
+class RetrievalContractError(RuntimeError):
+    """A backend retrieval result cannot satisfy the canonical hit contract."""
+
+
+_LEGACY_ENTITY_FIELDS = frozenset(
+    {
+        "content",
+        "content_metadata",
+        "metadata",
+        "page_number",
+        "path",
+        "pdf_basename",
+        "pdf_page",
+        "source",
+        "source_id",
+        "source_metadata",
+        "text",
+    }
+)
+
+_NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score", "_relevance_score"})
+
+
+class RetrievalRanking(TypedDict):
+    """Backend-neutral ordering metadata for a public collection hit."""
+
+    rank: int
+    value: float
+    kind: str
+    higher_is_better: bool
 
 
 class RetrievalHit(TypedDict, total=False):
@@ -19,6 +57,11 @@ class RetrievalHit(TypedDict, total=False):
     LanceDB storage layer JSON-encodes on write and decodes on read; do not let
     a re-encoded string leak back out here. See ``_normalize_hit`` for the
     contract enforcement point.
+
+    ``_distance`` is a backend-native vector distance, ``_score`` is a
+    backend-native FTS/BM25 score, and ``_relevance_score`` is a native hybrid
+    reranker value. Collection REST responses replace those backend fields with
+    ``ranking`` metadata but do not reinterpret the native value.
 
     ``total=False`` because optional fields (``stored_image_uri``,
     ``content_type``, ``bbox_xyxy_norm``, scores) are only set when present.
@@ -37,6 +80,13 @@ class RetrievalHit(TypedDict, total=False):
     bbox_xyxy_norm: list[float]
     _distance: float
     _score: float
+    _relevance_score: float
+    ranking: RetrievalRanking
+    chunk_id: str
+    document_id: str
+    filename: str
+    document_version: str
+    content_sha256: str
 
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
@@ -76,7 +126,13 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 
 def _is_image_backed_row(row: dict[str, Any]) -> bool:
     """Return whether a post-embed graph row retains its image or stored URI."""
-    return bool(_first_str(row.get("_image_b64"), row.get("_stored_image_uri"), row.get("stored_image_uri")))
+    return bool(
+        _first_str(
+            row.get("_image_b64"),
+            row.get("_stored_image_uri"),
+            row.get("stored_image_uri"),
+        )
+    )
 
 
 def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metadata: dict[str, Any]) -> str | None:
@@ -134,7 +190,11 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     if bbox:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
-    for key in ("segment_start_seconds", "segment_end_seconds", "frame_timestamp_seconds"):
+    for key in (
+        "segment_start_seconds",
+        "segment_end_seconds",
+        "frame_timestamp_seconds",
+    ):
         if key in metadata:
             content_metadata.setdefault(key, metadata[key])
 
@@ -216,31 +276,46 @@ def _mapping(value: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _flatten_legacy_entity_hit(hit: dict[str, Any]) -> dict[str, Any]:
+    """Flatten the legacy nested ``entity`` shape into canonical fields.
+
+    Only fields that predate collection management are accepted from the
+    nested shape. Top-level values are authoritative when both shapes provide
+    the same field; collection identity and version fields must be top-level.
+    """
+
+    top_level = {key: value for key, value in hit.items() if key != "entity"}
+    entity = hit.get("entity")
+    if not isinstance(entity, dict):
+        return top_level
+    legacy = {key: entity[key] for key in _LEGACY_ENTITY_FIELDS if key in entity}
+    return {**legacy, **top_level}
+
+
 def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
     """Adapt LanceDB client hit shapes to Retriever hits."""
-    entity = hit.get("entity") if isinstance(hit.get("entity"), dict) else hit
+    hit = _flatten_legacy_entity_hit(hit)
 
-    source = _mapping(entity.get("source") or hit.get("source") or entity.get("source_metadata"))
-    if not source and isinstance(entity.get("source"), str):
-        source = {"source_id": entity["source"]}
-    content_metadata = _mapping(entity.get("content_metadata") or hit.get("content_metadata") or entity.get("metadata"))
+    source = _mapping(hit.get("source") or hit.get("source_metadata"))
+    if not source and isinstance(hit.get("source"), str):
+        source = {"source_id": hit["source"]}
+    content_metadata = _mapping(hit.get("content_metadata") or hit.get("metadata"))
 
     source_id = _first_str(
         source.get("source_id"),
         source.get("source_name"),
-        entity.get("source_id"),
         hit.get("source_id"),
         hit.get("path"),
     )
     page_number = content_metadata.get("page_number") if isinstance(content_metadata, dict) else None
     if page_number is None:
-        page_number = entity.get("page_number", hit.get("page_number"))
-    page_number = _optional_int(page_number)
+        page_number = hit.get("page_number")
+    page_number = normalize_one_based_page_number(page_number)
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
     normalized: RetrievalHit = {
-        "text": _first_str(entity.get("text"), entity.get("content"), hit.get("text")),
+        "text": _first_str(hit.get("text"), hit.get("content")),
         # Keep `metadata` as a native dict on the API boundary. The LanceDB
         # storage layer JSON-encodes it on write (see `_json_str` in
         # `vdb/lancedb.py`); we already parse it back on read in
@@ -254,14 +329,69 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         "path": source_id,
         "page_number": page_number,
         "pdf_basename": pdf_basename,
-        "pdf_page": f"{pdf_basename}_{page_number}" if pdf_basename and page_number is not None else "",
+        "pdf_page": (f"{pdf_basename}_{page_number}" if pdf_basename and page_number is not None else ""),
     }
-    for key in ("stored_image_uri", "content_type", "bbox_xyxy_norm", "_distance", "_score"):
+    chunk_id = hit.get("chunk_id")
+    if chunk_id:
+        normalized.update(
+            {
+                "chunk_id": str(chunk_id),
+                "document_id": str(hit.get("document_id") or ""),
+                "filename": str(hit.get("filename") or (path.name if path else "")),
+                "document_version": str(hit.get("document_version") or ""),
+                "content_sha256": str(hit.get("content_sha256") or ""),
+            }
+        )
+    for key in (
+        "stored_image_uri",
+        "content_type",
+        "bbox_xyxy_norm",
+        "_distance",
+        "_score",
+        "_relevance_score",
+    ):
         if key in hit:
             normalized[key] = hit[key]
-        elif key in entity:
-            normalized[key] = entity[key]
     return normalized
+
+
+def to_public_collection_hit(
+    hit: RetrievalHit,
+    *,
+    retrieval_mode: LanceRetrievalMode,
+    rank: int,
+) -> RetrievalHit:
+    """Describe native ordering without changing its retrieval semantics."""
+
+    if retrieval_mode == "dense":
+        field = "_distance"
+        kind = "vector_distance"
+        higher_is_better = False
+    elif retrieval_mode == "hybrid":
+        field = "_relevance_score"
+        kind = "hybrid_relevance"
+        higher_is_better = True
+    else:
+        raise RetrievalContractError(f"unsupported collection retrieval mode: {retrieval_mode}")
+
+    raw = hit.get(field)
+    if isinstance(raw, bool):
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}") from exc
+    if not math.isfinite(value):
+        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} has a non-finite {field}")
+
+    public_hit = RetrievalHit({key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS})
+    public_hit["ranking"] = {
+        "rank": rank,
+        "value": value,
+        "kind": kind,
+        "higher_is_better": higher_is_better,
+    }
+    return public_hit
 
 
 def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
@@ -278,7 +408,11 @@ def _hit_to_dict(hit: Any) -> dict[str, Any] | None:
     return None
 
 
-def normalize_retrieval_results(results: Any) -> list[list[RetrievalHit]]:
+def normalize_retrieval_results(
+    results: Any,
+) -> list[list[RetrievalHit]]:
+    """Canonicalize backend result shapes without changing native scores."""
+
     if results is None:
         return []
     if isinstance(results, dict):

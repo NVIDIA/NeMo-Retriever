@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import nemo_retriever.service.vectordb_app as vectordb_module
+from nemo_retriever.common.vdb.records import RetrievalContractError
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
@@ -284,6 +285,68 @@ def test_query_unqueryable_table_returns_422(tmp_path) -> None:
     assert "sparse-only retrieval is not supported" in resp.json()["detail"]
 
 
+def test_query_retrieval_contract_failure_returns_safe_500(tmp_path) -> None:
+    app = _query_app(tmp_path)
+    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
+        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
+    ), patch.object(
+        VectorDBState,
+        "search",
+        side_effect=RetrievalContractError("dense hit 0 is missing a numeric _distance"),
+    ):
+        with TestClient(app) as client:
+            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5})
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == (
+        "VectorDB retrieval contract violation: dense hit 0 is missing a numeric _distance"
+    )
+
+
+def test_collection_query_omits_native_scores_while_legacy_query_preserves_them(
+    tmp_path,
+) -> None:
+    hit = {
+        "text": "hit",
+        "metadata": {},
+        "source": "report.pdf",
+        "source_id": "report.pdf",
+        "path": "report.pdf",
+        "page_number": 1,
+        "pdf_basename": "report",
+        "pdf_page": "report_1",
+        "chunk_id": "chunk",
+        "document_id": "document",
+        "filename": "report.pdf",
+        "document_version": "v1",
+        "content_sha256": "sha",
+        "_distance": 0.2,
+        "_score": 0.3,
+        "_relevance_score": 0.4,
+    }
+    app = _query_app(tmp_path)
+    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
+        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
+    ), patch.object(VectorDBState, "search", return_value=([[hit]], ["dense"])):
+        with TestClient(app) as client:
+            legacy = client.post("/v1/query", json={"query": "revenue", "top_k": 5})
+            collection = client.post(
+                "/v1/query",
+                json={"query": "revenue", "top_k": 5, "collection_name": "research"},
+            )
+
+    legacy_hit = legacy.json()["results"][0]["hits"][0]
+    collection_hit = collection.json()["results"][0]["hits"][0]
+    assert {"_distance", "_score", "_relevance_score"} <= legacy_hit.keys()
+    assert not {"_distance", "_score", "_relevance_score"}.intersection(collection_hit)
+    assert collection_hit["ranking"] == {
+        "rank": 1,
+        "value": 0.2,
+        "kind": "vector_distance",
+        "higher_is_better": False,
+    }
+
+
 def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
@@ -301,7 +364,7 @@ def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
     mock_caps.vector_column = "vector"
 
     mock_vdb = MagicMock()
-    mock_vdb.retrieval.return_value = [[{"text": "hit", "_score": 0.5}]]
+    mock_vdb.retrieval.return_value = [[{"text": "hit", "_relevance_score": 0.5}]]
 
     with patch.object(state, "_table_capabilities", return_value=mock_caps), patch(
         "nemo_retriever.common.vdb.lancedb.LanceDB",
@@ -311,6 +374,8 @@ def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
 
     assert strategies == ["hybrid"]
     assert hits[0][0]["text"] == "hit"
+    assert hits[0][0]["_relevance_score"] == 0.5
+    assert "score" not in hits[0][0]
     mock_vdb.retrieval.assert_called_once()
     call_kwargs = mock_vdb.retrieval.call_args.kwargs
     assert call_kwargs["top_k"] == 3

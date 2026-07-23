@@ -358,7 +358,9 @@ def test_gateway_fetch_returns_retryable_503_when_shared_store_is_unavailable(
     assert error.value.headers == {"Retry-After": "60"}
 
 
-def test_gateway_fetch_reads_shared_result_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gateway_fetch_reads_shared_result_off_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from nemo_retriever.service.routers import ingest
 
     event_loop_thread = threading.get_ident()
@@ -722,10 +724,18 @@ def test_worker_result_url_supports_ipv6_and_rejects_spoofed_peer() -> None:
     assert missing.value.status_code == 503
 
 
-def test_internal_auth_headers_support_default_and_custom_header_names() -> None:
+def test_internal_auth_headers_use_only_the_dedicated_internal_credential() -> None:
+    from nemo_retriever.service.auth import internal_auth_headers
+
+    assert internal_auth_headers(None) == {}
+    assert internal_auth_headers("internal-secret") == {"X-NRL-Internal-Token": "internal-secret"}
+
+
+def test_service_auth_headers_preserve_worker_pull_credentials() -> None:
     from nemo_retriever.service.auth import auth_headers
     from nemo_retriever.service.config import AuthConfig
 
+    assert auth_headers(AuthConfig()) == {}
     assert auth_headers(AuthConfig(api_token="secret")) == {"Authorization": "Bearer secret"}
     assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
 
@@ -942,7 +952,7 @@ def test_gateway_result_pull_sends_configured_internal_auth(
 
     from starlette.requests import Request
 
-    from nemo_retriever.service.config import AuthConfig, ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig, VectorDbConfig
     from nemo_retriever.service.routers import ingest
 
     client_kwargs: dict[str, Any] = {}
@@ -971,6 +981,7 @@ def test_gateway_result_pull_sends_configured_internal_auth(
             config=ServiceConfig(
                 mode="gateway",
                 auth=AuthConfig(api_token="secret", header_name="X-Service-Token"),
+                vectordb=VectorDbConfig(internal_api_token="internal-secret"),
             )
         )
     )
@@ -991,7 +1002,7 @@ def test_gateway_result_pull_sends_configured_internal_auth(
     monkeypatch.setattr(ingest.httpx, "AsyncClient", _Client)
     asyncio.run(ingest._pull_and_store_worker_result(request, "auth-pull-doc", "10.1.2.3"))
 
-    assert client_kwargs["headers"] == {"X-Service-Token": "secret"}
+    assert client_kwargs["headers"] == {"X-NRL-Internal-Token": "internal-secret"}
     assert get_result_data("auth-pull-doc") == [{"text": "authenticated handoff"}]
 
 

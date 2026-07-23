@@ -104,6 +104,11 @@ class WorkItem(RichModel):
     # Owning job aggregate (J1+). Always set today since the only
     # admission path is /v1/ingest/job/{job_id}/document.
     job_id: str | None = None
+    scope: str = "default"
+    collection_name: str | None = None
+    operation: str = "append"
+    content_sha256: str | None = None
+    storage_document_id: str | None = None
     retain_results: bool = False
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.

@@ -242,27 +242,36 @@ def build_lancedb_rows(
     return rows
 
 
-def lancedb_schema(vector_dim: int = 2048) -> Any:
+def lancedb_schema(vector_dim: int = 2048, *, collection_managed: bool = False) -> Any:
     """Return a PyArrow schema for the standard LanceDB table layout."""
     import pyarrow as pa  # type: ignore
 
-    return pa.schema(
-        [
-            pa.field("vector", pa.list_(pa.float32(), vector_dim)),
-            pa.field("pdf_page", pa.string()),
-            pa.field("filename", pa.string()),
-            pa.field("pdf_basename", pa.string()),
-            pa.field("page_number", pa.int32()),
-            pa.field("source", pa.string()),
-            pa.field("source_id", pa.string()),
-            pa.field("path", pa.string()),
-            pa.field("text", pa.string()),
-            pa.field("metadata", pa.string()),
-            pa.field("stored_image_uri", pa.string()),
-            pa.field("content_type", pa.string()),
-            pa.field("bbox_xyxy_norm", pa.string()),
-        ]
-    )
+    fields = [
+        pa.field("vector", pa.list_(pa.float32(), vector_dim)),
+        pa.field("pdf_page", pa.string()),
+        pa.field("filename", pa.string()),
+        pa.field("pdf_basename", pa.string()),
+        pa.field("page_number", pa.int32()),
+        pa.field("source", pa.string()),
+        pa.field("source_id", pa.string()),
+        pa.field("path", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("metadata", pa.string()),
+        pa.field("stored_image_uri", pa.string()),
+        pa.field("content_type", pa.string()),
+        pa.field("bbox_xyxy_norm", pa.string()),
+    ]
+    if collection_managed:
+        fields.extend(
+            [
+                pa.field("chunk_id", pa.string()),
+                pa.field("document_id", pa.string()),
+                pa.field("document_version", pa.string()),
+                pa.field("content_sha256", pa.string()),
+                pa.field("created_at", pa.string()),
+            ]
+        )
+    return pa.schema(fields)
 
 
 def infer_vector_dim(rows: List[Dict[str, Any]]) -> int:

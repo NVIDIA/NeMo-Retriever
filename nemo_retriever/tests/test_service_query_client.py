@@ -20,6 +20,7 @@ def _install_query_response(
     class FakeResponse:
         status_code = 200
         text = ""
+        content = b"{}"
 
         def json(self) -> dict[str, Any]:
             return body
@@ -35,7 +36,8 @@ def _install_query_response(
         def __exit__(self, *_args: Any) -> None:
             return None
 
-        def post(self, url: str, *, json: dict[str, Any]) -> FakeResponse:
+        def request(self, method: str, url: str, *, json: dict[str, Any]) -> FakeResponse:
+            assert method == "POST"
             if calls is not None:
                 calls.append({"url": url, "json": json})
             return FakeResponse()

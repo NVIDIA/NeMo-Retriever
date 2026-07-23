@@ -11,6 +11,40 @@ from dateutil.parser import parse
 from nemo_retriever.common.api.util.exception_handlers.converters import datetools_exception_handler
 
 
+def normalize_timezone_aware_iso8601_to_utc(date_string: str) -> str:
+    """Normalize a timezone-aware ISO-8601 timestamp to UTC.
+
+    Parameters
+    ----------
+    date_string : str
+        An ISO-8601 timestamp containing ``Z`` or an explicit UTC offset.
+
+    Returns
+    -------
+    str
+        The same instant represented as an ISO-8601 timestamp in UTC.
+
+    Raises
+    ------
+    ValueError
+        If ``date_string`` is invalid or does not include timezone information.
+
+    Notes
+    -----
+    This helper deliberately rejects naive timestamps instead of assuming the
+    host timezone. That keeps persisted lifecycle and scheduling timestamps
+    consistent across services running in different regions.
+    """
+
+    try:
+        parsed = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("timestamp must be ISO-8601") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("timestamp must include a timezone offset")
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 @datetools_exception_handler
 def datetimefrompdfmeta(pdf_formated_date: str, keep_tz: bool = False) -> str:
     """

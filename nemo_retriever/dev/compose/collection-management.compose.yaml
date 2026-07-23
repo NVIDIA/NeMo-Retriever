@@ -1,0 +1,56 @@
+name: ${NRL_COMPOSE_PROJECT_NAME:-nrl}
+
+services:
+  gateway:
+    image: ${NRL_IMAGE:-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0}
+    command:
+      - retriever
+      - service
+      - start
+      - --config
+      - /etc/nemo-retriever/collection-management.service.yaml
+    environment:
+      NRL_EMBED_ENDPOINT: ${NRL_EMBED_ENDPOINT:?set NRL_EMBED_ENDPOINT}
+      NRL_API_TOKEN: ${NRL_API_TOKEN:?set NRL_API_TOKEN}
+      NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}
+    ports:
+      - "7670:7670"
+    volumes:
+      - ./collection-management.service.yaml:/etc/nemo-retriever/collection-management.service.yaml:ro
+      - collection-artifacts:/data/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7670/v1/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 5s
+    depends_on:
+      vectordb:
+        condition: service_healthy
+
+  vectordb:
+    image: ${NRL_IMAGE:-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0}
+    command:
+      - python
+      - -m
+      - nemo_retriever.service.vectordb_app
+      - --lancedb-uri
+      - /data/vectordb
+      - --embed-endpoint
+      - ${NRL_EMBED_ENDPOINT:?set NRL_EMBED_ENDPOINT}
+      - --collection-artifact-root
+      - /data/artifacts
+    environment:
+      NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:?set NRL_INTERNAL_VDB_TOKEN}
+    volumes:
+      - vectordb-data:/data/vectordb
+      - collection-artifacts:/data/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7671/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  vectordb-data:
+  collection-artifacts:
