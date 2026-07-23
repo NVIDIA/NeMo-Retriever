@@ -861,7 +861,11 @@ def expand_chart_bboxes(annotation_dict, labels=None):
     return annotation_dict
 
 
-def postprocess_page_elements_v3(annotation_dict, labels=None, final_score=None):
+def postprocess_page_elements_v3(
+    annotation_dict: Dict[str, List[List[float]]],
+    labels: Optional[List[str]] = None,
+    final_score: Optional[Dict[str, float]] = None,
+) -> Dict[str, List[List[float]]]:
     """
     Expand bounding boxes of tables/charts/infographics and titles based on the bounding boxes of the other class.
     Args:
@@ -906,13 +910,16 @@ def postprocess_page_elements_v3(annotation_dict, labels=None, final_score=None)
 
     bboxes, confidences, label_idxs = remove_overlapping_boxes_using_wbf(bboxes, confidences, label_idxs)
 
-    # Boxes that cannot survive the final per-class score gate must not
-    # participate in cross-class matching. In particular, a low-confidence
-    # page-sized table can otherwise consume a valid title and then be removed
-    # itself by the final filter, silently dropping both detections.
-    final_thresholds = np.array([final_score.get(labels[int(label_idx)], 0.0) for label_idx in label_idxs])
-    keep = confidences >= final_thresholds
-    bboxes, confidences, label_idxs = bboxes[keep], confidences[keep], label_idxs[keep]
+    # Apply final thresholds here only to determine matching eligibility; the
+    # caller still owns final output filtering. A low-confidence page-sized table
+    # can otherwise consume a valid title before both detections are removed.
+    matching_thresholds = np.array([final_score.get(labels[int(label_idx)], 0.0) for label_idx in label_idxs])
+    eligible_for_matching = confidences >= matching_thresholds
+    bboxes, confidences, label_idxs = (
+        bboxes[eligible_for_matching],
+        confidences[eligible_for_matching],
+        label_idxs[eligible_for_matching],
+    )
     if not len(bboxes):
         return {label: [] for label in labels}
 
