@@ -104,10 +104,18 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
 | llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
-| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `extract_method="nemotron_parse"` |
+| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `extract_method="nemotron_parse"`. The hosted Build endpoint currently expects a different request contract than the self-hosted `nemotron-parse-v1.2` NIM; refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
 | llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
+
+<a id="nemotron-parse-hosted-vs-self-hosted"></a>
+
+!!! warning "Nemotron Parse: hosted Build endpoint vs self-hosted NIM"
+
+    The self-hosted Helm NIM (`nemotron-parse-v1.2`) and the NVIDIA-hosted Build endpoint (`https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse`) currently expect **different request contracts**. The library builds the request for the self-hosted `v1.2` NIM, which includes a text task prompt. The hosted Build endpoint rejects that request with `HTTP 400` (`Content cannot be a plain string. The model does not support text input.`).
+
+    Until the hosted Build endpoint is aligned with `nemotron-parse-v1.2`, run Nemotron Parse against a **self-hosted Helm NIM** or a **local Hugging Face model** rather than the hosted Build endpoint. Default **pdfium**-based PDF extraction is unaffected and works with hosted NIMs. For the error symptom, refer to [Nemotron Parse hosted Build endpoint returns HTTP 400](troubleshoot.md#nemotron-parse-hosted-build-http-400).
 
 For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode).
 
