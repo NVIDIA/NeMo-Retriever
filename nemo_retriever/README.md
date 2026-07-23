@@ -734,8 +734,8 @@ After installing the headers, restart the pipeline.
 The developer harness runs registered ingest and retrieval benchmarks through
 `retriever harness`. Start with the
 [harness guide](harness/README.md), then choose
-[library execution](harness/LIBRARY.md) or
-[service execution](harness/SERVICE.md). Recurring workstation runs use the
+[library execution](harness/docs/library.md) or
+[service execution](harness/docs/service.md). Recurring workstation runs use the
 [nightly launcher](../ops/retriever-nightly/README.md).
 
 ### Ingest image storage

@@ -11,7 +11,7 @@ Choose the mode by workload size:
 | `local` | Small smoke tests such as JP20 | In-process ingest |
 | `batch` | Larger corpora and multi-GPU runs | Ray-backed batch ingest |
 
-Both modes write the [same artifacts](README.md#results-and-artifacts).
+Both modes write the [same artifacts](../README.md#results-and-artifacts).
 
 ## Prepare the Host
 
@@ -108,7 +108,7 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/vidore_v3_computer_science_beir.json
 ```
 
-The [nightly launcher](../../ops/retriever-nightly/README.md) runs all eight
+The [nightly launcher](../../../ops/retriever-nightly/README.md) runs all eight
 ViDoRe domains plus the four library benchmarks.
 
 ## Apply a One-Off Override
@@ -154,6 +154,6 @@ the experiment requires them. The resolved benchmark records every value.
 ## Run on a Schedule
 
 The harness itself is one-shot. Use the
-[nightly launcher](../../ops/retriever-nightly/README.md) for the checked-in
+[nightly launcher](../../../ops/retriever-nightly/README.md) for the checked-in
 twelve-benchmark suite, Git selection, Slack reporting, and a transparent daily
 `tmux` loop.

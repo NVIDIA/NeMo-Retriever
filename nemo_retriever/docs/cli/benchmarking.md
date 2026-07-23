@@ -22,12 +22,12 @@ retriever harness show jp20_beir
 
 Then choose the execution guide:
 
-- [Local and batch library runs](../../harness/LIBRARY.md)
-- [Existing-service and managed-Helm runs](../../harness/SERVICE.md)
+- [Local and batch library runs](../../harness/docs/library.md)
+- [Existing-service and managed-Helm runs](../../harness/docs/service.md)
 - [Recurring workstation nightly](../../../ops/retriever-nightly/README.md)
 
 Agentic BEIR evaluation is documented under
-[library harness runs](../../harness/LIBRARY.md#evaluate-agentic-retrieval).
+[library harness runs](../../harness/docs/library.md#evaluate-agentic-retrieval).
 
 ## Stage Micro-Benchmarks
 

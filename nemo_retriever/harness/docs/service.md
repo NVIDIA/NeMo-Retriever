@@ -59,8 +59,8 @@ Prerequisites:
 - a non-secret Helm deployment file
 
 Start from
-[`examples/managed-helm-main.yaml`](examples/managed-helm-main.yaml). Select a
-checked-in profile such as [`helm-profiles/core.yaml`](helm-profiles/core.yaml)
+[`examples/managed-helm-main.yaml`](../examples/managed-helm-main.yaml). Select a
+checked-in profile such as [`helm-profiles/core.yaml`](../helm-profiles/core.yaml)
 with `helm_values_file`.
 
 Set the immutable image:
@@ -104,5 +104,5 @@ uv run --project nemo_retriever retriever harness post-slack \
   /local/path/to/retriever-artifacts/helm-jp20
 ```
 
-See the [shared artifact and reporting contract](README.md#results-and-artifacts)
+See the [shared artifact and reporting contract](../README.md#results-and-artifacts)
 for exit codes, Slack posting, and release comparisons.

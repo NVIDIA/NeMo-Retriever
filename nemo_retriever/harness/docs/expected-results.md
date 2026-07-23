@@ -15,7 +15,7 @@ policy justify it.
 ## Dataset Facts
 
 Registry paths describe the standard internal mount. Use
-[`dataset_paths.example.yaml`](dataset_paths.example.yaml) to map these datasets
+[`dataset_paths.example.yaml`](../dataset_paths.example.yaml) to map these datasets
 on another host.
 
 | Dataset | Benchmark | Standard path | Files | Pages | Queries |

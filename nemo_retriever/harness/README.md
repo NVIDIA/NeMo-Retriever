@@ -21,12 +21,12 @@ Both paths use the same runfiles, metric gates, and artifact contract.
 
 | Goal | Guide |
 | --- | --- |
-| Run one small benchmark | [Library execution](LIBRARY.md#run-one-benchmark) |
-| Run a larger or multi-GPU benchmark | [Library execution](LIBRARY.md#run-in-batch) |
-| Test an existing Retriever service | [Service execution](SERVICE.md#test-an-existing-service) |
-| Provision and test a service with Helm | [Service execution](SERVICE.md#provision-a-service-with-helm) |
+| Run one small benchmark | [Library execution](docs/library.md#run-one-benchmark) |
+| Run a larger or multi-GPU benchmark | [Library execution](docs/library.md#run-in-batch) |
+| Test an existing Retriever service | [Service execution](docs/service.md#test-an-existing-service) |
+| Provision and test a service with Helm | [Service execution](docs/service.md#provision-a-service-with-helm) |
 | Run the workstation suite every day | [Nightly launcher](../../ops/retriever-nightly/README.md) |
-| Review known dataset facts and observed results | [Expected results](EXPECTED_RESULTS.md) |
+| Review known dataset facts and observed results | [Expected results](docs/expected-results.md) |
 
 Run harness commands from the repository root:
 
@@ -140,7 +140,7 @@ Metric gates compare values in `results.json.summary_metrics`:
 
 During a dry-run, static facts can be evaluated; execution metrics are recorded
 as skipped. The harness has no implicit quality or performance threshold.
-[`EXPECTED_RESULTS.md`](EXPECTED_RESULTS.md) contains human-readable observations
+[`expected-results.md`](docs/expected-results.md) contains human-readable observations
 that can inform explicit gates.
 
 | Code | Meaning |

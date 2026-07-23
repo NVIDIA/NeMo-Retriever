@@ -22,6 +22,6 @@ Confirm that `session_summary.json` succeeds and inspect the child
 Read `session_summary.json` first and the child `results.json` for terminal
 metrics. Use `run.log` only when deeper diagnostics are needed.
 
-- [Library harness guide](../nemo_retriever/harness/LIBRARY.md)
-- [BO767 dataset facts and observations](../nemo_retriever/harness/EXPECTED_RESULTS.md#bo767-observations)
+- [Library harness guide](../nemo_retriever/harness/docs/library.md)
+- [BO767 dataset facts and observations](../nemo_retriever/harness/docs/expected-results.md#bo767-observations)
 - [Shared artifact contract](../nemo_retriever/harness/README.md#results-and-artifacts)
