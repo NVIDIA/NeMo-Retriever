@@ -36,7 +36,7 @@ The following are some applications that use NVIDIA Nemo Retriever:
 - [Build an Enterprise RAG pipeline](https://build.nvidia.com/nvidia/build-an-enterprise-rag-pipeline/blueprintcard) (NVIDIA AI Blueprint)
 - [Building Code Documentation Agents with CrewAI](https://github.com/crewAIInc/nvidia-demo) (CrewAI Demo)
 - [Digital Human for Customer Service](https://github.com/NVIDIA-AI-Blueprints/digital-human) (NVIDIA AI Blueprint)
-- [Document Research Assistant for Blog Creation](https://github.com/run-llama/llama_index/blob/main/docs/docs/examples/agent/nvidia_document_research_assistant_for_blog_creation.ipynb) (LlamaIndex Jupyter Notebook)
+- [Document Research Assistant for Blog Creation](https://docs.llamaindex.ai/en/stable/examples/agent/nvidia_document_research_assistant_for_blog_creation/) (LlamaIndex Jupyter Notebook)
 - [Video Search and Summarization](https://github.com/NVIDIA-AI-Blueprints/video-search-and-summarization) (NVIDIA AI Blueprint)
 
 
@@ -47,4 +47,4 @@ The following are some applications that use NVIDIA Nemo Retriever:
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html)
 - [NVIDIA NIM for Object Detection](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html)
-- [NVIDIA NIM for Image OCR](https://docs.nvidia.com/nim/ingestion/table-extraction/latest/overview.html)
+- [NVIDIA NIM for Image OCR](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html)
