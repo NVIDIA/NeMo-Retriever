@@ -64,11 +64,13 @@ class QueryAgenticOptions:
     local_max_model_len: int | None = None
     local_max_num_seqs: int | None = None
     reasoning_effort: str | None = None
-    backend_top_k: int = 20
     react_max_steps: int = 50
     text_truncation: int = 0
     num_concurrent: int = 1
-    temperature: float = 0.0
+    temperature: float | None = None
+    # LLM client (see AgenticRetrievalConfig.llm_client). Optional: defaults to
+    # ``callable`` in-process / ``litellm`` remote when unset.
+    llm_client: str | None = None
 
 
 @dataclass(frozen=True)
