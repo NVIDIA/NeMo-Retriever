@@ -95,12 +95,12 @@ To inspect the results, use :func:`~nv_ingest_client.util.process_json_files.ing
     print(ingest_json_results_to_blob(results[0]))
 
 To query the ingested LanceDB table, use :meth:`~nemo_retriever.common.vdb.lancedb.LanceDB.retrieval`
-(precomputed query vectors) or :meth:`~nemo_retriever.retriever.Retriever.query` (embeds the query string for you).
+(precomputed query vectors) or :meth:`~nemo_retriever.graph.retriever.Retriever.query` (embeds the query string for you).
 
 .. code-block:: python
 
     from nemo_retriever.common.vdb.lancedb import LanceDB
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
     table_path = "./lancedb_data"
     table_name = "test"
