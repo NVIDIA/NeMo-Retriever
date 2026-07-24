@@ -94,23 +94,27 @@ To inspect the results, use :func:`~nv_ingest_client.util.process_json_files.ing
     # results blob is directly inspectable
     print(ingest_json_results_to_blob(results[0]))
 
-To query the ingested LanceDB table, use :func:`~nv_ingest_client.util.vdb.lancedb.lancedb_retrieval`
+To query the ingested LanceDB table, use :meth:`~nemo_retriever.common.vdb.lancedb.LanceDB.retrieval`
+(precomputed query vectors) or :meth:`~nemo_retriever.retriever.Retriever.query` (embeds the query string for you).
 
 .. code-block:: python
 
-    from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
+    from nemo_retriever.common.vdb.lancedb import LanceDB
+    from nemo_retriever.retriever import Retriever
 
     table_path = "./lancedb_data"
     table_name = "test"
 
-    queries = ["Which animal is responsible for the typos?"]
+    # Option 1: precomputed query vectors
+    vdb = LanceDB(uri=table_path, table_name=table_name)
+    query_vectors = [[0.0] * 2048]  # replace with vectors from the same embedder used at ingest
+    retrieved_docs = vdb.retrieval(query_vectors, top_k=1)
 
-    retrieved_docs = lancedb_retrieval(
-        queries,
-        table_path=table_path,
-        table_name=table_name,
-        top_k=1,
+    # Option 2: natural-language query (Retriever embeds the query for you)
+    retriever = Retriever(
+        vdb_kwargs={"uri": table_path, "table_name": table_name},
     )
+    hits = retriever.query("Which animal is responsible for the typos?", top_k=1)
 
 
 .. toctree::
