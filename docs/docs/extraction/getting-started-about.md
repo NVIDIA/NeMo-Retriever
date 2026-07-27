@@ -11,4 +11,4 @@ Typical order:
     - **Supported:** [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) for Kubernetes, plus [NeMo Retriever Library install docs](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the published charts
 4. Explore [Jupyter Notebooks](notebooks/index.md) for end-to-end examples.
 
-If you are new to the product, read [NeMo Retriever Library overview](overview.md) and [Concepts](concepts.md) under **Introduction** first.
+If you are new to the product, read [NeMo Retriever Library Overview](overview.md) and [Concepts](concepts.md) under **Introduction** first.

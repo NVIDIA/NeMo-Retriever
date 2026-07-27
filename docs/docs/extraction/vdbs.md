@@ -5,7 +5,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 ## On this page { #on-this-page }
 
 - [Overview](#overview)
-- [LanceDB overview](#why-lancedb)
+- [LanceDB Overview](#why-lancedb)
 - [Upload to LanceDB](#upload-to-lancedb)
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
@@ -37,7 +37,7 @@ Currently, data upload is not supported through the [CLI](https://github.com/NVI
 
 
 
-## LanceDB overview { #why-lancedb }
+## LanceDB Overview { #why-lancedb }
 
 LanceDB is optimized for low-latency retrieval in this stack:
 
