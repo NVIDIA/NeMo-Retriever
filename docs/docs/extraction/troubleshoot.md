@@ -106,7 +106,7 @@ You can set the variable in your .env file or directly in your environment.
 
 ## ModuleNotFoundError: No module named open_clip when using nemotron_parse { #modulenotfounderror-no-module-named-open-clip-when-using-nemotron-parse }
 
-When you run PDF extraction with `extract_method="nemotron_parse"`, you might see an error similar to the following:
+When you run PDF extraction with `method="nemotron_parse"`, you might see an error similar to the following:
 
 ```text
 ModuleNotFoundError: No module named 'open_clip'
@@ -131,7 +131,7 @@ Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites
 ## Extract method nemotron-parse doesn't support image files
 
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
-To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
+To work around this issue, convert image files to PDFs before you use `method="nemotron_parse"`.
 
 ## Nemotron Parse model and endpoint mismatch { #nemotron-parse-model-endpoint-mismatch }
 
