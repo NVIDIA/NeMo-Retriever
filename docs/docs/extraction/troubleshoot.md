@@ -133,15 +133,17 @@ Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
 To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
 
-## Nemotron Parse hosted Build endpoint returns HTTP 400: model does not support text input { #nemotron-parse-hosted-build-http-400 }
+## Nemotron Parse model and endpoint mismatch { #nemotron-parse-model-endpoint-mismatch }
 
-When you run PDF extraction with `extract_method="nemotron_parse"` against the NVIDIA-hosted Build endpoint (`https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse`), the request can fail with an error similar to the following:
+When you run PDF extraction with `method="nemotron_parse"`, a mismatched model and endpoint can fail with an error similar to the following:
 
 ```text
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-The hosted Build endpoint currently expects a different request contract than the self-hosted `nemotron-parse-v1.2` NIM that the library targets, so the text task prompt the library sends is rejected. Until the two are aligned, run Nemotron Parse against a self-hosted Helm NIM or a local Hugging Face model, or fall back to the default **pdfium** PDF extraction path. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+This can occur when you send a tagged or versioned `v1.2` model (for example `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send versioned `v1.2` models only to a compatible self-hosted chat endpoint. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
