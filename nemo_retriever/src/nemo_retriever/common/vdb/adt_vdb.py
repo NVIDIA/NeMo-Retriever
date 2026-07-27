@@ -24,7 +24,58 @@ metadata-filtering section and its reference notebook.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
+
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionDeleteResult,
+    CollectionInfo,
+    CollectionPage,
+    CollectionUpdateRequest,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
+    IngestOperation,
+)
+
+
+class UnsupportedVDBOperation(NotImplementedError):
+    """The selected VDB backend does not implement an optional operation."""
+
+
+class VDBResourceNotFound(LookupError):
+    """A logical resource does not exist in the selected VDB backend."""
+
+
+class VDBResourceConflict(RuntimeError):
+    """A VDB operation conflicts with the resource's current state."""
+
+
+class VDBInvalidRequest(ValueError):
+    """A request cannot be applied by the VDB backend."""
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionWriteContext:
+    """Logical identity and operation metadata for one collection write."""
+
+    scope: str
+    collection_name: str
+    document_id: str
+    document_version: str
+    content_sha256: str
+    filename: str
+    job_id: str | None = None
+    operation: IngestOperation = "append"
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionWriteResult:
+    """Backend-neutral counts returned after a collection write."""
+
+    written: int
+    total_rows: int
 
 
 class VDB(ABC):
@@ -229,6 +280,131 @@ class VDB(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement put(); "
             "in-place stable-key puts are not supported by this VDB backend."
+        )
+
+    def create_collection(
+        self,
+        *,
+        scope: str,
+        request: CollectionCreateRequest,
+    ) -> CollectionInfo:
+        """Create a logical collection.
+
+        Collection management is optional so existing VDB implementations
+        remain compatible. Backends that support it must isolate the logical
+        collection by both ``scope`` and ``request.name``.
+        """
+        raise self._unsupported_collection_operation("create_collection")
+
+    def get_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+    ) -> CollectionInfo:
+        """Return one logical collection visible within ``scope``."""
+        raise self._unsupported_collection_operation("get_collection")
+
+    def list_collections(
+        self,
+        *,
+        scope: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> CollectionPage:
+        """List logical collections visible within ``scope``."""
+        raise self._unsupported_collection_operation("list_collections")
+
+    def update_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        request: CollectionUpdateRequest,
+    ) -> CollectionInfo:
+        """Update one logical collection visible within ``scope``."""
+        raise self._unsupported_collection_operation("update_collection")
+
+    def delete_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        if_exists: bool,
+    ) -> CollectionDeleteResult:
+        """Delete one logical collection and its backend-owned vector data."""
+        raise self._unsupported_collection_operation("delete_collection")
+
+    def get_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+    ) -> DocumentInfo:
+        """Return one document from a logical collection."""
+        raise self._unsupported_collection_operation("get_document")
+
+    def list_documents(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> DocumentPage:
+        """List documents from a logical collection."""
+        raise self._unsupported_collection_operation("list_documents")
+
+    def delete_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+        if_exists: bool,
+    ) -> DocumentDeleteResult:
+        """Delete one document and its backend-owned vector data."""
+        raise self._unsupported_collection_operation("delete_document")
+
+    def write_collection(
+        self,
+        records: list,
+        *,
+        context: CollectionWriteContext,
+    ) -> CollectionWriteResult:
+        """Write canonical NRL records to an explicitly scoped collection."""
+        raise self._unsupported_collection_operation("write_collection")
+
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Retrieve canonical hits and strategy names from one collection."""
+        raise self._unsupported_collection_operation("retrieve_collection")
+
+    def reconcile_collections(self) -> dict[str, int]:
+        """Resume optional collection lifecycle work.
+
+        Backends without durable collection lifecycle state have nothing to
+        reconcile and therefore return zero work rather than failing.
+        """
+        return {"successes": 0, "failures": 0}
+
+    def health(self) -> dict[str, Any]:
+        """Return optional backend-specific operational health details."""
+        return {}
+
+    def _unsupported_collection_operation(self, operation: str) -> UnsupportedVDBOperation:
+        return UnsupportedVDBOperation(
+            f"{type(self).__name__} does not implement {operation}(); "
+            "collection management is not supported by this VDB backend."
         )
 
     @abstractmethod

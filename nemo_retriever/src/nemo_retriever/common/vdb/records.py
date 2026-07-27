@@ -7,19 +7,77 @@
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
 
+from pydantic import ValidationError
+
 from nemo_retriever.common.api.util.converters.pagetools import (
     normalize_one_based_page_number,
 )
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
+from nemo_retriever.common.schemas.collections import QueryHit
+
+_CONTENT_TYPE_ALIASES: dict[str, str] = {
+    "chart_caption": "chart",
+    "image_caption": "image",
+    "images": "image",
+    "infographic_caption": "infographic",
+    "table_caption": "table",
+}
+
+
+def normalize_content_type(value: Any) -> str | None:
+    """Return the canonical public modality for an extracted content type."""
+    normalized = str(value or "").strip().lower()
+    return _CONTENT_TYPE_ALIASES.get(normalized, normalized) or None
 
 
 class RetrievalContractError(RuntimeError):
     """A backend retrieval result cannot satisfy the canonical hit contract."""
+
+
+def validate_collection_retrieval_results(
+    result: Any,
+    *,
+    expected_queries: int,
+) -> tuple[list[list[dict[str, Any]]], list[str]]:
+    """Validate the backend-neutral collection retrieval contract."""
+
+    if not isinstance(result, tuple) or len(result) != 2:
+        raise RetrievalContractError("collection retrieval must return hits and strategies")
+
+    hits_by_query, strategies = result
+    if not isinstance(hits_by_query, list) or len(hits_by_query) != expected_queries:
+        raise RetrievalContractError("collection retrieval returned an unexpected number of result sets")
+    if (
+        not isinstance(strategies, list)
+        or not strategies
+        or any(not isinstance(strategy, str) or not strategy.strip() for strategy in strategies)
+    ):
+        raise RetrievalContractError("collection retrieval returned invalid strategies")
+
+    validated: list[list[dict[str, Any]]] = []
+    for hits in hits_by_query:
+        if not isinstance(hits, list):
+            raise RetrievalContractError("each collection query result must be a list")
+        validated_hits: list[dict[str, Any]] = []
+        for hit in hits:
+            if not isinstance(hit, Mapping):
+                raise RetrievalContractError("each collection query hit must be a mapping")
+            payload = dict(hit)
+            if "bbox" not in payload and "bbox_xyxy_norm" in payload:
+                payload["bbox"] = payload["bbox_xyxy_norm"]
+            try:
+                canonical = QueryHit.model_validate(payload)
+            except ValidationError as exc:
+                raise RetrievalContractError("collection query hit does not satisfy the public contract") from exc
+            public_hit = canonical.model_dump(exclude_none=True, exclude={"bbox"})
+            if canonical.bbox is not None:
+                public_hit["bbox_xyxy_norm"] = canonical.bbox
+            validated_hits.append(public_hit)
+        validated.append(validated_hits)
+    return validated, list(strategies)
 
 
 _LEGACY_ENTITY_FIELDS = frozenset(
@@ -37,17 +95,6 @@ _LEGACY_ENTITY_FIELDS = frozenset(
         "text",
     }
 )
-
-_NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score", "_relevance_score"})
-
-
-class RetrievalRanking(TypedDict):
-    """Backend-neutral ordering metadata for a public collection hit."""
-
-    rank: int
-    value: float
-    kind: str
-    higher_is_better: bool
 
 
 class RetrievalHit(TypedDict, total=False):
@@ -81,7 +128,7 @@ class RetrievalHit(TypedDict, total=False):
     _distance: float
     _score: float
     _relevance_score: float
-    ranking: RetrievalRanking
+    ranking: dict[str, Any]
     chunk_id: str
     document_id: str
     filename: str
@@ -118,6 +165,45 @@ def _optional_int(value: Any) -> int | None:
         except (TypeError, ValueError):
             pass
     return None
+
+
+def _page_number_from_graph_row(
+    row: dict[str, Any],
+    content_metadata: dict[str, Any],
+) -> int | None:
+    """Preserve the original document page carried by service pre-splitting."""
+    candidates = (
+        content_metadata.get("page_number"),
+        row.get("page_number"),
+        row.get("_page_number"),
+    )
+    parsed = [page for value in candidates if (page := _optional_int(value)) is not None]
+    return max(parsed) if parsed else None
+
+
+def _add_detection_metadata(
+    row: dict[str, Any],
+    content_metadata: dict[str, Any],
+) -> None:
+    """Carry graph extraction diagnostics into the canonical record metadata."""
+    count = _optional_int(row.get("page_elements_v3_num_detections"))
+    if count is not None:
+        content_metadata.setdefault("page_elements_v3_num_detections", count)
+
+    counts_by_label = row.get("page_elements_v3_counts_by_label")
+    if isinstance(counts_by_label, dict):
+        normalized_counts = {
+            str(key): count
+            for key, value in counts_by_label.items()
+            if isinstance(key, str) and (count := _optional_int(value)) is not None
+        }
+        if normalized_counts:
+            content_metadata.setdefault("page_elements_v3_counts_by_label", normalized_counts)
+
+    for content_type in ("table", "chart", "infographic"):
+        detections = row.get(content_type)
+        if isinstance(detections, list):
+            content_metadata.setdefault(f"ocr_{content_type}_detections", len(detections))
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -166,18 +252,17 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
         return None
 
     content_metadata = _dict_or_empty(metadata.get("content_metadata"))
-    page_number = _optional_int(content_metadata.get("page_number"))
-    if page_number is None:
-        page_number = _optional_int(row.get("page_number"))
+    page_number = _page_number_from_graph_row(row, content_metadata)
     if page_number is not None:
-        content_metadata.setdefault("page_number", page_number)
+        content_metadata["page_number"] = page_number
+    _add_detection_metadata(row, content_metadata)
 
     if image_only:
         content_type = "image"
         content_metadata["type"] = content_type
         content_metadata.pop("fidelity", None)
     else:
-        content_type = row.get("_content_type") or row.get("content_type")
+        content_type = normalize_content_type(row.get("_content_type") or row.get("content_type"))
         if content_type:
             content_metadata.setdefault("type", content_type)
         fidelity = _derive_fidelity(content_type, metadata, content_metadata)
@@ -191,6 +276,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
     for key in (
+        "chunk_index",
+        "chunk_count",
         "segment_start_seconds",
         "segment_end_seconds",
         "frame_timestamp_seconds",
@@ -223,7 +310,7 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     return {"document_type": str(document_type), "metadata": record_metadata}
 
 
-def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     """Convert graph-ingest rows into the nested record shape expected by client VDBs.
 
     Dense rows require an embedding and either nonblank text or concrete image backing.
@@ -232,6 +319,10 @@ def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any
     When at least one row converts, returns ``[batch]`` with a single non-empty inner list
     (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
     """
+    if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
+        return rows
+    if hasattr(rows, "to_pandas"):
+        rows = rows.to_pandas()
     if hasattr(rows, "to_dict"):
         rows = rows.to_dict("records")
     # Walrus: bind conversion once per row — a plain ``if f(row)`` + ``f(row)`` list comp
@@ -310,7 +401,11 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
     page_number = content_metadata.get("page_number") if isinstance(content_metadata, dict) else None
     if page_number is None:
         page_number = hit.get("page_number")
-    page_number = normalize_one_based_page_number(page_number)
+    content_type = normalize_content_type(_first_str(hit.get("content_type"), content_metadata.get("type"))) or ""
+    if content_type.startswith(("audio", "video")):
+        page_number = None
+    else:
+        page_number = normalize_one_based_page_number(page_number)
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
@@ -342,56 +437,25 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
                 "content_sha256": str(hit.get("content_sha256") or ""),
             }
         )
+    stored_image_uri = _first_str(hit.get("stored_image_uri"), content_metadata.get("stored_image_uri"))
+    if stored_image_uri:
+        normalized["stored_image_uri"] = stored_image_uri
+    if content_type:
+        normalized["content_type"] = content_type
+    bbox = hit.get("bbox_xyxy_norm")
+    if bbox is None or (isinstance(bbox, str) and not bbox.strip()):
+        bbox = content_metadata.get("bbox_xyxy_norm")
+    if bbox is not None and not (isinstance(bbox, str) and not bbox.strip()):
+        normalized["bbox_xyxy_norm"] = bbox
     for key in (
-        "stored_image_uri",
-        "content_type",
-        "bbox_xyxy_norm",
         "_distance",
         "_score",
         "_relevance_score",
+        "ranking",
     ):
         if key in hit:
             normalized[key] = hit[key]
     return normalized
-
-
-def to_public_collection_hit(
-    hit: RetrievalHit,
-    *,
-    retrieval_mode: LanceRetrievalMode,
-    rank: int,
-) -> RetrievalHit:
-    """Describe native ordering without changing its retrieval semantics."""
-
-    if retrieval_mode == "dense":
-        field = "_distance"
-        kind = "vector_distance"
-        higher_is_better = False
-    elif retrieval_mode == "hybrid":
-        field = "_relevance_score"
-        kind = "hybrid_relevance"
-        higher_is_better = True
-    else:
-        raise RetrievalContractError(f"unsupported collection retrieval mode: {retrieval_mode}")
-
-    raw = hit.get(field)
-    if isinstance(raw, bool):
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}")
-    try:
-        value = float(raw)
-    except (TypeError, ValueError) as exc:
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}") from exc
-    if not math.isfinite(value):
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} has a non-finite {field}")
-
-    public_hit = RetrievalHit({key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS})
-    public_hit["ranking"] = {
-        "rank": rank,
-        "value": value,
-        "kind": kind,
-        "higher_is_better": higher_is_better,
-    }
-    return public_hit
 
 
 def _hit_to_dict(hit: Any) -> dict[str, Any] | None:

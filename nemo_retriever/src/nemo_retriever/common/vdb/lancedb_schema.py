@@ -10,18 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-_CONTENT_TYPE_ALIASES: dict[str, str] = {
-    "chart": "chart",
-    "chart_caption": "chart",
-    "image": "image",
-    "image_caption": "image",
-    "images": "image",
-    "infographic": "infographic",
-    "infographic_caption": "infographic",
-    "table": "table",
-    "table_caption": "table",
-    "text": "text",
-}
+from nemo_retriever.common.vdb.records import normalize_content_type
 
 
 def extract_embedding_from_row(
@@ -130,13 +119,6 @@ def _build_detection_metadata(row: Any) -> Dict[str, Any]:
             out[f"ocr_{ocr_column}_detections"] = int(len(entries))
 
     return out
-
-
-def normalize_content_type(value: Any) -> str | None:
-    normalized = str(value or "").strip().lower()
-    if not normalized:
-        return None
-    return _CONTENT_TYPE_ALIASES.get(normalized, normalized)
 
 
 def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:

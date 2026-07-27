@@ -79,3 +79,25 @@ def test_visual_only_match_is_reported_when_text_evidence_remains() -> None:
         "n_docs_seen": 2,
         "thin_spots": ["single source", "visual-only matches omitted"],
     }
+
+
+def test_collection_ranking_value_is_preserved_in_evidence() -> None:
+    result = build_evidence_result(
+        [
+            {
+                "text": "answer-ready text",
+                "source": "report.pdf",
+                "page_number": 2,
+                "metadata": {"type": "text"},
+                "ranking": {
+                    "rank": 1,
+                    "value": 0.17,
+                    "kind": "vector_distance",
+                    "higher_is_better": False,
+                },
+            }
+        ],
+        ["dense"],
+    )
+
+    assert result["evidence"][0]["score"] == 0.17
