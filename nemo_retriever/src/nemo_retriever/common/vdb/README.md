@@ -98,6 +98,8 @@ Common constructor arguments include:
 
 Important: retrieval here expects **`vectors`** — a list of query embedding vectors — as the primary input. String queries are embedded elsewhere (e.g. in `Retriever`). Hybrid backends that need raw text receive aligned `query_texts` as execution-only call context.
 
+Before embedding, `Retriever` asks the operator for `get_index_metadata("embedding_model_name")`. The base `VDB` implementation returns `None`; a backend can override the method to expose metadata from its selected table or index. LanceDB exposes both `embedding_model_name` and `retrieval_mode` through this lookup.
+
 ### LanceDB inside `RetrieveVdbOperator`
 
 For `vdb_op="lancedb"`, **`LanceDB.retrieval`**:

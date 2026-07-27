@@ -70,6 +70,12 @@ def nightly_launcher(tmp_path: Path):
                 "expected_hf_token = os.environ.get('EXPECT_HF_TOKEN')",
                 "if expected_hf_token is not None and os.environ.get('HF_TOKEN') != expected_hf_token:",
                 "    raise SystemExit(95)",
+                "expected_reference = os.environ.get('EXPECT_REFERENCE_FILE')",
+                (
+                    "if expected_reference is not None and "
+                    "os.environ.get('RETRIEVER_HARNESS_REFERENCE_FILE') != expected_reference:"
+                ),
+                "    raise SystemExit(94)",
                 "with Path(os.environ['FAKE_UV_CALLS']).open('a', encoding='utf-8') as stream:",
                 "    stream.write(json.dumps(args) + '\\n')",
                 "if 'run-files' in args:",
@@ -251,10 +257,18 @@ def test_configured_webhook_posts_terminal_session_to_slack(nightly_launcher, tm
     config_dir = tmp_path / "nightly-root" / ".config" / "nemo-retriever" / "nightly"
     config_dir.mkdir(parents=True)
     config_file = config_dir / "nightly.env"
-    config_file.write_text(f"SLACK_WEBHOOK_URL={SLACK_WEBHOOK_URL}\n", encoding="utf-8")
+    config_file.write_text(
+        f"SLACK_WEBHOOK_URL={SLACK_WEBHOOK_URL}\nRETRIEVER_HARNESS_REFERENCE_FILE=/configured-reference.json\n",
+        encoding="utf-8",
+    )
     config_file.chmod(0o600)
 
-    result = run()
+    result = run(
+        extra_env={
+            "RETRIEVER_HARNESS_REFERENCE_FILE": "/exported-reference.json",
+            "EXPECT_REFERENCE_FILE": "/exported-reference.json",
+        }
+    )
 
     assert result.returncode == 0, result.stderr
     assert len(calls()) == 2

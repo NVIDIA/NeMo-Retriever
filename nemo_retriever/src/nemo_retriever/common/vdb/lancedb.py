@@ -25,6 +25,7 @@ _DEFAULT_VECTOR_DIM: Final[int] = 2048
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
+_EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -115,17 +116,28 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
     return min(int(requested), max(1, cap))
 
 
-def _with_retrieval_mode_metadata(schema: pa.Schema, retrieval_mode: str | None) -> pa.Schema:
+def _with_retrieval_mode_metadata(
+    schema: pa.Schema,
+    retrieval_mode: str | None,
+    embedding_model_name: str | None = None,
+) -> pa.Schema:
     if retrieval_mode is None:
         return schema
     metadata = dict(schema.metadata or {})
     encoded_mode = str(retrieval_mode).encode("utf-8")
     metadata[_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
     metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
+    if embedding_model_name:
+        metadata[_EMBEDDING_MODEL_METADATA_KEY] = embedding_model_name.encode("utf-8")
     return schema.with_metadata(metadata)
 
 
-def _lancedb_arrow_schema(vector_dim: int, *, retrieval_mode: str | None = None) -> pa.Schema:
+def _lancedb_arrow_schema(
+    vector_dim: int,
+    *,
+    retrieval_mode: str | None = None,
+    embedding_model_name: str | None = None,
+) -> pa.Schema:
     schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), int(vector_dim))),
@@ -135,7 +147,7 @@ def _lancedb_arrow_schema(vector_dim: int, *, retrieval_mode: str | None = None)
             pa.field("id", pa.string()),
         ]
     )
-    return _with_retrieval_mode_metadata(schema, retrieval_mode)
+    return _with_retrieval_mode_metadata(schema, retrieval_mode, embedding_model_name)
 
 
 def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
@@ -179,6 +191,30 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
                 f"{expected_field.name!r}: got {existing_field.type}, expected {expected_field.type}; "
                 "use overwrite=True to replace the table."
             )
+
+
+def _validate_append_embedding_model(
+    table: Any,
+    embedding_model_name: str | None,
+    *,
+    table_name: str,
+    uri: str,
+) -> None:
+    """Reject appends that would mix known embedding models in one table."""
+    if not embedding_model_name:
+        return
+
+    metadata = _table_schema(table).metadata or {}
+    stored_value = metadata.get(_EMBEDDING_MODEL_METADATA_KEY)
+    if stored_value is None:
+        return
+
+    stored_model = stored_value.decode("utf-8", errors="replace").strip()
+    if stored_model and stored_model != embedding_model_name:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model {stored_model!r}; "
+            f"cannot append vectors from {embedding_model_name!r}. Use the table model or overwrite the table."
+        )
 
 
 def _is_missing_lancedb_table_error(exc: ValueError) -> bool:
@@ -413,6 +449,7 @@ class LanceDB(VDB):
         hybrid: bool = False,
         sparse: bool = False,
         fts_language: str = "English",
+        embedding_model_name: str | None = None,
         vector_dim: int = _DEFAULT_VECTOR_DIM,
         on_bad_vectors: str = "drop",
         fill_value: float = 0.0,
@@ -441,11 +478,25 @@ class LanceDB(VDB):
         self.hybrid = hybrid
         self.sparse = bool(sparse)
         self.fts_language = fts_language
+        self.embedding_model_name = embedding_model_name
         self.vector_dim = int(vector_dim)
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
         self.fill_value = float(fill_value)
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
+
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Read one NeMo Retriever metadata value from the selected table."""
+        uri = str(kwargs.get("table_path") or kwargs.get("uri") or kwargs.get("lancedb_uri") or self.uri)
+        table_name = str(kwargs.get("table_name") or kwargs.get("lancedb_table") or self.table_name)
+        table = lancedb.connect(uri=uri).open_table(table_name)
+        metadata = _table_schema(table).metadata or {}
+        value = metadata.get(f"nemo_retriever.{key}".encode("utf-8"))
+        if value is None and key == "retrieval_mode":
+            value = metadata.get(_RETRIEVAL_MODE_METADATA_KEY)
+        if value is None:
+            return None
+        return value.decode("utf-8", errors="replace").strip() or None
 
     def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.
@@ -474,7 +525,11 @@ class LanceDB(VDB):
                 expected_dim = None
 
             results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-            schema = _lancedb_arrow_schema(self.vector_dim, retrieval_mode="hybrid" if self.hybrid else "dense")
+            schema = _lancedb_arrow_schema(
+                self.vector_dim,
+                retrieval_mode="hybrid" if self.hybrid else "dense",
+                embedding_model_name=self.embedding_model_name,
+            )
 
             write_kwargs = {
                 "on_bad_vectors": self.on_bad_vectors,
@@ -513,6 +568,12 @@ class LanceDB(VDB):
             else:
                 _validate_append_schema(table, schema, table_name=table_name, uri=self.uri)
                 if results:
+                    _validate_append_embedding_model(
+                        table,
+                        self.embedding_model_name,
+                        table_name=table_name,
+                        uri=self.uri,
+                    )
                     existing_rows = int(table.count_rows())
                     logger.warning(
                         "Appending %d row(s) to existing LanceDB table %r at %s "

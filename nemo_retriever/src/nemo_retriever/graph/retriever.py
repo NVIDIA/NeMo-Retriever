@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -302,6 +302,32 @@ class Retriever:
 
         return mode, caps, uri, table_name, mode_override != "auto"
 
+    @staticmethod
+    def _embedding_model_from_kwargs(kwargs: Optional[dict[str, Any]]) -> str | None:
+        values = dict(kwargs or {})
+        for key in ("model_name", "embed_model_name"):
+            value = str(values.get(key) or "").strip()
+            if value:
+                return value
+        return None
+
+    def _resolve_embed_kwargs(
+        self,
+        index_model: str | None,
+        runtime_embed_kwargs: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Choose the query model: explicit override, index metadata, or default."""
+        resolved = dict(runtime_embed_kwargs or {})
+        model_name = (
+            self._embedding_model_from_kwargs(runtime_embed_kwargs)
+            or self._embedding_model_from_kwargs(self.embed_kwargs)
+            or index_model
+        )
+        model_name = resolve_embed_model(model_name)
+        resolved["model_name"] = model_name
+        resolved["embed_model_name"] = model_name
+        return resolved
+
     def _execute_sparse_lancedb_queries(
         self,
         query_texts: list[str],
@@ -399,6 +425,14 @@ class Retriever:
         retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 
         vdb_call_kwargs = dict(vdb_kwargs or {})
+        index_model: str | None = None
+        explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
+            self.embed_kwargs
+        )
+        if self.graph is None and explicit_model is None:
+            metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
+            index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
+
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
@@ -428,6 +462,8 @@ class Retriever:
                 vdb_call_kwargs["hybrid"] = False
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
+        if self.graph is None:
+            embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs)
 
         raw_hits = self._execute_queries_graph(
             query_texts,

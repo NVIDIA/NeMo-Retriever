@@ -68,13 +68,14 @@ and the repository dependencies.
 
 Batch mode starts its models locally, so it needs no model-provider API keys.
 On a host with the standard `/datasets/nv-ingest` layout, the environment or
-optional `nightly.env` accepts only two secrets and one optional path override:
+optional `nightly.env` accepts two secrets and optional path overrides:
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
 | `HF_TOKEN` | every real launcher run | Read-only access for the automatic ViDoRe preflight. |
 | `SLACK_WEBHOOK_URL` | no | Enables one terminal Slack post for real runs. |
 | `RETRIEVER_DATASET_PATHS` | nonstandard hosts only | Path to a YAML file that replaces the checked-in `/datasets/nv-ingest` map. |
+| `RETRIEVER_HARNESS_REFERENCE_FILE` | no | Current release snapshot shown beside nightly results in Slack without assigning a verdict. |
 
 On hosts with a writable `/raid/$USER`, the launcher automatically keeps its
 private configuration, artifacts, and managed Git checkouts there.
@@ -299,6 +300,13 @@ fails preflight. Pass `--no-slack` for canaries or other real functional tests;
 that flag suppresses webhook validation and posting. Dry-runs and access checks
 never post. The launcher removes the URL from the benchmark child environment
 and exposes it only to the final Slack command.
+
+To show the latest RC beside each matching nightly result, set
+`RETRIEVER_HARNESS_REFERENCE_FILE` to the external snapshot documented in the
+[harness README](../../nemo_retriever/harness/README.md#post-results-to-slack).
+The harness reads only that configured snapshot; it does not append history or
+apply pass/fail policy. When the next RC is ready, replace the snapshot's label
+and observed values.
 
 Configuration precedence is, from highest to lowest: command-line flags,
 supported variables already exported when the launcher starts, values loaded

@@ -16,12 +16,14 @@ the harness.
   overrides.
 - `run-set` executes a code-owned benchmark group using registry paths.
 - `run-files` executes one or more checked-in runfiles and can apply a
-  machine-local dataset path map. It is the portable suite entry point and owns
+  machine-local dataset path map. It is the portable session engine and owns
   dry-run behavior for the complete session.
+- `run-helm` is the supported optional provisioning wrapper around one
+  `run-files` session. It does not own benchmark execution semantics.
 - `post-slack` only reads completed artifacts. It does not execute benchmarks
   or mutate their results.
-- Scheduling, deployment, retries, locking, and secret distribution are outside
-  this harness surface.
+- Scheduling, retries, locking, and secret distribution are outside this
+  harness surface. Deployment is limited to the optional `run-helm` wrapper.
 - `service` is a system-under-test mode that uses an endpoint supplied by the
   caller; Helm is only an optional outer provisioning mechanism.
 
@@ -38,9 +40,9 @@ The harness calls the shared ingest and query workflow modules directly.
   per-run status, events, logs, and artifact cleanup.
 - `slack.py` reads completed artifacts and renders or posts a report. It does
   not participate in benchmark execution.
-- `helm_runner.py` and `HelmServiceManager` provision an immutable service,
-  invoke the shared `run-files` CLI, collect failure logs, and tear down. They
-  do not implement benchmark sessions or reporting.
+- `helm_runner.py` and `HelmServiceManager` implement `run-helm` by provisioning
+  an immutable service, invoking the shared `run-files` CLI, collecting failure
+  logs, and tearing down. They do not implement benchmark sessions or reporting.
 
 ## Configuration Ownership
 
@@ -88,12 +90,17 @@ full tracebacks belong in `run.log`.
 
 At minimum, changes should cover:
 
-- CLI help and dry-run behavior for `run`, `run-set`, and `run-files`.
+- CLI help and dry-run behavior for `run`, `run-set`, and `run-files`, plus
+  exit-code propagation through `run-helm`.
 - One-run and multi-run terminal artifact shapes.
 - Missing inputs, invalid overrides, and metric-gate failures.
 - Dataset path precedence and secret redaction.
-- Slack preview without a webhook and transport errors without secret leakage.
+- Slack preview without a webhook, current-release reference rendering, and
+  transport errors without secret leakage.
 - A real benchmark smoke run when execution behavior changes.
 
 Use `EXPECTED_RESULTS.md` for dataset facts and observed metric ranges. Do not
 turn hardware-sensitive reference numbers into implicit global pass/fail policy.
+A configured release snapshot is presentation input only: show it beside the
+current nightly with hardware context, but do not maintain history or assign a
+verdict in the harness.

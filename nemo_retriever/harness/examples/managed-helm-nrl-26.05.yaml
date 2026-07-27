@@ -1,7 +1,10 @@
-# Managed NRL Helm service example for the 26.05 perf sweep.
+# Historical managed NRL Helm service configuration for the 26.05 perf sweep.
 #
-# Run from the repository root:
-#   retriever harness run --config nemo_retriever/harness/examples/managed-helm-nrl-26.05.yaml
+# This body preserves the retired nested harness schema for release reference;
+# it is not accepted by the current managed-Helm runner. For current runs, use
+# examples/managed-helm-main.yaml with:
+#   uv run --project nemo_retriever retriever-harness run-helm --config \
+#     nemo_retriever/harness/examples/managed-helm-main.yaml --output-dir DIR RUNFILES...
 #
 # This expects the target namespace to already contain these non-chart-managed secrets:
 #   - ngc-secret: docker registry pull secret for nvcr.io
