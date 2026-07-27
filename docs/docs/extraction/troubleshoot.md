@@ -126,7 +126,7 @@ For local GPU inference with Nemotron Parse, combine extras:
 pip install "nemo-retriever[local,nemotron-parse]"
 ```
 
-See also [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
+See also [NeMo Retriever Library overview](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files
 

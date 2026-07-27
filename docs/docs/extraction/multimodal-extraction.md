@@ -15,7 +15,7 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 
 ## Supported file types and formats { #supported-file-types-and-formats }
 
-NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [What is NeMo Retriever Library?](overview.md) under **NeMo Retriever Library supports the following file types**.
+NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [NeMo Retriever Library overview](overview.md) under **NeMo Retriever Library supports the following file types**.
 
 **Related**
 
@@ -31,7 +31,7 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 
 **Related**
 
-- [What is NeMo Retriever Library?](overview.md)
+- [NeMo Retriever Library overview](overview.md)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
 - [Chunking](concepts.md#chunking)
 
@@ -41,7 +41,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 **Related**
 
-- [What is NeMo Retriever Library?](overview.md) for artifact classification
+- [NeMo Retriever Library overview](overview.md) for artifact classification
 - [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing
 - [Metadata reference](content-metadata.md)
 
@@ -66,7 +66,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 **Related**
 
-- [What is NeMo Retriever Library?](overview.md)
+- [NeMo Retriever Library overview](overview.md)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
 

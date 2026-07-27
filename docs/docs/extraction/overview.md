@@ -1,4 +1,4 @@
-# What is NeMo Retriever Library?
+# NeMo Retriever Library overview { #what-is-nemo-retriever-library }
 
 NVIDIA NeMo Retriever Library (NRL) is a high retrieval accuracy, performant, and scalable framework for content and metadata extraction from various media types (PDFs, HTML, Word docs, Powerpoint, audio, video, and image files). It supports both NVIDIA NIM microservices and a range of models to find, contextualize, and extract text, tables, charts, infographics, and transcripts for use in downstream generative and retrieval-augmented applications.
 
