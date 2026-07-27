@@ -1,0 +1,494 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Focused tests for LanceDB's optional collection capabilities."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import threading
+
+import lancedb
+import pytest
+
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionUpdateRequest,
+)
+from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, VDBInvalidRequest
+from nemo_retriever.common.vdb.lancedb import (
+    LanceDB,
+    _create_lancedb_results,
+    _to_service_lancedb_rows,
+)
+from nemo_retriever.common.vdb.lancedb_collections import (
+    _collection_rows,
+    _cursor,
+    _normalize_collection_results,
+    _public_collection_hit,
+)
+from nemo_retriever.common.vdb.records import RetrievalContractError
+
+
+def _context(*, version: str = "v1", operation: str = "append") -> CollectionWriteContext:
+    return CollectionWriteContext(
+        scope="workspace-a",
+        collection_name="collection-a",
+        document_id="document-a",
+        document_version=version,
+        content_sha256=f"sha-{version}",
+        filename="source.pdf",
+        job_id="job-a",
+        operation=operation,
+    )
+
+
+def _records(
+    *,
+    text: str = "first chunk",
+    vector: list[float] | None = None,
+    page_number: int = 2,
+) -> list[list[dict]]:
+    return [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": vector or [1.0, 0.0],
+                    "content": text,
+                    "content_metadata": {
+                        "type": "text",
+                        "page_number": page_number,
+                        "stored_image_uri": "file:///artifacts/page-2.png",
+                        "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+                    },
+                    "source_metadata": {
+                        "source_id": "/inputs/source.pdf",
+                        "source_name": "source.pdf",
+                    },
+                },
+            }
+        ]
+    ]
+
+
+def _service_records(
+    content_type: str,
+    *,
+    text: str,
+    vector: list[float],
+) -> list[list[dict]]:
+    records = _records(text=text, vector=vector, page_number=4)
+    metadata = records[0][0]["metadata"]
+    metadata["content_metadata"].update(
+        {
+            "type": content_type,
+            "stored_image_uri": "s3://bucket/figure.png",
+            "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+        }
+    )
+    metadata["source_metadata"] = {
+        "source_id": "/inputs/report.pdf",
+        "source_name": "report.pdf",
+        "custom_source_field": "preserved",
+    }
+    return records
+
+
+def test_collection_row_conversion_preserves_identity_and_provenance():
+    records = _records()
+    records[0][0]["metadata"]["content_metadata"]["type"] = "table_caption"
+    rows = _collection_rows(records, context=_context())
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["text"] == "first chunk"
+    assert row["filename"] == "source.pdf"
+    assert row["page_number"] == 2
+    assert row["pdf_page"] == "source_2"
+    assert row["source_id"] == "/inputs/source.pdf"
+    assert json.loads(row["source"])["source_name"] == "source.pdf"
+    assert row["content_type"] == "table"
+    assert json.loads(row["metadata"])["type"] == "table"
+    assert json.loads(row["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
+    assert row["stored_image_uri"] == "file:///artifacts/page-2.png"
+    assert row["document_id"] == "document-a"
+    assert row["document_version"] == "v1"
+    assert row["content_sha256"] == "sha-v1"
+    assert row["chunk_id"] == hashlib.sha256(b"document-a\x00v1\x000").hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("raw_type", "expected_type"),
+    [("table_caption", "table"), ("chart_caption", "chart")],
+)
+def test_service_row_adapter_preserves_multimodal_provenance(raw_type, expected_type):
+    narrow_rows, counts = _create_lancedb_results(
+        _service_records(raw_type, text="caption", vector=[1.0, 0.0, 0.0]),
+        expected_dim=None,
+    )
+
+    rows = _to_service_lancedb_rows(narrow_rows)
+
+    assert counts["accepted"] == 1
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["content_type"] == expected_type
+    assert row["filename"] == "report.pdf"
+    assert row["page_number"] == 4
+    assert row["pdf_page"] == "report_4"
+    assert row["source_id"] == "/inputs/report.pdf"
+    assert json.loads(row["source"])["custom_source_field"] == "preserved"
+    assert json.loads(row["metadata"])["type"] == expected_type
+    assert row["stored_image_uri"] == "s3://bucket/figure.png"
+    assert json.loads(row["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
+
+
+@pytest.mark.parametrize(
+    ("mode", "native_field", "native_value", "kind", "higher_is_better"),
+    [
+        ("dense", "_distance", 0.125, "vector_distance", False),
+        ("hybrid", "_relevance_score", 0.875, "hybrid_relevance", True),
+    ],
+)
+def test_collection_hit_preserves_native_ranking_semantics(
+    mode,
+    native_field,
+    native_value,
+    kind,
+    higher_is_better,
+):
+    hit = {
+        "text": "chunk",
+        native_field: native_value,
+        "_score": 42.0,
+        "_distance": 0.125,
+        "_relevance_score": 0.875,
+    }
+
+    public = _public_collection_hit(hit, retrieval_mode=mode, rank=2)
+
+    assert public["ranking"] == {
+        "rank": 2,
+        "value": native_value,
+        "kind": kind,
+        "higher_is_better": higher_is_better,
+    }
+    assert public["text"] == "chunk"
+    assert not {"_score", "_distance", "_relevance_score"} & public.keys()
+
+
+@pytest.mark.parametrize("bad_value", [None, True, math.nan, math.inf, -math.inf, "not-a-number"])
+def test_collection_hit_rejects_missing_or_invalid_native_ranking(bad_value):
+    with pytest.raises(RetrievalContractError):
+        _public_collection_hit(
+            {"text": "chunk", "_distance": bad_value},
+            retrieval_mode="dense",
+            rank=1,
+        )
+
+
+def test_collection_hit_does_not_substitute_fts_score_for_hybrid_ranking():
+    with pytest.raises(RetrievalContractError):
+        _public_collection_hit(
+            {"text": "chunk", "_score": 0.9},
+            retrieval_mode="hybrid",
+            rank=1,
+        )
+
+
+def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
+    uri = str(tmp_path / "lancedb")
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+
+    assert backend._collection_store is None
+    assert lancedb.connect(uri).list_tables().tables == []
+    assert backend.health()["catalog"]["initialized"] is False
+    assert backend._collection_store is None
+    assert lancedb.connect(uri).list_tables().tables == []
+
+    created = backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    assert created.name == "collection-a"
+    for invalid_last in ([], ["a", "b"]):
+        with pytest.raises(VDBInvalidRequest, match="continuation token"):
+            backend.list_collections(
+                scope="workspace-a",
+                limit=10,
+                continuation_token=_cursor("collections", "workspace-a", None, invalid_last),
+            )
+    expected_table = "nrl_" + hashlib.sha256(b"workspace-a\x00collection-a").hexdigest()[:40]
+    assert {"_nrl_collections", "_nrl_documents"} <= set(lancedb.connect(uri).list_tables().tables)
+
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="state-test"),
+    )
+    store = backend._get_collection_store()
+    state_row = store._collection_row("workspace-a", "state-test")
+    assert state_row is not None
+    state_row["status"] = "deleting"
+    store._persist_collection_row(state_row)
+    with pytest.raises(VDBInvalidRequest, match="deleting"):
+        backend.update_collection(
+            scope="workspace-a",
+            collection_name="state-test",
+            request=CollectionUpdateRequest(description="blocked"),
+        )
+    state_row["status"] = "active"
+    state_row["expires_at"] = "2000-01-01T00:00:00+00:00"
+    store._persist_collection_row(state_row)
+    with pytest.raises(VDBInvalidRequest, match="expired"):
+        backend.update_collection(
+            scope="workspace-a",
+            collection_name="state-test",
+            request=CollectionUpdateRequest(description="blocked"),
+        )
+    state_row["expires_at"] = ""
+    store._persist_collection_row(state_row)
+    backend.delete_collection(
+        scope="workspace-a",
+        collection_name="state-test",
+        if_exists=False,
+    )
+
+    with pytest.raises(VDBInvalidRequest):
+        backend.write_collection(
+            [[{"document_type": "text", "metadata": {"content": "no vector"}}]],
+            context=_context(),
+        )
+
+    result = backend.write_collection(_records(), context=_context())
+    assert result.written == 1
+    assert result.total_rows == 1
+
+    document_row = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    document_row.update(
+        {
+            "content_sha256": "stale-hash",
+            "pending_document_version": "v1",
+            "recovery_state": "replacing",
+        }
+    )
+    store._persist_document_row(document_row)
+    with store._write_lock:
+        assert store._reconcile_document_row_locked(document_row, expected_table)
+    assert (
+        backend.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        ).content_sha256
+        == "sha-v1"
+    )
+    assert expected_table in lancedb.connect(uri).list_tables().tables
+
+    hits, strategies = backend.retrieve_collection(
+        [[1.0, 0.0]],
+        scope="workspace-a",
+        collection_name="collection-a",
+        query_texts=["first"],
+        top_k=1,
+    )
+    assert strategies == ["dense"]
+    assert hits[0][0]["document_id"] == "document-a"
+    assert hits[0][0]["ranking"]["kind"] == "vector_distance"
+    assert "_distance" not in hits[0][0]
+
+    restarted = LanceDB(uri=uri, table_name="legacy", vector_dim=2, build_index=False)
+    assert restarted._collection_store is None
+    assert (
+        restarted.get_collection(
+            scope="workspace-a",
+            collection_name="collection-a",
+        ).name
+        == "collection-a"
+    )
+    assert (
+        restarted.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        ).chunk_count
+        == 1
+    )
+
+    replacement = restarted.write_collection(
+        _records(text="replacement", vector=[0.0, 1.0], page_number=3),
+        context=_context(version="v2", operation="replace"),
+    )
+    assert replacement.written == 1
+    assert replacement.total_rows == 1
+    assert (
+        restarted.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        ).document_version
+        == "v2"
+    )
+
+    deleted_document = restarted.delete_document(
+        scope="workspace-a",
+        collection_name="collection-a",
+        document_id="document-a",
+        if_exists=False,
+    )
+    assert deleted_document.deleted is True
+
+    deleted_collection = restarted.delete_collection(
+        scope="workspace-a",
+        collection_name="collection-a",
+        if_exists=False,
+    )
+    assert deleted_collection.deleted is True
+    assert expected_table not in lancedb.connect(uri).list_tables().tables
+
+
+@pytest.mark.parametrize(
+    "raw_results",
+    [None, {}, [[], []], [{}], [[object()]]],
+)
+def test_collection_results_reject_invalid_cardinality_or_hit_shapes(raw_results):
+    with pytest.raises(RetrievalContractError):
+        _normalize_collection_results(raw_results, expected_queries=1)
+
+
+def test_legacy_table_can_explicitly_infer_vector_dimension(tmp_path):
+    uri = str(tmp_path / "inferred-lancedb")
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=None,
+        overwrite=False,
+        build_index=False,
+    )
+
+    backend.run(_records(vector=[1.0, 0.0, 0.0]))
+
+    table = lancedb.connect(uri).open_table("legacy")
+    assert table.schema.field("vector").type.list_size == 3
+    assert table.schema.names == ["vector", "text", "metadata", "source", "id"]
+    assert table.count_rows() == 1
+    assert LanceDB(uri=str(tmp_path / "default")).vector_dim == 2048
+
+
+def test_service_table_schema_survives_append_restart_and_query(tmp_path):
+    uri = str(tmp_path / "service-lancedb")
+    common = {
+        "uri": uri,
+        "table_name": "legacy",
+        "vector_dim": None,
+        "overwrite": False,
+        "build_index": False,
+        "_service_table_schema": True,
+    }
+    backend = LanceDB(**common)
+    backend.run(_service_records("table_caption", text="table caption", vector=[1.0, 0.0, 0.0]))
+
+    restarted = LanceDB(**common)
+    restarted.run(_service_records("chart_caption", text="chart caption", vector=[0.0, 1.0, 0.0]))
+
+    table = lancedb.connect(uri).open_table("legacy")
+    assert table.schema.field("vector").type.list_size == 3
+    assert {"content_type", "stored_image_uri", "bbox_xyxy_norm"} <= set(table.schema.names)
+    assert table.count_rows() == 2
+
+    results = restarted.retrieval([[1.0, 0.0, 0.0]], top_k=2)
+    hits = {hit["text"]: hit for hit in results[0]}
+    for text, content_type in (("table caption", "table"), ("chart caption", "chart")):
+        hit = hits[text]
+        assert hit["content_type"] == content_type
+        assert hit["filename"] == "report.pdf"
+        assert hit["page_number"] == 4
+        assert hit["pdf_page"] == "report_4"
+        assert hit["source_id"] == "/inputs/report.pdf"
+        assert json.loads(hit["source"])["custom_source_field"] == "preserved"
+        assert json.loads(hit["metadata"])["type"] == content_type
+        assert hit["stored_image_uri"] == "s3://bucket/figure.png"
+        assert json.loads(hit["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
+
+
+def test_document_delete_waits_for_active_collection_query(tmp_path, monkeypatch):
+    uri = str(tmp_path / "concurrent-lancedb")
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        overwrite=False,
+        build_index=False,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    backend.write_collection(_records(), context=_context())
+
+    query_entered = threading.Event()
+    allow_query_to_finish = threading.Event()
+    query_finished = threading.Event()
+    delete_finished = threading.Event()
+    query_errors: list[BaseException] = []
+    delete_errors: list[BaseException] = []
+
+    def blocking_retrieval(vectors, **kwargs):
+        query_entered.set()
+        if not allow_query_to_finish.wait(timeout=5):
+            raise TimeoutError("test did not release blocked collection query")
+        return [[] for _ in vectors]
+
+    monkeypatch.setattr(backend, "retrieval", blocking_retrieval)
+
+    def query_target():
+        try:
+            backend.retrieve_collection(
+                [[1.0, 0.0]],
+                scope="workspace-a",
+                collection_name="collection-a",
+                query_texts=["query"],
+                top_k=1,
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            query_errors.append(exc)
+        finally:
+            query_finished.set()
+
+    def delete_target():
+        try:
+            backend.delete_document(
+                scope="workspace-a",
+                collection_name="collection-a",
+                document_id="document-a",
+                if_exists=False,
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+
+    query_thread = threading.Thread(target=query_target)
+    delete_thread = threading.Thread(target=delete_target)
+    query_thread.start()
+    assert query_entered.wait(timeout=5)
+    delete_thread.start()
+    try:
+        assert not delete_finished.wait(timeout=0.2)
+    finally:
+        allow_query_to_finish.set()
+        query_thread.join(timeout=5)
+        delete_thread.join(timeout=5)
+
+    assert query_finished.is_set()
+    assert delete_finished.is_set()
+    assert query_errors == []
+    assert delete_errors == []

@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    CollectionWriteResult,
+    VDB,
+)
+from nemo_retriever.common.vdb.records import RetrievalContractError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
@@ -22,6 +27,8 @@ class FakeVDB(VDB):
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
         self.put_calls: list[tuple[Any, dict[str, Any]]] = []
+        self.write_collection_calls: list[tuple[Any, CollectionWriteContext]] = []
+        self.retrieve_collection_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:
         return None
@@ -54,6 +61,63 @@ class FakeVDB(VDB):
     def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
         self.put_calls.append((records, dict(kwargs)))
         return {"put": sum(len(b) for b in records)}
+
+    def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
+        self.write_collection_calls.append((records, context))
+        return CollectionWriteResult(written=sum(len(batch) for batch in records), total_rows=7)
+
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        call_kwargs = {
+            "scope": scope,
+            "collection_name": collection_name,
+            "query_texts": query_texts,
+            "top_k": top_k,
+            **kwargs,
+        }
+        self.retrieve_collection_calls.append((vectors, call_kwargs))
+        return [
+            [
+                {
+                    "chunk_id": "chunk-1",
+                    "document_id": "document-1",
+                    "text": "retrieved chunk",
+                    "ranking": {
+                        "rank": 1,
+                        "value": 0.12,
+                        "kind": "vector_distance",
+                        "higher_is_better": False,
+                    },
+                    "filename": "doc-a.pdf",
+                    "page_number": 1,
+                    "content_type": "table",
+                    "source": "doc-a.pdf",
+                    "source_id": "doc-a.pdf",
+                    "stored_image_uri": "file:///tmp/page.png",
+                    "bbox": [0, 0, 1, 1],
+                    "metadata": {},
+                    "physical_table": "private-table",
+                    "lancedb_uri": "/private/vector-store",
+                }
+            ]
+        ], ["dense"]
+
+
+class InvalidCollectionVDB(FakeVDB):
+    def __init__(self, result: Any) -> None:
+        super().__init__()
+        self.result = result
+
+    def retrieve_collection(self, vectors: list, **kwargs: Any) -> Any:
+        return self.result
 
 
 def _graph_rows() -> list[dict[str, Any]]:
@@ -146,7 +210,9 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
     "text",
     [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
 )
-def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(text: str) -> None:
+def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
+    text: str,
+) -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
     data = [
@@ -184,7 +250,9 @@ def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
         pytest.param(np.ones((2, 2), dtype=np.uint8), id="numpy"),
     ],
 )
-def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthiness(image_payload: Any) -> None:
+def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthiness(
+    image_payload: Any,
+) -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
     data = [
@@ -202,7 +270,9 @@ def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthin
 
 
 @pytest.mark.parametrize("uri_field", ["_stored_image_uri", "stored_image_uri"])
-def test_ingest_operator_retains_image_only_row_with_stored_image_uri(uri_field: str) -> None:
+def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
+    uri_field: str,
+) -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
     data = [
@@ -282,14 +352,24 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
             }
         ]
     ]
-    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+    assert vdb.retrieval_calls == [
+        (
+            [[0.1, 0.2]],
+            {"collection_name": "docs", "model_name": "embedder", "top_k": 3},
+        )
+    ]
 
 
 def test_retrieve_operator_forwards_runtime_query_texts() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(
         vdb=vdb,
-        vdb_kwargs={"collection_name": "docs", "model_name": "embedder", "hybrid": True, "query_texts": ["stale"]},
+        vdb_kwargs={
+            "collection_name": "docs",
+            "model_name": "embedder",
+            "hybrid": True,
+            "query_texts": ["stale"],
+        },
     )
 
     operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
@@ -332,7 +412,12 @@ def test_retrieve_operator_does_not_forward_query_texts_for_dense_retrieval() ->
 
     operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
 
-    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+    assert vdb.retrieval_calls == [
+        (
+            [[0.1, 0.2]],
+            {"collection_name": "docs", "model_name": "embedder", "top_k": 3},
+        )
+    ]
 
 
 def test_constructor_requires_exactly_one_vdb_source() -> None:
@@ -469,3 +554,112 @@ def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     # Sidecar column merged in alongside the per-row ``page_number``.
     assert merged_content_meta["category"] == "legal"
     assert merged_content_meta["page_number"] == 7
+
+
+def test_ingest_operator_preserves_canonical_batches_for_collection_write() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.1, 0.2],
+                    "content": "canonical chunk",
+                    "content_metadata": {"page_number": 9},
+                    "source_metadata": {"source_id": "/tmp/canonical.pdf"},
+                },
+            }
+        ]
+    ]
+    context = CollectionWriteContext(
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        document_version="version-1",
+        content_sha256="a" * 64,
+        filename="canonical.pdf",
+        job_id="job-1",
+        operation="replace",
+    )
+
+    result = operator.process(records, collection_context=context)
+
+    assert result == CollectionWriteResult(written=1, total_rows=7)
+    assert vdb.write_collection_calls == [(records, context)]
+    assert vdb.write_collection_calls[0][0] is records
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_rejects_empty_collection_write() -> None:
+    operator = IngestVdbOperator(vdb=FakeVDB())
+    context = CollectionWriteContext(
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        document_version="version-1",
+        content_sha256="a" * 64,
+        filename="empty.pdf",
+    )
+
+    with pytest.raises(ValueError, match="at least one canonical VDB record"):
+        operator.process([], collection_context=context)
+
+
+def test_retrieve_operator_dispatches_explicit_collection_context() -> None:
+    vdb = FakeVDB()
+    operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"model_name": "embedder"})
+
+    hits, strategies = operator.process(
+        [[0.1, 0.2]],
+        scope="tenant-a",
+        collection_name="papers",
+        top_k=3,
+        query_texts=["current"],
+    )
+
+    assert strategies == ["dense"]
+    assert hits[0][0]["text"] == "retrieved chunk"
+    assert "physical_table" not in hits[0][0]
+    assert "lancedb_uri" not in hits[0][0]
+    assert vdb.retrieve_collection_calls == [
+        (
+            [[0.1, 0.2]],
+            {
+                "scope": "tenant-a",
+                "collection_name": "papers",
+                "query_texts": ["current"],
+                "top_k": 3,
+                "model_name": "embedder",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        ([], ["dense"]),
+        ([[42]], ["dense"]),
+        ([[{"text": "missing collection identity"}]], ["dense"]),
+        ([[{"chunk_id": "chunk-1"}]], []),
+    ],
+)
+def test_retrieve_operator_rejects_malformed_collection_results(result: Any) -> None:
+    operator = RetrieveVdbOperator(vdb=InvalidCollectionVDB(result))
+
+    with pytest.raises(RetrievalContractError):
+        operator.process(
+            [[0.1, 0.2]],
+            scope="tenant-a",
+            collection_name="papers",
+            query_texts=["query"],
+        )
+
+
+def test_retrieve_operator_rejects_partial_collection_context() -> None:
+    operator = RetrieveVdbOperator(vdb=FakeVDB())
+
+    with pytest.raises(ValueError, match="both scope and collection_name"):
+        operator.process([[0.1, 0.2]], scope="tenant-a")

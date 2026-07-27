@@ -11,17 +11,34 @@ The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes Lance
 
 ---
 
+## Optional collection capabilities
+
+`VDB` also defines optional collection and document capabilities for the service
+API. Existing backends remain valid: the default implementations fail explicitly
+with `UnsupportedVDBOperation`, while maintenance and health use safe empty
+defaults. A backend that supports collections implements the CRUD methods plus
+`write_collection()` and `retrieve_collection()`; callers never pass logical
+collection identity through legacy `run()` or `retrieval(**kwargs)`.
+
+`CollectionWriteContext` carries immutable logical write identity. The service
+and graph operators pass that context through unchanged; concrete backends own
+physical names, schemas, native ranking fields, locks, and persistence. LanceDB
+initializes its private collection catalog lazily, so ordinary fixed-table
+construction and the existing CLI paths do not create collection metadata.
+
+---
+
 ## `IngestVdbOperator` (ingestion)
 
 ### Role
 
-`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested ingestion-pipeline record batches** expected by client VDBs, then calls **`VDB.run(records)`** once per batch.
+`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested ingestion-pipeline record batches** expected by client VDBs. Legacy calls use **`VDB.run(records)`** once per batch; an explicit `CollectionWriteContext` dispatches to **`VDB.write_collection(records, context=...)`**.
 
-Flow (see `operators.py` and `records.py`):
+Flow (see `operators/vdb.py` and `common/vdb/records.py`):
 
 1. **`to_client_vdb_records(data)`** — converts rows to `list[list[dict]]` (one outer batch). Dense rows require an **embedding** plus either nonblank **text** or concrete image backing. Image-backed rows without text are stored as `type=image` and `text=""`; they are searchable through dense retrieval but add no FTS terms. The answer-oriented evidence formatter omits every hit without nonblank text and reports the omission in coverage. Sparse-only ingestion continues to require nonblank text.
 2. Optional **sidecar metadata** — if `vdb_kwargs` contains `meta_dataframe` / `meta_source_field` / `meta_fields`, those keys are stripped for the concrete DB constructor and merged onto records via `sidecar_metadata.py`.
-3. **`self._vdb.run(records)`** — delegates to the concrete backend (e.g. `LanceDB.run`).
+3. **Explicit dispatch** — calls `VDB.run(records)` for fixed-table ingestion or `VDB.write_collection(records, context=...)` for a scoped collection.
 
 ### Ray batch pipelines (`RayDataExecutor`)
 
@@ -94,7 +111,7 @@ Common constructor arguments include:
 
 ### Role
 
-`RetrieveVdbOperator` wraps the same concrete **`VDB`** instance but calls **`retrieval(vectors, **kwargs)`** instead of `run`. It merges per-call kwargs with the operator’s stored `vdb_kwargs` and returns **`normalize_retrieval_results(...)`** output (see `operators.py`, `records.py`).
+`RetrieveVdbOperator` wraps the same concrete **`VDB`** instance. Fixed-table calls use **`retrieval(vectors, **kwargs)`** and normalize legacy hit shapes; requests with both `scope` and `collection_name` use the explicit **`retrieve_collection(...)`** capability and validate/project its results into the canonical public hit contract. See `operators/vdb.py` and `common/vdb/records.py`.
 
 Important: retrieval here expects **`vectors`** — a list of query embedding vectors — as the primary input. String queries are embedded elsewhere (e.g. in `Retriever`). Hybrid backends that need raw text receive aligned `query_texts` as execution-only call context.
 
