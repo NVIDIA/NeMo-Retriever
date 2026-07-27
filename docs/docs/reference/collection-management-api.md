@@ -94,10 +94,12 @@ repeated deletion safe. Delete results report `existed`, `deleted`, `status`,
 and `cleanup_pending`; synchronous completion returns HTTP 200 and a retryable
 pending cleanup may return HTTP 202.
 
-Production deployments map bearer tokens to allowed workspace scopes. A valid
-token requesting an unauthorized scope receives 404 so resource existence is
-not disclosed; missing or invalid credentials receive 401. Configure either a
-single token bound to `default_scope`, or mount a Secret-backed JSON file:
+Production deployments map bearer tokens to allowed workspace scopes. Missing
+or invalid credentials and valid tokens requesting an unauthorized scope
+receive the same 401 response, preventing callers from distinguishing token
+validity. Once authorized for a scope, looking up a resource owned by another
+scope returns 404 so its existence is not disclosed. Configure either a single
+token bound to `default_scope`, or mount a Secret-backed JSON file:
 
 ```json
 {"tokens":[{"token":"<secret>","scopes":["workspace-123"]}]}
@@ -118,13 +120,12 @@ Run one VectorDB replica while this reconciler is enabled; durable distributed
 coordination remains separate infrastructure work. An interval of zero is
 reserved for deployments where an external reconciler owns cleanup.
 
-When a collection request uses the existing StoreOperator, the service ignores
-client path selection and injects a prefix beneath the operator-configured
-artifact root using scope, collection, stable document ID, and version. A
-client destination outside that root returns 422. Document and collection
-deletion recursively remove only these server-owned prefixes; arbitrary or
-legacy external URIs are never deleted. fsspec credentials belong in a mounted
-storage-options Secret, never request metadata or a ConfigMap.
+`StoreOperator` artifact persistence remains an independent pipeline and storage
+concern. Collection deletion removes collection and document catalog entries,
+chunk/vector rows, and the backend-owned physical collection table; it does not
+delete extracted artifacts from S3, NFS, or the local filesystem. Configure
+artifact retention and garbage collection at the storage/operator boundary,
+where the corresponding credentials and ownership policy already live.
 
 Legacy fixed-table ingestion and query remain available when
 `collection_name` is omitted, but only against the operator-configured table.
@@ -145,13 +146,14 @@ names and tenant identifiers are never emitted as public values or labels.
 
 ## Docker Compose operations
 
-The local Compose example lives at
-`nemo_retriever/dev/compose/collection-management.compose.yaml`. Set
-`NRL_EMBED_ENDPOINT`, `NRL_API_TOKEN`, and the separate
-`NRL_INTERNAL_VDB_TOKEN` at runtime before starting it; do not commit token
-values. The single public API token is bound to `default_scope`. Production
-deployments can continue to use the service's Secret-backed multi-scope token
-file support. The same SDK workflow targets `http://localhost:7670`.
+The default development stack lives at
+`nemo_retriever/dev/compose/service-mode.compose.yaml` and runs the Retriever
+and VectorDB as separate services. Set `NRL_API_TOKEN` to opt into a public
+bearer credential and `NRL_INTERNAL_VDB_TOKEN` to protect the private service
+hop; leaving them unset preserves the existing unauthenticated development
+behavior. Runtime tokens must not be committed. Production deployments can
+continue to use the service's Secret-backed multi-scope token-file support.
+The same SDK workflow targets `http://localhost:7670`.
 
 ## Application integration and query-result contract
 
@@ -174,3 +176,9 @@ the complete result set at their own adapter boundary. `page_number` is
 segments, video frames, and timestamps keep their existing modality-specific
 metadata rather than being converted into document pages. This contract is
 identical regardless of the network path used to reach the service.
+
+For `format=evidence`, each evidence item's `score` is the same backend-native
+ranking value, not a normalized confidence or probability. Interpret it with
+`coverage.strategies_used`: vector distance is lower-is-better, while hybrid
+relevance is higher-is-better. These values are not comparable across retrieval
+modes or queries.

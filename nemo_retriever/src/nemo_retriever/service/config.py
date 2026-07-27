@@ -336,14 +336,6 @@ class VectorDbConfig(RichModel):
         default=None,
         description="Dedicated gateway/worker credential for the VectorDB service.",
     )
-    collection_artifact_root: str | None = Field(
-        default=None,
-        description="Operator-owned root for collection StoreOperator artifacts.",
-    )
-    artifact_storage_options_file: str | None = Field(
-        default=None,
-        description="Secret-mounted JSON object of fsspec storage options.",
-    )
     reconciliation_interval_seconds: int = Field(
         default=60,
         ge=0,
@@ -570,10 +562,6 @@ def load_config(
         internal_token = Path(internal_token_file).read_text(encoding="utf-8").strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
-    if artifact_root := os.environ.get("NRL_COLLECTION_ARTIFACT_ROOT"):
-        raw.setdefault("vectordb", {})["collection_artifact_root"] = artifact_root
-    if storage_file := os.environ.get("NRL_ARTIFACT_STORAGE_OPTIONS_FILE"):
-        raw.setdefault("vectordb", {})["artifact_storage_options_file"] = storage_file
 
     config = ServiceConfig(**raw)
 

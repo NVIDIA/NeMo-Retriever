@@ -7,35 +7,6 @@ gateway/realtime/batch topology use the [Helm chart](../../helm/README.md).
 Run commands from the repository root. Docker Compose 2.23.1 or newer is
 required for optional dependencies and inline configs.
 
-## Collection management service
-
-The collection-management helper starts the public gateway and its private
-VectorDB. Set the required embedding endpoint, public API token, and separate
-internal VectorDB token described in the
-[collection-management API reference](../../../docs/docs/reference/collection-management-api.md).
-Supply tokens at runtime and do not commit them:
-
-```bash
-export NRL_EMBED_ENDPOINT=https://your-embedding-endpoint/v1/embeddings
-export NRL_API_TOKEN=<public-api-token>
-export NRL_INTERNAL_VDB_TOKEN=<internal-service-token>
-```
-
-Then wait for both services to become healthy:
-
-```bash
-docker compose -f nemo_retriever/dev/compose/collection-management.compose.yaml up -d --wait
-docker compose -f nemo_retriever/dev/compose/collection-management.compose.yaml ps
-```
-
-The default Compose project is `nrl`, producing replica-aware names such as
-`nrl-gateway-1` and `nrl-vectordb-1`. Set `NRL_COMPOSE_PROJECT_NAME` when
-parallel deployments need distinct project names. Follow logs by service name:
-
-```bash
-docker compose -f nemo_retriever/dev/compose/collection-management.compose.yaml logs -f gateway
-```
-
 Building the service image pulls its Ubuntu base image from NVCR. If the build
 fails with `403 Forbidden` while pulling `nvcr.io/nvidia/base/ubuntu`,
 authenticate to the registry with an NGC API key:
@@ -59,6 +30,22 @@ export NVIDIA_API_KEY=nvapi-...
 docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 curl -fsSL http://localhost:7670/v1/health
 ```
+
+The same default stack exposes collection and document lifecycle APIs. Optional
+runtime tokens enable a public bearer credential and a separate credential for
+the private Retriever-to-VectorDB hop:
+
+```bash
+export NRL_API_TOKEN="<development-api-token>"
+export NRL_INTERNAL_VDB_TOKEN="<internal-service-token>"
+docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+```
+
+Leave both values unset to preserve the existing unauthenticated development
+experience. In this default Compose configuration, `NRL_API_TOKEN` is bound to
+the `default` scope, so clients use `X-NRL-Scope: default` (or SDK
+`scope="default"`). Multi-scope deployments use the service's Secret-backed
+token mapping. Tokens are runtime inputs and must not be committed.
 
 Endpoints, models, ports, worker counts, and the service image can all be
 overridden explicitly. The most commonly tuned variables are
