@@ -275,7 +275,8 @@ def _validate_manifest_entry(job, manifest_entry_id: str | None, filename: str, 
         raise HTTPException(409, "Uploaded document does not match its job manifest entry")
 
 
-def _validate_collection_pipeline_storage(request: Request, job, spec: PipelineSpec | None) -> None:
+def _validate_collection_pipeline_spec(job, spec: PipelineSpec | None) -> None:
+    """Prevent collection writes from bypassing the configured VDB boundary."""
     if not job.collection_name or spec is None:
         return
     if spec.vdb_upload_params is not None:
@@ -283,17 +284,6 @@ def _validate_collection_pipeline_storage(request: Request, job, spec: PipelineS
             422,
             "collection-aware ingestion cannot override VectorDB upload configuration",
         )
-    if spec.store_params is None:
-        return
-    root = (request.app.state.config.vectordb.collection_artifact_root or "").rstrip("/")
-    if not root:
-        raise HTTPException(
-            422,
-            "collection StoreOperator use requires an operator-configured artifact root",
-        )
-    requested = str(spec.store_params.get("storage_uri") or "").rstrip("/")
-    if requested and requested != root and not requested.startswith(root + "/"):
-        raise HTTPException(422, "collection artifact destination must be beneath the configured root")
 
 
 def _require_job(job_id: str, request: Request | None = None):
@@ -1046,7 +1036,7 @@ async def submit_document_to_job(
     validated_spec = _resolve_pipeline_spec(request, meta)
     if not _is_worker(request):
         job_for_validation = _require_job(job_id, request)
-        _validate_collection_pipeline_storage(request, job_for_validation, validated_spec)
+        _validate_collection_pipeline_spec(job_for_validation, validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.document.accept"):
         if _is_gateway(request):
@@ -1392,7 +1382,7 @@ async def submit_whole_document_to_job(
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
     if not _is_worker(request):
-        _validate_collection_pipeline_storage(request, _require_job(job_id, request), validated_spec)
+        _validate_collection_pipeline_spec(_require_job(job_id, request), validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
         if _is_gateway(request):
@@ -1896,11 +1886,11 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
                     **internal_auth_headers(config.vectordb.internal_api_token),
                 },
             )
-    except Exception as exc:
+    except httpx.HTTPError:
         logger.exception("Failed to query vectordb at %s for answer generation", target)
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
+            detail="VectorDB service is unavailable.",
         )
 
     if resp.status_code != 200:
@@ -2036,11 +2026,11 @@ async def query(request: Request) -> Response:
                     **internal_auth_headers(config.vectordb.internal_api_token),
                 },
             )
-    except Exception as exc:
+    except httpx.HTTPError:
         logger.exception("Failed to proxy query to vectordb at %s", target)
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
+            detail="VectorDB service is unavailable.",
         )
 
     return Response(

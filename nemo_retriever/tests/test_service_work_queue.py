@@ -27,7 +27,7 @@ from nemo_retriever.service.services.job_tracker import (
     init_job_tracker,
     shutdown_job_tracker,
 )
-from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem, _Pool
+from nemo_retriever.service.services.pipeline_pool import PipelinePool, PoolType, WorkItem, _Pool
 from nemo_retriever.service.services.prometheus import POOL_ACTIVE_SLOTS, WORK_QUEUE_CLAIMS
 from nemo_retriever.service.services.work_queue import (
     GatewayWorkClient,
@@ -480,6 +480,28 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
             ).status_code
             == 204
         )
+
+
+def test_split_worker_uses_internal_gateway_credential_when_configured(tmp_path):
+    config = _config(tmp_path, gateway_url="http://gateway")
+    internal_pool = PipelinePool(
+        PipelinePoolConfig(),
+        mode="batch",
+        work_queue_config=config,
+        auth_config=AuthConfig(api_token="public-secret"),
+        internal_api_token="internal-secret",
+    )
+    assert internal_pool._batch is not None
+    assert internal_pool._batch._pull_client.headers == {"X-NRL-Internal-Token": "internal-secret"}
+
+    compatibility_pool = PipelinePool(
+        PipelinePoolConfig(),
+        mode="batch",
+        work_queue_config=config,
+        auth_config=AuthConfig(api_token="public-secret"),
+    )
+    assert compatibility_pool._batch is not None
+    assert compatibility_pool._batch._pull_client.headers == {"Authorization": "Bearer public-secret"}
 
 
 def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):

@@ -18,8 +18,10 @@ runs without any GPU / Ray dependencies.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -32,8 +34,10 @@ from nemo_retriever.service.config import (
     PipelineOverridesConfig,
     PipelinePoolConfig,
     ServiceConfig,
+    VectorDbConfig,
 )
 from nemo_retriever.service import tracing
+from nemo_retriever.service.routers.dashboard import VdbQueryRequest, vdb_query
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
 from .conftest import create_test_job
 
@@ -628,6 +632,53 @@ def test_dashboard_job_views_include_trace_id(
     assert exported_spans
 
 
+def test_dashboard_vdb_query_forwards_internal_token(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url: str, **kwargs):
+            captured.update(url=url, **kwargs)
+            return SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"results": []},
+            )
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.routers.dashboard.httpx.AsyncClient",
+        FakeClient,
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                config=ServiceConfig(
+                    vectordb=VectorDbConfig(
+                        enabled=True,
+                        vectordb_url="http://vectordb",
+                        internal_api_token="internal-secret",
+                    )
+                )
+            )
+        )
+    )
+    asyncio.run(
+        vdb_query(
+            VdbQueryRequest(query="retrieval"),
+            request,
+        )
+    )
+
+    assert captured["headers"] == {"X-NRL-Internal-Token": "internal-secret"}
+
+
 def test_create_job_retain_results_persisted_on_aggregate(
     app_with_stub_pool: TestClient,
 ) -> None:
@@ -699,6 +750,7 @@ async def test_gateway_enqueue_unregisters_pending_when_broker_unavailable(monke
 
     assert exc_info.value.status_code == 503
     assert unregistered == ["work-id"]
+
 
 def test_collection_page_is_rejected_before_registration(
     app_with_stub_pool: TestClient,

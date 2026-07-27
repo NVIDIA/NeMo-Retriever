@@ -16,6 +16,8 @@ Covers three layers:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
@@ -25,6 +27,7 @@ from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,
+    _post_records_to_vectordb,
     _request_needs_asr_params,
     _resolve_service_extraction_mode,
     _run_pipeline_in_process,
@@ -587,3 +590,155 @@ def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> Non
     )
 
     assert ingestor._asr_params is None
+
+
+def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    posted: dict[str, object] = {}
+    graph_rows = [
+        {
+            "text": "table content",
+            "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+            "path": "/documents/report.pdf",
+            "page_number": 1,
+            "_page_number": 7,
+            "_content_type": "table_caption",
+            "_stored_image_uri": "s3://artifacts/table.png",
+            "_bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+            "metadata": {"content_metadata": {"page_number": 1}},
+        }
+    ]
+
+    class _Ingestor:
+        def ingest(self):
+            return graph_rows
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def _urlopen(request, timeout):
+        posted["url"] = request.full_url
+        posted["timeout"] = timeout
+        posted["json"] = json.loads(request.data)
+        return _Response()
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor._build_graph_ingestor_from_spec",
+        lambda *_args, **_kwargs: (_Ingestor(), "pdf", False),
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor._sanitize_result_data",
+        lambda _result, **_kwargs: [],
+    )
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+
+    row_count, _, _ = _run_pipeline_in_process(
+        "report.pdf",
+        b"%PDF-1.4 stub",
+        {},
+        None,
+        vectordb_url="http://vectordb:7671",
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        job_id="job-1",
+        content_sha256="a" * 64,
+        document_version="version-2",
+    )
+
+    assert row_count == 1
+    assert posted["url"] == "http://vectordb:7671/internal/vectordb/write"
+    payload = posted["json"]
+    assert isinstance(payload, dict)
+    record = payload["records"][0][0]
+    assert record["document_type"] == "text"
+    metadata = record["metadata"]
+    assert metadata["embedding"] == [0.1, 0.2]
+    assert metadata["content"] == "table content"
+    assert metadata["source_metadata"] == {
+        "source_id": "/documents/report.pdf",
+        "source_name": "report.pdf",
+    }
+    assert metadata["content_metadata"] == {
+        "page_number": 7,
+        "type": "table",
+        "fidelity": "ocr",
+        "stored_image_uri": "s3://artifacts/table.png",
+        "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+    }
+    assert payload["scope"] == "tenant-a"
+    assert payload["collection_name"] == "papers"
+    assert payload["document_id"] == "document-1"
+    assert "rows" not in payload
+
+
+def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    posted: dict[str, object] = {}
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def _urlopen(request, timeout):
+        posted["url"] = request.full_url
+        posted["headers"] = dict(request.headers)
+        posted["timeout"] = timeout
+        posted["json"] = json.loads(request.data)
+        return _Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.1, 0.2],
+                    "content": "canonical chunk",
+                    "content_metadata": {"page_number": 7},
+                },
+            }
+        ]
+    ]
+
+    _post_records_to_vectordb(
+        records,
+        "http://vectordb:7671/",
+        "document.pdf",
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        job_id="job-1",
+        content_sha256="a" * 64,
+        document_version="version-2",
+        operation="replace",
+        internal_api_token="internal-token",
+    )
+
+    assert posted["url"] == "http://vectordb:7671/internal/vectordb/write"
+    assert posted["timeout"] == 30
+    assert posted["headers"]["X-nrl-internal-token"] == "internal-token"
+    assert posted["json"] == {
+        "records": records,
+        "scope": "tenant-a",
+        "collection_name": "papers",
+        "document_id": "document-1",
+        "job_id": "job-1",
+        "filename": "document.pdf",
+        "content_sha256": "a" * 64,
+        "document_version": "version-2",
+        "operation": "replace",
+    }
+    assert "rows" not in posted["json"]
+    assert "artifact_prefix" not in posted["json"]

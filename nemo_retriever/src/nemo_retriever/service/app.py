@@ -183,6 +183,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             batch_work_fn=bt_fn,
             work_queue_config=config.work_queue,
             auth_config=config.auth,
+            internal_api_token=config.vectordb.internal_api_token,
         )
 
         if (

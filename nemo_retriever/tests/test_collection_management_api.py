@@ -19,9 +19,15 @@ from fastapi.testclient import TestClient
 from nemo_retriever import RetrieverServiceClient
 from nemo_retriever.common.schemas.collections import CollectionCreateRequest
 from nemo_retriever.common.schemas.requests import JobCreateRequest
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    VDBInvalidRequest,
+    VDBResourceNotFound,
+)
+from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.service.auth import ScopeAuthorizer
 from nemo_retriever.service.app import create_app
-from nemo_retriever.service.config import AuthConfig, ServiceConfig, VectorDbConfig
+from nemo_retriever.service.config import AuthConfig, LLMConfig, ServiceConfig, VectorDbConfig
 from nemo_retriever.service.query_schema import QueryRequest
 from nemo_retriever.service.errors import RetrieverServiceError
 import nemo_retriever.service.client as client_module
@@ -29,27 +35,47 @@ from nemo_retriever.service.services.job_tracker import JobFullError, JobTracker
 from nemo_retriever.service.vectordb_app import VectorDBState, create_vectordb_app
 
 
-def _row(chunk_id: str, document_id: str, text: str, version: str = "v1") -> dict:
+def _record(_chunk_id: str, _document_id: str, text: str, version: str = "v1") -> dict:
     return {
-        "vector": [1.0, 0.0],
-        "pdf_page": "report_1",
-        "filename": "report.pdf",
-        "pdf_basename": "report",
-        "page_number": 1,
-        "source": '{"source_id":"report.pdf"}',
-        "source_id": "report.pdf",
-        "path": "report.pdf",
-        "text": text,
-        "metadata": '{"page_number":1}',
-        "stored_image_uri": "",
-        "content_type": "text",
-        "bbox_xyxy_norm": "",
-        "chunk_id": chunk_id,
-        "document_id": document_id,
-        "document_version": version,
-        "content_sha256": version,
-        "created_at": "now",
+        "document_type": "text",
+        "metadata": {
+            "embedding": [1.0, 0.0],
+            "content": text,
+            "content_metadata": {"page_number": 1, "type": "text"},
+            "source_metadata": {
+                "source_id": "report.pdf",
+                "source_name": "report.pdf",
+            },
+        },
     }
+
+
+def _context(
+    document_id: str,
+    *,
+    version: str = "v1",
+    collection_name: str = "research",
+    operation: str = "append",
+) -> CollectionWriteContext:
+    return CollectionWriteContext(
+        scope="scope",
+        collection_name=collection_name,
+        document_id=document_id,
+        document_version=version,
+        content_sha256=version,
+        filename="report.pdf",
+        job_id=f"job-{version}",
+        operation=operation,
+    )
+
+
+def _vdb(tmp_path, *, table_name: str = "legacy") -> LanceDB:
+    return LanceDB(
+        uri=str(tmp_path),
+        table_name=table_name,
+        overwrite=False,
+        build_index=False,
+    )
 
 
 def test_collection_crud_scope_pagination_and_injection_rejection(tmp_path) -> None:
@@ -85,30 +111,41 @@ def test_collection_crud_scope_pagination_and_injection_rejection(tmp_path) -> N
 
 
 def test_append_replace_and_document_delete_are_collection_scoped(tmp_path) -> None:
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    state.write_rows(
-        [_row("a", "doc", "old"), _row("b", "doc", "obsolete")],
+    backend = _vdb(tmp_path)
+    backend.create_collection(
+        scope="scope",
+        request=CollectionCreateRequest(name="research"),
+    )
+    appended = backend.write_collection(
+        [[_record("a", "doc", "old"), _record("b", "doc", "obsolete")]],
+        context=_context("doc"),
+    )
+    assert appended.total_rows == 2
+    replaced = backend.write_collection(
+        [[_record("c", "doc", "new", "v2")]],
+        context=_context("doc", version="v2", operation="replace"),
+    )
+    assert replaced.total_rows == 1
+    assert (
+        backend.get_document(
+            scope="scope",
+            collection_name="research",
+            document_id="doc",
+        ).document_version
+        == "v2"
+    )
+    assert backend.delete_document(
         scope="scope",
         collection_name="research",
         document_id="doc",
-        filename="report.pdf",
-        content_sha256="v1",
-    )
-    assert state.total_rows(scope="scope", collection_name="research") == 2
-    state.write_rows(
-        [_row("c", "doc", "new", "v2")],
+        if_exists=False,
+    ).deleted
+    assert not backend.delete_document(
         scope="scope",
         collection_name="research",
         document_id="doc",
-        filename="report.pdf",
-        content_sha256="v2",
-        operation="replace",
-    )
-    assert state.total_rows(scope="scope", collection_name="research") == 1
-    assert state.get_document("scope", "research", "doc").document_version == "v2"
-    assert state.delete_document("scope", "research", "doc", False).deleted is True
-    assert state.delete_document("scope", "research", "doc", True).deleted is False
+        if_exists=True,
+    ).deleted
 
 
 def test_public_sdk_and_citation_ready_query(tmp_path) -> None:
@@ -135,21 +172,24 @@ def test_public_sdk_and_citation_ready_query(tmp_path) -> None:
             sdk = InProcessClient(scope="workspace")
             collection = sdk.create_collection("research")
             assert collection.name == "research"
-            service.post(
+            write = service.post(
                 "/internal/vectordb/write",
                 json={
-                    "rows": [_row("chunk", "doc", "finding")],
+                    "records": [[_record("chunk", "doc", "finding")]],
                     "scope": "workspace",
                     "collection_name": "research",
                     "document_id": "doc",
+                    "job_id": "job-v1",
                     "filename": "report.pdf",
                     "content_sha256": "v1",
+                    "document_version": "v1",
                 },
             )
+            assert write.status_code == 200, write.text
             sync_hits = sdk.query("finding", top_k=10, collection_name="research")
             async_hits = asyncio.run(sdk.aquery("finding", top_k=10, collection_name="research"))
             assert sync_hits[0].model_dump() == async_hits[0].model_dump()
-            assert sync_hits[0].chunk_id == "chunk"
+            assert sync_hits[0].chunk_id == hashlib.sha256(f"doc\0v1\0{0}".encode()).hexdigest()
             assert sync_hits[0].text == "finding"
             assert sync_hits[0].ranking.rank == 1
             assert sync_hits[0].ranking.kind == "vector_distance"
@@ -344,6 +384,48 @@ def test_service_routes_use_authorized_scope_not_raw_header() -> None:
         )
 
 
+def test_vectordb_proxy_failures_do_not_expose_internal_details(monkeypatch) -> None:
+    class FailingAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def aclose(self):
+            return None
+
+        async def request(self, *_args, **_kwargs):
+            raise httpx.ConnectError("private-vectordb:7671?token=sensitive")
+
+        async def post(self, *_args, **_kwargs):
+            raise httpx.ConnectError("private-vectordb:7671?token=sensitive")
+
+    monkeypatch.setattr(httpx, "AsyncClient", FailingAsyncClient)
+    app = create_app(
+        ServiceConfig(
+            mode="gateway",
+            vectordb=VectorDbConfig(enabled=True, vectordb_url="http://private-vectordb:7671"),
+            llm=LLMConfig(enabled=True),
+        )
+    )
+    with TestClient(app) as client:
+        responses = (
+            client.get("/v1/collections"),
+            client.post("/v1/query", json={"query": "test"}),
+            client.post("/v1/answer", json={"query": "test"}),
+        )
+
+    for response in responses:
+        assert response.status_code == 502
+        assert response.json() == {"detail": "VectorDB service is unavailable."}
+        assert "private-vectordb" not in response.text
+        assert "sensitive" not in response.text
+
+
 def test_openapi_operation_ids_are_unique() -> None:
     app = create_app(ServiceConfig())
     operation_ids = [
@@ -427,51 +509,63 @@ def test_expiration_is_timezone_aware_and_normalized() -> None:
 
 
 def test_keyset_cursors_are_stable_and_context_bound(tmp_path) -> None:
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    state.create_collection("scope", CollectionCreateRequest(name="a"))
-    state.create_collection("scope", CollectionCreateRequest(name="c"))
-    first = state.list_collections("scope", 1, None)
-    assert [item.name for item in first.items] == ["a"]
-    state.create_collection("scope", CollectionCreateRequest(name="b"))
-    second = state.list_collections("scope", 2, first.next_token)
-    assert [item.name for item in second.items] == ["b", "c"]
-    with pytest.raises(Exception, match="context"):
-        state.list_collections("other", 1, first.next_token)
+    backend = _vdb(tmp_path)
+    for name in ("a", "c"):
+        backend.create_collection(scope="scope", request=CollectionCreateRequest(name=name))
 
-    state.write_rows(
-        [_row("one", "doc-1", "one")],
+    first = backend.list_collections(
+        scope="scope",
+        limit=1,
+        continuation_token=None,
+    )
+    assert [item.name for item in first.items] == ["a"]
+    backend.create_collection(scope="scope", request=CollectionCreateRequest(name="b"))
+    second = backend.list_collections(
+        scope="scope",
+        limit=2,
+        continuation_token=first.next_token,
+    )
+    assert [item.name for item in second.items] == ["b", "c"]
+    with pytest.raises(VDBInvalidRequest, match="context"):
+        backend.list_collections(
+            scope="other",
+            limit=1,
+            continuation_token=first.next_token,
+        )
+
+    backend.write_collection(
+        [[_record("one", "doc-1", "one")]],
+        context=_context("doc-1", collection_name="a"),
+    )
+    backend.write_collection(
+        [[_record("two", "doc-2", "two")]],
+        context=_context("doc-2", collection_name="a"),
+    )
+    documents = backend.list_documents(
         scope="scope",
         collection_name="a",
-        document_id="doc-1",
-        filename="one.pdf",
-        content_sha256="v1",
+        limit=1,
+        continuation_token=None,
     )
-    state.write_rows(
-        [_row("two", "doc-2", "two")],
-        scope="scope",
-        collection_name="a",
-        document_id="doc-2",
-        filename="two.pdf",
-        content_sha256="v1",
-    )
-    documents = state.list_documents("scope", "a", 1, None)
     assert documents.next_token
-    with pytest.raises(Exception, match="context"):
-        state.list_documents("scope", "b", 1, documents.next_token)
+    with pytest.raises(VDBInvalidRequest, match="context"):
+        backend.list_documents(
+            scope="scope",
+            collection_name="b",
+            limit=1,
+            continuation_token=documents.next_token,
+        )
 
 
 def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch) -> None:
-    from nemo_retriever.common.vdb.lancedb import LanceDB
-
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    state.write_rows(
-        [_row("chunk", "doc", "searchable text")],
+    backend = _vdb(tmp_path)
+    backend.create_collection(
         scope="scope",
-        collection_name="research",
-        document_id="doc",
-        filename="report.pdf",
-        content_sha256="v1",
+        request=CollectionCreateRequest(name="research"),
+    )
+    backend.write_collection(
+        [[_record("chunk", "doc", "searchable text")]],
+        context=_context("doc"),
     )
 
     search_entered = threading.Event()
@@ -488,19 +582,24 @@ def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch
         delete_entered.set()
 
     monkeypatch.setattr(LanceDB, "retrieval", blocked_retrieval)
-    monkeypatch.setattr(state._db, "drop_table", observed_drop_table)
+    monkeypatch.setattr(backend._get_collection_store()._db, "drop_table", observed_drop_table)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         search = pool.submit(
-            state.search,
+            backend.retrieve_collection,
             [[1.0, 0.0]],
-            ["searchable text"],
-            1,
             scope="scope",
             collection_name="research",
+            query_texts=["searchable text"],
+            top_k=1,
         )
         assert search_entered.wait(5)
-        delete = pool.submit(state.delete_collection, "scope", "research", False)
+        delete = pool.submit(
+            backend.delete_collection,
+            scope="scope",
+            collection_name="research",
+            if_exists=False,
+        )
 
         assert not delete_entered.wait(0.25)
         release_search.set()
@@ -515,17 +614,14 @@ def test_search_and_collection_delete_share_lifecycle_lock(tmp_path, monkeypatch
 
 
 def test_collection_searches_run_concurrently(tmp_path, monkeypatch) -> None:
-    from nemo_retriever.common.vdb.lancedb import LanceDB
-
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    state.write_rows(
-        [_row("chunk", "doc", "searchable text")],
+    backend = _vdb(tmp_path)
+    backend.create_collection(
         scope="scope",
-        collection_name="research",
-        document_id="doc",
-        filename="report.pdf",
-        content_sha256="v1",
+        request=CollectionCreateRequest(name="research"),
+    )
+    backend.write_collection(
+        [[_record("chunk", "doc", "searchable text")]],
+        context=_context("doc"),
     )
     searches_entered = threading.Barrier(2)
 
@@ -537,23 +633,24 @@ def test_collection_searches_run_concurrently(tmp_path, monkeypatch) -> None:
     with ThreadPoolExecutor(max_workers=2) as pool:
         searches = [
             pool.submit(
-                state.search,
+                backend.retrieve_collection,
                 [[1.0, 0.0]],
-                ["searchable text"],
-                1,
                 scope="scope",
                 collection_name="research",
+                query_texts=["searchable text"],
+                top_k=1,
             )
             for _ in range(2)
         ]
         assert [future.result(timeout=5)[0] for future in searches] == [[[]], [[]]]
 
 
-def test_reconcile_catalog_scan_does_not_block_collection_writes(tmp_path, monkeypatch) -> None:
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
+def test_reconcile_catalog_scan_does_not_hold_the_write_lock(tmp_path, monkeypatch) -> None:
+    backend = _vdb(tmp_path)
+    store = backend._get_collection_store()
     scan_entered = threading.Event()
     release_scan = threading.Event()
-    original_rows = state._rows
+    original_rows = store._rows
 
     def blocked_rows(table_name, where=None, columns=None):
         if table_name == "_nrl_documents" and where is None:
@@ -561,156 +658,119 @@ def test_reconcile_catalog_scan_does_not_block_collection_writes(tmp_path, monke
             assert release_scan.wait(5)
         return original_rows(table_name, where, columns)
 
-    monkeypatch.setattr(state, "_rows", blocked_rows)
+    write_lock_acquired = threading.Event()
+
+    def acquire_write_lock() -> None:
+        with store._write_lock:
+            write_lock_acquired.set()
+
+    monkeypatch.setattr(store, "_rows", blocked_rows)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        reconciliation = pool.submit(state.reconcile)
+        reconciliation = pool.submit(backend.reconcile_collections)
         assert scan_entered.wait(5)
-        creation = pool.submit(state.create_collection, "scope", CollectionCreateRequest(name="research"))
+        write_lock_probe = pool.submit(acquire_write_lock)
         try:
-            assert creation.result(timeout=2).name == "research"
+            assert write_lock_acquired.wait(2)
         finally:
             release_scan.set()
+        write_lock_probe.result(timeout=5)
         assert reconciliation.result(timeout=5) == {"successes": 0, "failures": 0}
 
 
 def test_replacement_marker_recovers_after_catalog_finalize_failure(tmp_path, monkeypatch) -> None:
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    state.write_rows(
-        [_row("old", "doc", "old", "v1")],
+    backend = _vdb(tmp_path)
+    backend.create_collection(
         scope="scope",
-        collection_name="research",
-        document_id="doc",
-        filename="report.pdf",
-        content_sha256="v1",
+        request=CollectionCreateRequest(name="research"),
     )
-    original_persist = state._persist_document_row
+    backend.write_collection(
+        [[_record("old", "doc", "old", "v1")]],
+        context=_context("doc"),
+    )
+    store = backend._get_collection_store()
+    original_persist = store._persist_document_row
 
     def fail_finalize(row):
         if row.get("current_document_version") == "v2":
             raise RuntimeError("injected finalize failure")
         return original_persist(row)
 
-    monkeypatch.setattr(state, "_persist_document_row", fail_finalize)
+    monkeypatch.setattr(store, "_persist_document_row", fail_finalize)
     with pytest.raises(RuntimeError, match="injected"):
-        state.write_rows(
-            [_row("new", "doc", "new", "v2")],
-            scope="scope",
-            collection_name="research",
-            document_id="doc",
-            filename="report.pdf",
-            content_sha256="v2",
-            operation="replace",
+        backend.write_collection(
+            [
+                [
+                    _record("new-1", "doc", "new first", "v2"),
+                    _record("new-2", "doc", "new second", "v2"),
+                ]
+            ],
+            context=_context("doc", version="v2", operation="replace"),
         )
-    monkeypatch.setattr(state, "_persist_document_row", original_persist)
-    assert state.get_document("scope", "research", "doc").status == "replacing"
-    result = state.reconcile()
+    monkeypatch.setattr(store, "_persist_document_row", original_persist)
+    document = backend.get_document(scope="scope", collection_name="research", document_id="doc")
+    assert document.status == "replacing"
+    result = backend.reconcile_collections()
     assert result["successes"] == 1
-    assert state.get_document("scope", "research", "doc").document_version == "v2"
-    table = state._open_table(state._resolved_table("scope", "research"))
-    versions = {row["document_version"] for row in table.search().to_list()}
+    document = backend.get_document(scope="scope", collection_name="research", document_id="doc")
+    assert document.document_version == "v2"
+    assert document.content_sha256 == "v2"
+    assert document.filename == "report.pdf"
+    assert document.chunk_count == 2
+    # No pending job ID is persisted in the catalog schema, so recovery keeps
+    # the last successfully finalized job rather than fabricating an ID.
+    assert document.job_id == "job-v1"
+    assert document.status == "completed"
+    table = store._open_table(store._resolved_table("scope", "research"))
+    rows = table.search().to_list()
+    versions = {row["document_version"] for row in rows}
     assert versions == {"v2"}
+    assert len(rows) == 2
 
 
-def test_retryable_cleanup_removes_owned_artifacts_but_not_external_uris(tmp_path, monkeypatch) -> None:
-    artifact_root = tmp_path / "artifacts"
-    owned = artifact_root / "scope" / "research" / "doc" / "v1"
-    owned.mkdir(parents=True)
-    (owned / "image.png").write_bytes(b"image")
-    external = tmp_path / "external"
-    external.mkdir()
-    (external / "keep.txt").write_text("keep", encoding="utf-8")
+def test_collection_deletion_does_not_delete_external_artifacts(tmp_path) -> None:
+    artifact = tmp_path / "artifacts" / "external" / "image.png"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"image")
 
-    state = VectorDBState(
-        str(tmp_path / "db"),
-        "legacy",
-        "",
-        "model",
-        "",
-        collection_artifact_root=str(artifact_root),
-    )
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    state.write_rows(
-        [_row("owned", "doc", "owned")],
+    backend = _vdb(tmp_path / "db")
+    backend.create_collection(
         scope="scope",
-        collection_name="research",
-        document_id="doc",
-        filename="report.pdf",
-        content_sha256="v1",
-        artifact_prefix=str(owned),
+        request=CollectionCreateRequest(name="research"),
     )
-    original_cleanup = state._delete_owned_artifacts
-    monkeypatch.setattr(
-        state,
-        "_delete_owned_artifacts",
-        lambda _prefix: (_ for _ in ()).throw(RuntimeError("boom")),
+    backend.write_collection(
+        [[_record("chunk", "doc", "owned")]],
+        context=_context("doc"),
     )
-    pending = state.delete_document("scope", "research", "doc", False)
-    assert pending.cleanup_pending and pending.status == "deleting"
-    monkeypatch.setattr(state, "_delete_owned_artifacts", original_cleanup)
-    completed = state.delete_document("scope", "research", "doc", False)
-    assert completed.deleted and not owned.exists()
+    deleted = backend.delete_collection(scope="scope", collection_name="research", if_exists=False)
 
-    state.write_rows(
-        [_row("external", "external-doc", "external")],
-        scope="scope",
-        collection_name="research",
-        document_id="external-doc",
-        filename="external.pdf",
-        content_sha256="v1",
-        artifact_prefix=str(external),
-    )
-    assert state.delete_document("scope", "research", "external-doc", False).deleted
-    assert (external / "keep.txt").exists()
-
-
-def test_collection_cleanup_retries_from_persisted_phase(tmp_path, monkeypatch) -> None:
-    root = tmp_path / "artifacts"
-    prefix = root / "scope" / "research"
-    prefix.mkdir(parents=True)
-    (prefix / "artifact").write_text("data", encoding="utf-8")
-    state = VectorDBState(
-        str(tmp_path / "db"),
-        "legacy",
-        "",
-        "model",
-        "",
-        collection_artifact_root=str(root),
-    )
-    state.create_collection("scope", CollectionCreateRequest(name="research"))
-    original_cleanup = state._delete_owned_artifacts
-    monkeypatch.setattr(
-        state,
-        "_delete_owned_artifacts",
-        lambda _prefix: (_ for _ in ()).throw(RuntimeError("boom")),
-    )
-    pending = state.delete_collection("scope", "research", False)
-    assert pending.status == "deleting" and pending.cleanup_pending
-    row = state._collection_row("scope", "research")
-    assert row and row["deletion_phase"] == "delete_artifacts" and row["retry_count"] == 1
-    monkeypatch.setattr(state, "_delete_owned_artifacts", original_cleanup)
-    completed = state.delete_collection("scope", "research", False)
-    assert completed.status == "deleted" and not prefix.exists()
+    assert deleted.deleted
+    assert artifact.read_bytes() == b"image"
 
 
 def test_expired_collection_uses_retryable_deletion_and_health_is_aggregate_only(
     tmp_path,
 ) -> None:
-    state = VectorDBState(str(tmp_path), "secret-legacy-table", "", "model", "")
-    state.create_collection(
-        "tenant-secret",
-        CollectionCreateRequest(name="expired", expires_at="2000-01-01T00:00:00Z"),
+    backend = _vdb(tmp_path, table_name="secret-legacy-table")
+    backend.create_collection(
+        scope="tenant-secret",
+        request=CollectionCreateRequest(
+            name="expired",
+            expires_at="2000-01-01T00:00:00Z",
+        ),
     )
-    assert state.reconcile()["successes"] == 1
-    with pytest.raises(Exception):
-        state.get_collection("tenant-secret", "expired")
-    health = state.operational_health()
+    assert backend.reconcile_collections()["successes"] == 1
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_collection(
+            scope="tenant-secret",
+            collection_name="expired",
+        )
+    health = backend.health()
     assert health["catalog"]["schema_version"] == 2
     assert "tenant-secret" not in str(health)
     assert "secret-legacy-table" not in str(health)
 
 
-def test_catalog_migration_and_scalar_indexes_are_idempotent(tmp_path) -> None:
+def test_catalog_startup_fails_fast_on_missing_required_columns(tmp_path) -> None:
     db = lancedb.connect(str(tmp_path))
     db.create_table(
         "_nrl_collections",
@@ -728,10 +788,21 @@ def test_catalog_migration_and_scalar_indexes_are_idempotent(tmp_path) -> None:
             ]
         ),
     )
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    assert "deletion_phase" in state._db.open_table("_nrl_collections").schema.names
-    assert state._db.open_table("_nrl_collections").list_indices()
-    VectorDBState(str(tmp_path), "legacy", "", "model", "")
+    with pytest.raises(RuntimeError, match="missing required columns"):
+        _vdb(tmp_path).list_collections(
+            scope="scope",
+            limit=1,
+            continuation_token=None,
+        )
+    backend = _vdb(tmp_path)
+    with pytest.raises(RuntimeError, match="missing required columns"):
+        backend.list_collections(scope="scope", limit=1, continuation_token=None)
+    with pytest.raises(RuntimeError, match="Collection catalog initialization failed"):
+        backend.health()
+
+    db.drop_table("_nrl_collections")
+    assert backend.list_collections(scope="scope", limit=1, continuation_token=None).items == []
+    assert backend.health()["catalog"]["initialized"] is True
 
 
 def test_catalog_startup_fails_fast_on_incompatible_schema(tmp_path) -> None:
@@ -753,19 +824,25 @@ def test_catalog_startup_fails_fast_on_incompatible_schema(tmp_path) -> None:
         ),
     )
     with pytest.raises(RuntimeError, match="Incompatible"):
-        VectorDBState(str(tmp_path), "legacy", "", "model", "")
+        _vdb(tmp_path).list_collections(
+            scope="scope",
+            limit=1,
+            continuation_token=None,
+        )
 
 
 def test_catalog_startup_does_not_recreate_an_unreadable_existing_table(
     tmp_path,
 ) -> None:
-    state = VectorDBState(str(tmp_path), "legacy", "", "model", "")
-    db = Mock(wraps=state._db)
-    db.list_tables.return_value = state._db.list_tables()
+    backend = _vdb(tmp_path)
+    backend.list_collections(scope="scope", limit=1, continuation_token=None)
+    store = backend._get_collection_store()
+    db = Mock(wraps=store._db)
+    db.list_tables.return_value = store._db.list_tables()
     db.open_table.side_effect = RuntimeError("catalog unreadable")
-    state._db = db
+    store._db = db
 
     with pytest.raises(RuntimeError, match="catalog unreadable"):
-        state._ensure_catalogs()
+        store._ensure_catalogs()
 
     db.create_table.assert_not_called()

@@ -736,6 +736,7 @@ class PipelinePool:
         batch_work_fn: Callable[[WorkItem], Any] | None = None,
         work_queue_config: WorkQueueConfig | None = None,
         auth_config: AuthConfig | None = None,
+        internal_api_token: str | None = None,
     ) -> None:
         self._config = config
         self._mode = mode
@@ -744,13 +745,16 @@ class PipelinePool:
 
         pull_client = None
         if mode in ("realtime", "batch") and work_queue_config is not None:
-            from nemo_retriever.service.auth import auth_headers
+            from nemo_retriever.service.auth import auth_headers, internal_auth_headers
             from nemo_retriever.service.services.work_queue import GatewayWorkClient
 
+            headers = internal_auth_headers(internal_api_token)
+            if not headers:
+                headers = auth_headers(auth_config or AuthConfig())
             pull_client = GatewayWorkClient(
                 work_queue_config,
                 pool=PoolType(mode),
-                headers=auth_headers(auth_config or AuthConfig()),
+                headers=headers,
             )
 
         if mode in ("standalone", "realtime"):
@@ -825,6 +829,7 @@ def init_pipeline_pool(
     batch_work_fn: Callable[[WorkItem], Any] | None = None,
     work_queue_config: WorkQueueConfig | None = None,
     auth_config: AuthConfig | None = None,
+    internal_api_token: str | None = None,
 ) -> PipelinePool:
     """Create and start the global pipeline pool (call once at startup).
 
@@ -843,6 +848,7 @@ def init_pipeline_pool(
         batch_work_fn=batch_work_fn,
         work_queue_config=work_queue_config,
         auth_config=auth_config,
+        internal_api_token=internal_api_token,
     )
     pool.start()
     _instance = pool

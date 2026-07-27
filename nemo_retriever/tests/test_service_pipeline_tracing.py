@@ -167,8 +167,6 @@ def test_make_work_fn_continues_when_trace_capture_fails(
             enabled=False,
             vectordb_url=None,
             internal_api_token=None,
-            collection_artifact_root=None,
-            artifact_storage_options_file=None,
         ),
         pipeline=SimpleNamespace(
             realtime_workers=1,

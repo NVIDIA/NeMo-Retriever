@@ -11,12 +11,15 @@ cross this boundary.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from nemo_retriever.common.schemas.collections import DocumentId
 
 router = APIRouter(tags=["collections"])
+logger = logging.getLogger(__name__)
 
 
 async def _forward(request: Request, suffix: str) -> Response:
@@ -42,7 +45,8 @@ async def _forward(request: Request, suffix: str) -> Response:
                 headers=headers,
             )
     except httpx.HTTPError as exc:
-        raise HTTPException(502, f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Failed to proxy collection request to VectorDB at %s", target)
+        raise HTTPException(502, "VectorDB service is unavailable.") from exc
     return Response(
         content=response.content,
         status_code=response.status_code,

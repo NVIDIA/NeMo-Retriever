@@ -14,36 +14,38 @@ round-trip, score/locator/fidelity derivation — runs for real.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.service.vectordb_app import VectorDBState, create_vectordb_app
 
 _DIM = 4
-# One stored chunk, in the real LanceDB schema (metadata is a JSON *string* column).
-_ROW = {
-    "vector": [1.0, 0.0, 0.0, 0.0],
-    "pdf_page": "10k_2023_12",
-    "filename": "10k_2023.pdf",
-    "pdf_basename": "10k_2023.pdf",
-    "page_number": 12,
-    "source": "10k_2023.pdf",
-    "source_id": "10k_2023.pdf",
-    "path": "/data/10k_2023.pdf",
-    "text": "Revenue grew 12% year over year.",
-    "metadata": json.dumps({"page_number": 12, "type": "text"}),
-    "stored_image_uri": "",
-    "content_type": "text",
-    "bbox_xyxy_norm": "",
+_RECORD = {
+    "document_type": "text",
+    "metadata": {
+        "embedding": [1.0, 0.0, 0.0, 0.0],
+        "content": "Revenue grew 12% year over year.",
+        "content_metadata": {"page_number": 12, "type": "text"},
+        "source_metadata": {
+            "source_id": "/data/10k_2023.pdf",
+            "source_name": "10k_2023.pdf",
+        },
+    },
 }
 
 
 def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
+    backend = LanceDB(
+        uri=str(tmp_path),
         table_name="nemo_retriever",
+        overwrite=False,
+        build_index=False,
+        vector_dim=_DIM,
+    )
+    app = create_vectordb_app(
+        vdb=backend,
         embed_endpoint="http://embed.example/v1/embeddings",  # -> embed_mode="remote"
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
     )
@@ -51,7 +53,7 @@ def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
     # Stub ONLY the embedding model; real LanceDB does the rest.
     with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
         with TestClient(app) as client:
-            write = client.post("/internal/vectordb/write", json={"rows": [_ROW]})
+            write = client.post("/internal/vectordb/write", json={"records": [[_RECORD]]})
             assert write.status_code == 200, write.text
             assert write.json()["total_rows"] == 1
 
