@@ -424,7 +424,7 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                 <tr><td colSpan="13" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div style={{marginBottom:'8px',fontSize:'15px'}}>No runs found</div>
                   <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
-                    Trigger a run or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness backfill</code> to import existing results.
+                    Trigger a run from the portal, or run <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness run &lt;benchmark&gt;</code> on a runner to record results here.
                   </div>
                 </td></tr>
               ) : pg.pageData.map(run => (

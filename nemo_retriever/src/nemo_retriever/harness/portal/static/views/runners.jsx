@@ -46,7 +46,7 @@ function RunnersView({ runners, loading, onRefresh, githubRepoUrl }) {
                 <tr><td colSpan="12" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div style={{marginBottom:'8px',fontSize:'15px'}}>No runners registered</div>
                   <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
-                    Register a runner manually or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness runner start --manager-url &lt;portal-url&gt;</code>
+                    Register a runner with the button above, then point your runner agent at this portal so it can poll the runner work API for jobs.
                   </div>
                 </td></tr>
               ) : pg.pageData.map(r => {
