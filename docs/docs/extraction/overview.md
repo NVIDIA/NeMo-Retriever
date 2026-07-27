@@ -1,4 +1,4 @@
-# What is NeMo Retriever Library?
+# NeMo Retriever Library Overview { #what-is-nemo-retriever-library }
 
 NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Run it as a Python library or Kubernetes deployment, and route inference through NVIDIA NIM microservices or local Nemotron models for downstream RAG and generative applications.
 
