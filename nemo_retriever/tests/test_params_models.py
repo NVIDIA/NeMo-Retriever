@@ -18,6 +18,24 @@ class TestVideoFrameParams:
 
 
 class TestExtractParams:
+    def test_parse_specific_configuration_requires_parse_method(self) -> None:
+        for field, value in (
+            ("nemotron_parse_invoke_url", "http://parse:8000/v1/chat/completions"),
+            ("nemotron_parse_model", "nvidia/nemotron-parse"),
+        ):
+            with pytest.raises(ValidationError, match="method='nemotron_parse'"):
+                ExtractParams(**{field: value})
+
+    def test_normal_and_selected_parse_configurations_are_valid(self) -> None:
+        assert ExtractParams().method == "pdfium"
+        assert ExtractParams(invoke_url="http://generic").method == "pdfium"
+        params = ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse",
+        )
+        assert params.method == "nemotron_parse"
+
     def test_graphic_elements_controls_are_removed(self) -> None:
         assert "use_graphic_elements" not in ExtractParams.model_fields
         assert "graphic_elements_invoke_url" not in ExtractParams.model_fields
