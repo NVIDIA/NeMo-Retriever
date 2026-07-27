@@ -11,4 +11,4 @@ Typical order:
 
 The NeMo Retriever Library and its Helm chart are not supported under NVIDIA AI Enterprise (NVAIE). For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
 
-If you are new to the product, read [What is NeMo Retriever Library?](overview.md) and [Concepts](concepts.md) under **Introduction** first.
+If you are new to the product, read [NeMo Retriever Library overview](overview.md) and [Concepts](concepts.md) under **Introduction** first.
