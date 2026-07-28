@@ -70,26 +70,6 @@ class JobCreateRequest(RichModel):
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
     document_manifest: list[DocumentManifestEntry] = Field(default_factory=list)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_raw_storage_keys(cls, value: Any) -> Any:
-        if isinstance(value, dict):
-            raw_keys = {
-                "table_name",
-                "table",
-                "physical_table",
-                "lancedb_uri",
-                "lance_uri",
-                "uri",
-                "table_path",
-                "database_uri",
-                "vdb_uri",
-            }
-            supplied = sorted(raw_keys.intersection(value))
-            if supplied:
-                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
-        return value
-
     @model_validator(mode="after")
     def _validate_job_contract(self) -> "JobCreateRequest":
         if self.document_manifest and len(self.document_manifest) != self.expected_documents:

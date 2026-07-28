@@ -329,14 +329,8 @@ def test_manifest_entry_replay_is_capacity_neutral_and_identity_stable() -> None
         raise AssertionError("conflicting manifest replay must fail")
 
 
-def test_raw_storage_selection_is_rejected_for_legacy_and_collection_requests() -> None:
+def test_raw_storage_selection_is_rejected_for_query_requests() -> None:
     for key in ("table_name", "lancedb_uri", "uri", "physical_table"):
-        try:
-            JobCreateRequest.model_validate({"expected_documents": 1, key: "untrusted"})
-        except ValueError:
-            pass
-        else:
-            raise AssertionError(f"job storage key {key} must be rejected")
         try:
             QueryRequest.model_validate({"query": "x", key: "untrusted"})
         except ValueError:
