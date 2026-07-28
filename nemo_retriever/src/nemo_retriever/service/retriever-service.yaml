@@ -39,6 +39,12 @@ nim_endpoints:
   # Optional LiteLLM provider prefix prepended to embed_model_name for
   # proxies that require provider/model IDs.
   embed_model_provider_prefix: null
+  # Remote reranking NIM endpoint. When set (and rerank.enabled), POST
+  # /v1/answer re-orders retrieval hits before answer generation. The URL,
+  # model name, and API key stay server-owned unless a client override is
+  # explicitly enabled via pipeline_overrides.endpoint_overrides.rerank.
+  rerank_invoke_url: null
+  rerank_model_name: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
@@ -91,6 +97,14 @@ llm:
   rag_system_prompt: null
   rag_system_prompt_prefix: null
   reasoning_enabled: true
+
+# Reranking of retrieval hits on POST /v1/answer. The rerank endpoint /
+# model / API key live under nim_endpoints (rerank_invoke_url,
+# rerank_model_name, api_key); this section only controls behaviour.
+rerank:
+  enabled: false          # rerank hits before answer generation (needs an endpoint)
+  refine_factor: 4        # over-fetch top_k * refine_factor candidates, then keep top_k
+  max_length: 8192        # tokenizer truncation length forwarded to the rerank endpoint
 
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
@@ -202,3 +216,16 @@ pipeline_overrides:
     storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
     webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
     vdb_uri_schemes: []          # e.g. ["s3://", "gs://"]
+  # Per-request model-endpoint overrides. Endpoint URLs, model names, and API
+  # keys are server-owned by default; a client submitting a job can only point
+  # a stage at a different model deployment (a custom VLM, an alternative embed
+  # NIM, or a different answer LLM) when the operator opts in below. Each flag
+  # defaults to false — the secure baseline. allowed_url_prefixes optionally
+  # pins client-supplied URLs to trusted destinations (empty = no URL
+  # restriction once the corresponding flag is enabled).
+  endpoint_overrides:
+    embed: false                 # allow overriding embed_invoke_url / embed_model_name
+    caption: false               # allow overriding the caption (VLM) endpoint / model
+    llm: false                   # allow overriding the /v1/answer LLM api_base / model
+    rerank: false                # allow overriding the /v1/answer rerank endpoint / model
+    allowed_url_prefixes: []     # e.g. ["https://", "http://nim.internal."]

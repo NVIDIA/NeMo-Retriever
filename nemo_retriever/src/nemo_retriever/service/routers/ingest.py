@@ -102,12 +102,55 @@ class ServiceAnswerRequest(BaseModel):
     reasoning_enabled: bool | None = None
     reference: str | None = None
     judge: bool = False
+    # Per-request LLM endpoint override. Honored only when the operator sets
+    # pipeline_overrides.endpoint_overrides.llm: true; otherwise HTTP 403.
+    llm_api_base: str | None = Field(
+        default=None,
+        description="Override the answer LLM api_base (requires operator opt-in).",
+    )
+    llm_model: str | None = Field(
+        default=None,
+        description="Override the answer LLM model identifier (requires operator opt-in).",
+    )
+    llm_api_key: str | None = Field(
+        default=None,
+        description="Override the answer LLM API key for the per-request endpoint.",
+    )
+    # Per-request reranking. `rerank` toggles the retrieval-rerank step
+    # (None = use the server default rerank.enabled). The rerank_* fields
+    # retarget the rerank endpoint and are honored only when the operator sets
+    # pipeline_overrides.endpoint_overrides.rerank: true; otherwise HTTP 403.
+    rerank: bool | None = Field(
+        default=None,
+        description=(
+            "Rerank retrieval hits before answer generation. Defaults to the "
+            "server's rerank.enabled. Requires a rerank endpoint to be available."
+        ),
+    )
+    rerank_invoke_url: str | None = Field(
+        default=None,
+        description="Override the rerank endpoint URL (requires operator opt-in).",
+    )
+    rerank_model_name: str | None = Field(
+        default=None,
+        description="Override the rerank model identifier (requires operator opt-in).",
+    )
+    rerank_api_key: str | None = Field(
+        default=None,
+        description="Override the rerank API key for the per-request endpoint.",
+    )
 
     @model_validator(mode="after")
     def _validate_judge_reference(self) -> "ServiceAnswerRequest":
         if self.judge and self.reference is None:
             raise ValueError("judge requires reference")
         return self
+
+    def has_llm_override(self) -> bool:
+        return bool(self.llm_api_base or self.llm_model or self.llm_api_key)
+
+    def has_rerank_override(self) -> bool:
+        return bool(self.rerank_invoke_url or self.rerank_model_name or self.rerank_api_key)
 
 
 logger = logging.getLogger(__name__)
@@ -1508,6 +1551,38 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
 
 
+def _endpoint_override_policy(config: Any):
+    """Return the runtime :class:`EndpointOverridePolicy` for *config*."""
+    return config.pipeline_overrides.to_policy().endpoint_overrides
+
+
+def _resolve_rerank_settings(req: "ServiceAnswerRequest", config: Any) -> tuple[str | None, str | None, str | None]:
+    """Resolve the (url, model, api_key) used to rerank this request.
+
+    Falls back to the server-configured rerank endpoint
+    (``nim_endpoints.rerank_invoke_url`` / ``rerank_model_name`` / ``api_key``).
+    A per-request override is honored only when the operator enabled
+    ``pipeline_overrides.endpoint_overrides.rerank`` and, when configured, the
+    URL matches ``allowed_url_prefixes``. Raises :class:`HTTPException` on a
+    policy denial so the caller surfaces a 403.
+    """
+    nim = config.nim_endpoints
+    if not req.has_rerank_override():
+        return nim.rerank_invoke_url, nim.rerank_model_name, nim.api_key
+
+    try:
+        _endpoint_override_policy(config).check_rerank(url=req.rerank_invoke_url)
+    except PolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    rerank_url = req.rerank_invoke_url or nim.rerank_invoke_url
+    rerank_model = req.rerank_model_name or nim.rerank_model_name
+    if req.rerank_invoke_url:
+        rerank_api_key = req.rerank_api_key
+    else:
+        rerank_api_key = req.rerank_api_key or nim.api_key
+    return (rerank_url, rerank_model, rerank_api_key)
+
+
 @router.post(
     "/answer",
     response_model=AnswerResult,
@@ -1546,12 +1621,35 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
         judge_enabled=req.judge,
     )
 
+    # Resolve reranking for this request: server default (rerank.enabled +
+    # nim_endpoints.rerank_*) plus an optional, operator-gated per-request
+    # override. When reranking, over-fetch top_k * refine_factor candidates so
+    # the reranker has a meaningful pool to re-order before we trim to top_k.
+    rerank_url, rerank_model, rerank_api_key = _resolve_rerank_settings(req, config)
+    # Honor an explicit rerank flag; otherwise rerank when the operator enabled
+    # it by default or the client supplied a per-request rerank endpoint.
+    want_rerank = req.rerank if req.rerank is not None else (config.rerank.enabled or req.has_rerank_override())
+    if want_rerank and not rerank_url:
+        if req.rerank:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Reranking was requested but no rerank endpoint is available. "
+                    "Configure nim_endpoints.rerank_invoke_url or pass rerank_invoke_url "
+                    "with pipeline_overrides.endpoint_overrides.rerank enabled."
+                ),
+            )
+        logger.warning("rerank.enabled is true but no rerank endpoint is configured; skipping rerank.")
+    do_rerank = bool(want_rerank and rerank_url)
+    # Over-fetch candidates for reranking, capped at the vectordb top_k ceiling.
+    fetch_k = min(answer_req.top_k * config.rerank.refine_factor, 1000) if do_rerank else answer_req.top_k
+
     vectordb_url = config.vectordb.vectordb_url.rstrip("/")
     target = f"{vectordb_url}/v1/query"
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(target, json={"query": answer_req.query, "top_k": answer_req.top_k})
+            resp = await client.post(target, json={"query": answer_req.query, "top_k": fetch_k})
     except Exception as exc:
         logger.exception("Failed to query vectordb at %s for answer generation", target)
         raise HTTPException(
@@ -1569,6 +1667,29 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
     payload = resp.json()
     result_sets = payload.get("results") or []
     hits = result_sets[0].get("hits", []) if result_sets else []
+
+    if do_rerank and hits:
+        from nemo_retriever.operators.rerank import rerank_hits
+
+        rerank_kwargs: dict[str, Any] = {
+            "rerank_invoke_url": rerank_url,
+            "api_key": rerank_api_key or "",
+            "max_length": config.rerank.max_length,
+            "top_n": answer_req.top_k,
+        }
+        if rerank_model:
+            rerank_kwargs["model_name"] = rerank_model
+        try:
+            hits = await asyncio.to_thread(rerank_hits, answer_req.query, hits, **rerank_kwargs)
+        except Exception as exc:
+            logger.exception("Reranking failed against %s", rerank_url)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Reranking failed: {type(exc).__name__}: {exc}",
+            )
+    else:
+        hits = hits[: answer_req.top_k]
+
     retrieval = RetrievalResult(
         chunks=[_text_from_hit(hit) for hit in hits],
         metadata=[_metadata_from_hit(hit) for hit in hits],
@@ -1577,12 +1698,20 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
     from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
 
     llm_cfg = config.llm
-    llm = getattr(request.app.state, "answer_llm_client", None)
-    if llm is None:
+
+    # Per-request LLM endpoint override — gated by the operator opt-in. When a
+    # client supplies a different model / api_base, build a one-off client
+    # instead of reusing (or poisoning) the cached server-default client.
+    if req.has_llm_override():
+        try:
+            _endpoint_override_policy(config).check_llm(url=req.llm_api_base)
+        except PolicyError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        llm_api_key = req.llm_api_key if req.llm_api_base else (req.llm_api_key or llm_cfg.api_key)
         llm = LiteLLMClient.from_kwargs(
-            model=llm_cfg.model,
-            api_base=llm_cfg.api_base,
-            api_key=llm_cfg.api_key,
+            model=req.llm_model or llm_cfg.model,
+            api_base=req.llm_api_base or llm_cfg.api_base,
+            api_key=llm_api_key,
             temperature=llm_cfg.temperature,
             top_p=llm_cfg.top_p,
             max_tokens=llm_cfg.max_tokens,
@@ -1593,7 +1722,24 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             rag_system_prompt_prefix=llm_cfg.rag_system_prompt_prefix,
             reasoning_enabled=llm_cfg.reasoning_enabled,
         )
-        request.app.state.answer_llm_client = llm
+    else:
+        llm = getattr(request.app.state, "answer_llm_client", None)
+        if llm is None:
+            llm = LiteLLMClient.from_kwargs(
+                model=llm_cfg.model,
+                api_base=llm_cfg.api_base,
+                api_key=llm_cfg.api_key,
+                temperature=llm_cfg.temperature,
+                top_p=llm_cfg.top_p,
+                max_tokens=llm_cfg.max_tokens,
+                extra_params=dict(llm_cfg.extra_params),
+                num_retries=llm_cfg.num_retries,
+                timeout=llm_cfg.timeout,
+                rag_system_prompt=llm_cfg.rag_system_prompt,
+                rag_system_prompt_prefix=llm_cfg.rag_system_prompt_prefix,
+                reasoning_enabled=llm_cfg.reasoning_enabled,
+            )
+            request.app.state.answer_llm_client = llm
 
     generate_kwargs: dict[str, Any] = {}
     if answer_req.reasoning_enabled is not None:

@@ -52,6 +52,87 @@ class PdfSplitSpec(RichModel):
     pages_per_chunk: int = Field(default=32, ge=1, le=4096)
 
 
+class EndpointOverrides(RichModel):
+    """Per-request model-endpoint overrides shipped from client → server.
+
+    Endpoint URLs, model names, and API keys are normally *server-owned*:
+    they are baked into the worker pipeline from ``ServiceConfig.nim_endpoints``
+    at startup and the :mod:`nemo_retriever.common.policy` denylist rejects
+    any attempt to smuggle them in through the ordinary ``*_params`` blocks.
+
+    This model is the **explicit, audited channel** for a client to point a
+    submitted job at a *different* model deployment than the cluster default —
+    for example a purpose-built VLM for captioning or an alternative embedding
+    NIM. It is honored **only** when the operator has opted in via
+    ``pipeline_overrides.endpoint_overrides`` in ``retriever-service.yaml``;
+    otherwise the server rejects the request with HTTP 403. Because it is a
+    dedicated field rather than free-form params, the denylist that protects
+    ``embed_params`` / ``caption_params`` stays fully intact.
+
+    Fields left ``None`` fall back to the server-configured default for that
+    stage. ``embed_*`` retarget the embedding NIM used by the ``embed`` stage;
+    ``caption_*`` retarget the VLM used by the ``caption`` stage.
+    ``embed_api_key`` / ``caption_api_key`` are optional credentials for
+    those stages; ``api_key`` remains as a legacy fallback when only one
+    stage is overridden (never replaces the server key for stages left at
+    their defaults).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    embed_invoke_url: Optional[str] = Field(
+        default=None,
+        description="Remote embedding NIM URL to use for the embed stage instead of the cluster default.",
+    )
+    embed_model_name: Optional[str] = Field(
+        default=None,
+        description="Model identifier passed to the overridden embedding endpoint.",
+    )
+    embed_model_provider_prefix: Optional[str] = Field(
+        default=None,
+        description="Optional LiteLLM provider prefix prepended to embed_model_name.",
+    )
+    caption_invoke_url: Optional[str] = Field(
+        default=None,
+        description="Remote VLM (caption) endpoint URL to use for the caption stage.",
+    )
+    caption_model_name: Optional[str] = Field(
+        default=None,
+        description="Model identifier passed to the overridden caption (VLM) endpoint.",
+    )
+    embed_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for the client-overridden embedding endpoint only.",
+    )
+    caption_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for the client-overridden caption (VLM) endpoint only.",
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Legacy fallback API key when a single overridden stage supplies "
+            "no stage-specific key. Prefer embed_api_key / caption_api_key "
+            "when both stages need credentials."
+        ),
+    )
+
+    def is_empty(self) -> bool:
+        """``True`` when the client did not set any override field."""
+        return not any(
+            (
+                self.embed_invoke_url,
+                self.embed_model_name,
+                self.embed_model_provider_prefix,
+                self.caption_invoke_url,
+                self.caption_model_name,
+                self.embed_api_key,
+                self.caption_api_key,
+                self.api_key,
+            )
+        )
+
+
 class PipelineSpec(RichModel):
     """Wire-format representation of fluent pipeline state.
 
@@ -80,6 +161,11 @@ class PipelineSpec(RichModel):
 
     split_config: Optional[dict[str, Any]] = None
     pdf_split: Optional[PdfSplitSpec] = None
+
+    # Per-request model-endpoint overrides. Honored only when the operator
+    # opted in via ``pipeline_overrides.endpoint_overrides``; otherwise the
+    # policy layer rejects any non-empty value with HTTP 403.
+    endpoint_overrides: Optional[EndpointOverrides] = None
 
     stage_order: list[StageName] = Field(default_factory=list)
     result_schema: Literal["legacy", "compact"] = Field(
@@ -116,6 +202,7 @@ class PipelineSpec(RichModel):
             and self.webhook_params is None
             and self.split_config is None
             and self.pdf_split is None
+            and (self.endpoint_overrides is None or self.endpoint_overrides.is_empty())
             and not self.stage_order
             and self.result_schema == "legacy"
             and not self.return_embeddings
