@@ -77,6 +77,8 @@ nim_endpoints:
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
 {{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
   embed_model_provider_prefix: {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
+{{- else }}
+  embed_model_provider_prefix: null
 {{- end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
@@ -164,6 +166,8 @@ vectordb:
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
 {{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
   embed_model_provider_prefix: {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
+{{- else }}
+  embed_model_provider_prefix: null
 {{- end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
