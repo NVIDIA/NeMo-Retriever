@@ -876,7 +876,7 @@ nims:
 #
 # When auto-resolution is in effect, the chart populates
 # `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
-# (e.g. http://nemotron-object-detection:8000/v1/infer). An explicit value
+# (e.g. http://nemotron-page-elements-v3:8000/v1/page-elements). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
 # NIMCache resources may carry `helm.sh/resource-policy: keep` so model
@@ -1039,18 +1039,24 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
-        value: "2"
-      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
-      - name: OMP_NUM_THREADS
-        value: "2"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-page-elements-v3
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/page-elements
 
   # Table structure detector. Uses the same nemotron-object-detection NIM image
   # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
@@ -1089,18 +1095,24 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
-        value: "2"
-      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
-      - name: OMP_NUM_THREADS
-        value: "2"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-table-structure-v1
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/table-structure
 
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
@@ -1140,14 +1152,26 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: OMP_NUM_THREADS
-        value: "8"
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-ocr-v2
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/ocr
+      - name: NIM_ENGINE_MODEL_VARIANT
+        value: multilingual
 
   # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
   # the vectordb query path, and multimodal ingest.

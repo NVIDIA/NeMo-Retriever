@@ -169,9 +169,9 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set serviceConfig.nimEndpoints.pageElementsInvokeUrl=http://object-detection.svc:8000/v1/infer \
-  --set serviceConfig.nimEndpoints.tableStructureInvokeUrl=http://object-detection.svc:8000/v1/infer \
-  --set serviceConfig.nimEndpoints.ocrInvokeUrl=http://ocr.svc:8000/v1/infer \
+  --set serviceConfig.nimEndpoints.pageElementsInvokeUrl=http://page-elements.svc:8000/v1/page-elements \
+  --set serviceConfig.nimEndpoints.tableStructureInvokeUrl=http://table-structure.svc:8000/v1/table-structure \
+  --set serviceConfig.nimEndpoints.ocrInvokeUrl=http://ocr.svc:8000/v1/ocr \
   --set serviceConfig.nimEndpoints.embedInvokeUrl=http://embed.svc:8000/v1/embeddings
 ```
 
@@ -184,8 +184,8 @@ the secret is absent (useful for fully local NIM endpoints).
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
-registered. A plain `helm install` reconciles the three core NIMs
-(`object_detection`, `ocr`, `vlm_embed`) — every other
+registered. A plain `helm install` reconciles the four core NIMs
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`) — every other
 NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
 Parakeet `audio` ASR NIM) is **disabled by default** to honor the
 "optional and disabled by default" contract in
@@ -203,7 +203,7 @@ helm install retriever ./nemo_retriever/helm \
 
 ### Recommended minimal install (26.05) { #recommended-minimal-install-2605 }
 
-Deploy only the three core NIMs that the retriever service auto-wires (`object_detection`, `ocr`, `vlm_embed`):
+Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -228,8 +228,9 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 
 | key | operator-managed Service | invoke path |
 | --- | ------------------------ | ----------- |
-| `nimOperator.object_detection` | `nemotron-object-detection`   | `/v1/infer` (wired into both `page_elements_invoke_url` and `table_structure_invoke_url`) |
-| `nimOperator.ocr`             | `nemotron-ocr-v2`             | `/v1/infer`      |
+| `nimOperator.page_elements` | `nemotron-page-elements-v3` | `/v1/page-elements` |
+| `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/table-structure` |
+| `nimOperator.ocr` | `nemotron-ocr-v2` | `/v1/ocr` |
 | `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
 
 Track operator reconciliation with:
@@ -464,9 +465,9 @@ pair gated on three conditions ALL holding:
 | Path                                   | Default | Notes |
 |----------------------------------------|---------|-------|
 | `nims.enabled`                         | `true`  | Master switch. Set false to render no NIM resources. |
-| `nimOperator.object_detection.enabled` | `true`  | Combined object-detection NIM (page-elements + table-structure). Auto-wired into both the `page_elements_invoke_url` and `table_structure_invoke_url` service endpoints. |
-| `nimOperator.object_detection.nimServiceName` | `nemotron-object-detection` | NIMService / in-cluster DNS name. |
-| `nimOperator.object_detection.image`   | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` | Default object-detection NIM image. |
+| `nimOperator.page_elements.enabled` | `true` | Page Elements 2.0 service; auto-wired to `/v1/page-elements`. |
+| `nimOperator.table_structure.enabled` | `true` | Table Structure 2.0 service; auto-wired to `/v1/table-structure`. |
+| `nimOperator.<page_elements|table_structure>.image` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` | Both services use the combined image but select distinct models. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
 | `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
@@ -491,7 +492,7 @@ pair gated on three conditions ALL holding:
 | `nimOperator.<key>.expose.service.port` | `8000` (9000 for audio) | HTTP port. |
 | `nimOperator.<key>.expose.service.grpcPort` | `8001` (50051 for audio) | gRPC port. |
 
-> Only the three "core" NIMs (object_detection, ocr, vlm_embed)
+> Only the four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
 > are auto-wired into the retriever-service config. Optional NIMs may reconcile
 > when `nimOperator.<key>.enabled` is `true` in `values.yaml`, but the
 > retriever-service won't call them unless you wire your pipeline to use them.
@@ -542,9 +543,9 @@ helm upgrade --install retriever ./nemo_retriever/helm \
   --set 'nimOperator.modelProfile.gpus[0].ids[0]=26B5' \
   --set 'nimOperator.modelProfile.gpus[0].product=NVIDIA-H100-80GB-HBM3'
 
-# Restrict only the object_detection NIMCache to a specific profile UUID, leave the rest alone:
+# Restrict only the page_elements NIMCache to a specific profile UUID, leave the rest alone:
 helm upgrade --install retriever ./nemo_retriever/helm \
-  --set 'nimOperator.object_detection.modelProfile.profiles[0]=11111111-2222-3333-4444-555555555555'
+  --set 'nimOperator.page_elements.modelProfile.profiles[0]=11111111-2222-3333-4444-555555555555'
 
 # Chart-wide H100 default plus a per-NIM override (the override REPLACES the global; it does NOT merge):
 helm upgrade --install retriever ./nemo_retriever/helm \
@@ -565,7 +566,7 @@ Every NIM in this chart pins an exact NGC image tag in `values.yaml`
 
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
-| Plain semver | `nemotron-object-detection:2.0.0` | A standard NIM release, identical bytes on every pull. Used by the three core NIMs and the reranker / ASR NIMs. |
+| Plain semver | `nemotron-object-detection:2.0.0` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
 | `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
 
 For air-gapped mirror pipelines: mirror the *exact* tag — both the
@@ -584,7 +585,7 @@ helm upgrade --install retriever ./nemo_retriever/helm \
 and validate against the same release of the retriever service before
 production rollout.
 
-**Charts and captioning.** Charts and infographics use **object_detection**
+**Charts and captioning.** Charts and infographics use **Page Elements, Table Structure**
 and **ocr**. For image
 captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — refer to
 [Image captioning (Omni 30B)](#image-captioning-omni-30b) for the
@@ -1141,7 +1142,7 @@ service:
 nimOperator:
   otel:
     enabled: false                 # do not inject inherited NIM OTLP env
-  object_detection:
+  page_elements:
     otel:
       enabled: false               # per-NIM opt-out
   ocr:
@@ -1175,7 +1176,8 @@ your release tag). Defaults below match
 | Role | `nimOperator` key | Default image (`repository:tag`) |
 |------|-------------------|----------------------------------|
 | Retriever service | — | `service.image.repository`:`service.image.tag` (override for production) |
-| Object detection (page-elements + table-structure) | `object_detection` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` |
+| Page Elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` |
+| Table Structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
@@ -1215,12 +1217,12 @@ ngcImagePullSecret:
   name: ""   # Explicitly empty — clears the default "ngc-secret"
 
 nimOperator:
-  object_detection:
+  page_elements:
     image:
       repository: <PRIVATE_REGISTRY>/nemotron-object-detection
       tag: "2.0.0"
       pullPolicy: IfNotPresent
-  # Repeat for ocr, vlm_embed, and any optional keys you enable.
+  # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
 ```
 
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret

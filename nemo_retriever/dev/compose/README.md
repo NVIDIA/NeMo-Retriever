@@ -45,7 +45,7 @@ Use the NVCR authentication described above before pulling a self-hosted NIM.
 Keep `NGC_API_KEY` exported so it is also available to the NIM containers. The
 hosted-only stack does not require `NGC_API_KEY` at runtime.
 
-Start the three core extraction/retrieval NIMs with their checked-in internal
+Start the four core extraction/retrieval NIM services with their checked-in internal
 endpoint wiring:
 
 ```bash
@@ -66,7 +66,7 @@ docker compose \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-To start all eight NIMs, layer the four wiring presets and select every NIM
+To start all nine NIM services, layer the four wiring presets and select every NIM
 profile:
 
 ```bash
@@ -84,7 +84,7 @@ Reranker and Parse need only `--profile nim-reranker` or
 `--profile nim-parse`. They are lifecycle/API-only and intentionally are not
 injected into retriever service configuration, matching Helm.
 
-Every NIM has a persistent cache volume, a configurable GPU assignment, and a
+Every NIM has a persistent model or cache volume, a configurable GPU assignment, and a
 configurable host port. Variables follow the service prefix, for example
 `NIM_OCR_GPU_ID`, `NIM_OCR_HOST_PORT`, `NIM_OCR_CACHE_VOLUME`,
 `NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. The defaults form a
@@ -94,7 +94,7 @@ parse uses 5, caption uses 6, answer uses 7-8, and audio uses 9. Change the
 defaults to match the active profiles and host before
 startup; for example, an answer-only run on a two-GPU host can set
 `NIM_ANSWER_GPU_ID_0=0` and `NIM_ANSWER_GPU_ID_1=1`. Compose lifecycle support
-means image pull, startup, readiness, persistent cache, restart, logs, and
+means image pull, startup, readiness, persistent model or cache data, restart, logs, and
 teardown; NIM Operator reconciliation, NIMCache CRDs, and model-profile
 selection remain Kubernetes-only.
 
@@ -165,8 +165,8 @@ These checks pull large images/models and require suitable NVIDIA GPUs. Use
 `docker compose config` for configuration-only validation without launching
 the stack.
 
-1. Core extraction/retrieval: start `nims-core.env`, wait for all five services
-   to report healthy, then ingest a representative PDF with the service CLI:
+1. Core extraction/retrieval: start `nims-core.env`, wait for the four NIMs plus
+   Retriever and VectorDB to report healthy, then ingest a representative PDF with the service CLI:
 
    ```bash
    retriever ingest service /path/to/document.pdf \

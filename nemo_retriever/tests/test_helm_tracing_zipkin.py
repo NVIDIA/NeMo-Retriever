@@ -710,7 +710,7 @@ def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
         assert chart_managed_names.isdisjoint(values)
 
     page_elements_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
-    assert page_elements_values["NIM_TRITON_MAX_BATCH_SIZE"] == "32"
+    assert page_elements_values["NIM_PIPELINE_MAX_BATCH_SIZE"] == "1"
 
 
 def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
