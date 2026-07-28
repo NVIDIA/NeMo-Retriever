@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import threading
+from dataclasses import replace
 
 import lancedb
 import pytest
@@ -23,6 +24,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     UnsupportedVDBOperation,
     VDBInvalidRequest,
+    VDBResourceConflict,
     VDBResourceNotFound,
 )
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities
@@ -227,6 +229,32 @@ def test_collection_retrieval_mode_error_classification(mode, expected_error):
 
     with pytest.raises(expected_error):
         store._resolve_effective_retrieval_mode("collection-table", capabilities)
+
+
+def test_collection_write_enforces_append_and_replace_invariants(tmp_path):
+    backend = _backend_with_collection(tmp_path)
+
+    with pytest.raises(VDBResourceNotFound, match="Document not found"):
+        backend.write_collection(_records(), context=_context(operation="replace"))
+
+    backend.write_collection(_records(), context=_context())
+    with pytest.raises(VDBResourceConflict, match="use replace"):
+        backend.write_collection(_records(text="new version"), context=_context(version="v2"))
+    with pytest.raises(VDBResourceConflict, match="content does not match"):
+        backend.write_collection(
+            _records(text="different content"),
+            context=replace(_context(), content_sha256="different-sha"),
+        )
+
+    document = backend.get_document(
+        scope="workspace-a",
+        collection_name="collection-a",
+        document_id="document-a",
+    )
+    assert document.document_version == "v1"
+    store = backend._get_collection_store()
+    table_name = store._resolved_table("workspace-a", "collection-a")
+    assert store._open_table(table_name).count_rows() == 1
 
 
 def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):

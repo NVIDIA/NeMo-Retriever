@@ -661,8 +661,23 @@ class LanceDBCollectionStore:
                 context.collection_name,
                 context.document_id,
             )
-            if context.operation == "replace" and not context.document_id:
-                raise VDBInvalidRequest("replace requires document_id")
+            if context.operation == "replace":
+                if not existing:
+                    raise VDBResourceNotFound("Document not found")
+            elif existing:
+                document = existing[0]
+                known_versions = {
+                    str(document.get(field) or "")
+                    for field in ("document_version", "current_document_version", "pending_document_version")
+                    if document.get(field)
+                }
+                if document.get("recovery_state") not in {"", "appending"} or known_versions != {
+                    context.document_version
+                }:
+                    raise VDBResourceConflict("append cannot change an existing document; use replace")
+                stored_hash = str(document.get("content_sha256") or "")
+                if stored_hash and stored_hash != context.content_sha256:
+                    raise VDBResourceConflict("append content does not match the existing document; use replace")
 
             if rows:
                 now = _now()

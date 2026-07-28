@@ -91,9 +91,18 @@ class JobCreateRequest(RichModel):
         return value
 
     @model_validator(mode="after")
-    def _reject_physical_collection_storage(self) -> "JobCreateRequest":
+    def _validate_job_contract(self) -> "JobCreateRequest":
         if self.document_manifest and len(self.document_manifest) != self.expected_documents:
             raise ValueError("document_manifest length must match expected_documents")
         if len({entry.manifest_entry_id for entry in self.document_manifest}) != len(self.document_manifest):
             raise ValueError("document_manifest contains duplicate manifest_entry_id values")
+        if self.operation == "replace":
+            if not self.collection_name:
+                raise ValueError("replace requires collection_name")
+            if self.expected_documents != 1:
+                raise ValueError("replace requires exactly one document")
+            if not self.target_document_id:
+                raise ValueError("replace requires target_document_id")
+        elif self.target_document_id is not None:
+            raise ValueError("append does not accept target_document_id")
         return self

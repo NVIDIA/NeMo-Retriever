@@ -245,6 +245,40 @@ def test_target_document_id_rejects_query_metacharacters() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"expected_documents": 1, "operation": "replace", "target_document_id": "doc"}, "collection_name"),
+        (
+            {
+                "expected_documents": 2,
+                "collection_name": "research",
+                "operation": "replace",
+                "target_document_id": "doc",
+            },
+            "exactly one document",
+        ),
+        ({"expected_documents": 1, "collection_name": "research", "operation": "replace"}, "target_document_id"),
+        ({"expected_documents": 1, "operation": "append", "target_document_id": "doc"}, "append"),
+    ],
+)
+def test_job_create_request_enforces_collection_operation_invariants(payload, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        JobCreateRequest(**payload)
+
+
+def test_job_create_request_accepts_valid_replacement() -> None:
+    request = JobCreateRequest(
+        expected_documents=1,
+        collection_name="research",
+        operation="replace",
+        target_document_id="doc",
+    )
+
+    assert request.operation == "replace"
+    assert request.target_document_id == "doc"
+
+
 def test_manifest_entry_replay_is_capacity_neutral_and_identity_stable() -> None:
     tracker = JobTracker()
     tracker.register_job(

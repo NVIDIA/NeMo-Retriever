@@ -38,6 +38,7 @@ from nemo_retriever.service.config import (
 )
 from nemo_retriever.service import tracing
 from nemo_retriever.service.routers.dashboard import VdbQueryRequest, vdb_query
+from nemo_retriever.service.services.job_tracker import get_job_tracker
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
 from .conftest import create_test_job
 
@@ -324,6 +325,34 @@ def test_create_job_returns_201_and_aggregate_fields(
     assert body["status"] == "pending"
     assert body["label"] == "smoke"
     assert body["job_id"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"expected_documents": 1, "operation": "replace", "target_document_id": "doc"},
+        {
+            "expected_documents": 2,
+            "collection_name": "research",
+            "operation": "replace",
+            "target_document_id": "doc",
+        },
+        {"expected_documents": 1, "collection_name": "research", "operation": "replace"},
+        {"expected_documents": 1, "operation": "append", "target_document_id": "doc"},
+    ],
+)
+def test_invalid_collection_job_is_rejected_before_registration(
+    app_with_stub_pool: TestClient,
+    payload: dict[str, Any],
+) -> None:
+    tracker = get_job_tracker()
+    assert tracker is not None
+    initial_jobs = len(tracker.all_jobs())
+
+    response = app_with_stub_pool.post("/v1/ingest/job", json=payload)
+
+    assert response.status_code == 422
+    assert len(tracker.all_jobs()) == initial_jobs
 
 
 def test_create_job_succeeds_when_tracing_span_setup_fails(

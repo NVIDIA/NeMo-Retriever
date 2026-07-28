@@ -761,8 +761,6 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
                     status_code=document_response.status_code,
                     media_type=document_response.headers.get("content-type", "application/json"),
                 )
-    if body.operation == "replace" and (body.expected_documents != 1 or not body.target_document_id):
-        raise HTTPException(422, "replace requires exactly one document and target_document_id")
     fingerprint = hashlib.sha256(
         json.dumps(
             {
