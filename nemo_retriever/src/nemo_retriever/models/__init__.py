@@ -258,3 +258,44 @@ def create_local_reranker(
         device=device,
         hf_cache_dir=hf_cache_dir,
     )
+
+
+_LOCAL_AGENT_LLM_BACKENDS = frozenset({"vllm"})
+
+
+def create_local_agent_llm(
+    model_name: str,
+    *,
+    backend: str = "vllm",
+    hf_cache_dir: str | None = None,
+    gpu_memory_utilization: float = 0.8,
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = None,
+    max_num_seqs: int | None = None,
+) -> Any:
+    """Create a local agent LLM chat-completion callable owned by the caller.
+
+    The callable mirrors ``invoke_chat_completion_step`` and returns an
+    OpenAI-compatible chat-completions response dict. V1 supports the in-process
+    vLLM backend and uses process-level vLLM placement (for example,
+    ``CUDA_VISIBLE_DEVICES`` plus ``tensor_parallel_size``). Callers (typically
+    ``AgenticRetriever``) should reuse one instance for a harness/CLI job and
+    call ``unload()`` when the job finishes.
+    """
+
+    b = normalize_backend(backend, _LOCAL_AGENT_LLM_BACKENDS, field_name="backend", default="vllm")
+    if b == "vllm":
+        from nemo_retriever.models.local.agent_llm import LocalAgentLLMConfig, create_vllm_agent_chat_llm
+
+        return create_vllm_agent_chat_llm(
+            LocalAgentLLMConfig(
+                model_path=model_name,
+                hf_cache_dir=hf_cache_dir,
+                gpu_memory_utilization=gpu_memory_utilization,
+                tensor_parallel_size=tensor_parallel_size,
+                max_model_len=max_model_len,
+                max_num_seqs=max_num_seqs,
+            )
+        )
+
+    raise ValueError(f"Unsupported local agent LLM backend {backend!r}")

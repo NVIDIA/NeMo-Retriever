@@ -17,6 +17,10 @@ spec:
       storageClass: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService

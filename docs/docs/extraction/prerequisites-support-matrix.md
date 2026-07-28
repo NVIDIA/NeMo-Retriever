@@ -16,7 +16,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
   For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
-- For PDF extraction with `extract_method="nemotron_parse"`, install the Nemotron Parse
+- For PDF extraction with `method="nemotron_parse"`, install the Nemotron Parse
   client dependencies with `pip install "nemo-retriever[nemotron-parse]"` (pulls
   `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
   NIM client). The base `nemo-retriever` install and `[local]` extra do not include this
@@ -86,7 +86,7 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `ocr` | [nemotron-ocr-v2](https://build.nvidia.com/nvidia/nemotron-ocr-v2) | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0` | Image OCR | Yes |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Multimodal (VL) embedding | Yes |
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-rerank-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.11.0` | Reranking for improved retrieval accuracy | No |
-| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**) | No |
+| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"` (default PDF extraction uses **pdfium**) | No |
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | Image captioning when you enable the caption stage | No |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](audio-video.md) transcription | No |
 | `answer_llm` | [llama-3.3-nemotron-super-49b-v1.5](https://build.nvidia.com/nvidia/llama-3.3-nemotron-super-49b-v1.5) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` | Optional `/v1/answer` generation LLM (not part of the default extraction pipeline) | No |
@@ -104,10 +104,23 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
 | llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
-| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `extract_method="nemotron_parse"` |
+| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted `nemotron-parse-v1.2` use different request contracts; the library selects the matching contract automatically. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
-| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and agentic RAG; not part of the default extraction pipeline. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
+| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
+
+<a id="nemotron-parse-hosted-vs-self-hosted"></a>
+
+!!! note "Nemotron Parse: hosted Build endpoint vs self-hosted NIM"
+
+    Hosted NVIDIA Build and self-hosted Nemotron Parse use **different request contracts**. The library selects the matching contract from the endpoint and model:
+
+    - **Hosted Build** (`https://integrate.api.nvidia.com/v1/chat/completions`) resolves to model ID `nvidia/nemotron-parse` and uses an image-only tool-call contract.
+    - **Self-hosted chat endpoints** default to model ID `nvidia/nemotron-parse-v1.2` and use the tagged text-prompt contract.
+
+    To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL (and set `method="nemotron_parse"`). You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract. Mixed Build and self-hosted endpoint lists require an explicit model.
+
+    For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
 For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode).
 

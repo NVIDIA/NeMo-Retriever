@@ -39,6 +39,8 @@ HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16": "24e67ea000b7c2837fc8f9488aa2008524fac8ba",
     "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8": "6647b845a4b786c6e2c7adb1b6a909e1aa71fac2",
     "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4": "dc5f0b0bfddf8b6e0f5891475be9af05b80126fe",
+    "nvidia/Llama-3.1-Nemotron-Nano-8B-v1": "54641c1611fcff44fa4865626462445e0a153fc7",
+    "nvidia/Llama-3_3-Nemotron-Super-49B-v1": "387156d8d6868c19f3472fa607aa9bfc4f662333",
     "nvidia/nemotron-ocr-v1": "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb",
     "nvidia/nemotron-ocr-v2": "86cacb0467fa4f7ce54342fdb250825e0d928ae7",
     "nvidia/nemotron-page-elements-v3": "df62dbb631502575ac4d43b44d700b1674ab1d56",

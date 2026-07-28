@@ -1,4 +1,6 @@
 schema_version: 1
+# Copy this file outside the checkout, replace the paths for the host, and pass
+# the YAML file itself with --dataset-paths. Do not pass a dataset directory.
 datasets:
   jp20:
     path: /path/to/datasets/nv-ingest/jp20

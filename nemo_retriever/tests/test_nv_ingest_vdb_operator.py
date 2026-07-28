@@ -285,6 +285,18 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
     assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
 
 
+def test_retrieve_operator_reads_index_metadata_from_any_vdb() -> None:
+    class MetadataVDB(FakeVDB):
+        def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+            assert kwargs == {"collection_name": "docs"}
+            return {"embedding_model_name": "acme/embed", "retrieval_mode": "dense"}.get(key)
+
+    operator = RetrieveVdbOperator(vdb=MetadataVDB(), vdb_kwargs={"collection_name": "docs"})
+
+    assert operator.get_index_metadata("embedding_model_name") == "acme/embed"
+    assert operator.get_index_metadata("retrieval_mode") == "dense"
+
+
 def test_retrieve_operator_forwards_runtime_query_texts() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(

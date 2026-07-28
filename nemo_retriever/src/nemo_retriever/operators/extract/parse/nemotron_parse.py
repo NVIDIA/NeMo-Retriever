@@ -12,7 +12,10 @@ replacing the page-elements → OCR multi-stage pipeline.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 import base64
 import io
@@ -47,6 +50,7 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
+NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
@@ -147,19 +151,79 @@ def _route_parsed_elements(
     return table_items, chart_items, infographic_items, page_text
 
 
+class _NemotronParseContractProfile(str, Enum):
+    HOSTED_TOOL_CALL = "hosted_tool_call"
+    LEGACY_TOOL_CALL = "legacy_tool_call"
+    V1_2_TAGGED = "v1_2_tagged"
+
+
+@dataclass(frozen=True)
+class _ResolvedNemotronParseContract:
+    model: str
+    profile: _NemotronParseContractProfile
+    has_build_endpoint: bool
+
+    @property
+    def uses_tool_call_routing(self) -> bool:
+        return self.profile in {
+            _NemotronParseContractProfile.HOSTED_TOOL_CALL,
+            _NemotronParseContractProfile.LEGACY_TOOL_CALL,
+        }
+
+
 def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
     normalized = model_name.lower()
     return bool(re.search(r"v1[._][01](?!\d)", normalized))
 
 
-def _route_parsed_elements_v1(
+def _is_nvidia_build_endpoint(invoke_url: str) -> bool:
+    return (urlsplit(invoke_url).hostname or "").lower() == "integrate.api.nvidia.com"
+
+
+def _resolve_nemotron_parse_contract(
+    invoke_url: str,
+    model_name: Optional[str],
+) -> _ResolvedNemotronParseContract:
+    """Resolve the internal request/response contract for a chat endpoint."""
+
+    invoke_urls = [part.strip() for part in str(invoke_url or "").split(",") if part.strip()]
+    if not invoke_urls:
+        raise ValueError("Nemotron Parse invoke_url is required.")
+
+    build_endpoints = [_is_nvidia_build_endpoint(url) for url in invoke_urls]
+    explicit_model = str(model_name or "").strip()
+    if not explicit_model and any(build_endpoints) and not all(build_endpoints):
+        raise ValueError(
+            "Nemotron Parse endpoint lists cannot mix NVIDIA Build and self-hosted endpoints "
+            "unless `nemotron_parse_model` is set explicitly."
+        )
+
+    resolved_model = explicit_model or (
+        NEMOTRON_PARSE_HOSTED_MODEL if all(build_endpoints) else NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
+    )
+    normalized_model = resolved_model.lower()
+    if normalized_model == NEMOTRON_PARSE_HOSTED_MODEL:
+        profile = _NemotronParseContractProfile.HOSTED_TOOL_CALL
+    elif _is_legacy_nemotron_parse_model(normalized_model):
+        profile = _NemotronParseContractProfile.LEGACY_TOOL_CALL
+    else:
+        profile = _NemotronParseContractProfile.V1_2_TAGGED
+
+    return _ResolvedNemotronParseContract(
+        model=resolved_model,
+        profile=profile,
+        has_build_endpoint=any(build_endpoints),
+    )
+
+
+def _route_tool_call_elements(
     raw_json_text: str,
     *,
     extract_tables: bool,
     extract_charts: bool,
     extract_infographics: bool,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
-    """Route v1.0/v1.1 tool-call JSON into pipeline content channels."""
+    """Route hosted or legacy tool-call JSON into pipeline content channels."""
 
     try:
         parsed = json.loads(raw_json_text)
@@ -167,12 +231,19 @@ def _route_parsed_elements_v1(
         return [], [], [], None
 
     elements: List[Dict[str, Any]] = []
-    if isinstance(parsed, list):
-        for item in parsed:
-            if isinstance(item, list):
-                elements.extend(elem for elem in item if isinstance(elem, dict))
-            elif isinstance(item, dict):
-                elements.append(item)
+
+    def _collect(value: Any) -> None:
+        if isinstance(value, dict):
+            if "type" in value and ("text" in value or "bbox" in value):
+                elements.append(value)
+                return
+            for nested in value.values():
+                _collect(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                _collect(nested)
+
+    _collect(parsed)
 
     table_items: List[Dict[str, Any]] = []
     chart_items: List[Dict[str, Any]] = []
@@ -297,23 +368,27 @@ def nemotron_parse_pages(
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
-    used_v1_api = False
+    uses_tool_call_routing = False
+    contract: _ResolvedNemotronParseContract | None = None
     if batch_images:
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
-                    _model_name = nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
-                    used_v1_api = _is_legacy_nemotron_parse_model(_model_name)
+                    contract = _resolve_nemotron_parse_contract(invoke_url, nemotron_parse_model)
+                    uses_tool_call_routing = contract.uses_tool_call_routing
                     extra_body: Dict[str, Any] = {"max_tokens": 8192}
-                    if used_v1_api:
+                    if contract.profile == _NemotronParseContractProfile.LEGACY_TOOL_CALL:
                         extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
-                        model=_model_name,
+                        model=contract.model,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
-                        task_prompt=None if used_v1_api else task_prompt,
+                        task_prompt=None if uses_tool_call_routing else task_prompt,
+                        repetition_penalty=(
+                            None if contract.profile == _NemotronParseContractProfile.HOSTED_TOOL_CALL else 1.1
+                        ),
                         extra_body=extra_body,
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
@@ -351,6 +426,22 @@ def nemotron_parse_pages(
                 else:
                     raw_texts = [str(model.invoke(img, task_prompt=task_prompt) or "").strip() for img in batch_images]
         except BaseException as e:
+            if (
+                contract is not None
+                and nemotron_parse_model
+                and contract.has_build_endpoint
+                and contract.profile == _NemotronParseContractProfile.V1_2_TAGGED
+                and "text input" in str(e).lower()
+            ):
+                hint = ValueError(
+                    "Nemotron Parse model/contract mismatch: NVIDIA Build model "
+                    "`nvidia/nemotron-parse` uses an image-only tool-call contract, but "
+                    f"`{contract.model}` selected the v1.2 text-control-token contract. "
+                    "Use `nemotron_parse_model='nvidia/nemotron-parse'` with Build, or send "
+                    "the versioned v1.2 model to a compatible self-hosted endpoint."
+                )
+                hint.__cause__ = e
+                e = hint
             print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             err = {
                 "stage": "nemotron_parse_pages",
@@ -363,7 +454,7 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
-    route_fn = _route_parsed_elements_v1 if used_v1_api else _route_parsed_elements
+    route_fn = _route_tool_call_elements if uses_tool_call_routing else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
         try:
