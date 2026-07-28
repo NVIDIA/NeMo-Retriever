@@ -212,6 +212,7 @@ def _production_vdb(
         table_name=table_name,
         vector_dim=None,
         overwrite=False,
+        build_index=False,
         _service_table_schema=True,
         expiration_cleanup_enabled=expiration_cleanup_enabled,
     )

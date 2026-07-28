@@ -419,6 +419,34 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
     assert backend.legacy_retrieval_calls == 0
 
 
+def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="legacy",
+        expiration_cleanup_enabled=True,
+    )
+    assert isinstance(backend, LanceDB)
+    assert backend.build_index is False
+
+    index_writes = []
+    monkeypatch.setattr(
+        backend,
+        "create_index",
+        lambda records, table_name: object(),
+    )
+    monkeypatch.setattr(
+        backend,
+        "write_to_index",
+        lambda *args, **kwargs: index_writes.append((args, kwargs)),
+    )
+
+    assert backend.run([]) == []
+    assert index_writes == []
+
+
 def test_legacy_write_and_query_keep_existing_vdb_path() -> None:
     backend = FakeVDB()
     app = _app(backend)
