@@ -125,6 +125,30 @@ the legacy worker-capped result as evidence of eight-GPU scaling. The automatic
 one- and eight-GPU runs differed by one output row; keep quality and row counts
 visible when comparing performance results.
 
+### BO767 VL modality sweep
+
+The release-qualification sweep uses
+`nvidia/llama-nemotron-embed-vl-1b-v2` with element-level embeddings and a
+hybrid LanceDB index. Query mode is `auto`, which detects the vector and FTS
+indexes created during ingestion. Both runfiles use a single-GPU co-scheduling
+profile: three embed workers, an embed batch size of 256, and 0.1 GPU per embed
+actor so the workers can run alongside page-elements and OCR. This profile has
+been checked for actor placement and runtime health; it is not yet a proven
+performance optimum.
+
+| Runfile | Ingest modality | Index mode | Query mode | Workload GPUs | Expected quality |
+|---------|-----------------|------------|------------|---------------|------------------|
+| `bo767_vl_text_image_hybrid_beir.json` | `text_image` | `hybrid` | `auto` | 1 | Record after full validation |
+| `bo767_vl_image_hybrid_beir.json` | `image` | `hybrid` | `auto` | 1 | Record after full validation |
+
+Both runs require 767 files, 54,730 pages, and 991 queries. Do not add quality
+thresholds or observed values until a complete published-RC session succeeds.
+Zero recall or nDCG from a child with a nonzero exit, a populated `failure`,
+`DeepGEMM backend is not available`, or `Engine core initialization failed` is
+a runtime failure rather than an observed quality result. Dense mode remains a
+supported ingestion contract and may be used as a diagnostic control, but it
+is not part of this VL modality qualification sweep.
+
 ## FinanceBench
 
 Dataset:

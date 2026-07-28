@@ -164,6 +164,65 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
+### Qualify A Published Library RC On BO767
+
+The BO767 VL modality sweep pipe-cleans two supported ingestion shapes:
+`text_image` and `image`. Both create a hybrid LanceDB table during ingestion.
+Query remains `auto`, so it reads the table's persisted vector and FTS indexes
+and selects hybrid retrieval without modifying the table. The runfiles use
+three embed workers, a 256-row embed batch, and 0.1 GPU per embed actor. The
+fraction lets all three embed actors co-schedule with page-elements and OCR on
+one Ray GPU; `CUDA_VISIBLE_DEVICES=0` confines every actor to that one physical
+GPU. This profile has been checked for actor placement and runtime health, but
+is not yet a proven performance optimum.
+
+Use an isolated environment and invoke the installed console script directly.
+Do not prefix the qualification command with `uv run --project
+nemo_retriever`: that would execute the source checkout instead of proving the
+published package. Pin the exact RC under test and keep a checkout of the
+matching validation instructions and runfiles:
+
+```bash
+export RETRIEVER_RC_VERSION=26.7.0-RC1
+export RETRIEVER_CHECKOUT=/local/path/to/NeMo-Retriever
+export RETRIEVER_VENV=/local/path/to/venvs/nemo-retriever-"$RETRIEVER_RC_VERSION"
+
+uv venv "$RETRIEVER_VENV" --python 3.12
+uv pip install --python "$RETRIEVER_VENV/bin/python" \
+  "nemo-retriever[local]==$RETRIEVER_RC_VERSION"
+"$RETRIEVER_VENV/bin/retriever" --version
+```
+
+Replace `26.7.0-RC1` only when qualifying a later RC, and record the installed
+version/build identity with the session artifacts. Run both children
+sequentially with one workload-visible GPU:
+
+```bash
+export CUDA_VISIBLE_DEVICES=0
+export VLLM_DEEP_GEMM_WARMUP=skip
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/bo767-vl-"$(date -u +%Y%m%d_%H%M%S_UTC)"
+
+"$RETRIEVER_VENV/bin/retriever" harness run-files \
+  --session-name bo767_vl_modality_sweep \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  --json \
+  "$RETRIEVER_CHECKOUT/nemo_retriever/harness/runfiles/bo767_vl_text_image_hybrid_beir.json" \
+  "$RETRIEVER_CHECKOUT/nemo_retriever/harness/runfiles/bo767_vl_image_hybrid_beir.json"
+```
+
+Each child must pass `files==767`, `pages==54730`, and `query_count==991`, end
+with `failure: null`, and report nonzero recall and nDCG. Confirm
+`workload_gpu_count` is `1` in each child environment artifact. A zero score
+accompanied by `DeepGEMM backend is not available`, `Engine core initialization
+failed`, or any nonzero child exit is a failed run, not a retrieval-quality
+result. Dense ingestion remains supported, but it is a diagnostic follow-up
+rather than part of this qualification sweep.
+
+Maintainers validating the same runfiles from source may replace the installed
+console-script prefix with `uv run --project nemo_retriever retriever`; label
+those artifacts as source validation rather than published-RC qualification.
+
 The ViDoRe v3 library follows the same runfile-first contract. Before GPU work,
 export a Hugging Face read token and validate all remote evaluation partitions:
 

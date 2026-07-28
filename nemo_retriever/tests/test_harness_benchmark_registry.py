@@ -13,9 +13,15 @@ from nemo_retriever.harness.benchmark_registry import (
     VIDORE_V3_EMBED_MODEL,
     VIDORE_V3_PUBLIC_DATASETS,
 )
+from nemo_retriever.harness.resolution import resolve_benchmark
 from nemo_retriever.harness.runfile import load_runfile
 
 
+BO767_VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
+BO767_VL_HYBRID_RUNFILES = {
+    "bo767_vl_text_image_hybrid_beir.json": "text_image",
+    "bo767_vl_image_hybrid_beir.json": "image",
+}
 VIDORE_V3_DATASET_FACTS = {
     "vidore_v3_computer_science": (2, 1360, 1290),
     "vidore_v3_energy": (41, 2225, 1848),
@@ -27,6 +33,39 @@ VIDORE_V3_DATASET_FACTS = {
     "vidore_v3_physics": (42, 1674, 1812),
 }
 RUNFILES_DIR = Path(__file__).resolve().parents[1] / "harness" / "runfiles"
+
+
+@pytest.mark.parametrize(("runfile_name", "modality"), BO767_VL_HYBRID_RUNFILES.items())
+def test_bo767_vl_hybrid_runfiles_resolve_expected_sweep(
+    runfile_name: str, modality: str
+) -> None:
+    request = load_runfile(RUNFILES_DIR / runfile_name)
+    resolved = resolve_benchmark(
+        request.benchmark, mode=request.mode or "local", overrides=request.overrides
+    )
+
+    assert request.name == runfile_name.removesuffix(".json")
+    assert request.benchmark == "bo767_beir"
+    assert request.mode == "batch"
+    assert request.requirements == (
+        "files==767",
+        "pages==54730",
+        "query_count==991",
+    )
+    embed = resolved["ingest"]["embed"]
+    assert {key: value for key, value in embed.items() if key != "batch"} == {
+        "embed_model_name": BO767_VL_EMBED_MODEL,
+        "embed_modality": modality,
+        "embed_granularity": "element",
+    }
+    assert embed["batch"] == {
+        "embed_workers": 3,
+        "embed_batch_size": 256,
+        "embed_gpus_per_actor": 0.1,
+    }
+    assert resolved["ingest"]["storage"]["index_mode"] == "hybrid"
+    assert resolved["query"]["embed_model_name"] == BO767_VL_EMBED_MODEL
+    assert resolved["query"]["retrieval_mode"] == "auto"
 
 
 @pytest.mark.parametrize("dataset_name", VIDORE_V3_DATASET_FACTS)
