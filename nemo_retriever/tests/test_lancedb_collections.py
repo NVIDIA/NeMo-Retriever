@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import hashlib
 import json
 import math
@@ -649,6 +651,187 @@ def test_service_table_schema_survives_append_restart_and_query(tmp_path):
         assert json.loads(hit["metadata"])["type"] == content_type
         assert hit["stored_image_uri"] == "s3://bucket/figure.png"
         assert json.loads(hit["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
+
+
+def test_collection_query_is_not_blocked_by_unrelated_write(tmp_path, monkeypatch):
+    backend = LanceDB(
+        uri=str(tmp_path / "query-during-write"),
+        table_name="legacy",
+        vector_dim=2,
+        overwrite=False,
+        build_index=False,
+    )
+    for name in ("collection-a", "collection-b"):
+        backend.create_collection(scope="workspace-a", request=CollectionCreateRequest(name=name))
+    backend.write_collection(
+        _records(text="collection b"),
+        context=replace(_context(), collection_name="collection-b", document_id="document-b"),
+    )
+
+    write_entered = threading.Event()
+    allow_write_to_finish = threading.Event()
+    query_entered = threading.Event()
+    original_create = collections_module.create_or_append_lancedb_table
+
+    def blocking_create(*args, **kwargs):
+        write_entered.set()
+        if not allow_write_to_finish.wait(timeout=5):
+            raise TimeoutError("test did not release blocked collection write")
+        return original_create(*args, **kwargs)
+
+    def immediate_retrieval(vectors, **kwargs):
+        query_entered.set()
+        return [[] for _ in vectors]
+
+    monkeypatch.setattr(collections_module, "create_or_append_lancedb_table", blocking_create)
+    monkeypatch.setattr(backend, "retrieval", immediate_retrieval)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        write_future = pool.submit(backend.write_collection, _records(), context=_context())
+        assert write_entered.wait(timeout=5)
+        query_future = pool.submit(
+            backend.retrieve_collection,
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-b",
+            query_texts=["query"],
+            top_k=1,
+        )
+        try:
+            assert query_entered.wait(timeout=1)
+            query_future.result(timeout=1)
+            assert not write_future.done()
+        finally:
+            allow_write_to_finish.set()
+        write_future.result(timeout=5)
+
+
+def test_collection_delete_waits_for_active_write(tmp_path, monkeypatch):
+    backend = LanceDB(
+        uri=str(tmp_path / "delete-during-write"),
+        table_name="legacy",
+        vector_dim=2,
+        overwrite=False,
+        build_index=False,
+    )
+    backend.create_collection(scope="workspace-a", request=CollectionCreateRequest(name="collection-a"))
+
+    write_entered = threading.Event()
+    allow_write_to_finish = threading.Event()
+    original_create = collections_module.create_or_append_lancedb_table
+
+    def blocking_create(*args, **kwargs):
+        write_entered.set()
+        if not allow_write_to_finish.wait(timeout=5):
+            raise TimeoutError("test did not release blocked collection write")
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(collections_module, "create_or_append_lancedb_table", blocking_create)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        write_future = pool.submit(backend.write_collection, _records(), context=_context())
+        assert write_entered.wait(timeout=5)
+        delete_future = pool.submit(
+            backend.delete_collection,
+            scope="workspace-a",
+            collection_name="collection-a",
+            if_exists=False,
+        )
+        try:
+            with pytest.raises(TimeoutError):
+                delete_future.result(timeout=0.2)
+        finally:
+            allow_write_to_finish.set()
+        write_future.result(timeout=5)
+        result = delete_future.result(timeout=5)
+
+    assert result.deleted is True
+
+
+def test_collection_reconciliation_waits_for_active_write(tmp_path, monkeypatch):
+    backend = LanceDB(
+        uri=str(tmp_path / "reconcile-during-write"),
+        table_name="legacy",
+        vector_dim=2,
+        overwrite=False,
+        build_index=False,
+    )
+    backend.create_collection(scope="workspace-a", request=CollectionCreateRequest(name="collection-a"))
+
+    write_entered = threading.Event()
+    allow_write_to_finish = threading.Event()
+    original_create = collections_module.create_or_append_lancedb_table
+
+    def blocking_create(*args, **kwargs):
+        write_entered.set()
+        if not allow_write_to_finish.wait(timeout=5):
+            raise TimeoutError("test did not release blocked collection write")
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(collections_module, "create_or_append_lancedb_table", blocking_create)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        write_future = pool.submit(backend.write_collection, _records(), context=_context())
+        assert write_entered.wait(timeout=5)
+        reconcile_future = pool.submit(backend.reconcile_collections)
+        try:
+            with pytest.raises(TimeoutError):
+                reconcile_future.result(timeout=0.2)
+        finally:
+            allow_write_to_finish.set()
+        write_future.result(timeout=5)
+        result = reconcile_future.result(timeout=5)
+
+    assert result == {"successes": 0, "failures": 0}
+
+
+def test_collection_writes_remain_serialized(tmp_path, monkeypatch):
+    backend = LanceDB(
+        uri=str(tmp_path / "serialized-writes"),
+        table_name="legacy",
+        vector_dim=2,
+        overwrite=False,
+        build_index=False,
+    )
+    for name in ("collection-a", "collection-b"):
+        backend.create_collection(scope="workspace-a", request=CollectionCreateRequest(name=name))
+
+    first_write_entered = threading.Event()
+    second_write_entered = threading.Event()
+    allow_first_write_to_finish = threading.Event()
+    call_lock = threading.Lock()
+    call_count = 0
+    original_create = collections_module.create_or_append_lancedb_table
+
+    def blocking_first_create(*args, **kwargs):
+        nonlocal call_count
+        with call_lock:
+            call_count += 1
+            current_call = call_count
+        if current_call == 1:
+            first_write_entered.set()
+            if not allow_first_write_to_finish.wait(timeout=5):
+                raise TimeoutError("test did not release first collection write")
+        else:
+            second_write_entered.set()
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(collections_module, "create_or_append_lancedb_table", blocking_first_create)
+
+    second_context = replace(_context(), collection_name="collection-b", document_id="document-b")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(backend.write_collection, _records(), context=_context())
+        assert first_write_entered.wait(timeout=5)
+        second_future = pool.submit(backend.write_collection, _records(), context=second_context)
+        try:
+            assert not second_write_entered.wait(timeout=0.2)
+            assert not second_future.done()
+        finally:
+            allow_first_write_to_finish.set()
+        first_future.result(timeout=5)
+        second_future.result(timeout=5)
+
+    assert second_write_entered.is_set()
 
 
 def test_document_delete_waits_for_active_collection_query(tmp_path, monkeypatch):

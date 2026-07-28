@@ -287,8 +287,9 @@ class LanceDBCollectionStore:
         self.reconciliation_successes = 0
         self.reconciliation_failures = 0
         self._write_lock = threading.Lock()
-        self._reader_condition = threading.Condition(self._write_lock)
-        self._active_table_readers: dict[str, int] = {}
+        self._collection_write_lock = threading.Lock()
+        self._table_user_condition = threading.Condition(self._write_lock)
+        self._active_table_users: dict[str, int] = {}
         self._db = lancedb.connect(uri=self._uri)
         self._opened_tables: dict[str, Any] = {}
         self._ensure_catalogs()
@@ -381,21 +382,21 @@ class LanceDBCollectionStore:
             self._opened_tables[table_name] = table
         return table
 
-    def _acquire_table_reader_locked(self, table_name: str) -> None:
-        self._active_table_readers[table_name] = self._active_table_readers.get(table_name, 0) + 1
+    def _acquire_table_user_locked(self, table_name: str) -> None:
+        self._active_table_users[table_name] = self._active_table_users.get(table_name, 0) + 1
 
-    def _release_table_reader(self, table_name: str) -> None:
-        with self._reader_condition:
-            remaining = self._active_table_readers.get(table_name, 0) - 1
+    def _release_table_user(self, table_name: str) -> None:
+        with self._table_user_condition:
+            remaining = self._active_table_users.get(table_name, 0) - 1
             if remaining > 0:
-                self._active_table_readers[table_name] = remaining
+                self._active_table_users[table_name] = remaining
             else:
-                self._active_table_readers.pop(table_name, None)
-                self._reader_condition.notify_all()
+                self._active_table_users.pop(table_name, None)
+                self._table_user_condition.notify_all()
 
-    def _wait_for_table_readers_locked(self, table_name: str) -> None:
-        while self._active_table_readers.get(table_name, 0):
-            self._reader_condition.wait()
+    def _wait_for_table_users_locked(self, table_name: str) -> None:
+        while self._active_table_users.get(table_name, 0):
+            self._table_user_condition.wait()
 
     def _collection_row(self, scope: str, name: str, *, active: bool = False) -> dict[str, Any] | None:
         rows = self._rows(
@@ -538,7 +539,7 @@ class LanceDBCollectionStore:
         phase = str(row.get("deletion_phase") or "drop_table")
         try:
             if phase == "drop_table":
-                self._wait_for_table_readers_locked(row["physical_table"])
+                self._wait_for_table_users_locked(row["physical_table"])
                 self._db.drop_table(row["physical_table"], ignore_missing=True)
                 self._opened_tables.pop(row["physical_table"], None)
                 row["deletion_phase"] = phase = "delete_catalog"
@@ -658,7 +659,17 @@ class LanceDBCollectionStore:
         *,
         context: CollectionWriteContext,
     ) -> CollectionWriteResult:
+        with self._collection_write_lock:
+            return self._write_collection_serialized(records, context=context)
+
+    def _write_collection_serialized(
+        self,
+        records: list,
+        *,
+        context: CollectionWriteContext,
+    ) -> CollectionWriteResult:
         rows = _collection_rows(records, context=context)
+        completed_row: dict[str, Any] | None = None
         with self._write_lock:
             table_name = self._resolved_table(context.scope, context.collection_name)
             if records and not rows:
@@ -675,12 +686,17 @@ class LanceDBCollectionStore:
                 document = existing[0]
                 known_versions = {
                     str(document.get(field) or "")
-                    for field in ("document_version", "current_document_version", "pending_document_version")
+                    for field in (
+                        "document_version",
+                        "current_document_version",
+                        "pending_document_version",
+                    )
                     if document.get(field)
                 }
-                if document.get("recovery_state") not in {"", "appending"} or known_versions != {
-                    context.document_version
-                }:
+                if document.get("recovery_state") not in {
+                    "",
+                    "appending",
+                } or known_versions != {context.document_version}:
                     raise VDBResourceConflict("append cannot change an existing document; use replace")
                 stored_hash = str(document.get("content_sha256") or "")
                 if stored_hash and stored_hash != context.content_sha256:
@@ -734,7 +750,30 @@ class LanceDBCollectionStore:
                     )
                     self._persist_document_row(marker)
 
-                table_exists = table_name in self._db.list_tables().tables
+                completed_row = {
+                    "scope": context.scope,
+                    "collection_name": context.collection_name,
+                    "document_id": context.document_id,
+                    "job_id": context.job_id or "",
+                    "filename": context.filename,
+                    "content_sha256": context.content_sha256,
+                    "document_version": context.document_version,
+                    "status": "completed",
+                    "chunk_count": len(rows),
+                    "created_at": created_at,
+                    "updated_at": now,
+                    "error": "",
+                    "current_document_version": context.document_version,
+                    "pending_document_version": "",
+                    "recovery_state": "",
+                }
+            cached_table = self._opened_tables.get(table_name)
+            self._acquire_table_user_locked(table_name)
+
+        try:
+            table_exists = self._has_table(table_name)
+            table = cached_table
+            if rows:
                 if not table_exists:
                     vector_dim = infer_vector_dim(rows)
                     if vector_dim == 0:
@@ -747,7 +786,6 @@ class LanceDBCollectionStore:
                         schema,
                         overwrite=True,
                     )
-                    self._opened_tables[table_name] = table
                     logger.info(
                         "Created collection LanceDB table %r with %d rows (dim=%d)",
                         table_name,
@@ -755,7 +793,7 @@ class LanceDBCollectionStore:
                         vector_dim,
                     )
                 else:
-                    table = self._open_table(table_name)
+                    table = table or self._db.open_table(table_name)
                     if context.operation == "replace":
                         predicate = f"document_id = {_quoted(context.document_id)}"
                         (
@@ -778,29 +816,18 @@ class LanceDBCollectionStore:
                         table_name,
                         context.operation,
                     )
+            elif table_exists:
+                table = table or self._db.open_table(table_name)
 
-                self._persist_document_row(
-                    {
-                        "scope": context.scope,
-                        "collection_name": context.collection_name,
-                        "document_id": context.document_id,
-                        "job_id": context.job_id or "",
-                        "filename": context.filename,
-                        "content_sha256": context.content_sha256,
-                        "document_version": context.document_version,
-                        "status": "completed",
-                        "chunk_count": len(rows),
-                        "created_at": created_at,
-                        "updated_at": now,
-                        "error": "",
-                        "current_document_version": context.document_version,
-                        "pending_document_version": "",
-                        "recovery_state": "",
-                    }
-                )
-
-            total_rows = int(self._open_table(table_name).count_rows()) if self._has_table(table_name) else 0
+            total_rows = int(table.count_rows()) if table is not None else 0
+            with self._write_lock:
+                if table is not None:
+                    self._opened_tables[table_name] = table
+                if completed_row is not None:
+                    self._persist_document_row(completed_row)
             return CollectionWriteResult(written=len(rows), total_rows=total_rows)
+        finally:
+            self._release_table_user(table_name)
 
     def retrieve_collection(
         self,
@@ -845,7 +872,7 @@ class LanceDBCollectionStore:
 
             if capabilities is not None and capabilities.vector_column and capabilities.vector_column != "vector":
                 retrieval_kwargs["vector_column_name"] = capabilities.vector_column
-            self._acquire_table_reader_locked(table_name)
+            self._acquire_table_user_locked(table_name)
 
         try:
             raw_results = self._backend.retrieval(vectors, **retrieval_kwargs)
@@ -853,7 +880,7 @@ class LanceDBCollectionStore:
             public_results = [[_public_collection_hit(hit) for hit in hits] for hits in normalized_results]
             return public_results, ["dense"]
         finally:
-            self._release_table_reader(table_name)
+            self._release_table_user(table_name)
 
     def list_documents(
         self,
@@ -958,7 +985,7 @@ class LanceDBCollectionStore:
                 return True
             if state == "deleting_chunks":
                 if self._has_table(table_name):
-                    self._wait_for_table_readers_locked(table_name)
+                    self._wait_for_table_users_locked(table_name)
                     self._open_table(table_name).delete(f"document_id = {_quoted(row['document_id'])}")
                 self._db.open_table(_DOCUMENTS_TABLE).delete(
                     f"scope = {_quoted(row['scope'])} AND collection_name = {_quoted(row['collection_name'])} "
@@ -1037,7 +1064,12 @@ class LanceDBCollectionStore:
                 collection = self._collection_row(row["scope"], row["collection_name"])
                 if not collection:
                     continue
-                if self._reconcile_document_row_locked(row, collection["physical_table"]):
+                table_name = collection["physical_table"]
+                self._wait_for_table_users_locked(table_name)
+                rows = self._document_rows(row["scope"], row["collection_name"], row["document_id"])
+                if not rows or not rows[0].get("recovery_state"):
+                    continue
+                if self._reconcile_document_row_locked(rows[0], table_name):
                     successes += 1
                 else:
                     failures += 1
