@@ -69,6 +69,14 @@ without consuming capacity or starting duplicate processing. Reusing the key
 or an entry ID with different content returns
 `RetrieverServiceConflictError` (HTTP 409).
 
+Before the first physical append, the VectorDB records a pending-version
+recovery marker and writes deterministic chunk IDs with an idempotent merge.
+After an interrupted write, reconciliation either finalizes committed chunks
+or removes an empty marker, so retrying the same document version does not
+duplicate chunks.
+Pending initial appends remain hidden from document reads and collection
+queries until reconciliation commits them.
+
 Job document status separates `attempt_id` (one processing attempt) from
 `document_id` (the stable collection identity). Append creates a new stable
 document ID. Replacement creates a new attempt but retains the target document

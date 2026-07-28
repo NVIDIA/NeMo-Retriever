@@ -66,6 +66,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_uncommitted_initial_append(row: Mapping[str, Any]) -> bool:
+    return row.get("recovery_state") == "appending" and not row.get("current_document_version")
+
+
 def _physical_table(scope: str, collection_name: str) -> str:
     digest = hashlib.sha256(f"{scope}\0{collection_name}".encode()).hexdigest()
     return f"nrl_{digest[:40]}"
@@ -677,20 +681,55 @@ class LanceDBCollectionStore:
             )
             if context.operation == "replace" and not context.document_id:
                 raise VDBInvalidRequest("replace requires document_id")
-            if context.operation == "replace" and existing:
-                marker = dict(existing[0])
-                marker.update(
-                    {
-                        "status": "replacing",
-                        "pending_document_version": context.document_version,
-                        "recovery_state": "replacing",
-                        "updated_at": _now(),
-                        "error": "",
-                    }
-                )
-                self._persist_document_row(marker)
 
             if rows:
+                now = _now()
+                created_at = existing[0]["created_at"] if existing else now
+                if context.operation == "append":
+                    marker = (
+                        dict(existing[0])
+                        if existing
+                        else {
+                            "scope": context.scope,
+                            "collection_name": context.collection_name,
+                            "document_id": context.document_id,
+                            "job_id": context.job_id or "",
+                            "filename": context.filename,
+                            "content_sha256": context.content_sha256,
+                            "document_version": "",
+                            "status": "appending",
+                            "chunk_count": 0,
+                            "created_at": created_at,
+                            "updated_at": now,
+                            "error": "",
+                            "current_document_version": "",
+                            "pending_document_version": "",
+                            "recovery_state": "",
+                        }
+                    )
+                    marker.update(
+                        {
+                            "job_id": context.job_id or "",
+                            "pending_document_version": context.document_version,
+                            "recovery_state": "appending",
+                            "updated_at": now,
+                            "error": "",
+                        }
+                    )
+                    self._persist_document_row(marker)
+                elif existing:
+                    marker = dict(existing[0])
+                    marker.update(
+                        {
+                            "status": "replacing",
+                            "pending_document_version": context.document_version,
+                            "recovery_state": "replacing",
+                            "updated_at": now,
+                            "error": "",
+                        }
+                    )
+                    self._persist_document_row(marker)
+
                 table_exists = table_name in self._db.list_tables().tables
                 if not table_exists:
                     vector_dim = infer_vector_dim(rows)
@@ -723,7 +762,12 @@ class LanceDBCollectionStore:
                             .execute(rows)
                         )
                     else:
-                        table.add(rows)
+                        (
+                            table.merge_insert("chunk_id")
+                            .when_matched_update_all()
+                            .when_not_matched_insert_all()
+                            .execute(rows)
+                        )
                     logger.info(
                         "Wrote %d rows to collection table %r operation=%s",
                         len(rows),
@@ -731,8 +775,6 @@ class LanceDBCollectionStore:
                         context.operation,
                     )
 
-                now = _now()
-                created_at = existing[0]["created_at"] if existing else now
                 self._persist_document_row(
                     {
                         "scope": context.scope,
@@ -781,6 +823,23 @@ class LanceDBCollectionStore:
                 "top_k": top_k,
                 "hybrid": hybrid,
             }
+            pending_document_ids = sorted(
+                str(row["document_id"])
+                for row in self._rows(
+                    _DOCUMENTS_TABLE,
+                    f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection_name)}",
+                )
+                if _is_uncommitted_initial_append(row)
+            )
+            if pending_document_ids:
+                visibility_filter = " AND ".join(
+                    f"document_id != {_quoted(document_id)}" for document_id in pending_document_ids
+                )
+                requested_filter = retrieval_kwargs.get("where", retrieval_kwargs.get("_filter"))
+                if requested_filter is not None and str(requested_filter).strip():
+                    visibility_filter = f"({str(requested_filter).strip()}) AND ({visibility_filter})"
+                retrieval_kwargs["where"] = visibility_filter
+
             if hybrid:
                 retrieval_kwargs["query_texts"] = query_texts
             if capabilities is not None and capabilities.vector_column and capabilities.vector_column != "vector":
@@ -806,13 +865,12 @@ class LanceDBCollectionStore:
         continuation_token: str | None,
     ) -> DocumentPage:
         self._resolved_table(scope, collection_name)
-        rows = sorted(
-            self._rows(
-                _DOCUMENTS_TABLE,
-                f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection_name)}",
-            ),
-            key=lambda row: (row["created_at"], row["document_id"]),
+        rows = self._rows(
+            _DOCUMENTS_TABLE,
+            f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection_name)}",
         )
+        rows = [row for row in rows if not _is_uncommitted_initial_append(row)]
+        rows.sort(key=lambda row: (row["created_at"], row["document_id"]))
         last = _decode_cursor(
             continuation_token,
             resource="documents",
@@ -846,14 +904,14 @@ class LanceDBCollectionStore:
     ) -> DocumentInfo:
         self._resolved_table(scope, collection_name)
         rows = self._document_rows(scope, collection_name, document_id)
-        if not rows:
+        if not rows or _is_uncommitted_initial_append(rows[0]):
             raise VDBResourceNotFound("Document not found")
         return self._document_info(rows[0])
 
     def _reconcile_document_row_locked(self, row: dict[str, Any], table_name: str) -> bool:
         state = str(row.get("recovery_state") or "")
         try:
-            if state == "replacing":
+            if state in {"appending", "replacing"}:
                 pending = str(row.get("pending_document_version") or "")
                 pending_chunks: list[dict[str, Any]] = []
                 if self._has_table(table_name):
@@ -881,6 +939,13 @@ class LanceDBCollectionStore:
                             "error": "",
                         }
                     )
+                elif state == "appending" and not row.get("current_document_version"):
+                    self._db.open_table(_DOCUMENTS_TABLE).delete(
+                        f"scope = {_quoted(row['scope'])} "
+                        f"AND collection_name = {_quoted(row['collection_name'])} "
+                        f"AND document_id = {_quoted(row['document_id'])}"
+                    )
+                    return True
                 else:
                     row.update(
                         {

@@ -14,11 +14,16 @@ import threading
 import lancedb
 import pytest
 
+import nemo_retriever.common.vdb.lancedb_collections as collections_module
 from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
     CollectionUpdateRequest,
 )
-from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, VDBInvalidRequest
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    VDBInvalidRequest,
+    VDBResourceNotFound,
+)
 from nemo_retriever.common.vdb.lancedb import (
     LanceDB,
     _create_lancedb_results,
@@ -33,11 +38,16 @@ from nemo_retriever.common.vdb.lancedb_collections import (
 from nemo_retriever.common.vdb.records import RetrievalContractError
 
 
-def _context(*, version: str = "v1", operation: str = "append") -> CollectionWriteContext:
+def _context(
+    *,
+    version: str = "v1",
+    operation: str = "append",
+    document_id: str = "document-a",
+) -> CollectionWriteContext:
     return CollectionWriteContext(
         scope="workspace-a",
         collection_name="collection-a",
-        document_id="document-a",
+        document_id=document_id,
         document_version=version,
         content_sha256=f"sha-{version}",
         filename="source.pdf",
@@ -96,6 +106,32 @@ def _service_records(
         "custom_source_field": "preserved",
     }
     return records
+
+
+def _backend_with_collection(tmp_path) -> LanceDB:
+    backend = LanceDB(
+        uri=str(tmp_path / "lancedb"),
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    return backend
+
+
+def _fail_document_finalize(monkeypatch, store):
+    original_persist = store._persist_document_row
+
+    def fail_completed(row):
+        if row.get("status") == "completed":
+            raise RuntimeError("injected catalog finalize failure")
+        return original_persist(row)
+
+    monkeypatch.setattr(store, "_persist_document_row", fail_completed)
+    return original_persist
 
 
 def test_collection_row_conversion_preserves_identity_and_provenance():
@@ -353,6 +389,162 @@ def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
     )
     assert deleted_collection.deleted is True
     assert expected_table not in lancedb.connect(uri).list_tables().tables
+
+
+def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    _fail_document_finalize(monkeypatch, store)
+
+    with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
+        backend.write_collection(_records(), context=_context())
+
+    marker = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    assert marker["recovery_state"] == "appending"
+    assert marker["pending_document_version"] == "v1"
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        )
+    assert (
+        backend.list_documents(
+            scope="workspace-a",
+            collection_name="collection-a",
+            limit=10,
+            continuation_token=None,
+        ).items
+        == []
+    )
+
+    pending_hits, strategies = backend.retrieve_collection(
+        [[1.0, 0.0]],
+        scope="workspace-a",
+        collection_name="collection-a",
+        query_texts=["first"],
+        top_k=1,
+    )
+    assert strategies == ["dense"]
+    assert pending_hits == [[]]
+    table_name = store._resolved_table("workspace-a", "collection-a")
+    assert store._open_table(table_name).count_rows() == 1
+
+    restarted = LanceDB(
+        uri=str(tmp_path / "lancedb"),
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+    assert restarted.reconcile_collections() == {"successes": 1, "failures": 0}
+    document = restarted.get_document(
+        scope="workspace-a",
+        collection_name="collection-a",
+        document_id="document-a",
+    )
+    assert document.status == "completed"
+    assert document.document_version == "v1"
+    assert document.chunk_count == 1
+    assert restarted._get_collection_store()._open_table(table_name).count_rows() == 1
+    visible_hits, strategies = restarted.retrieve_collection(
+        [[1.0, 0.0]],
+        scope="workspace-a",
+        collection_name="collection-a",
+        query_texts=["first"],
+        top_k=1,
+    )
+    assert strategies == ["dense"]
+    assert visible_hits[0][0]["document_id"] == "document-a"
+
+
+def test_pending_initial_append_does_not_hide_completed_documents(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(
+        _records(text="completed", vector=[1.0, 0.0]),
+        context=_context(document_id="document-completed"),
+    )
+    store = backend._get_collection_store()
+    _fail_document_finalize(monkeypatch, store)
+
+    with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
+        backend.write_collection(
+            _records(text="pending", vector=[0.0, 1.0]),
+            context=_context(document_id="document-pending"),
+        )
+
+    hits, strategies = backend.retrieve_collection(
+        [[1.0, 0.0]],
+        scope="workspace-a",
+        collection_name="collection-a",
+        query_texts=["completed"],
+        top_k=10,
+    )
+
+    assert strategies == ["dense"]
+    assert [hit["document_id"] for hit in hits[0]] == ["document-completed"]
+
+
+def test_initial_append_retry_does_not_duplicate_committed_chunks(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    original_persist = _fail_document_finalize(monkeypatch, store)
+
+    with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
+        backend.write_collection(_records(), context=_context())
+
+    table_name = store._resolved_table("workspace-a", "collection-a")
+    assert store._open_table(table_name).count_rows() == 1
+    monkeypatch.setattr(store, "_persist_document_row", original_persist)
+
+    result = backend.write_collection(_records(), context=_context())
+    assert result.written == 1
+    assert result.total_rows == 1
+    assert store._open_table(table_name).count_rows() == 1
+    assert (
+        backend.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        ).chunk_count
+        == 1
+    )
+
+
+def test_initial_append_marker_without_chunks_is_removed_by_reconciliation(
+    tmp_path,
+    monkeypatch,
+):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    original_write = collections_module.create_or_append_lancedb_table
+
+    def fail_before_chunk_write(*args, **kwargs):
+        raise RuntimeError("injected chunk write failure")
+
+    monkeypatch.setattr(
+        collections_module,
+        "create_or_append_lancedb_table",
+        fail_before_chunk_write,
+    )
+    with pytest.raises(RuntimeError, match="injected chunk write failure"):
+        backend.write_collection(_records(), context=_context())
+
+    marker = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    assert marker["recovery_state"] == "appending"
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-a",
+        )
+    monkeypatch.setattr(
+        collections_module,
+        "create_or_append_lancedb_table",
+        original_write,
+    )
+
+    assert backend.reconcile_collections() == {"successes": 1, "failures": 0}
+    assert store._document_rows("workspace-a", "collection-a", "document-a") == []
 
 
 @pytest.mark.parametrize(
