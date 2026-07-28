@@ -67,8 +67,9 @@ nemo_retriever/helm/
     ├── pvc.yaml                               # general persistence PVC
     ├── secrets.yaml                           # ngc-secret + ngc-api
     └── nims/
-        ├── nemotron-object-detection.yaml     # NIMCache + NIMService (combined page-elements + table-structure)
-        ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService (OCR)
+        ├── nemotron-page-elements-v3.yaml    # direct-PVC NIMService by default
+        ├── nemotron-table-structure-v1.yaml   # direct-PVC NIMService by default
+        ├── nemotron-ocr-v2.yaml               # direct-PVC NIMService by default
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
@@ -455,8 +456,8 @@ environment variable instead of writing the key into the ConfigMap.
 
 ### NIM Operator sub-stack
 
-Each NIM block under `nimOperator.<key>` renders a `NIMCache` + `NIMService`
-pair gated on three conditions ALL holding:
+Each enabled NIM block under `nimOperator.<key>` renders operator resources
+gated on three conditions ALL holding:
 
 1. The `apps.nvidia.com/v1alpha1` CRDs are installed in the cluster.
 2. The master switch `nims.enabled` is `true`.
@@ -483,7 +484,8 @@ pair gated on three conditions ALL holding:
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
-| `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
+| `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | Direct NIMService or NIMCache PVC size, according to mode. |
+| `nimOperator.<page_elements|table_structure|ocr>.modelDownloadMode` | `nimService` for Page Elements, Table Structure, and OCR | `nimService` creates a PVC on the NIMService; `nimCache` restores the legacy cache job. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
 | `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
 | `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
@@ -497,6 +499,26 @@ pair gated on three conditions ALL holding:
 > when `nimOperator.<key>.enabled` is `true` in `values.yaml`, but the
 > retriever-service won't call them unless you wire your pipeline to use them.
 > For minimal installs, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
+
+#### Direct service downloads for the 2.0 extraction NIMs { #direct-service-downloads }
+
+Page Elements, Table Structure, and OCR default to `modelDownloadMode: nimService`.
+This is a temporary compatibility API for NIM Operator 3.1.1 and is intended
+to be removed after a patched Operator validates the standard NIMCache path.
+The chart omits their `NIMCache` resources and places the existing PVC shape
+directly under `NIMService.spec.storage.pvc`; the 2.0 runtime downloads the
+selected NGC model during service startup. The Operator injects `NGC_API_KEY`
+from `authSecret`. VLM Embed and all unaffected NIMs keep the NIMCache flow.
+
+Use `modelDownloadMode: nimCache` for an affected NIM to restore the legacy
+resource pair. Retained NIMCache CRs and their PVCs from an older release are
+not adopted by direct-service mode and can be removed separately after you no
+longer need rollback. Direct-service mode persists the configured model-store
+path; it does not retain unrelated files written to `/opt/cache`.
+
+The auto-wired URLs target the 2.0 contracts. If you override an affected image
+with an older release, explicitly set the matching
+`serviceConfig.nimEndpoints.*InvokeUrl` instead of relying on auto-wiring.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
 

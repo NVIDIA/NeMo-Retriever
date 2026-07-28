@@ -516,6 +516,25 @@ resources:
 
 {{/*
 =============================================================================
+NIM model download mode
+=============================================================================
+
+``nimService`` lets the NIMService create and own its PVC and download the
+model during service startup. ``nimCache`` preserves the legacy, two-resource
+NIMCache + NIMService flow.
+*/}}
+{{- define "nemo-retriever.nim.modelDownloadMode" -}}
+{{- $key := .key -}}
+{{- $cfg := index .context.Values.nimOperator $key -}}
+{{- $mode := get $cfg "modelDownloadMode" | default "nimCache" -}}
+{{- if not (has $mode (list "nimService" "nimCache")) -}}
+{{- fail (printf "nimOperator.%s.modelDownloadMode must be one of: nimService, nimCache (got %q)" $key $mode) -}}
+{{- end -}}
+{{- $mode -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 NIM Operator endpoint resolution
 =============================================================================
 

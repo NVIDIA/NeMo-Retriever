@@ -97,6 +97,12 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "ngcImagePullSecret.create=false",
         "--set",
         "ngcApiSecret.create=false",
+        "--set",
+        "nimOperator.page_elements.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.table_structure.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.ocr.modelDownloadMode=nimCache",
         # Opt every default-empty-profile NIM in so this suite exercises
         # their shared modelProfile contract in one render. Defaults are
         # covered separately.
@@ -282,7 +288,7 @@ class NimCacheModelProfileTests(TestCase):
         configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
         self.assertTrue(
             any(
-                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/infer"'
+                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/ocr"'
                 in doc.get("data", {}).get("retriever-service.yaml", "")
                 for doc in configmaps
             ),

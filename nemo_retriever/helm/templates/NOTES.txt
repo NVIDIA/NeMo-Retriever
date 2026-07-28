@@ -98,8 +98,9 @@ Services:
      kubectl --namespace {{ .Release.Namespace }} get nimcache,nimservice
      kubectl --namespace {{ .Release.Namespace }} describe nimservice <name>
 
-   First-time NIMCache reconciliation downloads model weights to a PVC;
-   allow several minutes before each NIMService reports ready.
+   Direct-PVC NIMServices download their selected model during service startup.
+   NIMCache-mode services wait for their cache job first. Allow several minutes
+   before each NIMService reports ready.
 
 {{- else }}
 

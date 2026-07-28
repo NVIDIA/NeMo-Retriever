@@ -9,7 +9,7 @@ description: |
   remote NIM endpoints (object detection, OCR, VLM embed).
 
   In-cluster NIMs are provisioned via NVIDIA NIM Operator custom
-  resources (NIMCache + NIMService, apps.nvidia.com/v1alpha1). The
+  resources (NIMService, with NIMCache where configured; apps.nvidia.com/v1alpha1). The
   templates short-circuit when the operator CRDs are absent, so the
   chart degrades gracefully into "external NIM URLs only" mode.
 
