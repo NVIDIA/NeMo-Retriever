@@ -218,12 +218,7 @@ class FakeVDB(VDB):
             "chunk_id": "chunk-1",
             "document_id": "document-1",
             "text": "collection hit",
-            "ranking": {
-                "rank": 1,
-                "value": 0.2,
-                "kind": "vector_distance",
-                "higher_is_better": False,
-            },
+            "distance": 0.2,
             "filename": "report.pdf",
             "page_number": 1,
             "content_type": "text",

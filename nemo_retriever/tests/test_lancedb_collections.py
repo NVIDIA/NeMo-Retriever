@@ -21,9 +21,11 @@ from nemo_retriever.common.schemas.collections import (
 )
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
+    UnsupportedVDBOperation,
     VDBInvalidRequest,
     VDBResourceNotFound,
 )
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities
 from nemo_retriever.common.vdb.lancedb import (
     LanceDB,
     _create_lancedb_results,
@@ -183,57 +185,48 @@ def test_service_row_adapter_preserves_multimodal_provenance(raw_type, expected_
     assert json.loads(row["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
 
 
-@pytest.mark.parametrize(
-    ("mode", "native_field", "native_value", "kind", "higher_is_better"),
-    [
-        ("dense", "_distance", 0.125, "vector_distance", False),
-        ("hybrid", "_relevance_score", 0.875, "hybrid_relevance", True),
-    ],
-)
-def test_collection_hit_preserves_native_ranking_semantics(
-    mode,
-    native_field,
-    native_value,
-    kind,
-    higher_is_better,
-):
+def test_collection_hit_preserves_native_dense_distance():
     hit = {
         "text": "chunk",
-        native_field: native_value,
         "_score": 42.0,
         "_distance": 0.125,
         "_relevance_score": 0.875,
     }
 
-    public = _public_collection_hit(hit, retrieval_mode=mode, rank=2)
+    public = _public_collection_hit(hit)
 
-    assert public["ranking"] == {
-        "rank": 2,
-        "value": native_value,
-        "kind": kind,
-        "higher_is_better": higher_is_better,
-    }
+    assert public["distance"] == 0.125
     assert public["text"] == "chunk"
     assert not {"_score", "_distance", "_relevance_score"} & public.keys()
 
 
 @pytest.mark.parametrize("bad_value", [None, True, math.nan, math.inf, -math.inf, "not-a-number"])
-def test_collection_hit_rejects_missing_or_invalid_native_ranking(bad_value):
+def test_collection_hit_rejects_missing_or_invalid_native_distance(bad_value):
     with pytest.raises(RetrievalContractError):
-        _public_collection_hit(
-            {"text": "chunk", "_distance": bad_value},
-            retrieval_mode="dense",
-            rank=1,
-        )
+        _public_collection_hit({"text": "chunk", "_distance": bad_value})
 
 
-def test_collection_hit_does_not_substitute_fts_score_for_hybrid_ranking():
-    with pytest.raises(RetrievalContractError):
-        _public_collection_hit(
-            {"text": "chunk", "_score": 0.9},
-            retrieval_mode="hybrid",
-            rank=1,
-        )
+@pytest.mark.parametrize(
+    ("mode", "expected_error"),
+    [
+        ("hybrid", UnsupportedVDBOperation),
+        ("sparse", UnsupportedVDBOperation),
+        ("unknown", RetrievalContractError),
+    ],
+)
+def test_collection_retrieval_mode_error_classification(mode, expected_error):
+    store = object.__new__(collections_module.LanceDBCollectionStore)
+    store._has_table = lambda _table_name: True
+    capabilities = LanceTableCapabilities(
+        has_vector=mode in {"dense", "hybrid"},
+        has_fts=mode in {"hybrid", "sparse"},
+        retrieval_mode=mode,
+        vector_column="vector" if mode in {"dense", "hybrid"} else None,
+        text_column="text" if mode in {"hybrid", "sparse"} else None,
+    )
+
+    with pytest.raises(expected_error):
+        store._resolve_effective_retrieval_mode("collection-table", capabilities)
 
 
 def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
@@ -338,7 +331,7 @@ def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
     )
     assert strategies == ["dense"]
     assert hits[0][0]["document_id"] == "document-a"
-    assert hits[0][0]["ranking"]["kind"] == "vector_distance"
+    assert hits[0][0]["distance"] >= 0.0
     assert "_distance" not in hits[0][0]
 
     restarted = LanceDB(uri=uri, table_name="legacy", vector_dim=2, build_index=False)

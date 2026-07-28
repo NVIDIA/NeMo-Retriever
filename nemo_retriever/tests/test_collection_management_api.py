@@ -191,9 +191,7 @@ def test_public_sdk_and_citation_ready_query(tmp_path) -> None:
             assert sync_hits[0].model_dump() == async_hits[0].model_dump()
             assert sync_hits[0].chunk_id == hashlib.sha256(f"doc\0v1\0{0}".encode()).hexdigest()
             assert sync_hits[0].text == "finding"
-            assert sync_hits[0].ranking.rank == 1
-            assert sync_hits[0].ranking.kind == "vector_distance"
-            assert not sync_hits[0].ranking.higher_is_better
+            assert sync_hits[0].distance >= 0.0
             assert sync_hits[0].page_number == 1
             assert sync_hits[0].filename == "report.pdf"
             assert sdk.list_documents("research").items[0].document_id == "doc"

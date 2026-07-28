@@ -90,12 +90,7 @@ class FakeVDB(VDB):
                     "chunk_id": "chunk-1",
                     "document_id": "document-1",
                     "text": "retrieved chunk",
-                    "ranking": {
-                        "rank": 1,
-                        "value": 0.12,
-                        "kind": "vector_distance",
-                        "higher_is_better": False,
-                    },
+                    "distance": 0.12,
                     "filename": "doc-a.pdf",
                     "page_number": 1,
                     "content_type": "table",

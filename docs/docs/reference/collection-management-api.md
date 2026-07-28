@@ -173,20 +173,18 @@ ordering, citation provenance, retries, idempotency, and lifecycle truth. Client
 must not open LanceDB directly or reproduce the ingestion pipeline.
 
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
-`text`, backend-neutral `ranking` metadata, filename, a one-based page number
-when known, content type, source/source ID, stored image URI, bounding box, and
-metadata. `ranking` contains the one-based result `rank`, the native finite
-`value`, a `kind` (`vector_distance` or `hybrid_relevance`), and
-`higher_is_better`. NRL does not reinterpret that value as a normalized
-similarity or confidence. Consumers that require a bounded score must translate
-the complete result set at their own adapter boundary. `page_number` is
-`null` for non-paginated content or invalid/unknown page provenance. Audio
-segments, video frames, and timestamps keep their existing modality-specific
-metadata rather than being converted into document pages. This contract is
-identical regardless of the network path used to reach the service.
+`text`, a finite native `distance`, filename, a one-based page number when
+known, content type, source/source ID, stored image URI, bounding box, and
+metadata. Collection queries use dense vector retrieval in this release;
+lower distances are more similar and list order is authoritative. NRL does
+not reinterpret distance as a normalized similarity or confidence. Consumers
+that require a bounded score must translate the complete result set at their
+own adapter boundary. `page_number` is `null` for non-paginated content or
+invalid/unknown page provenance. Audio segments, video frames, and timestamps
+keep their existing modality-specific metadata rather than being converted
+into document pages. This contract is identical regardless of the network
+path used to reach the service.
 
-For `format=evidence`, each evidence item's `score` is the same backend-native
-ranking value, not a normalized confidence or probability. Interpret it with
-`coverage.strategies_used`: vector distance is lower-is-better, while hybrid
-relevance is higher-is-better. These values are not comparable across retrieval
-modes or queries.
+For `format=evidence`, each evidence item's `score` is the same native dense
+vector distance, not a normalized confidence or probability. Lower is better,
+and values are not comparable across queries.

@@ -69,8 +69,8 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
 
     if "score" in hit and hit["score"] is not None:
         score: float = hit["score"]
-    elif isinstance(hit.get("ranking"), dict) and hit["ranking"].get("value") is not None:
-        score = float(hit["ranking"]["value"])
+    elif "distance" in hit and hit["distance"] is not None:
+        score = float(hit["distance"])
     elif "_score" in hit and hit["_score"] is not None:
         score = hit["_score"]
     elif "_distance" in hit and hit["_distance"] is not None:

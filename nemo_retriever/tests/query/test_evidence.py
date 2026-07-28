@@ -81,7 +81,7 @@ def test_visual_only_match_is_reported_when_text_evidence_remains() -> None:
     }
 
 
-def test_collection_ranking_value_is_preserved_in_evidence() -> None:
+def test_collection_distance_is_preserved_in_evidence() -> None:
     result = build_evidence_result(
         [
             {
@@ -89,12 +89,7 @@ def test_collection_ranking_value_is_preserved_in_evidence() -> None:
                 "source": "report.pdf",
                 "page_number": 2,
                 "metadata": {"type": "text"},
-                "ranking": {
-                    "rank": 1,
-                    "value": 0.17,
-                    "kind": "vector_distance",
-                    "higher_is_better": False,
-                },
+                "distance": 0.17,
             }
         ],
         ["dense"],

@@ -33,6 +33,7 @@ from nemo_retriever.common.schemas.collections import (
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
+    UnsupportedVDBOperation,
     VDBInvalidRequest,
     VDBResourceConflict,
     VDBResourceNotFound,
@@ -235,41 +236,20 @@ def _collection_rows(
     return rows
 
 
-def _public_collection_hit(
-    hit: dict[str, Any],
-    *,
-    retrieval_mode: LanceRetrievalMode,
-    rank: int,
-) -> dict[str, Any]:
-    """Expose backend-neutral ordering while preserving LanceDB semantics."""
-    if retrieval_mode == "dense":
-        field = "_distance"
-        kind = "vector_distance"
-        higher_is_better = False
-    elif retrieval_mode == "hybrid":
-        field = "_relevance_score"
-        kind = "hybrid_relevance"
-        higher_is_better = True
-    else:
-        raise RetrievalContractError(f"unsupported collection retrieval mode: {retrieval_mode}")
-
-    raw = hit.get(field)
+def _public_collection_hit(hit: dict[str, Any]) -> dict[str, Any]:
+    """Expose a finite native distance without leaking LanceDB score fields."""
+    raw = hit.get("_distance")
     if isinstance(raw, bool):
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}")
+        raise RetrievalContractError("Dense collection hit is missing a numeric _distance")
     try:
-        value = float(raw)
+        distance = float(raw)
     except (TypeError, ValueError) as exc:
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} is missing a numeric {field}") from exc
-    if not math.isfinite(value):
-        raise RetrievalContractError(f"{retrieval_mode} hit {rank - 1} has a non-finite {field}")
+        raise RetrievalContractError("Dense collection hit is missing a numeric _distance") from exc
+    if not math.isfinite(distance):
+        raise RetrievalContractError("Dense collection hit has a non-finite _distance")
 
     public_hit = {key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS}
-    public_hit["ranking"] = {
-        "rank": rank,
-        "value": value,
-        "kind": kind,
-        "higher_is_better": higher_is_better,
-    }
+    public_hit["distance"] = distance
     return public_hit
 
 
@@ -638,8 +618,10 @@ class LanceDBCollectionStore:
         mode: LanceRetrievalMode = capabilities.retrieval_mode
         if mode == "unknown":
             raise RetrievalContractError("Collection table has no supported vector or FTS search capability")
-        if mode == "sparse":
-            raise RetrievalContractError("Sparse-only collection retrieval is not supported")
+        if mode != "dense":
+            raise UnsupportedVDBOperation(
+                f"{mode.capitalize()} collection retrieval is not supported; collection queries require dense vectors"
+            )
         return mode
 
     def _persist_document_row(self, row: dict[str, Any]) -> None:
@@ -815,13 +797,12 @@ class LanceDBCollectionStore:
             if not self._has_table(table_name):
                 return ([[] for _ in vectors], ["dense"])
             capabilities = self._table_capabilities(table_name)
-            mode = self._resolve_effective_retrieval_mode(table_name, capabilities)
-            hybrid = mode == "hybrid"
+            self._resolve_effective_retrieval_mode(table_name, capabilities)
             retrieval_kwargs: dict[str, Any] = {
                 **kwargs,
                 "table_name": table_name,
                 "top_k": top_k,
-                "hybrid": hybrid,
+                "hybrid": False,
             }
             pending_document_ids = sorted(
                 str(row["document_id"])
@@ -840,8 +821,6 @@ class LanceDBCollectionStore:
                     visibility_filter = f"({str(requested_filter).strip()}) AND ({visibility_filter})"
                 retrieval_kwargs["where"] = visibility_filter
 
-            if hybrid:
-                retrieval_kwargs["query_texts"] = query_texts
             if capabilities is not None and capabilities.vector_column and capabilities.vector_column != "vector":
                 retrieval_kwargs["vector_column_name"] = capabilities.vector_column
             self._acquire_table_reader_locked(table_name)
@@ -849,11 +828,8 @@ class LanceDBCollectionStore:
         try:
             raw_results = self._backend.retrieval(vectors, **retrieval_kwargs)
             normalized_results = _normalize_collection_results(raw_results, expected_queries=len(vectors))
-            public_results = [
-                [_public_collection_hit(hit, retrieval_mode=mode, rank=rank) for rank, hit in enumerate(hits, start=1)]
-                for hits in normalized_results
-            ]
-            return public_results, ["hybrid" if hybrid else "dense"]
+            public_results = [[_public_collection_hit(hit) for hit in hits] for hits in normalized_results]
+            return public_results, ["dense"]
         finally:
             self._release_table_reader(table_name)
 
