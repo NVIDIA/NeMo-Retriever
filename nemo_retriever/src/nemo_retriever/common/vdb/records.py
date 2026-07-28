@@ -13,9 +13,6 @@ from typing import Any, TypedDict
 
 from pydantic import ValidationError
 
-from nemo_retriever.common.api.util.converters.pagetools import (
-    normalize_one_based_page_number,
-)
 from nemo_retriever.common.schemas.collections import QueryHit
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -107,8 +104,8 @@ class RetrievalHit(TypedDict, total=False):
 
     ``_distance`` is a backend-native vector distance, ``_score`` is a
     backend-native FTS/BM25 score, and ``_relevance_score`` is a native hybrid
-    reranker value. Collection REST responses replace those backend fields with
-    ``ranking`` metadata but do not reinterpret the native value.
+    reranker value. Dense collection REST responses expose the finite native
+    distance without reinterpreting it as confidence or similarity.
 
     ``total=False`` because optional fields (``stored_image_uri``,
     ``content_type``, ``bbox_xyxy_norm``, scores) are only set when present.
@@ -128,7 +125,6 @@ class RetrievalHit(TypedDict, total=False):
     _distance: float
     _score: float
     _relevance_score: float
-    ranking: dict[str, Any]
     chunk_id: str
     document_id: str
     filename: str
@@ -401,11 +397,8 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
     page_number = content_metadata.get("page_number") if isinstance(content_metadata, dict) else None
     if page_number is None:
         page_number = hit.get("page_number")
+    page_number = _optional_int(page_number)
     content_type = normalize_content_type(_first_str(hit.get("content_type"), content_metadata.get("type"))) or ""
-    if content_type.startswith(("audio", "video")):
-        page_number = None
-    else:
-        page_number = normalize_one_based_page_number(page_number)
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
@@ -451,7 +444,6 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         "_distance",
         "_score",
         "_relevance_score",
-        "ranking",
     ):
         if key in hit:
             normalized[key] = hit[key]

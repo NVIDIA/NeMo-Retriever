@@ -23,9 +23,10 @@ def test_normalize_timezone_aware_iso8601_to_utc(value: str, expected: str) -> N
     ("value", "message"),
     [
         ("not-a-timestamp", "ISO-8601"),
+        (123, "ISO-8601"),
         ("2030-01-01T00:00:00", "timezone"),
     ],
 )
-def test_normalize_timezone_aware_iso8601_to_utc_rejects_invalid_input(value: str, message: str) -> None:
+def test_normalize_timezone_aware_iso8601_to_utc_rejects_invalid_input(value: object, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         normalize_timezone_aware_iso8601_to_utc(value)

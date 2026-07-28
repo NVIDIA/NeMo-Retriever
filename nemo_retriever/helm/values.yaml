@@ -864,9 +864,12 @@ serviceMonitor:
 nims:
   enabled: true
 
-# Each `nimOperator.<key>` block renders a pair of `NIMCache` + `NIMService`
-# custom resources (apiVersion: apps.nvidia.com/v1alpha1) that the NIM
-# Operator reconciles into a Deployment + Service per model.
+# Each `nimOperator.<key>` block renders NIM Operator custom resources
+# (apiVersion: apps.nvidia.com/v1alpha1). As a temporary NIM Operator 3.1.1
+# compatibility path, the three 2.0 extraction NIMs default to
+# modelDownloadMode: nimService: the NIMService owns a direct PVC
+# and downloads its model at startup. modelDownloadMode: nimCache restores the
+# legacy NIMCache + NIMService pair. Other NIMs retain their NIMCache flow.
 #
 # The per-model templates are gated on ALL of:
 #   1. `.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1"` — the
@@ -876,7 +879,7 @@ nims:
 #
 # When auto-resolution is in effect, the chart populates
 # `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
-# (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
+# (e.g. http://nemotron-page-elements-v3:8000/v1/page-elements). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
 # NIMCache resources may carry `helm.sh/resource-policy: keep` so model
@@ -894,8 +897,11 @@ nimOperator:
     keepOnUninstall: true
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
+    # nemotron-object-detection was a short-lived single-NIM chart name; page_elements
+    # and table_structure now share that container image under their legacy names.
     pruneRetiredNimResources:
       - nemotron-ocr-v1
+      - nemotron-object-detection
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -998,13 +1004,16 @@ nimOperator:
   # ``1.7.0-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
-  # Page-elements detector (YOLOX-style). Used by the page-element extraction
-  # stage of the ingest pipeline.
+  # Page-element detector. Uses the combined nemotron-object-detection NIM image
+  # but keeps the legacy in-cluster Service name so the retriever pipeline's
+  # page_elements_invoke_url continues to resolve independently.
   page_elements:
     enabled: true
+    # nimService: direct PVC + startup download; nimCache: legacy cache job.
+    modelDownloadMode: nimService
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1035,25 +1044,34 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
-        value: "2"
-      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
-      - name: OMP_NUM_THREADS
-        value: "2"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-page-elements-v3
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/page-elements
 
-  # Table structure detector. Used by the table extraction stage.
+  # Table structure detector. Uses the same nemotron-object-detection NIM image
+  # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
   table_structure:
     enabled: true
+    # nimService: direct PVC + startup download; nimCache: legacy cache job.
+    modelDownloadMode: nimService
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1084,27 +1102,35 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-table-structure-v1
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/table-structure
 
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
+    # nimService: direct PVC + startup download; nimCache: legacy cache job.
+    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "1.4.0"
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1135,14 +1161,26 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: OMP_NUM_THREADS
-        value: "8"
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "0"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-ocr-v2
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/ocr
+      - name: NIM_ENGINE_MODEL_VARIANT
+        value: multilingual
 
   # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
   # the vectordb query path, and multimodal ingest.

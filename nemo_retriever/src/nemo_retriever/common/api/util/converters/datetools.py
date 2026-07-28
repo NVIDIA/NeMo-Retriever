@@ -36,6 +36,9 @@ def normalize_timezone_aware_iso8601_to_utc(date_string: str) -> str:
     consistent across services running in different regions.
     """
 
+    if not isinstance(date_string, str):
+        raise ValueError("timestamp must be ISO-8601")
+
     try:
         parsed = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
     except ValueError as exc:

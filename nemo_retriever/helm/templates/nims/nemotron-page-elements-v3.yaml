@@ -1,4 +1,6 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.page_elements.enabled true) -}}
+{{- $mode := include "nemo-retriever.nim.modelDownloadMode" (dict "context" $ "key" "page_elements") -}}
+{{- if eq $mode "nimCache" }}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -23,6 +25,7 @@ spec:
   tolerations:
 {{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
 ---
+{{- end }}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
@@ -30,15 +33,23 @@ metadata:
 spec:
   image:
     repository: {{ .Values.nimOperator.page_elements.image.repository }}
-    tag: {{ .Values.nimOperator.page_elements.image.tag }}
+    tag: {{ .Values.nimOperator.page_elements.image.tag | toString | quote }}
     pullPolicy: {{ .Values.nimOperator.page_elements.image.pullPolicy }}
     pullSecrets:
 {{ toYaml .Values.nimOperator.page_elements.image.pullSecrets | indent 6 }}
   authSecret: {{ .Values.nimOperator.page_elements.authSecret }}
   storage:
+    {{- if eq $mode "nimService" }}
+    pvc:
+      create: {{ .Values.nimOperator.page_elements.storage.pvc.create }}
+      storageClass: {{ .Values.nimOperator.page_elements.storage.pvc.storageClass | quote }}
+      size: {{ .Values.nimOperator.page_elements.storage.pvc.size }}
+      volumeAccessMode: {{ .Values.nimOperator.page_elements.storage.pvc.volumeAccessMode }}
+    {{- else }}
     nimCache:
       name: nemotron-page-elements-v3
       profile: ''
+    {{- end }}
   replicas: {{ .Values.nimOperator.page_elements.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}

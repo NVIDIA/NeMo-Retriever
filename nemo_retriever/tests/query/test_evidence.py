@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from nemo_retriever.query.evidence import build_evidence_result
 
 
@@ -81,7 +83,16 @@ def test_visual_only_match_is_reported_when_text_evidence_remains() -> None:
     }
 
 
-def test_collection_distance_is_preserved_in_evidence() -> None:
+@pytest.mark.parametrize(
+    ("score_fields", "expected"),
+    [
+        ({"distance": 0.17}, 0.17),
+        ({"_score": 0.81}, 0.81),
+        ({"_distance": 0.24}, 0.24),
+        ({}, 0.0),
+    ],
+)
+def test_reachable_ranking_values_are_preserved_in_evidence(score_fields: dict[str, float], expected: float) -> None:
     result = build_evidence_result(
         [
             {
@@ -89,10 +100,10 @@ def test_collection_distance_is_preserved_in_evidence() -> None:
                 "source": "report.pdf",
                 "page_number": 2,
                 "metadata": {"type": "text"},
-                "distance": 0.17,
+                **score_fields,
             }
         ],
         ["dense"],
     )
 
-    assert result["evidence"][0]["score"] == 0.17
+    assert result["evidence"][0]["score"] == expected

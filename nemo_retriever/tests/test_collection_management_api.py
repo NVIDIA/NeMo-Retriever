@@ -536,6 +536,8 @@ def test_sdk_wraps_malformed_sync_and_async_lifecycle_responses() -> None:
 def test_expiration_is_timezone_aware_and_normalized() -> None:
     with pytest.raises(ValueError, match="timezone"):
         CollectionCreateRequest(name="bad", expires_at="2030-01-01T00:00:00")
+    with pytest.raises(ValueError, match="ISO-8601"):
+        CollectionCreateRequest(name="bad-type", expires_at=123)
     request = CollectionCreateRequest(name="good", expires_at="2030-01-01T01:00:00+01:00")
     assert request.expires_at == "2030-01-01T00:00:00+00:00"
 

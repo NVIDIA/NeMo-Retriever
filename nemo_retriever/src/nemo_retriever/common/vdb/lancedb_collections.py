@@ -249,6 +249,13 @@ def _public_collection_hit(hit: dict[str, Any]) -> dict[str, Any]:
         raise RetrievalContractError("Dense collection hit has a non-finite _distance")
 
     public_hit = {key: value for key, value in hit.items() if key not in _NATIVE_SCORE_FIELDS}
+    content_type = str(public_hit.get("content_type") or "").lower()
+    page_number = _positive_or_unknown_page(public_hit.get("page_number"))
+    if content_type.startswith(("audio", "video")) or page_number < 0:
+        public_hit["page_number"] = None
+        public_hit["pdf_page"] = ""
+    else:
+        public_hit["page_number"] = page_number
     public_hit["distance"] = distance
     return public_hit
 

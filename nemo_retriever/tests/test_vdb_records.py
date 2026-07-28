@@ -4,16 +4,9 @@
 
 from __future__ import annotations
 
-import math
-from decimal import Decimal
-from fractions import Fraction
-
 import pytest
 from pydantic import ValidationError
 
-from nemo_retriever.common.api.util.converters.pagetools import (
-    normalize_one_based_page_number,
-)
 from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.vdb.records import (
     normalize_retrieval_results,
@@ -89,55 +82,8 @@ def test_flat_hit_is_canonicalized_without_entity() -> None:
     assert hit["pdf_page"] == "flat_5"
 
 
-@pytest.mark.parametrize("value", [1, "2", " 3 ", 4.0])
-def test_normalize_one_based_page_number_accepts_positive_integral_values(
-    value,
-) -> None:
-    assert normalize_one_based_page_number(value) == int(value)
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        None,
-        "",
-        " ",
-        True,
-        False,
-        0,
-        -1,
-        -7,
-        1.5,
-        "1.5",
-        "bad",
-        Decimal("1.5"),
-        Fraction(3, 2),
-        math.nan,
-        math.inf,
-    ],
-)
-def test_normalize_one_based_page_number_rejects_unknown_or_invalid_values(
-    value,
-) -> None:
-    assert normalize_one_based_page_number(value) is None
-
-
-def test_invalid_page_is_not_repaired_and_modality_metadata_is_preserved() -> None:
-    metadata = {
-        "page_number": -7,
-        "segment_start_seconds": 2.5,
-        "frame_timestamp_seconds": 9.0,
-    }
-
-    hit = _normalize_one({"text": "media", "content_metadata": metadata})
-
-    assert hit["page_number"] is None
-    assert hit["pdf_page"] == ""
-    assert hit["metadata"] == metadata
-
-
 @pytest.mark.parametrize("content_type", ["audio", "video", "video_frame"])
-def test_media_positions_are_not_exposed_as_document_pages(content_type: str) -> None:
+def test_legacy_media_page_values_remain_unchanged(content_type: str) -> None:
     metadata = {
         "type": content_type,
         "page_number": 3,
@@ -147,8 +93,7 @@ def test_media_positions_are_not_exposed_as_document_pages(content_type: str) ->
 
     hit = _normalize_one({"text": "media", "content_metadata": metadata})
 
-    assert hit["page_number"] is None
-    assert hit["pdf_page"] == ""
+    assert hit["page_number"] == 3
     assert hit["metadata"] == metadata
 
 
@@ -250,16 +195,3 @@ def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:
     assert hit["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
     assert hit["page_number"] == 7
     assert hit["source_id"] == "/tmp/source.pdf"
-
-
-def test_canonical_ranking_metadata_is_preserved_without_interpretation() -> None:
-    ranking = {
-        "rank": 1,
-        "value": 0.25,
-        "kind": "vector_distance",
-        "higher_is_better": False,
-    }
-
-    hit = _normalize_one({"text": "result", "ranking": ranking})
-
-    assert hit["ranking"] == ranking

@@ -202,6 +202,25 @@ def test_collection_hit_preserves_native_dense_distance():
     assert not {"_score", "_distance", "_relevance_score"} & public.keys()
 
 
+@pytest.mark.parametrize(
+    ("content_type", "page_number"),
+    [("audio", 3), ("video", 3), ("video_frame", 3), ("text", -1)],
+)
+def test_collection_hit_does_not_expose_non_document_pages(content_type: str, page_number: int):
+    public = _public_collection_hit(
+        {
+            "text": "chunk",
+            "content_type": content_type,
+            "page_number": page_number,
+            "pdf_page": "document_3",
+            "_distance": 0.125,
+        }
+    )
+
+    assert public["page_number"] is None
+    assert public["pdf_page"] == ""
+
+
 @pytest.mark.parametrize("bad_value", [None, True, math.nan, math.inf, -math.inf, "not-a-number"])
 def test_collection_hit_rejects_missing_or_invalid_native_distance(bad_value):
     with pytest.raises(RetrievalContractError):

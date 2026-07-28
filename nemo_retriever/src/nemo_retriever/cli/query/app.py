@@ -158,7 +158,8 @@ def _retrieval_options(
     hidden=True,
     help=(
         "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
-        f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        "Embedding model: read from the selected table when available; "
+        f"legacy tables fall back to {opts.DEFAULT_EMBED_MODEL}.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
         "For a service deployment, use retriever query service --help."
     ),
@@ -194,8 +195,6 @@ def _local_command(
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    if embed_invoke_url is None:
-        embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:
