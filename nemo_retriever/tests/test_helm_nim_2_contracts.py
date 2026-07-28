@@ -44,19 +44,14 @@ def _render() -> list[dict]:
         "apps.nvidia.com/v1alpha1",
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    return [
-        document
-        for document in yaml.safe_load_all(completed.stdout)
-        if isinstance(document, dict)
-    ]
+    return [document for document in yaml.safe_load_all(completed.stdout) if isinstance(document, dict)]
 
 
 def _find(documents: list[dict], kind: str, name: str) -> dict:
     return next(
         document
         for document in documents
-        if document.get("kind") == kind
-        and document.get("metadata", {}).get("name") == name
+        if document.get("kind") == kind and document.get("metadata", {}).get("name") == name
     )
 
 
@@ -74,8 +69,7 @@ def test_extraction_nims_select_distinct_native_models() -> None:
         assert "NIM_TRITON_MAX_BATCH_SIZE" not in env
 
     ocr_env = {
-        item["name"]: item.get("value")
-        for item in _find(documents, "NIMService", "nemotron-ocr-v2")["spec"]["env"]
+        item["name"]: item.get("value") for item in _find(documents, "NIMService", "nemotron-ocr-v2")["spec"]["env"]
     }
     assert ocr_env["NIM_ENGINE_MODEL_VARIANT"] == "multilingual"
 
@@ -88,12 +82,6 @@ def test_operator_managed_urls_use_nim_2_contracts() -> None:
         if document.get("kind") == "ConfigMap"
     )
 
-    assert (
-        'page_elements_invoke_url: "http://nemotron-page-elements-v3:8000/v1/page-elements"'
-        in rendered_config
-    )
-    assert (
-        'table_structure_invoke_url: "http://nemotron-table-structure-v1:8000/v1/table-structure"'
-        in rendered_config
-    )
+    assert 'page_elements_invoke_url: "http://nemotron-page-elements-v3:8000/v1/page-elements"' in rendered_config
+    assert 'table_structure_invoke_url: "http://nemotron-table-structure-v1:8000/v1/table-structure"' in rendered_config
     assert 'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/ocr"' in rendered_config

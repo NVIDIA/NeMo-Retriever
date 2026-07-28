@@ -33,14 +33,11 @@ def _render(*extra_args: str) -> dict:
         *extra_args,
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    documents = [
-        document for document in yaml.safe_load_all(completed.stdout) if document
-    ]
+    documents = [document for document in yaml.safe_load_all(completed.stdout) if document]
     configmap = next(
         document
         for document in documents
-        if document.get("kind") == "ConfigMap"
-        and "retriever-service.yaml" in document.get("data", {})
+        if document.get("kind") == "ConfigMap" and "retriever-service.yaml" in document.get("data", {})
     )
     return yaml.safe_load(configmap["data"]["retriever-service.yaml"])
 

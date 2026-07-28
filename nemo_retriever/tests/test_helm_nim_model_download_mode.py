@@ -50,18 +50,12 @@ def _docs(rendered: str) -> list[dict]:
 
 
 def _find(docs: list[dict], kind: str, name: str) -> dict:
-    return next(
-        doc
-        for doc in docs
-        if doc.get("kind") == kind and doc.get("metadata", {}).get("name") == name
-    )
+    return next(doc for doc in docs if doc.get("kind") == kind and doc.get("metadata", {}).get("name") == name)
 
 
 def test_defaults_use_direct_pvc_for_nim_2_services_and_keep_vlm_cache() -> None:
     docs = _docs(_render().stdout)
-    cache_names = {
-        doc["metadata"]["name"] for doc in docs if doc.get("kind") == "NIMCache"
-    }
+    cache_names = {doc["metadata"]["name"] for doc in docs if doc.get("kind") == "NIMCache"}
     assert cache_names.isdisjoint(_AFFECTED)
     assert "llama-nemotron-embed-vl-1b-v2" in cache_names
 
@@ -95,7 +89,4 @@ def test_nimcache_mode_restores_legacy_resources() -> None:
 def test_invalid_mode_fails_with_clear_message() -> None:
     proc = _render("nimOperator.ocr.modelDownloadMode=invalid", check=False)
     assert proc.returncode != 0
-    assert (
-        "nimOperator.ocr.modelDownloadMode must be one of: nimService, nimCache"
-        in proc.stderr
-    )
+    assert "nimOperator.ocr.modelDownloadMode must be one of: nimService, nimCache" in proc.stderr

@@ -40,10 +40,7 @@ def test_extraction_nims_use_distinct_native_models_and_model_store_paths() -> N
         env = service["environment"]
         assert env["NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER"] == "ngc"
         assert env["NIM_ENGINE_MODEL_NAME"] == model_name
-        assert (
-            env["NIM_ENGINE_MODEL_PATH"]
-            == f"${{{path_variable}:-/model-store}}/{model_dir}"
-        )
+        assert env["NIM_ENGINE_MODEL_PATH"] == f"${{{path_variable}:-/model-store}}/{model_dir}"
         assert service["volumes"] == [
             f"nim_{service_name.removeprefix('nim-').replace('-', '_')}_cache:${{{path_variable}:-/model-store}}"
         ]
@@ -56,9 +53,7 @@ def test_extraction_nims_use_distinct_native_models_and_model_store_paths() -> N
         ]
         assert not any(name.startswith("NIM_TRITON_") for name in env)
 
-    assert (
-        services["nim-ocr"]["environment"]["NIM_ENGINE_MODEL_VARIANT"] == "multilingual"
-    )
+    assert services["nim-ocr"]["environment"]["NIM_ENGINE_MODEL_VARIANT"] == "multilingual"
 
 
 def test_compose_and_core_preset_use_nim_2_routes() -> None:
