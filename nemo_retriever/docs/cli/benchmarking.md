@@ -93,23 +93,25 @@ Useful agentic query overrides:
   model ID when `query.agentic_invoke_url` is provided.
 - `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint.
   Providing it routes agent LLM calls to that remote endpoint.
+- `query.agentic_llm_client` — LLM client that builds the agent LLM. Optional:
+  defaults to `callable` (local in-process adapter) when `query.agentic_invoke_url`
+  is omitted, and to `litellm` for remote endpoints. A
+  remote client requires `query.agentic_invoke_url`; `callable` is in-process only.
 - `query.agentic_local_gpu_memory_utilization`,
   `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
   and `query.agentic_local_max_num_seqs` — harness-only local vLLM resource and
   scheduling controls for benchmark runs. Use environment variables such as
   `CUDA_VISIBLE_DEVICES` and the standard Hugging Face cache environment for
   placement and model cache control.
-- `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
-  call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
 - `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
   (defaults to `50`).
 - `query.agentic_text_truncation` — max characters of each candidate shown to
   the agent; `0` disables truncation.
 - `query.agentic_num_concurrent` — number of queries the agent batch runs
   concurrently (defaults to `1`).
-- `query.agentic_temperature` — defaults to `0.0`; local and non-NVIDIA
-  OpenAI-compatible endpoints allow `0.0..2.0`, while hosted/default NVIDIA
-  endpoints are validated as `0.0..1.0`.
+- `query.agentic_temperature` — defaults to unset (the endpoint/model default
+  applies); when set, hosted/default NVIDIA endpoints are validated as `0.0..1.0`,
+  while other OpenAI-compatible endpoints allow `0.0..2.0`.
 - `query.agentic_reasoning_effort` — optional provider-specific field forwarded
   only when configured.
 

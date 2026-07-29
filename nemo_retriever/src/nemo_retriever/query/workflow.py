@@ -183,11 +183,11 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "local_max_num_seqs": request.agentic.local_max_num_seqs,
         "api_key": api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
-        "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
-        "temperature": float(request.agentic.temperature),
+        "temperature": request.agentic.temperature,
+        "llm_client": request.agentic.llm_client,
     }
     if request.agentic.llm_backend:
         cfg_kwargs["llm_backend"] = request.agentic.llm_backend

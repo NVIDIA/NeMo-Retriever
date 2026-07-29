@@ -15,6 +15,9 @@ AGENTIC_TEMPERATURE_MIN = 0.0
 AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX = 2.0
 AGENTIC_NVIDIA_TEMPERATURE_MAX = 1.0
 
+#: Default LLM client for remote (openai_compatible) agentic retrieval.
+AGENTIC_DEFAULT_CLIENT = "litellm"
+
 
 def _parse_integer(value: object, *, field_name: str) -> tuple[int | None, str | None]:
     if isinstance(value, bool):
@@ -117,6 +120,23 @@ def agentic_temperature_error(
     return None
 
 
+def agentic_llm_client_error(client: object, *, field_name: str = "agentic_llm_client") -> str | None:
+    """Return an error string if *client* is not a registered LLM client.
+
+    The valid set is sourced from ``nemo_agent.llm.get_available_backends`` (the
+    ``nemo_agent`` library still calls these "backends" internally; the
+    user-facing term is "client"). Reading the registry here keeps the check
+    future-proof: a newly registered backend is accepted with no edits.
+    """
+    from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
+
+    valid = get_available_backends()
+    if str(client).strip() not in valid:
+        choices = ", ".join(valid)
+        return f"{field_name} must be one of: {choices}"
+    return None
+
+
 def agentic_target_top_k(evaluation_mode: str, beir_k: list[int] | tuple[int, ...] | None = None) -> int:
     """Resolve the final document count required by the selected evaluation."""
 
@@ -137,21 +157,3 @@ def agentic_target_top_k(evaluation_mode: str, beir_k: list[int] | tuple[int, ..
     if not positive_ks:
         raise ValueError("agentic evaluation requires at least one positive k")
     return max(positive_ks)
-
-
-def agentic_backend_top_k_error(
-    backend_top_k: object,
-    *,
-    target_top_k: int,
-    field_name: str = "agentic_backend_top_k",
-) -> str | None:
-    parsed, error = _parse_integer(backend_top_k, field_name=field_name)
-    if error or parsed is None:
-        return error or f"{field_name} must be an integer"
-    value = parsed
-
-    if value < 1:
-        return f"{field_name} must be >= 1"
-    if value < int(target_top_k):
-        return f"{field_name} must be >= target top_k ({int(target_top_k)})"
-    return None

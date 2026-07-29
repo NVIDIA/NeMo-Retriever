@@ -109,27 +109,38 @@ class RRFAggregatorOperator(AbstractOperator, CPUOperator):
                 else False
             )
 
-            # Process each step's ranked list
+            # Process each step's ranked list. The synthetic final-results step
+            # (is_final_result=True) is recorded for react_final_rank but must
+            # NOT contribute to the RRF score — the reference fuses only the
+            # retrieve outputs (see retrieval_bench/common/rrf.py).
             for _step_idx, sgroup in qgroup.groupby("step_idx", sort=True):
                 # Sort by rank ascending so rank=1 is processed first
                 for _, row in sgroup.sort_values("rank").iterrows():
                     doc_id = str(row["doc_id"])
                     rank = int(row["rank"])
-                    rrf_scores[doc_id] += 1.0 / (rank + k)
+                    is_final = bool(row.get("is_final_result", False))
+                    if not is_final:
+                        rrf_scores[doc_id] += 1.0 / (rank + k)
                     if doc_id not in first_text:
                         first_text[doc_id] = str(row["text"])
-                    if bool(row.get("is_final_result", False)):
+                    if is_final:
                         previous = react_final_rank.get(doc_id)
                         if previous is None or rank < previous:
                             react_final_rank[doc_id] = rank
 
-            for doc_id, score in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True):
+            # Emit every candidate that appears in a retrieve step OR only in the
+            # synthetic final step, so a final-only doc keeps its react_final_rank
+            # (needed for the ReAct pass-through) even though it scored 0 in RRF.
+            all_doc_ids = set(rrf_scores) | set(react_final_rank)
+            # Tie-break by doc_id so equal RRF scores order deterministically across
+            # runs (set iteration is hash-randomized); score stays descending.
+            for doc_id in sorted(all_doc_ids, key=lambda d: (-rrf_scores.get(d, 0.0), d)):
                 rows.append(
                     {
                         "query_id": query_id,
                         "query_text": query_text,
                         "doc_id": doc_id,
-                        "rrf_score": score,
+                        "rrf_score": rrf_scores.get(doc_id, 0.0),
                         "text": first_text.get(doc_id, ""),
                         "has_valid_final_results": has_valid_final_results,
                         "react_final_rank": react_final_rank.get(doc_id),
