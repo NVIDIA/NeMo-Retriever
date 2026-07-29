@@ -68,6 +68,14 @@ applies that URL only to service-mode children in a mixed session. Service mode
 uses the product service APIs for ingest and query while preserving the same
 `status.json`, `results.json`, metric gates, and session summary contract.
 
+Service-mode benchmarks wait for remote document completion without downloading
+retained result payloads. Their `rows_processed` value is the sum of
+`result_rows` from successful document-completion events; the independent
+VectorDB coverage checks remain the authoritative end-to-end validation. As a
+result, service `ingest_secs` measures remote ingestion completion rather than
+ingestion plus client-side result materialization. Service timing baselines
+recorded before this behavior changed are not directly comparable.
+
 ## Commands
 
 - `list`: list code-owned benchmarks and optional runsets.
