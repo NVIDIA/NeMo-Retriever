@@ -24,16 +24,16 @@ If flags below look stale, re-check `retriever ingest --help`.
 
 ## Canonical invocations
 
-Ingest a single PDF into the default table (`lancedb/nemo-retriever.lance`):
+Ingest a single file into the default table (`lancedb/nv-ingest.lance`):
 
 ```bash
-retriever ingest data/multimodal_test.pdf
+<RETRIEVER_VENV>/bin/retriever ingest data/multimodal_test.pdf
 ```
 
 Default PDF ingest:
 
 ```bash
-retriever ingest data/pdfs/
+<RETRIEVER_VENV>/bin/retriever ingest data/corpus/
 ```
 
 Large text-only PDF fallback:
@@ -66,15 +66,18 @@ retriever ingest "data/**/*"
 Write to a custom DB / table:
 
 ```bash
-retriever ingest data/multimodal_test.pdf \
+<RETRIEVER_VENV>/bin/retriever ingest data/multimodal_test.pdf \
   --lancedb-uri ./my-lancedb \
   --table-name my-corpus
 ```
 
 ## Inputs
 
-- **Positional `DOCUMENTS...`** — one or more of: PDF file paths, directories
-  containing PDFs, or shell globs. Required, repeatable.
+- **Positional `DOCUMENTS...`** — one or more file paths, directories, or
+  shell globs. Required, repeatable.
+- **Supported input types** — `pdf`, `doc` (`.docx`, `.pptx`), `txt`, `html`,
+  `image` (`.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.svg`),
+  `audio` (`.mp3`, `.wav`, `.m4a`), and `video` (`.mp4`, `.mov`, `.mkv`).
 
 ## Outputs
 
@@ -92,7 +95,7 @@ retriever ingest data/multimodal_test.pdf \
 | `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
 | `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
-| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, GPU hosts use local captioning; CPU-only runs use the hosted default endpoint with `NVIDIA_API_KEY` / `NGC_API_KEY`. |
+| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
 | `--caption-infographics` | default | Caption infographic crops in addition to extracted images. |
 | `--run-mode` | `batch` | `batch` for the SDK batch ingestor; pass `inprocess` to skip Ray for local debug or CI. |
@@ -104,6 +107,9 @@ The default `ingest` entrypoint expands inputs, builds a manifest, resolves the
 selected profile into normal params, and calls `GraphIngestor.extract(...)`.
 The manifest planner routes PDF/document, image, text, HTML, audio, and video
 branches without relying on `retriever pipeline`.
+
+For text, HTML, image, audio, video, or mixed `auto` inputs, `ingest` routes
+through the same GraphIngestor extraction paths used by `retriever pipeline`.
 
 ## Common failure modes
 
