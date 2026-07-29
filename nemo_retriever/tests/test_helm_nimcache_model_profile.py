@@ -103,6 +103,10 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "nimOperator.table_structure.modelDownloadMode=nimCache",
         "--set",
         "nimOperator.ocr.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.vlm_embed.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.rerankqa.modelDownloadMode=nimCache",
         # Opt every default-empty-profile NIM in so this suite exercises
         # their shared modelProfile contract in one render. Defaults are
         # covered separately.

@@ -473,8 +473,9 @@ gated on three conditions ALL holding:
 | `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
-| `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
+| `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.0.0` | Default VLM embed NIM image. |
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional; not auto-wired). Set `true` to opt in. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
+| `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
@@ -485,7 +486,7 @@ gated on three conditions ALL holding:
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | Direct NIMService or NIMCache PVC size, according to mode. |
-| `nimOperator.<page_elements|table_structure|ocr>.modelDownloadMode` | `nimService` for Page Elements, Table Structure, and OCR | `nimService` creates a PVC on the NIMService; `nimCache` restores the legacy cache job. |
+| `nimOperator.<page_elements|table_structure|ocr|vlm_embed|rerankqa>.modelDownloadMode` | `nimService` | `nimService` creates a PVC on the NIMService; `nimCache` restores the legacy cache job. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
 | `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
 | `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
@@ -500,15 +501,23 @@ gated on three conditions ALL holding:
 > retriever-service won't call them unless you wire your pipeline to use them.
 > For minimal installs, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
 
-#### Direct service downloads for the 2.0 extraction NIMs { #direct-service-downloads }
+#### Direct service downloads for affected 2.x NIMs { #direct-service-downloads }
 
-Page Elements, Table Structure, and OCR default to `modelDownloadMode: nimService`.
+Page Elements, Table Structure, OCR, VL Embed, and VL Rerank default to
+`modelDownloadMode: nimService`.
 This is a temporary compatibility API for NIM Operator 3.1.1 and is intended
 to be removed after a patched Operator validates the standard NIMCache path.
 The chart omits their `NIMCache` resources and places the existing PVC shape
 directly under `NIMService.spec.storage.pvc`; the 2.0 runtime downloads the
 selected NGC model during service startup. The Operator injects `NGC_API_KEY`
-from `authSecret`. VLM Embed and all unaffected NIMs keep the NIMCache flow.
+from `authSecret`. Unaffected NIMs keep the NIMCache flow.
+
+VL Embed 2.0.0 also uses a small startup wrapper that creates the image's
+architecture-specific cuDNN plan directory before invoking its original
+entrypoint. This covers SM120, where the image skips plan compilation but the
+server still requires the directory to exist. Override
+`nimOperator.vlm_embed.command` and `nimOperator.vlm_embed.args` together only
+when replacing the default image with one that has a different entrypoint.
 
 Use `modelDownloadMode: nimCache` for an affected NIM to restore the legacy
 resource pair. Retained NIMCache CRs and their PVCs from an older release are
@@ -1201,8 +1210,8 @@ your release tag). Defaults below match
 | Page Elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` |
 | Table Structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.0` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0` |
-| VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
-| VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
+| VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.0.0` |
+| VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` |

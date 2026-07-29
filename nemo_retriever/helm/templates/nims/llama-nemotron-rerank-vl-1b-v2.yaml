@@ -1,8 +1,11 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.rerankqa.enabled true) -}}
+{{- $name := "llama-nemotron-rerank-vl-1b-v2" -}}
+{{- $mode := include "nemo-retriever.nim.modelDownloadMode" (dict "context" $ "key" "rerankqa") -}}
+{{- if eq $mode "nimCache" }}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
-  name: llama-nemotron-rerank-vl-1b-v2
+  name: {{ $name }}
   {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
 spec:
   source:
@@ -22,10 +25,11 @@ spec:
   tolerations:
 {{ toYaml .Values.nimOperator.rerankqa.tolerations | indent 4 }}
 ---
+{{- end }}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
-  name: llama-nemotron-rerank-vl-1b-v2
+  name: {{ $name }}
 spec:
   image:
     repository: {{ .Values.nimOperator.rerankqa.image.repository }}
@@ -35,8 +39,16 @@ spec:
 {{ toYaml .Values.nimOperator.rerankqa.image.pullSecrets | indent 6 }}
   authSecret: {{ .Values.nimOperator.rerankqa.authSecret }}
   storage:
+    {{- if eq $mode "nimService" }}
+    pvc:
+      create: {{ .Values.nimOperator.rerankqa.storage.pvc.create }}
+      storageClass: {{ .Values.nimOperator.rerankqa.storage.pvc.storageClass | quote }}
+      size: {{ .Values.nimOperator.rerankqa.storage.pvc.size }}
+      volumeAccessMode: {{ .Values.nimOperator.rerankqa.storage.pvc.volumeAccessMode }}
+    {{- else }}
     nimCache:
-      name: llama-nemotron-rerank-vl-1b-v2
+      name: {{ $name }}
+    {{- end }}
   replicas: {{ .Values.nimOperator.rerankqa.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.rerankqa.nodeSelector | indent 4 }}
@@ -46,6 +58,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.rerankqa.expose | indent 4 }}
   env:
-{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "rerankqa" "name" "llama-nemotron-rerank-vl-1b-v2") | nindent 4 }}
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "rerankqa" "name" $name) | nindent 4 }}
 {{ toYaml .Values.nimOperator.rerankqa.env | indent 4 }}
 {{- end }}
