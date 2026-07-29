@@ -60,7 +60,7 @@ _COLLECTIONS_TABLE = "_nrl_collections"
 _DOCUMENTS_TABLE = "_nrl_documents"
 _CATALOG_SCHEMA_VERSION = 2
 _CATALOG_SCAN_LIMIT = 100_000
-_NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score", "_relevance_score"})
+_NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score"})
 
 
 def _now() -> str:

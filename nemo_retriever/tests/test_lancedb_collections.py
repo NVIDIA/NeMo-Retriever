@@ -194,14 +194,13 @@ def test_collection_hit_preserves_native_dense_distance():
         "text": "chunk",
         "_score": 42.0,
         "_distance": 0.125,
-        "_relevance_score": 0.875,
     }
 
     public = _public_collection_hit(hit)
 
     assert public["distance"] == 0.125
     assert public["text"] == "chunk"
-    assert not {"_score", "_distance", "_relevance_score"} & public.keys()
+    assert not {"_score", "_distance"} & public.keys()
 
 
 @pytest.mark.parametrize(

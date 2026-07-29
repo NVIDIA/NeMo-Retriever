@@ -102,10 +102,9 @@ class RetrievalHit(TypedDict, total=False):
     a re-encoded string leak back out here. See ``_normalize_hit`` for the
     contract enforcement point.
 
-    ``_distance`` is a backend-native vector distance, ``_score`` is a
-    backend-native FTS/BM25 score, and ``_relevance_score`` is a native hybrid
-    reranker value. Dense collection REST responses expose the finite native
-    distance without reinterpreting it as confidence or similarity.
+    ``_distance`` is a backend-native vector distance and ``_score`` is a
+    backend-native FTS/BM25 score. Dense collection REST responses expose the finite
+    native distance without reinterpreting it as confidence or similarity.
 
     ``total=False`` because optional fields (``stored_image_uri``,
     ``content_type``, ``bbox_xyxy_norm``, scores) are only set when present.
@@ -124,7 +123,6 @@ class RetrievalHit(TypedDict, total=False):
     bbox_xyxy_norm: list[float]
     _distance: float
     _score: float
-    _relevance_score: float
     chunk_id: str
     document_id: str
     filename: str
@@ -440,11 +438,7 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         bbox = content_metadata.get("bbox_xyxy_norm")
     if bbox is not None and not (isinstance(bbox, str) and not bbox.strip()):
         normalized["bbox_xyxy_norm"] = bbox
-    for key in (
-        "_distance",
-        "_score",
-        "_relevance_score",
-    ):
+    for key in ("_distance", "_score"):
         if key in hit:
             normalized[key] = hit[key]
     return normalized
