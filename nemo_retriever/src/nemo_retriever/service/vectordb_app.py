@@ -80,6 +80,8 @@ class WriteRequest(BaseModel):
 
 
 class WriteResponse(BaseModel):
+    """Counts returned after an internal fixed-table or collection write."""
+
     written: int
     total_rows: int
 

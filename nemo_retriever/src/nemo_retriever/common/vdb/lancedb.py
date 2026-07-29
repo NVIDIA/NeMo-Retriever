@@ -569,6 +569,8 @@ class LanceDB(VDB):
         super().__init__(**kwargs)
 
     def _get_collection_store(self) -> Any:
+        """Lazily initialize collection catalogs only when a collection API is used."""
+
         store = self._collection_store
         if store is None:
             with self._collection_store_lock:
@@ -596,6 +598,8 @@ class LanceDB(VDB):
         scope: str,
         request: CollectionCreateRequest,
     ) -> CollectionInfo:
+        """Create a logical collection through the LanceDB collection store."""
+
         return self._get_collection_store().create_collection(scope, request)
 
     def get_collection(
@@ -604,6 +608,8 @@ class LanceDB(VDB):
         scope: str,
         collection_name: str,
     ) -> CollectionInfo:
+        """Return a logical collection from the LanceDB collection store."""
+
         return self._get_collection_store().get_collection(scope, collection_name)
 
     def list_collections(
@@ -613,6 +619,8 @@ class LanceDB(VDB):
         limit: int,
         continuation_token: str | None,
     ) -> CollectionPage:
+        """List logical collections through the LanceDB collection store."""
+
         return self._get_collection_store().list_collections(
             scope,
             limit,
@@ -626,6 +634,8 @@ class LanceDB(VDB):
         collection_name: str,
         request: CollectionUpdateRequest,
     ) -> CollectionInfo:
+        """Update a logical collection through the LanceDB collection store."""
+
         return self._get_collection_store().update_collection(
             scope,
             collection_name,
@@ -639,6 +649,8 @@ class LanceDB(VDB):
         collection_name: str,
         if_exists: bool,
     ) -> CollectionDeleteResult:
+        """Delete a logical collection through the LanceDB collection store."""
+
         return self._get_collection_store().delete_collection(
             scope,
             collection_name,
@@ -652,6 +664,8 @@ class LanceDB(VDB):
         collection_name: str,
         document_id: str,
     ) -> DocumentInfo:
+        """Return one collection document through the LanceDB collection store."""
+
         return self._get_collection_store().get_document(
             scope,
             collection_name,
@@ -666,6 +680,8 @@ class LanceDB(VDB):
         limit: int,
         continuation_token: str | None,
     ) -> DocumentPage:
+        """List collection documents through the LanceDB collection store."""
+
         return self._get_collection_store().list_documents(
             scope,
             collection_name,
@@ -681,6 +697,8 @@ class LanceDB(VDB):
         document_id: str,
         if_exists: bool,
     ) -> DocumentDeleteResult:
+        """Delete one collection document through the LanceDB collection store."""
+
         return self._get_collection_store().delete_document(
             scope,
             collection_name,
@@ -694,6 +712,8 @@ class LanceDB(VDB):
         *,
         context: CollectionWriteContext,
     ) -> CollectionWriteResult:
+        """Write canonical records using the collection lifecycle contract."""
+
         return self._get_collection_store().write_collection(records, context=context)
 
     def retrieve_collection(
@@ -706,6 +726,8 @@ class LanceDB(VDB):
         top_k: int,
         **kwargs: Any,
     ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Retrieve scoped collection hits using LanceDB's collection contract."""
+
         return self._get_collection_store().retrieve_collection(
             vectors,
             scope=scope,
@@ -716,9 +738,13 @@ class LanceDB(VDB):
         )
 
     def reconcile_collections(self) -> dict[str, int]:
+        """Resume interrupted collection and document lifecycle operations."""
+
         return self._get_collection_store().reconcile_collections()
 
     def health(self) -> dict[str, Any]:
+        """Return legacy table and optional collection-store health."""
+
         from nemo_retriever.common.vdb.lancedb_collections import LanceDBCollectionStore
 
         db = lancedb.connect(uri=self.uri)

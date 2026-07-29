@@ -37,7 +37,7 @@ from nemo_retriever.common.vdb.lancedb import (
 )
 from nemo_retriever.common.vdb.lancedb_collections import (
     _collection_rows,
-    _cursor,
+    _encode_cursor,
     _normalize_collection_results,
     _public_collection_hit,
 )
@@ -302,7 +302,7 @@ def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
             backend.list_collections(
                 scope="workspace-a",
                 limit=10,
-                continuation_token=_cursor("collections", "workspace-a", None, invalid_last),
+                continuation_token=_encode_cursor("collections", "workspace-a", None, invalid_last),
             )
     expected_table = "nrl_" + hashlib.sha256(b"workspace-a\x00collection-a").hexdigest()[:40]
     assert {"_nrl_collections", "_nrl_documents"} <= set(lancedb.connect(uri).list_tables().tables)

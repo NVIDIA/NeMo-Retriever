@@ -146,11 +146,10 @@ class DocumentRecord(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
-    filename: str | None = None
+    filename: str | None = Field(default=None, description="Original upload filename surfaced in the dashboard")
     collection_name: str | None = None
     content_sha256: str | None = None
     manifest_entry_id: str | None = None
-    """Original upload filename, surfaced in the dashboard UI."""
 
 
 class JobAggregate(RichModel):
@@ -178,12 +177,11 @@ class JobAggregate(RichModel):
     started_at: str | None = None
     finalized_at: str | None = None
     elapsed_s: float | None = None
-    label: str | None = None
-    """Optional client-supplied tag, e.g. ``"Q4-2026-corpus"``."""
+    label: str | None = Field(default=None, description="Optional client-supplied job tag")
     metadata: dict[str, Any] = {}
     trace_id: str | None = None
     trace_context: dict[str, str] = Field(default_factory=dict)
-    retain_results: bool = False
+    retain_results: bool = Field(default=False, description="Keep completed document result payloads in memory")
     collection_name: str | None = None
     scope: str = "default"
     operation: str = "append"
@@ -191,7 +189,6 @@ class JobAggregate(RichModel):
     idempotency_key: str | None = None
     idempotency_fingerprint: str | None = None
     document_manifest: list[dict[str, str]] = Field(default_factory=list)
-    """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
 
 
 # ── eviction tunables (apply to terminal aggregates) ──────────────────
@@ -363,6 +360,8 @@ class JobTracker:
         return agg.model_copy(deep=True)
 
     def get_idempotent_job(self, scope: str, key: str, fingerprint: str) -> JobAggregate | None:
+        """Return a matching scoped job or reject reuse with a different payload."""
+
         with self._lock:
             entry = self._idempotency.get((scope, key))
             if not entry:

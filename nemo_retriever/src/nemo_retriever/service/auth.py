@@ -67,6 +67,8 @@ class ScopeAuthorizer:
 
     @property
     def credentials_required(self) -> bool:
+        """Return whether the deployment configured any accepted credential."""
+
         return bool(self._records)
 
     def _load_file(self, path: str) -> None:
@@ -92,6 +94,8 @@ class ScopeAuthorizer:
             )
 
     def authorize(self, provided_token: str, requested_scope: str | None) -> tuple[str | None, int | None]:
+        """Resolve an authorized scope without revealing whether a token was recognized."""
+
         requested = (requested_scope or self.default_scope).strip() or self.default_scope
         if not self._records:
             if self.allow_unscoped_dev:
@@ -125,6 +129,8 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         self._internal_api_token = (internal_api_token or "").strip()
 
     async def dispatch(self, request: Request, call_next):
+        """Authenticate the request and attach its authorized logical scope."""
+
         path = request.url.path
         if any(path == p or path.startswith(p.rstrip("/") + "/") for p in self._bypass):
             request.state.authorized_scope = self._authorizer.default_scope

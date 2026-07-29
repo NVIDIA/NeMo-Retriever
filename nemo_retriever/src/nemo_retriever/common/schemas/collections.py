@@ -40,6 +40,8 @@ def _normalize_expires_at(value: str | None) -> str | None:
 
 
 class CollectionCreateRequest(RichModel):
+    """Properties accepted when creating a logical collection."""
+
     name: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     description: str | None = Field(default=None, max_length=4096)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -52,6 +54,8 @@ class CollectionCreateRequest(RichModel):
 
 
 class CollectionUpdateRequest(RichModel):
+    """Mutable properties of an existing logical collection."""
+
     description: str | None = Field(default=None, max_length=4096)
     metadata: dict[str, Any] | None = None
     expires_at: str | None = None
@@ -63,6 +67,8 @@ class CollectionUpdateRequest(RichModel):
 
 
 class CollectionInfo(RichModel):
+    """Public metadata and lifecycle state for a scoped collection."""
+
     name: str
     scope: str
     status: CollectionStatus = "active"
@@ -74,11 +80,15 @@ class CollectionInfo(RichModel):
 
 
 class CollectionPage(RichModel):
+    """One page of collections and its opaque continuation token."""
+
     items: list[CollectionInfo] = Field(default_factory=list)
     next_token: str | None = None
 
 
 class DocumentInfo(RichModel):
+    """Public identity and ingestion state for a collection document."""
+
     document_id: DocumentId
     collection_name: str
     scope: str
@@ -94,11 +104,15 @@ class DocumentInfo(RichModel):
 
 
 class DocumentPage(RichModel):
+    """One page of collection documents and its opaque continuation token."""
+
     items: list[DocumentInfo] = Field(default_factory=list)
     next_token: str | None = None
 
 
 class DocumentDeleteResult(RichModel):
+    """Outcome of a document deletion request."""
+
     document_id: DocumentId
     collection_name: str
     scope: str
@@ -109,6 +123,8 @@ class DocumentDeleteResult(RichModel):
 
 
 class CollectionDeleteResult(RichModel):
+    """Outcome of a collection deletion request."""
+
     name: str
     scope: str
     existed: bool

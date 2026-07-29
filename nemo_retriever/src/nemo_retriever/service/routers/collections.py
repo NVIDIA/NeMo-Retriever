@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _forward(request: Request, suffix: str) -> Response:
+    """Forward the authorized scope and logical request to the internal VectorDB service."""
+
     from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
 
     config = request.app.state.config

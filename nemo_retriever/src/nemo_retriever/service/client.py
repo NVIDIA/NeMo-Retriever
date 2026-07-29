@@ -205,7 +205,7 @@ class DocumentTracker:
 
 
 class RetrieverServiceClient:
-    """Submits documents to a running retriever service and queries its VectorDB endpoint.
+    """Manage scoped collections, ingest documents, and query a retriever service.
 
     Ingest opens a job aggregate with ``POST /v1/ingest/job`` (sized to
     the number of files), then uses
@@ -303,6 +303,8 @@ class RetrieverServiceClient:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
     ) -> CollectionInfo:
+        """Create a logical collection in the client's configured scope."""
+
         body = {
             "name": name,
             "description": description,
@@ -323,6 +325,8 @@ class RetrieverServiceClient:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
     ) -> CollectionInfo:
+        """Asynchronously create a logical collection."""
+
         body = {
             "name": name,
             "description": description,
@@ -336,6 +340,8 @@ class RetrieverServiceClient:
         )
 
     def get_collection(self, name: str) -> CollectionInfo:
+        """Return one logical collection from the configured scope."""
+
         return self._model(
             CollectionInfo,
             self._request("GET", f"/v1/collections/{name}"),
@@ -343,6 +349,8 @@ class RetrieverServiceClient:
         )
 
     async def aget_collection(self, name: str) -> CollectionInfo:
+        """Asynchronously return one logical collection."""
+
         return self._model(
             CollectionInfo,
             await self._arequest("GET", f"/v1/collections/{name}"),
@@ -350,6 +358,8 @@ class RetrieverServiceClient:
         )
 
     def list_collections(self, *, limit: int = 100, continuation_token: str | None = None) -> CollectionPage:
+        """List logical collections in the configured scope."""
+
         params = {"limit": limit, "continuation_token": continuation_token}
         return self._model(
             CollectionPage,
@@ -363,6 +373,8 @@ class RetrieverServiceClient:
         limit: int = 100,
         continuation_token: str | None = None,
     ) -> CollectionPage:
+        """Asynchronously list logical collections."""
+
         params = {
             "limit": limit,
             "continuation_token": continuation_token,
@@ -374,6 +386,8 @@ class RetrieverServiceClient:
         )
 
     def update_collection(self, name: str, **changes: Any) -> CollectionInfo:
+        """Update mutable properties of a logical collection."""
+
         return self._model(
             CollectionInfo,
             self._request("PATCH", f"/v1/collections/{name}", json=changes),
@@ -381,6 +395,8 @@ class RetrieverServiceClient:
         )
 
     async def aupdate_collection(self, name: str, **changes: Any) -> CollectionInfo:
+        """Asynchronously update a logical collection."""
+
         return self._model(
             CollectionInfo,
             await self._arequest("PATCH", f"/v1/collections/{name}", json=changes),
@@ -388,10 +404,14 @@ class RetrieverServiceClient:
         )
 
     def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
+        """Request deletion of a logical collection and its VectorDB-owned data."""
+
         body = self._request("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
         return self._model(CollectionDeleteResult, body, "delete collection")
 
     async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
+        """Asynchronously delete a logical collection."""
+
         body = await self._arequest("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
         return self._model(CollectionDeleteResult, body, "delete collection")
 
@@ -402,6 +422,8 @@ class RetrieverServiceClient:
         limit: int = 100,
         continuation_token: str | None = None,
     ) -> DocumentPage:
+        """List committed documents in a logical collection."""
+
         params = {"limit": limit, "continuation_token": continuation_token}
         return self._model(
             DocumentPage,
@@ -416,6 +438,8 @@ class RetrieverServiceClient:
         limit: int = 100,
         continuation_token: str | None = None,
     ) -> DocumentPage:
+        """Asynchronously list committed collection documents."""
+
         params = {
             "limit": limit,
             "continuation_token": continuation_token,
@@ -427,6 +451,8 @@ class RetrieverServiceClient:
         )
 
     def get_document(self, collection_name: str, document_id: str) -> DocumentInfo:
+        """Return one committed collection document."""
+
         return self._model(
             DocumentInfo,
             self._request("GET", f"/v1/collections/{collection_name}/documents/{document_id}"),
@@ -434,6 +460,8 @@ class RetrieverServiceClient:
         )
 
     async def aget_document(self, collection_name: str, document_id: str) -> DocumentInfo:
+        """Asynchronously return one committed collection document."""
+
         return self._model(
             DocumentInfo,
             await self._arequest("GET", f"/v1/collections/{collection_name}/documents/{document_id}"),
@@ -447,6 +475,8 @@ class RetrieverServiceClient:
         *,
         if_exists: bool = False,
     ) -> DocumentDeleteResult:
+        """Request deletion of one document and its collection chunks."""
+
         return self._model(
             DocumentDeleteResult,
             self._request(
@@ -464,6 +494,8 @@ class RetrieverServiceClient:
         *,
         if_exists: bool = False,
     ) -> DocumentDeleteResult:
+        """Asynchronously delete one collection document."""
+
         return self._model(
             DocumentDeleteResult,
             await self._arequest(
@@ -475,6 +507,8 @@ class RetrieverServiceClient:
         )
 
     def get_job(self, job_id: str) -> JobAggregateResponse:
+        """Return aggregate ingestion status for a job."""
+
         return self._model(
             JobAggregateResponse,
             self._request("GET", f"/v1/ingest/job/{job_id}"),
@@ -482,6 +516,8 @@ class RetrieverServiceClient:
         )
 
     async def aget_job(self, job_id: str) -> JobAggregateResponse:
+        """Asynchronously return aggregate ingestion status."""
+
         return self._model(
             JobAggregateResponse,
             await self._arequest("GET", f"/v1/ingest/job/{job_id}"),
@@ -489,6 +525,8 @@ class RetrieverServiceClient:
         )
 
     def list_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
+        """List per-document ingestion status for a job."""
+
         return self._model(
             JobDocumentsPage,
             self._request(
@@ -500,6 +538,8 @@ class RetrieverServiceClient:
         )
 
     async def alist_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
+        """Asynchronously list per-document ingestion status."""
+
         return self._model(
             JobDocumentsPage,
             await self._arequest(
@@ -556,6 +596,8 @@ class RetrieverServiceClient:
         top_k: int = 10,
         collection_name: str | None = None,
     ) -> list[list[dict[str, Any]]] | list[QueryHit]:
+        """Asynchronously search through ``POST /v1/query``."""
+
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
         if collection_name:
             payload["collection_name"] = collection_name
@@ -726,6 +768,8 @@ class RetrieverServiceClient:
         idempotency_key: str | None = None,
         **kwargs: Any,
     ) -> JobAggregateResponse:
+        """Replace one stable document with a newly ingested file."""
+
         return self.submit_documents(
             collection_name,
             [file],
@@ -744,6 +788,8 @@ class RetrieverServiceClient:
         idempotency_key: str | None = None,
         **kwargs: Any,
     ) -> JobAggregateResponse:
+        """Asynchronously replace one stable document."""
+
         return await self.asubmit_documents(
             collection_name,
             [file],

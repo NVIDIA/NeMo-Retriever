@@ -80,7 +80,9 @@ def _quoted(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _cursor(resource: str, scope: str, collection: str | None, last: list[str]) -> str:
+def _encode_cursor(resource: str, scope: str, collection: str | None, last: list[str]) -> str:
+    """Encode a pagination position bound to its logical resource context."""
+
     payload = {
         "v": 1,
         "resource": resource,
@@ -102,6 +104,8 @@ def _decode_cursor(
     scope: str,
     collection: str | None,
 ) -> list[str] | None:
+    """Decode a cursor after validating its resource, scope, and collection context."""
+
     if not token:
         return None
     try:
@@ -278,7 +282,12 @@ def _normalize_collection_results(
 
 
 class LanceDBCollectionStore:
-    """LanceDB-specific collection catalog, lifecycle, and query implementation."""
+    """Implement optional VDB collection capabilities for LanceDB.
+
+    The store owns private catalogs and maps logical ``(scope, collection)``
+    identities to physical tables. Table-user leases keep deletion and recovery
+    from racing with active reads or writes.
+    """
 
     def __init__(self, backend: Any, *, expiration_cleanup_enabled: bool = True) -> None:
         self._backend = backend
@@ -395,6 +404,8 @@ class LanceDBCollectionStore:
                 self._table_user_condition.notify_all()
 
     def _wait_for_table_users_locked(self, table_name: str) -> None:
+        """Wait under the state lock before destructively mutating an active table."""
+
         while self._active_table_users.get(table_name, 0):
             self._table_user_condition.wait()
 
@@ -430,6 +441,8 @@ class LanceDBCollectionStore:
         return DocumentInfo(**{key: row.get(key) for key in DocumentInfo.model_fields})
 
     def create_collection(self, scope: str, request: CollectionCreateRequest) -> CollectionInfo:
+        """Create a scoped logical collection without exposing its physical table."""
+
         with self._write_lock:
             if self._collection_row(scope, request.name):
                 raise VDBResourceConflict(f"Collection {request.name!r} already exists")
@@ -454,6 +467,8 @@ class LanceDBCollectionStore:
             return self._collection_info(row)
 
     def get_collection(self, scope: str, name: str) -> CollectionInfo:
+        """Return one scoped collection or raise when it does not exist."""
+
         row = self._collection_row(scope, name)
         if not row:
             raise VDBResourceNotFound("Collection not found")
@@ -465,6 +480,8 @@ class LanceDBCollectionStore:
         limit: int,
         continuation_token: str | None,
     ) -> CollectionPage:
+        """List collections in one scope using a context-bound cursor."""
+
         rows = sorted(
             self._rows(_COLLECTIONS_TABLE, f"scope = {_quoted(scope)}"),
             key=lambda row: row["name"],
@@ -480,7 +497,9 @@ class LanceDBCollectionStore:
                 raise VDBInvalidRequest("Invalid collection continuation token")
             rows = [row for row in rows if row["name"] > last[0]]
         page = rows[:limit]
-        next_token = _cursor("collections", scope, None, [page[-1]["name"]]) if len(rows) > limit and page else None
+        next_token = (
+            _encode_cursor("collections", scope, None, [page[-1]["name"]]) if len(rows) > limit and page else None
+        )
         return CollectionPage(items=[self._collection_info(row) for row in page], next_token=next_token)
 
     def update_collection(
@@ -489,6 +508,8 @@ class LanceDBCollectionStore:
         name: str,
         request: CollectionUpdateRequest,
     ) -> CollectionInfo:
+        """Update mutable metadata for an active scoped collection."""
+
         with self._write_lock:
             row = self._collection_row(scope, name, active=True)
             if not row:
@@ -564,6 +585,8 @@ class LanceDBCollectionStore:
         name: str,
         if_exists: bool,
     ) -> CollectionDeleteResult:
+        """Delete a collection through the retryable table-and-catalog lifecycle."""
+
         with self._write_lock:
             row = self._collection_row(scope, name)
             if not row:
@@ -659,6 +682,8 @@ class LanceDBCollectionStore:
         *,
         context: CollectionWriteContext,
     ) -> CollectionWriteResult:
+        """Append or replace one document using stable, retry-safe chunk identities."""
+
         with self._collection_write_lock:
             return self._write_collection_serialized(records, context=context)
 
@@ -668,6 +693,8 @@ class LanceDBCollectionStore:
         *,
         context: CollectionWriteContext,
     ) -> CollectionWriteResult:
+        """Persist recovery state around LanceDB I/O without blocking unrelated queries."""
+
         rows = _collection_rows(records, context=context)
         completed_row: dict[str, Any] | None = None
         with self._write_lock:
@@ -839,6 +866,8 @@ class LanceDBCollectionStore:
         top_k: int,
         **kwargs: Any,
     ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Run scoped dense retrieval and expose finite native vector distances."""
+
         if len(query_texts) != len(vectors):
             raise RetrievalContractError("query_texts must contain one entry per query vector")
         with self._write_lock:
@@ -889,6 +918,8 @@ class LanceDBCollectionStore:
         limit: int,
         continuation_token: str | None,
     ) -> DocumentPage:
+        """List committed documents in a collection using a context-bound cursor."""
+
         self._resolved_table(scope, collection_name)
         rows = self._rows(
             _DOCUMENTS_TABLE,
@@ -910,7 +941,7 @@ class LanceDBCollectionStore:
         return DocumentPage(
             items=[self._document_info(row) for row in page],
             next_token=(
-                _cursor(
+                _encode_cursor(
                     "documents",
                     scope,
                     collection_name,
@@ -927,6 +958,8 @@ class LanceDBCollectionStore:
         collection_name: str,
         document_id: str,
     ) -> DocumentInfo:
+        """Return one committed document from a scoped collection."""
+
         self._resolved_table(scope, collection_name)
         rows = self._document_rows(scope, collection_name, document_id)
         if not rows or _is_uncommitted_initial_append(rows[0]):
@@ -934,6 +967,8 @@ class LanceDBCollectionStore:
         return self._document_info(rows[0])
 
     def _reconcile_document_row_locked(self, row: dict[str, Any], table_name: str) -> bool:
+        """Complete or roll back one interrupted document lifecycle operation."""
+
         state = str(row.get("recovery_state") or "")
         try:
             if state in {"appending", "replacing"}:
@@ -1006,6 +1041,8 @@ class LanceDBCollectionStore:
         document_id: str,
         if_exists: bool,
     ) -> DocumentDeleteResult:
+        """Delete a document's chunks and catalog record with recovery state."""
+
         with self._write_lock:
             table_name = self._resolved_table(scope, collection_name)
             rows = self._document_rows(scope, collection_name, document_id)
@@ -1135,6 +1172,8 @@ class LanceDBCollectionStore:
         }
 
     def health(self) -> dict[str, Any]:
+        """Summarize catalog, cleanup, and reconciliation state without identifiers."""
+
         now = datetime.now(timezone.utc)
         collections = self._rows(
             _COLLECTIONS_TABLE,
