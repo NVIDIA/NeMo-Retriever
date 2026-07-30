@@ -3,8 +3,7 @@
 
 """Tools that terminate the agent loop: the base plus the standard end tools.
 
-:class:`FinalResults` ends a select-mode run with the chosen document IDs;
-:class:`LogAnswer` ends an answer-mode run with the final answer;
+:class:`FinalResults` ends an agent run with the chosen document IDs;
 :class:`LogSelectedDocs` ends a selection-agent run with the top-k subset of
 the run's candidate documents.
 """
@@ -29,8 +28,8 @@ class BaseEndTool(BaseTool):
     matching their spec (so unexpected LLM-supplied kwargs raise ``TypeError``
     naturally). Raise ``TypeError`` / :class:`ToolError` for invalid calls;
     return the normalized payload dict on success. The agent's result exposes
-    the payload's ``doc_ids`` / ``answer`` keys as typed conveniences, with
-    the full payload available verbatim.
+    the payload's ``doc_ids`` key as a typed convenience, with the full
+    payload available verbatim.
     """
 
     success_message: str = "The results have been successfully logged and the interaction ended."
@@ -176,78 +175,6 @@ The successful_search field should be set to true if you believed you have found
                 f"`doc_ids` must contain exactly {self.top_k} documents. But got {len(doc_ids)} document IDs instead."
             )
         payload: Dict[str, Any] = {"doc_ids": list(doc_ids), "search_successful": search_successful}
-        if message is not None:
-            payload["message"] = message
-        return payload
-
-
-class LogAnswer(BaseEndTool):
-    """Tool for reporting the answer and ending the interaction.
-
-    This is the end tool of the 'answer' agent mode: the agent researches with
-    the retrieve tool and then writes the final answer itself by calling this
-    tool.
-    """
-
-    def __init__(self, include_msg: bool = True):
-        self.include_msg = include_msg
-
-        required: List[str] = []
-        properties: Dict[str, Any] = {}
-
-        desc = """Records the answer and signals the end of the task.
-
-Use this tool when you have carefully considered the candidate documents and are ready to generate the answer to the query.
-
-The answer argument is the final answer that will be saved and evaluated. It must contain the complete response to the query, including all requested entities, numbers, units, dates, categories, and other information necessary to answer the query."""
-
-        if self.include_msg:
-            desc += """\n\nThe message argument is diagnostic context for why the answer is supported. Do not put any essential answer facts only in message."""
-            required.append("message")
-            properties["message"] = {
-                "type": "string",
-                "description": (
-                    "Brief diagnostic justification for the answer. This field is not the final evaluated "
-                    "answer, so do not place essential facts only here."
-                ),
-            }
-        required.append("answer")
-        properties["answer"] = {
-            "type": "string",
-            "description": (
-                "The complete final answer to the query, based only on the provided documents. Include "
-                "all requested items, numbers, units, dates, categories, and explanations needed to "
-                "fully answer the query."
-            ),
-        }
-
-        self.spec_dict = {
-            "type": "function",
-            "function": {
-                "name": "log_answer",
-                "description": desc,
-                "parameters": {
-                    "type": "object",
-                    "required": required,
-                    "properties": properties,
-                },
-            },
-        }
-
-    def _spec(self) -> dict:
-        return self.spec_dict
-
-    def _validate_payload(self, answer: str, message: Optional[str] = None) -> Dict[str, Any]:
-        if self.include_msg:
-            if message is None:
-                raise TypeError("The `message` argument is required.")
-            if not isinstance(message, str):
-                raise TypeError(f"The `message` argument must be a string. Got `{type(message)}` type.")
-        if not isinstance(answer, str):
-            raise TypeError(f"The `answer` argument must be a string. Got `{type(answer)}` type.")
-        if not answer.strip():
-            raise ToolError("`answer` cannot be empty. You must provide a complete, non-empty answer to the query.")
-        payload: Dict[str, Any] = {"answer": answer}
         if message is not None:
             payload["message"] = message
         return payload

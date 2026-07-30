@@ -12,14 +12,14 @@ One module per tool family:
   (wrap a plain ``retriever_fn(query, top_k)``), and
   :func:`create_retrieve_tool` picking between them by name.
 - ``end_tools.py`` — :class:`BaseEndTool` plus the standard end tools:
-  :class:`FinalResults` (select mode), :class:`LogAnswer` (answer mode), and
-  :class:`LogSelectedDocs` (the selection agent's per-run end tool).
+  :class:`FinalResults` (the agent's end tool) and :class:`LogSelectedDocs`
+  (the selection agent's per-run end tool).
 - ``think_tool.py`` — :class:`ThinkTool`, the optional scratchpad, and
   :class:`SelectionThinkTool`, its selection-flavored variant.
 """
 
 from .base_tool import BaseTool, ToolContractError, ToolError
-from .end_tools import BaseEndTool, FinalResults, LogAnswer, LogSelectedDocs
+from .end_tools import BaseEndTool, FinalResults, LogSelectedDocs
 from .retrieve import (
     BaseRetrieveTool,
     ReasoningAugmentedRetrieveTool,
@@ -34,7 +34,6 @@ __all__ = [
     "BaseRetrieveTool",
     "BaseTool",
     "FinalResults",
-    "LogAnswer",
     "LogSelectedDocs",
     "ReasoningAugmentedRetrieveTool",
     "RetrieveContext",

@@ -44,17 +44,15 @@ class AgentError:
 class AgentRunResult:
     """Everything one agent run produces.
 
-    ``final_doc_ids`` and ``answer`` are conveniences extracted from
-    ``end_payload`` (its ``doc_ids`` / ``answer`` keys, regardless of mode).
-    On a successful run ``end_payload`` is the full *validated* end-tool
-    arguments (e.g. ``message``, ``search_successful``). When a run FAILS
-    without ever making a valid end call, ``end_payload`` falls back to the
-    agent's last invalid end-tool attempt (a lenient best-effort subset -- a
-    non-empty ``doc_ids`` list and/or a non-empty ``answer``, plus
-    ``message``) so callers still get the model's final intent; ``error``
-    still says why the run failed and ``succeeded`` stays ``False``.
-    ``end_payload`` is ``None`` only when the run failed and no usable end
-    attempt was ever made.
+    ``final_doc_ids`` is a convenience extracted from ``end_payload`` (its
+    ``doc_ids`` key). On a successful run ``end_payload`` is the full
+    *validated* end-tool arguments (e.g. ``message``, ``search_successful``).
+    When a run FAILS without ever making a valid end call, ``end_payload``
+    falls back to the agent's last invalid end-tool attempt (a lenient
+    best-effort subset of what the model supplied) so callers still get the
+    model's final intent; ``error`` still says why the run failed and
+    ``succeeded`` stays ``False``. ``end_payload`` is ``None`` only when the
+    run failed and no usable end attempt was ever made.
 
     The verbose fields (``trajectory``, ``retrieval_log``, ``extra_data``)
     are always populated; callers that don't need them simply don't persist
@@ -62,7 +60,6 @@ class AgentRunResult:
     """
 
     final_doc_ids: List[str] = field(default_factory=list)
-    answer: Optional[str] = None
     end_payload: Optional[Dict[str, Any]] = None
     error: Optional[AgentError] = None
     trajectory: List[Dict[str, Any]] = field(default_factory=list)

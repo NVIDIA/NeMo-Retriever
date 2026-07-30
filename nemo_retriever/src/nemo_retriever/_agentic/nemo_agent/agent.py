@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The agentic-retrieval loop: one Agent class covering select and answer modes.
+"""The agentic-retrieval loop: the Agent class for document retrieval.
 
 The generic loop mechanics (step loop, tool dispatch, error policy, raw-IO
 logging, result building) live in ``loop.py`` and are shared with
@@ -35,7 +35,6 @@ from .tools import (
     BaseRetrieveTool,
     BaseTool,
     FinalResults,
-    LogAnswer,
     RetrieveContext,
     ThinkTool,
 )
@@ -50,12 +49,15 @@ class AgentConfig(BaseAgentLoopConfig):
 
     Pure data — LLM and tool *instances* are constructor arguments, not
     config. ``system_prompt`` is a packaged prompt name or a filesystem path;
-    ``None`` selects the mode default. The loop-policy fields (``max_steps``,
-    ``on_error``, logging and pacing knobs) are inherited from
+    ``None`` selects the default. ``mode`` is the extension point for
+    additional agent behaviors; ``"select"`` (document selection) is the only
+    one implemented, and any other value is rejected. The loop-policy
+    fields (``max_steps``, ``on_error``, logging
+    and pacing knobs) are inherited from
     :class:`~nemo_agent.loop.BaseAgentLoopConfig`.
     """
 
-    mode: Literal["select", "answer"] = "select"
+    mode: Literal["select"] = "select"
     system_prompt: Optional[str] = None
     enforce_top_k: bool = True
     target_top_k: Optional[int] = 10
@@ -72,10 +74,9 @@ class Agent(_BaseAgentLoop):
     Construction wires everything the loop needs; per-query state lives in a
     private run state, so one instance safely serves many (including
     concurrent) runs. Standard tools are assembled internally: the think tool
-    (``config.enable_think``), the mode's end tool (``select`` →
-    ``final_results``, ``answer`` → ``log_answer``; overridable via the
-    ``end_tool`` argument), and the required primary ``retrieve_tool`` (which
-    also powers the ``user_msg_type="with_results"`` bootstrap).
+    (``config.enable_think``), the end tool (``final_results``; overridable
+    via the ``end_tool`` argument), and the required primary ``retrieve_tool``
+    (which also powers the ``user_msg_type="with_results"`` bootstrap).
     ``tool_overrides`` adds/replaces tools by name — extra
     :class:`BaseRetrieveTool` instances get the same retrieval bookkeeping as
     the primary one.
@@ -105,17 +106,11 @@ class Agent(_BaseAgentLoop):
 
         if end_tool is not None and not isinstance(end_tool, BaseEndTool):
             raise TypeError(f"end_tool must be a BaseEndTool, got {type(end_tool).__name__}.")
-        if config.mode == "select":
-            default_prompt = "06_select_lean_v1.j2"
-            end_payload_phrase = "with your selected doc_ids"
-            if end_tool is None:
-                top_k = int(config.target_top_k) if config.enforce_top_k and config.target_top_k else None
-                end_tool = FinalResults(top_k=top_k, include_msg=config.end_tool_with_msg)
-        else:  # mode == "answer"
-            default_prompt = "05_answer_lean_v1.j2"
-            end_payload_phrase = "with your final answer"
-            if end_tool is None:
-                end_tool = LogAnswer(include_msg=config.end_tool_with_msg)
+        default_prompt = "06_select_lean_v1.j2"
+        end_payload_phrase = "with your selected doc_ids"
+        if end_tool is None:
+            top_k = int(config.target_top_k) if config.enforce_top_k and config.target_top_k else None
+            end_tool = FinalResults(top_k=top_k, include_msg=config.end_tool_with_msg)
         self._retrieve_tool = retrieve_tool
         self._end_tool = end_tool
 

@@ -856,3 +856,25 @@ class TestCallableLLMBackend:
         result = backend.completion(messages=[{"role": "user", "content": "q"}], api_key="super-secret")
         assert result.raw_request["api_key"] == _REDACTED
         assert result.raw_request["messages"] == [{"role": "user", "content": "q"}]  # content preserved
+
+
+class TestAgentConfigMode:
+    """``mode`` is retained as the extension point but only ``select`` is implemented."""
+
+    def test_select_mode_is_accepted(self):
+        from nemo_retriever._agentic.nemo_agent import AgentConfig
+
+        assert AgentConfig(mode="select").mode == "select"
+
+    def test_mode_defaults_to_select(self):
+        from nemo_retriever._agentic.nemo_agent import AgentConfig
+
+        assert AgentConfig().mode == "select"
+
+    def test_answer_mode_is_rejected(self):
+        from pydantic import ValidationError
+
+        from nemo_retriever._agentic.nemo_agent import AgentConfig
+
+        with pytest.raises(ValidationError):
+            AgentConfig(mode="answer")
