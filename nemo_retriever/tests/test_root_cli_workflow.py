@@ -242,6 +242,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
             return self
 
         def ingest(self, *args: Any, **kwargs: Any):
+            captured["ingest_kwargs"] = kwargs
             return self
 
     monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
@@ -289,6 +290,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
+    assert captured["ingest_kwargs"] == {"return_results": True}
     assert "through retriever service http://retriever-service:7670" in result.output
 
 

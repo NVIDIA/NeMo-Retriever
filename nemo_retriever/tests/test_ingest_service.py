@@ -100,7 +100,31 @@ def test_execute_service_ingest_request_raises_for_document_failures(monkeypatch
         execute_service_ingest_request(request)
 
 
-def test_execute_service_ingest_request_disables_materialization_and_counts_event_rows(
+def test_execute_service_ingest_request_materializes_results_by_default(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    request = ServiceIngestRequest(documents=[str(tmp_path / "doc.pdf")], input_type="pdf")
+    result = SimpleNamespace(dataframe=[{"row": 1}, {"row": 2}], failures=[])
+    captured: dict[str, object] = {}
+
+    def ingest(**kwargs):
+        captured.update(kwargs)
+        return result
+
+    monkeypatch.setattr(
+        "nemo_retriever.ingest.service.build_service_ingestor",
+        lambda _request: SimpleNamespace(ingest=ingest),
+    )
+
+    execution = execute_service_ingest_request(request)
+
+    assert captured == {"return_results": True}
+    assert execution.n_rows == 2
+    assert execution.result_n_rows == 2
+
+
+def test_execute_service_ingest_request_can_disable_materialization_and_count_event_rows(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -123,7 +147,7 @@ def test_execute_service_ingest_request_disables_materialization_and_counts_even
         lambda _request: SimpleNamespace(ingest=ingest),
     )
 
-    execution = execute_service_ingest_request(request)
+    execution = execute_service_ingest_request(request, return_results=False)
 
     assert captured == {"return_results": False}
     assert execution.n_rows == 5

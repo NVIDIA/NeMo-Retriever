@@ -269,10 +269,19 @@ def build_service_ingestor(request: ServiceIngestRequest) -> Any:
     return ingestor
 
 
-def execute_service_ingest_request(request: ServiceIngestRequest) -> ServiceIngestExecutionResult:
-    """Execute a service ingest request and return its structured result."""
+def execute_service_ingest_request(
+    request: ServiceIngestRequest,
+    *,
+    return_results: bool = True,
+) -> ServiceIngestExecutionResult:
+    """Execute a service ingest request and return its structured result.
 
-    result = build_service_ingestor(request).ingest(return_results=False)
+    ``return_results`` defaults to the user-facing service client behavior.
+    Callers that only need completion metadata may disable retained-result
+    downloads explicitly.
+    """
+
+    result = build_service_ingestor(request).ingest(return_results=return_results)
     failures = list(getattr(result, "failures", ()) or ())
     if failures:
         document, detail = failures[0]
@@ -463,6 +472,13 @@ def _sanitize_service_caption_params(caption_params: CaptionParams) -> CaptionPa
 
 
 def _count_service_result_rows(result: object) -> int | None:
+    dataframe = getattr(result, "dataframe", None)
+    if dataframe is not None:
+        try:
+            return len(dataframe)
+        except TypeError:
+            return None
+
     try:
         events = iter(result)
     except TypeError:
