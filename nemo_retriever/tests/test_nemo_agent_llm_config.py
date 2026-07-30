@@ -19,10 +19,9 @@ from pydantic import ValidationError
 
 from nemo_retriever._agentic.nemo_agent.llm import (
     BaseLLMConfig,
+    CallableLLMConfig,
     LiteLLMBackend,
     LiteLLMConfig,
-    NIMLLMBackend,
-    NIMLLMConfig,
     OpenAIHTTPBackend,
     OpenAIHTTPConfig,
     create_llm,
@@ -49,14 +48,6 @@ class TestBackendSelection:
         assert isinstance(config, LiteLLMConfig)
         assert config.backend == "litellm"
         assert config.model == "m"
-
-    def test_nim_not_registered(self):
-        # nim is a stub backend (NIMLLMBackend raises on construction), so it is
-        # deliberately absent from the selection registry: choosing it must fail
-        # fast at config-build time rather than crash later at agent-build time.
-        assert "nim" not in get_available_backends()
-        with pytest.raises(ValueError, match="nim"):
-            create_llm_config("nim", model="m")
 
     def test_unknown_backend_raises_valueerror(self):
         with pytest.raises(ValueError) as exc:
@@ -87,8 +78,8 @@ class TestBackendSelection:
             create_llm(BaseLLMConfig(model="x"))
 
     def test_base_config_default_backend_is_registered(self):
-        # The declared library default must actually resolve; "nim" (the previous
-        # default) did not, which made the declaration a guaranteed ValueError.
+        # The declared library default must actually resolve — a default naming an
+        # unregistered backend would make the declaration a guaranteed ValueError.
         assert BaseLLMConfig.model_fields["backend"].default in get_available_backends()
 
 
@@ -155,17 +146,15 @@ class TestConfigClsPairing:
     def test_litellm_pairing(self):
         assert LiteLLMBackend.config_cls is LiteLLMConfig
 
-    def test_nim_pairing(self):
-        assert NIMLLMBackend.config_cls is NIMLLMConfig
-
     def test_openai_http_pairing(self):
         assert OpenAIHTTPBackend.config_cls is OpenAIHTTPConfig
 
     def test_wrong_config_type_rejected_before_litellm_import(self):
-        # Passing a NIMLLMConfig to LiteLLMBackend must raise TypeError from the
-        # centralized base check, which runs before the lazy `import litellm`.
+        # Passing another backend's config to LiteLLMBackend must raise TypeError
+        # from the centralized base check, which runs before the lazy
+        # `import litellm`.
         with pytest.raises(TypeError):
-            LiteLLMBackend(NIMLLMConfig(model="m"))
+            LiteLLMBackend(CallableLLMConfig(model="m"))
 
 
 class TestLiteLLMCompletionKwargs:

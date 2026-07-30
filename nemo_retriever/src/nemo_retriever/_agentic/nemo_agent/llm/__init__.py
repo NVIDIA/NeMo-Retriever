@@ -8,9 +8,8 @@ Internal integration surface:
 - :class:`BaseLLMBackend` — the ABC to implement for a custom backend
   (one required method: ``_completion_impl``).
 - :class:`CompletionResult` — the envelope every completion call returns.
-- :class:`BaseLLMConfig` / :class:`NIMLLMConfig` / :class:`LiteLLMConfig` /
-  :class:`OpenAIHTTPConfig` — configuration models, each colocated with its
-  backend class.
+- :class:`BaseLLMConfig` / :class:`LiteLLMConfig` / :class:`OpenAIHTTPConfig` —
+  configuration models, each colocated with its backend class.
 - :func:`create_llm` — config-driven backend factory.
 - :func:`create_llm_config` — kwargs-filtering config factory: builds a
   backend's config, dropping (with a warning) any field that config does not
@@ -38,7 +37,6 @@ from .helpers import (
     strip_private_message_keys,
 )
 from .litellm_backend import LiteLLMBackend, LiteLLMConfig
-from .nim_backend import NIMLLMBackend, NIMLLMConfig
 from .openai_http_backend import OpenAIHTTPBackend, OpenAIHTTPConfig
 from .result import CompletionResult
 from .usage import (
@@ -132,8 +130,6 @@ __all__ = [
     "LLMCallError",
     "LiteLLMBackend",
     "LiteLLMConfig",
-    "NIMLLMBackend",
-    "NIMLLMConfig",
     "OpenAIHTTPBackend",
     "OpenAIHTTPConfig",
     "RateLimitError",
