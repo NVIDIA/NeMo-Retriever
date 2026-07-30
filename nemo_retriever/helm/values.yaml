@@ -866,7 +866,7 @@ nims:
 
 # Each `nimOperator.<key>` block renders NIM Operator custom resources
 # (apiVersion: apps.nvidia.com/v1alpha1). As a temporary NIM Operator 3.1.1
-# compatibility path, the three 2.0 extraction NIMs default to
+# compatibility path, the affected 2.x extraction and retrieval NIMs default to
 # modelDownloadMode: nimService: the NIMService owns a direct PVC
 # and downloads its model at startup. modelDownloadMode: nimCache restores the
 # legacy NIMCache + NIMService pair. Other NIMs retain their NIMCache flow.
@@ -1186,15 +1186,28 @@ nimOperator:
   # the vectordb query path, and multimodal ingest.
   vlm_embed:
     enabled: true
+    # nimService: direct PVC + startup download; nimCache: legacy cache job.
+    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "1.12.0"
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Embed 2.0.0 skips cuDNN plan compilation on SM120 but still requires its
+    # canonical plan directory to exist. Create it on every architecture before
+    # delegating to the image's original entrypoint.
+    command:
+      - /bin/sh
+      - -c
+    args:
+      - >-
+        sm=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -1 | tr -d '.');
+        mkdir -p "${NIM_PRECOMPILE_CACHE_DIR:-/opt/cache}/sm${sm}/cudnn-sdpa-plan";
+        exec /usr/local/bin/retriever-entrypoint.sh nemotron-embed-server
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1324,9 +1337,11 @@ nimOperator:
   # service/Helm release.
   rerankqa:
     enabled: false
+    # nimService: direct PVC + startup download; nimCache: legacy cache job.
+    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
-      tag: "1.11.0"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret

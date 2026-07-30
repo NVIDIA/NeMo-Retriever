@@ -12,7 +12,7 @@ from nemo_retriever.common.policy import validate_pipeline_spec
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.ingest.service import ServiceIngestRequest, build_service_ingestor, execute_service_ingest_request
 from nemo_retriever.service.config import PipelineOverridesConfig
-from nemo_retriever.service.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor, ServiceIngestResult
 
 
 def test_build_service_ingestor_wires_extract_embed_and_chunking(tmp_path: Path) -> None:
@@ -93,8 +93,63 @@ def test_execute_service_ingest_request_raises_for_document_failures(monkeypatch
     failed_result = SimpleNamespace(failures=[("doc.pdf", "HTTP 400: invalid request")])
     monkeypatch.setattr(
         "nemo_retriever.ingest.service.build_service_ingestor",
-        lambda _request: SimpleNamespace(ingest=lambda: failed_result),
+        lambda _request: SimpleNamespace(ingest=lambda **_kwargs: failed_result),
     )
 
     with pytest.raises(RuntimeError, match=r"failed for 1 document\(s\).+doc.pdf.+HTTP 400"):
         execute_service_ingest_request(request)
+
+
+def test_execute_service_ingest_request_materializes_results_by_default(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    request = ServiceIngestRequest(documents=[str(tmp_path / "doc.pdf")], input_type="pdf")
+    result = SimpleNamespace(dataframe=[{"row": 1}, {"row": 2}], failures=[])
+    captured: dict[str, object] = {}
+
+    def ingest(**kwargs):
+        captured.update(kwargs)
+        return result
+
+    monkeypatch.setattr(
+        "nemo_retriever.ingest.service.build_service_ingestor",
+        lambda _request: SimpleNamespace(ingest=ingest),
+    )
+
+    execution = execute_service_ingest_request(request)
+
+    assert captured == {"return_results": True}
+    assert execution.n_rows == 2
+    assert execution.result_n_rows == 2
+
+
+def test_execute_service_ingest_request_can_disable_materialization_and_count_event_rows(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    request = ServiceIngestRequest(documents=[str(tmp_path / "doc.pdf")], input_type="pdf")
+    result = ServiceIngestResult(
+        [
+            {"event": "document_complete", "document_id": "a", "status": "completed", "result_rows": 2},
+            {"event": "document_complete", "document_id": "b", "status": "failed", "result_rows": 99},
+            {"event": "document_complete", "document_id": "c", "status": "completed", "result_rows": 3},
+        ]
+    )
+    captured: dict[str, object] = {}
+
+    def ingest(**kwargs):
+        captured.update(kwargs)
+        return result
+
+    monkeypatch.setattr(
+        "nemo_retriever.ingest.service.build_service_ingestor",
+        lambda _request: SimpleNamespace(ingest=ingest),
+    )
+
+    execution = execute_service_ingest_request(request, return_results=False)
+
+    assert captured == {"return_results": False}
+    assert execution.n_rows == 5
+    assert execution.result_n_rows == 5
+    assert execution.to_summary_dict()["result_n_rows"] == 5

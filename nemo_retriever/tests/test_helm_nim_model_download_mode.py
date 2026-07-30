@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for direct-PVC model downloads in NIM 2.0 services."""
+"""Regression tests for direct-PVC model downloads in affected 2.x NIMs."""
 
 from __future__ import annotations
 
@@ -15,9 +15,11 @@ import yaml
 
 _CHART = Path(__file__).resolve().parents[1] / "helm"
 _AFFECTED = {
-    "nemotron-page-elements-v3",
-    "nemotron-table-structure-v1",
-    "nemotron-ocr-v2",
+    "nemotron-page-elements-v3": "25Gi",
+    "nemotron-table-structure-v1": "25Gi",
+    "nemotron-ocr-v2": "25Gi",
+    "llama-nemotron-embed-vl-1b-v2": "50Gi",
+    "llama-nemotron-rerank-vl-1b-v2": "50Gi",
 }
 
 
@@ -53,22 +55,30 @@ def _find(docs: list[dict], kind: str, name: str) -> dict:
     return next(doc for doc in docs if doc.get("kind") == kind and doc.get("metadata", {}).get("name") == name)
 
 
-def test_defaults_use_direct_pvc_for_nim_2_services_and_keep_vlm_cache() -> None:
-    docs = _docs(_render().stdout)
+def test_defaults_use_direct_pvc_for_affected_2x_services() -> None:
+    docs = _docs(_render("nimOperator.rerankqa.enabled=true").stdout)
     cache_names = {doc["metadata"]["name"] for doc in docs if doc.get("kind") == "NIMCache"}
     assert cache_names.isdisjoint(_AFFECTED)
-    assert "llama-nemotron-embed-vl-1b-v2" in cache_names
 
-    for name in _AFFECTED:
+    for name, size in _AFFECTED.items():
         service = _find(docs, "NIMService", name)
         pvc = service["spec"]["storage"]["pvc"]
         assert pvc == {
             "create": True,
             "storageClass": "",
-            "size": "25Gi",
+            "size": size,
             "volumeAccessMode": "ReadWriteOnce",
         }
         assert "nimCache" not in service["spec"]["storage"]
+
+    assert _find(docs, "NIMService", "llama-nemotron-embed-vl-1b-v2")["spec"]["image"]["tag"] == "2.0.0"
+    assert _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")["spec"]["image"]["tag"] == "2.3.0"
+
+    embed = _find(docs, "NIMService", "llama-nemotron-embed-vl-1b-v2")["spec"]
+    assert embed["command"] == ["/bin/sh", "-c"]
+    assert "mkdir -p" in embed["args"][0]
+    assert "NIM_PRECOMPILE_CACHE_DIR" in embed["args"][0]
+    assert "retriever-entrypoint.sh nemotron-embed-server" in embed["args"][0]
 
 
 def test_nimcache_mode_restores_legacy_resources() -> None:
@@ -77,6 +87,9 @@ def test_nimcache_mode_restores_legacy_resources() -> None:
             "nimOperator.page_elements.modelDownloadMode=nimCache",
             "nimOperator.table_structure.modelDownloadMode=nimCache",
             "nimOperator.ocr.modelDownloadMode=nimCache",
+            "nimOperator.vlm_embed.modelDownloadMode=nimCache",
+            "nimOperator.rerankqa.enabled=true",
+            "nimOperator.rerankqa.modelDownloadMode=nimCache",
         ).stdout
     )
     for name in _AFFECTED:
