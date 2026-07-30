@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Mapping, Optional
 
+from .errors import LLMCallError
+
 _THINK_BLOCK_RE = re.compile(r"<think>(.*?)</think>", flags=re.DOTALL)
 
 
@@ -64,6 +66,34 @@ def normalize_messages_for_api(messages: List[Dict[str, Any]]) -> List[Dict[str,
                     msg["content"] = "\n".join(text_parts)
         normalized.append(msg)
     return normalized
+
+
+def extract_text_content(content: Any) -> Optional[str]:
+    """Coerce assistant message content to ``str | None`` per the envelope contract.
+
+    Providers occasionally return content as a list of blocks; extract and join
+    the text blocks, skipping non-text blocks (thinking/tool blocks — reasoning
+    is surfaced separately on ``CompletionResult.reasoning``). Any other shape
+    is a malformed provider response and raises :class:`LLMCallError`.
+    """
+    if content is None or isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                if block.get("type", "text") == "text" and "text" in block:
+                    parts.append(str(block.get("text", "")))
+            else:
+                text = getattr(block, "text", None)
+                if text:
+                    parts.append(str(text))
+        return "\n".join(parts) if parts else None
+    raise LLMCallError(
+        f"Unexpected assistant message content type from provider: {type(content).__name__}"
+    )
 
 
 def extract_reasoning_from_message(message: object) -> Optional[str]:

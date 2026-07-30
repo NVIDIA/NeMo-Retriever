@@ -164,7 +164,7 @@ class AgenticRetrievalConfig:
     temperature: Optional[float] = AGENTIC_TEMPERATURE
     # LLM client used to build the ReAct and selection agent LLMs. Optional:
     # when unset it defaults to ``"callable"`` for in-process (local vLLM) runs
-    # and to ``AGENTIC_DEFAULT_CLIENT`` (``"litellm"``) for remote
+    # and to ``AGENTIC_DEFAULT_CLIENT`` (``"openai_http"``) for remote
     # (openai_compatible) runs. A remote client (anything other than
     # ``"callable"``) may be named explicitly to override the default; the valid
     # set is the ``nemo_agent`` LLM backend registry.
@@ -426,38 +426,40 @@ class AgenticRetriever:
         per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, target_top_k)
         chat_completion_fn = self._get_chat_completion_fn()
 
+        react_operator = ReActAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            retriever_fn=self._retrieve_for_agent,
+            retriever_top_k=per_hop_top_k,
+            target_top_k=target_top_k,
+            max_steps=int(self._cfg.react_max_steps),
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            num_concurrent=int(self._cfg.num_concurrent),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=chat_completion_fn,
+        )
+        selection_operator = SelectionAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            top_k=target_top_k,
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            text_truncation=int(self._cfg.text_truncation),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=chat_completion_fn,
+        )
         pipeline = (
             AgenticQueryInputOperator()
-            >> ReActAgentOperator(
-                invoke_url=_none_if_empty(self._cfg.invoke_url),
-                llm_model=str(self._cfg.llm_model),
-                retriever_fn=self._retrieve_for_agent,
-                retriever_top_k=per_hop_top_k,
-                target_top_k=target_top_k,
-                max_steps=int(self._cfg.react_max_steps),
-                api_key=_none_if_empty(self._cfg.api_key),
-                parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                num_concurrent=int(self._cfg.num_concurrent),
-                reasoning_effort=self._cfg.reasoning_effort,
-                temperature=self._cfg.temperature,
-                backend=self._cfg.llm_client,
-                max_tokens=self._cfg.max_tokens,
-                chat_completion_fn=chat_completion_fn,
-            )
+            >> react_operator
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
-            >> SelectionAgentOperator(
-                invoke_url=_none_if_empty(self._cfg.invoke_url),
-                llm_model=str(self._cfg.llm_model),
-                top_k=target_top_k,
-                api_key=_none_if_empty(self._cfg.api_key),
-                parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                text_truncation=int(self._cfg.text_truncation),
-                reasoning_effort=self._cfg.reasoning_effort,
-                temperature=self._cfg.temperature,
-                backend=self._cfg.llm_client,
-                max_tokens=self._cfg.max_tokens,
-                chat_completion_fn=chat_completion_fn,
-            )
+            >> selection_operator
             >> AgenticSelectionOutputOperator()
         )
         graph_retriever = Retriever(
@@ -465,11 +467,17 @@ class AgenticRetriever:
             top_k=target_top_k,
             embed_kwargs={"text_column": "query_text"},
         )
-        raw_hits = graph_retriever.queries(
-            [str(query_text) for query_text in query_texts],
-            top_k=target_top_k,
-        )
-        return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
+        try:
+            raw_hits = graph_retriever.queries(
+                [str(query_text) for query_text in query_texts],
+                top_k=target_top_k,
+            )
+            return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
+        finally:
+            try:
+                selection_operator.close()
+            finally:
+                react_operator.close()
 
     def _retrieve_for_agent(self, query_text: str, top_k: int) -> list[dict[str, Any]]:
         """Retriever callback used by ``ReActAgentOperator``.

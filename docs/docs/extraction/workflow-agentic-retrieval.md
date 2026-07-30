@@ -28,7 +28,8 @@ retriever query "find documents about parser behavior" \
 ```
 
 Providing `--agentic-invoke-url` routes the agent to that remote endpoint; the LLM
-client defaults to `litellm`.
+client defaults to `openai_http`, which calls the endpoint over direct HTTP and
+needs no LLM SDK installed.
 
 ## MCP access for agents
 

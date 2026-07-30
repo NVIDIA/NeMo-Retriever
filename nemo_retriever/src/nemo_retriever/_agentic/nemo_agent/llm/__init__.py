@@ -8,8 +8,9 @@ Internal integration surface:
 - :class:`BaseLLMBackend` — the ABC to implement for a custom backend
   (one required method: ``_completion_impl``).
 - :class:`CompletionResult` — the envelope every completion call returns.
-- :class:`BaseLLMConfig` / :class:`NIMLLMConfig` / :class:`LiteLLMConfig` —
-  configuration models, each colocated with its backend class.
+- :class:`BaseLLMConfig` / :class:`NIMLLMConfig` / :class:`LiteLLMConfig` /
+  :class:`OpenAIHTTPConfig` — configuration models, each colocated with its
+  backend class.
 - :func:`create_llm` — config-driven backend factory.
 - :func:`create_llm_config` — kwargs-filtering config factory: builds a
   backend's config, dropping (with a warning) any field that config does not
@@ -20,8 +21,8 @@ Internal integration surface:
 - ``usage`` binders — :func:`bind_query_id` / :func:`bind_stage` for
   per-(query, stage) token-usage attribution.
 - ``helpers`` — reusable pieces for backend authors
-  (:func:`extract_reasoning_from_message`, :func:`normalize_messages_for_api`,
-  :func:`strip_private_message_keys`).
+  (:func:`extract_reasoning_from_message`, :func:`extract_text_content`,
+  :func:`normalize_messages_for_api`, :func:`strip_private_message_keys`).
 """
 
 import logging
@@ -32,11 +33,13 @@ from .callable_backend import CallableLLMBackend, CallableLLMConfig
 from .errors import ContentPolicyError, ContextLimitError, LLMCallError, RateLimitError
 from .helpers import (
     extract_reasoning_from_message,
+    extract_text_content,
     normalize_messages_for_api,
     strip_private_message_keys,
 )
 from .litellm_backend import LiteLLMBackend, LiteLLMConfig
 from .nim_backend import NIMLLMBackend, NIMLLMConfig
+from .openai_http_backend import OpenAIHTTPBackend, OpenAIHTTPConfig
 from .result import CompletionResult
 from .usage import (
     UNSET_QUERY,
@@ -56,6 +59,7 @@ logger = logging.getLogger(__name__)
 _BACKEND_REGISTRY = {
     "litellm": LiteLLMBackend,
     "callable": CallableLLMBackend,
+    "openai_http": OpenAIHTTPBackend,
 }
 
 
@@ -130,6 +134,8 @@ __all__ = [
     "LiteLLMConfig",
     "NIMLLMBackend",
     "NIMLLMConfig",
+    "OpenAIHTTPBackend",
+    "OpenAIHTTPConfig",
     "RateLimitError",
     "UNSET_QUERY",
     "UNSET_STAGE",
@@ -141,6 +147,7 @@ __all__ = [
     "deep_merge_usage",
     "deep_merge_usage_breakdown",
     "extract_reasoning_from_message",
+    "extract_text_content",
     "get_available_backends",
     "get_query_id",
     "get_stage",

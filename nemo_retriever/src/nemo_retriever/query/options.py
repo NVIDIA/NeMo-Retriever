@@ -69,7 +69,7 @@ class QueryAgenticOptions:
     num_concurrent: int = 1
     temperature: float | None = None
     # LLM client (see AgenticRetrievalConfig.llm_client). Optional: defaults to
-    # ``callable`` in-process / ``litellm`` remote when unset.
+    # ``callable`` in-process / ``openai_http`` remote when unset.
     llm_client: str | None = None
 
 

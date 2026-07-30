@@ -16,7 +16,7 @@ AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX = 2.0
 AGENTIC_NVIDIA_TEMPERATURE_MAX = 1.0
 
 #: Default LLM client for remote (openai_compatible) agentic retrieval.
-AGENTIC_DEFAULT_CLIENT = "litellm"
+AGENTIC_DEFAULT_CLIENT = "openai_http"
 
 
 def _parse_integer(value: object, *, field_name: str) -> tuple[int | None, str | None]:

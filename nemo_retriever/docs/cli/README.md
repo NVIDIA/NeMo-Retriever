@@ -222,8 +222,10 @@ Agentic-only knobs (apply only with `--agentic`):
   to run the in-process local model.
 - `--agentic-llm-client` (optional) — LLM client that builds the agent LLM.
   Defaults to `callable` (the local in-process adapter) when `--agentic-invoke-url`
-  is omitted, and to `litellm` for remote endpoints. A remote client
-  requires `--agentic-invoke-url`; `callable` is in-process only.
+  is omitted, and to `openai_http` for remote endpoints. A remote client
+  requires `--agentic-invoke-url`; `callable` is in-process only. `openai_http`
+  calls the endpoint over direct HTTP and needs no LLM SDK installed; pass
+  `litellm` instead to call using LiteLLM.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.

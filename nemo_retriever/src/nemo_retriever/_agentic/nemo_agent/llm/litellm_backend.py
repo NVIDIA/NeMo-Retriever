@@ -22,6 +22,7 @@ from .base_backend import BaseLLMBackend, BaseLLMConfig
 from .errors import ContentPolicyError, ContextLimitError, LLMCallError, RateLimitError
 from .helpers import (
     extract_reasoning_from_message,
+    extract_text_content,
     normalize_messages_for_api,
     strip_private_message_keys,
 )
@@ -169,34 +170,6 @@ def _apply_cache_control_to_last_block(
     return out
 
 
-def _extract_text_content(content: Any) -> Optional[str]:
-    """Coerce assistant message content to ``str | None`` per the envelope contract.
-
-    Providers occasionally return content as a list of blocks; extract and join
-    the text blocks, skipping non-text blocks (thinking/tool blocks — reasoning
-    is surfaced separately on ``CompletionResult.reasoning``). Any other shape
-    is a malformed provider response and raises :class:`LLMCallError`.
-    """
-    if content is None or isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: List[str] = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict):
-                if block.get("type", "text") == "text" and "text" in block:
-                    parts.append(str(block.get("text", "")))
-            else:
-                text = getattr(block, "text", None)
-                if text:
-                    parts.append(str(text))
-        return "\n".join(parts) if parts else None
-    raise LLMCallError(
-        f"Unexpected assistant message content type from provider: {type(content).__name__}"
-    )
-
-
 def _redacted_request(request_kwargs: Dict[str, Any]) -> Dict[str, Any]:
     """Deep-copied, credential-redacted snapshot of the request for ``raw_request``."""
     out: Dict[str, Any] = {}
@@ -234,6 +207,12 @@ class LiteLLMConfig(BaseLLMConfig):
         (e.g. ``num_retries=0`` for a fail-fast preflight probe).
     drop_params / allowed_openai_params:
         litellm parameter-filtering controls, passed through as-is.
+        ``drop_params`` defaults to ``True`` so an OpenAI-compatible endpoint that
+        rejects a param litellm's adapter emits does not 400 the whole run; set it
+        ``False`` to surface those rejections instead. Note this is exactly why
+        provider-specific params (``thinking`` / ``reasoning_effort`` /
+        ``cache_control``) are routed via ``extra_body`` below — top-level params
+        litellm does not recognize are silently stripped when this is on.
     cache_control:
         Prompt-cache marker (e.g. ``{"type": "ephemeral"}``). For Anthropic
         models this becomes per-message/tool ``cache_control`` block markers;
@@ -253,7 +232,7 @@ class LiteLLMConfig(BaseLLMConfig):
     thinking: Optional[Dict[str, Any]] = None
     api_version: Optional[str] = None
     num_retries: Optional[int] = 4
-    drop_params: bool = False
+    drop_params: bool = True
     allowed_openai_params: Optional[List[str]] = None
     cache_control: Optional[Dict[str, Any]] = None
     prompt_cache_key: Optional[str] = None
@@ -547,7 +526,7 @@ class LiteLLMBackend(BaseLLMBackend):
         choice = choices[0]
         message_obj = choice.message
 
-        message: Dict[str, Any] = {"role": "assistant", "content": _extract_text_content(message_obj.content)}
+        message: Dict[str, Any] = {"role": "assistant", "content": extract_text_content(message_obj.content)}
         tool_calls = getattr(message_obj, "tool_calls", None)
         if tool_calls:
             message["tool_calls"] = [

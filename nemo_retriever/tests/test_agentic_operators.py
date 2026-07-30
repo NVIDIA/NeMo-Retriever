@@ -564,13 +564,13 @@ class TestSelectionAgentPreprocess:
 class TestBuildLLMForwarding:
     """``_build_llm`` forwards temperature / parallel_tool_calls, preserving falsy values.
 
-    Builds a real backend (imports litellm); skipped when litellm is absent.
-    ``temperature=0.0`` / ``parallel_tool_calls=False`` are real settings and must
-    not be collapsed to ``None`` (guards against an ``x or None`` regression).
+    Builds a real backend on the default (``openai_http``) path, so no LLM SDK is
+    required. ``temperature=0.0`` / ``parallel_tool_calls=False`` are real settings
+    and must not be collapsed to ``None`` (guards against an ``x or None``
+    regression).
     """
 
     def test_react_forwards_falsy_sampling_args(self):
-        pytest.importorskip("litellm")
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         op = ReActAgentOperator(
@@ -584,7 +584,6 @@ class TestBuildLLMForwarding:
         assert config.parallel_tool_calls is False
 
     def test_selection_forwards_falsy_sampling_args(self):
-        pytest.importorskip("litellm")
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         op = SelectionAgentOperator(
@@ -595,6 +594,34 @@ class TestBuildLLMForwarding:
         config = op._build_llm().config
         assert config.temperature == 0.0
         assert config.parallel_tool_calls is False
+
+
+class TestOperatorCleanup:
+    def test_react_close_closes_owned_http_client_and_is_idempotent(self):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        op = ReActAgentOperator(llm_model="m", retriever_fn=lambda q, k: [])
+        llm = op._build_llm()
+        op._agent = MagicMock(llm=llm)
+
+        op.close()
+        op.close()
+
+        assert llm._client.is_closed
+        assert op._agent is None
+
+    def test_selection_close_closes_owned_http_client_and_is_idempotent(self):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        op = SelectionAgentOperator(llm_model="m")
+        llm = op._build_llm()
+        op._sel = MagicMock(llm=llm)
+
+        op.close()
+        op.close()
+
+        assert llm._client.is_closed
+        assert op._sel is None
 
 
 # ---------------------------------------------------------------------------
@@ -623,12 +650,22 @@ class TestCallableBackendWiring:
         # No litellm import required on this path.
         assert isinstance(op._build_llm(), CallableLLMBackend)
 
-    def test_build_llm_uses_configured_backend_without_completion_fn(self):
+    def test_build_llm_uses_default_backend_without_completion_fn(self):
+        from nemo_retriever._agentic.nemo_agent.llm import OpenAIHTTPBackend
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        # No completion_fn: the operator must build its configured backend rather
+        # than fall back to callable. The default is openai_http, which needs no
+        # LLM SDK installed.
+        op = SelectionAgentOperator(llm_model="gpt-4o")
+        assert isinstance(op._build_llm(), OpenAIHTTPBackend)
+
+    def test_build_llm_honors_an_explicit_backend(self):
         pytest.importorskip("litellm")
         from nemo_retriever._agentic.nemo_agent.llm import LiteLLMBackend
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
-        op = SelectionAgentOperator(llm_model="gpt-4o")
+        op = SelectionAgentOperator(llm_model="gpt-4o", backend="litellm")
         assert isinstance(op._build_llm(), LiteLLMBackend)
 
 

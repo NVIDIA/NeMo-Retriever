@@ -214,7 +214,7 @@ AgenticLlmClientOption = Annotated[
         "--agentic-llm-client",
         help=(
             "LLM client that builds the agent LLM in agentic mode. Optional: defaults to "
-            "'callable' for in-process local runs and 'litellm' for remote (--agentic-invoke-url) "
+            "'callable' for in-process local runs and 'openai_http' for remote (--agentic-invoke-url) "
             f"runs. Registered clients: {_AGENTIC_LLM_CLIENT_CHOICES}. A remote client requires "
             "--agentic-invoke-url; 'callable' is in-process only."
         ),

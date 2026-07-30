@@ -114,10 +114,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     temperature : float, optional
         Forwarded as the LLM config's ``temperature`` (sent to the provider
         only when set).
-    backend : {"litellm", "callable"}
-        LLM backend to build. ``"litellm"`` (default) is supported; ``"callable"``
-        wraps ``chat_completion_fn`` and is selected automatically for in-process
-        runs.
+    backend : {"openai_http", "litellm", "callable"}
+        LLM backend to build. ``"openai_http"`` (default, direct HTTP with no LLM
+        SDK) and ``"litellm"`` are both remote and require ``invoke_url``;
+        ``"callable"`` wraps ``chat_completion_fn`` and is selected automatically
+        for in-process runs.
     chat_completion_fn : callable, optional
         OpenAI-compatible completion callable (e.g. the local in-process vLLM
         adapter). When set, forwarded to the ``"callable"`` LLM backend.
@@ -151,7 +152,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         parallel_tool_calls: Optional[bool] = None,
         reasoning_effort: Optional[str] = None,
         temperature: Optional[float] = None,
-        backend: str = "litellm",
+        backend: str = "openai_http",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
@@ -189,7 +190,6 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             temperature=self._temperature,
             parallel_tool_calls=self._parallel_tool_calls,
             max_completion_tokens=self._max_tokens,
-            drop_params=True,
         )
         kwargs = {"completion_fn": self._chat_completion_fn} if self._chat_completion_fn is not None else {}
         return create_llm(config, **kwargs)
@@ -235,6 +235,15 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 retrieve_tool=retrieve_tool,
             )
         return self._agent
+
+    def close(self) -> None:
+        """Close the lazily built LLM backend, if it owns resources."""
+        agent = self._agent
+        self._agent = None
+        if agent is not None:
+            close = getattr(agent.llm, "close", None)
+            if callable(close):
+                close()
 
     # ------------------------------------------------------------------
     # AbstractOperator interface

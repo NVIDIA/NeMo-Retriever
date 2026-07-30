@@ -149,6 +149,32 @@ def test_agentic_retriever_honors_top_k():
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_closes_both_agent_operators():
+    from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+    from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results",
+            {"doc_ids": ["doc_1"], "message": "done", "search_successful": "true"},
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "done"}),
+    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", top_k=1)
+
+    with (
+        patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn),
+        patch.object(ReActAgentOperator, "close", autospec=True) as react_close,
+        patch.object(SelectionAgentOperator, "close", autospec=True) as selection_close,
+    ):
+        AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
+
+    react_close.assert_called_once()
+    selection_close.assert_called_once()
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_audio_recall_evaluation
 
@@ -318,14 +344,14 @@ def test_agentic_config_rejects_nonfinite_temperature():
         AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, temperature=float("nan"))
 
 
-def test_agentic_config_defaults_client_to_litellm():
+def test_agentic_config_defaults_client_to_openai_http():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    # Remote transport (invoke_url set), client unset -> litellm default.
+    # Remote transport (invoke_url set), client unset -> openai_http default.
     cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL)
 
     assert cfg.llm_backend == "openai_compatible"
-    assert cfg.llm_client == "litellm"
+    assert cfg.llm_client == "openai_http"
 
 
 def test_agentic_config_accepts_and_normalizes_known_client():

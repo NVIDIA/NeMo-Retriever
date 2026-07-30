@@ -23,9 +23,19 @@ from nemo_retriever._agentic.nemo_agent.llm import (
     LiteLLMConfig,
     NIMLLMBackend,
     NIMLLMConfig,
+    OpenAIHTTPBackend,
+    OpenAIHTTPConfig,
+    create_llm,
     create_llm_config,
     get_available_backends,
 )
+
+#: Per-backend kwargs needed on top of ``model`` to build a valid config.
+#: ``openai_http`` requires ``base_url`` (it is the POST target, so there is no
+#: sensible default); every other backend is satisfied by ``model`` alone.
+_MINIMAL_KWARGS: dict[str, dict[str, str]] = {
+    "openai_http": {"base_url": "https://example.invalid/v1/chat/completions"},
+}
 
 
 def _factory_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
@@ -61,12 +71,25 @@ class TestBackendSelection:
         # of hard-coding a backend list, so new registrations propagate for free.
         backends = get_available_backends()
         assert isinstance(backends, tuple)
-        assert set(backends) == {"callable", "litellm"}
+        assert set(backends) == {"callable", "litellm", "openai_http"}
         # Sorted, so callers can build stable, deterministic messages/choices.
         assert list(backends) == sorted(backends)
         # Every advertised name is actually selectable by the config factory.
         for name in backends:
-            assert create_llm_config(name, model="m").backend == name
+            config = create_llm_config(name, model="m", **_MINIMAL_KWARGS.get(name, {}))
+            assert config.backend == name
+
+    def test_create_llm_rejects_bare_base_config(self):
+        # BaseLLMConfig.backend defaults to "openai_http", but every backend
+        # requires its own config subclass, so a bare base config must still fail
+        # fast — at the config-type check rather than the registry lookup.
+        with pytest.raises(TypeError, match="OpenAIHTTPConfig"):
+            create_llm(BaseLLMConfig(model="x"))
+
+    def test_base_config_default_backend_is_registered(self):
+        # The declared library default must actually resolve; "nim" (the previous
+        # default) did not, which made the declaration a guaranteed ValueError.
+        assert BaseLLMConfig.model_fields["backend"].default in get_available_backends()
 
 
 class TestDropAndWarn:
@@ -84,10 +107,17 @@ class TestDropAndWarn:
         assert any("cache_control" in w for w in _factory_warnings(caplog))
 
     def test_supported_field_kept_no_warning(self, caplog):
+        # Pass the NON-default value: drop_params defaults to True, so asserting
+        # True here would pass even if the kwarg were silently ignored.
         with caplog.at_level(logging.WARNING):
-            config = create_llm_config("litellm", model="m", drop_params=True)
-        assert config.drop_params is True
+            config = create_llm_config("litellm", model="m", drop_params=False)
+        assert config.drop_params is False
         assert _factory_warnings(caplog) == []
+
+    def test_litellm_drop_params_defaults_true(self):
+        # The operators rely on this default rather than passing it explicitly —
+        # passing it would warn on every non-litellm backend, which has no such field.
+        assert create_llm_config("litellm", model="m").drop_params is True
 
     def test_warning_lists_keys_not_values(self, caplog):
         # Values (potential secrets) must never be logged — only field names.
@@ -109,10 +139,10 @@ class TestValidationPreserved:
 
 
 class TestReasoningEffortHoisted:
-    @pytest.mark.parametrize("backend", ["litellm", "callable"])
+    @pytest.mark.parametrize("backend", ["litellm", "callable", "openai_http"])
     def test_reasoning_effort_supported_on_every_backend(self, backend, caplog):
         with caplog.at_level(logging.WARNING):
-            config = create_llm_config(backend, model="m", reasoning_effort="high")
+            config = create_llm_config(backend, model="m", reasoning_effort="high", **_MINIMAL_KWARGS.get(backend, {}))
         assert config.reasoning_effort == "high"
         # It is a base field now, so it is never dropped and never warned about.
         assert not any("reasoning_effort" in w for w in _factory_warnings(caplog))
@@ -127,6 +157,9 @@ class TestConfigClsPairing:
 
     def test_nim_pairing(self):
         assert NIMLLMBackend.config_cls is NIMLLMConfig
+
+    def test_openai_http_pairing(self):
+        assert OpenAIHTTPBackend.config_cls is OpenAIHTTPConfig
 
     def test_wrong_config_type_rejected_before_litellm_import(self):
         # Passing a NIMLLMConfig to LiteLLMBackend must raise TypeError from the
@@ -144,9 +177,7 @@ class TestLiteLLMCompletionKwargs:
 
     def test_forwarded_when_set(self):
         pytest.importorskip("litellm")
-        backend = LiteLLMBackend(
-            LiteLLMConfig(model="gpt-4o-mini", temperature=0.3, parallel_tool_calls=True)
-        )
+        backend = LiteLLMBackend(LiteLLMConfig(model="gpt-4o-mini", temperature=0.3, parallel_tool_calls=True))
         assert backend.completion_kwargs["temperature"] == 0.3
         assert backend.completion_kwargs["parallel_tool_calls"] is True
 
@@ -209,3 +240,26 @@ class TestLiteLLMBaseUrlNormalization:
         # Normalization is litellm-specific; other backends keep the URL verbatim.
         c = create_llm_config("callable", model="m", base_url="https://x/v1/chat/completions")
         assert c.base_url == "https://x/v1/chat/completions"
+
+
+class TestOpenAIHTTPBaseUrl:
+    """base_url is the POST target: required, and used exactly as given."""
+
+    def test_required(self):
+        # A config problem belongs to the config object, not to backend __init__.
+        with pytest.raises(ValidationError):
+            create_llm_config("openai_http", model="m")
+
+    def test_used_verbatim(self):
+        # The opposite of LiteLLMConfig, which strips the suffix because litellm
+        # re-appends it. Here the value is POSTed as-is.
+        url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        assert create_llm_config("openai_http", model="m", base_url=url).base_url == url
+
+    def test_no_trailing_slash_cleanup(self):
+        url = "https://x/v1/chat/completions/"
+        assert OpenAIHTTPConfig(model="m", base_url=url).base_url == url
+
+    def test_negative_retries_rejected(self):
+        with pytest.raises(ValidationError):
+            OpenAIHTTPConfig(model="m", base_url="https://x", max_transient_retries=-1)

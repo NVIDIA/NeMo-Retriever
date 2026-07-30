@@ -95,8 +95,10 @@ Useful agentic query overrides:
   Providing it routes agent LLM calls to that remote endpoint.
 - `query.agentic_llm_client` — LLM client that builds the agent LLM. Optional:
   defaults to `callable` (local in-process adapter) when `query.agentic_invoke_url`
-  is omitted, and to `litellm` for remote endpoints. A
+  is omitted, and to `openai_http` for remote endpoints. A
   remote client requires `query.agentic_invoke_url`; `callable` is in-process only.
+  `openai_http` calls the endpoint over direct HTTP and needs no LLM SDK
+  installed; pass `litellm` instead to call using LiteLLM.
 - `query.agentic_local_gpu_memory_utilization`,
   `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
   and `query.agentic_local_max_num_seqs` — harness-only local vLLM resource and

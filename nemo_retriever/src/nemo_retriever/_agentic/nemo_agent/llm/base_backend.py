@@ -47,7 +47,10 @@ class BaseLLMConfig(BaseModel):
     backend:
         Discriminator used by :func:`nemo_agent.llm.create_llm` to pick the
         backend class (kept as a string so yaml/hydra-driven config works).
-        Defaults to ``"nim"``, the library's default backend.
+        Defaults to ``"openai_http"``, the library's default backend. Note each
+        backend subclass pins this by ``Literal``, so the default here only
+        applies to a bare ``BaseLLMConfig`` — which cannot build a backend, since
+        every backend requires its own config subclass.
     model:
         Model identifier, in whatever form the backend expects.
     api_key:
@@ -82,7 +85,7 @@ class BaseLLMConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    backend: str = "nim"
+    backend: str = "openai_http"
     model: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
