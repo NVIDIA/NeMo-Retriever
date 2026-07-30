@@ -1701,6 +1701,63 @@ async def query(request: Request) -> Response:
 
 
 # ------------------------------------------------------------------
+# POST /v1/agentic/query — agentic retrieval (proxied to vectordb pod)
+# ------------------------------------------------------------------
+
+
+@router.post(
+    "/agentic/query",
+    summary="Search ingested documents with the configured agentic retrieval workflow",
+)
+async def agentic_query(request: Request) -> Response:
+    """Proxy an agentic query request to the VectorDB service."""
+    import httpx
+
+    config = request.app.state.config
+
+    if not config.vectordb.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="VectorDB is not enabled in the service configuration.",
+        )
+    if not config.agentic.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="Agentic retrieval is not enabled in the service configuration.",
+        )
+
+    mode = _mode(request)
+    if mode in ("realtime", "batch"):
+        raise HTTPException(
+            status_code=404,
+            detail="Agentic query endpoint is not available on worker pods. Use the gateway.",
+        )
+
+    target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/agentic/query"
+    body = await request.body()
+
+    try:
+        async with httpx.AsyncClient(timeout=config.agentic.request_timeout_s) as client:
+            resp = await client.post(
+                target,
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+    except Exception as exc:
+        logger.exception("Failed to proxy agentic query to vectordb at %s", target)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
+        )
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type="application/json",
+    )
+
+
+# ------------------------------------------------------------------
 # GET /v1/internal/document-result/{id}  — gateway ← worker row cache
 # POST /v1/internal/job-callback  — worker → gateway completion hook
 # ------------------------------------------------------------------

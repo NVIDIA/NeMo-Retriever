@@ -97,6 +97,20 @@ llm:
   rag_system_prompt_prefix: null
   reasoning_enabled: true
 
+# Agentic (ReAct) retrieval exposed through POST /v1/agentic/query and the
+# agentic_query MCP tool. Service mode requires a remote OpenAI-compatible
+# invoke_url and llm_model when enabled.
+agentic:
+  enabled: false
+  llm_model: null
+  invoke_url: null
+  reasoning_effort: high
+  backend_top_k: 20
+  react_max_steps: 50
+  text_truncation: 0
+  temperature: 0.0
+  request_timeout_s: 1800.0
+
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
 # For CPU-only NIM-forwarding nodes, higher worker counts are fine.

@@ -641,6 +641,20 @@ serviceConfig:
     # portable no-reasoning controls.
     reasoningEnabled: true
 
+  # Agentic (ReAct) retrieval exposed as POST /v1/agentic/query and the
+  # agentic_query MCP tool. The LLM runs inside the vectordb pod because that
+  # pod owns the LanceDB volume.
+  agentic:
+    enabled: false
+    llmModel: ""
+    invokeUrl: ""
+    reasoningEffort: high
+    backendTopK: 20
+    reactMaxSteps: 50
+    textTruncation: 0
+    temperature: 0.0
+    requestTimeoutS: 1800.0
+
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.
   # For CPU-only NIM-forwarding nodes, higher worker counts are fine.

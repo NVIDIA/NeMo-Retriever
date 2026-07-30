@@ -157,6 +157,17 @@ def mcp_stdio(
     ),
     concurrency: int = typer.Option(8, "--concurrency", min=1, help="Max concurrent MCP document uploads."),
     request_timeout_s: float = typer.Option(60.0, "--request-timeout", min=0.1, help="HTTP request timeout."),
+    enable_agentic_query: bool = typer.Option(
+        False,
+        "--agentic-query/--no-agentic-query",
+        help="Expose the agentic_query MCP tool.",
+    ),
+    agentic_request_timeout_s: float = typer.Option(
+        1800.0,
+        "--agentic-request-timeout",
+        min=1.0,
+        help="HTTP timeout for agentic_query.",
+    ),
     ingest_timeout_s: float = typer.Option(1800.0, "--ingest-timeout", min=1.0, help="Document ingest timeout."),
     poll_interval_s: float = typer.Option(2.0, "--poll-interval", min=0.1, help="Status polling interval."),
     enable_write_tools: bool = typer.Option(
@@ -174,8 +185,10 @@ def mcp_stdio(
         auth_header_name=auth_header_name,
         max_concurrency=concurrency,
         request_timeout_s=request_timeout_s,
+        agentic_request_timeout_s=agentic_request_timeout_s,
         ingest_timeout_s=ingest_timeout_s,
         poll_interval_s=poll_interval_s,
         enable_write_tools=enable_write_tools,
+        enable_agentic_query=enable_agentic_query,
     )
     build_mcp(settings).run(transport="stdio")

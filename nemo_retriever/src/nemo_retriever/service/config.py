@@ -227,6 +227,30 @@ class LLMConfig(RichModel):
         return self
 
 
+class AgenticConfig(RichModel):
+    """Server-owned configuration for agentic (ReAct) retrieval queries."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    llm_model: str | None = None
+    invoke_url: str | None = None
+    reasoning_effort: str | None = "high"
+    backend_top_k: int = Field(default=20, ge=1)
+    react_max_steps: int = Field(default=50, ge=1)
+    text_truncation: int = Field(default=0, ge=0)
+    temperature: float = Field(default=0.0, ge=0.0)
+    request_timeout_s: float = Field(default=1800.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_remote_model(self) -> "AgenticConfig":
+        if self.enabled and not (self.invoke_url or "").strip():
+            raise ValueError("agentic.invoke_url must be set when agentic.enabled is true")
+        if self.enabled and not (self.llm_model or "").strip():
+            raise ValueError("agentic.llm_model must be set when agentic.enabled is true")
+        return self
+
+
 class ResourceLimitsConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -480,6 +504,7 @@ class ServiceConfig(RichModel):
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
     local_models: LocalModelsConfig = Field(default_factory=LocalModelsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)

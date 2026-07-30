@@ -77,9 +77,11 @@ class ServiceMCPSettings:
     auth_header_name: str = "Authorization"
     max_concurrency: int = 8
     request_timeout_s: float = 60.0
+    agentic_request_timeout_s: float = 1800.0
     ingest_timeout_s: float = 1800.0
     poll_interval_s: float = 2.0
     enable_write_tools: bool = True
+    enable_agentic_query: bool = False
 
     @property
     def normalized_base_url(self) -> str:
@@ -111,9 +113,11 @@ def settings_from_service_config(config: ServiceConfig) -> ServiceMCPSettings:
         auth_header_name=config.auth.header_name,
         max_concurrency=mcp_cfg.max_concurrency,
         request_timeout_s=mcp_cfg.request_timeout_s,
+        agentic_request_timeout_s=config.agentic.request_timeout_s,
         ingest_timeout_s=mcp_cfg.ingest_timeout_s,
         poll_interval_s=mcp_cfg.poll_interval_s,
         enable_write_tools=mcp_cfg.enable_write_tools,
+        enable_agentic_query=config.agentic.enabled,
     )
 
 
@@ -209,6 +213,20 @@ class ServiceMCPClient:
         body.setdefault("format", format)
         async with self._client() as client:
             resp = await client.post("/v1/query", json=body)
+        self._raise_for_status(resp)
+        return dict(self._json_or_text(resp))
+
+    async def agentic_query(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        async with self._client(timeout_s=self._settings.agentic_request_timeout_s) as client:
+            resp = await client.post(
+                "/v1/agentic/query",
+                json={"query": query, "top_k": top_k},
+            )
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
@@ -448,7 +466,8 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         instructions=(
             "Use these tools to interact with a running NVIDIA NeMo Retriever "
             "service. Ingest documents, check job status, query the configured "
-            "VectorDB, and ask the configured answer-generation endpoint."
+            "VectorDB, run agentic retrieval when configured, and ask the "
+            "configured answer-generation endpoint."
         ),
     )
 
@@ -502,6 +521,18 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await service.query(query, top_k=top_k, format=format, payload=payload)
+
+    if settings.enable_agentic_query:
+
+        @mcp.tool(
+            name="agentic_query",
+            description=(
+                "Run the configured agentic (ReAct) retrieval workflow over ingested "
+                "documents and return ranked document IDs."
+            ),
+        )
+        async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:
+            return await service.agentic_query(query, top_k=top_k)
 
     @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(

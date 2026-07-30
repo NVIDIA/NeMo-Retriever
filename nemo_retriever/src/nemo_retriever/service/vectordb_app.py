@@ -48,7 +48,11 @@ from nemo_retriever.common.vdb.lancedb_capabilities import (
     inspect_lancedb_table_object,
 )
 from nemo_retriever.query.evidence import build_evidence_result
+from nemo_retriever.service.agentic_query import run_agentic_query
+from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import (
+    AgenticQueryRequest,
+    AgenticQueryResponse,
     EvidenceQueryResponse,
     EvidenceResult,
     QueryRequest,
@@ -350,8 +354,10 @@ def create_vectordb_app(
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
+    agentic_config: AgenticConfig | None = None,
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
+    agentic_config = agentic_config or AgenticConfig()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -472,6 +478,53 @@ def create_vectordb_app(
 
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
+    @app.post("/v1/agentic/query", response_model=AgenticQueryResponse, tags=["query"])
+    async def agentic_query(req: AgenticQueryRequest) -> AgenticQueryResponse:
+        if not agentic_config.enabled:
+            raise HTTPException(status_code=404, detail="Agentic retrieval is not enabled.")
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        if _state.embed_mode == "none":
+            raise HTTPException(
+                501,
+                "No embedding backend configured. Set --embed-endpoint for a remote "
+                "NIM or --local-embed for in-pod Hugging Face query embedding.",
+            )
+        if _state.embed_mode != "remote":
+            raise HTTPException(
+                501,
+                "Agentic service queries currently require a remote embedding endpoint.",
+            )
+        if not _state.table_exists:
+            raise HTTPException(
+                status_code=422,
+                detail="No data has been ingested yet. Ingest documents first, then query.",
+            )
+        if req.top_k > agentic_config.backend_top_k:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"top_k ({req.top_k}) cannot exceed the configured agentic "
+                    f"backend_top_k ({agentic_config.backend_top_k})."
+                ),
+            )
+
+        try:
+            async with _query_semaphore:
+                return await asyncio.to_thread(
+                    run_agentic_query,
+                    req,
+                    config=agentic_config,
+                    lancedb_uri=_state.lancedb_uri,
+                    table_name=_state.table_name,
+                    embed_endpoint=_state.embed_endpoint,
+                    embed_model=_state.embed_model,
+                    embed_model_provider_prefix=_state.embed_model_provider_prefix,
+                    embed_api_key=_state.embed_api_key,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     return app
 
 
@@ -509,6 +562,23 @@ def main() -> None:
         default=0.45,
         help="vLLM GPU memory fraction when --local-embed-backend=vllm.",
     )
+    parser.add_argument(
+        "--agentic",
+        action="store_true",
+        help="Enable POST /v1/agentic/query using the existing agentic retrieval workflow.",
+    )
+    parser.add_argument("--agentic-llm-model", default="", help="Agentic retrieval chat model.")
+    parser.add_argument(
+        "--agentic-invoke-url",
+        default="",
+        help="OpenAI-compatible chat completions endpoint for agentic retrieval.",
+    )
+    parser.add_argument("--agentic-reasoning-effort", default="high")
+    parser.add_argument("--agentic-backend-top-k", type=int, default=20)
+    parser.add_argument("--agentic-react-max-steps", type=int, default=50)
+    parser.add_argument("--agentic-text-truncation", type=int, default=0)
+    parser.add_argument("--agentic-temperature", type=float, default=0.0)
+    parser.add_argument("--agentic-request-timeout", type=float, default=1800.0)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7671)
     parser.add_argument("--log-level", default="info")
@@ -534,6 +604,17 @@ def main() -> None:
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        agentic_config=AgenticConfig(
+            enabled=args.agentic,
+            llm_model=args.agentic_llm_model or None,
+            invoke_url=args.agentic_invoke_url or None,
+            reasoning_effort=args.agentic_reasoning_effort or None,
+            backend_top_k=args.agentic_backend_top_k,
+            react_max_steps=args.agentic_react_max_steps,
+            text_truncation=args.agentic_text_truncation,
+            temperature=args.agentic_temperature,
+            request_timeout_s=args.agentic_request_timeout,
+        ),
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AgenticConfig,
     AuthConfig,
     LoggingConfig,
     MCPConfig,
@@ -24,6 +25,7 @@ from nemo_retriever.service.mcp_server import (
     MCPDocumentInput,
     ServiceMCPClient,
     ServiceMCPSettings,
+    build_mcp,
     settings_from_service_config,
 )
 from nemo_retriever.service.services.pipeline_pool import WorkItem
@@ -78,6 +80,61 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
         },
     }
     assert result["results"][0]["hits"][0]["text"] == "match"
+
+
+def test_agentic_query_client_posts_to_dedicated_endpoint() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"results": [{"rank": 1, "doc_id": "report.pdf", "result_source": "selection_agent"}]},
+        )
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(
+            base_url="http://service:7670",
+            enable_agentic_query=True,
+            agentic_request_timeout_s=300.0,
+        ),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    result = _run(client.agentic_query("What is indexed?", top_k=2))
+
+    assert seen == {
+        "path": "/v1/agentic/query",
+        "body": {"query": "What is indexed?", "top_k": 2},
+    }
+    assert result["results"][0]["doc_id"] == "report.pdf"
+
+
+def test_agentic_query_tool_is_additive_and_config_gated() -> None:
+    plain_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings()).list_tools())}
+    agentic_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(enable_agentic_query=True)).list_tools())}
+
+    assert "query" in plain_tools
+    assert "agentic_query" not in plain_tools
+    assert "query" in agentic_tools
+    assert "agentic_query" in agentic_tools
+
+
+def test_settings_from_service_config_enables_agentic_query() -> None:
+    settings = settings_from_service_config(
+        ServiceConfig(
+            agentic=AgenticConfig(
+                enabled=True,
+                llm_model="model",
+                invoke_url="https://llm.example/v1/chat/completions",
+                request_timeout_s=321.0,
+            ),
+        )
+    )
+
+    assert settings.enable_agentic_query is True
+    assert settings.agentic_request_timeout_s == 321.0
 
 
 def test_ingest_documents_accepts_inline_base64_upload() -> None:

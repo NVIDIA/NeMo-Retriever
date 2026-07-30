@@ -36,6 +36,23 @@ class QueryResponse(BaseModel):
         return [result.hits for result in self.results]
 
 
+class AgenticQueryRequest(BaseModel):
+    """One query for the server-configured agentic retrieval pipeline."""
+
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=1000)
+
+
+class AgenticQueryResult(BaseModel):
+    rank: int
+    doc_id: str
+    result_source: str
+
+
+class AgenticQueryResponse(BaseModel):
+    results: list[AgenticQueryResult]
+
+
 class Locator(BaseModel):
     """Where an evidence item lives in its source (page / segment / timestamp / bbox)."""
 

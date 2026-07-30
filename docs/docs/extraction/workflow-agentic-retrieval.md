@@ -30,13 +30,52 @@ retriever query "find documents about parser behavior" \
 
 ## MCP access for agents
 
-`retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default. Agents can use that endpoint to call the running service for health checks, pipeline introspection, document ingestion, job status, VectorDB query, and answer generation. If service auth is enabled, the MCP endpoint uses the same bearer-token middleware as the REST API.
+`retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default.
+Agents can use that endpoint to call the running service for health checks,
+pipeline introspection, document ingestion, job status, VectorDB query, agentic
+retrieval, and answer generation. If service auth is enabled, the MCP endpoint
+uses the same bearer-token middleware as the REST API.
+
+Plain and agentic retrieval are separate tools:
+
+- `query` calls `POST /v1/query` for one-pass dense or hybrid retrieval.
+- `agentic_query` calls `POST /v1/agentic/query` and runs the existing ReAct
+  retrieval workflow. It is added to MCP when `agentic.enabled` is true.
+
+Enable agentic retrieval in `retriever-service.yaml`:
+
+```yaml
+agentic:
+  enabled: true
+  llm_model: your-openai-compatible-model
+  invoke_url: https://your-llm.example/v1/chat/completions
+  reasoning_effort: high
+  backend_top_k: 20
+  react_max_steps: 50
+  request_timeout_s: 1800
+```
+
+The VectorDB process owns the LanceDB volume and executes the agentic workflow.
+Start it with matching `--agentic`, `--agentic-llm-model`, and
+`--agentic-invoke-url` options. The LLM and embedding credentials are resolved
+from the service process environment. Service mode requires remote
+OpenAI-compatible LLM and embedding endpoints; local in-process models remain
+available through the one-shot CLI and harness paths.
+
+REST clients can call the same boundary directly:
+
+```bash
+curl -X POST http://localhost:7670/v1/agentic/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "find documents about parser behavior", "top_k": 5}'
+```
 
 For local stdio-based agents, run the MCP server as a shim that points at an existing retriever service:
 
 ```bash
 retriever service mcp-stdio \
   --service-url http://localhost:7670 \
+  --agentic-query \
   --api-token "$NEMO_RETRIEVER_API_TOKEN"
 ```
 

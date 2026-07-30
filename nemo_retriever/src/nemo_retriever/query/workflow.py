@@ -163,7 +163,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     """
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    api_key = resolve_remote_api_key()
+    api_key = resolve_remote_api_key(request.embed.embed_api_key)
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
