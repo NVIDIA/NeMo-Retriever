@@ -26,6 +26,7 @@ from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,
     _request_needs_asr_params,
+    _resolve_extract_params,
     _resolve_service_extraction_mode,
     _run_pipeline_in_process,
     _TRUST_OWNED_EMBED_KEYS,
@@ -345,6 +346,33 @@ def test_merge_preserves_server_extract_endpoints() -> None:
     assert merged["ocr_invoke_url"] == "http://server/ocr"
     assert merged["api_key"] == "server-token"
     assert merged["nemotron_parse_model"] == "nvidia/nemotron-parse-v1.2"
+
+
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr"])
+def test_resolve_extract_params_drops_parse_fields_for_other_methods(method: str) -> None:
+    base = {
+        "method": "nemotron_parse",
+        "nemotron_parse_invoke_url": "http://server/parse",
+        "nemotron_parse_model": "nvidia/nemotron-parse-v1.2",
+        "api_key": "server-token",
+    }
+    resolved = _resolve_extract_params(base, {"method": method})
+    assert resolved.method == method
+    assert resolved.nemotron_parse_invoke_url is None
+    assert resolved.nemotron_parse_model is None
+    assert resolved.api_key == "server-token"
+
+
+def test_resolve_extract_params_preserves_parse_fields_for_parse_method() -> None:
+    base = {
+        "method": "nemotron_parse",
+        "nemotron_parse_invoke_url": "http://server/parse",
+        "nemotron_parse_model": "nvidia/nemotron-parse-v1.2",
+    }
+    resolved = _resolve_extract_params(base, {"method": "nemotron_parse"})
+    assert resolved.method == "nemotron_parse"
+    assert resolved.nemotron_parse_invoke_url == "http://server/parse"
+    assert resolved.nemotron_parse_model == "nvidia/nemotron-parse-v1.2"
 
 
 def test_merge_preserves_server_embed_endpoints() -> None:

@@ -544,6 +544,13 @@ serviceConfig:
     pageElementsInvokeUrl: ""
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
+    # Optional Nemotron Parse chat-completions endpoint. When the
+    # operator-managed Parse NIM is enabled, its in-cluster URL is used
+    # unless this explicit endpoint is set.
+    nemotronParseInvokeUrl: ""
+    # Optional model override. Leave empty to infer the hosted
+    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    nemotronParseModel: ""
     embedInvokeUrl: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when

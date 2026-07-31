@@ -190,6 +190,19 @@ class NimEndpointsConfig(RichModel):
     )
     api_key: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_nemotron_parse_config(self) -> "NimEndpointsConfig":
+        endpoint = (self.nemotron_parse_invoke_url or "").strip()
+        model = (self.nemotron_parse_model or "").strip()
+        self.nemotron_parse_invoke_url = endpoint or None
+        self.nemotron_parse_model = model or None
+        if model and not endpoint:
+            raise ValueError(
+                "nim_endpoints.nemotron_parse_model requires "
+                "nim_endpoints.nemotron_parse_invoke_url"
+            )
+        return self
+
 
 class LLMConfig(RichModel):
     """Remote LLM configuration for service-mode RAG answer generation."""
