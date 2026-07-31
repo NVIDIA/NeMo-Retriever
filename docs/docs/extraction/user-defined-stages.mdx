@@ -2,7 +2,7 @@
 title: "Add User-defined Stages to Your NeMo Retriever Library Pipeline"
 description: ""
 ---
-This documentation demonstrates how to add user-defined stages to your [NeMo Retriever Library](/nightly-pages-extraction/overview) pipeline.
+This documentation demonstrates how to add user-defined stages to your [NeMo Retriever Library](/1-introduction/what-is-nemo-retriever) pipeline.
 You can directly import a function, or use a string module path, and include robust signature validation. 
 By following these steps, 
 your Lambda stages are robust, signature-validated, plug-and-play for your RayPipeline, 
@@ -20,7 +20,7 @@ To add user-defined stages to your pipeline, you need the following:
 
 - **A DataFrame payload** — The `control_message.payload` field must be a [pandas.DataFrame](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html). For more information, refer to [Create a DataFrame Payload](#create-a-dataframe-payload).
 
-- **Valid metadata** — The `metadata` field must conform to the [content metadata schema](/nightly-pages-extraction/content-metadata). For more information, refer to [Update and Validate Metadata](#update-and-validate-metadata).
+- **Valid metadata** — The `metadata` field must conform to the [content metadata schema](/11-reference/metadata-reference). For more information, refer to [Update and Validate Metadata](#update-and-validate-metadata).
 
 
 
@@ -159,7 +159,7 @@ When the pipeline runs it does the following:
 ## Update and Validate Metadata
 
 The `metadata` column in each row is a dictionary (JSON object), 
-and must conform to the [content metadata schema](/nightly-pages-extraction/content-metadata). 
+and must conform to the [content metadata schema](/11-reference/metadata-reference). 
 
 After you change any metadata, you can validate it by using the `validate_metadata` function 
 as demonstrated in the following code example.
@@ -291,5 +291,5 @@ The  following example adds user-defined stages to your NeMo Retriever Library p
 
 ## Related Topics
 
-- [User-Defined Functions for NeMo Retriever Library](/user-defined-functions)
-- [NimClient Usage](/nimclient)
+- [Customize & extend](/8-customize-extend/customize-extend#user-defined-functions-udfs)
+- [NimClient and custom NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/developer_docs/nimclient.md#nimclient-and-custom-nim-endpoints)

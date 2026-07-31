@@ -18,16 +18,16 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 
 ## Supported file types and formats { #supported-file-types-and-formats }
 
-NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [What is NeMo Retriever Library?](/nightly-pages-extraction/overview) under **NeMo Retriever Library supports the following file types**.
+NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [What is NeMo Retriever Library?](/1-introduction/what-is-nemo-retriever) under **NeMo Retriever Library supports the following file types**.
 
 **Related**
 
-- [Troubleshoot NeMo Retriever Library](/nightly-pages-extraction/troubleshooting) for format-specific issues
-- [Speech and audio](/nightly-pages-extraction/audio-video)
+- [Troubleshoot NeMo Retriever Library](/12-support-community/troubleshooting) for format-specific issues
+- [Speech and audio](/4-core-workflows/workflow-audio-video-ingestion)
 
 ## Text and layout extraction { #text-and-layout-extraction }
 
-For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](/nightly-pages-extraction/nemo-retriever-api-reference).
+For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](/11-reference/api-guide).
 
 <Note>
 `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse. This path does not produce chart modality rows; for chart detection, refer to [Charts and infographics](#charts-and-infographics).
@@ -35,19 +35,19 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 
 **Related**
 
-- [What is NeMo Retriever Library?](/nightly-pages-extraction/overview)
+- [What is NeMo Retriever Library?](/1-introduction/what-is-nemo-retriever)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
-- [Chunking](/nightly-pages-extraction/concepts#chunking)
+- [Chunking](/1-introduction/key-concepts#chunking)
 
 ## Tables { #tables }
 
-NeMo Retriever Library detects tables as structured page elements, processes them through the appropriate NIMs, and exports formats suitable for downstream RAG (including Markdown-oriented representations where configured). Availability depends on pipeline and model configuration; refer to the [Pre-Requisites & Support Matrix](/nightly-pages-extraction/prerequisites-support-matrix).
+NeMo Retriever Library detects tables as structured page elements, processes them through the appropriate NIMs, and exports formats suitable for downstream RAG (including Markdown-oriented representations where configured). Availability depends on pipeline and model configuration; refer to the [Pre-Requisites & Support Matrix](/2-get-started/pre-requisites-support-matrix).
 
 **Related**
 
-- [What is NeMo Retriever Library?](/nightly-pages-extraction/overview) for artifact classification
+- [What is NeMo Retriever Library?](/1-introduction/what-is-nemo-retriever) for artifact classification
 - [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing
-- [Metadata reference](/nightly-pages-extraction/content-metadata)
+- [Metadata reference](/11-reference/metadata-reference)
 
 ## Charts and infographics { #charts-and-infographics }
 
@@ -72,15 +72,15 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 **Related**
 
-- [What is NeMo Retriever Library?](/nightly-pages-extraction/overview)
-- [Pre-Requisites & Support Matrix](/nightly-pages-extraction/prerequisites-support-matrix)
-- [Multimodal embeddings (VLM)](/nightly-pages-extraction/embedding) when you treat graphics as images for embedding
+- [What is NeMo Retriever Library?](/1-introduction/what-is-nemo-retriever)
+- [Pre-Requisites & Support Matrix](/2-get-started/pre-requisites-support-matrix)
+- [Multimodal embeddings (VLM)](/6-embedding-indexing-storage/multimodal-embeddings-vlm) when you treat graphics as images for embedding
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
-Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](/nightly-pages-extraction/nemo-retriever-api-reference).
+Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](/11-reference/api-guide).
 
-When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](/nightly-pages-extraction/prerequisites-support-matrix#default-nvcf-endpoints).
+When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](/2-get-started/pre-requisites-support-matrix#default-nvcf-endpoints).
 
 **Related**
 
@@ -100,17 +100,17 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 **Related**
 
-- [Multimodal embeddings (VLM)](/nightly-pages-extraction/embedding)
-- [Metadata reference](/nightly-pages-extraction/content-metadata)
-- [Image captioning](/nightly-pages-extraction/prerequisites-support-matrix#image-captioning)
+- [Multimodal embeddings (VLM)](/6-embedding-indexing-storage/multimodal-embeddings-vlm)
+- [Metadata reference](/11-reference/metadata-reference)
+- [Image captioning](/2-get-started/pre-requisites-support-matrix#image-captioning)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
-Extracted objects follow the schema and field descriptions in the [Metadata reference](/nightly-pages-extraction/content-metadata). Use that page for tables, types, and per-field notes.
+Extracted objects follow the schema and field descriptions in the [Metadata reference](/11-reference/metadata-reference). Use that page for tables, types, and per-field notes.
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 
-Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must use the NVCF Asset API for larger inputs. For limits, `dpi` and `render_mode` tuning, and a step-by-step asset upload example, refer to [Hosted Page Elements NIM image size limits](/nightly-pages-extraction/troubleshooting#hosted-page-elements-nim-image-size-limits).
+Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must use the NVCF Asset API for larger inputs. For limits, `dpi` and `render_mode` tuning, and a step-by-step asset upload example, refer to [Hosted Page Elements NIM image size limits](/12-support-community/troubleshooting#hosted-page-elements-nim-image-size-limits).
 
 Image payload limits are separate from the throughput metrics in the rest of this section.
 

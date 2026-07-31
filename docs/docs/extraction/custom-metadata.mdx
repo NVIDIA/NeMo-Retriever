@@ -8,7 +8,7 @@ and use it for filtering results during retrieval operations.
 For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
 To create filters at query time, use predicates supported by [LanceDB SQL](https://docs.lancedb.com/search/sql) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
 
-Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](/nightly-pages-extraction/overview).
+Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](/1-introduction/what-is-nemo-retriever).
 
 
 ## Limitations
@@ -58,8 +58,8 @@ meta_df.to_csv(file_path)
 ### Example: Add Custom Metadata During Ingestion
 
 The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, see [Use the Python API](/nv-ingest-python-api).
-For more information about the `vdb_upload` method, see [Upload Data](/data-store).
+For more information about the `Ingestor` class, refer to the [Python API guide](/11-reference/api-guide).
+For more information about the `vdb_upload` method, refer to [Vector databases](/6-embedding-indexing-storage/vector-databases).
 
 ```python
 from nv_ingest_client.client.interface import Ingestor
