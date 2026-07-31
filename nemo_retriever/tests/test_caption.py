@@ -415,7 +415,7 @@ def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configure
     mock_create_client.assert_called_once()
     assert mock_create_client.call_args.args[0] == "https://integrate.api.nvidia.com/v1/chat/completions"
     infer_kwargs = mock_nim.infer.call_args.kwargs
-    assert infer_kwargs["model_name"] == "nvidia/nemotron-nano-12b-v2-vl"
+    assert infer_kwargs["model_name"] == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
 
 @patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
@@ -667,7 +667,7 @@ def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
     assert omni_result.iloc[0]["images"][0]["text"] == "local cap 2"
     assert omni_again.iloc[0]["images"][0]["text"] == "local cap 2"
     assert [kwargs["model_name"] for kwargs in created_kwargs] == [
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
         "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8",
     ]
 

@@ -7,7 +7,7 @@ This package wraps **vector database backends** behind a small `VDB` interface (
 
 The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`.
 
-The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not currently expose a generic `--vdb-op` / `--vdb-kwargs-json` query surface.
+The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not expose a backend-agnostic VDB configuration surface.
 
 ---
 
@@ -39,7 +39,6 @@ Together, repartition + full batch mean **`process()`** receives **every row at 
 ### Wiring ingestion today
 
 - **Root CLI** (`retriever ingest ...`): writes to LanceDB through the shared graph ingest path.
-- **Compatibility CLI** (`retriever pipeline run ...`): builds `VdbUploadParams` and `GraphIngestor.vdb_upload(...)`, which appends `IngestVdbOperator` to the graph after embed/store and before webhook.
 - **Direct API**:
 
 ```python
@@ -56,11 +55,12 @@ op = IngestVdbOperator(
 op(pandas_dataframe_of_embedded_rows)  # or list of row dicts
 ```
 
-CLI-equivalent kwargs are often passed as JSON:
+The root CLI exposes the built-in LanceDB target directly:
 
 ```bash
-retriever pipeline run /data/pdfs --vdb-op lancedb \
-  --vdb-kwargs-json '{"uri":"./kb","table_name":"nemo-retriever"}'
+retriever ingest /data/pdfs \
+  --lancedb-uri ./kb \
+  --table-name nemo-retriever
 ```
 
 ---
@@ -97,6 +97,8 @@ Common constructor arguments include:
 `RetrieveVdbOperator` wraps the same concrete **`VDB`** instance but calls **`retrieval(vectors, **kwargs)`** instead of `run`. It merges per-call kwargs with the operator’s stored `vdb_kwargs` and returns **`normalize_retrieval_results(...)`** output (see `operators.py`, `records.py`).
 
 Important: retrieval here expects **`vectors`** — a list of query embedding vectors — as the primary input. String queries are embedded elsewhere (e.g. in `Retriever`). Hybrid backends that need raw text receive aligned `query_texts` as execution-only call context.
+
+Before embedding, `Retriever` asks the operator for `get_index_metadata("embedding_model_name")`. The base `VDB` implementation returns `None`; a backend can override the method to expose metadata from its selected table or index. LanceDB exposes both `embedding_model_name` and `retrieval_mode` through this lookup.
 
 ### LanceDB inside `RetrieveVdbOperator`
 

@@ -16,12 +16,23 @@ Uses bfloat16 and FLASH_ATTN backend by default for best throughput.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
+VLLM_DEEP_GEMM_WARMUP_DEFAULT = "skip"
+
+
+def apply_vllm_startup_defaults() -> None:
+    """Apply conservative vLLM startup defaults without overriding users."""
+
+    # DeepGEMM can still be used by vLLM at runtime. This only skips the
+    # ahead-of-time warmup path, which may fail before local inference starts
+    # when the optional DeepGEMM/CUDA-toolkit stack is not discoverable.
+    os.environ.setdefault("VLLM_DEEP_GEMM_WARMUP", VLLM_DEEP_GEMM_WARMUP_DEFAULT)
 
 
 def create_vllm_llm(
@@ -44,6 +55,7 @@ def create_vllm_llm(
     Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
 
     """
+    apply_vllm_startup_defaults()
     try:
         from vllm import LLM
     except ImportError as e:
@@ -185,4 +197,9 @@ def embed_multimodal_with_vllm_llm(
     return all_embeddings
 
 
-__all__ = ["create_vllm_llm", "embed_with_vllm_llm", "embed_multimodal_with_vllm_llm"]
+__all__ = [
+    "apply_vllm_startup_defaults",
+    "create_vllm_llm",
+    "embed_with_vllm_llm",
+    "embed_multimodal_with_vllm_llm",
+]

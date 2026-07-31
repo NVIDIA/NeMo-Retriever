@@ -57,6 +57,26 @@ def agentic_int_min_error(value: object, *, field_name: str, min_value: int) -> 
     return None
 
 
+def agentic_float_range_value(
+    value: object,
+    *,
+    field_name: str,
+    min_value: float,
+    max_value: float,
+    min_exclusive: bool = False,
+) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number") from None
+    if not math.isfinite(parsed):
+        raise ValueError(f"{field_name} must be finite")
+    if parsed > max_value or (parsed <= min_value if min_exclusive else parsed < min_value):
+        operator = ">" if min_exclusive else ">="
+        raise ValueError(f"{field_name} must be {operator} {min_value} and <= {max_value}")
+    return parsed
+
+
 def is_nvidia_agentic_endpoint(invoke_url: str | None) -> bool:
     """Return true for the default/hosted NVIDIA chat-completions endpoint."""
 

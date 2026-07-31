@@ -70,7 +70,6 @@ def main():
         # Use quiet=False to see verbose startup logs
         pipeline = run_pipeline(
             block=False,
-            disable_dynamic_scaling=True,
             run_in_subprocess=True,
         )
         time.sleep(10)

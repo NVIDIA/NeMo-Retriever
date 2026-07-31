@@ -74,6 +74,9 @@ class NemotronRerankVLV2VLLM(BaseModel):
     ) -> None:
         super().__init__()
 
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+
+        apply_vllm_startup_defaults()
         try:
             from vllm import LLM
         except ImportError as e:

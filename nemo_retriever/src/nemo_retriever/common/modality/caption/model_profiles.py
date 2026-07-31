@@ -24,6 +24,12 @@ OMNI_FP8_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
+# Canonical defaults for caption call sites. Keep local and remote defaults
+# separate because hosted/NIM endpoints use the API model ID, while direct
+# vLLM execution loads the Hugging Face BF16 checkpoint.
+DEFAULT_LOCAL_CAPTION_MODEL_ID = OMNI_BF16_MODEL_ID
+DEFAULT_REMOTE_CAPTION_MODEL_ID = OMNI_REMOTE_MODEL_ID
+
 _NANO_BF16_REMOTE_MODEL_ID = NANO_REMOTE_MODEL_ID
 _NANO_FP8_REMOTE_MODEL_ID = f"{NANO_REMOTE_MODEL_ID}-fp8"
 _NANO_NVFP4_QAD_REMOTE_MODEL_ID = f"{NANO_REMOTE_MODEL_ID}-nvfp4-qad"
@@ -380,6 +386,8 @@ __all__ = [
     "CaptionCapabilities",
     "CaptionModelProfile",
     "CaptionTarget",
+    "DEFAULT_LOCAL_CAPTION_MODEL_ID",
+    "DEFAULT_REMOTE_CAPTION_MODEL_ID",
     "NANO_BF16_MODEL_ID",
     "NANO_FP8_MODEL_ID",
     "NANO_NVFP4_QAD_MODEL_ID",

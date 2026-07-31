@@ -23,6 +23,8 @@ On Windows PowerShell you can use `$env:NVIDIA_API_KEY = "nvapi-..."`.
 
 For a full list of related variables, refer to [Environment configuration variables](environment-config.md).
 
+When you call hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) with images larger than about 180,000 characters (roughly 180 KB) inline, you also use this key with the [NVCF Asset API](https://docs.api.nvidia.com/cloud-functions/reference/createasset) to upload inputs and reference them by `asset_id`. Refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits) for the workflow and example code.
+
 !!! note
 
     The `NVIDIA_API_KEY` from build.nvidia.com is not the same string as your NGC personal key used for Helm and `nvcr.io` access. Do not substitute one for the other unless your tooling explicitly documents that mapping.

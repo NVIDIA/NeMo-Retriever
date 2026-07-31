@@ -63,19 +63,24 @@ TableNameOption = Annotated[
 ]
 EmbedInvokeUrlOption = Annotated[
     str | None,
-    typer.Option("--embed-invoke-url", help="Embedding NIM endpoint URL."),
+    typer.Option("--embed-invoke-url", envvar="EMBED_INVOKE_URL", help="Embedding NIM endpoint URL."),
 ]
 EmbedModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-name",
-        help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+        envvar="EMBED_MODEL_NAME",
+        help=(
+            "Embedding model override. When omitted, use the model recorded on the selected table, "
+            f"then fall back to {DEFAULT_EMBED_MODEL} for a legacy table without metadata."
+        ),
     ),
 ]
 EmbedModelProviderPrefixOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-provider-prefix",
+        envvar="EMBED_MODEL_PROVIDER_PREFIX",
         help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]
@@ -159,7 +164,10 @@ AgenticLlmModelOption = Annotated[
     str | None,
     typer.Option(
         "--agentic-llm-model",
-        help="Chat model the agent drives. Required when --agentic is set.",
+        help=(
+            "Chat model the agent drives. Defaults to nemotron-8b for local in-process runs; "
+            "required when --agentic-invoke-url is provided."
+        ),
     ),
 ]
 AgenticInvokeUrlOption = Annotated[

@@ -148,6 +148,10 @@ class VDB(ABC):
         """
         pass
 
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Return one metadata value for the selected index, if available."""
+        return None
+
     def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
         """Replace a batch of existing rows in the target table/index.
 

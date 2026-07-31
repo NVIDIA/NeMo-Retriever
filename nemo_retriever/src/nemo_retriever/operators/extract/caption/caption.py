@@ -12,6 +12,7 @@ import pandas as pd
 from PIL import Image
 
 from nemo_retriever.common.modality.caption.model_profiles import (
+    DEFAULT_LOCAL_CAPTION_MODEL_ID,
     get_caption_model_profile,
     merge_request_extras,
     resolve_caption_model_name,
@@ -25,7 +26,7 @@ from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbo
 from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
-_DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+_DEFAULT_MODEL_NAME = DEFAULT_LOCAL_CAPTION_MODEL_ID
 _DEFAULT_REMOTE_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 _MAX_CONTEXT_TEXT_CHARS = 4096
 _MIN_IMAGE_DIMENSION = 32

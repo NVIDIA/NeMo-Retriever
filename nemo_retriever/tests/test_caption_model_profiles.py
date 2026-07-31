@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.abc
+import os
 import sys
 from types import ModuleType
 
@@ -20,6 +21,21 @@ OMNI_BF16 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16"
 OMNI_FP8 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+
+
+def test_canonical_caption_defaults_are_omni():
+    from nemo_retriever.common.modality.caption.model_profiles import (
+        DEFAULT_LOCAL_CAPTION_MODEL_ID,
+        DEFAULT_REMOTE_CAPTION_MODEL_ID,
+    )
+    from nemo_retriever.common.params import CaptionParams
+
+    assert DEFAULT_LOCAL_CAPTION_MODEL_ID == OMNI_BF16
+    assert DEFAULT_REMOTE_CAPTION_MODEL_ID == OMNI_REMOTE
+    assert CaptionParams().model_name == OMNI_BF16
+    assert "approximately 62 GiB" in CaptionParams.model_json_schema()["properties"]["model_name"]["description"]
+
+
 _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = (
     "nemo_retriever.models.local.nemotron_vlm_captioner",
     "nemo_retriever.common.nvtx",
@@ -373,6 +389,7 @@ def _install_fake_vllm():
 
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.deep_gemm_warmup = os.environ.get("VLLM_DEEP_GEMM_WARMUP")
             self.chat_calls = []
             FakeLLM.instances.append(self)
 
@@ -445,12 +462,27 @@ def test_local_captioner_uses_profile_metadata(
         assert "hf_overrides" not in llm_kwargs
 
 
+def test_local_captioner_applies_vllm_startup_defaults_before_constructing_llm(
+    isolated_local_captioner_imports, monkeypatch
+):
+    monkeypatch.delenv("VLLM_DEEP_GEMM_WARMUP", raising=False)
+    FakeLLM, _FakeSamplingParams = _install_fake_vllm()
+
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+
+    NemotronVLMCaptioner(model_path=OMNI_BF16)
+
+    assert FakeLLM.instances[-1].deep_gemm_warmup == "skip"
+
+
 def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_captioner_imports):
     FakeLLM, _FakeSamplingParams = _install_fake_vllm()
 
     from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
-    captioner = NemotronVLMCaptioner(model_path=OMNI_BF16)
+    captioner = NemotronVLMCaptioner()
+
+    assert captioner.model_name == OMNI_BF16
 
     assert captioner.caption_batch(["abc123"]) == ["generated caption"]
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]

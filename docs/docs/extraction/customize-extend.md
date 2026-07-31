@@ -23,7 +23,7 @@ The following table maps common needs to the right section:
 
 ## Start with task configuration { #start-with-task-configuration }
 
-Most customization does not require new code. Chain tasks on `create_ingestor(...)` and pass keyword arguments to control extraction, chunking, embedding, and storage—for example `extract_method`, chunking and splitting options on `.extract()`, `embed_modality` on `.embed()`, and `vdb_op` / `vdb_kwargs` on `.vdb_upload()`.
+Most customization does not require new code. Chain tasks on `create_ingestor(...)` and pass keyword arguments to control extraction, chunking, embedding, and storage—for example `method`, chunking and splitting options on `.extract()`, `embed_modality` on `.embed()`, and `vdb_op` / `vdb_kwargs` on `.vdb_upload()`.
 
 For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md). For chunking behavior and pipeline concepts, refer to [Concepts](concepts.md).
 

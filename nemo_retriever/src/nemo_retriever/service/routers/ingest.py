@@ -21,7 +21,6 @@ import hashlib
 import ipaddress
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -62,7 +61,6 @@ from nemo_retriever.service.services.pipeline_pool import (
     get_pipeline_pool,
 )
 from nemo_retriever.service.services.prometheus import (
-    GATEWAY_FORWARD_DURATION,
     INGEST_BYTES_TOTAL,
     INGEST_DOCUMENTS_TOTAL,
     INGEST_PAGES_TOTAL,
@@ -129,9 +127,8 @@ def _mode(request: Request) -> str:
 def _is_dry_run(request: Request) -> bool:
     """Return ``True`` when the client sends the dry-run header.
 
-    When present (any truthy value), worker pods skip pipeline enqueue
-    and return an immediate 202.  The gateway forwards the header to the
-    backend unchanged so the worker still sees it.
+    When present (any truthy value), page and whole-document routes skip
+    queue admission and return an immediate 202.
     """
     val = request.headers.get(_DRY_RUN_HEADER, "").strip().lower()
     return val not in ("", "0", "false", "no")
@@ -182,12 +179,6 @@ def _internal_auth_headers(request: Request) -> dict[str, str]:
     from nemo_retriever.service.auth import auth_headers
 
     return auth_headers(request.app.state.config.auth)
-
-
-def _gateway_retain_results_headers(job_id: str) -> dict[str, str]:
-    if _job_retain_results(job_id):
-        return {_GATEWAY_RETAIN_RESULTS_HEADER: "true"}
-    return {}
 
 
 def _record_prometheus(
@@ -287,7 +278,12 @@ async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, An
     )
 
 
-def _worker_result_url(request: Request, document_id: str, worker_ip_value: Any) -> str:
+def _worker_result_url(
+    request: Request,
+    document_id: str,
+    worker_ip_value: Any,
+    callback_worker_ip: Any = None,
+) -> str:
     """Build a fixed-path owner URL from a validated worker pod IP."""
     if not isinstance(worker_ip_value, str):
         raise HTTPException(status_code=503, detail="Completion callback is missing result worker identity")
@@ -297,6 +293,14 @@ def _worker_result_url(request: Request, document_id: str, worker_ip_value: Any)
         raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
     if worker_ip.is_unspecified or worker_ip.is_multicast or worker_ip.is_loopback or worker_ip.is_link_local:
         raise HTTPException(status_code=400, detail="Completion callback has an unroutable result worker IP")
+
+    if callback_worker_ip is not None:
+        try:
+            advertised_ip = ipaddress.ip_address(callback_worker_ip)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
+        if advertised_ip != worker_ip:
+            raise HTTPException(status_code=409, detail="Result worker IP does not match lease owner")
 
     peer_value = request.client.host if request.client is not None else ""
     try:
@@ -311,9 +315,14 @@ def _worker_result_url(request: Request, document_id: str, worker_ip_value: Any)
     return f"http://{host}:{port}/v1/internal/document-result/{quote(document_id, safe='')}"
 
 
-async def _pull_and_store_worker_result(request: Request, document_id: str, worker_ip: Any) -> None:
+async def _pull_and_store_worker_result(
+    request: Request,
+    document_id: str,
+    worker_ip: Any,
+    callback_worker_ip: Any = None,
+) -> None:
     """Copy rows from the exact completing worker into the gateway store."""
-    url = _worker_result_url(request, document_id, worker_ip)
+    url = _worker_result_url(request, document_id, worker_ip, callback_worker_ip)
     try:
         async with httpx.AsyncClient(timeout=10.0, headers=_internal_auth_headers(request)) as client:
             response = await client.get(url)
@@ -346,75 +355,53 @@ async def _pull_and_store_worker_result(request: Request, document_id: str, work
         ) from exc
 
 
-def _build_callback_url(request: Request) -> str:
-    """Build the internal callback URL pointing to THIS specific gateway pod.
-
-    Uses ``POD_IP`` env (Kubernetes downward API) so the worker calls
-    back to the exact gateway pod that accepted the upload, not the
-    Service VIP which might route to a different replica.
-    """
-    pod_ip = os.environ.get("POD_IP")
-    port = request.app.state.config.server.port
-    if pod_ip:
-        return f"http://{pod_ip}:{port}/v1/internal/job-callback"
-    return f"http://localhost:{port}/v1/internal/job-callback"
-
-
-async def _gateway_forward(
+async def _gateway_enqueue(
     request: Request,
     pool_type: PoolType,
     *,
-    extra_headers: dict[str, str] | None = None,
-) -> Response:
-    """Proxy the entire HTTP request to the backend for *pool_type*."""
-    import time
+    work_id: str,
+    job_id: str,
+    payload: bytes,
+    filename: str | None,
+    pipeline_spec: PipelineSpec | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Admit split-mode work to the gateway broker after atomic spooling."""
+    from nemo_retriever.service.services.work_queue import WorkQueueFull, get_work_broker
 
-    proxy = get_proxy()
-    if proxy is None:
-        raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-    t0 = time.monotonic()
+    broker = get_work_broker()
+    if broker is None:
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.unregister_pending(work_id)
+        raise HTTPException(status_code=503, detail="Gateway work broker not initialised")
     try:
-        resp = await proxy.forward(request, pool_type, extra_headers=extra_headers)
-    except Exception as exc:
-        logger.exception(
-            "Gateway forward to %s failed for %s %s",
-            pool_type.value,
-            request.method,
-            request.url.path,
+        await broker.enqueue(
+            pool_type,
+            work_id=work_id,
+            job_id=job_id,
+            payload=payload,
+            filename=filename,
+            retain_results=_job_retain_results(job_id),
+            pipeline_spec=pipeline_spec.model_dump(mode="json") if pipeline_spec is not None else None,
+            trace_context=_safe_inject_trace_context(),
+            extra=extra,
         )
-        INGEST_REQUESTS_TOTAL.labels(
-            role="gateway",
-            endpoint=request.url.path,
-            status="5xx",
-        ).inc()
+    except WorkQueueFull as exc:
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.unregister_pending(work_id)
         raise HTTPException(
-            status_code=502,
-            detail=(f"Gateway failed to forward request to {pool_type.value} backend: " f"{type(exc).__name__}: {exc}"),
-        )
-    elapsed = time.monotonic() - t0
-    GATEWAY_FORWARD_DURATION.labels(backend=pool_type.value).observe(elapsed)
-    INGEST_REQUESTS_TOTAL.labels(
-        role="gateway",
-        endpoint=request.url.path,
-        status=f"{resp.status_code // 100}xx",
-    ).inc()
-    return resp
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": _RETRY_AFTER_SECONDS},
+        ) from exc
 
 
-def _file_size_from_upload(file: UploadFile, request: Request | None = None) -> int:
-    """Best-effort file size without reading bytes.
-
-    Checks ``UploadFile.size`` first, then falls back to the total cached
-    body size stored by the gateway body-cache middleware.  The cached body
-    includes multipart framing so it slightly overestimates, but it's good
-    enough for throughput metrics.
-    """
+def _file_size_from_upload(file: UploadFile) -> int:
+    """Best-effort upload size without reading bytes."""
     if file.size is not None:
         return file.size
-    if request is not None:
-        cached = request.scope.get("_cached_body")
-        if cached:
-            return len(cached)
     return 0
 
 
@@ -891,7 +878,7 @@ async def submit_document_to_job(
         if _is_gateway(request):
             classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             file_bytes = await file.read()
             route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
@@ -901,25 +888,15 @@ async def submit_document_to_job(
             now = datetime.now(timezone.utc).isoformat()
 
             _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(document_id)
-
-            callback_url = _build_callback_url(request)
-            extra_headers = {
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_JOB_ID_HEADER: job_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-                **_gateway_retain_results_headers(job_id),
-            }
-            if validated_spec is not None:
-                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-            resp = await _gateway_forward(request, route, extra_headers=extra_headers)
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            await _gateway_enqueue(
+                request,
+                route,
+                work_id=document_id,
+                job_id=job_id,
+                payload=file_bytes,
+                filename=file.filename,
+                pipeline_spec=validated_spec,
+            )
 
             _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
@@ -1020,35 +997,30 @@ async def submit_page_to_job(
 
     with _start_accept_span(request, job_id, "ingest.page.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=filename)
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             page_id = uuid.uuid4().hex
-            content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
+            file_bytes = await file.read()
+            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(page_id)
-
-            callback_url = _build_callback_url(request)
-            resp = await _gateway_forward(
-                request,
-                PoolType.REALTIME,
-                extra_headers={
-                    _GATEWAY_DOC_ID_HEADER: page_id,
-                    _GATEWAY_JOB_ID_HEADER: job_id,
-                    _GATEWAY_CALLBACK_HEADER: callback_url,
-                    **_gateway_retain_results_headers(job_id),
-                },
-            )
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(page_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            if not dry_run:
+                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.REALTIME,
+                    work_id=page_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    extra={
+                        "source_document_id": document_id,
+                        "page_number": page_number,
+                    },
+                )
 
             _record_prometheus(
                 request,
@@ -1158,35 +1130,27 @@ async def submit_whole_document_to_job(
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
         if _is_gateway(request):
+            dry_run = _is_dry_run(request)
             classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file, request)
+            file_size = _file_size_from_upload(file)
 
             document_id = uuid.uuid4().hex
             file_bytes = await file.read()
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.mark_processing(document_id)
-
-            callback_url = _build_callback_url(request)
-            extra_headers = {
-                _GATEWAY_DOC_ID_HEADER: document_id,
-                _GATEWAY_JOB_ID_HEADER: job_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-                **_gateway_retain_results_headers(job_id),
-            }
-            if validated_spec is not None:
-                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-            resp = await _gateway_forward(request, PoolType.BATCH, extra_headers=extra_headers)
-
-            if resp.status_code not in (200, 202):
-                if tracker is not None:
-                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-                return resp
+            if not dry_run:
+                _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+                await _gateway_enqueue(
+                    request,
+                    PoolType.BATCH,
+                    work_id=document_id,
+                    job_id=job_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    pipeline_spec=validated_spec,
+                )
 
             _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
@@ -1788,6 +1752,22 @@ async def job_callback(request: Request) -> JSONResponse:
     if not item_id:
         raise HTTPException(status_code=400, detail="Missing 'id' field")
 
+    broker = None
+    lease_record = None
+    if _is_gateway(request):
+        from nemo_retriever.service.services.work_queue import StaleLease, get_work_broker
+
+        broker = get_work_broker()
+        lease_id = body.get("lease_id")
+        lease_generation = body.get("lease_generation")
+        if lease_id is not None or lease_generation is not None:
+            try:
+                lease_record = broker.validate_callback(item_id, lease_id, int(lease_generation)) if broker else None
+            except (StaleLease, TypeError, ValueError) as exc:
+                raise HTTPException(status_code=409, detail="Work lease has been superseded") from exc
+        elif broker is not None and broker.has_record(item_id):
+            raise HTTPException(status_code=409, detail="Missing work lease identity")
+
     if body.get("result_data") is not None:
         logger.warning(
             "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
@@ -1833,7 +1813,17 @@ async def job_callback(request: Request) -> JSONResponse:
                     headers={"Retry-After": "1"},
                 ) from exc
             if retained_rows is None:
-                await _pull_and_store_worker_result(request, item_id, body.get("result_worker_ip"))
+                owner_ip = (
+                    lease_record.lease.worker_ip
+                    if lease_record is not None and lease_record.lease
+                    else body.get("result_worker_ip")
+                )
+                await _pull_and_store_worker_result(
+                    request,
+                    item_id,
+                    owner_ip,
+                    body.get("result_worker_ip") if lease_record is not None else None,
+                )
         outcome = tracker.mark_completed(
             item_id,
             result_rows=result_rows,
@@ -1858,6 +1848,14 @@ async def job_callback(request: Request) -> JSONResponse:
         body.get("result_rows", 0),
         sub_count,
     )
+    if broker is not None and lease_record is not None:
+        try:
+            await broker.acknowledge(item_id, body["lease_id"], int(body["lease_generation"]))
+        except StaleLease:
+            logger.warning(
+                "Work lease for %s was already superseded at acknowledge; tracker already updated",
+                item_id,
+            )
     return JSONResponse(content={"ok": True})
 
 

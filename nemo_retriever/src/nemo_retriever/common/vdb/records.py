@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Record adapters for the graph-pipeline VDB upload/retrieval path."""
+"""Record adapters for graph VDB upload and retrieval."""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
 
 
 def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    """Convert graph-pipeline rows into the nested record shape expected by client VDBs.
+    """Convert graph-ingest rows into the nested record shape expected by client VDBs.
 
     Dense rows require an embedding and either nonblank text or concrete image backing.
     When no row survives conversion, returns ``[]`` — a falsy value so
@@ -187,7 +187,7 @@ def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any
 
 
 def to_sparse_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
-    """Convert graph-pipeline rows into text/provenance records for sparse LanceDB ingest."""
+    """Convert graph-ingest rows into text/provenance records for sparse LanceDB ingest."""
     if hasattr(rows, "to_pandas"):
         rows = rows.to_pandas()
     if hasattr(rows, "to_dict"):

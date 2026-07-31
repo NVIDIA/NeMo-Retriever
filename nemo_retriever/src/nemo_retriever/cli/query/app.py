@@ -16,10 +16,7 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
-from nemo_retriever.query.agentic_options import (
-    agentic_backend_top_k_error,
-    agentic_temperature_error,
-)
+from nemo_retriever.query.agentic_options import agentic_backend_top_k_error, agentic_temperature_error
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -161,7 +158,8 @@ def _retrieval_options(
     hidden=True,
     help=(
         "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
-        f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        "Embedding model: read from the selected table when available; "
+        f"legacy tables fall back to {opts.DEFAULT_EMBED_MODEL}.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
         "For a service deployment, use retriever query service --help."
     ),
@@ -197,20 +195,24 @@ def _local_command(
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    if embed_invoke_url is None:
-        embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
-    if agentic and not agentic_llm_model:
-        typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
-        raise typer.Exit(1)
-
     if agentic:
+        if agentic_invoke_url and not agentic_llm_model:
+            typer.echo(
+                "Error: --agentic-invoke-url requires --agentic-llm-model.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        if not agentic_invoke_url and not agentic_llm_model:
+            agentic_llm_model = "nemotron-8b"
+
         backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
         if backend_error:
             typer.echo(f"Error: {backend_error}", err=True)
             raise typer.Exit(1)
-        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        temperature_invoke_url = agentic_invoke_url or "local://in-process"
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
         if temperature_error:
             typer.echo(f"Error: {temperature_error}", err=True)
             raise typer.Exit(1)
