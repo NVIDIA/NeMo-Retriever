@@ -322,6 +322,7 @@ _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
     "ocr_api_key",
     "table_structure_invoke_url",
     "nemotron_parse_invoke_url",
+    "nemotron_parse_model",
 )
 _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embed_invoke_url",
@@ -786,6 +787,14 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
         kwargs["ocr_invoke_url"] = nim.ocr_invoke_url
     if nim.table_structure_invoke_url:
         kwargs["table_structure_invoke_url"] = nim.table_structure_invoke_url
+    if nim.nemotron_parse_invoke_url or nim.nemotron_parse_model:
+        # ExtractParams validates that Parse-specific configuration and the
+        # extraction method are selected together.
+        kwargs["method"] = "nemotron_parse"
+        if nim.nemotron_parse_invoke_url:
+            kwargs["nemotron_parse_invoke_url"] = nim.nemotron_parse_invoke_url
+        if nim.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = nim.nemotron_parse_model
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 

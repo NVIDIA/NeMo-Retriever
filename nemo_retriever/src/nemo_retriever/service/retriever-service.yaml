@@ -33,6 +33,11 @@ nim_endpoints:
   page_elements_invoke_url: null
   table_structure_invoke_url: null
   ocr_invoke_url: null
+  # Remote Nemotron Parse chat-completions endpoint and model. Both are
+  # server-owned; service clients select method="nemotron_parse" but cannot
+  # redirect the endpoint or change the deployed model.
+  nemotron_parse_invoke_url: null
+  nemotron_parse_model: null
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null

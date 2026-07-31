@@ -84,6 +84,19 @@ def test_build_extract_params_nim_url_wins_over_local_flags() -> None:
     assert ep.use_table_structure is True
 
 
+def test_build_extract_params_from_nemotron_parse_nim_config() -> None:
+    nim = NimEndpointsConfig(
+        nemotron_parse_invoke_url="http://parse-nim/v1/chat/completions",
+        nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+        api_key="k",
+    )
+    ep = build_extract_params(nim, LocalModelsConfig())
+    assert ep.method == "nemotron_parse"
+    assert ep.nemotron_parse_invoke_url == "http://parse-nim/v1/chat/completions"
+    assert ep.nemotron_parse_model == "nvidia/nemotron-parse-v1.2"
+    assert ep.api_key == "k"
+
+
 def test_build_asr_params_local_when_enabled() -> None:
     local = LocalModelsConfig(enabled=True)
     asr = build_asr_params(NimEndpointsConfig(), local)
