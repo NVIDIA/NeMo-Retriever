@@ -81,10 +81,7 @@ def test_helm_template_autowires_operator_parse_endpoint() -> None:
         ("--set", "nimOperator.nemotron_parse.enabled=true"),
         api_versions=("apps.nvidia.com/v1alpha1",),
     )
-    assert (
-        f'nemotron_parse_invoke_url: "http://{PARSE_SERVICE}:8000{PARSE_PATH}"'
-        in rendered
-    )
+    assert f'nemotron_parse_invoke_url: "http://{PARSE_SERVICE}:8000{PARSE_PATH}"' in rendered
     assert "nemotron_parse_model: null" in rendered
 
 

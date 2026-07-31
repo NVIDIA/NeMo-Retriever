@@ -204,9 +204,7 @@ def test_client_rejects_server_owned_keys() -> None:
 
 def test_policy_rejects_client_nemotron_parse_model_override() -> None:
     policy = PipelineOverridesConfig().to_policy()
-    spec = PipelineSpec(
-        extract_params={"method": "nemotron_parse", "nemotron_parse_model": "attacker/model"}
-    )
+    spec = PipelineSpec(extract_params={"method": "nemotron_parse", "nemotron_parse_model": "attacker/model"})
     with pytest.raises(PolicyError):
         validate_pipeline_spec(spec, policy)
 

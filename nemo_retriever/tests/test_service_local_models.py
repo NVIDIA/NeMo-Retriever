@@ -105,9 +105,7 @@ def test_nemotron_parse_model_requires_endpoint() -> None:
 
 
 def test_build_extract_params_accepts_nemotron_parse_endpoint_only() -> None:
-    nim = NimEndpointsConfig(
-        nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions"
-    )
+    nim = NimEndpointsConfig(nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions")
     ep = build_extract_params(nim, LocalModelsConfig())
     assert ep.method == "nemotron_parse"
     assert ep.nemotron_parse_invoke_url == "https://integrate.api.nvidia.com/v1/chat/completions"

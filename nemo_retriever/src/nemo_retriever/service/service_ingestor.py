@@ -76,6 +76,7 @@ import queue
 import threading
 import time
 import warnings
+from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
@@ -100,6 +101,12 @@ _LEGACY_RESULT_SCHEMA_DEPRECATION = (
     "schema in a future release. Pass result_schema='compact' to opt in now, or "
     "result_schema='legacy' to keep the current GraphIngestor.ingest() column layout "
     "with bulky image/embedding values stripped during the deprecation window."
+)
+
+_RESULT_FETCH_TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
 )
 
 
@@ -447,20 +454,44 @@ class ServiceIngestor(ingestor):
         if name not in order:
             order.append(name)
 
-    def _fetch_document_result_data(self, document_id: str) -> list[dict[str, Any]]:
+    def _new_result_fetch_client(self) -> httpx.Client:
+        """Create a client for retained-result status requests."""
+        return httpx.Client(timeout=self._request_timeout_s, headers=self._auth_headers)
+
+    def _fetch_document_result_data(
+        self,
+        document_id: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> list[dict[str, Any]]:
         """Fetch ``result_data`` for *document_id* from the status endpoint.
 
         The status endpoint retains ``result_data`` through the job retention
-        window, so retrying this read is safe.
+        window, so retrying this read is safe. When the caller supplies a
+        client it is reused for the first attempt. A transient failure receives
+        one retry through a fresh client so a stale pooled connection cannot be
+        selected again.
         """
         if not document_id:
             raise ValueError("_fetch_document_result_data(): empty document_id")
 
+        if client is None:
+            with self._new_result_fetch_client() as scoped_client:
+                return self._fetch_document_result_data(document_id, client=scoped_client)
+
         url = f"{self._base_url}/v1/ingest/status/{document_id}"
-        with httpx.Client(timeout=self._request_timeout_s, headers=self._auth_headers) as client:
+        try:
             resp = client.get(url)
-            resp.raise_for_status()
-            body = resp.json()
+        except _RESULT_FETCH_TRANSIENT_ERRORS as exc:
+            logger.debug(
+                "Transient %s fetching retained result for %s; retrying on a fresh connection",
+                type(exc).__name__,
+                document_id,
+            )
+            with self._new_result_fetch_client() as retry_client:
+                resp = retry_client.get(url)
+        resp.raise_for_status()
+        body = resp.json()
         return list(body.get("result_data") or [])
 
     def _write_result_data_to_disk(self, document_id: str, result_data: list[dict[str, Any]]) -> Path:
@@ -484,7 +515,12 @@ class ServiceIngestor(ingestor):
             out_path.write_bytes(payload)
         return out_path
 
-    def _save_document_to_disk(self, document_id: str) -> Path:
+    def _save_document_to_disk(
+        self,
+        document_id: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> Path:
         """Fetch ``result_data`` for *document_id* and write a JSON artifact.
 
         Returns the path that was written. Raises if the document_id is
@@ -492,7 +528,7 @@ class ServiceIngestor(ingestor):
         """
         if self._save_to_disk_dir is None:
             raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
-        result_data = self._fetch_document_result_data(document_id)
+        result_data = self._fetch_document_result_data(document_id, client=client)
         return self._write_result_data_to_disk(document_id, result_data)
 
     def _materialize_completed_document(
@@ -500,11 +536,12 @@ class ServiceIngestor(ingestor):
         document_id: str,
         *,
         return_results: bool,
+        client: httpx.Client | None = None,
     ) -> list[dict[str, Any]] | None:
         """Fetch (once) and optionally persist rows for a completed document."""
         if not return_results and self._save_to_disk_dir is None:
             return None
-        result_data = self._fetch_document_result_data(document_id)
+        result_data = self._fetch_document_result_data(document_id, client=client)
         if self._save_to_disk_dir is not None:
             self._write_result_data_to_disk(document_id, result_data)
         return result_data if return_results else None
@@ -1049,6 +1086,25 @@ class ServiceIngestor(ingestor):
         self._record_stage("webhook")
         return self
 
+    def _ingest_events_with_result_client(
+        self,
+        *,
+        retain_results: bool,
+        result_schema: ResultSchema,
+        return_embeddings: bool,
+        return_images: bool,
+    ) -> Iterator[tuple[dict[str, Any], httpx.Client | None]]:
+        """Yield ingest events while owning the optional shared result client."""
+        client_context = self._new_result_fetch_client() if retain_results else nullcontext(None)
+        with client_context as result_client:
+            for evt in self.ingest_stream(
+                retain_results=retain_results,
+                result_schema=result_schema,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            ):
+                yield evt, result_client
+
     # ------------------------------------------------------------------
     # Execution — sync materialized
     # ------------------------------------------------------------------
@@ -1123,7 +1179,7 @@ class ServiceIngestor(ingestor):
         documents_failed = 0
         total_uploaded = 0
 
-        for evt in self.ingest_stream(
+        for evt, result_client in self._ingest_events_with_result_client(
             retain_results=retain_results,
             result_schema=result_schema,
             return_embeddings=return_embeddings,
@@ -1187,6 +1243,7 @@ class ServiceIngestor(ingestor):
                             rows = self._materialize_completed_document(
                                 doc_id,
                                 return_results=return_results,
+                                client=result_client,
                             )
                             if rows is not None and return_results:
                                 rows_by_document[doc_id] = rows

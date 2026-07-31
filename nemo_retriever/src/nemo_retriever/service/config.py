@@ -197,10 +197,7 @@ class NimEndpointsConfig(RichModel):
         self.nemotron_parse_invoke_url = endpoint or None
         self.nemotron_parse_model = model or None
         if model and not endpoint:
-            raise ValueError(
-                "nim_endpoints.nemotron_parse_model requires "
-                "nim_endpoints.nemotron_parse_invoke_url"
-            )
+            raise ValueError("nim_endpoints.nemotron_parse_model requires " "nim_endpoints.nemotron_parse_invoke_url")
         return self
 
 
