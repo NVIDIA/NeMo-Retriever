@@ -86,7 +86,7 @@ The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Li
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.10.0 torchvision -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org/whl/cu130
 ```
 
 Skip this step if you are using remote NIM inference only.
