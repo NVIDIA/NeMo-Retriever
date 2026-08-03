@@ -22,6 +22,7 @@ from nemo_retriever.service.config import (
     VectorDbConfig,
 )
 from nemo_retriever.service.query_schema import (
+    MAX_AGENTIC_QUERY_CHARS,
     AgenticQueryRequest,
     AgenticQueryResponse,
     AgenticQueryResult,
@@ -157,6 +158,74 @@ def test_agentic_query_rejects_top_k_above_backend_depth(tmp_path) -> None:
 
     assert response.status_code == 422
     assert "cannot exceed" in response.json()["detail"]
+
+
+def test_agentic_query_rejects_query_above_length_limit(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        embed_endpoint="https://embed.example/v1/embeddings",
+        agentic_config=AgenticConfig(
+            enabled=True,
+            llm_model="model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
+    )
+
+    with (
+        patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),
+        patch.object(vectordb_module, "run_agentic_query") as run_query,
+        TestClient(app) as client,
+    ):
+        response = client.post(
+            "/v1/agentic/query",
+            json={"query": "x" * (MAX_AGENTIC_QUERY_CHARS + 1)},
+        )
+
+    assert response.status_code == 422
+    run_query.assert_not_called()
+
+
+def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) -> None:
+    """Capacity follows the worker thread, not the caller: a saturated pool sheds
+    load with 503 instead of queueing behind non-cancellable ReAct work, and a
+    completed query returns its slot."""
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        embed_endpoint="https://embed.example/v1/embeddings",
+        agentic_config=AgenticConfig(
+            enabled=True,
+            llm_model="model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
+    )
+    expected = AgenticQueryResponse(results=[])
+
+    with (
+        patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),
+        patch.object(vectordb_module, "run_agentic_query", return_value=expected),
+        TestClient(app) as client,
+    ):
+        slots = vectordb_module._agentic_slots
+        assert slots is not None
+
+        # Stand in for in-flight workers whose callers have already gone away.
+        for _ in range(vectordb_module.MAX_CONCURRENT_AGENTIC_QUERIES):
+            assert slots.acquire(blocking=False) is True
+
+        busy = client.post("/v1/agentic/query", json={"query": "revenue trend"})
+
+        assert busy.status_code == 503
+        assert busy.headers["Retry-After"] == "30"
+        # Plain /v1/query capacity is untouched by agentic saturation.
+        assert vectordb_module._query_semaphore is not None
+        assert vectordb_module._query_semaphore.locked() is False
+
+        slots.release()
+        accepted = client.post("/v1/agentic/query", json={"query": "revenue trend"})
+
+        assert accepted.status_code == 200
+        # The worker released its own slot on completion.
+        assert slots.acquire(blocking=False) is True
 
 
 def test_service_proxies_agentic_query_to_vectordb(

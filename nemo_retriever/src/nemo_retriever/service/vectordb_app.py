@@ -4,10 +4,11 @@
 
 """Standalone VectorDB microservice backed by LanceDB.
 
-Provides three endpoints:
+Provides four endpoints:
 
 - ``POST /internal/vectordb/write`` -- append embedding rows from ingest workers
 - ``POST /v1/query``               -- embed query text and search the index
+- ``POST /v1/agentic/query``       -- run the ReAct retrieval workflow (opt-in)
 - ``GET  /v1/health``              -- liveness probe
 
 Run with a remote NIM embed endpoint::
@@ -33,6 +34,7 @@ import argparse
 import asyncio
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Union
 
@@ -337,8 +339,15 @@ class VectorDBState:
 
 _state: VectorDBState | None = None
 _query_semaphore: asyncio.Semaphore | None = None
+_agentic_executor: ThreadPoolExecutor | None = None
+_agentic_slots: threading.BoundedSemaphore | None = None
 
 MAX_CONCURRENT_QUERIES = 4
+
+# Agentic retrieval runs a multi-step ReAct loop that can occupy a thread for
+# minutes and cannot be interrupted once started, so it gets its own small pool
+# instead of sharing capacity with plain /v1/query.
+MAX_CONCURRENT_AGENTIC_QUERIES = 2
 
 
 def create_vectordb_app(
@@ -361,7 +370,7 @@ def create_vectordb_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        global _state, _query_semaphore
+        global _state, _query_semaphore, _agentic_executor, _agentic_slots
         _state = VectorDBState(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
@@ -376,6 +385,12 @@ def create_vectordb_app(
             gpu_memory_utilization=gpu_memory_utilization,
         )
         _query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
+        if agentic_config.enabled:
+            _agentic_executor = ThreadPoolExecutor(
+                max_workers=MAX_CONCURRENT_AGENTIC_QUERIES,
+                thread_name_prefix="agentic-query",
+            )
+            _agentic_slots = threading.BoundedSemaphore(MAX_CONCURRENT_AGENTIC_QUERIES)
         logger.info(
             "VectorDB service started: uri=%s table=%s embed_mode=%s max_concurrent_queries=%d",
             lancedb_uri,
@@ -392,6 +407,12 @@ def create_vectordb_app(
         yield
         _state = None
         _query_semaphore = None
+        if _agentic_executor is not None:
+            # Detach from in-flight ReAct work rather than blocking shutdown on
+            # LLM calls that may still have minutes left on their timeout.
+            _agentic_executor.shutdown(wait=False, cancel_futures=True)
+            _agentic_executor = None
+        _agentic_slots = None
         logger.info("VectorDB service stopped")
 
     app = FastAPI(
@@ -509,19 +530,48 @@ def create_vectordb_app(
                 ),
             )
 
+        executor, slots = _agentic_executor, _agentic_slots
+        if executor is None or slots is None:
+            raise HTTPException(503, "Agentic retrieval workers are not running")
+
+        # The ReAct workflow is blocking and cannot be interrupted, so a caller
+        # that times out or disconnects does not free the worker. Admission is
+        # therefore tied to the worker's real lifetime: the slot is released from
+        # the future's done callback, never on request exit.
+        if not slots.acquire(blocking=False):
+            logger.warning(
+                "Rejecting agentic query: all %d agentic workers are busy",
+                MAX_CONCURRENT_AGENTIC_QUERIES,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"All {MAX_CONCURRENT_AGENTIC_QUERIES} agentic retrieval workers are busy. "
+                    "Retry once an in-flight query finishes."
+                ),
+                headers={"Retry-After": "30"},
+            )
+
         try:
-            async with _query_semaphore:
-                return await asyncio.to_thread(
-                    run_agentic_query,
-                    req,
-                    config=agentic_config,
-                    lancedb_uri=_state.lancedb_uri,
-                    table_name=_state.table_name,
-                    embed_endpoint=_state.embed_endpoint,
-                    embed_model=_state.embed_model,
-                    embed_model_provider_prefix=_state.embed_model_provider_prefix,
-                    embed_api_key=_state.embed_api_key,
-                )
+            future = executor.submit(
+                run_agentic_query,
+                req,
+                config=agentic_config,
+                lancedb_uri=_state.lancedb_uri,
+                table_name=_state.table_name,
+                embed_endpoint=_state.embed_endpoint,
+                embed_model=_state.embed_model,
+                embed_model_provider_prefix=_state.embed_model_provider_prefix,
+                embed_api_key=_state.embed_api_key,
+            )
+        except RuntimeError as exc:
+            slots.release()
+            raise HTTPException(503, "VectorDB is shutting down") from exc
+
+        future.add_done_callback(lambda _future: slots.release())
+
+        try:
+            return await asyncio.wrap_future(future)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 

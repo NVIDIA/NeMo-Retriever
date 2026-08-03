@@ -10,6 +10,11 @@ from pydantic import BaseModel, Field
 
 QueryFormat = Literal["hits", "evidence"]
 
+# Agentic queries are replayed into every step of a multi-step LLM loop, so an
+# oversized query multiplies prompt cost and latency. Roughly 1k tokens of
+# natural-language question is far above any realistic retrieval query.
+MAX_AGENTIC_QUERY_CHARS = 4096
+
 
 class QueryRequest(BaseModel):
     query: str | list[str]
@@ -39,7 +44,7 @@ class QueryResponse(BaseModel):
 class AgenticQueryRequest(BaseModel):
     """One query for the server-configured agentic retrieval pipeline."""
 
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=MAX_AGENTIC_QUERY_CHARS)
     top_k: int = Field(default=5, ge=1, le=1000)
 
 

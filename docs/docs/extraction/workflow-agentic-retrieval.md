@@ -70,6 +70,14 @@ curl -X POST http://localhost:7670/v1/agentic/query \
   -d '{"query": "find documents about parser behavior", "top_k": 5}'
 ```
 
+Agentic queries run on a small dedicated worker pool in the VectorDB process, so
+they cannot exhaust the capacity used by plain `/v1/query`. A ReAct run cannot be
+interrupted once started, so a worker stays occupied until it finishes even if
+the caller times out or disconnects. When every worker is busy the endpoint sheds
+load with `503` and a `Retry-After` header instead of queueing behind a
+multi-minute run. Queries are capped at 4096 characters to bound prompt size and
+cost across the multi-step loop.
+
 For local stdio-based agents, run the MCP server as a shim that points at an existing retriever service:
 
 ```bash
