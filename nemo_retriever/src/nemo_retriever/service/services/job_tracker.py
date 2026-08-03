@@ -50,6 +50,7 @@ from typing import Any
 from pydantic import Field
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import IngestOperation
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,7 @@ class JobAggregate(RichModel):
     retain_results: bool = Field(default=False, description="Keep completed document result payloads in memory")
     collection_name: str | None = None
     scope: str = "default"
-    operation: str = "append"
+    operation: IngestOperation = IngestOperation.APPEND
     target_document_id: str | None = None
     idempotency_key: str | None = None
     idempotency_fingerprint: str | None = None
@@ -295,7 +296,7 @@ class JobTracker:
         trace_context: dict[str, str] | None = None,
         collection_name: str | None = None,
         scope: str = "default",
-        operation: str = "append",
+        operation: IngestOperation = IngestOperation.APPEND,
         target_document_id: str | None = None,
         idempotency_key: str | None = None,
         idempotency_fingerprint: str | None = None,

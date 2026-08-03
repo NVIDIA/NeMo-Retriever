@@ -34,6 +34,8 @@ from nemo_retriever.service.services.pipeline_executor import (
     _TRUST_OWNED_EMBED_KEYS,
     _TRUST_OWNED_EXTRACT_KEYS,
 )
+from nemo_retriever.common.schemas.collections import IngestOperation
+from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
 from nemo_retriever.service.service_ingestor import ServiceIngestor
 
@@ -645,12 +647,14 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
         {},
         None,
         vectordb_url="http://vectordb:7671",
-        scope="tenant-a",
-        collection_name="papers",
-        document_id="document-1",
+        write_context=DocumentWriteContext(
+            scope="tenant-a",
+            collection_name="papers",
+            storage_document_id="document-1",
+            content_sha256="a" * 64,
+            document_version="version-2",
+        ),
         job_id="job-1",
-        content_sha256="a" * 64,
-        document_version="version-2",
     )
 
     assert row_count == 1
@@ -716,13 +720,15 @@ def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: p
         records,
         "http://vectordb:7671/",
         "document.pdf",
-        scope="tenant-a",
-        collection_name="papers",
-        document_id="document-1",
+        context=DocumentWriteContext(
+            scope="tenant-a",
+            collection_name="papers",
+            storage_document_id="document-1",
+            content_sha256="a" * 64,
+            document_version="version-2",
+            operation=IngestOperation.REPLACE,
+        ),
         job_id="job-1",
-        content_sha256="a" * 64,
-        document_version="version-2",
-        operation="replace",
         internal_api_token="internal-token",
     )
 

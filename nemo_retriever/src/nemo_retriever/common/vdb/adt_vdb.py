@@ -67,7 +67,16 @@ class CollectionWriteContext:
     content_sha256: str
     filename: str
     job_id: str | None = None
-    operation: IngestOperation = "append"
+    operation: IngestOperation = IngestOperation.APPEND
+
+    def __post_init__(self) -> None:
+        """Coerce a wire-level operation string into its enum member.
+
+        Callers outside the service layer construct this directly with a
+        plain string, so normalise here to keep identity comparisons sound.
+        """
+        if not isinstance(self.operation, IngestOperation):
+            object.__setattr__(self, "operation", IngestOperation(self.operation))
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 import time
@@ -345,6 +346,10 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
+    # This test covers the claim/payload/callback lifecycle, not lease expiry.
+    # Without this the reaper can retire the lease mid-test and the callback
+    # fails with 409 purely because the host was slow.
+    monkeypatch.setattr(WorkBroker, "_expire_locked", lambda self, pool: None)
 
     with TestClient(create_app(config)) as client:
         created = client.post("/v1/ingest/job", json={"expected_documents": 1})
@@ -371,6 +376,16 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         claim = claim_response.json()
         assert claim["work_id"] == document_id
         assert claim["delivery_attempt"] == 1
+        assert claim["extra"] == {
+            "write": {
+                "scope": "default",
+                "collection_name": None,
+                "operation": "append",
+                "content_sha256": hashlib.sha256(b"hello gateway").hexdigest(),
+                "document_version": None,
+                "storage_document_id": document_id,
+            }
+        }
 
         processing = client.get(f"/v1/ingest/job/{job_id}/document/{document_id}")
         assert processing.json()["status"] == "processing"
@@ -616,7 +631,10 @@ def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path):
+async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path, monkeypatch):
+    # Shutdown, not expiry, is what must invalidate the lease here; the reaper
+    # would otherwise clear it first and mask the behaviour under test.
+    monkeypatch.setattr(WorkBroker, "_expire_locked", lambda self, pool: None)
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=2))
     await broker.start()
     leased = await _enqueue(broker, "leased")

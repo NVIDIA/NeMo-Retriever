@@ -65,7 +65,7 @@ class JobCreateRequest(RichModel):
         ),
     )
     collection_name: str | None = Field(default=None, min_length=1, max_length=128)
-    operation: IngestOperation = "append"
+    operation: IngestOperation = IngestOperation.APPEND
     target_document_id: DocumentId | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
     document_manifest: list[DocumentManifestEntry] = Field(default_factory=list)
@@ -76,7 +76,7 @@ class JobCreateRequest(RichModel):
             raise ValueError("document_manifest length must match expected_documents")
         if len({entry.manifest_entry_id for entry in self.document_manifest}) != len(self.document_manifest):
             raise ValueError("document_manifest contains duplicate manifest_entry_id values")
-        if self.operation == "replace":
+        if self.operation is IngestOperation.REPLACE:
             if not self.collection_name:
                 raise ValueError("replace requires collection_name")
             if self.expected_documents != 1:

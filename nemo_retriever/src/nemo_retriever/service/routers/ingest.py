@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 from starlette.responses import StreamingResponse
 
+from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.schemas.requests import IngestRequest, JobCreateRequest
 from nemo_retriever.common.schemas.responses import (
@@ -53,9 +54,15 @@ from nemo_retriever.models.llm.types import (
     build_answer_result,
 )
 from nemo_retriever.service.services.event_bus import get_event_bus
-from nemo_retriever.service.services.job_tracker import MarkOutcome, get_job_tracker
+from nemo_retriever.service.services.job_tracker import (
+    DocumentRecord,
+    JobAggregate,
+    MarkOutcome,
+    get_job_tracker,
+)
 from nemo_retriever.service.services.metrics import get_metrics
 from nemo_retriever.service.services.pipeline_pool import (
+    DocumentWriteContext,
     PoolType,
     WorkItem,
     get_pipeline_pool,
@@ -74,6 +81,7 @@ from nemo_retriever.service.services.worker_result_store import (
 )
 from nemo_retriever.service.utils.file_type import (
     FileCategory,
+    FileClassification,
     FileClassifier,
     enforce_media_dependencies,
 )
@@ -81,15 +89,6 @@ from nemo_retriever.service.utils.file_type import (
 _RETRY_AFTER_SECONDS = "5"
 _RESULT_RETRY_AFTER_SECONDS = 60
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
-_GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
-_GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
-_GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
-_GATEWAY_JOB_ID_HEADER = "X-Gateway-Job-Id"
-_GATEWAY_RETAIN_RESULTS_HEADER = "X-Gateway-Retain-Results"
-_GATEWAY_SCOPE_HEADER = "X-Gateway-Scope"
-_GATEWAY_COLLECTION_HEADER = "X-Gateway-Collection"
-_GATEWAY_OPERATION_HEADER = "X-Gateway-Operation"
-_GATEWAY_TARGET_DOCUMENT_HEADER = "X-Gateway-Target-Document"
 _PAGE_THRESHOLD_FOR_BATCH = 5
 
 # SSE keepalive cadence; tests monkey-patch this to a short value so
@@ -150,16 +149,10 @@ def _is_worker(request: Request) -> bool:
     """Return True for split-mode worker pods (``realtime`` or ``batch``).
 
     Workers don't own the ``JobTracker`` aggregate — the gateway does.
-    When the gateway forwards an upload to a worker, the URL still
-    contains the ``job_id``, but the worker must trust it (and not
-    re-validate via ``_require_job``).
+    They receive work by claiming it from the gateway broker rather than
+    over these routes.
     """
     return _mode(request) in ("realtime", "batch")
-
-
-def _retain_results_from_request(request: Request) -> bool:
-    val = request.headers.get(_GATEWAY_RETAIN_RESULTS_HEADER, "").strip().lower()
-    return val in ("1", "true", "yes")
 
 
 def _job_retain_results(job_id: str | None) -> bool:
@@ -169,13 +162,6 @@ def _job_retain_results(job_id: str | None) -> bool:
     if tracker is None:
         return False
     return tracker.should_retain_results(job_id)
-
-
-def _work_item_retain_results(request: Request, *, job_id: str | None) -> bool:
-    """Whether the worker pool should cache row payloads for this upload."""
-    if request.headers.get(_GATEWAY_DOC_ID_HEADER):
-        return _retain_results_from_request(request)
-    return _job_retain_results(job_id)
 
 
 def _internal_auth_headers(request: Request) -> dict[str, str]:
@@ -438,10 +424,15 @@ async def _gateway_enqueue(
     job_id: str,
     payload: bytes,
     filename: str | None,
-    pipeline_spec: PipelineSpec | None = None,
-    extra: dict[str, Any] | None = None,
+    pipeline_spec: dict[str, Any] | None = None,
+    write: DocumentWriteContext | None = None,
 ) -> None:
-    """Admit split-mode work to the gateway broker after atomic spooling."""
+    """Admit split-mode work to the gateway broker after atomic spooling.
+
+    The write context is nested under a single ``write`` key so the claiming
+    worker rebuilds it as one typed object rather than a splat of loose
+    fields that :class:`WorkItem` would silently discard.
+    """
     from nemo_retriever.service.services.work_queue import WorkQueueFull, get_work_broker
 
     broker = get_work_broker()
@@ -458,9 +449,9 @@ async def _gateway_enqueue(
             payload=payload,
             filename=filename,
             retain_results=_job_retain_results(job_id),
-            pipeline_spec=pipeline_spec.model_dump(mode="json") if pipeline_spec is not None else None,
+            pipeline_spec=pipeline_spec,
             trace_context=_safe_inject_trace_context(),
-            extra=extra,
+            extra={"write": write.model_dump(mode="json")} if write is not None else None,
         )
     except WorkQueueFull as exc:
         tracker = get_job_tracker()
@@ -569,29 +560,119 @@ def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpe
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-def _spec_from_gateway_header(request: Request) -> PipelineSpec | None:
-    """Recover and re-validate the spec forwarded by the gateway pod.
+async def _prepare_job_work_item(
+    request: Request,
+    *,
+    job_id: str,
+    file: UploadFile,
+    meta: IngestRequest,
+    validated_spec: PipelineSpec | None,
+    manifest_entry_id: str | None,
+    job: JobAggregate,
+    pool_type: PoolType | None = None,
+) -> tuple[WorkItem, PoolType, FileClassification]:
+    """Build the execution envelope shared by the document upload routes.
 
-    The gateway has already validated against its own copy of the policy,
-    but we re-validate on the worker as defense-in-depth: a misconfigured
-    gateway or a pod with a different ``pipeline_overrides`` config will
-    still see consistent enforcement.
+    Reads the upload exactly once and resolves every non-payload value the
+    gateway and standalone paths need: pool routing, content digest,
+    manifest binding, attempt identity and durable storage identity.
+
+    Args:
+        request: The inbound upload request.
+        job_id: Job aggregate the upload belongs to, taken from the URL path.
+        file: The uploaded file.
+        meta: Parsed ``IngestRequest`` metadata accompanying the upload.
+        validated_spec: Policy-validated per-request pipeline overrides.
+        manifest_entry_id: Immutable manifest entry the upload claims, if any.
+        job: The job aggregate owning this upload.
+        pool_type: Fixed pool for callers that do not auto-route.
+
+    Returns:
+        The work item, its target pool, and the file classification.
     """
-    raw = request.headers.get(_GATEWAY_PIPELINE_SPEC_HEADER)
-    if not raw:
-        return None
-    try:
-        spec = PipelineSpec.model_validate_json(raw)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Malformed {_GATEWAY_PIPELINE_SPEC_HEADER!r} from gateway: {exc}",
-        ) from exc
-    policy = _build_policy(request)
-    try:
-        return validate_pipeline_spec(spec, policy)
-    except PolicyError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    enforce_media_dependencies(classification)
+
+    file_bytes = await file.read()
+    route = pool_type or _route_by_page_count(file_bytes, meta, file_category=classification.category)
+    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+
+    _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
+
+    attempt_id = uuid.uuid4().hex
+    storage_document_id = _resolve_stable_document_id(
+        attempt_id,
+        collection_name=job.collection_name,
+        target_document_id=job.target_document_id,
+    )
+
+    item = WorkItem(
+        id=attempt_id,
+        payload=file_bytes,
+        filename=file.filename,
+        callback_headers=_internal_auth_headers(request),
+        job_id=job_id,
+        pipeline_spec=validated_spec.model_dump(mode="json") if validated_spec is not None else None,
+        retain_results=_job_retain_results(job_id),
+        write=DocumentWriteContext(
+            scope=job.scope,
+            collection_name=job.collection_name,
+            operation=job.operation,
+            content_sha256=content_sha256,
+            storage_document_id=storage_document_id,
+        ),
+    )
+    return item, route, classification
+
+
+async def _submit_job_work_item(
+    request: Request,
+    pool_type: PoolType,
+    item: WorkItem,
+    *,
+    manifest_entry_id: str | None,
+) -> DocumentRecord | None:
+    """Register *item* under its job and admit it for execution.
+
+    Args:
+        request: The inbound upload request.
+        pool_type: Pool the item is admitted to.
+        item: Envelope produced by :func:`_prepare_job_work_item`.
+        manifest_entry_id: Immutable manifest entry the upload claims, if any.
+
+    Returns:
+        The already-registered record when an idempotent retry matched an
+        earlier attempt, otherwise ``None`` once the item is admitted.
+    """
+    if item.job_id is None:
+        raise RuntimeError("job upload work item is missing job_id")
+
+    record, created = _register_document_under_job(
+        document_id=item.id,
+        job_id=item.job_id,
+        filename=item.filename,
+        content_sha256=item.write.content_sha256,
+        stable_document_id=item.write.storage_document_id,
+        manifest_entry_id=manifest_entry_id,
+    )
+    if not created:
+        return record
+
+    if _is_gateway(request):
+        await _gateway_enqueue(
+            request,
+            pool_type,
+            work_id=item.id,
+            job_id=item.job_id,
+            payload=item.payload,
+            filename=item.filename,
+            pipeline_spec=item.pipeline_spec,
+            write=item.write,
+        )
+    else:
+        await _enqueue_or_reject(pool_type, item)
+
+    return None
 
 
 def _parse_backend_json(resp: Response) -> dict:
@@ -742,7 +823,7 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
             )
         if collection_response.json().get("status") != "active":
             raise HTTPException(409, "Collection is not active")
-        if body.operation == "replace" and body.target_document_id:
+        if body.operation is IngestOperation.REPLACE and body.target_document_id:
             document_target = f"{target}/documents/{body.target_document_id}"
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1026,178 +1107,53 @@ async def submit_document_to_job(
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
-    # Job lookup is gateway/standalone only — worker pods don't own the
-    # JobTracker, so we must trust the gateway-forwarded URL.
-    if not _is_worker(request):
-        _require_job(job_id, request)
+    job = _require_job(job_id, request)
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
-    if not _is_worker(request):
-        job_for_validation = _require_job(job_id, request)
-        _validate_collection_pipeline_spec(job_for_validation, validated_spec)
+    _validate_collection_pipeline_spec(job, validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.document.accept"):
-        if _is_gateway(request):
-            classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-            enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file)
-
-            file_bytes = await file.read()
-            route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
-
-            job = _require_job(job_id, request)
-            attempt_id = uuid.uuid4().hex
-            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-            _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
-            stable_document_id = _resolve_stable_document_id(
-                attempt_id,
-                collection_name=job.collection_name,
-                target_document_id=job.target_document_id,
-            )
-            now = datetime.now(timezone.utc).isoformat()
-
-            rec, created = _register_document_under_job(
-                document_id=attempt_id,
-                job_id=job_id,
-                filename=file.filename,
-                content_sha256=content_sha256,
-                stable_document_id=stable_document_id,
-                manifest_entry_id=manifest_entry_id,
-            )
-            if not created:
-                return IngestAccepted(
-                    document_id=rec.stable_document_id,
-                    attempt_id=rec.id,
-                    job_id=job_id,
-                    content_sha256=rec.content_sha256 or content_sha256,
-                    status="accepted",
-                    created_at=rec.submitted_at,
-                )
-            await _gateway_enqueue(
-                request,
-                route,
-                work_id=attempt_id,
-                job_id=job_id,
-                payload=file_bytes,
-                filename=file.filename,
-                pipeline_spec=validated_spec,
-                extra={
-                    "scope": job.scope,
-                    "collection_name": job.collection_name,
-                    "operation": job.operation,
-                    "content_sha256": content_sha256,
-                    "storage_document_id": stable_document_id,
-                },
-            )
-
-            _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/job/document")
-                m.record_document_accepted(
-                    document_id=attempt_id,
-                    job_id=job_id,
-                    filename=classification.filename,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
-                    file_size_bytes=file_size,
-                    endpoint="/v1/ingest/job/document",
-                )
-
-            return IngestAccepted(
-                document_id=stable_document_id,
-                attempt_id=attempt_id,
-                job_id=job_id,
-                content_sha256=content_sha256,
-                status="accepted",
-                created_at=now,
-            )
-
-        # ── worker / standalone ──────────────────────────────────────
-        classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-        enforce_media_dependencies(classification)
-
-        file_bytes = await file.read()
-        route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
-        content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+        item, route, classification = await _prepare_job_work_item(
+            request,
+            job_id=job_id,
+            file=file,
+            meta=meta,
+            validated_spec=validated_spec,
+            manifest_entry_id=manifest_entry_id,
+            job=job,
+        )
         now = datetime.now(timezone.utc).isoformat()
 
-        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-        local_job = None if gw_doc_id else _require_job(job_id, request)
-        if local_job:
-            _validate_manifest_entry(local_job, manifest_entry_id, file.filename or "", content_sha256)
-        attempt_id = gw_doc_id or uuid.uuid4().hex
-        stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
-        if local_job:
-            stable_document_id = _resolve_stable_document_id(
-                attempt_id,
-                collection_name=local_job.collection_name,
-                target_document_id=local_job.target_document_id,
+        record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
+        if record is not None:
+            return IngestAccepted(
+                document_id=record.stable_document_id,
+                attempt_id=record.id,
+                job_id=item.job_id,
+                content_sha256=record.content_sha256 or item.write.content_sha256,
+                status="accepted",
+                created_at=record.submitted_at,
             )
-        stable_document_id = stable_document_id or attempt_id
 
-        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-
-        if not gw_callback_url:
-            rec, created = _register_document_under_job(
-                document_id=attempt_id,
-                job_id=job_id,
-                filename=file.filename,
-                content_sha256=content_sha256,
-                stable_document_id=stable_document_id,
-                manifest_entry_id=manifest_entry_id,
-            )
-            if not created:
-                return IngestAccepted(
-                    document_id=rec.stable_document_id,
-                    attempt_id=rec.id,
-                    job_id=job_id,
-                    content_sha256=rec.content_sha256 or content_sha256,
-                    status="accepted",
-                    created_at=rec.submitted_at,
-                )
-
-        await _enqueue_or_reject(
-            route,
-            WorkItem(
-                id=attempt_id,
-                payload=file_bytes,
-                filename=file.filename,
-                callback_url=gw_callback_url,
-                callback_headers=_internal_auth_headers(request),
-                job_id=gw_job_id,
-                pipeline_spec=(worker_spec.model_dump(mode="json") if worker_spec is not None else None),
-                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-                scope=request.headers.get(_GATEWAY_SCOPE_HEADER) or (local_job.scope if local_job else "default"),
-                collection_name=request.headers.get(_GATEWAY_COLLECTION_HEADER)
-                or (local_job.collection_name if local_job else None),
-                operation=request.headers.get(_GATEWAY_OPERATION_HEADER)
-                or (local_job.operation if local_job else "append"),
-                content_sha256=content_sha256,
-                storage_document_id=stable_document_id,
-            ),
-        )
-
-        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes))
-
+        file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
+        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/document")
             m.record_document_accepted(
-                document_id=attempt_id,
-                job_id=gw_job_id,
+                document_id=item.id,
+                job_id=item.job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
-                file_size_bytes=len(file_bytes),
+                file_size_bytes=file_size,
                 endpoint="/v1/ingest/job/document",
             )
 
         return IngestAccepted(
-            document_id=stable_document_id,
-            attempt_id=attempt_id,
-            job_id=gw_job_id,
-            content_sha256=content_sha256,
+            document_id=item.write.storage_document_id,
+            attempt_id=item.id,
+            job_id=item.job_id,
+            content_sha256=item.write.content_sha256,
             status="accepted",
             created_at=now,
         )
@@ -1220,16 +1176,7 @@ async def submit_page_to_job(
     page_number: int = Form(..., description="1-based page number within the source document"),
     filename: str = Form(default="", description="Original source document filename"),
 ) -> PageIngestAccepted | Response:
-    # Job lookup is gateway/standalone only (workers don't own the
-    # JobTracker — they trust the gateway-forwarded URL).
-    if not _is_worker(request):
-        page_job = _require_job(job_id, request)
-        if page_job.collection_name:
-            raise HTTPException(
-                422,
-                "collection-aware ingestion does not support /page; use /document or /whole",
-            )
-    elif request.headers.get(_GATEWAY_COLLECTION_HEADER):
+    if _require_job(job_id, request).collection_name:
         raise HTTPException(
             422,
             "collection-aware ingestion does not support /page; use /document or /whole",
@@ -1257,10 +1204,6 @@ async def submit_page_to_job(
                     job_id=job_id,
                     payload=file_bytes,
                     filename=file.filename,
-                    extra={
-                        "source_document_id": document_id,
-                        "page_number": page_number,
-                    },
                 )
 
             _record_prometheus(
@@ -1300,28 +1243,23 @@ async def submit_page_to_job(
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-        page_id = gw_doc_id or uuid.uuid4().hex
+        page_id = uuid.uuid4().hex
 
         if not dry_run:
-            if not gw_callback_url:
-                _register_document_under_job(
-                    document_id=page_id,
-                    job_id=job_id,
-                    filename=filename or file.filename,
-                )
+            _register_document_under_job(
+                document_id=page_id,
+                job_id=job_id,
+                filename=filename or file.filename,
+            )
             await _enqueue_or_reject(
                 PoolType.REALTIME,
                 WorkItem(
                     id=page_id,
                     payload=file_bytes,
                     filename=file.filename,
-                    callback_url=gw_callback_url,
                     callback_headers=_internal_auth_headers(request),
-                    job_id=gw_job_id,
-                    retain_results=_work_item_retain_results(request, job_id=gw_job_id),
+                    job_id=job_id,
+                    retain_results=_job_retain_results(job_id),
                 ),
             )
 
@@ -1373,181 +1311,57 @@ async def submit_whole_document_to_job(
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc}")
 
-    # Job lookup is gateway/standalone only (workers don't own the
-    # JobTracker — they trust the gateway-forwarded URL).
-    if not _is_worker(request):
-        _require_job(job_id, request)
+    job = _require_job(job_id, request)
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
-    if not _is_worker(request):
-        _validate_collection_pipeline_spec(_require_job(job_id, request), validated_spec)
+    _validate_collection_pipeline_spec(job, validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
-        if _is_gateway(request):
-            dry_run = _is_dry_run(request)
-            classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-            enforce_media_dependencies(classification)
-            file_size = _file_size_from_upload(file)
-
-            job = _require_job(job_id, request)
-            attempt_id = uuid.uuid4().hex
-            file_bytes = await file.read()
-            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-            _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
-            stable_document_id = _resolve_stable_document_id(
-                attempt_id,
-                collection_name=job.collection_name,
-                target_document_id=job.target_document_id,
-            )
-            now = datetime.now(timezone.utc).isoformat()
-
-            if not dry_run:
-                rec, created = _register_document_under_job(
-                    document_id=attempt_id,
-                    job_id=job_id,
-                    filename=file.filename,
-                    content_sha256=content_sha256,
-                    stable_document_id=stable_document_id,
-                    manifest_entry_id=manifest_entry_id,
-                )
-                if not created:
-                    return DocumentIngestAccepted(
-                        document_id=rec.stable_document_id,
-                        attempt_id=rec.id,
-                        filename=classification.filename,
-                        file_size_bytes=len(file_bytes),
-                        content_sha256=rec.content_sha256 or content_sha256,
-                        status="accepted",
-                        created_at=rec.submitted_at,
-                    )
-                await _gateway_enqueue(
-                    request,
-                    PoolType.BATCH,
-                    work_id=attempt_id,
-                    job_id=job_id,
-                    payload=file_bytes,
-                    filename=file.filename,
-                    pipeline_spec=validated_spec,
-                    extra={
-                        "scope": job.scope,
-                        "collection_name": job.collection_name,
-                        "operation": job.operation,
-                        "content_sha256": content_sha256,
-                        "storage_document_id": stable_document_id,
-                    },
-                )
-
-            _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/job/whole")
-                m.record_document_accepted(
-                    document_id=attempt_id,
-                    job_id=job_id,
-                    filename=classification.filename,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
-                    file_size_bytes=file_size,
-                    endpoint="/v1/ingest/job/whole",
-                )
-
-            return DocumentIngestAccepted(
-                document_id=stable_document_id,
-                attempt_id=attempt_id,
-                filename=classification.filename,
-                file_size_bytes=len(file_bytes),
-                content_sha256=content_sha256,
-                status="accepted",
-                created_at=now,
-            )
-
-        # ── worker / standalone ──────────────────────────────────────
-        dry_run = _is_dry_run(request)
-        classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-        enforce_media_dependencies(classification)
-
-        file_bytes = await file.read()
-        content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+        item, route, classification = await _prepare_job_work_item(
+            request,
+            job_id=job_id,
+            file=file,
+            meta=meta,
+            validated_spec=validated_spec,
+            manifest_entry_id=manifest_entry_id,
+            job=job,
+            pool_type=PoolType.BATCH,
+        )
         now = datetime.now(timezone.utc).isoformat()
 
-        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-        local_job = None if gw_doc_id else _require_job(job_id, request)
-        if local_job:
-            _validate_manifest_entry(local_job, manifest_entry_id, file.filename or "", content_sha256)
-        attempt_id = gw_doc_id or uuid.uuid4().hex
-        stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
-        if local_job:
-            stable_document_id = _resolve_stable_document_id(
-                attempt_id,
-                collection_name=local_job.collection_name,
-                target_document_id=local_job.target_document_id,
-            )
-        stable_document_id = stable_document_id or attempt_id
-
-        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-
-        if not dry_run:
-            if not gw_callback_url:
-                rec, created = _register_document_under_job(
-                    document_id=attempt_id,
-                    job_id=job_id,
-                    filename=file.filename,
-                    content_sha256=content_sha256,
-                    stable_document_id=stable_document_id,
-                    manifest_entry_id=manifest_entry_id,
+        if not _is_dry_run(request):
+            record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
+            if record is not None:
+                return DocumentIngestAccepted(
+                    document_id=record.stable_document_id,
+                    attempt_id=record.id,
+                    filename=classification.filename,
+                    file_size_bytes=len(item.payload),
+                    content_sha256=record.content_sha256 or item.write.content_sha256,
+                    status="accepted",
+                    created_at=record.submitted_at,
                 )
-                if not created:
-                    return DocumentIngestAccepted(
-                        document_id=rec.stable_document_id,
-                        attempt_id=rec.id,
-                        filename=classification.filename,
-                        file_size_bytes=len(file_bytes),
-                        content_sha256=rec.content_sha256 or content_sha256,
-                        status="accepted",
-                        created_at=rec.submitted_at,
-                    )
-            await _enqueue_or_reject(
-                PoolType.BATCH,
-                WorkItem(
-                    id=attempt_id,
-                    payload=file_bytes,
-                    filename=file.filename,
-                    callback_url=gw_callback_url,
-                    callback_headers=_internal_auth_headers(request),
-                    job_id=gw_job_id,
-                    pipeline_spec=(worker_spec.model_dump(mode="json") if worker_spec is not None else None),
-                    retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-                    scope=request.headers.get(_GATEWAY_SCOPE_HEADER) or (local_job.scope if local_job else "default"),
-                    collection_name=request.headers.get(_GATEWAY_COLLECTION_HEADER)
-                    or (local_job.collection_name if local_job else None),
-                    operation=request.headers.get(_GATEWAY_OPERATION_HEADER)
-                    or (local_job.operation if local_job else "append"),
-                    content_sha256=content_sha256,
-                    storage_document_id=stable_document_id,
-                ),
-            )
 
-        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes))
-
+        file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
+        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/whole")
             m.record_document_accepted(
-                document_id=attempt_id,
-                job_id=gw_job_id,
+                document_id=item.id,
+                job_id=item.job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
-                file_size_bytes=len(file_bytes),
+                file_size_bytes=file_size,
                 endpoint="/v1/ingest/job/whole",
             )
 
         return DocumentIngestAccepted(
-            document_id=stable_document_id,
-            attempt_id=attempt_id,
+            document_id=item.write.storage_document_id,
+            attempt_id=item.id,
             filename=classification.filename,
-            file_size_bytes=len(file_bytes),
-            content_sha256=content_sha256,
+            file_size_bytes=len(item.payload),
+            content_sha256=item.write.content_sha256,
             status="accepted",
             created_at=now,
         )

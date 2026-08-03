@@ -11,6 +11,7 @@ or LanceDB-specific names.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints, field_validator
@@ -21,8 +22,16 @@ from nemo_retriever.common.api.util.converters.datetools import (
 from nemo_retriever.common.schemas.base import RichModel
 
 CollectionStatus = Literal["active", "deleting"]
-IngestOperation = Literal["append", "replace"]
 DeleteStatus = Literal["deleting", "deleted"]
+
+
+class IngestOperation(str, Enum):
+    """How an accepted upload is applied to its target collection."""
+
+    APPEND = "append"
+    REPLACE = "replace"
+
+
 DocumentId = Annotated[
     str,
     StringConstraints(

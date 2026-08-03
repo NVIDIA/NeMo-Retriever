@@ -29,6 +29,7 @@ from nemo_retriever.common.schemas.collections import (
     DocumentDeleteResult,
     DocumentInfo,
     DocumentPage,
+    IngestOperation,
 )
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
@@ -706,7 +707,7 @@ class LanceDBCollectionStore:
                 context.collection_name,
                 context.document_id,
             )
-            if context.operation == "replace":
+            if context.operation is IngestOperation.REPLACE:
                 if not existing:
                     raise VDBResourceNotFound("Document not found")
             elif existing:
@@ -732,7 +733,7 @@ class LanceDBCollectionStore:
             if rows:
                 now = _now()
                 created_at = existing[0]["created_at"] if existing else now
-                if context.operation == "append":
+                if context.operation is IngestOperation.APPEND:
                     marker = (
                         dict(existing[0])
                         if existing
@@ -821,7 +822,7 @@ class LanceDBCollectionStore:
                     )
                 else:
                     table = table or self._db.open_table(table_name)
-                    if context.operation == "replace":
+                    if context.operation is IngestOperation.REPLACE:
                         predicate = f"document_id = {_quoted(context.document_id)}"
                         (
                             table.merge_insert("chunk_id")

@@ -76,7 +76,7 @@ class WriteRequest(BaseModel):
     filename: str | None = None
     content_sha256: str | None = None
     document_version: str | None = None
-    operation: IngestOperation = "append"
+    operation: IngestOperation = IngestOperation.APPEND
 
 
 class WriteResponse(BaseModel):

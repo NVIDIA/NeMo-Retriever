@@ -17,6 +17,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
 from nemo_retriever.service import tracing
 from nemo_retriever.service.services import pipeline_executor
+from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 
 
 class _CollectingExporter:
@@ -137,6 +138,8 @@ def test_make_work_fn_continues_when_trace_capture_fails(
         filename = "contract.pdf"
         payload = b"%PDF-1.4\n"
         pipeline_spec = None
+        job_id = None
+        write = DocumentWriteContext()
 
     def _fake_process_pool_executor(*args: Any, **kwargs: Any) -> ThreadPoolExecutor:
         return ThreadPoolExecutor(max_workers=1)

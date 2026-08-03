@@ -36,7 +36,7 @@ if TYPE_CHECKING:
         NimEndpointsConfig,
         ServiceConfig,
     )
-    from nemo_retriever.service.services.pipeline_pool import WorkItem
+    from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext, WorkItem
 
 logger = logging.getLogger(__name__)
 
@@ -284,13 +284,8 @@ def _post_records_to_vectordb(
     vectordb_url: str,
     filename: str,
     *,
-    scope: str = "default",
-    collection_name: str | None = None,
-    document_id: str | None = None,
+    context: DocumentWriteContext,
     job_id: str | None = None,
-    content_sha256: str | None = None,
-    document_version: str | None = None,
-    operation: str = "append",
     internal_api_token: str | None = None,
 ) -> None:
     """Post canonical NRL record batches to VectorDB, preserving legacy best-effort behavior.
@@ -304,7 +299,7 @@ def _post_records_to_vectordb(
     import urllib.error
 
     if not records or not any(records):
-        if collection_name:
+        if context.collection_name:
             raise ValueError(f"No vector rows were produced for collection document {filename}")
         return
 
@@ -312,14 +307,14 @@ def _post_records_to_vectordb(
     body = json.dumps(
         {
             "records": records,
-            "scope": scope,
-            "collection_name": collection_name,
-            "document_id": document_id,
+            "scope": context.scope,
+            "collection_name": context.collection_name,
+            "document_id": context.storage_document_id,
             "job_id": job_id,
             "filename": filename,
-            "content_sha256": content_sha256,
-            "document_version": document_version or content_sha256 or "1",
-            "operation": operation,
+            "content_sha256": context.content_sha256,
+            "document_version": context.resolved_version,
+            "operation": context.operation,
         }
     ).encode()
     req = urllib.request.Request(
@@ -347,7 +342,7 @@ def _post_records_to_vectordb(
             filename,
             exc,
         )
-        if collection_name:
+        if context.collection_name:
             raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
 
 
@@ -693,13 +688,8 @@ def _run_pipeline_in_process(
     trace_context: dict[str, str] | None = None,
     pool_label: str | None = None,
     service_role: str | None = None,
-    scope: str = "default",
-    collection_name: str | None = None,
-    document_id: str | None = None,
+    write_context: DocumentWriteContext | None = None,
     job_id: str | None = None,
-    content_sha256: str | None = None,
-    document_version: str | None = None,
-    operation: str = "append",
     internal_api_token: str | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
@@ -765,19 +755,15 @@ def _run_pipeline_in_process(
         # IngestVdbOperator into the spec — that operator handles
         # persistence itself.
         from nemo_retriever.common.vdb.records import to_client_vdb_records
+        from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 
         records = to_client_vdb_records(result_df)
         _post_records_to_vectordb(
             records,
             vectordb_url,
             filename,
-            scope=scope,
-            collection_name=collection_name,
-            document_id=document_id,
+            context=write_context or DocumentWriteContext(),
             job_id=job_id,
-            content_sha256=content_sha256,
-            document_version=document_version,
-            operation=operation,
             internal_api_token=internal_api_token,
         )
 
@@ -1035,8 +1021,7 @@ def _make_work_fn(
         loop = asyncio.get_running_loop()
 
         resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
-        storage_document_id = getattr(item, "storage_document_id", None) or item.id
-        document_version = getattr(item, "content_sha256", None) or "1"
+        write_context = item.write.resolved(fallback_document_id=item.id)
 
         try:
             trace_context = _capture_trace_context_for_pipeline()
@@ -1054,13 +1039,8 @@ def _make_work_fn(
                 trace_context,
                 label,
                 config.mode,
-                getattr(item, "scope", "default"),
-                getattr(item, "collection_name", None),
-                storage_document_id,
-                getattr(item, "job_id", None),
-                getattr(item, "content_sha256", None),
-                document_version,
-                getattr(item, "operation", "append"),
+                write_context,
+                item.job_id,
                 config.vectordb.internal_api_token,
             )
         except BrokenProcessPool:

@@ -19,6 +19,7 @@ runs without any GPU / Ray dependencies.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from types import SimpleNamespace
@@ -29,6 +30,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
+from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
     PipelineOverridesConfig,
@@ -805,23 +807,27 @@ def test_collection_page_is_rejected_before_registration(
     assert captured_items == []
 
 
-def test_collection_whole_propagates_server_storage_context(
+@pytest.mark.parametrize("endpoint", ["document", "whole"])
+def test_collection_upload_propagates_server_storage_context(
     app_with_stub_pool: TestClient,
     captured_items: list[WorkItem],
+    endpoint: str,
 ) -> None:
+    """Both upload routes must emit the same collection work envelope."""
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     tracker = get_job_tracker()
     assert tracker is not None
+    job_id = f"collection-{endpoint}"
     tracker.register_job(
-        "collection-whole",
+        job_id,
         expected_documents=1,
         collection_name="research",
         scope="workspace",
         operation="append",
     )
     response = app_with_stub_pool.post(
-        "/v1/ingest/job/collection-whole/whole",
+        f"/v1/ingest/job/{job_id}/{endpoint}",
         headers={"X-NRL-Scope": "workspace"},
         files={"file": ("report.txt", b"finding", "text/plain")},
         data={"metadata": "{}"},
@@ -829,11 +835,14 @@ def test_collection_whole_propagates_server_storage_context(
     assert response.status_code == 202, response.text
     _wait_for_items(captured_items, 1)
     item = captured_items[0]
-    assert item.scope == "workspace"
-    assert item.collection_name == "research"
-    assert item.storage_document_id == response.json()["document_id"]
-    assert item.id == response.json()["attempt_id"]
-    assert response.json()["document_id"] != response.json()["attempt_id"]
+    body = response.json()
+    assert item.write.scope == "workspace"
+    assert item.write.collection_name == "research"
+    assert item.write.operation is IngestOperation.APPEND
+    assert item.write.content_sha256 == hashlib.sha256(b"finding").hexdigest()
+    assert item.write.storage_document_id == body["document_id"]
+    assert item.id == body["attempt_id"]
+    assert body["document_id"] != body["attempt_id"]
 
 
 def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:

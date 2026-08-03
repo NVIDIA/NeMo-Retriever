@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import Field
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import IngestOperation
 
 
 class IngestAccepted(RichModel):
@@ -80,7 +81,7 @@ class JobCreatedResponse(RichModel):
     label: str | None = None
     trace_id: str | None = None
     collection_name: str | None = None
-    operation: str = "append"
+    operation: IngestOperation = IngestOperation.APPEND
 
 
 class JobAggregateResponse(RichModel):
@@ -105,7 +106,7 @@ class JobAggregateResponse(RichModel):
     document_ids: list[str] = Field(default_factory=list)
     documents: list[dict[str, Any]] | None = None
     collection_name: str | None = None
-    operation: str = "append"
+    operation: IngestOperation = IngestOperation.APPEND
 
 
 class DocumentStatusResponse(RichModel):
