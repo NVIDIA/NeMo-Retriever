@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "audio_retrieval_recall",
+  "benchmark": "audio_retrieval_recall",
+  "mode": "batch",
+  "require": [
+    "files==96",
+    "query_count==465"
+  ],
+  "set": {}
+}

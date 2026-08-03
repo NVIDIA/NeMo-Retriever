@@ -7,11 +7,12 @@ from pathlib import Path
 import pytest
 
 from nemo_retriever.harness.benchmark_registry import (
+    BRIGHT_PUBLIC_DATASETS,
+    VIDORE_V3_EMBED_MODEL,
+    VIDORE_V3_PUBLIC_DATASETS,
     get_benchmark,
     get_dataset,
     get_runset,
-    VIDORE_V3_EMBED_MODEL,
-    VIDORE_V3_PUBLIC_DATASETS,
 )
 from nemo_retriever.harness.runfile import load_runfile
 
@@ -71,3 +72,49 @@ def test_vidore_v3_all_runset_contains_every_public_dataset() -> None:
     runset = get_runset("vidore_v3_all")
 
     assert runset.runs == tuple(f"{name}_beir" for name in VIDORE_V3_PUBLIC_DATASETS)
+
+
+@pytest.mark.parametrize("dataset_name", BRIGHT_PUBLIC_DATASETS)
+def test_bright_benchmarks_are_independent_local_qrels_subsets(dataset_name: str) -> None:
+    dataset = get_dataset(dataset_name)
+    benchmark = get_benchmark(f"{dataset_name}_beir")
+
+    assert dataset.input_type == "txt"
+    assert dataset.beir_loader == "jsonl_beir"
+    assert dataset.query_file == (
+        f"/datasets/nv-ingest/ground_truth/bright/{BRIGHT_PUBLIC_DATASETS[dataset_name]}.jsonl"
+    )
+    assert benchmark.evaluation["dataset_name"] == dataset.query_file
+    assert benchmark.evaluation["doc_id_field"] == "pdf_basename"
+
+
+def test_bright_all_runset_contains_every_public_subset() -> None:
+    runset = get_runset("bright_all")
+
+    assert runset.runs == tuple(f"{name}_beir" for name in BRIGHT_PUBLIC_DATASETS)
+
+
+@pytest.mark.parametrize(
+    ("dataset_name", "input_type", "query_count"),
+    (("audio_retrieval", "audio", 465), ("video_retrieval", "video", 1082)),
+)
+def test_media_recall_benchmarks_use_segment_recall(dataset_name: str, input_type: str, query_count: int) -> None:
+    dataset = get_dataset(dataset_name)
+    benchmark = get_benchmark(f"{dataset_name}_recall")
+    request = load_runfile(RUNFILES_DIR / f"{dataset_name}_recall.json")
+
+    assert dataset.input_type == input_type
+    assert benchmark.evaluation["mode"] == "media_recall"
+    assert benchmark.evaluation["dataset_name"] == dataset.query_file
+    assert benchmark.ingest["media"]["segment_audio"] is True
+    assert request.requirements == ("files==96", f"query_count=={query_count}")
+
+
+def test_browsecomp_plus_uses_local_prepared_qrels() -> None:
+    dataset = get_dataset("browsecomp_plus")
+    benchmark = get_benchmark("browsecomp_plus_beir")
+    request = load_runfile(RUNFILES_DIR / "browsecomp_plus_beir.json")
+
+    assert dataset.beir_loader == "jsonl_beir"
+    assert benchmark.evaluation["dataset_name"] == "/datasets/nv-ingest/ground_truth/browsecomp_plus.jsonl"
+    assert request.requirements == ("files==100195", "query_count==830")

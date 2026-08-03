@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "bright_earth_science_beir",
+  "benchmark": "bright_earth_science_beir",
+  "mode": "batch",
+  "require": [
+    "files==121249",
+    "query_count==116"
+  ],
+  "set": {}
+}

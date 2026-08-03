@@ -23,6 +23,7 @@ from nemo_retriever.harness.artifact_writer import (
     redact,
 )
 from nemo_retriever.harness.beir_runner import run_beir_queries, run_service_beir_queries
+from nemo_retriever.harness.media_recall_runner import run_media_recall_queries, run_service_media_recall_queries
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
     EXIT_INGEST_FAILURE,
@@ -472,6 +473,17 @@ def run_prepared_benchmark(
                         )
                     else:
                         query_latencies_ms, beir_metrics, query_count = run_beir_queries(
+                            writer, resolved, query_plan, query_request
+                        )
+            elif (resolved.get("evaluation") or {}).get("mode") == "media_recall":
+                with capture_output_to_log(writer.path("run.log"), label="query_evaluate"):
+                    if service_mode:
+                        query_latencies_ms, beir_metrics, query_count = run_service_media_recall_queries(
+                            writer, resolved, query_request
+                        )
+                    else:
+                        assert query_plan is not None, "media recall requires a resolved query plan"
+                        query_latencies_ms, beir_metrics, query_count = run_media_recall_queries(
                             writer, resolved, query_plan, query_request
                         )
 

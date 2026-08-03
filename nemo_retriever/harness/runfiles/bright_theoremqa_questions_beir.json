@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "bright_theoremqa_questions_beir",
+  "benchmark": "bright_theoremqa_questions_beir",
+  "mode": "batch",
+  "require": [
+    "files==188002",
+    "query_count==205"
+  ],
+  "set": {}
+}

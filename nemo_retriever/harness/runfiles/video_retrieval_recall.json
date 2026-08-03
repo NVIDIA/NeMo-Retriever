@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "video_retrieval_recall",
+  "benchmark": "video_retrieval_recall",
+  "mode": "batch",
+  "require": [
+    "files==96",
+    "query_count==1082"
+  ],
+  "set": {}
+}

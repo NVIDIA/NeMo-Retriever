@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "bright_economics_beir",
+  "benchmark": "bright_economics_beir",
+  "mode": "batch",
+  "require": [
+    "files==50220",
+    "query_count==103"
+  ],
+  "set": {}
+}

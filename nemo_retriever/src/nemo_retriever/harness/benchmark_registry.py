@@ -24,6 +24,20 @@ VIDORE_V3_PUBLIC_DATASETS: dict[str, str] = {
     "vidore_v3_pharmaceuticals": "pharmaceuticals",
     "vidore_v3_physics": "physics",
 }
+BRIGHT_PUBLIC_DATASETS: dict[str, str] = {
+    "bright_aops": "aops",
+    "bright_biology": "biology",
+    "bright_earth_science": "earth_science",
+    "bright_economics": "economics",
+    "bright_leetcode": "leetcode",
+    "bright_pony": "pony",
+    "bright_psychology": "psychology",
+    "bright_robotics": "robotics",
+    "bright_stackoverflow": "stackoverflow",
+    "bright_sustainable_living": "sustainable_living",
+    "bright_theoremqa_questions": "theoremqa_questions",
+    "bright_theoremqa_theorems": "theoremqa_theorems",
+}
 DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
     "files",
     "pages",
@@ -52,6 +66,19 @@ def _vidore_v3_dataset(name: str, domain: str) -> DatasetSpec:
         beir_loader="vidore_hf",
         beir_doc_id_field="pdf_page",
         description=f"ViDoRe v3 {domain} benchmark slice.",
+    )
+
+
+def _bright_dataset(name: str, subset: str) -> DatasetSpec:
+    root = f"/datasets/nv-ingest/bright/{subset}"
+    return DatasetSpec(
+        name=name,
+        path=f"{root}/corpus",
+        query_file=f"/datasets/nv-ingest/ground_truth/bright/{subset}.jsonl",
+        input_type="txt",
+        beir_loader="jsonl_beir",
+        beir_doc_id_field="pdf_basename",
+        description=f"BRIGHT {subset} retrieval benchmark subset.",
     )
 
 
@@ -108,14 +135,38 @@ DATASETS: dict[str, DatasetSpec] = {
         beir_doc_id_field="pdf_page",
         description="Earnings consulting multimodal benchmark corpus.",
     ),
+    "audio_retrieval": DatasetSpec(
+        name="audio_retrieval",
+        path="/datasets/nv-ingest/audio_retrieval_data_mp3",
+        query_file="/datasets/nv-ingest/video_retrieval_eval_gt_audio_only.csv",
+        input_type="audio",
+        description="Audio-only segment recall over the video-retrieval corpus.",
+    ),
+    "video_retrieval": DatasetSpec(
+        name="video_retrieval",
+        path="/datasets/nv-ingest/video_retrieval_data",
+        query_file="/datasets/nv-ingest/video_retrieval_eval_gt.csv",
+        input_type="video",
+        description="Audio/video segment recall over the video-retrieval corpus.",
+    ),
+    "browsecomp_plus": DatasetSpec(
+        name="browsecomp_plus",
+        path="/datasets/nv-ingest/browsecomp_plus/corpus",
+        query_file="/datasets/nv-ingest/ground_truth/browsecomp_plus.jsonl",
+        input_type="txt",
+        beir_loader="jsonl_beir",
+        beir_doc_id_field="pdf_basename",
+        description="BrowseComp-Plus retrieval benchmark with a prepared local qrels snapshot.",
+    ),
     **{name: _vidore_v3_dataset(name, domain) for name, domain in VIDORE_V3_PUBLIC_DATASETS.items()},
+    **{name: _bright_dataset(name, subset) for name, subset in BRIGHT_PUBLIC_DATASETS.items()},
 }
 
 
-def _base_ingest(*, profile: str = "auto") -> dict[str, Any]:
+def _base_ingest(*, profile: str = "auto", input_type: str = "pdf") -> dict[str, Any]:
     return {
         "profile": profile,
-        "input_type": "pdf",
+        "input_type": input_type,
         "run_mode": "inprocess",
         "extract": {},
         "media": {},
@@ -193,6 +244,68 @@ def _vidore_v3_benchmark(dataset_name: str) -> BenchmarkSpec:
     )
 
 
+def _bright_benchmark(dataset_name: str) -> BenchmarkSpec:
+    dataset = DATASETS[dataset_name]
+    subset = BRIGHT_PUBLIC_DATASETS[dataset_name]
+    return BenchmarkSpec(
+        name=f"{dataset_name}_beir",
+        dataset=dataset_name,
+        ingest=_base_ingest(profile="auto", input_type="txt"),
+        query=_base_query(top_k=10),
+        evaluation=_beir_eval(dataset),
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "bright", "text"),
+        description=f"BRIGHT {subset} end-to-end BEIR retrieval benchmark.",
+    )
+
+
+def _media_recall_benchmark(dataset_name: str) -> BenchmarkSpec:
+    dataset = DATASETS[dataset_name]
+    ingest = _base_ingest(profile="auto", input_type=dataset.input_type)
+    ingest["media"] = {
+        "segment_audio": True,
+        "audio_split_type": "time",
+        "audio_split_interval": 36000,
+    }
+    if dataset_name == "video_retrieval":
+        ingest["media"].update(
+            {
+                "video_extract_audio": True,
+                "video_extract_frames": True,
+                "video_frame_fps": 0.05,
+                "video_av_fuse": True,
+            }
+        )
+        ingest["embed"] = {
+            "embed_model_name": VIDORE_V3_EMBED_MODEL,
+            "embed_modality": "text",
+            "embed_granularity": "element",
+        }
+        query = _base_query(top_k=10, embed_model_name=VIDORE_V3_EMBED_MODEL)
+    else:
+        ingest["embed"] = {
+            "embed_model_name": DEFAULT_EMBED_MODEL,
+            "embed_modality": "text",
+            "embed_granularity": "element",
+        }
+        query = _base_query(top_k=10)
+    return BenchmarkSpec(
+        name=f"{dataset_name}_recall",
+        dataset=dataset_name,
+        ingest=ingest,
+        query=query,
+        evaluation={
+            "mode": "media_recall",
+            "dataset_name": dataset.query_file,
+            "ks": (1, 3, 5, 10),
+            "audio_match_tolerance_secs": 2.0,
+        },
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("media", "recall", dataset.input_type),
+        description=f"{dataset.input_type.title()} segment recall benchmark.",
+    )
+
+
 BENCHMARKS: dict[str, BenchmarkSpec] = {
     "jp20_smoke": BenchmarkSpec(
         name="jp20_smoke",
@@ -244,7 +357,20 @@ BENCHMARKS: dict[str, BenchmarkSpec] = {
         tags=("beir", "earnings", "pdf"),
         description="Earnings consulting end-to-end BEIR retrieval benchmark.",
     ),
+    "audio_retrieval_recall": _media_recall_benchmark("audio_retrieval"),
+    "video_retrieval_recall": _media_recall_benchmark("video_retrieval"),
+    "browsecomp_plus_beir": BenchmarkSpec(
+        name="browsecomp_plus_beir",
+        dataset="browsecomp_plus",
+        ingest=_base_ingest(profile="auto", input_type="txt"),
+        query=_base_query(top_k=10),
+        evaluation=_beir_eval(DATASETS["browsecomp_plus"]),
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "browsecomp", "text"),
+        description="BrowseComp-Plus end-to-end BEIR retrieval benchmark.",
+    ),
     **{f"{dataset_name}_beir": _vidore_v3_benchmark(dataset_name) for dataset_name in VIDORE_V3_PUBLIC_DATASETS},
+    **{f"{dataset_name}_beir": _bright_benchmark(dataset_name) for dataset_name in BRIGHT_PUBLIC_DATASETS},
     "bo10k_beir_fast_text": BenchmarkSpec(
         name="bo10k_beir_fast_text",
         dataset="bo10k",
@@ -279,6 +405,12 @@ RUNSETS: dict[str, RunSet] = {
         runs=tuple(f"{dataset_name}_beir" for dataset_name in VIDORE_V3_PUBLIC_DATASETS),
         tags=("vidore", "beir", "all"),
         description="All eight public ViDoRe v3 BEIR retrieval benchmarks.",
+    ),
+    "bright_all": RunSet(
+        name="bright_all",
+        runs=tuple(f"{dataset_name}_beir" for dataset_name in BRIGHT_PUBLIC_DATASETS),
+        tags=("bright", "beir", "all"),
+        description="All twelve BRIGHT retrieval benchmark subsets.",
     ),
 }
 

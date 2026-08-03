@@ -32,6 +32,7 @@ _ARTIFACT_NAMES = {
     "query_results": "query_results.jsonl",
     "beir_metrics": "beir_metrics.json",
     "beir_run": "beir_run.trec",
+    "media_recall_metrics": "media_recall_metrics.json",
     "lancedb": "lancedb",
     "service_logs": "service_logs",
 }

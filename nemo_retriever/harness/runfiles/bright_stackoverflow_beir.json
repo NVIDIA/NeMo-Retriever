@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "bright_stackoverflow_beir",
+  "benchmark": "bright_stackoverflow_beir",
+  "mode": "batch",
+  "require": [
+    "files==107081",
+    "query_count==117"
+  ],
+  "set": {}
+}
