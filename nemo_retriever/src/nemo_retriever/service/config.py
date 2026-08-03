@@ -131,6 +131,23 @@ class NimEndpointsConfig(RichModel):
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
+    nemotron_parse_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote Nemotron Parse chat-completions endpoint. When set, "
+            "service-mode requests using method='nemotron_parse' call this "
+            "endpoint instead of loading the local Parse model."
+        ),
+    )
+    nemotron_parse_model: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote Nemotron Parse endpoint. "
+            "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
+            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "Server-owned — clients cannot override the deployed Parse SKU."
+        ),
+    )
     embed_invoke_url: str | None = None
     embed_model_name: str | None = Field(
         default=None,
@@ -172,6 +189,16 @@ class NimEndpointsConfig(RichModel):
         ),
     )
     api_key: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_nemotron_parse_config(self) -> "NimEndpointsConfig":
+        endpoint = (self.nemotron_parse_invoke_url or "").strip()
+        model = (self.nemotron_parse_model or "").strip()
+        self.nemotron_parse_invoke_url = endpoint or None
+        self.nemotron_parse_model = model or None
+        if model and not endpoint:
+            raise ValueError("nim_endpoints.nemotron_parse_model requires " "nim_endpoints.nemotron_parse_invoke_url")
+        return self
 
 
 class LLMConfig(RichModel):
@@ -287,6 +314,31 @@ class PipelinePoolConfig(RichModel):
     realtime_queue_size: int = Field(default=2048, ge=1, description="Max queued items before realtime pool rejects")
     batch_workers: int = Field(default=16, ge=1, description="Concurrent workers for bulk document processing")
     batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
+
+
+class WorkQueueConfig(RichModel):
+    """Gateway-owned split-topology work broker configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    gateway_url: str = Field(
+        default="http://nemo-retriever-gateway:7670",
+        description="Gateway Service URL used by split-mode workers.",
+    )
+    spool_directory: str = "/tmp/nemo-retriever-work"
+    spool_limit_bytes: int = Field(default=20 * 1024**3, ge=1)
+    claim_timeout_s: float = Field(default=30.0, gt=0)
+    lease_ttl_s: float = Field(default=60.0, gt=0)
+    heartbeat_interval_s: float = Field(default=20.0, gt=0)
+    max_delivery_attempts: int = Field(default=3, ge=1)
+    max_active_leases_realtime: int = Field(default=8, ge=1)
+    max_active_leases_batch: int = Field(default=48, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_heartbeat(self) -> "WorkQueueConfig":
+        if self.heartbeat_interval_s >= self.lease_ttl_s / 2:
+            raise ValueError("work_queue.heartbeat_interval_s must be below half work_queue.lease_ttl_s")
+        return self
 
 
 class VectorDbConfig(RichModel):
@@ -433,6 +485,7 @@ class ServiceConfig(RichModel):
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
+    work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
 

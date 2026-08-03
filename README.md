@@ -141,7 +141,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 - **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
 - **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Benchmarking Guide](nemo_retriever/docs/cli/benchmarking.md)** - Performance testing and recall evaluation framework
+- **[Retriever Harness](nemo_retriever/harness/README.md)** - Repeatable end-to-end ingest and retrieval benchmarks
+- **[Stage Benchmarking](nemo_retriever/docs/cli/benchmarking.md)** - Internal per-stage throughput measurements
 - **[MIG Deployment](nemo_retriever/helm/README.md)** - Multi-Instance GPU configurations for Kubernetes
 - **[API Documentation](docs/docs/extraction/nemo-retriever-api-reference.md)** - Python client and API reference
 

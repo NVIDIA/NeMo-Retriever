@@ -322,6 +322,7 @@ _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
     "ocr_api_key",
     "table_structure_invoke_url",
     "nemotron_parse_invoke_url",
+    "nemotron_parse_model",
 )
 _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embed_invoke_url",
@@ -358,6 +359,24 @@ def _merge_server_owned(
         if k in base:
             merged[k] = base[k]
     return merged
+
+
+def _resolve_extract_params(
+    base_extract: dict[str, Any],
+    extract_override: dict[str, Any] | None,
+) -> Any:
+    """Merge extraction settings while isolating Parse-only server fields."""
+    from nemo_retriever.common.params import ExtractParams
+
+    extract_kwargs = _merge_server_owned(
+        base_extract,
+        extract_override,
+        _TRUST_OWNED_EXTRACT_KEYS,
+    )
+    if extract_kwargs.get("method", "pdfium") != "nemotron_parse":
+        extract_kwargs.pop("nemotron_parse_invoke_url", None)
+        extract_kwargs.pop("nemotron_parse_model", None)
+    return ExtractParams(**extract_kwargs)
 
 
 def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -517,7 +536,6 @@ def _build_graph_ingestor_from_spec(
         ASRParams,
         CaptionParams,
         DedupParams,
-        ExtractParams,
         StoreParams,
         VdbUploadParams,
         WebhookParams,
@@ -527,8 +545,7 @@ def _build_graph_ingestor_from_spec(
     extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
     split_config = spec.get("split_config")
 
-    extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
-    extract_params = ExtractParams(**extract_kwargs)
+    extract_params = _resolve_extract_params(base_extract, spec.get("extract_params"))
 
     embed_override = spec.get("embed_params")
     embed_params = _resolve_embed_params(base_embed, embed_override)
@@ -786,6 +803,13 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
         kwargs["ocr_invoke_url"] = nim.ocr_invoke_url
     if nim.table_structure_invoke_url:
         kwargs["table_structure_invoke_url"] = nim.table_structure_invoke_url
+    if nim.nemotron_parse_invoke_url:
+        # ExtractParams validates that Parse-specific configuration and the
+        # extraction method are selected together.
+        kwargs["method"] = "nemotron_parse"
+        kwargs["nemotron_parse_invoke_url"] = nim.nemotron_parse_invoke_url
+        if nim.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = nim.nemotron_parse_model
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 

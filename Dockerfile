@@ -19,6 +19,7 @@ FROM $BASE_IMG:$BASE_IMG_TAG AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bzip2 \
       ca-certificates \
+      libcairo2 \
       curl \
       libgl1-mesa-glx \
       libglib2.0-0 \
@@ -111,12 +112,13 @@ ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/retriever_runtime
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
-# Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
+# CPU service install: remote NIM clients + multimedia (ASR, SVG).
+# At runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service]"
+    && uv pip install -e "./nemo_retriever[service,multimedia]"
 
 # GPU service install: in-pod Hugging Face models + multimedia (ASR, SVG).
 # Build target: service-gpu

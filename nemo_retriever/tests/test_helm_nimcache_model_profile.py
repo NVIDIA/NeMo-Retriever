@@ -97,6 +97,16 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "ngcImagePullSecret.create=false",
         "--set",
         "ngcApiSecret.create=false",
+        "--set",
+        "nimOperator.page_elements.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.table_structure.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.ocr.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.vlm_embed.modelDownloadMode=nimCache",
+        "--set",
+        "nimOperator.rerankqa.modelDownloadMode=nimCache",
         # Opt every default-empty-profile NIM in so this suite exercises
         # their shared modelProfile contract in one render. Defaults are
         # covered separately.
@@ -265,7 +275,7 @@ class NimCacheModelProfileTests(TestCase):
         )
         self.assertEqual(
             ocr_cache["spec"]["source"]["ngc"]["modelPuller"],
-            "nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0",
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0",
         )
 
         ocr_service = next(
@@ -277,12 +287,12 @@ class NimCacheModelProfileTests(TestCase):
             ocr_service["spec"]["image"]["repository"],
             "nvcr.io/nim/nvidia/nemotron-ocr-v2",
         )
-        self.assertEqual(ocr_service["spec"]["image"]["tag"], "1.4.0")
+        self.assertEqual(ocr_service["spec"]["image"]["tag"], "2.0.0")
 
         configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
         self.assertTrue(
             any(
-                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/infer"'
+                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/ocr"'
                 in doc.get("data", {}).get("retriever-service.yaml", "")
                 for doc in configmaps
             ),

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.json_io import read_json_object
+from nemo_retriever.harness.release_reference import ReleaseReference
 
 DEFAULT_USERNAME = "nemo_retriever Harness"
 DEFAULT_ICON_EMOJI = ":satellite:"
@@ -14,10 +15,14 @@ _BLANK_ROW = [
     {"type": "rich_text", "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": " "}]}]},
 ]
 METRIC_LABELS = {
+    "gpu_sku": "physical GPU SKU",
+    "gpu_count": "physical GPU count",
+    "workload_gpu_count": "GPUs available to workload",
     "files": "files",
     "pages_per_sec_ingest": "pages/s",
     "ingest_secs": "ingest_s",
     "pages": "pages",
+    "rows_processed": "rows",
     "query_count": "queries",
     "query_latency_p50_ms": "query p50 ms",
     "query_latency_p95_ms": "query p95 ms",
@@ -326,7 +331,7 @@ def _format_metric_value(metric_name: str, value: Any) -> str:
         return formatted
     if metric_name.endswith("_per_sec_ingest"):
         return f"{float(value):.2f}"
-    if metric_name.startswith("recall_"):
+    if metric_name.startswith(("recall_", "ndcg_")):
         return f"{float(value):.3f}"
     if isinstance(value, float):
         return f"{value:.2f}"
@@ -459,12 +464,95 @@ def _vidore_v3_performance(runs: list[HarnessRunReport]) -> tuple[float | None, 
     return total_ingest_secs, pages_per_sec
 
 
-def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
+def _gpu_count(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+def _run_display_label(run: HarnessRunReport, repeated_datasets: set[str]) -> str:
+    if run.dataset not in repeated_datasets:
+        return run.dataset
+    workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
+    if workload_gpu_count is None:
+        return run.run_name
+    gpu_label = "GPU" if workload_gpu_count == 1 else "GPUs"
+    return f"{run.dataset} ({workload_gpu_count} workload {gpu_label})"
+
+
+def _release_reference_blocks(
+    report: HarnessSessionReport,
+    references: list[ReleaseReference],
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for reference in references:
+        for run in report.results:
+            if not run.success or run.dataset != reference.dataset:
+                continue
+            rows = [_three_column_row("METRIC", "CURRENT", reference.release.upper(), bold=True)]
+            for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
+                current_value = run.run_metadata.get(key)
+                reference_value = reference.environment.get(key)
+                if current_value is None and reference_value is None:
+                    continue
+                rows.append(
+                    _three_column_row(
+                        _format_metric_label(key),
+                        _format_metric_value(key, current_value),
+                        _format_metric_value(key, reference_value),
+                    )
+                )
+            for metric_name, reference_value in reference.metrics.items():
+                rows.append(
+                    _three_column_row(
+                        _format_metric_label(metric_name),
+                        _format_metric_value(metric_name, run.metrics.get(metric_name)),
+                        _format_metric_value(metric_name, reference_value),
+                    )
+                )
+            workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
+            if workload_gpu_count is None:
+                workload_label = ""
+            else:
+                gpu_label = "GPU" if workload_gpu_count == 1 else "GPUs"
+                workload_label = f" ({workload_gpu_count} workload {gpu_label})"
+            blocks.extend(
+                [
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*{reference.release} reference — {run.dataset}{workload_label}*\n"
+                                "Observed values only; hardware may differ and no pass/fail threshold is applied."
+                            ),
+                        },
+                    },
+                    {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
+                ]
+            )
+    return blocks
+
+
+def build_slack_payload(
+    report: HarnessSessionReport,
+    slack_config: dict[str, Any],
+    *,
+    release_references: list[ReleaseReference] | None = None,
+) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     vidore_v3_runs = _vidore_v3_runs(report.results)
     vidore_v3_datasets = {run.dataset for run in vidore_v3_runs}
     detailed_runs = [run for run in report.results if run.dataset not in vidore_v3_datasets]
+    repeated_datasets = {
+        run.dataset for run in detailed_runs if sum(item.dataset == run.dataset for item in detailed_runs) > 1
+    }
     passed_count = sum(1 for run in report.results if run.success)
     total_count = len(report.results)
     if report.dry_run:
@@ -473,13 +561,11 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
         overall_status = f"PASS ({passed_count}/{total_count})"
     else:
         overall_status = f"FAIL ({passed_count}/{total_count} passed)"
-    first_metadata = next((run.run_metadata for run in report.results if run.run_metadata), {})
-
     rows: list[list[dict[str, Any]]] = []
     rows.append(_two_column_row_bold("OVERALL STATUS", overall_status))
     for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
-        rows.append(_two_column_row_bold(f"-    {run.dataset}", run_status))
+        rows.append(_two_column_row_bold(f"-    {_run_display_label(run, repeated_datasets)}", run_status))
     if vidore_v3_runs:
         rows.append(
             _two_column_row_bold(
@@ -495,16 +581,28 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
         rows.append(_two_column_row("-    session_dir", str(report.session_dir)))
     if report.latest_commit:
         rows.append(_two_column_row("-    git_commit", report.latest_commit))
-    for key in ["host", "gpu_count", "cuda_driver", "ray_version", "python_version"]:
-        if key not in first_metadata or first_metadata[key] is None:
+    for key in [
+        "host",
+        "gpu_sku",
+        "gpu_count",
+        "workload_gpu_count",
+        "cuda_driver",
+        "ray_version",
+        "python_version",
+    ]:
+        metadata_values = list(
+            dict.fromkeys(run.run_metadata.get(key) for run in report.results if run.run_metadata.get(key) is not None)
+        )
+        if not metadata_values:
             continue
-        rows.append(_two_column_row(f"-    {key}", _format_metric_value(key, first_metadata[key])))
+        formatted_value = ", ".join(_format_metric_value(key, value) for value in metadata_values)
+        rows.append(_two_column_row(f"-    {_format_metric_label(key)}", formatted_value))
 
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("RESULTS", " "))
     for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
-        rows.append(_two_column_row_bold(run.dataset, run_status))
+        rows.append(_two_column_row_bold(_run_display_label(run, repeated_datasets), run_status))
         if not run.success and run.return_code is not None:
             rows.append(_two_column_row("-    return_code", str(run.return_code)))
         for metric_name in _select_metric_names(run.metrics, metric_keys):
@@ -584,6 +682,7 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
                 {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
             ]
         )
+    blocks.extend(_release_reference_blocks(report, release_references or []))
 
     return {
         "username": DEFAULT_USERNAME,
@@ -623,7 +722,8 @@ def post_report_to_slack(
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
+    release_references: list[ReleaseReference] | None = None,
 ) -> dict[str, Any]:
-    payload = build_slack_payload(report, slack_config)
+    payload = build_slack_payload(report, slack_config, release_references=release_references)
     post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload

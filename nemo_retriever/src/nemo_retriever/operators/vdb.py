@@ -130,7 +130,7 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        # Compatibility shim: graph_pipeline emits flat embedded rows, while
+        # Graph ingest emits flat embedded rows, while
         # nv-ingest-client VDB.run still expects nested Nemo Retriever Library (NRL) records.
         records = to_client_vdb_records(data)
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
@@ -221,6 +221,10 @@ class RetrieveVdbOperator(AbstractOperator):
         self._retrieval_vdb_kwargs = clean_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
         self._explode_for_rerank = bool(explode_for_rerank)
+
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Read one index metadata value through the configured VDB."""
+        return self._vdb.get_index_metadata(key, **{**self._vdb_kwargs, **kwargs})
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         if isinstance(data, pd.DataFrame):

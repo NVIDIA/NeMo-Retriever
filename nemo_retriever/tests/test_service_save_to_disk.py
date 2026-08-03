@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from nemo_retriever.service.service_ingestor import ServiceIngestor
@@ -146,7 +147,12 @@ def test_materialize_fetches_once_when_return_results_and_save_to_disk(tmp_path:
     rows = [{"page": 1, "text": "shared"}]
     fetch_calls = 0
 
-    def _counting_fetch(self: ServiceIngestor, document_id: str) -> list[dict[str, Any]]:
+    def _counting_fetch(
+        self: ServiceIngestor,
+        document_id: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> list[dict[str, Any]]:
         nonlocal fetch_calls
         fetch_calls += 1
         assert document_id == "doc-1"
@@ -168,3 +174,140 @@ def test_save_document_authorisation_header_sent_when_token_present(tmp_path: Pa
         ing._save_document_to_disk("doc-x")
 
     assert captured["kwargs"]["headers"] == {"Authorization": "Bearer sekret"}
+
+
+# ----------------------------------------------------------------------
+# ingest-scoped result client reuse and retry
+# ----------------------------------------------------------------------
+
+
+def _completion_events(*document_ids: str) -> list[dict[str, Any]]:
+    return [
+        {"event": "job_created", "job_id": "job-1"},
+        *[
+            {
+                "event": "document_complete",
+                "document_id": document_id,
+                "status": "completed",
+                "result_rows": 1,
+            }
+            for document_id in document_ids
+        ],
+        {"event": "job_finalized", "job_id": "job-1"},
+    ]
+
+
+def _result_row(document_id: str) -> dict[str, Any]:
+    return {
+        "path": f"/uploads/{document_id}.pdf",
+        "page_number": 1,
+        "text": f"content-{document_id}",
+        "metadata": {"source_id": document_id},
+    }
+
+
+def test_ingest_reuses_one_result_client_across_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a", "doc-b")))
+    requests: list[httpx.Request] = []
+    clients: list[httpx.Client] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        document_id = request.url.path.rsplit("/", 1)[-1]
+        return httpx.Response(200, json={"result_data": [_result_row(document_id)]})
+
+    def client_factory() -> httpx.Client:
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(ing, "_new_result_fetch_client", client_factory)
+    result = ing.ingest(result_schema="compact")
+
+    assert len(clients) == 1
+    assert clients[0].is_closed
+    assert [request.url.path for request in requests] == [
+        "/v1/ingest/status/doc-a",
+        "/v1/ingest/status/doc-b",
+    ]
+    assert result.dataframe is not None
+    assert len(result.dataframe) == 2
+    assert result.failures == []
+
+
+@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError])
+def test_ingest_retries_transient_result_fetch_on_fresh_client(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
+    clients: list[httpx.Client] = []
+
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        raise error_type("transient result failure", request=request)
+
+    def success_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result_data": [_result_row("doc-a")]})
+
+    handlers = [failing_handler, success_handler]
+
+    def client_factory() -> httpx.Client:
+        client = httpx.Client(transport=httpx.MockTransport(handlers[len(clients)]))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(ing, "_new_result_fetch_client", client_factory)
+    result = ing.ingest(result_schema="compact")
+
+    assert len(clients) == 2
+    assert all(client.is_closed for client in clients)
+    assert result.dataframe is not None
+    assert len(result.dataframe) == 1
+    assert result.failures == []
+
+
+def test_ingest_exhausted_result_retry_remains_visible(monkeypatch: pytest.MonkeyPatch) -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
+    clients: list[httpx.Client] = []
+
+    def failing_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError("persistent result failure", request=request)
+
+    def client_factory() -> httpx.Client:
+        client = httpx.Client(transport=httpx.MockTransport(failing_handler))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(ing, "_new_result_fetch_client", client_factory)
+    result = ing.ingest(result_schema="compact")
+
+    assert len(clients) == 2
+    assert all(client.is_closed for client in clients)
+    assert len(result.failures) == 1
+    assert result.failures[0][0] == "doc-a"
+    assert "persistent result failure" in result.failures[0][1]
+
+
+def test_ingest_does_not_retry_http_status_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
+    clients: list[httpx.Client] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "permanent"})
+
+    def client_factory() -> httpx.Client:
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(ing, "_new_result_fetch_client", client_factory)
+    result = ing.ingest(result_schema="compact")
+
+    assert len(clients) == 1
+    assert clients[0].is_closed
+    assert len(result.failures) == 1
+    assert "500" in result.failures[0][1]

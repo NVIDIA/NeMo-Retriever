@@ -13,28 +13,20 @@
 # S3 layout written under developer/docs/nemo/retriever/:
 #   index.html, versions.json, latest/, <version>/ (e.g. 26.5.0/)
 #
-# Per-release operator steps (before merge or tag):
-#   1. Edit docs/publish/versions.json — add the new version, move the "latest" alias,
-#      keep older entries unless retiring them.
-#   2. Set NRL_DOCS_PUBLISH_VERSION to the release version, or push a version tag
-#      (e.g. v26.5.0 or release-v26.5.0) so publish-docs and SITE_URL stay aligned.
-#   3. Merge doc changes to main (or push the tag). CI copies versions.json into the
-#      artifact, builds with SITE_URL=.../retriever/<version>/, and runs publish-docs.
-# Backports to old branches: workflow_dispatch with publish-as-latest: false (or /not-latest
-# in the commit message); do not move the "latest" alias in versions.json.
+# Manual publish only (workflow_dispatch). Do not re-enable push/tag auto-publish
+# while docs.nvidia.com 26.5.0 / latest are frozen to the 26.05 release docs.
+#
+# Operator steps when ready to publish:
+#   1. Merge doc changes to the 26.05 branch (content source for the build).
+#   2. Keep docs/publish/versions.json on main accurate (version picker + latest alias).
+#   3. Actions → "NRL documentation — docs.nvidia.com publish" → Run workflow:
+#        dry-run: false
+#        docs-version-override: 26.5.0 (or leave empty to use NRL_DOCS_PUBLISH_VERSION / default)
+#        publish-as-latest: true only when intentionally refreshing latest/
+# Backports: publish-as-latest: false; do not move the "latest" alias in versions.json.
 name: NRL documentation — docs.nvidia.com publish
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v[0-9]*.[0-9]*"
-      - "*-v[0-9]*.[0-9]*"
-    paths:
-      - "docs/**"
-      - "nemo_retriever/**"
-      - ".github/workflows/nrl-docs-nvidia-publish.yml"
   workflow_dispatch:
     inputs:
       dry-run:
@@ -43,7 +35,7 @@ on:
         type: boolean
         default: true
       docs-version-override:
-        description: Version folder to publish (e.g. 26.5.0). Empty uses tag, NRL_DOCS_PUBLISH_VERSION, or 26.5.0.
+        description: Version folder to publish (e.g. 26.5.0). Empty uses NRL_DOCS_PUBLISH_VERSION, or 26.5.0.
         required: false
         type: string
         default: ""
@@ -86,31 +78,17 @@ jobs:
       - name: Resolve publish inputs
         id: publish
         env:
-          DISPATCH_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
-          VERSION_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.docs-version-override || '' }}
-          PUBLISH_LATEST_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish-as-latest }}
-          NOTIFY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.notify-emails || '' }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
+          VERSION_INPUT: ${{ inputs.docs-version-override }}
+          PUBLISH_LATEST_INPUT: ${{ inputs.publish-as-latest }}
+          NOTIFY_INPUT: ${{ inputs.notify-emails }}
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
-          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
-          GITHUB_REF_NAME: ${{ github.ref }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
-            echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
-          else
-            echo "dry_run=false" >> "$GITHUB_OUTPUT"
-            echo "publish_latest=true" >> "$GITHUB_OUTPUT"
-          fi
+          echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
 
           VERSION="${VERSION_INPUT}"
-          if [[ -z "${VERSION}" ]]; then
-            if [[ "${GITHUB_REF_NAME}" =~ -v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
-              VERSION="${BASH_REMATCH[1]}"
-            elif [[ "${GITHUB_REF_NAME}" =~ ^refs/tags/v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
-              VERSION="${BASH_REMATCH[1]}"
-            fi
-          fi
           if [[ -z "${VERSION}" ]]; then
             VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
           fi
@@ -119,12 +97,6 @@ jobs:
           fi
           echo "docs_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "site_url=${{ env.DOCS_SITE_URL_BASE }}/${VERSION}/" >> "$GITHUB_OUTPUT"
-
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
-            if [[ "${HEAD_COMMIT_MSG}" =~ /not-latest ]] || [[ "${GITHUB_REF_NAME}" =~ not-latest ]]; then
-              echo "publish_latest=false" >> "$GITHUB_OUTPUT"
-            fi
-          fi
 
           EMAILS="${DOCS_RELEASE_EMAILS_VAR}"
           if [[ -n "${NOTIFY_INPUT}" ]]; then

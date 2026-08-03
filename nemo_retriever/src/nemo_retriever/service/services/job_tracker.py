@@ -440,6 +440,22 @@ class JobTracker:
         if bus_agg is not None:
             self._publish_job_event("job_started", bus_agg)
 
+    def unregister_pending(self, document_id: str) -> bool:
+        """Roll back an admission rejected before a worker can claim it."""
+        with self._lock:
+            rec = self._documents.get(document_id)
+            if rec is None or rec.status != DocumentStatus.PENDING:
+                return False
+            agg = self._jobs.get(rec.job_id)
+            self._documents.pop(document_id, None)
+            if agg is not None:
+                try:
+                    agg.document_ids.remove(document_id)
+                except ValueError:
+                    pass
+                agg.counts[DocumentStatus.PENDING.value] = max(0, agg.counts.get(DocumentStatus.PENDING.value, 0) - 1)
+            return True
+
     def mark_completed(
         self,
         document_id: str,

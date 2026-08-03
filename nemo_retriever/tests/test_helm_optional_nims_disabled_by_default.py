@@ -303,15 +303,15 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         """
         readme = _read_required_file(_README_MD)
         self.assertIn(
-            f"{_RERANK_VL_REPOSITORY}:1.10.0",
+            f"{_RERANK_VL_REPOSITORY}:2.3.0",
             readme,
-            "README mirror-image table must list the VL reranker " f"`{_RERANK_VL_REPOSITORY}:1.10.0`.",
+            "README mirror-image table must list the VL reranker " f"`{_RERANK_VL_REPOSITORY}:2.3.0`.",
         )
         self.assertNotIn(
-            f"{_RERANK_TEXT_REPOSITORY}:1.10.0",
+            f"{_RERANK_TEXT_REPOSITORY}:2.3.0",
             readme,
             "README mirror-image table must not list the text-only "
-            f"rerank SKU `{_RERANK_TEXT_REPOSITORY}:1.10.0` — that "
+            f"rerank SKU `{_RERANK_TEXT_REPOSITORY}:2.3.0` — that "
             "would silently degrade multimodal reranking for air-gapped "
             "mirror setups.",
         )
