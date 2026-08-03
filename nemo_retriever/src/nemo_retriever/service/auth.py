@@ -65,12 +65,6 @@ class ScopeAuthorizer:
         if config.scope_token_file:
             self._load_file(config.scope_token_file)
 
-    @property
-    def credentials_required(self) -> bool:
-        """Return whether the deployment configured any accepted credential."""
-
-        return bool(self._records)
-
     def _load_file(self, path: str) -> None:
         try:
             payload: Any = json.loads(Path(path).read_text(encoding="utf-8"))

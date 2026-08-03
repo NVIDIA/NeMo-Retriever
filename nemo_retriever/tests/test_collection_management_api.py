@@ -201,15 +201,23 @@ def test_idempotency_replay_and_conflict() -> None:
         idempotency_key="request",
         idempotency_fingerprint="same",
     )
-    replay = tracker.get_idempotent_job("workspace", "request", "same")
-    assert replay is not None and replay.job_id == original.job_id
+    replay = tracker.register_job(
+        "replay",
+        expected_documents=1,
+        scope="workspace",
+        idempotency_key="request",
+        idempotency_fingerprint="same",
+    )
+    assert replay.job_id == original.job_id
 
-    try:
-        tracker.get_idempotent_job("workspace", "request", "different")
-    except JobFullError:
-        pass
-    else:
-        raise AssertionError("conflicting idempotency payload must fail")
+    with pytest.raises(JobFullError):
+        tracker.register_job(
+            "conflict",
+            expected_documents=1,
+            scope="workspace",
+            idempotency_key="request",
+            idempotency_fingerprint="different",
+        )
 
 
 def test_idempotent_job_registration_is_atomic() -> None:

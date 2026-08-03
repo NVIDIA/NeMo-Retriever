@@ -360,19 +360,6 @@ class JobTracker:
         self._publish_job_event("job_created", agg)
         return agg.model_copy(deep=True)
 
-    def get_idempotent_job(self, scope: str, key: str, fingerprint: str) -> JobAggregate | None:
-        """Return a matching scoped job or reject reuse with a different payload."""
-
-        with self._lock:
-            entry = self._idempotency.get((scope, key))
-            if not entry:
-                return None
-            job_id, previous = entry
-            if previous != fingerprint:
-                raise JobFullError("Idempotency key was already used with a different request payload")
-            agg = self._get_live_job_locked(job_id)
-            return agg.model_copy(deep=True) if agg else None
-
     def get_job(self, job_id: str) -> JobAggregate | None:
         with self._lock:
             agg = self._get_live_job_locked(job_id)
