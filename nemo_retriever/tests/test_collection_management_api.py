@@ -154,11 +154,6 @@ def test_public_sdk_and_citation_ready_query(tmp_path) -> None:
         with TestClient(app) as service:
 
             class InProcessClient(RetrieverServiceClient):
-                def _request(self, method: str, path: str, **kwargs):
-                    response = service.request(method, path, headers=self._auth_headers, **kwargs)
-                    self._raise_for_response(response, f"{method} {path}")
-                    return response.json() if response.content else None
-
                 async def _arequest(self, method: str, path: str, **kwargs):
                     async with httpx.AsyncClient(
                         transport=httpx.ASGITransport(app=app),
@@ -514,9 +509,6 @@ def test_sdk_replays_every_manifest_entry_after_idempotent_job_replay(tmp_path, 
 
 def test_sdk_wraps_malformed_sync_and_async_lifecycle_responses() -> None:
     class MalformedClient(RetrieverServiceClient):
-        def _request(self, *_args, **_kwargs):
-            return {}
-
         async def _arequest(self, *_args, **_kwargs):
             return {}
 

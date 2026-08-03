@@ -37,8 +37,9 @@ import hashlib
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, NamedTuple
+from typing import Any, AsyncIterator, Callable, Coroutine, NamedTuple, TypeVar
 
 import httpx
 from pydantic import ValidationError
@@ -78,6 +79,8 @@ _BULK_POLL_INTERVAL_S = 5.0
 _BULK_POLL_TIMEOUT_S = 1800.0
 _MAX_UPLOAD_RETRIES = 10
 _DEFAULT_RETRY_AFTER = 2.0
+
+_T = TypeVar("_T")
 
 _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
     httpx.ReadError,
@@ -258,19 +261,10 @@ class RetrieverServiceClient:
             status_code=resp.status_code,
         )
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        try:
-            with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
-                resp = client.request(method, f"{self._base_url}{path}", **kwargs)
-        except httpx.HTTPError as exc:
-            raise RetrieverServiceError(f"{method} {path} transport failure: {exc}") from exc
-        self._raise_for_response(resp, f"{method} {path}")
-        try:
-            return resp.json() if resp.content else None
-        except ValueError as exc:
-            raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
-
     async def _arequest(self, method: str, path: str, **kwargs: Any) -> Any:
+        # Construct the client inside the coroutine. ``_run`` may drive this on
+        # a worker thread's event loop, and a client bound to a different loop
+        # fails there — so do not hoist it to ``__init__`` to pool connections.
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers
@@ -283,6 +277,22 @@ class RetrieverServiceClient:
             return resp.json() if resp.content else None
         except ValueError as exc:
             raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
+
+    @staticmethod
+    def _run(coro: Coroutine[Any, Any, _T]) -> _T:
+        """Drive an async operation to completion from synchronous code.
+
+        Each operation is implemented once, asynchronously; the synchronous
+        methods are thin facades over it. When the caller already runs inside
+        an event loop we hand the coroutine to a worker thread, because
+        ``asyncio.run`` refuses to nest.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
 
     @staticmethod
     def _model(model: Any, payload: Any, operation: str) -> Any:
@@ -305,16 +315,13 @@ class RetrieverServiceClient:
     ) -> CollectionInfo:
         """Create a logical collection in the client's configured scope."""
 
-        body = {
-            "name": name,
-            "description": description,
-            "metadata": metadata or {},
-            "expires_at": expires_at,
-        }
-        return self._model(
-            CollectionInfo,
-            self._request("POST", "/v1/collections", json=body),
-            "create collection",
+        return self._run(
+            self.acreate_collection(
+                name,
+                description=description,
+                metadata=metadata,
+                expires_at=expires_at,
+            )
         )
 
     async def acreate_collection(
@@ -342,11 +349,7 @@ class RetrieverServiceClient:
     def get_collection(self, name: str) -> CollectionInfo:
         """Return one logical collection from the configured scope."""
 
-        return self._model(
-            CollectionInfo,
-            self._request("GET", f"/v1/collections/{name}"),
-            "get collection",
-        )
+        return self._run(self.aget_collection(name))
 
     async def aget_collection(self, name: str) -> CollectionInfo:
         """Asynchronously return one logical collection."""
@@ -360,12 +363,7 @@ class RetrieverServiceClient:
     def list_collections(self, *, limit: int = 100, continuation_token: str | None = None) -> CollectionPage:
         """List logical collections in the configured scope."""
 
-        params = {"limit": limit, "continuation_token": continuation_token}
-        return self._model(
-            CollectionPage,
-            self._request("GET", "/v1/collections", params=params),
-            "list collections",
-        )
+        return self._run(self.alist_collections(limit=limit, continuation_token=continuation_token))
 
     async def alist_collections(
         self,
@@ -388,11 +386,7 @@ class RetrieverServiceClient:
     def update_collection(self, name: str, **changes: Any) -> CollectionInfo:
         """Update mutable properties of a logical collection."""
 
-        return self._model(
-            CollectionInfo,
-            self._request("PATCH", f"/v1/collections/{name}", json=changes),
-            "update collection",
-        )
+        return self._run(self.aupdate_collection(name, **changes))
 
     async def aupdate_collection(self, name: str, **changes: Any) -> CollectionInfo:
         """Asynchronously update a logical collection."""
@@ -406,8 +400,7 @@ class RetrieverServiceClient:
     def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
         """Request deletion of a logical collection and its VectorDB-owned data."""
 
-        body = self._request("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
-        return self._model(CollectionDeleteResult, body, "delete collection")
+        return self._run(self.adelete_collection(name, if_exists=if_exists))
 
     async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
         """Asynchronously delete a logical collection."""
@@ -424,11 +417,12 @@ class RetrieverServiceClient:
     ) -> DocumentPage:
         """List committed documents in a logical collection."""
 
-        params = {"limit": limit, "continuation_token": continuation_token}
-        return self._model(
-            DocumentPage,
-            self._request("GET", f"/v1/collections/{collection_name}/documents", params=params),
-            "list documents",
+        return self._run(
+            self.alist_documents(
+                collection_name,
+                limit=limit,
+                continuation_token=continuation_token,
+            )
         )
 
     async def alist_documents(
@@ -453,11 +447,7 @@ class RetrieverServiceClient:
     def get_document(self, collection_name: str, document_id: str) -> DocumentInfo:
         """Return one committed collection document."""
 
-        return self._model(
-            DocumentInfo,
-            self._request("GET", f"/v1/collections/{collection_name}/documents/{document_id}"),
-            "get document",
-        )
+        return self._run(self.aget_document(collection_name, document_id))
 
     async def aget_document(self, collection_name: str, document_id: str) -> DocumentInfo:
         """Asynchronously return one committed collection document."""
@@ -477,15 +467,7 @@ class RetrieverServiceClient:
     ) -> DocumentDeleteResult:
         """Request deletion of one document and its collection chunks."""
 
-        return self._model(
-            DocumentDeleteResult,
-            self._request(
-                "DELETE",
-                f"/v1/collections/{collection_name}/documents/{document_id}",
-                params={"if_exists": if_exists},
-            ),
-            "delete document",
-        )
+        return self._run(self.adelete_document(collection_name, document_id, if_exists=if_exists))
 
     async def adelete_document(
         self,
@@ -509,11 +491,7 @@ class RetrieverServiceClient:
     def get_job(self, job_id: str) -> JobAggregateResponse:
         """Return aggregate ingestion status for a job."""
 
-        return self._model(
-            JobAggregateResponse,
-            self._request("GET", f"/v1/ingest/job/{job_id}"),
-            "get job",
-        )
+        return self._run(self.aget_job(job_id))
 
     async def aget_job(self, job_id: str) -> JobAggregateResponse:
         """Asynchronously return aggregate ingestion status."""
@@ -527,15 +505,7 @@ class RetrieverServiceClient:
     def list_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
         """List per-document ingestion status for a job."""
 
-        return self._model(
-            JobDocumentsPage,
-            self._request(
-                "GET",
-                f"/v1/ingest/job/{job_id}/documents",
-                params={"offset": offset, "limit": limit},
-            ),
-            "list job documents",
-        )
+        return self._run(self.alist_job_documents(job_id, offset=offset, limit=limit))
 
     async def alist_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
         """Asynchronously list per-document ingestion status."""
@@ -561,21 +531,13 @@ class RetrieverServiceClient:
         top_k: int,
         collection_name: str | None = None,
     ) -> list[list[dict[str, Any]]] | list[QueryHit]:
-        """Search ingested documents through ``POST /v1/query``."""
-        expected_results = len(query) if isinstance(query, list) else 1
-        payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
-        if collection_name:
-            payload["collection_name"] = collection_name
-        body = self._request("POST", "/v1/query", json=payload)
+        """Search ingested documents through ``POST /v1/query``.
 
-        try:
-            query_response = QueryResponse.model_validate(body)
-            results = query_response.hits_by_query(expected_results=expected_results)
-            if collection_name and isinstance(query, str):
-                return [self._query_hit(hit) for hit in results[0]]
-            return results
-        except (ValidationError, ValueError) as exc:
-            raise RetrieverServiceError(f"Service query returned invalid response: {exc}") from exc
+        Note:
+            ``top_k`` is required here but defaults to 10 on :meth:`aquery`.
+            That asymmetry is part of the released signature; do not unify it.
+        """
+        return self._run(self.aquery(query, top_k=top_k, collection_name=collection_name))
 
     def _query_hit(self, hit: dict[str, Any]) -> QueryHit:
         return self._model(
