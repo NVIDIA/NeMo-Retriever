@@ -238,7 +238,6 @@ def test_collection_hit_rejects_missing_or_invalid_native_distance(bad_value):
 )
 def test_collection_retrieval_mode_error_classification(mode, expected_error):
     store = object.__new__(collections_module.LanceDBCollectionStore)
-    store._has_table = lambda _table_name: True
     capabilities = LanceTableCapabilities(
         has_vector=mode in {"dense", "hybrid"},
         has_fts=mode in {"hybrid", "sparse"},

@@ -557,6 +557,26 @@ class LanceDBCollectionStore:
         )
         self._persist_collection_row(row)
 
+    def _mark_collection_deleting_locked(self, row: dict[str, Any]) -> None:
+        """Enter the first deletion phase with a fresh retry budget.
+
+        Callers must already hold ``_write_lock``; the transition is persisted here
+        so an interrupted process resumes from a durable phase.
+        """
+        now = _now()
+        row.update(
+            {
+                "status": "deleting",
+                "deletion_phase": "drop_table",
+                "retry_count": 0,
+                "next_retry_at": "",
+                "last_error": "",
+                "delete_started_at": now,
+                "updated_at": now,
+            }
+        )
+        self._persist_collection_row(row)
+
     def _cleanup_collection_locked(self, row: dict[str, Any]) -> bool:
         phase = str(row.get("deletion_phase") or "drop_table")
         try:
@@ -602,19 +622,7 @@ class LanceDBCollectionStore:
                     )
                 raise VDBResourceNotFound("Collection not found")
             if row["status"] != "deleting":
-                now = _now()
-                row.update(
-                    {
-                        "status": "deleting",
-                        "deletion_phase": "drop_table",
-                        "retry_count": 0,
-                        "next_retry_at": "",
-                        "last_error": "",
-                        "delete_started_at": now,
-                        "updated_at": now,
-                    }
-                )
-                self._persist_collection_row(row)
+                self._mark_collection_deleting_locked(row)
             deleted = self._cleanup_collection_locked(row)
             return CollectionDeleteResult(
                 name=name,
@@ -632,9 +640,8 @@ class LanceDBCollectionStore:
         table_name = row["physical_table"]
         return table_name
 
-    def _table_capabilities(self, table_name: str) -> LanceTableCapabilities | None:
-        if not self._has_table(table_name):
-            return None
+    def _table_capabilities(self, table_name: str) -> LanceTableCapabilities:
+        """Inspect an existing table; callers must have confirmed it exists."""
         return inspect_lancedb_table_object(self._open_table(table_name))
 
     def _resolve_effective_retrieval_mode(
@@ -642,9 +649,6 @@ class LanceDBCollectionStore:
         table_name: str,
         capabilities: LanceTableCapabilities | None,
     ) -> LanceRetrievalMode:
-        if not self._has_table(table_name):
-            return "dense"
-        capabilities = capabilities or self._table_capabilities(table_name)
         if capabilities is None:
             raise RetrievalContractError(f"Unable to inspect collection table {table_name!r}")
         mode: LanceRetrievalMode = capabilities.retrieval_mode
@@ -1123,19 +1127,7 @@ class LanceDBCollectionStore:
                     and row.get("expires_at")
                     and datetime.fromisoformat(str(row["expires_at"])) <= now
                 ):
-                    started = _now()
-                    row.update(
-                        {
-                            "status": "deleting",
-                            "deletion_phase": "drop_table",
-                            "retry_count": 0,
-                            "next_retry_at": "",
-                            "last_error": "",
-                            "delete_started_at": started,
-                            "updated_at": started,
-                        }
-                    )
-                    self._persist_collection_row(row)
+                    self._mark_collection_deleting_locked(row)
                 if row.get("status") != "deleting":
                     continue
                 retry_at = str(row.get("next_retry_at") or "")
