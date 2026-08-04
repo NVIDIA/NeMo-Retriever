@@ -13,7 +13,10 @@ from pydantic import ValidationError
 
 import nemo_retriever.service.vectordb_app as vectordb_module
 from nemo_retriever.service.app import create_app
-from nemo_retriever.service.agentic_query import build_agentic_query_request
+from nemo_retriever.service.agentic_query import (
+    agentic_ranked_to_hits,
+    build_agentic_query_request,
+)
 from nemo_retriever.service.config import (
     AgenticConfig,
     LoggingConfig,
@@ -23,9 +26,9 @@ from nemo_retriever.service.config import (
 )
 from nemo_retriever.service.query_schema import (
     MAX_AGENTIC_QUERY_CHARS,
-    AgenticQueryRequest,
-    AgenticQueryResponse,
-    AgenticQueryResult,
+    QueryRequest,
+    QueryResponse,
+    QueryResult,
 )
 from nemo_retriever.service.vectordb_app import VectorDBState, create_vectordb_app
 
@@ -40,9 +43,19 @@ def test_agentic_service_config_requires_remote_model_and_endpoint() -> None:
         )
 
 
+def test_query_request_agentic_requires_hits_format() -> None:
+    with pytest.raises(ValidationError, match="single query string"):
+        QueryRequest(query=["a", "b"], agentic=True)
+    with pytest.raises(ValidationError, match="non-empty"):
+        QueryRequest(query="   ", agentic=True)
+    with pytest.raises(ValidationError, match="format='hits'"):
+        QueryRequest(query="q", agentic=True, format="evidence")
+
+
 def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
     request = build_agentic_query_request(
-        AgenticQueryRequest(query="revenue trend", top_k=3),
+        query="revenue trend",
+        top_k=3,
         config=AgenticConfig(
             enabled=True,
             llm_model="model",
@@ -73,20 +86,36 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
     assert request.agentic.react_max_steps == 7
 
 
-def test_agentic_query_endpoint_is_disabled_by_default(tmp_path) -> None:
+def test_agentic_ranked_to_hits_maps_doc_id_onto_query_hit_envelope() -> None:
+    hits = agentic_ranked_to_hits([{"rank": 1, "doc_id": "report.pdf", "result_source": "selection_agent"}])
+    assert hits == [
+        {
+            "text": None,
+            "metadata": {"result_source": "selection_agent", "rank": 1},
+            "source": "report.pdf",
+            "source_id": None,
+            "path": None,
+            "page_number": None,
+            "pdf_basename": None,
+            "pdf_page": None,
+        }
+    ]
+
+
+def test_agentic_query_flag_rejected_when_disabled(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
         embed_endpoint="https://embed.example/v1/embeddings",
     )
 
     with TestClient(app) as client:
-        response = client.post("/v1/agentic/query", json={"query": "q"})
+        response = client.post("/v1/query", json={"query": "q", "agentic": True})
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Agentic retrieval is not enabled."
+    assert response.status_code == 400
+    assert "not enabled" in response.json()["detail"]
 
 
-def test_agentic_query_endpoint_runs_shared_workflow(tmp_path) -> None:
+def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
         table_name="finance",
@@ -98,12 +127,18 @@ def test_agentic_query_endpoint_runs_shared_workflow(tmp_path) -> None:
             invoke_url="https://llm.example/v1/chat/completions",
         ),
     )
-    expected = AgenticQueryResponse(
+    expected = QueryResponse(
         results=[
-            AgenticQueryResult(
-                rank=1,
-                doc_id="report.pdf",
-                result_source="selection_agent",
+            QueryResult(
+                hits=agentic_ranked_to_hits(
+                    [
+                        {
+                            "rank": 1,
+                            "doc_id": "report.pdf",
+                            "result_source": "selection_agent",
+                        }
+                    ]
+                )
             )
         ]
     )
@@ -114,22 +149,31 @@ def test_agentic_query_endpoint_runs_shared_workflow(tmp_path) -> None:
         TestClient(app) as client,
     ):
         response = client.post(
-            "/v1/agentic/query",
-            json={"query": "revenue trend", "top_k": 3},
+            "/v1/query",
+            json={"query": "revenue trend", "top_k": 3, "agentic": True},
         )
 
     assert response.status_code == 200
     assert response.json() == {
         "results": [
             {
-                "rank": 1,
-                "doc_id": "report.pdf",
-                "result_source": "selection_agent",
+                "hits": [
+                    {
+                        "text": None,
+                        "metadata": {"result_source": "selection_agent", "rank": 1},
+                        "source": "report.pdf",
+                        "source_id": None,
+                        "path": None,
+                        "page_number": None,
+                        "pdf_basename": None,
+                        "pdf_page": None,
+                    }
+                ]
             }
         ]
     }
-    request = run_query.call_args.args[0]
-    assert request == AgenticQueryRequest(query="revenue trend", top_k=3)
+    assert run_query.call_args.kwargs["query"] == "revenue trend"
+    assert run_query.call_args.kwargs["top_k"] == 3
     assert run_query.call_args.kwargs["lancedb_uri"] == str(tmp_path)
     assert run_query.call_args.kwargs["table_name"] == "finance"
     assert run_query.call_args.kwargs["embed_api_key"] == ""
@@ -152,8 +196,8 @@ def test_agentic_query_rejects_top_k_above_backend_depth(tmp_path) -> None:
         TestClient(app) as client,
     ):
         response = client.post(
-            "/v1/agentic/query",
-            json={"query": "revenue trend", "top_k": 6},
+            "/v1/query",
+            json={"query": "revenue trend", "top_k": 6, "agentic": True},
         )
 
     assert response.status_code == 422
@@ -177,8 +221,8 @@ def test_agentic_query_rejects_query_above_length_limit(tmp_path) -> None:
         TestClient(app) as client,
     ):
         response = client.post(
-            "/v1/agentic/query",
-            json={"query": "x" * (MAX_AGENTIC_QUERY_CHARS + 1)},
+            "/v1/query",
+            json={"query": "x" * (MAX_AGENTIC_QUERY_CHARS + 1), "agentic": True},
         )
 
     assert response.status_code == 422
@@ -198,7 +242,7 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
             invoke_url="https://llm.example/v1/chat/completions",
         ),
     )
-    expected = AgenticQueryResponse(results=[])
+    expected = QueryResponse(results=[QueryResult(hits=[])])
 
     with (
         patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),
@@ -208,27 +252,24 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
         slots = vectordb_module._agentic_slots
         assert slots is not None
 
-        # Stand in for in-flight workers whose callers have already gone away.
         for _ in range(vectordb_module.MAX_CONCURRENT_AGENTIC_QUERIES):
             assert slots.acquire(blocking=False) is True
 
-        busy = client.post("/v1/agentic/query", json={"query": "revenue trend"})
+        busy = client.post("/v1/query", json={"query": "revenue trend", "agentic": True})
 
         assert busy.status_code == 503
         assert busy.headers["Retry-After"] == "30"
-        # Plain /v1/query capacity is untouched by agentic saturation.
         assert vectordb_module._query_semaphore is not None
         assert vectordb_module._query_semaphore.locked() is False
 
         slots.release()
-        accepted = client.post("/v1/agentic/query", json={"query": "revenue trend"})
+        accepted = client.post("/v1/query", json={"query": "revenue trend", "agentic": True})
 
         assert accepted.status_code == 200
-        # The worker released its own slot on completion.
         assert slots.acquire(blocking=False) is True
 
 
-def test_service_proxies_agentic_query_to_vectordb(
+def test_gateway_proxies_agentic_flag_to_vectordb(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
@@ -262,7 +303,7 @@ def test_service_proxies_agentic_query_to_vectordb(
 
     class _FakeResponse:
         status_code = 200
-        content = json.dumps({"results": []}).encode()
+        content = json.dumps({"results": [{"hits": []}]}).encode()
 
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None:
@@ -283,14 +324,46 @@ def test_service_proxies_agentic_query_to_vectordb(
 
     with TestClient(create_app(config)) as client:
         response = client.post(
-            "/v1/agentic/query",
-            json={"query": "revenue trend", "top_k": 3},
+            "/v1/query",
+            json={"query": "revenue trend", "top_k": 3, "agentic": True},
         )
 
     assert response.status_code == 200
-    assert response.json() == {"results": []}
+    assert response.json() == {"results": [{"hits": []}]}
     assert seen == {
         "timeout": 321.0,
-        "url": "http://vectordb:7671/v1/agentic/query",
-        "body": {"query": "revenue trend", "top_k": 3},
+        "url": "http://vectordb:7671/v1/query",
+        "body": {"query": "revenue trend", "top_k": 3, "agentic": True},
     }
+
+
+def test_service_rejects_agentic_flag_when_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    async def _stub_work(_item):
+        return 0, []
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_realtime_work_fn",
+        lambda _config: _stub_work,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_batch_work_fn",
+        lambda _config: _stub_work,
+    )
+    config = ServiceConfig(
+        mode="standalone",
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        response = client.post(
+            "/v1/query",
+            json={"query": "revenue trend", "agentic": True},
+        )
+
+    assert response.status_code == 400
+    assert "not enabled" in response.json()["detail"]
