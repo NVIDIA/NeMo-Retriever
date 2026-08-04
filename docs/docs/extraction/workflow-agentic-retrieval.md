@@ -36,11 +36,15 @@ pipeline introspection, document ingestion, job status, VectorDB query, agentic
 retrieval, and answer generation. If service auth is enabled, the MCP endpoint
 uses the same bearer-token middleware as the REST API.
 
-Plain and agentic retrieval are separate tools:
+Plain and agentic retrieval share `POST /v1/query` and the same hits response
+envelope. They are separate MCP tools so agents can choose explicitly:
 
-- `query` calls `POST /v1/query` for one-pass dense or hybrid retrieval.
-- `agentic_query` calls `POST /v1/agentic/query` and runs the existing ReAct
+- `query` calls `POST /v1/query` with `agentic=false` for one-pass dense or hybrid retrieval.
+- `agentic_query` calls `POST /v1/query` with `agentic=true` and runs the ReAct
   retrieval workflow. It is added to MCP when `agentic.enabled` is true.
+  Agentic results are document-level: `source` is the selected `doc_id`,
+  `metadata` carries `result_source` and `rank`, and chunk-level fields
+  (`text`, `page_number`, scores, …) are unset.
 
 Enable agentic retrieval in `retriever-service.yaml`:
 
@@ -62,21 +66,22 @@ from the service process environment. Service mode requires remote
 OpenAI-compatible LLM and embedding endpoints; local in-process models remain
 available through the one-shot CLI and harness paths.
 
-REST clients can call the same boundary directly:
+REST clients set the flag on `/v1/query`:
 
 ```bash
-curl -X POST http://localhost:7670/v1/agentic/query \
+curl -X POST http://localhost:7670/v1/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "find documents about parser behavior", "top_k": 5}'
+  -d '{"query": "find documents about parser behavior", "top_k": 5, "agentic": true}'
 ```
 
-Agentic queries run on a small dedicated worker pool in the VectorDB process, so
-they cannot exhaust the capacity used by plain `/v1/query`. A ReAct run cannot be
-interrupted once started, so a worker stays occupied until it finishes even if
-the caller times out or disconnects. When every worker is busy the endpoint sheds
-load with `503` and a `Retry-After` header instead of queueing behind a
-multi-minute run. Queries are capped at 4096 characters to bound prompt size and
-cost across the multi-step loop.
+Requests with `agentic: true` return HTTP `400` when agentic retrieval is not
+configured on the service. Agentic runs use a small dedicated worker pool in the
+VectorDB process so they cannot exhaust the capacity used by plain queries. A
+ReAct run cannot be interrupted once started, so a worker stays occupied until
+it finishes even if the caller times out or disconnects. When every worker is
+busy the endpoint sheds load with `503` and a `Retry-After` header instead of
+queueing behind a multi-minute run. Agentic queries are capped at 4096
+characters to bound prompt size and cost across the multi-step loop.
 
 For local stdio-based agents, run the MCP server as a shim that points at an existing retriever service:
 

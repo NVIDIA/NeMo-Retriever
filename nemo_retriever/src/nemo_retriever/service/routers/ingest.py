@@ -1643,20 +1643,25 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 
 # ------------------------------------------------------------------
-# POST /v1/query  — vector search (proxied to vectordb pod)
+# POST /v1/query  — vector search / agentic retrieval (proxied to vectordb)
 # ------------------------------------------------------------------
 
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity or hybrid retrieval",
+    summary="Search ingested documents by semantic similarity, hybrid, or agentic retrieval",
 )
 async def query(request: Request) -> Response:
     """Proxy a query request to the VectorDB service.
 
     * **gateway / standalone** — forwards the JSON body to the vectordb pod.
     * **worker** — returns 404 (workers don't handle queries).
+
+    When the body sets ``agentic: true``, the long agentic timeout is used and
+    the service must have agentic retrieval configured.
     """
+    import json
+
     import httpx
 
     config = request.app.state.config
@@ -1678,9 +1683,26 @@ async def query(request: Request) -> Response:
     target = f"{vectordb_url}/v1/query"
 
     body = await request.body()
+    agentic = False
+    try:
+        parsed = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
+        agentic = bool(parsed.get("agentic")) if isinstance(parsed, dict) else False
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
+        agentic = False
+
+    if agentic and not config.agentic.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agentic retrieval is not enabled in the service configuration. "
+                "Set agentic.enabled with llm_model and invoke_url."
+            ),
+        )
+
+    timeout = config.agentic.request_timeout_s if agentic else 60.0
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 target,
                 content=body,
@@ -1688,63 +1710,6 @@ async def query(request: Request) -> Response:
             )
     except Exception as exc:
         logger.exception("Failed to proxy query to vectordb at %s", target)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
-        )
-
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        media_type="application/json",
-    )
-
-
-# ------------------------------------------------------------------
-# POST /v1/agentic/query — agentic retrieval (proxied to vectordb pod)
-# ------------------------------------------------------------------
-
-
-@router.post(
-    "/agentic/query",
-    summary="Search ingested documents with the configured agentic retrieval workflow",
-)
-async def agentic_query(request: Request) -> Response:
-    """Proxy an agentic query request to the VectorDB service."""
-    import httpx
-
-    config = request.app.state.config
-
-    if not config.vectordb.enabled:
-        raise HTTPException(
-            status_code=404,
-            detail="VectorDB is not enabled in the service configuration.",
-        )
-    if not config.agentic.enabled:
-        raise HTTPException(
-            status_code=404,
-            detail="Agentic retrieval is not enabled in the service configuration.",
-        )
-
-    mode = _mode(request)
-    if mode in ("realtime", "batch"):
-        raise HTTPException(
-            status_code=404,
-            detail="Agentic query endpoint is not available on worker pods. Use the gateway.",
-        )
-
-    target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/agentic/query"
-    body = await request.body()
-
-    try:
-        async with httpx.AsyncClient(timeout=config.agentic.request_timeout_s) as client:
-            resp = await client.post(
-                target,
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-    except Exception as exc:
-        logger.exception("Failed to proxy agentic query to vectordb at %s", target)
         raise HTTPException(
             status_code=502,
             detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",

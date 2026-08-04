@@ -641,7 +641,7 @@ serviceConfig:
     # portable no-reasoning controls.
     reasoningEnabled: true
 
-  # Agentic (ReAct) retrieval exposed as POST /v1/agentic/query and the
+  # Agentic (ReAct) retrieval exposed as POST /v1/query with agentic=true and the
   # agentic_query MCP tool. The LLM runs inside the vectordb pod because that
   # pod owns the LanceDB volume.
   agentic:

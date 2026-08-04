@@ -82,7 +82,7 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
     assert result["results"][0]["hits"][0]["text"] == "match"
 
 
-def test_agentic_query_client_posts_to_dedicated_endpoint() -> None:
+def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
     seen: dict[str, Any] = {}
 
     def _handler(request: httpx.Request) -> httpx.Response:
@@ -90,7 +90,24 @@ def test_agentic_query_client_posts_to_dedicated_endpoint() -> None:
         seen["body"] = json.loads(request.content)
         return httpx.Response(
             200,
-            json={"results": [{"rank": 1, "doc_id": "report.pdf", "result_source": "selection_agent"}]},
+            json={
+                "results": [
+                    {
+                        "hits": [
+                            {
+                                "text": None,
+                                "metadata": {"result_source": "selection_agent", "rank": 1},
+                                "source": "report.pdf",
+                                "source_id": None,
+                                "path": None,
+                                "page_number": None,
+                                "pdf_basename": None,
+                                "pdf_page": None,
+                            }
+                        ]
+                    }
+                ]
+            },
         )
 
     client = ServiceMCPClient(
@@ -105,10 +122,10 @@ def test_agentic_query_client_posts_to_dedicated_endpoint() -> None:
     result = _run(client.agentic_query("What is indexed?", top_k=2))
 
     assert seen == {
-        "path": "/v1/agentic/query",
-        "body": {"query": "What is indexed?", "top_k": 2},
+        "path": "/v1/query",
+        "body": {"query": "What is indexed?", "top_k": 2, "format": "hits", "agentic": True},
     }
-    assert result["results"][0]["doc_id"] == "report.pdf"
+    assert result["results"][0]["hits"][0]["source"] == "report.pdf"
 
 
 def test_agentic_query_tool_is_additive_and_config_gated() -> None:

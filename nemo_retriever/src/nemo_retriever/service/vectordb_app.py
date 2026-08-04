@@ -4,11 +4,10 @@
 
 """Standalone VectorDB microservice backed by LanceDB.
 
-Provides four endpoints:
+Provides three endpoints:
 
 - ``POST /internal/vectordb/write`` -- append embedding rows from ingest workers
-- ``POST /v1/query``               -- embed query text and search the index
-- ``POST /v1/agentic/query``       -- run the ReAct retrieval workflow (opt-in)
+- ``POST /v1/query``               -- embed+search, or agentic ReAct when ``agentic=true``
 - ``GET  /v1/health``              -- liveness probe
 
 Run with a remote NIM embed endpoint::
@@ -53,8 +52,6 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.agentic_query import run_agentic_query
 from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import (
-    AgenticQueryRequest,
-    AgenticQueryResponse,
     EvidenceQueryResponse,
     EvidenceResult,
     QueryRequest,
@@ -461,6 +458,9 @@ def create_vectordb_app(
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
 
+        if req.agentic:
+            return await _run_agentic_query(req)
+
         if _state.embed_mode == "none":
             raise HTTPException(
                 501,
@@ -499,10 +499,16 @@ def create_vectordb_app(
 
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
-    @app.post("/v1/agentic/query", response_model=AgenticQueryResponse, tags=["query"])
-    async def agentic_query(req: AgenticQueryRequest) -> AgenticQueryResponse:
+    async def _run_agentic_query(req: QueryRequest) -> QueryResponse:
         if not agentic_config.enabled:
-            raise HTTPException(status_code=404, detail="Agentic retrieval is not enabled.")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Agentic retrieval is not enabled in the VectorDB configuration. "
+                    "Start with --agentic and a remote LLM invoke URL/model, or set "
+                    "agentic.enabled in the service config."
+                ),
+            )
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
         if _state.embed_mode == "none":
@@ -514,7 +520,7 @@ def create_vectordb_app(
         if _state.embed_mode != "remote":
             raise HTTPException(
                 501,
-                "Agentic service queries currently require a remote embedding endpoint.",
+                "Agentic service queries require a remote embedding endpoint.",
             )
         if not _state.table_exists:
             raise HTTPException(
@@ -552,10 +558,12 @@ def create_vectordb_app(
                 headers={"Retry-After": "30"},
             )
 
+        assert isinstance(req.query, str)
         try:
             future = executor.submit(
                 run_agentic_query,
-                req,
+                query=req.query,
+                top_k=req.top_k,
                 config=agentic_config,
                 lancedb_uri=_state.lancedb_uri,
                 table_name=_state.table_name,
@@ -615,7 +623,7 @@ def main() -> None:
     parser.add_argument(
         "--agentic",
         action="store_true",
-        help="Enable POST /v1/agentic/query using the existing agentic retrieval workflow.",
+        help="Enable agentic=true on POST /v1/query using the agentic retrieval workflow.",
     )
     parser.add_argument("--agentic-llm-model", default="", help="Agentic retrieval chat model.")
     parser.add_argument(

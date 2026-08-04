@@ -222,10 +222,11 @@ class ServiceMCPClient:
         *,
         top_k: int = 5,
     ) -> dict[str, Any]:
+        """Call ``POST /v1/query`` with ``agentic=true`` (long timeout)."""
         async with self._client(timeout_s=self._settings.agentic_request_timeout_s) as client:
             resp = await client.post(
-                "/v1/agentic/query",
-                json={"query": query, "top_k": top_k},
+                "/v1/query",
+                json={"query": query, "top_k": top_k, "format": "hits", "agentic": True},
             )
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
@@ -528,7 +529,9 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
             name="agentic_query",
             description=(
                 "Run the configured agentic (ReAct) retrieval workflow over ingested "
-                "documents and return ranked document IDs."
+                "documents via POST /v1/query with agentic=true. Returns the standard "
+                "hits envelope: source holds doc_id; result_source and rank are under "
+                "metadata; chunk-level fields are unset for document-level results."
             ),
         )
         async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 QueryFormat = Literal["hits", "evidence"]
 
@@ -23,9 +23,34 @@ class QueryRequest(BaseModel):
         default="hits",
         description=(
             "Output shape: 'hits' (default) returns raw retrieval hits; 'evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
+            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
+            "Agentic queries require format='hits'."
         ),
     )
+    agentic: bool = Field(
+        default=False,
+        description=(
+            "When true, run the server-configured agentic (ReAct) retrieval workflow. "
+            "Requires agentic.enabled in service configuration. Response uses the same "
+            "hits envelope as dense/hybrid query; document-level agentic results map "
+            "doc_id onto source, keep result_source/rank in metadata, and leave "
+            "chunk-level fields unset (null)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_agentic_request(self) -> "QueryRequest":
+        if not self.agentic:
+            return self
+        if not isinstance(self.query, str):
+            raise ValueError("agentic queries require a single query string, not a list")
+        if not self.query.strip():
+            raise ValueError("agentic query must be a non-empty string")
+        if len(self.query) > MAX_AGENTIC_QUERY_CHARS:
+            raise ValueError(f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters")
+        if self.format != "hits":
+            raise ValueError("agentic queries require format='hits'")
+        return self
 
 
 class QueryResult(BaseModel):
@@ -39,23 +64,6 @@ class QueryResponse(BaseModel):
         if expected_results is not None and len(self.results) != expected_results:
             raise ValueError(f"expected {expected_results} result set(s), got {len(self.results)}")
         return [result.hits for result in self.results]
-
-
-class AgenticQueryRequest(BaseModel):
-    """One query for the server-configured agentic retrieval pipeline."""
-
-    query: str = Field(min_length=1, max_length=MAX_AGENTIC_QUERY_CHARS)
-    top_k: int = Field(default=5, ge=1, le=1000)
-
-
-class AgenticQueryResult(BaseModel):
-    rank: int
-    doc_id: str
-    result_source: str
-
-
-class AgenticQueryResponse(BaseModel):
-    results: list[AgenticQueryResult]
 
 
 class Locator(BaseModel):

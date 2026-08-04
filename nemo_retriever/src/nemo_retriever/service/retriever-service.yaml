@@ -97,7 +97,7 @@ llm:
   rag_system_prompt_prefix: null
   reasoning_enabled: true
 
-# Agentic (ReAct) retrieval exposed through POST /v1/agentic/query and the
+# Agentic (ReAct) retrieval exposed through POST /v1/query with agentic=true and the
 # agentic_query MCP tool. Service mode requires a remote OpenAI-compatible
 # invoke_url and llm_model when enabled.
 agentic:
