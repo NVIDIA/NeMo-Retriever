@@ -118,9 +118,9 @@ def _load_audio_16k(path: str) -> Optional[np.ndarray]:
 
 
 def _load_model_and_processor(model_id: str, hf_cache_dir: Optional[str] = None):
-    """Load Parakeet ASR via AutoModelForCTC + AutoProcessor (explicit decode control)."""
+    """Load Parakeet ASR feature extraction, tokenization, and CTC model."""
     import torch
-    from transformers import AutoModelForCTC, AutoProcessor
+    from transformers import AutoFeatureExtractor, AutoModelForCTC, AutoTokenizer
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     hf_cache_dir = configure_global_hf_cache_base(hf_cache_dir)
@@ -128,7 +128,11 @@ def _load_model_and_processor(model_id: str, hf_cache_dir: Optional[str] = None)
     kwargs = {}
     if hf_cache_dir:
         kwargs["cache_dir"] = hf_cache_dir
-    processor = AutoProcessor.from_pretrained(model_id, revision=_revision, **kwargs)
+    # Transformers 4.57 resolves Parakeet's ``processor_class`` to its tokenizer
+    # rather than a composite processor. Keep feature extraction and tokenization
+    # explicit so local ASR works with the pinned checkpoint offline.
+    feature_extractor = AutoFeatureExtractor.from_pretrained(model_id, revision=_revision, **kwargs)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=_revision, **kwargs)
     # bfloat16 on GPU: ~2× faster forward and ~half the activation/weight memory vs fp32,
     # which lets Ray Data co-schedule more ASR actors per GPU. Float32 on CPU since
     # bf16 on x86 CPU silently downcasts via emulation and tanks throughput.
@@ -136,7 +140,7 @@ def _load_model_and_processor(model_id: str, hf_cache_dir: Optional[str] = None)
     model = AutoModelForCTC.from_pretrained(
         model_id, revision=_revision, torch_dtype=model_dtype, device_map=device, **kwargs
     )
-    return model, processor
+    return model, feature_extractor, tokenizer
 
 
 def _greedy_word_alignments(frame_ids: np.ndarray, tokenizer) -> List[Tuple[str, Tuple[int, int]]]:
@@ -252,12 +256,15 @@ class ParakeetCTC1B1ASR:
         self._hf_cache_dir = hf_cache_dir
         self._model_id = model_id or MODEL_ID
         self._model = None
-        self._processor = None
+        self._feature_extractor = None
+        self._tokenizer = None
 
     def _ensure_loaded(self) -> None:
-        if self._model is not None and self._processor is not None:
+        if self._model is not None and self._feature_extractor is not None and self._tokenizer is not None:
             return
-        self._model, self._processor = _load_model_and_processor(self._model_id, self._hf_cache_dir)
+        self._model, self._feature_extractor, self._tokenizer = _load_model_and_processor(
+            self._model_id, self._hf_cache_dir
+        )
         logger.info("ParakeetCTC1B1ASR: loaded %s", self._model_id)
 
     def transcribe(self, paths: List[str]) -> List[str]:
@@ -336,13 +343,13 @@ class ParakeetCTC1B1ASR:
         """Forward pass + greedy CTC for a batch of chunks. Returns ``(text, word_alignments)``."""
         import torch
 
-        if self._model is None or self._processor is None:
+        if self._model is None or self._feature_extractor is None or self._tokenizer is None:
             raise RuntimeError(
                 "ParakeetCTC1B1ASR._decode_batch called before the model was loaded; " "call _ensure_loaded() first."
             )
-        inputs = self._processor(
+        inputs = self._feature_extractor(
             audios,
-            sampling_rate=self._processor.feature_extractor.sampling_rate,
+            sampling_rate=SAMPLING_RATE,
             return_tensors="pt",
             padding=True,
         )
@@ -359,7 +366,7 @@ class ParakeetCTC1B1ASR:
 
         argmax_ids = logits.argmax(dim=-1).cpu().numpy()
         lengths = output_lengths.cpu().tolist()
-        tokenizer = self._processor.tokenizer
+        tokenizer = self._tokenizer
         results: List[Tuple[str, List[Tuple[str, Tuple[int, int]]]]] = []
         for i in range(argmax_ids.shape[0]):
             ids = argmax_ids[i, : int(lengths[i])]
