@@ -12,8 +12,10 @@ from typing import Any, Dict, List  # noqa: F401
 
 import pandas as pd
 
+from nemo_retriever.common.modality.txt.tokenizer_provider import (
+    TokenizerUnavailableError,
+)
 from nemo_retriever.common.params import TextChunkParams
-from nemo_retriever.common.modality.txt.tokenizer_provider import TokenizerUnavailableError
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -99,7 +101,7 @@ class TxtSplitCPUActor(AbstractOperator, CPUOperator):
                 continue
             path_str = str(path) if path is not None else ""
             try:
-                payload = raw if raw is not None else text.encode("utf-8")
+                payload = raw or text.encode("utf-8")
                 chunk_df = txt_bytes_to_chunks_df(payload, path_str, params=params)
                 if not chunk_df.empty:
                     out_dfs.append(chunk_df)

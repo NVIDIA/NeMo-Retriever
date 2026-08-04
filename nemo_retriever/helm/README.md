@@ -100,6 +100,7 @@ then override `service.image.repository` / `service.image.tag`:
 # from the repo root:
 docker build \
     --target service \
+    --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
     -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
 ```

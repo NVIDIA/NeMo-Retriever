@@ -78,6 +78,7 @@ def load_chunk_tokenizer(
         raise TokenizerUnavailableError(
             "Unable to load the exact tokenizer required for text chunking: "
             f"model={model_id!r}, revision={revision!r}. Pre-cache tokenizer.json "
-            "for this revision or allow Hugging Face access while building the "
-            "service image."
+            "for this revision (service image builds: "
+            "DOWNLOAD_DEFAULT_TOKENIZER=True) or allow Hugging Face Hub access "
+            "in this runtime."
         ) from exc

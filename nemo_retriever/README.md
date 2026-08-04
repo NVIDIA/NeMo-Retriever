@@ -68,7 +68,7 @@ uv pip install nemo-retriever
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
-This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
+This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library. If the workflow performs tokenizer-backed TXT or HTML chunking, install `nemo-retriever[service]` instead; this adds the lightweight tokenizer dependencies without installing Transformers or local model weights.
 
 If your PDF pipeline uses `method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 

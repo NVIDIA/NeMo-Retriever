@@ -7,7 +7,11 @@ name: nemo-retriever-service-dev
 # Development-only service-mode stack. Production deployments use Helm.
 x-retriever-image: &retriever-image
   image: ${NEMO_RETRIEVER_IMAGE:-nemo-retriever-service:dev}
-  build: {context: ../../.., dockerfile: Dockerfile, target: service}
+  build:
+    context: ../../..
+    dockerfile: Dockerfile
+    target: service
+    args: {DOWNLOAD_DEFAULT_TOKENIZER: "True"}
 x-host-access: &host-access
   extra_hosts: ["host.docker.internal:host-gateway"]
 x-nim-environment: &nim-environment

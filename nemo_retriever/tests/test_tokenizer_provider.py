@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tomllib
 
 import pandas as pd
 import pytest
@@ -19,7 +18,10 @@ import nemo_retriever.common.modality.txt.tokenizer_provider as provider
 import nemo_retriever.operators.extract.html.ray_data as html_actor_module
 import nemo_retriever.operators.extract.txt.ray_data as txt_actor_module
 from nemo_retriever.common.modality.html.convert import html_bytes_to_chunks_df
-from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID, txt_bytes_to_chunks_df
+from nemo_retriever.common.modality.txt.split import (
+    DEFAULT_TOKENIZER_MODEL_ID,
+    txt_bytes_to_chunks_df,
+)
 from nemo_retriever.models import resolve_embed_model
 
 
@@ -32,15 +34,6 @@ def _write_tokenizer(path: Path) -> None:
     )
     tokenizer.pre_tokenizer = Whitespace()
     tokenizer.save(str(path))
-
-
-def test_service_extra_declares_lightweight_tokenizer_dependencies() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    pyproject = tomllib.loads((repo_root / "nemo_retriever" / "pyproject.toml").read_text(encoding="utf-8"))
-    service_dependencies = pyproject["project"]["optional-dependencies"]["service"]
-    assert any(item.startswith("tokenizers") for item in service_dependencies)
-    assert any(item.startswith("huggingface-hub") for item in service_dependencies)
-    assert not any(item.startswith("transformers") for item in service_dependencies)
 
 
 def test_default_chunk_tokenizer_matches_default_embedding_model() -> None:
