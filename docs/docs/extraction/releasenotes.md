@@ -26,7 +26,7 @@ Highlights for the 26.05 release include:
 ### CLI
 
 - Root CLI adds first-class `retriever ingest` and `retriever query` commands with NIM URL flags, batch tuning, and LanceDB overwrite/append controls
-- `retriever ingest` and `retriever query` replace the retired compatibility pipeline command. Other top-level subcommands—including `eval`, `benchmark`, `harness`, and `skill-eval`—are development and experimental
+- `retriever ingest` and `retriever query` replace the retired compatibility pipeline command. Other top-level subcommands—including `eval`, `benchmark`, and `skill-eval`—are development and experimental
 
 ### Retriever Service and deployment
 

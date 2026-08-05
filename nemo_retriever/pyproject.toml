@@ -207,7 +207,6 @@ all = [
 
 [project.scripts]
 retriever = "nemo_retriever.__main__:main"
-retriever-harness = "nemo_retriever.harness:main"
 
 # uv-only developer install: include every published extra plus the published
 # dev extra, then overlay the prerelease Nemotron selection without exposing it
@@ -242,7 +241,6 @@ explicit = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"nemo_retriever.harness.portal" = ["static/**/*"]
 "nemo_retriever.service" = ["retriever-service.yaml"]
 "nemo_retriever.tools.skill_eval" = ["prompts/*.j2", "configs/*.yaml"]
 

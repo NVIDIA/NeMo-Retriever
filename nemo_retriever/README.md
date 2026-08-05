@@ -735,14 +735,12 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## Retriever Harness
+## Benchmarking
 
-The developer harness runs registered ingest and retrieval benchmarks through
-`retriever harness`. Start with the
-[harness guide](harness/README.md), then choose
-[library execution](harness/docs/library.md) or
-[service execution](harness/docs/service.md). Recurring workstation runs use the
-[nightly launcher](../ops/retriever-nightly/README.md).
+End-to-end Retriever experiments and benchmark orchestration are maintained in
+the NeMo Retriever Benchmark (NRB) repository. This repository continues to
+provide the library, CLI workflows, service implementation, and Helm chart that
+NRB benchmarks.
 
 ### Ingest image storage
 

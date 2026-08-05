@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 from nemo_retriever.tools.recall.beir import (
-    BO767_ANNOTATIONS_PATH,
-    DEFAULT_BEIR_KS,
     BeirConfig,
     BeirDataset,
+    BO767_ANNOTATIONS_PATH,
+    DEFAULT_BEIR_KS,
     build_beir_run_from_hits,
     build_qrels_by_query_id,
     build_queries_by_id,
@@ -152,26 +152,6 @@ def test_resolve_beir_dataset_options_does_not_guess_unknown_dataset() -> None:
     assert options.dataset_name == "custom_dataset"
     assert options.doc_id_field == "pdf_basename"
     assert options.ks == DEFAULT_BEIR_KS
-
-
-def test_load_beir_dataset_supports_prepared_jsonl_snapshot(tmp_path: Path) -> None:
-    snapshot = tmp_path / "evaluation.jsonl"
-    snapshot.write_text(
-        "\n".join(
-            (
-                '{"query_id":"q1","query":"first question","qrels":{"doc_a":2,"doc_b":1}}',
-                '{"query_id":"q2","query":"second question","qrels":[{"corpus_id":"doc_c"}]}',
-            )
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    dataset = load_beir_dataset("jsonl_beir", dataset_name=str(snapshot))
-
-    assert dataset.query_ids == ["q1", "q2"]
-    assert dataset.queries == ["first question", "second question"]
-    assert dataset.qrels == {"q1": {"doc_a": 2, "doc_b": 1}, "q2": {"doc_c": 1}}
 
 
 def test_load_beir_dataset_supports_bo767_csv_pdf_page_modality(tmp_path: Path) -> None:

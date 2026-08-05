@@ -7,7 +7,7 @@ NeMo Retriever Library provides ingestion, embedding, storage, and retrieval bui
 
 ## Local agentic retrieval
 
-The `retriever query --agentic` and harness BEIR agentic paths default to an
+The `retriever query --agentic` and NRB agentic benchmark paths default to an
 in-process local vLLM agent LLM. If no agent model is provided, the library loads
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host.
 The larger `super-49b` profile is also supported. Other custom in-process LLMs

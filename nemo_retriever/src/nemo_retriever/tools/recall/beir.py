@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 import csv
+from dataclasses import dataclass
 import json
 import logging
 import math
-import unicodedata
 from pathlib import Path
-from collections import defaultdict
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterable, Sequence
+import unicodedata
 
 from nemo_retriever.graph.retriever import Retriever
 
@@ -20,15 +19,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
 VALID_BEIR_LOADERS: frozenset[str] = frozenset(
-    {
-        "bo10k_csv",
-        "bo767_csv",
-        "earnings_csv",
-        "financebench_json",
-        "jp20_csv",
-        "jsonl_beir",
-        "vidore_hf",
-    }
+    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 )
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -617,8 +608,6 @@ def load_beir_dataset(
             dataset_name=dataset_name,
             doc_id_field=str(doc_id_field),
         )
-    if loader_name == "jsonl_beir":
-        return _load_jsonl_beir_dataset(dataset_name=dataset_name)
     if loader_name != "vidore_hf":
         raise ValueError(f"Unsupported BEIR loader: {loader}")
 
@@ -681,77 +670,6 @@ def load_beir_dataset(
         queries=filtered_queries,
         qrels={qid: qrels[qid] for qid in filtered_query_ids},
     )
-
-
-def _load_jsonl_beir_dataset(*, dataset_name: str) -> BeirDataset:
-    """Load a portable, prepared BEIR evaluation snapshot.
-
-    Each JSONL row represents one query and must contain ``query_id``, ``query``,
-    and ``qrels``. ``qrels`` can be a ``{corpus_id: score}`` mapping or a list of
-    objects with ``corpus_id`` and an optional ``score``. Keeping the evaluation
-    data in one file makes a registered dataset's corpus and qrels independently
-    mountable by nightly runners.
-    """
-    path = Path(dataset_name).expanduser()
-    if not path.is_file():
-        raise FileNotFoundError(f"Prepared BEIR evaluation snapshot does not exist: {path}")
-
-    query_ids: list[str] = []
-    queries: list[str] = []
-    qrels: dict[str, dict[str, int]] = {}
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        raise FileNotFoundError(f"Could not read prepared BEIR evaluation snapshot: {path}") from exc
-
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid JSONL BEIR snapshot row {line_number} in {path}") from exc
-        if not isinstance(row, dict):
-            raise ValueError(f"JSONL BEIR snapshot row {line_number} in {path} must be an object")
-
-        query_id = str(row.get("query_id") or "").strip()
-        query = str(row.get("query") or "").strip()
-        if not query_id or not query:
-            raise ValueError(f"JSONL BEIR snapshot row {line_number} in {path} requires query_id and query")
-        if query_id in qrels:
-            raise ValueError(f"JSONL BEIR snapshot repeats query_id {query_id!r} in {path}")
-
-        raw_qrels = row.get("qrels")
-        normalized_qrels: dict[str, int] = {}
-        if isinstance(raw_qrels, dict):
-            qrel_rows = raw_qrels.items()
-        elif isinstance(raw_qrels, list):
-            qrel_rows = []
-            for item in raw_qrels:
-                if not isinstance(item, dict):
-                    raise ValueError(f"JSONL BEIR snapshot row {line_number} has an invalid qrels entry")
-                qrel_rows.append((item.get("corpus_id"), item.get("score", 1)))
-        else:
-            raise ValueError(f"JSONL BEIR snapshot row {line_number} requires qrels")
-        for corpus_id, raw_score in qrel_rows:
-            document_id = str(corpus_id or "").strip()
-            if not document_id:
-                raise ValueError(f"JSONL BEIR snapshot row {line_number} has an empty corpus_id")
-            try:
-                score = int(raw_score)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"JSONL BEIR snapshot row {line_number} has an invalid qrel score") from exc
-            normalized_qrels[document_id] = score
-        if not normalized_qrels:
-            raise ValueError(f"JSONL BEIR snapshot row {line_number} has no qrels")
-
-        query_ids.append(query_id)
-        queries.append(query)
-        qrels[query_id] = normalized_qrels
-
-    if not query_ids:
-        raise ValueError(f"Prepared BEIR evaluation snapshot has no queries: {path}")
-    return BeirDataset(dataset_name=str(path), query_ids=query_ids, queries=queries, qrels=qrels)
 
 
 def _extract_source_path_from_hit(hit: dict[str, Any]) -> str:
