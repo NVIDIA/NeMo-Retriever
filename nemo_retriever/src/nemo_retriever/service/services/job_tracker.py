@@ -774,7 +774,13 @@ class JobTracker:
         if agg is None:
             return
         if agg.idempotency_key:
-            self._idempotency.pop((agg.scope, agg.idempotency_key), None)
+            # Only release the key if this job still owns it; the map is written
+            # solely for jobs that carry a fingerprint, so a keyed job may point
+            # at an entry that now belongs to a later job.
+            entry_key = (agg.scope, agg.idempotency_key)
+            owner = self._idempotency.get(entry_key)
+            if owner is not None and owner[0] == job_id:
+                del self._idempotency[entry_key]
         for did in agg.document_ids:
             rec = self._documents.pop(did, None)
             if rec and rec.manifest_entry_id:
