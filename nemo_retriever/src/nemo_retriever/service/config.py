@@ -17,6 +17,7 @@ from pydantic import ConfigDict, Field, model_validator
 from nemo_retriever.common.schemas.base import RichModel
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
+MCPQueryMethods = Literal["classic", "agentic", "all"]
 
 
 class ServerConfig(RichModel):
@@ -132,6 +133,23 @@ class NimEndpointsConfig(RichModel):
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
+    nemotron_parse_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote Nemotron Parse chat-completions endpoint. When set, "
+            "service-mode requests using method='nemotron_parse' call this "
+            "endpoint instead of loading the local Parse model."
+        ),
+    )
+    nemotron_parse_model: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote Nemotron Parse endpoint. "
+            "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
+            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "Server-owned — clients cannot override the deployed Parse SKU."
+        ),
+    )
     embed_invoke_url: str | None = None
     embed_model_name: str | None = Field(
         default=None,
@@ -174,6 +192,16 @@ class NimEndpointsConfig(RichModel):
     )
     api_key: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_nemotron_parse_config(self) -> "NimEndpointsConfig":
+        endpoint = (self.nemotron_parse_invoke_url or "").strip()
+        model = (self.nemotron_parse_model or "").strip()
+        self.nemotron_parse_invoke_url = endpoint or None
+        self.nemotron_parse_model = model or None
+        if model and not endpoint:
+            raise ValueError("nim_endpoints.nemotron_parse_model requires " "nim_endpoints.nemotron_parse_invoke_url")
+        return self
+
 
 class LLMConfig(RichModel):
     """Remote LLM configuration for service-mode RAG answer generation."""
@@ -198,6 +226,30 @@ class LLMConfig(RichModel):
     def _validate_enabled_model(self) -> "LLMConfig":
         if self.enabled and not self.model.strip():
             raise ValueError("llm.model must be set when llm.enabled is true")
+        return self
+
+
+class AgenticConfig(RichModel):
+    """Server-owned configuration for agentic (ReAct) retrieval queries."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    llm_model: str | None = None
+    invoke_url: str | None = None
+    reasoning_effort: str | None = "high"
+    backend_top_k: int = Field(default=20, ge=1)
+    react_max_steps: int = Field(default=50, ge=1)
+    text_truncation: int = Field(default=0, ge=0)
+    temperature: float = Field(default=0.0, ge=0.0)
+    request_timeout_s: float = Field(default=1800.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_remote_model(self) -> "AgenticConfig":
+        if self.enabled and not (self.invoke_url or "").strip():
+            raise ValueError("agentic.invoke_url must be set when agentic.enabled is true")
+        if self.enabled and not (self.llm_model or "").strip():
+            raise ValueError("agentic.llm_model must be set when agentic.enabled is true")
         return self
 
 
@@ -242,6 +294,14 @@ class MCPConfig(RichModel):
         ),
     )
     enable_write_tools: bool = True
+    query_methods: MCPQueryMethods = Field(
+        default="classic",
+        description=(
+            "Which retrieval MCP tools to register: 'classic' (query only), "
+            "'agentic' (agentic_query only), or 'all' (both). Agentic tools are "
+            "still omitted when agentic.enabled is false."
+        ),
+    )
     max_concurrency: int = Field(default=8, ge=1)
     request_timeout_s: float = Field(default=60.0, gt=0)
     ingest_timeout_s: float = Field(default=1800.0, gt=0)
@@ -467,6 +527,7 @@ class ServiceConfig(RichModel):
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
     local_models: LocalModelsConfig = Field(default_factory=LocalModelsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)

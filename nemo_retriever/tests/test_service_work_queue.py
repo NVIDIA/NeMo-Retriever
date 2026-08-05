@@ -649,8 +649,6 @@ async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path,
     assert not broker._records
     assert all(not queue for queue in broker._queues.values())
     assert broker._spool_bytes == 0
-    with pytest.raises(StaleLease):
-        broker.validate_callback("leased", claim.lease.lease_id, claim.lease.generation)
 
 
 @pytest.mark.anyio

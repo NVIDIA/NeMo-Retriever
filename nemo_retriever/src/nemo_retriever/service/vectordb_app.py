@@ -17,6 +17,7 @@ import hmac
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Union
@@ -52,6 +53,8 @@ from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.records import RetrievalContractError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.query.evidence import build_evidence_result
+from nemo_retriever.service.agentic_query import run_agentic_query
+from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
     EvidenceResult,
@@ -63,6 +66,7 @@ from nemo_retriever.service.query_schema import (
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT_QUERIES = 4
+MAX_CONCURRENT_AGENTIC_QUERIES = 2
 
 
 class WriteRequest(BaseModel):
@@ -256,16 +260,20 @@ def create_vectordb_app(
     reconciliation_interval_seconds: int = 60,
     expiration_cleanup_enabled: bool = True,
     vdb: VDB | None = None,
+    agentic_config: AgenticConfig | None = None,
 ) -> FastAPI:
     """Build the VectorDB FastAPI application around an injected VDB contract."""
     if reconciliation_interval_seconds < 0:
         raise ValueError("reconciliation_interval_seconds must be non-negative")
 
+    agentic_config = agentic_config or AgenticConfig()
     state: VectorDBState | None = None
+    agentic_executor: ThreadPoolExecutor | None = None
+    agentic_slots: threading.BoundedSemaphore | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal state
+        nonlocal state, agentic_executor, agentic_slots
         backend = vdb or _production_vdb(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
@@ -284,6 +292,12 @@ def create_vectordb_app(
             gpu_memory_utilization=gpu_memory_utilization,
         )
         app.state.vectordb_state = state
+        if agentic_config.enabled:
+            agentic_executor = ThreadPoolExecutor(
+                max_workers=MAX_CONCURRENT_AGENTIC_QUERIES,
+                thread_name_prefix="agentic-query",
+            )
+            agentic_slots = threading.BoundedSemaphore(MAX_CONCURRENT_AGENTIC_QUERIES)
         logger.info(
             "VectorDB service started: embed_mode=%s max_concurrent_queries=%d",
             state.embed_mode,
@@ -315,6 +329,12 @@ def create_vectordb_app(
                     await reconciliation_task
                 except asyncio.CancelledError:
                     pass
+            if agentic_executor is not None:
+                # Agentic LLM calls cannot be interrupted, so detach rather than
+                # blocking service shutdown on in-flight work.
+                agentic_executor.shutdown(wait=False, cancel_futures=True)
+                agentic_executor = None
+            agentic_slots = None
             state = None
             app.state.vectordb_state = None
             logger.info("VectorDB service stopped")
@@ -633,6 +653,11 @@ def create_vectordb_app(
         x_nrl_scope: str | None = Header(None),
     ) -> QueryResponse | EvidenceQueryResponse:
         current = require_state()
+        if req.agentic:
+            if req.collection_name is not None:
+                raise UnsupportedVDBOperation("agentic collection retrieval")
+            return await _run_agentic_query(req)
+
         if current.embed_mode == "none":
             raise HTTPException(
                 501,
@@ -683,6 +708,75 @@ def create_vectordb_app(
                 results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
             )
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
+
+    async def _run_agentic_query(req: QueryRequest) -> QueryResponse:
+        """Run the blocking agentic workflow without consuming plain-query workers."""
+        current = require_state()
+        if not agentic_config.enabled:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Agentic retrieval is not enabled in the VectorDB configuration. "
+                    "Start with --agentic and a remote LLM invoke URL/model, or set "
+                    "agentic.enabled in the service config."
+                ),
+            )
+        if current.embed_mode == "none":
+            raise HTTPException(
+                501,
+                "No embedding backend configured. Set --embed-endpoint for a remote "
+                "NIM or --local-embed for in-pod Hugging Face query embedding.",
+            )
+        if current.embed_mode != "remote":
+            raise HTTPException(501, "Agentic service queries require a remote embedding endpoint.")
+        if current.vdb.health().get("table_exists") is False:
+            raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
+        if req.top_k > agentic_config.backend_top_k:
+            raise VDBInvalidRequest(
+                f"top_k ({req.top_k}) cannot exceed the configured agentic "
+                f"backend_top_k ({agentic_config.backend_top_k})."
+            )
+
+        executor, slots = agentic_executor, agentic_slots
+        if executor is None or slots is None:
+            raise HTTPException(503, "Agentic retrieval workers are not running")
+        if not slots.acquire(blocking=False):
+            logger.warning(
+                "Rejecting agentic query: all %d agentic workers are busy",
+                MAX_CONCURRENT_AGENTIC_QUERIES,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"All {MAX_CONCURRENT_AGENTIC_QUERIES} agentic retrieval workers are busy. "
+                    "Retry once an in-flight query finishes."
+                ),
+                headers={"Retry-After": "30"},
+            )
+
+        assert isinstance(req.query, str)
+        try:
+            future = executor.submit(
+                run_agentic_query,
+                query=req.query,
+                top_k=req.top_k,
+                config=agentic_config,
+                lancedb_uri=lancedb_uri,
+                table_name=table_name,
+                embed_endpoint=current.embed_endpoint,
+                embed_model=current.embed_model,
+                embed_model_provider_prefix=current.embed_model_provider_prefix,
+                embed_api_key=current.embed_api_key,
+            )
+        except RuntimeError as exc:
+            slots.release()
+            raise HTTPException(503, "VectorDB is shutting down") from exc
+
+        future.add_done_callback(lambda _future: slots.release())
+        try:
+            return await asyncio.wrap_future(future)
+        except ValueError as exc:
+            raise VDBInvalidRequest(str(exc)) from exc
 
     return app
 
@@ -746,6 +840,23 @@ def main() -> None:
         default=0.45,
         help="vLLM GPU memory fraction when --local-embed-backend=vllm.",
     )
+    parser.add_argument(
+        "--agentic",
+        action="store_true",
+        help="Enable agentic=true on POST /v1/query using the agentic retrieval workflow.",
+    )
+    parser.add_argument("--agentic-llm-model", default="", help="Agentic retrieval chat model.")
+    parser.add_argument(
+        "--agentic-invoke-url",
+        default="",
+        help="OpenAI-compatible chat completions endpoint for agentic retrieval.",
+    )
+    parser.add_argument("--agentic-reasoning-effort", default="high")
+    parser.add_argument("--agentic-backend-top-k", type=int, default=20)
+    parser.add_argument("--agentic-react-max-steps", type=int, default=50)
+    parser.add_argument("--agentic-text-truncation", type=int, default=0)
+    parser.add_argument("--agentic-temperature", type=float, default=0.0)
+    parser.add_argument("--agentic-request-timeout", type=float, default=1800.0)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7671)
     parser.add_argument("--log-level", default="info")
@@ -774,6 +885,17 @@ def main() -> None:
         internal_api_token=args.internal_api_token or None,
         reconciliation_interval_seconds=args.reconciliation_interval_seconds,
         expiration_cleanup_enabled=not args.disable_expiration_cleanup,
+        agentic_config=AgenticConfig(
+            enabled=args.agentic,
+            llm_model=args.agentic_llm_model or None,
+            invoke_url=args.agentic_invoke_url or None,
+            reasoning_effort=args.agentic_reasoning_effort or None,
+            backend_top_k=args.agentic_backend_top_k,
+            react_max_steps=args.agentic_react_max_steps,
+            text_truncation=args.agentic_text_truncation,
+            temperature=args.agentic_temperature,
+            request_timeout_s=args.agentic_request_timeout,
+        ),
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

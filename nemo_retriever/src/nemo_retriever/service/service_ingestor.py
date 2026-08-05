@@ -44,6 +44,7 @@ client.
 Fluent methods that *do* take effect by writing to the spec:
 
 * ``.extract(...)`` — per-request extraction knobs (DPI, OCR enable, …)
+* ``.texts(...)`` — inline text payloads
 * ``.embed(...)`` — embedding model/dim overrides bounded by the
   operator's allow-list
 * ``.dedup(...)``, ``.split(...)``, ``.filter()`` — shape knobs
@@ -79,12 +80,13 @@ import warnings
 from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 import httpx
 
 from nemo_retriever.ingestor.results import ResultSchema, concat_ingest_results
 from nemo_retriever.ingestor import _merge_params, ingestor
+from nemo_retriever.common.inline_text import inline_text_source_id, is_blank_inline_corpus, normalize_inline_texts
 from nemo_retriever.common.params import (
     CaptionParams,
     IngestExecuteParams,
@@ -93,6 +95,7 @@ from nemo_retriever.common.params import (
     VdbUploadParams,
     WebhookParams,
 )
+from nemo_retriever.service.client import InMemoryUpload, RetrieverServiceClient, UploadInput
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +210,18 @@ def _normalize_files(files: Union[str, List[str], List[Path]]) -> list[Path]:
     return [Path(f) for f in files]
 
 
+def _empty_service_result_dataframe(result_schema: ResultSchema) -> Any:
+    """Return an empty DataFrame matching the selected public result schema."""
+    if result_schema == "legacy":
+        from nemo_retriever.common.modality.txt.split import empty_text_chunks_df
+
+        return empty_text_chunks_df()
+
+    import pandas as pd
+
+    return pd.DataFrame(columns=["text", "source_id", "element_type", "page_number"]).astype({"page_number": "int64"})
+
+
 # ----------------------------------------------------------------------
 # Client-side mirror of service.models.pipeline_spec.PipelineSpec
 # ----------------------------------------------------------------------
@@ -223,6 +238,7 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
         "ocr_api_key",
         "table_structure_invoke_url",
         "nemotron_parse_invoke_url",
+        "nemotron_parse_model",
         "embed_invoke_url",
         "embedding_endpoint",
         "embed_model_provider_prefix",
@@ -432,6 +448,7 @@ class ServiceIngestor(ingestor):
         self._max_concurrency = max_concurrency
         self._request_timeout_s = request_timeout_s
         self._api_token = (api_token or "").strip() or None
+        self._inline_texts: list[str] | None = None
         self._document_ids: list[str] = []
         self._last_run_elapsed_s: float = 0.0
         self._last_job_id: str | None = None
@@ -558,6 +575,8 @@ class ServiceIngestor(ingestor):
         so the worker can short-circuit identically.
         """
         spec = dict(self._pipeline_spec)
+        if self._has_mixed_inline_sources():
+            spec["extraction_mode"] = "auto"
         spec["result_schema"] = result_schema
         spec["return_embeddings"] = bool(return_embeddings or spec.get("return_embeddings", False))
         spec["return_images"] = bool(return_images or spec.get("return_images", False))
@@ -598,6 +617,11 @@ class ServiceIngestor(ingestor):
             self._documents.append(documents)
         else:
             self._documents.extend(documents)
+        return self
+
+    def texts(self, texts: Union[str, Sequence[str]]) -> Self:
+        """Set raw inline text documents, optionally alongside file or buffer uploads."""
+        self._inline_texts = normalize_inline_texts(texts)
         return self
 
     def buffers(
@@ -1166,6 +1190,19 @@ class ServiceIngestor(ingestor):
             self._resolve_execute_flags(params, kwargs)
         )
         del params, kwargs
+        if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
+            self._document_ids.clear()
+            self._last_run_elapsed_s = 0.0
+            self._last_job_id = None
+            result = ServiceIngestResult()
+            if return_results:
+                result.dataframe = _empty_service_result_dataframe(result_schema)
+            if return_failures and return_traces:
+                return result, [], []
+            if return_failures or return_traces:
+                return result, []
+            return result
+
         retain_results = return_results or self._save_to_disk_dir is not None
         if retain_results and result_schema == "legacy":
             warnings.warn(_LEGACY_RESULT_SCHEMA_DEPRECATION, DeprecationWarning, stacklevel=2)
@@ -1455,15 +1492,13 @@ class ServiceIngestor(ingestor):
 
     async def _aingest_stream_impl(
         self,
-        files: list[Path],
+        files: list[UploadInput],
         *,
         retain_results: bool = False,
         result_schema: ResultSchema = "legacy",
         return_embeddings: bool = False,
         return_images: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
-        from nemo_retriever.service.client import RetrieverServiceClient
-
         client = RetrieverServiceClient(
             base_url=self._base_url,
             max_concurrency=self._max_concurrency,
@@ -1569,9 +1604,15 @@ class ServiceIngestor(ingestor):
     # Internals
     # ------------------------------------------------------------------
 
-    def _collect_inputs(self) -> list[Path]:
-        """Gather both file paths and any in-memory buffers into Paths."""
-        files = [Path(p) for p in self._documents]
+    def _has_mixed_inline_sources(self) -> bool:
+        return bool(self._inline_texts) and bool(self._documents or self._buffers)
+
+    def _collect_inputs(self) -> list[UploadInput]:
+        """Gather filesystem and in-memory inputs for the service client."""
+        if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
+            return []
+
+        files: list[UploadInput] = [Path(p) for p in self._documents]
 
         if self._buffers:
             import tempfile
@@ -1581,5 +1622,16 @@ class ServiceIngestor(ingestor):
                 target = tmp_dir / name
                 target.write_bytes(buf.getvalue())
                 files.append(target)
+
+        for index, text in enumerate(self._inline_texts or []):
+            source_id = inline_text_source_id(index)
+            files.append(
+                InMemoryUpload(
+                    filename=source_id,
+                    content=text.encode("utf-8"),
+                    content_type="text/plain; charset=utf-8",
+                    classification_filename=f"inline-{index:08d}.txt",
+                )
+            )
 
         return files

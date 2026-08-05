@@ -74,7 +74,7 @@ extra_css:
 # bar when there is only one top-level tab.
 nav:
   - "1. Introduction":
-      - "What is NeMo Retriever?": extraction/overview.md
+      - "NeMo Retriever Library Overview": extraction/overview.md
       - Key concepts: extraction/concepts.md
       - Release notes: extraction/releasenotes.md
   - "2. Get started":

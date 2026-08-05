@@ -71,14 +71,12 @@ def test_defaults_use_direct_pvc_for_affected_2x_services() -> None:
         }
         assert "nimCache" not in service["spec"]["storage"]
 
-    assert _find(docs, "NIMService", "llama-nemotron-embed-vl-1b-v2")["spec"]["image"]["tag"] == "2.0.0"
+    assert _find(docs, "NIMService", "llama-nemotron-embed-vl-1b-v2")["spec"]["image"]["tag"] == "2.3.0"
     assert _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")["spec"]["image"]["tag"] == "2.3.0"
 
     embed = _find(docs, "NIMService", "llama-nemotron-embed-vl-1b-v2")["spec"]
-    assert embed["command"] == ["/bin/sh", "-c"]
-    assert "mkdir -p" in embed["args"][0]
-    assert "NIM_PRECOMPILE_CACHE_DIR" in embed["args"][0]
-    assert "retriever-entrypoint.sh nemotron-embed-server" in embed["args"][0]
+    assert "command" not in embed
+    assert "args" not in embed
 
 
 def test_nimcache_mode_restores_legacy_resources() -> None:

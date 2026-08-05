@@ -9,6 +9,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 QueryFormat = Literal["hits", "evidence"]
+QueryMode = Literal["classic", "agentic"]
+
+# Agentic queries are replayed into every step of a multi-step LLM loop, so an
+# oversized query multiplies prompt cost and latency. Roughly 1k tokens of
+# natural-language question is far above any realistic retrieval query.
+MAX_AGENTIC_QUERY_CHARS = 4096
 
 
 class QueryRequest(BaseModel):
@@ -19,9 +25,34 @@ class QueryRequest(BaseModel):
         default="hits",
         description=(
             "Output shape: 'hits' (default) returns raw retrieval hits; 'evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
+            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
+            "Agentic queries require format='hits'."
         ),
     )
+    agentic: bool = Field(
+        default=False,
+        description=(
+            "When true, run the server-configured agentic (ReAct) retrieval workflow. "
+            "Requires agentic.enabled in service configuration. Response uses the same "
+            "hits envelope as dense/hybrid query; document-level agentic results map "
+            "doc_id onto source, keep result_source/rank in metadata, and leave "
+            "chunk-level fields unset (null)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_agentic_request(self) -> "QueryRequest":
+        if not self.agentic:
+            return self
+        if not isinstance(self.query, str):
+            raise ValueError("agentic queries require a single query string, not a list")
+        if not self.query.strip():
+            raise ValueError("agentic query must be a non-empty string")
+        if len(self.query) > MAX_AGENTIC_QUERY_CHARS:
+            raise ValueError(f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters")
+        if self.format != "hits":
+            raise ValueError("agentic queries require format='hits'")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -50,6 +81,13 @@ class QueryResult(BaseModel):
 
 class QueryResponse(BaseModel):
     results: list[QueryResult]
+    query_mode: QueryMode = Field(
+        default="classic",
+        description=(
+            "Which /v1/query workflow produced this response: 'classic' (dense/hybrid) "
+            "or 'agentic' (ReAct document ranking)."
+        ),
+    )
 
     def hits_by_query(self, *, expected_results: int | None = None) -> list[list[dict[str, Any]]]:
         if expected_results is not None and len(self.results) != expected_results:
@@ -93,3 +131,7 @@ class EvidenceResult(BaseModel):
 
 class EvidenceQueryResponse(BaseModel):
     results: list[EvidenceResult]
+    query_mode: QueryMode = Field(
+        default="classic",
+        description="Evidence format is classic retrieval only; always 'classic'.",
+    )

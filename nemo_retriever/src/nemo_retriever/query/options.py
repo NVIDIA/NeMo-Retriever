@@ -26,6 +26,7 @@ class QueryEmbedOptions:
     embed_invoke_url: str | None = None
     embed_model_name: str | None = None
     embed_model_provider_prefix: str | None = None
+    embed_api_key: str | None = None
 
 
 @dataclass(frozen=True)

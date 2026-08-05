@@ -508,11 +508,10 @@ def _route_by_page_count(
 
     * Audio / video files are always routed to **batch** — they involve
       heavyweight ASR / frame-extraction pipelines.
-    * Image files are always routed to **realtime** — they are single-page
-      and latency-sensitive.
-    * Documents (PDF, DOCX, PPTX) and other types use the original
-      page-count heuristic: small docs (<threshold pages) go to realtime,
-      larger ones to batch.
+    * Text, HTML, and image files are always routed to **realtime** — they do
+      not need PDF page counting.
+    * Documents (PDF, DOCX, PPTX) use the original page-count heuristic:
+      small docs (<threshold pages) go to realtime, larger ones to batch.
 
     When the client requested PDF page-chunking via
     :attr:`PipelineSpec.pdf_split`, we route to **batch** as soon as the
@@ -521,7 +520,7 @@ def _route_by_page_count(
     """
     if file_category in (FileCategory.AUDIO, FileCategory.VIDEO):
         return PoolType.BATCH
-    if file_category == FileCategory.IMAGE:
+    if file_category in (FileCategory.TEXT, FileCategory.HTML, FileCategory.IMAGE):
         return PoolType.REALTIME
     if meta.page_number is not None:
         return PoolType.REALTIME
@@ -1789,20 +1788,25 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 
 # ------------------------------------------------------------------
-# POST /v1/query  — vector search (proxied to vectordb pod)
+# POST /v1/query  — vector search / agentic retrieval (proxied to vectordb)
 # ------------------------------------------------------------------
 
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity or hybrid retrieval",
+    summary="Search ingested documents by semantic similarity, hybrid, or agentic retrieval",
 )
 async def query(request: Request) -> Response:
     """Proxy a query request to the VectorDB service.
 
     * **gateway / standalone** — forwards the JSON body to the vectordb pod.
     * **worker** — returns 404 (workers don't handle queries).
+
+    When the body sets ``agentic: true``, the long agentic timeout is used and
+    the service must have agentic retrieval configured.
     """
+    import json
+
     import httpx
 
     config = request.app.state.config
@@ -1824,11 +1828,28 @@ async def query(request: Request) -> Response:
     target = f"{vectordb_url}/v1/query"
 
     body = await request.body()
+    agentic = False
+    try:
+        parsed = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
+        agentic = bool(parsed.get("agentic")) if isinstance(parsed, dict) else False
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
+        agentic = False
+
+    if agentic and not config.agentic.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Agentic retrieval is not enabled in the service configuration. "
+                "Set agentic.enabled with llm_model and invoke_url."
+            ),
+        )
+
+    timeout = config.agentic.request_timeout_s if agentic else 60.0
 
     try:
         from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 target,
                 content=body,
