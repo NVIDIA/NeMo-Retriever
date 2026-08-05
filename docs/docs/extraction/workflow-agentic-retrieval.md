@@ -74,6 +74,9 @@ curl -X POST http://localhost:7670/v1/query \
   -d '{"query": "find documents about parser behavior", "top_k": 5, "agentic": true}'
 ```
 
+Successful responses include ``query_mode``: ``"agentic"`` for this path and
+``"classic"`` for dense/hybrid ``/v1/query`` (including ``format=evidence``).
+
 Requests with `agentic: true` return HTTP `400` when agentic retrieval is not
 configured on the service. Agentic runs use a small dedicated worker pool in the
 VectorDB process so they cannot exhaust the capacity used by plain queries. A

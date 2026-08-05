@@ -62,7 +62,8 @@ def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert list(body) == ["results"]
+    assert list(body) == ["results", "query_mode"]
+    assert body["query_mode"] == "classic"
     assert len(body["results"]) == 1
 
     item = body["results"][0]

@@ -477,8 +477,8 @@ def create_vectordb_app(
         queries = req.query if isinstance(req.query, list) else [req.query]
         if not queries:
             if req.format == "evidence":
-                return EvidenceQueryResponse(results=[])
-            return QueryResponse(results=[])
+                return EvidenceQueryResponse(results=[], query_mode="classic")
+            return QueryResponse(results=[], query_mode="classic")
 
         try:
             async with _query_semaphore:
@@ -494,10 +494,14 @@ def create_vectordb_app(
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
+                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query],
+                query_mode="classic",
             )
 
-        return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
+        return QueryResponse(
+            results=[QueryResult(hits=hits) for hits in hits_per_query],
+            query_mode="classic",
+        )
 
     async def _run_agentic_query(req: QueryRequest) -> QueryResponse:
         if not agentic_config.enabled:

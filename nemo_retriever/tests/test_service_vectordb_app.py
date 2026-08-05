@@ -232,7 +232,8 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
 
     assert resp.status_code == 200
     body = resp.json()
-    assert list(body) == ["results"]
+    assert list(body) == ["results", "query_mode"]
+    assert body["query_mode"] == "classic"
     assert len(body["results"]) == 1
     item = body["results"][0]
     assert set(item) == {"evidence", "coverage"}

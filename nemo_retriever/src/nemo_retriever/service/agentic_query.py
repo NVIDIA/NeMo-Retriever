@@ -122,4 +122,7 @@ def run_agentic_query(
         embed_api_key=embed_api_key,
     )
     ranked = agentic_query_documents(query_request)
-    return QueryResponse(results=[QueryResult(hits=agentic_ranked_to_hits(ranked))])
+    return QueryResponse(
+        results=[QueryResult(hits=agentic_ranked_to_hits(ranked))],
+        query_mode="agentic",
+    )

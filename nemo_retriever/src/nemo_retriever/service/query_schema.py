@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 QueryFormat = Literal["hits", "evidence"]
+QueryMode = Literal["classic", "agentic"]
 
 # Agentic queries are replayed into every step of a multi-step LLM loop, so an
 # oversized query multiplies prompt cost and latency. Roughly 1k tokens of
@@ -59,6 +60,13 @@ class QueryResult(BaseModel):
 
 class QueryResponse(BaseModel):
     results: list[QueryResult]
+    query_mode: QueryMode = Field(
+        default="classic",
+        description=(
+            "Which /v1/query workflow produced this response: 'classic' (dense/hybrid) "
+            "or 'agentic' (ReAct document ranking)."
+        ),
+    )
 
     def hits_by_query(self, *, expected_results: int | None = None) -> list[list[dict[str, Any]]]:
         if expected_results is not None and len(self.results) != expected_results:
@@ -102,3 +110,7 @@ class EvidenceResult(BaseModel):
 
 class EvidenceQueryResponse(BaseModel):
     results: list[EvidenceResult]
+    query_mode: QueryMode = Field(
+        default="classic",
+        description="Evidence format is classic retrieval only; always 'classic'.",
+    )

@@ -234,10 +234,13 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
             result = result.sort_values("rank")
         ranked: list[dict[str, Any]] = []
         for _, row in result.iterrows():
+            doc_id = str(row.get("doc_id", "")).strip()
+            if not doc_id:
+                continue
             ranked.append(
                 {
                     "rank": int(row.get("rank", len(ranked) + 1)),
-                    "doc_id": str(row.get("doc_id", "")),
+                    "doc_id": doc_id,
                     "result_source": str(row.get("result_source", "")),
                 }
             )

@@ -102,6 +102,11 @@ def test_agentic_ranked_to_hits_maps_doc_id_onto_query_hit_envelope() -> None:
     ]
 
 
+def test_agentic_ranked_to_hits_rejects_blank_doc_id() -> None:
+    with pytest.raises(ValueError, match="missing a non-empty doc_id"):
+        agentic_ranked_to_hits([{"rank": 1, "doc_id": "", "result_source": "selection_agent"}])
+
+
 def test_agentic_query_flag_rejected_when_disabled(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
@@ -140,7 +145,8 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
                     ]
                 )
             )
-        ]
+        ],
+        query_mode="agentic",
     )
 
     with (
@@ -170,7 +176,8 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
                     }
                 ]
             }
-        ]
+        ],
+        "query_mode": "agentic",
     }
     assert run_query.call_args.kwargs["query"] == "revenue trend"
     assert run_query.call_args.kwargs["top_k"] == 3
@@ -242,7 +249,7 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
             invoke_url="https://llm.example/v1/chat/completions",
         ),
     )
-    expected = QueryResponse(results=[QueryResult(hits=[])])
+    expected = QueryResponse(results=[QueryResult(hits=[])], query_mode="agentic")
 
     with (
         patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),
