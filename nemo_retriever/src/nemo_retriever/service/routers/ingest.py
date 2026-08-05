@@ -171,6 +171,50 @@ def _internal_auth_headers(request: Request) -> dict[str, str]:
     return internal_auth_headers(request.app.state.config.vectordb.internal_api_token)
 
 
+def _proxied_response(response: httpx.Response) -> Response:
+    """Relay an upstream VectorDB response to the caller unchanged."""
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
+
+
+async def _vectordb_get(request: Request, url: str, *, scope: str, failure_detail: str) -> httpx.Response:
+    """Read one scoped resource from the internal VectorDB service."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            return await client.get(
+                url,
+                headers={"X-NRL-Scope": scope, **_internal_auth_headers(request)},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, failure_detail) from exc
+
+
+def _job_idempotency_fingerprint(body: JobCreateRequest) -> str:
+    """Hash the request fields that an idempotent replay must match.
+
+    The field list is explicit rather than a full model dump so that adding a
+    request field cannot silently invalidate previously issued fingerprints.
+    """
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "expected_documents": body.expected_documents,
+                "collection_name": body.collection_name,
+                "operation": body.operation,
+                "target_document_id": body.target_document_id,
+                "metadata": body.metadata,
+                "retain_results": body.retain_results,
+                "document_manifest": [entry.model_dump(mode="json") for entry in body.document_manifest],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
 def _record_prometheus(
     request: Request,
     endpoint: str,
@@ -795,7 +839,7 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
-    from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
+    from nemo_retriever.service.auth import authorized_scope
 
     scope = authorized_scope(request)
     if body.collection_name:
@@ -803,59 +847,26 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
         if not config.vectordb.enabled:
             raise HTTPException(404, "VectorDB is not enabled in the service configuration")
         target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/collections/{body.collection_name}"
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                collection_response = await client.get(
-                    target,
-                    headers={
-                        "X-NRL-Scope": scope,
-                        **internal_auth_headers(config.vectordb.internal_api_token),
-                    },
-                )
-        except httpx.HTTPError as exc:
-            raise HTTPException(502, "Failed to validate collection with VectorDB service") from exc
+        collection_response = await _vectordb_get(
+            request,
+            target,
+            scope=scope,
+            failure_detail="Failed to validate collection with VectorDB service",
+        )
         if collection_response.status_code != 200:
-            return Response(
-                content=collection_response.content,
-                status_code=collection_response.status_code,
-                media_type=collection_response.headers.get("content-type", "application/json"),
-            )
+            return _proxied_response(collection_response)
         if collection_response.json().get("status") != "active":
             raise HTTPException(409, "Collection is not active")
         if body.operation is IngestOperation.REPLACE and body.target_document_id:
-            document_target = f"{target}/documents/{body.target_document_id}"
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    document_response = await client.get(
-                        document_target,
-                        headers={
-                            "X-NRL-Scope": scope,
-                            **internal_auth_headers(config.vectordb.internal_api_token),
-                        },
-                    )
-            except httpx.HTTPError as exc:
-                raise HTTPException(502, "Failed to validate replacement document") from exc
+            document_response = await _vectordb_get(
+                request,
+                f"{target}/documents/{body.target_document_id}",
+                scope=scope,
+                failure_detail="Failed to validate replacement document",
+            )
             if document_response.status_code != 200:
-                return Response(
-                    content=document_response.content,
-                    status_code=document_response.status_code,
-                    media_type=document_response.headers.get("content-type", "application/json"),
-                )
-    fingerprint = hashlib.sha256(
-        json.dumps(
-            {
-                "expected_documents": body.expected_documents,
-                "collection_name": body.collection_name,
-                "operation": body.operation,
-                "target_document_id": body.target_document_id,
-                "metadata": body.metadata,
-                "retain_results": body.retain_results,
-                "document_manifest": [entry.model_dump(mode="json") for entry in body.document_manifest],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-    ).hexdigest()
+                return _proxied_response(document_response)
+    fingerprint = _job_idempotency_fingerprint(body)
     job_id = uuid.uuid4().hex
     trace_id: str | None = None
     inbound_trace_context = _trace_context_from_request_or_job(request, None)
@@ -1706,11 +1717,7 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
         )
 
     if resp.status_code != 200:
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            media_type=resp.headers.get("content-type", "application/json"),
-        )
+        return _proxied_response(resp)
 
     payload = resp.json()
     result_sets = payload.get("results") or []
