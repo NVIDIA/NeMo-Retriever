@@ -91,9 +91,14 @@ For local stdio-based agents, run the MCP server as a shim that points at an exi
 ```bash
 retriever service mcp-stdio \
   --service-url http://localhost:7670 \
-  --agentic-query \
+  --query-methods agentic \
   --api-token "$NEMO_RETRIEVER_API_TOKEN"
 ```
+
+Use `--query-methods classic` (default), `agentic`, or `all` to choose which retrieval
+tools the MCP server registers. Mounted `/mcp` uses the same knob via
+`mcp.query_methods` in the service config; agentic tools are omitted unless
+`agentic.enabled` is also true.
 
 For remote agents, expose the retriever service URL and configure the agent to connect to:
 

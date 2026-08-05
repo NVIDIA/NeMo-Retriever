@@ -97,8 +97,9 @@ llm:
   rag_system_prompt_prefix: null
   reasoning_enabled: true
 
-# Agentic (ReAct) retrieval exposed through POST /v1/query with agentic=true and the
-# agentic_query MCP tool. Service mode requires a remote OpenAI-compatible
+# Agentic (ReAct) retrieval exposed through POST /v1/query with agentic=true.
+# The agentic_query MCP tool is registered when mcp.query_methods is agentic or all
+# and agentic.enabled is true. Service mode requires a remote OpenAI-compatible
 # invoke_url and llm_model when enabled.
 agentic:
   enabled: false
@@ -182,6 +183,9 @@ mcp:
   # Defaults to loopback on server.port when null.
   base_url: null
   enable_write_tools: true
+  # Which retrieval tools to register: classic | agentic | all.
+  # Agentic tools are omitted when agentic.enabled is false.
+  query_methods: classic
   max_concurrency: 8
   request_timeout_s: 60.0
   ingest_timeout_s: 1800.0

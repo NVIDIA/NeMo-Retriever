@@ -597,6 +597,8 @@ serviceConfig:
     path: "/mcp"
     baseUrl: ""
     enableWriteTools: true
+    # classic | agentic | all — which retrieval MCP tools to register.
+    queryMethods: classic
     maxConcurrency: 8
     requestTimeoutS: 60.0
     ingestTimeoutS: 1800.0

@@ -25,7 +25,7 @@ import httpx
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from nemo_retriever.service.config import ServiceConfig
+from nemo_retriever.service.config import MCPQueryMethods, ServiceConfig
 from nemo_retriever.service.query_schema import QueryFormat
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ class ServiceMCPSettings:
     ingest_timeout_s: float = 1800.0
     poll_interval_s: float = 2.0
     enable_write_tools: bool = True
-    enable_agentic_query: bool = False
+    query_methods: MCPQueryMethods = "classic"
 
     @property
     def normalized_base_url(self) -> str:
@@ -93,6 +93,29 @@ class ServiceMCPSettings:
         if not token:
             return {}
         return {self.auth_header_name: f"Bearer {token}"}
+
+    @property
+    def enable_classic_query(self) -> bool:
+        return self.query_methods in ("classic", "all")
+
+    @property
+    def enable_agentic_query(self) -> bool:
+        return self.query_methods in ("agentic", "all")
+
+
+def _effective_query_methods(
+    configured: MCPQueryMethods,
+    *,
+    agentic_enabled: bool,
+) -> MCPQueryMethods:
+    """Drop agentic MCP tools when agentic retrieval is not configured."""
+    if agentic_enabled:
+        return configured
+    if configured == "agentic":
+        return "classic"
+    if configured == "all":
+        return "classic"
+    return configured
 
 
 def settings_from_service_config(config: ServiceConfig) -> ServiceMCPSettings:
@@ -117,7 +140,10 @@ def settings_from_service_config(config: ServiceConfig) -> ServiceMCPSettings:
         ingest_timeout_s=mcp_cfg.ingest_timeout_s,
         poll_interval_s=mcp_cfg.poll_interval_s,
         enable_write_tools=mcp_cfg.enable_write_tools,
-        enable_agentic_query=config.agentic.enabled,
+        query_methods=_effective_query_methods(
+            mcp_cfg.query_methods,
+            agentic_enabled=config.agentic.enabled,
+        ),
     )
 
 
@@ -208,6 +234,8 @@ class ServiceMCPClient:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = dict(payload or {})
+        # Classic query tool must not smuggle agentic=true; use agentic_query instead.
+        body.pop("agentic", None)
         body.setdefault("query", query)
         body.setdefault("top_k", top_k)
         body.setdefault("format", format)
@@ -506,22 +534,24 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     async def get_document(job_id: str, document_id: str) -> dict[str, Any]:
         return await service.get_document(job_id, document_id)
 
-    @mcp.tool(
-        name="query",
-        description=(
-            "Search ingested documents through the service VectorDB endpoint. "
-            "format='hits' (default) returns raw retrieval hits; format='evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
-            "Retrieval (dense vs hybrid) is auto-detected from the table's own indexes."
-        ),
-    )
-    async def query(
-        query: str,
-        top_k: int = 5,
-        format: QueryFormat = "hits",
-        payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return await service.query(query, top_k=top_k, format=format, payload=payload)
+    if settings.enable_classic_query:
+
+        @mcp.tool(
+            name="query",
+            description=(
+                "Search ingested documents through the service VectorDB endpoint. "
+                "format='hits' (default) returns raw retrieval hits; format='evidence' "
+                "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
+                "Retrieval (dense vs hybrid) is auto-detected from the table's own indexes."
+            ),
+        )
+        async def query(
+            query: str,
+            top_k: int = 5,
+            format: QueryFormat = "hits",
+            payload: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return await service.query(query, top_k=top_k, format=format, payload=payload)
 
     if settings.enable_agentic_query:
 

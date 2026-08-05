@@ -82,6 +82,29 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
     assert result["results"][0]["hits"][0]["text"] == "match"
 
 
+def test_query_tool_strips_agentic_flag_from_payload() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"hits": []}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    _run(client.query("q", payload={"agentic": True, "filters": {"k": "v"}}))
+
+    assert seen["body"] == {
+        "filters": {"k": "v"},
+        "query": "q",
+        "top_k": 5,
+        "format": "hits",
+    }
+    assert "agentic" not in seen["body"]
+
+
 def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
     seen: dict[str, Any] = {}
 
@@ -113,7 +136,7 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
     client = ServiceMCPClient(
         ServiceMCPSettings(
             base_url="http://service:7670",
-            enable_agentic_query=True,
+            query_methods="all",
             agentic_request_timeout_s=300.0,
         ),
         transport=httpx.MockTransport(_handler),
@@ -128,17 +151,21 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
     assert result["results"][0]["hits"][0]["source"] == "report.pdf"
 
 
-def test_agentic_query_tool_is_additive_and_config_gated() -> None:
-    plain_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings()).list_tools())}
-    agentic_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(enable_agentic_query=True)).list_tools())}
+def test_query_methods_gate_mcp_retrieval_tools() -> None:
+    classic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools())}
+    agentic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools())}
+    all_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="all")).list_tools())}
 
-    assert "query" in plain_tools
-    assert "agentic_query" not in plain_tools
-    assert "query" in agentic_tools
-    assert "agentic_query" in agentic_tools
+    assert "query" in classic
+    assert "agentic_query" not in classic
+    assert "query" not in agentic
+    assert "agentic_query" in agentic
+    assert "query" in all_tools
+    assert "agentic_query" in all_tools
+    assert "answer" in classic and "answer" in agentic and "answer" in all_tools
 
 
-def test_settings_from_service_config_enables_agentic_query() -> None:
+def test_settings_from_service_config_maps_query_methods_when_agentic_enabled() -> None:
     settings = settings_from_service_config(
         ServiceConfig(
             agentic=AgenticConfig(
@@ -147,11 +174,27 @@ def test_settings_from_service_config_enables_agentic_query() -> None:
                 invoke_url="https://llm.example/v1/chat/completions",
                 request_timeout_s=321.0,
             ),
+            mcp=MCPConfig(query_methods="all"),
         )
     )
 
+    assert settings.query_methods == "all"
     assert settings.enable_agentic_query is True
+    assert settings.enable_classic_query is True
     assert settings.agentic_request_timeout_s == 321.0
+
+
+def test_settings_from_service_config_drops_agentic_tools_when_agentic_disabled() -> None:
+    settings = settings_from_service_config(
+        ServiceConfig(
+            agentic=AgenticConfig(enabled=False),
+            mcp=MCPConfig(query_methods="all"),
+        )
+    )
+
+    assert settings.query_methods == "classic"
+    assert settings.enable_agentic_query is False
+    assert settings.enable_classic_query is True
 
 
 def test_ingest_documents_accepts_inline_base64_upload() -> None:

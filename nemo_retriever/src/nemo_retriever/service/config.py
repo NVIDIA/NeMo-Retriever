@@ -16,6 +16,7 @@ from pydantic import ConfigDict, Field, model_validator
 from nemo_retriever.common.schemas.base import RichModel
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
+MCPQueryMethods = Literal["classic", "agentic", "all"]
 
 
 class ServerConfig(RichModel):
@@ -289,6 +290,14 @@ class MCPConfig(RichModel):
         ),
     )
     enable_write_tools: bool = True
+    query_methods: MCPQueryMethods = Field(
+        default="classic",
+        description=(
+            "Which retrieval MCP tools to register: 'classic' (query only), "
+            "'agentic' (agentic_query only), or 'all' (both). Agentic tools are "
+            "still omitted when agentic.enabled is false."
+        ),
+    )
     max_concurrency: int = Field(default=8, ge=1)
     request_timeout_s: float = Field(default=60.0, gt=0)
     ingest_timeout_s: float = Field(default=1800.0, gt=0)

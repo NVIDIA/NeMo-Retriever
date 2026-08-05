@@ -115,6 +115,7 @@ mcp:
   path: {{ .Values.serviceConfig.mcp.path | quote }}
   base_url: {{ if .Values.serviceConfig.mcp.baseUrl }}{{ .Values.serviceConfig.mcp.baseUrl | quote }}{{ else }}null{{ end }}
   enable_write_tools: {{ .Values.serviceConfig.mcp.enableWriteTools }}
+  query_methods: {{ .Values.serviceConfig.mcp.queryMethods | default "classic" | quote }}
   max_concurrency: {{ .Values.serviceConfig.mcp.maxConcurrency }}
   request_timeout_s: {{ .Values.serviceConfig.mcp.requestTimeoutS }}
   ingest_timeout_s: {{ .Values.serviceConfig.mcp.ingestTimeoutS }}
