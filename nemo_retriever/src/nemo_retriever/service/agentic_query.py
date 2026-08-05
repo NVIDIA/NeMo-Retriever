@@ -27,10 +27,19 @@ def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]
     ``doc_id`` in ``source``, records ``result_source`` / ``rank`` under
     ``metadata``, and leaves chunk-level fields (``text``, ``page_number``,
     scores, …) unset.
+
+    Rows without a non-empty ``doc_id`` are a contract violation: the agentic
+    workflow already skips blank ids on retrieve hops, and a hit with
+    ``source=null`` is useless to clients. Raise rather than emit a null source.
     """
     hits: list[dict[str, Any]] = []
     for item in ranked:
-        doc_id = str(item.get("doc_id") or "") or None
+        doc_id = str(item.get("doc_id") or "").strip()
+        if not doc_id:
+            raise ValueError(
+                "agentic ranked result is missing a non-empty doc_id "
+                f"(rank={item.get('rank')!r}, result_source={item.get('result_source')!r})"
+            )
         hits.append(
             {
                 "text": None,
