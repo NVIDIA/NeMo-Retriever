@@ -1199,22 +1199,11 @@ nimOperator:
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.0.0"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
-    # Embed 2.0.0 skips cuDNN plan compilation on SM120 but still requires its
-    # canonical plan directory to exist. Create it on every architecture before
-    # delegating to the image's original entrypoint.
-    command:
-      - /bin/sh
-      - -c
-    args:
-      - >-
-        sm=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -1 | tr -d '.');
-        mkdir -p "${NIM_PRECOMPILE_CACHE_DIR:-/opt/cache}/sm${sm}/cudnn-sdpa-plan";
-        exec /usr/local/bin/retriever-entrypoint.sh nemotron-embed-server
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
