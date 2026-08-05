@@ -30,6 +30,7 @@ __all__ = [
     "ingestor",
     "retriever",
     "RetrieverServiceCompatibilityError",
+    "simple",
 ]
 
 retriever = _retriever_cls()
@@ -60,4 +61,8 @@ def __getattr__(name: str):
         from nemo_retriever.service.client import RetrieverServiceCompatibilityError
 
         return RetrieverServiceCompatibilityError
+    if name == "simple":
+        import importlib
+
+        return importlib.import_module("nemo_retriever.simple")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
