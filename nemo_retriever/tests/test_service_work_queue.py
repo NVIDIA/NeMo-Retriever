@@ -341,6 +341,7 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -430,6 +431,7 @@ def test_gateway_callback_treats_stale_acknowledge_as_idempotent(tmp_path, monke
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -522,6 +524,7 @@ def test_split_worker_uses_internal_gateway_credential_when_configured(tmp_path)
 def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -577,6 +580,7 @@ def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
     spool = tmp_path / "spool"
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
