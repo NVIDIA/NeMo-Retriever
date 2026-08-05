@@ -25,6 +25,7 @@ from nemo_retriever.common.schemas.collections import (
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
+    UnsupportedVDBOperation,
     VDB,
     VDBInvalidRequest,
     VDBResourceConflict,
@@ -372,21 +373,8 @@ def test_fake_vdb_completes_collection_http_flow_without_backend_details() -> No
     assert deleted_collection.status_code == 200
 
 
-def test_unsupported_collection_capability_returns_501() -> None:
-    class LegacyOnlyVDB(FakeVDB):
-        create_collection = VDB.create_collection
-
-    with TestClient(_app(LegacyOnlyVDB())) as client:
-        response = client.post("/v1/collections", json={"name": "unsupported"})
-
-    assert response.status_code == 501
-    assert response.json()["detail"] == ("The configured VectorDB backend does not support this operation.")
-
-
 def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() -> None:
-    class LegacyRetrievalOnlyVDB(FakeVDB):
-        retrieve_collection = VDB.retrieve_collection
-
+    class UnsupportedCollectionRetrievalVDB(FakeVDB):
         def __init__(self) -> None:
             super().__init__()
             self.legacy_retrieval_calls = 0
@@ -395,7 +383,10 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
             self.legacy_retrieval_calls += 1
             return super().retrieval(queries, **kwargs)
 
-    backend = LegacyRetrievalOnlyVDB()
+        def retrieve_collection(self, *args: Any, **kwargs: Any):
+            raise UnsupportedVDBOperation("Collection retrieval mode is unsupported")
+
+    backend = UnsupportedCollectionRetrievalVDB()
     backend.create_collection(
         scope="tenant-a",
         request=CollectionCreateRequest(name="research"),

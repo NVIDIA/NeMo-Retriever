@@ -7,28 +7,23 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import FrozenInstanceError, replace
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from nemo_retriever.common.schemas.collections import (
-    CollectionCreateRequest,
-    CollectionUpdateRequest,
-    IngestOperation,
-)
+from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.common.schemas.requests import JobCreateRequest
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
-    UnsupportedVDBOperation,
     VDB,
 )
 from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext, WorkItem
 
 
-class LegacyVDB(VDB):
-    """Minimal pre-collection implementation of the original VDB contract."""
+class IncompleteVDB(VDB):
+    """VDB missing the required collection-management contract."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -46,83 +41,28 @@ class LegacyVDB(VDB):
         return None
 
 
-def _unsupported_calls(vdb: VDB) -> list[Callable[[], Any]]:
-    return [
-        lambda: vdb.create_collection(
-            scope="workspace-a",
-            request=CollectionCreateRequest(name="collection-a"),
-        ),
-        lambda: vdb.get_collection(
-            scope="workspace-a",
-            collection_name="collection-a",
-        ),
-        lambda: vdb.list_collections(
-            scope="workspace-a",
-            limit=100,
-            continuation_token=None,
-        ),
-        lambda: vdb.update_collection(
-            scope="workspace-a",
-            collection_name="collection-a",
-            request=CollectionUpdateRequest(description="updated"),
-        ),
-        lambda: vdb.delete_collection(
-            scope="workspace-a",
-            collection_name="collection-a",
-            if_exists=False,
-        ),
-        lambda: vdb.get_document(
-            scope="workspace-a",
-            collection_name="collection-a",
-            document_id="document-a",
-        ),
-        lambda: vdb.list_documents(
-            scope="workspace-a",
-            collection_name="collection-a",
-            limit=100,
-            continuation_token=None,
-        ),
-        lambda: vdb.delete_document(
-            scope="workspace-a",
-            collection_name="collection-a",
-            document_id="document-a",
-            if_exists=False,
-        ),
-        lambda: vdb.write_collection(
-            [[]],
-            context=CollectionWriteContext(
-                scope="workspace-a",
-                collection_name="collection-a",
-                document_id="document-a",
-                document_version="version-a",
-                content_sha256="sha256-a",
-                filename="document.txt",
-                job_id="job-a",
-            ),
-        ),
-        lambda: vdb.retrieve_collection(
-            [[0.1, 0.2]],
-            scope="workspace-a",
-            collection_name="collection-a",
-            query_texts=["query"],
-            top_k=5,
-        ),
-    ]
+def test_vdb_requires_collection_management_implementations() -> None:
+    with pytest.raises(TypeError) as exc_info:
+        IncompleteVDB()
 
-
-def test_legacy_vdb_stays_instantiable_and_fails_closed() -> None:
-    vdb = LegacyVDB()
-
-    for call in _unsupported_calls(vdb):
-        with pytest.raises(UnsupportedVDBOperation, match="collection management is not supported"):
-            call()
+    for method in (
+        "create_collection",
+        "get_collection",
+        "list_collections",
+        "update_collection",
+        "delete_collection",
+        "get_document",
+        "list_documents",
+        "delete_document",
+        "write_collection",
+        "retrieve_collection",
+    ):
+        assert method in str(exc_info.value)
 
 
 def test_optional_collection_maintenance_has_safe_defaults() -> None:
-    vdb = LegacyVDB()
-
-    assert vdb.reconcile_collections() == {"successes": 0, "failures": 0}
-    assert vdb.health() == {}
+    assert VDB.reconcile_collections(None) == {"successes": 0, "failures": 0}  # type: ignore[arg-type]
+    assert VDB.health(None) == {}  # type: ignore[arg-type]
 
 
 def test_collection_write_contract_is_immutable_and_reports_counts() -> None:

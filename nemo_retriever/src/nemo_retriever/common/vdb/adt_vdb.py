@@ -295,6 +295,7 @@ class VDB(ABC):
             "in-place stable-key puts are not supported by this VDB backend."
         )
 
+    @abstractmethod
     def create_collection(
         self,
         *,
@@ -303,12 +304,12 @@ class VDB(ABC):
     ) -> CollectionInfo:
         """Create a logical collection.
 
-        Collection management is optional so existing VDB implementations
-        remain compatible. Backends that support it must isolate the logical
-        collection by both ``scope`` and ``request.name``.
+        Backends must isolate the logical collection by both ``scope`` and
+        ``request.name``.
         """
-        raise self._unsupported_collection_operation("create_collection")
+        pass
 
+    @abstractmethod
     def get_collection(
         self,
         *,
@@ -316,8 +317,9 @@ class VDB(ABC):
         collection_name: str,
     ) -> CollectionInfo:
         """Return one logical collection visible within ``scope``."""
-        raise self._unsupported_collection_operation("get_collection")
+        pass
 
+    @abstractmethod
     def list_collections(
         self,
         *,
@@ -326,8 +328,9 @@ class VDB(ABC):
         continuation_token: str | None,
     ) -> CollectionPage:
         """List logical collections visible within ``scope``."""
-        raise self._unsupported_collection_operation("list_collections")
+        pass
 
+    @abstractmethod
     def update_collection(
         self,
         *,
@@ -336,8 +339,9 @@ class VDB(ABC):
         request: CollectionUpdateRequest,
     ) -> CollectionInfo:
         """Update one logical collection visible within ``scope``."""
-        raise self._unsupported_collection_operation("update_collection")
+        pass
 
+    @abstractmethod
     def delete_collection(
         self,
         *,
@@ -346,8 +350,9 @@ class VDB(ABC):
         if_exists: bool,
     ) -> CollectionDeleteResult:
         """Delete one logical collection and its backend-owned vector data."""
-        raise self._unsupported_collection_operation("delete_collection")
+        pass
 
+    @abstractmethod
     def get_document(
         self,
         *,
@@ -356,8 +361,9 @@ class VDB(ABC):
         document_id: str,
     ) -> DocumentInfo:
         """Return one document from a logical collection."""
-        raise self._unsupported_collection_operation("get_document")
+        pass
 
+    @abstractmethod
     def list_documents(
         self,
         *,
@@ -367,8 +373,9 @@ class VDB(ABC):
         continuation_token: str | None,
     ) -> DocumentPage:
         """List documents from a logical collection."""
-        raise self._unsupported_collection_operation("list_documents")
+        pass
 
+    @abstractmethod
     def delete_document(
         self,
         *,
@@ -378,8 +385,9 @@ class VDB(ABC):
         if_exists: bool,
     ) -> DocumentDeleteResult:
         """Delete one document and its backend-owned vector data."""
-        raise self._unsupported_collection_operation("delete_document")
+        pass
 
+    @abstractmethod
     def write_collection(
         self,
         records: list,
@@ -387,8 +395,9 @@ class VDB(ABC):
         context: CollectionWriteContext,
     ) -> CollectionWriteResult:
         """Write canonical NRL records to an explicitly scoped collection."""
-        raise self._unsupported_collection_operation("write_collection")
+        pass
 
+    @abstractmethod
     def retrieve_collection(
         self,
         vectors: list,
@@ -400,7 +409,7 @@ class VDB(ABC):
         **kwargs: Any,
     ) -> tuple[list[list[dict[str, Any]]], list[str]]:
         """Retrieve canonical hits and strategy names from one collection."""
-        raise self._unsupported_collection_operation("retrieve_collection")
+        pass
 
     def reconcile_collections(self) -> dict[str, int]:
         """Resume optional collection lifecycle work.
@@ -413,12 +422,6 @@ class VDB(ABC):
     def health(self) -> dict[str, Any]:
         """Return optional backend-specific operational health details."""
         return {}
-
-    def _unsupported_collection_operation(self, operation: str) -> UnsupportedVDBOperation:
-        return UnsupportedVDBOperation(
-            f"{type(self).__name__} does not implement {operation}(); "
-            "collection management is not supported by this VDB backend."
-        )
 
     @abstractmethod
     def run(self, records):

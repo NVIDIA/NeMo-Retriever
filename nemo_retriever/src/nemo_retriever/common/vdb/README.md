@@ -11,14 +11,14 @@ The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes Lance
 
 ---
 
-## Optional collection capabilities
+## Collection capabilities
 
-`VDB` also defines optional collection and document capabilities for the service
-API. Existing backends remain valid: the default implementations fail explicitly
-with `UnsupportedVDBOperation`, while maintenance and health use safe empty
-defaults. A backend that supports collections implements the CRUD methods plus
-`write_collection()` and `retrieve_collection()`; callers never pass logical
-collection identity through legacy `run()` or `retrieval(**kwargs)`.
+`VDB` defines required collection and document capabilities for the service API.
+Backends implement the CRUD methods plus `write_collection()` and
+`retrieve_collection()`; callers never pass logical collection identity through
+legacy `run()` or `retrieval(**kwargs)`. Maintenance and health retain safe empty
+defaults for backends without recoverable lifecycle work or additional health
+details.
 
 `CollectionWriteContext` carries immutable logical write identity. The service
 and graph operators pass that context through unchanged; concrete backends own

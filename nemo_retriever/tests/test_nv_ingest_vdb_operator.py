@@ -21,7 +21,25 @@ from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
 
 
-class FakeVDB(VDB):
+class _CollectionContractStub(VDB):
+    """Implement required collection methods that these operator tests do not exercise."""
+
+    def _unexpected_collection_operation(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Unexpected collection operation")
+
+    create_collection = _unexpected_collection_operation
+    get_collection = _unexpected_collection_operation
+    list_collections = _unexpected_collection_operation
+    update_collection = _unexpected_collection_operation
+    delete_collection = _unexpected_collection_operation
+    get_document = _unexpected_collection_operation
+    list_documents = _unexpected_collection_operation
+    delete_document = _unexpected_collection_operation
+    write_collection = _unexpected_collection_operation
+    retrieve_collection = _unexpected_collection_operation
+
+
+class FakeVDB(_CollectionContractStub):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
@@ -440,7 +458,7 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _StubPutVDB(VDB):
+class _StubPutVDB(_CollectionContractStub):
     """VDB subclass that intentionally does NOT override ``put``.
 
     Used to exercise the construction-time guard in
