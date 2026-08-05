@@ -362,6 +362,14 @@ def test_scope_authorizer_secret_mapping_and_internal_vectordb_token(tmp_path) -
         assert client.get("/v1/collections", headers={"X-NRL-Internal-Token": "internal-secret"}).status_code == 200
 
 
+def test_scope_authorizer_requires_explicit_unscoped_development_opt_in() -> None:
+    assert ScopeAuthorizer(AuthConfig()).authorize("", "workspace-a") == (None, 401)
+    assert ScopeAuthorizer(AuthConfig(allow_unscoped_dev=True)).authorize("", "workspace-a") == (
+        "workspace-a",
+        None,
+    )
+
+
 def test_service_routes_use_authorized_scope_not_raw_header() -> None:
     app = create_app(
         ServiceConfig(
@@ -437,6 +445,7 @@ def test_vectordb_proxy_failures_do_not_expose_internal_details(monkeypatch) -> 
     app = create_app(
         ServiceConfig(
             mode="gateway",
+            auth=AuthConfig(allow_unscoped_dev=True),
             vectordb=VectorDbConfig(enabled=True, vectordb_url="http://private-vectordb:7671"),
             llm=LLMConfig(enabled=True),
         )
@@ -681,7 +690,8 @@ def test_reconcile_catalog_scan_does_not_hold_the_write_lock(tmp_path, monkeypat
     original_rows = store._rows
 
     def blocked_rows(table_name, where=None, columns=None):
-        if table_name == "_nrl_documents" and where is None:
+        if table_name == "_nrl_documents":
+            assert where == "recovery_state != ''"
             scan_entered.set()
             assert release_scan.wait(5)
         return original_rows(table_name, where, columns)

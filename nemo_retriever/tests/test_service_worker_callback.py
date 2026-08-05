@@ -90,6 +90,7 @@ def test_worker_document_result_endpoint_is_idempotent() -> None:
 
     from nemo_retriever.service.app import create_app
     from nemo_retriever.service.config import (
+        AuthConfig,
         PipelineOverridesConfig,
         PipelinePoolConfig,
         ServiceConfig,
@@ -97,6 +98,7 @@ def test_worker_document_result_endpoint_is_idempotent() -> None:
 
     cfg = ServiceConfig(
         mode="batch",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         pipeline_overrides=PipelineOverridesConfig(),
     )
@@ -323,7 +325,7 @@ def test_worker_result_endpoint_returns_retryable_503(
     from fastapi.testclient import TestClient
 
     from nemo_retriever.service.app import create_app
-    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
     from nemo_retriever.service.routers import ingest
 
     def unavailable(_: str) -> None:
@@ -331,7 +333,8 @@ def test_worker_result_endpoint_returns_retryable_503(
 
     monkeypatch.setattr(ingest, "get_result_data", unavailable)
 
-    with TestClient(create_app(ServiceConfig(mode="batch"))) as client:
+    config = ServiceConfig(mode="batch", auth=AuthConfig(allow_unscoped_dev=True))
+    with TestClient(create_app(config)) as client:
         response = client.get("/v1/internal/document-result/doc-unavailable")
 
     assert response.status_code == 503
@@ -409,13 +412,14 @@ def test_gateway_status_routes_read_shared_results_idempotently(
     from fastapi.testclient import TestClient
 
     from nemo_retriever.service.app import create_app
-    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     rows = [{"text": "shared route"}]
 
-    with TestClient(create_app(ServiceConfig(mode="gateway"))) as client:
+    config = ServiceConfig(mode="gateway", auth=AuthConfig(allow_unscoped_dev=True))
+    with TestClient(create_app(config)) as client:
         tracker = get_job_tracker()
         assert tracker is not None
         tracker.register_job("job-shared", expected_documents=2, retain_results=True)
@@ -529,7 +533,7 @@ def test_gateway_callback_copies_result_before_completing(
     from fastapi.testclient import TestClient
 
     from nemo_retriever.service.app import create_app
-    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
     from nemo_retriever.service.routers import ingest
     from nemo_retriever.service.services.job_tracker import (
         DocumentStatus,
@@ -566,7 +570,8 @@ def test_gateway_callback_copies_result_before_completing(
             return _Resp()
 
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
-    with TestClient(create_app(ServiceConfig(mode="gateway"))) as client:
+    config = ServiceConfig(mode="gateway", auth=AuthConfig(allow_unscoped_dev=True))
+    with TestClient(create_app(config)) as client:
         tracker = get_job_tracker()
         assert tracker is not None
         tracker.register_job("handoff-job", expected_documents=1, retain_results=True)
@@ -605,7 +610,7 @@ def test_gateway_callback_does_not_complete_when_result_handoff_fails(
     from fastapi.testclient import TestClient
 
     from nemo_retriever.service.app import create_app
-    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
     from nemo_retriever.service.routers import ingest
     from nemo_retriever.service.services.job_tracker import (
         DocumentStatus,
@@ -629,7 +634,8 @@ def test_gateway_callback_does_not_complete_when_result_handoff_fails(
             return _Resp()
 
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
-    with TestClient(create_app(ServiceConfig(mode="gateway"))) as client:
+    config = ServiceConfig(mode="gateway", auth=AuthConfig(allow_unscoped_dev=True))
+    with TestClient(create_app(config)) as client:
         tracker = get_job_tracker()
         assert tracker is not None
         tracker.register_job("failed-handoff-job", expected_documents=1, retain_results=True)
@@ -662,11 +668,12 @@ def test_gateway_callback_permanently_rejects_retained_result_for_unknown_docume
     from fastapi.testclient import TestClient
 
     from nemo_retriever.service.app import create_app
-    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
-    with TestClient(create_app(ServiceConfig(mode="gateway"))) as client:
+    config = ServiceConfig(mode="gateway", auth=AuthConfig(allow_unscoped_dev=True))
+    with TestClient(create_app(config)) as client:
         response = client.post(
             "/v1/internal/job-callback",
             json={

@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
-from nemo_retriever.common.schemas.collections import DocumentId, IngestOperation
+from nemo_retriever.common.schemas.collections import CollectionName, DocumentId, IngestOperation
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 
 
@@ -64,7 +64,7 @@ class JobCreateRequest(RichModel):
             "``result_data``."
         ),
     )
-    collection_name: str | None = Field(default=None, min_length=1, max_length=128)
+    collection_name: CollectionName | None = None
     operation: IngestOperation = IngestOperation.APPEND
     target_document_id: DocumentId | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)

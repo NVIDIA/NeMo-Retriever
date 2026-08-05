@@ -497,6 +497,49 @@ def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monk
     assert visible_hits[0][0]["document_id"] == "document-a"
 
 
+def test_reconciliation_filters_recoverable_documents_before_scan_limit(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(
+        _records(text="completed", vector=[1.0, 0.0]),
+        context=_context(document_id="document-completed"),
+    )
+    store = backend._get_collection_store()
+    original_persist = _fail_document_finalize(monkeypatch, store)
+    with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
+        backend.write_collection(
+            _records(text="pending", vector=[0.0, 1.0]),
+            context=_context(document_id="document-pending"),
+        )
+    monkeypatch.setattr(store, "_persist_document_row", original_persist)
+    monkeypatch.setattr(collections_module, "_CATALOG_SCAN_LIMIT", 1)
+
+    assert backend.reconcile_collections() == {"successes": 1, "failures": 0}
+    assert (
+        backend.get_document(
+            scope="workspace-a",
+            collection_name="collection-a",
+            document_id="document-pending",
+        ).status
+        == "completed"
+    )
+
+
+def test_reconciliation_filters_expired_collections_before_scan_limit(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(
+            name="collection-expired",
+            expires_at="2000-01-01T00:00:00Z",
+        ),
+    )
+    monkeypatch.setattr(collections_module, "_CATALOG_SCAN_LIMIT", 1)
+
+    assert backend.reconcile_collections() == {"successes": 1, "failures": 0}
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_collection(scope="workspace-a", collection_name="collection-expired")
+
+
 def test_pending_initial_append_does_not_hide_completed_documents(tmp_path, monkeypatch):
     backend = _backend_with_collection(tmp_path)
     backend.write_collection(

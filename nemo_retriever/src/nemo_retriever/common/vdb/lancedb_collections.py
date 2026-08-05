@@ -1090,10 +1090,9 @@ class LanceDBCollectionStore:
         successes = 0
         failures = 0
         now = datetime.now(timezone.utc)
+        now_quoted = _quoted(now.isoformat())
 
-        for candidate in self._rows(_DOCUMENTS_TABLE):
-            if not candidate.get("recovery_state"):
-                continue
+        for candidate in self._rows(_DOCUMENTS_TABLE, "recovery_state != ''"):
             with self._write_lock:
                 rows = self._document_rows(
                     candidate["scope"],
@@ -1116,7 +1115,10 @@ class LanceDBCollectionStore:
                 else:
                     failures += 1
 
-        for candidate in self._rows(_COLLECTIONS_TABLE):
+        collection_filter = f"status = 'deleting' AND (next_retry_at = '' OR next_retry_at <= {now_quoted})"
+        if self.expiration_cleanup_enabled:
+            collection_filter += " OR (status = 'active' AND expires_at != '' " f"AND expires_at <= {now_quoted})"
+        for candidate in self._rows(_COLLECTIONS_TABLE, collection_filter):
             with self._write_lock:
                 row = self._collection_row(candidate["scope"], candidate["name"])
                 if not row:

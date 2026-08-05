@@ -32,7 +32,7 @@ class IngestOperation(str, Enum):
     REPLACE = "replace"
 
 
-DocumentId = Annotated[
+_LogicalResourceId = Annotated[
     str,
     StringConstraints(
         min_length=1,
@@ -40,6 +40,8 @@ DocumentId = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
     ),
 ]
+CollectionName = _LogicalResourceId
+DocumentId = _LogicalResourceId
 
 
 def _normalize_expires_at(value: str | None) -> str | None:
@@ -51,7 +53,7 @@ def _normalize_expires_at(value: str | None) -> str | None:
 class CollectionCreateRequest(RichModel):
     """Properties accepted when creating a logical collection."""
 
-    name: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    name: CollectionName
     description: str | None = Field(default=None, max_length=4096)
     metadata: dict[str, Any] = Field(default_factory=dict)
     expires_at: str | None = None

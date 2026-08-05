@@ -274,7 +274,7 @@ class AuthConfig(RichModel):
     api_token: str | None = None
     default_scope: str = "default"
     scope_token_file: str | None = None
-    allow_unscoped_dev: bool = True
+    allow_unscoped_dev: bool = False
     header_name: str = "Authorization"
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 

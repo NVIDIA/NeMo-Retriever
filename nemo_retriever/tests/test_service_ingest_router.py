@@ -34,6 +34,7 @@ from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.common.schemas.requests import IngestRequest
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AuthConfig,
     PipelineOverridesConfig,
     PipelinePoolConfig,
     ServiceConfig,
@@ -93,6 +94,7 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         pipeline_overrides=PipelineOverridesConfig(),
     )
@@ -138,6 +140,7 @@ def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: l
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         pipeline_overrides=PipelineOverridesConfig(),
     )
@@ -165,7 +168,10 @@ def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
 
-    cfg = ServiceConfig(mode="gateway")
+    cfg = ServiceConfig(
+        mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
+    )
     try:
         app = create_app(cfg)
         with TestClient(app) as client:
@@ -739,6 +745,46 @@ def test_create_job_retain_results_persisted_on_aggregate(
     agg = tracker.get_job(job_id)
     assert agg is not None
     assert agg.retain_results is True
+
+
+def test_create_job_idempotency_includes_behavior_but_not_label(
+    app_with_stub_pool: TestClient,
+) -> None:
+    payload = {
+        "expected_documents": 1,
+        "idempotency_key": "request-key",
+        "retain_results": False,
+        "label": "first label",
+    }
+    created = app_with_stub_pool.post("/v1/ingest/job", json=payload)
+    assert created.status_code == 201, created.text
+
+    replay = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={**payload, "label": "updated label"},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["job_id"] == created.json()["job_id"]
+
+    conflict = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={**payload, "retain_results": True},
+    )
+    assert conflict.status_code == 409, conflict.text
+
+
+def test_create_job_rejects_invalid_collection_name_before_registration(
+    app_with_stub_pool: TestClient,
+) -> None:
+    tracker = get_job_tracker()
+    assert tracker is not None
+    response = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "collection_name": "foo/documents"},
+    )
+
+    assert response.status_code == 422
+    assert tracker.all_jobs() == []
 
 
 def test_get_job_returns_aggregate_snapshot(app_with_stub_pool: TestClient) -> None:

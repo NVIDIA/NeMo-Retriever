@@ -773,6 +773,8 @@ class JobTracker:
         agg = self._jobs.pop(job_id, None)
         if agg is None:
             return
+        if agg.idempotency_key:
+            self._idempotency.pop((agg.scope, agg.idempotency_key), None)
         for did in agg.document_ids:
             rec = self._documents.pop(did, None)
             if rec and rec.manifest_entry_id:

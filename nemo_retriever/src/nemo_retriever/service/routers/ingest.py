@@ -849,6 +849,7 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
                 "operation": body.operation,
                 "target_document_id": body.target_document_id,
                 "metadata": body.metadata,
+                "retain_results": body.retain_results,
                 "document_manifest": [entry.model_dump(mode="json") for entry in body.document_manifest],
             },
             sort_keys=True,
