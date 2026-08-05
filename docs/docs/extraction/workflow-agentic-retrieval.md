@@ -4,6 +4,30 @@
 
 NeMo Retriever Library provides ingestion, embedding, storage, and retrieval building blocks (jobs, chunking, vector stores, reranking) that you orchestrate in application code or frameworks.
 
+
+## Local agentic retrieval
+
+The `retriever query --agentic` and harness BEIR agentic paths default to an
+in-process local vLLM agent LLM. If no agent model is provided, the library loads
+`nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host.
+The larger `super-49b` profile is also supported. Other custom in-process LLMs
+are not supported yet because the agent loop depends on OpenAI-style tool-call
+messages; use an OpenAI-compatible endpoint for custom models.
+
+```bash
+retriever query "find documents about parser behavior" --agentic
+```
+
+For custom or already deployed chat models, opt into the endpoint path:
+
+```bash
+retriever query "find documents about parser behavior" \
+  --agentic \
+  --agentic-llm-backend openai_compatible \
+  --agentic-llm-model custom-remote-model \
+  --agentic-invoke-url http://localhost:9000/v1/chat/completions
+```
+
 ## MCP access for agents
 
 `retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default. Agents can use that endpoint to call the running service for health checks, pipeline introspection, document ingestion, job status, VectorDB query, and answer generation. If service auth is enabled, the MCP endpoint uses the same bearer-token middleware as the REST API.

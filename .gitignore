@@ -189,6 +189,7 @@ tags
 /build*/
 dask-worker-space
 data/*
+!data/jp20_query_gt.csv
 docs/source/_lib
 docs/source/_modules
 mlruns/*

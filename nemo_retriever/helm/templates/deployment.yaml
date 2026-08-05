@@ -18,6 +18,9 @@
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
+{{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
+{{- fail "split mode requires topology.gateway.replicas=1 (process-local scheduler)" -}}
+{{- end -}}
 {{- if and $svc.installFfmpeg $svc.env -}}
 {{- range $env := $svc.env }}
 {{- if and (hasKey $env "name") (eq $env.name "INSTALL_FFMPEG") }}
@@ -214,7 +217,7 @@ spec:
   replicas: {{ $roleCfg.replicas }}
   {{- end }}
   strategy:
-    type: RollingUpdate
+    type: {{ if eq $role "gateway" }}Recreate{{ else }}RollingUpdate{{ end }}
   selector:
     matchLabels:
       {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}
@@ -290,6 +293,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: NGC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -330,6 +337,10 @@ spec:
             - name: config
               mountPath: /etc/nemo-retriever
               readOnly: true
+            {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+            - name: data
+              mountPath: {{ $.Values.persistence.mountPath }}
+            {{- end }}
             {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
             - name: retriever-results
               mountPath: {{ $.Values.retrieverResults.mountPath }}
@@ -353,7 +364,15 @@ spec:
           configMap:
             name: {{ include "nemo-retriever.role.configMapName" (dict "context" $ "role" $role) }}
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            {{- if eq $role "gateway" }}
+            sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
+            {{- end }}
+        {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.pvcName" $ }}
+        {{- end }}
         {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
         - name: retriever-results
           persistentVolumeClaim:

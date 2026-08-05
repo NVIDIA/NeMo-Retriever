@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
-
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
@@ -29,7 +27,7 @@ def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any
 
 
 def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize embedding endpoint aliases in an existing kwargs dict."""
+    """Normalize embedding endpoint aliases without changing model identity."""
     normalized = dict(kwargs)
     embed_invoke_url = (
         str(normalized.get("embed_invoke_url") or "").strip() if "embed_invoke_url" in normalized else None
@@ -52,12 +50,6 @@ def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     if "embed_invoke_url" in normalized:
         normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
-    endpoint = normalized.get("embedding_endpoint") or normalized.get("embed_invoke_url")
-    model_provider_prefix = normalized.pop("embed_model_provider_prefix", None)
-    if endpoint and model_provider_prefix:
-        for key in ("model_name", "embed_model_name"):
-            if key in normalized:
-                normalized[key] = prepend_model_provider_prefix(normalized[key], str(model_provider_prefix))
     return normalized
 
 

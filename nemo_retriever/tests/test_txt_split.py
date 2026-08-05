@@ -58,7 +58,6 @@ def test_split_text_by_tokens_max_tokens_positive():
 
 
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
-    pytest.importorskip("transformers")
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
     )
@@ -78,7 +77,6 @@ def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
 
 
 def test_txt_file_to_chunks_df_empty_file(tmp_path: Path):
-    pytest.importorskip("transformers")
     f = tmp_path / "empty.txt"
     f.write_text("", encoding="utf-8")
     df = txt_file_to_chunks_df(str(f), params=TextChunkParams(max_tokens=512))
