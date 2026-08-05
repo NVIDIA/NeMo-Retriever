@@ -127,6 +127,7 @@ QUERY_OVERRIDE_PATHS = {
     "query.lancedb_uri",
     "query.table_name",
     "query.agentic",
+    "query.agentic_trace",
     "query.agentic_llm_model",
     "query.agentic_invoke_url",
     "query.agentic_local_gpu_memory_utilization",
@@ -440,6 +441,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         ),
         agentic=QueryAgenticOptions(
             enabled=bool(query.get("agentic", False)),
+            trace_enabled=bool(query.get("agentic_trace", False)),
             llm_model=query.get("agentic_llm_model"),
             invoke_url=query.get("agentic_invoke_url"),
             local_gpu_memory_utilization=float(query.get("agentic_local_gpu_memory_utilization") or 0.8),
