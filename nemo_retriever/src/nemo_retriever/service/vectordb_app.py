@@ -631,6 +631,14 @@ def main() -> None:
         default="",
         help="OpenAI-compatible chat completions endpoint for agentic retrieval.",
     )
+    parser.add_argument(
+        "--agentic-api-key",
+        default="",
+        help=(
+            "API key for the agentic chat endpoint (defaults to NVIDIA_API_KEY / "
+            "NGC_API_KEY). Independent of --embed-api-key."
+        ),
+    )
     parser.add_argument("--agentic-reasoning-effort", default="high")
     parser.add_argument("--agentic-backend-top-k", type=int, default=20)
     parser.add_argument("--agentic-react-max-steps", type=int, default=50)
@@ -666,6 +674,7 @@ def main() -> None:
             enabled=args.agentic,
             llm_model=args.agentic_llm_model or None,
             invoke_url=args.agentic_invoke_url or None,
+            api_key=args.agentic_api_key or None,
             reasoning_effort=args.agentic_reasoning_effort or None,
             backend_top_k=args.agentic_backend_top_k,
             react_max_steps=args.agentic_react_max_steps,

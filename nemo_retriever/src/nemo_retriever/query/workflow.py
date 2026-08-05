@@ -163,7 +163,10 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     """
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    api_key = resolve_remote_api_key(request.embed.embed_api_key)
+    # Embed and chat endpoints often require different credentials (e.g. NGC
+    # vs integrate.nvidia.com). Never reuse the embed key for LLM auth.
+    embed_api_key = resolve_remote_api_key(request.embed.embed_api_key)
+    llm_api_key = resolve_remote_api_key(request.agentic.api_key)
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
@@ -172,7 +175,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "embedding_endpoint": request.embed.embed_invoke_url,
-        "embedding_api_key": api_key or "",
+        "embedding_api_key": embed_api_key or "",
         "llm_model": request.agentic.llm_model,
         "invoke_url": request.agentic.invoke_url,
         "local_llm_backend": request.agentic.local_llm_backend,
@@ -181,7 +184,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "local_tensor_parallel_size": request.agentic.local_tensor_parallel_size,
         "local_max_model_len": request.agentic.local_max_model_len,
         "local_max_num_seqs": request.agentic.local_max_num_seqs,
-        "api_key": api_key,
+        "api_key": llm_api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
         "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),

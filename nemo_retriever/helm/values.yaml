@@ -648,6 +648,11 @@ serviceConfig:
     enabled: false
     llmModel: ""
     invokeUrl: ""
+    # Optional Secret for the agentic chat endpoint (separate from NGC embed auth).
+    # Mounted into the vectordb Pod as NEMO_RETRIEVER_AGENTIC_API_KEY.
+    apiKeySecret:
+      name: ""
+      key: api_key
     reasoningEffort: high
     backendTopK: 20
     reactMaxSteps: 50

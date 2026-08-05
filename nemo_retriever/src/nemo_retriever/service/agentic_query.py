@@ -88,6 +88,7 @@ def build_agentic_query_request(
             enabled=True,
             llm_model=config.llm_model,
             invoke_url=config.invoke_url,
+            api_key=config.api_key,
             reasoning_effort=config.reasoning_effort,
             backend_top_k=config.backend_top_k,
             react_max_steps=config.react_max_steps,

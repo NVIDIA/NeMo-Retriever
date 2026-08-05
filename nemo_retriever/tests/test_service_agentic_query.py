@@ -60,6 +60,7 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
             enabled=True,
             llm_model="model",
             invoke_url="https://llm.example/v1/chat/completions",
+            api_key="llm-key",
             backend_top_k=25,
             react_max_steps=7,
         ),
@@ -82,6 +83,7 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
     assert request.agentic.enabled is True
     assert request.agentic.llm_model == "model"
     assert request.agentic.invoke_url == "https://llm.example/v1/chat/completions"
+    assert request.agentic.api_key == "llm-key"
     assert request.agentic.backend_top_k == 25
     assert request.agentic.react_max_steps == 7
 

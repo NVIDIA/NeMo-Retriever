@@ -58,6 +58,9 @@ class QueryAgenticOptions:
     llm_model: str | None = None
     llm_backend: str | None = None
     invoke_url: str | None = None
+    # Chat/completions credential — independent of QueryEmbedOptions.embed_api_key.
+    # When unset, resolve_remote_api_key falls back to NVIDIA_API_KEY / NGC_API_KEY.
+    api_key: str | None = None
     local_llm_backend: str = "vllm"
     local_hf_cache_dir: str | None = None
     local_gpu_memory_utilization: float = 0.8

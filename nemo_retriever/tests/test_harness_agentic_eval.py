@@ -25,7 +25,7 @@ import pytest
 from nemo_retriever.harness.artifact_writer import ArtifactWriter
 from nemo_retriever.harness.beir_runner import run_beir_queries
 from nemo_retriever.harness.resolution import QUERY_OVERRIDE_PATHS, build_query_request
-from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest
+from nemo_retriever.query.options import QueryAgenticOptions, QueryEmbedOptions, QueryRequest
 from nemo_retriever.query.workflow import build_agentic_config
 from nemo_retriever.tools.recall.beir import BeirDataset
 
@@ -120,6 +120,45 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
     assert cfg.top_k == 10  # harness sets this to the deepest BEIR k
     assert cfg.backend_top_k == 20
     assert cfg.num_concurrent == 4
+
+
+def test_build_agentic_config_keeps_llm_api_key_separate_from_embed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    request = QueryRequest(
+        query="q",
+        embed=QueryEmbedOptions(embed_api_key="embed-only-key"),
+        agentic=QueryAgenticOptions(
+            enabled=True,
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            api_key="llm-only-key",
+        ),
+    )
+
+    cfg = build_agentic_config(request)
+
+    assert cfg.embedding_api_key == "embed-only-key"
+    assert cfg.api_key == "llm-only-key"
+
+
+def test_build_agentic_config_does_not_reuse_embed_key_for_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    request = QueryRequest(
+        query="q",
+        embed=QueryEmbedOptions(embed_api_key="embed-only-key"),
+        agentic=QueryAgenticOptions(
+            enabled=True,
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+        ),
+    )
+
+    cfg = build_agentic_config(request)
+
+    assert cfg.embedding_api_key == "embed-only-key"
+    assert cfg.api_key is None
 
 
 def test_build_agentic_config_defaults_to_local_vllm_nemotron_8b() -> None:

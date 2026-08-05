@@ -139,6 +139,7 @@ agentic:
   enabled: {{ .Values.serviceConfig.agentic.enabled }}
   llm_model: {{ if .Values.serviceConfig.agentic.llmModel }}{{ .Values.serviceConfig.agentic.llmModel | quote }}{{ else }}null{{ end }}
   invoke_url: {{ if .Values.serviceConfig.agentic.invokeUrl }}{{ .Values.serviceConfig.agentic.invokeUrl | quote }}{{ else }}null{{ end }}
+  api_key: null
   reasoning_effort: {{ if .Values.serviceConfig.agentic.reasoningEffort }}{{ .Values.serviceConfig.agentic.reasoningEffort | quote }}{{ else }}null{{ end }}
   backend_top_k: {{ .Values.serviceConfig.agentic.backendTopK }}
   react_max_steps: {{ .Values.serviceConfig.agentic.reactMaxSteps }}

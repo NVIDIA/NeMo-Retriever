@@ -35,6 +35,12 @@ def start(
         help="API key for LLM answer generation endpoints (overrides YAML / $NEMO_RETRIEVER_LLM_API_KEY).",
         envvar="NEMO_RETRIEVER_LLM_API_KEY",
     ),
+    agentic_api_key: Optional[str] = typer.Option(
+        None,
+        "--agentic-api-key",
+        help="API key for agentic retrieval chat endpoints (overrides YAML / $NEMO_RETRIEVER_AGENTIC_API_KEY).",
+        envvar="NEMO_RETRIEVER_AGENTIC_API_KEY",
+    ),
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
@@ -97,6 +103,8 @@ def start(
         overrides["nim_endpoints.api_key"] = nim_api_key
     if llm_api_key is not None:
         overrides["llm.api_key"] = llm_api_key
+    if agentic_api_key is not None:
+        overrides["agentic.api_key"] = agentic_api_key
     if gpu_devices is not None:
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
     if local_models is not None:

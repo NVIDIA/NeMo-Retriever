@@ -110,6 +110,10 @@ spec:
             - --agentic-invoke-url
             - {{ $agentic.invokeUrl | quote }}
             {{- end }}
+            {{- if and $agentic.apiKeySecret $agentic.apiKeySecret.name }}
+            - --agentic-api-key
+            - $(NEMO_RETRIEVER_AGENTIC_API_KEY)
+            {{- end }}
             {{- if $agentic.reasoningEffort }}
             - --agentic-reasoning-effort
             - {{ $agentic.reasoningEffort | quote }}
@@ -143,6 +147,13 @@ spec:
                   name: {{ .Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- end }}
+            {{- if and $agentic.enabled $agentic.apiKeySecret $agentic.apiKeySecret.name }}
+            - name: NEMO_RETRIEVER_AGENTIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $agentic.apiKeySecret.name | quote }}
+                  key: {{ $agentic.apiKeySecret.key | default "api_key" | quote }}
             {{- end }}
             {{- if and $localEmbed $localModels.device }}
             - name: CUDA_VISIBLE_DEVICES

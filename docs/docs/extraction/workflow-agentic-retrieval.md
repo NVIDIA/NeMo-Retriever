@@ -53,6 +53,9 @@ agentic:
   enabled: true
   llm_model: your-openai-compatible-model
   invoke_url: https://your-llm.example/v1/chat/completions
+  # Optional. Independent of NIM/embed credentials. Leave unset to use
+  # NVIDIA_API_KEY / NGC_API_KEY (not the embed key).
+  api_key: null
   reasoning_effort: high
   backend_top_k: 20
   react_max_steps: 50
@@ -61,10 +64,13 @@ agentic:
 
 The VectorDB process owns the LanceDB volume and executes the agentic workflow.
 Start it with matching `--agentic`, `--agentic-llm-model`, and
-`--agentic-invoke-url` options. The LLM and embedding credentials are resolved
-from the service process environment. Service mode requires remote
-OpenAI-compatible LLM and embedding endpoints; local in-process models remain
-available through the one-shot CLI and harness paths.
+`--agentic-invoke-url` options. Pass `--agentic-api-key` (or
+`$NEMO_RETRIEVER_AGENTIC_API_KEY`) when the chat endpoint needs a different
+credential than `--embed-api-key`. When unset, the LLM key falls back to
+`NVIDIA_API_KEY` / `NGC_API_KEY` only — it does not reuse the embed key.
+Service mode requires remote OpenAI-compatible LLM and embedding endpoints;
+local in-process models remain available through the one-shot CLI and harness
+paths.
 
 REST clients set the flag on `/v1/query`:
 

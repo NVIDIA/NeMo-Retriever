@@ -104,6 +104,9 @@ agentic:
   enabled: false
   llm_model: null
   invoke_url: null
+  # Chat/completions credential for agentic LLM calls. Independent of NIM/embed
+  # keys. Leave null to use NVIDIA_API_KEY / NGC_API_KEY from the environment.
+  api_key: null
   reasoning_effort: high
   backend_top_k: 20
   react_max_steps: 50

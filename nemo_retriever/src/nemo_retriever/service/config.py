@@ -235,6 +235,14 @@ class AgenticConfig(RichModel):
     enabled: bool = False
     llm_model: str | None = None
     invoke_url: str | None = None
+    api_key: str | None = Field(
+        default=None,
+        description=(
+            "API key for the agentic chat/completions endpoint. Independent of "
+            "vectordb/NIM embedding credentials. When null, falls back to "
+            "NVIDIA_API_KEY / NGC_API_KEY (not the embed key)."
+        ),
+    )
     reasoning_effort: str | None = "high"
     backend_top_k: int = Field(default=20, ge=1)
     react_max_steps: int = Field(default=50, ge=1)
