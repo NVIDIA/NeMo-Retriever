@@ -55,7 +55,6 @@ from nemo_retriever.service.client import (
     _is_api_mismatch_status,
 )
 
-
 # ----------------------------------------------------------------------
 # Helpers: drive _create_job and _upload_one directly against MockTransport
 # ----------------------------------------------------------------------

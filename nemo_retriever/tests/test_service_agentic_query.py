@@ -19,6 +19,7 @@ from nemo_retriever.service.agentic_query import (
 )
 from nemo_retriever.service.config import (
     AgenticConfig,
+    AuthConfig,
     LoggingConfig,
     PipelinePoolConfig,
     ServiceConfig,
@@ -118,6 +119,26 @@ def test_agentic_query_flag_rejected_when_disabled(tmp_path) -> None:
 
     assert response.status_code == 400
     assert "not enabled" in response.json()["detail"]
+
+
+def test_agentic_query_rejects_collection_target(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        embed_endpoint="https://embed.example/v1/embeddings",
+        agentic_config=AgenticConfig(
+            enabled=True,
+            llm_model="model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/query",
+            json={"query": "q", "agentic": True, "collection_name": "workspace"},
+        )
+
+    assert response.status_code == 501
 
 
 def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
@@ -256,7 +277,7 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
         patch.object(vectordb_module, "run_agentic_query", return_value=expected),
         TestClient(app) as client,
     ):
-        slots = vectordb_module._agentic_slots
+        slots = app.state.agentic_slots
         assert slots is not None
 
         for _ in range(vectordb_module.MAX_CONCURRENT_AGENTIC_QUERIES):
@@ -266,8 +287,8 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
 
         assert busy.status_code == 503
         assert busy.headers["Retry-After"] == "30"
-        assert vectordb_module._query_semaphore is not None
-        assert vectordb_module._query_semaphore.locked() is False
+        query_semaphore = app.state.vectordb_state.query_semaphore
+        assert query_semaphore.locked() is False
 
         slots.release()
         accepted = client.post("/v1/query", json={"query": "revenue trend", "agentic": True})
@@ -293,6 +314,7 @@ def test_gateway_proxies_agentic_flag_to_vectordb(
     )
     config = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         vectordb=VectorDbConfig(
@@ -361,6 +383,7 @@ def test_service_rejects_agentic_flag_when_not_configured(
     )
     config = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),

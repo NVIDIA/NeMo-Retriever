@@ -170,6 +170,11 @@ class VectorDBState:
             return "local"
         return "none"
 
+    @property
+    def table_exists(self) -> bool:
+        """Return whether the configured legacy table is available for queries."""
+        return self.vdb.health().get("table_exists") is True
+
     def _get_local_embedder(self) -> Any:
         if self._local_embedder is None:
             from nemo_retriever.models import create_local_embedder
@@ -298,6 +303,7 @@ def create_vectordb_app(
                 thread_name_prefix="agentic-query",
             )
             agentic_slots = threading.BoundedSemaphore(MAX_CONCURRENT_AGENTIC_QUERIES)
+        app.state.agentic_slots = agentic_slots
         logger.info(
             "VectorDB service started: embed_mode=%s max_concurrent_queries=%d",
             state.embed_mode,
@@ -336,6 +342,7 @@ def create_vectordb_app(
                 agentic_executor = None
             agentic_slots = None
             state = None
+            app.state.agentic_slots = None
             app.state.vectordb_state = None
             logger.info("VectorDB service stopped")
 
@@ -729,7 +736,7 @@ def create_vectordb_app(
             )
         if current.embed_mode != "remote":
             raise HTTPException(501, "Agentic service queries require a remote embedding endpoint.")
-        if current.vdb.health().get("table_exists") is False:
+        if not current.table_exists:
             raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
         if req.top_k > agentic_config.backend_top_k:
             raise VDBInvalidRequest(
