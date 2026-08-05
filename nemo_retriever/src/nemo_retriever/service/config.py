@@ -131,6 +131,23 @@ class NimEndpointsConfig(RichModel):
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
+    nemotron_parse_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote Nemotron Parse chat-completions endpoint. When set, "
+            "service-mode requests using method='nemotron_parse' call this "
+            "endpoint instead of loading the local Parse model."
+        ),
+    )
+    nemotron_parse_model: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to the remote Nemotron Parse endpoint. "
+            "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
+            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "Server-owned — clients cannot override the deployed Parse SKU."
+        ),
+    )
     embed_invoke_url: str | None = None
     embed_model_name: str | None = Field(
         default=None,
@@ -172,6 +189,16 @@ class NimEndpointsConfig(RichModel):
         ),
     )
     api_key: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_nemotron_parse_config(self) -> "NimEndpointsConfig":
+        endpoint = (self.nemotron_parse_invoke_url or "").strip()
+        model = (self.nemotron_parse_model or "").strip()
+        self.nemotron_parse_invoke_url = endpoint or None
+        self.nemotron_parse_model = model or None
+        if model and not endpoint:
+            raise ValueError("nim_endpoints.nemotron_parse_model requires " "nim_endpoints.nemotron_parse_invoke_url")
+        return self
 
 
 class LLMConfig(RichModel):

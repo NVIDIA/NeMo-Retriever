@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
+
 from nemo_retriever.service.config import (
     LocalEmbedConfig,
     LocalModelsConfig,
@@ -82,6 +84,32 @@ def test_build_extract_params_nim_url_wins_over_local_flags() -> None:
     ep = build_extract_params(nim, local)
     assert ep.table_structure_invoke_url == "http://table-nim/v1/infer"
     assert ep.use_table_structure is True
+
+
+def test_build_extract_params_from_nemotron_parse_nim_config() -> None:
+    nim = NimEndpointsConfig(
+        nemotron_parse_invoke_url="http://parse-nim/v1/chat/completions",
+        nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+        api_key="k",
+    )
+    ep = build_extract_params(nim, LocalModelsConfig())
+    assert ep.method == "nemotron_parse"
+    assert ep.nemotron_parse_invoke_url == "http://parse-nim/v1/chat/completions"
+    assert ep.nemotron_parse_model == "nvidia/nemotron-parse-v1.2"
+    assert ep.api_key == "k"
+
+
+def test_nemotron_parse_model_requires_endpoint() -> None:
+    with pytest.raises(ValueError, match="nemotron_parse_model requires"):
+        NimEndpointsConfig(nemotron_parse_model="nvidia/nemotron-parse-v1.2")
+
+
+def test_build_extract_params_accepts_nemotron_parse_endpoint_only() -> None:
+    nim = NimEndpointsConfig(nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions")
+    ep = build_extract_params(nim, LocalModelsConfig())
+    assert ep.method == "nemotron_parse"
+    assert ep.nemotron_parse_invoke_url == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert ep.nemotron_parse_model is None
 
 
 def test_build_asr_params_local_when_enabled() -> None:

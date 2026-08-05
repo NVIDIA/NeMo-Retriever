@@ -26,6 +26,7 @@ from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,
     _request_needs_asr_params,
+    _resolve_extract_params,
     _resolve_service_extraction_mode,
     _run_pipeline_in_process,
     _TRUST_OWNED_EMBED_KEYS,
@@ -201,6 +202,13 @@ def test_client_rejects_server_owned_keys() -> None:
         ing.extract(ExtractParams(page_elements_invoke_url="http://attacker/"))
 
 
+def test_policy_rejects_client_nemotron_parse_model_override() -> None:
+    policy = PipelineOverridesConfig().to_policy()
+    spec = PipelineSpec(extract_params={"method": "nemotron_parse", "nemotron_parse_model": "attacker/model"})
+    with pytest.raises(PolicyError):
+        validate_pipeline_spec(spec, policy)
+
+
 def test_future_phase_methods_raise_informative_error() -> None:
     """Methods deferred to follow-up phases still produce a clear error.
 
@@ -321,14 +329,48 @@ def test_merge_preserves_server_extract_endpoints() -> None:
         "page_elements_invoke_url": "http://server/page_elements",
         "ocr_invoke_url": "http://server/ocr",
         "api_key": "server-token",
+        "nemotron_parse_invoke_url": "http://server/parse",
+        "nemotron_parse_model": "nvidia/nemotron-parse-v1.2",
         "dpi": 150,
     }
-    override = {"dpi": 600, "page_elements_invoke_url": "http://attacker/"}
+    override = {
+        "dpi": 600,
+        "page_elements_invoke_url": "http://attacker/",
+        "nemotron_parse_model": "attacker/model",
+    }
     merged = _merge_server_owned(base, override, _TRUST_OWNED_EXTRACT_KEYS)
     assert merged["dpi"] == 600
     assert merged["page_elements_invoke_url"] == "http://server/page_elements"
     assert merged["ocr_invoke_url"] == "http://server/ocr"
     assert merged["api_key"] == "server-token"
+    assert merged["nemotron_parse_model"] == "nvidia/nemotron-parse-v1.2"
+
+
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr"])
+def test_resolve_extract_params_drops_parse_fields_for_other_methods(method: str) -> None:
+    base = {
+        "method": "nemotron_parse",
+        "nemotron_parse_invoke_url": "http://server/parse",
+        "nemotron_parse_model": "nvidia/nemotron-parse-v1.2",
+        "api_key": "server-token",
+    }
+    resolved = _resolve_extract_params(base, {"method": method})
+    assert resolved.method == method
+    assert resolved.nemotron_parse_invoke_url is None
+    assert resolved.nemotron_parse_model is None
+    assert resolved.api_key == "server-token"
+
+
+def test_resolve_extract_params_preserves_parse_fields_for_parse_method() -> None:
+    base = {
+        "method": "nemotron_parse",
+        "nemotron_parse_invoke_url": "http://server/parse",
+        "nemotron_parse_model": "nvidia/nemotron-parse-v1.2",
+    }
+    resolved = _resolve_extract_params(base, {"method": "nemotron_parse"})
+    assert resolved.method == "nemotron_parse"
+    assert resolved.nemotron_parse_invoke_url == "http://server/parse"
+    assert resolved.nemotron_parse_model == "nvidia/nemotron-parse-v1.2"
 
 
 def test_merge_preserves_server_embed_endpoints() -> None:

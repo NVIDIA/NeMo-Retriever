@@ -223,6 +223,7 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
         "ocr_api_key",
         "table_structure_invoke_url",
         "nemotron_parse_invoke_url",
+        "nemotron_parse_model",
         "embed_invoke_url",
         "embedding_endpoint",
         "embed_model_provider_prefix",
