@@ -188,7 +188,9 @@
         "nemo_retriever/README.md",
         "nemo_retriever/helm/**",
         "nemo_retriever/docs/**",
-        "docs/docs/extraction/**"
+        "docs/docs/extraction/**",
+        "examples/**",
+        "README.md"
       ],
       "severity": "medium"
     }

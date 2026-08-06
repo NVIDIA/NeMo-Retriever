@@ -184,6 +184,6 @@ images). Be vigilant about:
 
 Follow root [`AGENTS.md`](../AGENTS.md) and [`docs/AGENTS.md`](../docs/AGENTS.md).
 
-When a PR changes customer-facing behavior (public API, CLI, Helm defaults, env vars, errors, examples), check that published docs and/or README samples are updated in the same PR, or that the author explicitly documents why docs are N/A.
+When a PR changes customer-facing behavior (public API, CLI, Helm defaults, env vars, errors, root or package README samples, or files under `examples/`), check that published docs and/or README samples are updated in the same PR, or that the author explicitly documents why docs are N/A.
 
 Prefer pointing authors at existing pages under `docs/docs/extraction/` rather than inventing parallel guidance.
