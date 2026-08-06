@@ -15,8 +15,15 @@ required-markers = [
 
 [manifest]
 overrides = [
+    { name = "aiohttp", specifier = ">=3.14.1" },
+    { name = "cryptography", specifier = ">=48.0.1" },
     { name = "fastparquet", specifier = ">=2024.11.0,<2026" },
+    { name = "idna", specifier = ">=3.15" },
+    { name = "langsmith", specifier = ">=0.8.18" },
+    { name = "msgpack", specifier = ">=1.2.1" },
     { name = "opencv-python", marker = "sys_platform == 'never'" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "requests", specifier = ">=2.33.0" },
 ]
 
 [[package]]
@@ -2643,7 +2650,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ray", extras = ["data", "serve"], specifier = ">=2.49.0" },
-    { name = "requests", specifier = ">=2.32.5" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "s3fs", specifier = ">=2025.5.1" },
     { name = "scikit-learn", marker = "extra == 'local'", specifier = ">=1.6.0" },

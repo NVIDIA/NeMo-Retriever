@@ -16,6 +16,14 @@ required-environments = [
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
+  # Security minimums for transitive dependencies.
+  "langsmith>=0.8.18",
+  "msgpack>=1.2.1",
+  "cryptography>=48.0.1",
+  "aiohttp>=3.14.1",
+  "requests>=2.33.0",
+  "idna>=3.15",
+  "pydantic-settings>=2.14.2",
   # Suppress opencv-python from transitive deps. nemotron wheels pull in both
   # opencv-python and opencv-python-headless, which stomp on the same cv2/ dir.
   # The 'never' marker makes uv treat this as unsatisfiable on all platforms.
@@ -61,7 +69,7 @@ dependencies = [
   "fastmcp>=2.0.0",
   # HTTP clients
   "httpx>=0.27.0",
-  "requests>=2.32.5",
+  "requests>=2.33.0",
   "urllib3==2.7.0",
   # Utilities
   "pydantic>=2.8.0",
