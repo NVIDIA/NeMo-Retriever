@@ -98,6 +98,8 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
+> **Corpus size matters for LanceDB indexing.** LanceDB's default IVF index needs at least 16 chunks to train its 16 k-means partitions. A single-PDF run that calls `.vdb_upload()` or `retriever ingest` with indexing will fail at that step. For a first successful indexed ingest, point the CLI (or Python upload path) at a **directory** with enough documents to clear the threshold—for example the bundled [`data/`](../data/) corpus. Extract-and-embed-only examples below are safe on a single file when you omit `.vdb_upload()`.
+
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
 
@@ -113,6 +115,8 @@ documents = [str(Path("../data/multimodal_test.pdf"))]
 ingestor = create_ingestor(run_mode="batch")
 
 # ingestion tasks are chainable and defined lazily
+# Omit .vdb_upload() here so a single-PDF run can inspect chunks without
+# hitting the LanceDB IVF training threshold (see corpus-size callout above).
 ingestor = (
   ingestor.files(documents)
   .extract(
@@ -123,7 +127,6 @@ ingestor = (
     extract_infographics=True
   )
   .embed()
-  .vdb_upload()
 )
 ```
 
@@ -178,17 +181,13 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 
 ### Ingest a test corpus (CLI)
 
-Point `retriever ingest` at a **directory** of PDFs to produce a ready-to-query
-LanceDB table.
-
-> **Corpus size matters.** LanceDB's default IVF index needs at least 16
-> chunks to train its 16 k-means partitions. Single-PDF ingestion will fail
-> at the indexing step; point `retriever ingest` at a directory with enough
-> documents to clear that threshold. Replace `/your-example-dir` below with
-> the path to your own corpus.
+Point `retriever ingest` at a **directory** of documents to produce a ready-to-query
+LanceDB table. The first-run example uses the bundled [`data/`](../data/) corpus so
+indexing clears the LanceDB IVF training threshold (see the corpus-size callout
+at the start of [Run the pipeline](#run-the-pipeline)).
 
 ```bash
-retriever ingest /your-example-dir \
+retriever ingest ../data \
   --lancedb-uri lancedb \
   --table-name nemo-retriever
 ```
@@ -196,8 +195,9 @@ retriever ingest /your-example-dir \
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
 `[local]` extra installed (see setup), defaults point at local-GPU extraction
-and embedding. Use enough documents in the directory to clear the LanceDB IVF
-training threshold described above.
+and embedding. Replace `../data` with your own multi-document directory when you
+move beyond the sample corpus.
+
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
@@ -205,7 +205,7 @@ through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 ```bash
 export NVIDIA_API_KEY=nvapi-...
 
-retriever ingest /your-example-dir \
+retriever ingest ../data \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
@@ -532,7 +532,7 @@ If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (wi
 
 ### Ingest other types of content:
 
-For PowerPoint and Docx files, ensure libeoffice is installed by your system's package manager. This is required to make their pages renderable as images for our [page-elements content classifier](https://huggingface.co/nvidia/nemotron-page-elements-v3).
+For PowerPoint and Docx files, ensure libreoffice is installed by your system's package manager. This is required to make their pages renderable as images for our [page-elements content classifier](https://huggingface.co/nvidia/nemotron-page-elements-v3).
 
 For example, with apt-get on Ubuntu:
 ```bash
