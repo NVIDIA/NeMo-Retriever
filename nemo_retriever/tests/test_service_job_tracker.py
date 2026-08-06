@@ -39,7 +39,6 @@ from nemo_retriever.service.services.job_tracker import (
     MarkOutcome,
 )
 
-
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -159,6 +158,57 @@ def test_expired_job_id_can_be_reused() -> None:
     replacement = tracker.register_job("reusable", expected_documents=2)
 
     assert replacement.expected_documents == 2
+
+
+def test_expired_job_releases_idempotency_key() -> None:
+    tracker = JobTracker(max_jobs=1, stale_job_ttl_s=60.0)
+    tracker.register_job(
+        "expired",
+        expected_documents=1,
+        scope="workspace-a",
+        idempotency_key="request-key",
+        idempotency_fingerprint="old-request",
+    )
+    _age_job(tracker, "expired", seconds=61)
+
+    replacement = tracker.register_job(
+        "replacement",
+        expected_documents=2,
+        scope="workspace-a",
+        idempotency_key="request-key",
+        idempotency_fingerprint="new-request",
+    )
+
+    assert replacement.job_id == "replacement"
+
+
+def test_dropping_a_keyed_job_leaves_the_current_key_owner_replayable() -> None:
+    tracker = JobTracker(stale_job_ttl_s=60.0)
+    tracker.register_job(
+        "unfingerprinted",
+        expected_documents=1,
+        scope="workspace-a",
+        idempotency_key="request-key",
+    )
+    owner = tracker.register_job(
+        "owner",
+        expected_documents=1,
+        scope="workspace-a",
+        idempotency_key="request-key",
+        idempotency_fingerprint="request",
+    )
+    _age_job(tracker, "unfingerprinted", seconds=61)
+    tracker.get_job("unfingerprinted")
+
+    replay = tracker.register_job(
+        "replay",
+        expected_documents=1,
+        scope="workspace-a",
+        idempotency_key="request-key",
+        idempotency_fingerprint="request",
+    )
+
+    assert replay.job_id == owner.job_id
 
 
 @pytest.mark.parametrize(

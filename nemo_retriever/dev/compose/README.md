@@ -31,6 +31,22 @@ docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --buil
 curl -fsSL http://localhost:7670/v1/health
 ```
 
+The same default stack exposes collection and document lifecycle APIs. Optional
+runtime tokens enable a public bearer credential and a separate credential for
+the private Retriever-to-VectorDB hop:
+
+```bash
+export NRL_API_TOKEN="<development-api-token>"
+export NRL_INTERNAL_VDB_TOKEN="<internal-service-token>"
+docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+```
+
+Leave both values unset to preserve the existing unauthenticated development
+experience. In this default Compose configuration, `NRL_API_TOKEN` is bound to
+the `default` scope, so clients use `X-NRL-Scope: default` (or SDK
+`scope="default"`). Multi-scope deployments use the service's Secret-backed
+token mapping. Tokens are runtime inputs and must not be committed.
+
 Endpoints, models, ports, worker counts, and the service image can all be
 overridden explicitly. The most commonly tuned variables are
 `NIM_PAGE_ELEMENTS_URL`, `NIM_TABLE_STRUCTURE_URL`, `NIM_OCR_URL`,

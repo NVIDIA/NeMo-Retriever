@@ -71,7 +71,7 @@ uv pip install nemo-retriever
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
-This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
+This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library. If the workflow performs tokenizer-backed TXT or HTML chunking, install `nemo-retriever[service]` instead; this adds the lightweight tokenizer dependencies without installing Transformers or local model weights.
 
 If your PDF pipeline uses `method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
@@ -126,6 +126,35 @@ ingestor = (
   .vdb_upload()
 )
 ```
+
+### Ingest inline text
+
+Python callers can pass raw text documents directly to the same text splitting,
+embedding, and vector database graph without creating temporary files. Inline
+text is supported in `inprocess`, `batch`, and `service` run modes.
+
+```python
+from nemo_retriever import create_ingestor
+
+texts = ["some text", "another longer text"]
+
+chunks = (
+  create_ingestor(run_mode="batch")
+  .texts(texts)
+  .embed()
+  .vdb_upload()
+  .ingest()
+)
+```
+
+Each string is treated as a raw document and split with `TextChunkParams`
+defaults. To override chunking for every text source in the ingest, add
+`.extract(split_config={"text": {"max_tokens": 512, "overlap_tokens": 64}})`.
+Inline text can be combined with
+`.files(...)` and, in modes that support them, `.buffers(...)`; each source is
+routed through its matching extractor before the results enter the shared
+embedding and sink stages. Inline corpora remain resident in client or driver
+memory, so prefer file ingestion when the corpus may exceed the available memory.
 
 ### Optional extras
 

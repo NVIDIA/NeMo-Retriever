@@ -597,6 +597,8 @@ serviceConfig:
     path: "/mcp"
     baseUrl: ""
     enableWriteTools: true
+    # classic | agentic | all — which retrieval MCP tools to register.
+    queryMethods: classic
     maxConcurrency: 8
     requestTimeoutS: 60.0
     ingestTimeoutS: 1800.0
@@ -640,6 +642,20 @@ serviceConfig:
     # parameters. Set false for Nemotron endpoints that should receive the
     # portable no-reasoning controls.
     reasoningEnabled: true
+
+  # Agentic (ReAct) retrieval exposed as POST /v1/query with agentic=true and the
+  # agentic_query MCP tool. The LLM runs inside the vectordb pod because that
+  # pod owns the LanceDB volume.
+  agentic:
+    enabled: false
+    llmModel: ""
+    invokeUrl: ""
+    reasoningEffort: high
+    backendTopK: 20
+    reactMaxSteps: 50
+    textTruncation: 0
+    temperature: 0.0
+    requestTimeoutS: 1800.0
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.
@@ -1199,22 +1215,11 @@ nimOperator:
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.0.0"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
-    # Embed 2.0.0 skips cuDNN plan compilation on SM120 but still requires its
-    # canonical plan directory to exist. Create it on every architecture before
-    # delegating to the image's original entrypoint.
-    command:
-      - /bin/sh
-      - -c
-    args:
-      - >-
-        sm=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -1 | tr -d '.');
-        mkdir -p "${NIM_PRECOMPILE_CACHE_DIR:-/opt/cache}/sm${sm}/cudnn-sdpa-plan";
-        exec /usr/local/bin/retriever-entrypoint.sh nemotron-embed-server
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}

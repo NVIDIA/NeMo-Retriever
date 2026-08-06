@@ -4,8 +4,8 @@
 # syntax=docker/dockerfile:1.3
 #
 # Build from repo root: docker build -f Dockerfile -t nemo-retriever .
-# Service (NIM-forwarding): docker build -f Dockerfile --target service -t nemo-retriever-service .
-# Service + in-pod HF:      docker build -f Dockerfile --target service-gpu -t nemo-retriever-service-gpu .
+# Service (NIM-forwarding): docker build -f Dockerfile --target service --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True -t nemo-retriever-service .
+# Service + in-pod HF:      docker build -f Dockerfile --target service-gpu --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True -t nemo-retriever-service-gpu .
 # Runtime ffmpeg/ffprobe install for service image: docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 # Run: docker run nemo-retriever  (shell with venv active)
 # Run with dev mount: docker run -v $(pwd):/workspace -it nemo-retriever   (code changes reflect without rebuild)
@@ -16,10 +16,13 @@ ARG BASE_IMG_TAG=jammy-20250619
 
 FROM $BASE_IMG:$BASE_IMG_TAG AS base
 
+ARG DOWNLOAD_DEFAULT_TOKENIZER="False"
+
+ENV HF_HOME=/opt/nemo-retriever/huggingface
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bzip2 \
       ca-certificates \
-      libcairo2 \
       curl \
       libgl1-mesa-glx \
       libglib2.0-0 \
@@ -112,13 +115,15 @@ ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/retriever_runtime
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
-# CPU service install: remote NIM clients + multimedia (ASR, SVG).
-# At runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
+# Editable install: at runtime, -v host_repo:/workspace overrides these dirs so dev changes apply.
 SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service,multimedia]"
+    && uv pip install -e "./nemo_retriever[service,multimedia]" \
+    && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
+         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
+       fi
 
 # GPU service install: in-pod Hugging Face models + multimedia (ASR, SVG).
 # Build target: service-gpu
@@ -134,7 +139,10 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service,local,multimedia]"
+    && uv pip install -e "./nemo_retriever[service,local,multimedia]" \
+    && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
+         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
+       fi
 
 # Default: run in-process pipeline (help if no args)
 CMD ["/bin/bash"]
@@ -143,6 +151,7 @@ CMD ["/bin/bash"]
 # Service profile: run the FastAPI ingest service.
 #
 # Build:  docker build -f Dockerfile --target service \
+#             --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
 #             -t nemo-retriever-service .
 #
 # Run with the bundled default config:
@@ -160,6 +169,7 @@ CMD ["/bin/bash"]
 FROM install AS service
 
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
+ENV HF_HUB_OFFLINE=1
 
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
@@ -175,10 +185,10 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
          > /etc/sudoers.d/nemo-ffmpeg \
     && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
     && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
-    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb "${HF_HOME}" \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb "${HF_HOME}" /opt/retriever_runtime
 
 EXPOSE 7670
 
@@ -192,6 +202,7 @@ CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever
 # GPU service profile: FastAPI ingest service with in-pod Hugging Face models.
 #
 # Build:  docker build -f Dockerfile --target service-gpu \
+#             --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
 #             -t nemo-retriever-service-gpu .
 #
 # Run (requires --gpus all and local_models.enabled in config):
@@ -217,10 +228,10 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
          > /etc/sudoers.d/nemo-ffmpeg \
     && chmod 0440 /etc/sudoers.d/nemo-ffmpeg \
     && visudo -cf /etc/sudoers.d/nemo-ffmpeg \
-    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
+    && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb "${HF_HOME}" \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb "${HF_HOME}" /opt/retriever_runtime
 
 EXPOSE 7670
 
