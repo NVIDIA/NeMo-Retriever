@@ -67,12 +67,12 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
 
     fidelity = meta.get("fidelity") or _derive_fidelity(raw_modality, meta, meta) or "verbatim"
 
-    if "_score" in hit and hit["_score"] is not None:
-        score: float = hit["_score"]
-    elif "_distance" in hit and hit["_distance"] is not None:
-        score = hit["_distance"]
-    else:
-        score = 0.0
+    raw_score = hit.get("distance")
+    if raw_score is None:
+        raw_score = hit.get("_score")
+    if raw_score is None:
+        raw_score = hit.get("_distance")
+    score = float(raw_score) if raw_score is not None else 0.0
 
     return {
         "text": hit.get("text", ""),
@@ -129,5 +129,9 @@ def build_evidence_result(hits: list, strategies_used: list[str]) -> dict[str, A
             )
     return {
         "evidence": evidence,
-        "coverage": {"strategies_used": strategies_used, "n_docs_seen": len(sources), "thin_spots": thin},
+        "coverage": {
+            "strategies_used": strategies_used,
+            "n_docs_seen": len(sources),
+            "thin_spots": thin,
+        },
     }

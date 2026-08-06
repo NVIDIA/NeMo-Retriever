@@ -115,6 +115,7 @@ mcp:
   path: {{ .Values.serviceConfig.mcp.path | quote }}
   base_url: {{ if .Values.serviceConfig.mcp.baseUrl }}{{ .Values.serviceConfig.mcp.baseUrl | quote }}{{ else }}null{{ end }}
   enable_write_tools: {{ .Values.serviceConfig.mcp.enableWriteTools }}
+  query_methods: {{ .Values.serviceConfig.mcp.queryMethods | default "classic" | quote }}
   max_concurrency: {{ .Values.serviceConfig.mcp.maxConcurrency }}
   request_timeout_s: {{ .Values.serviceConfig.mcp.requestTimeoutS }}
   ingest_timeout_s: {{ .Values.serviceConfig.mcp.ingestTimeoutS }}
@@ -134,6 +135,17 @@ llm:
   rag_system_prompt: {{ if .Values.serviceConfig.llm.ragSystemPrompt }}{{ .Values.serviceConfig.llm.ragSystemPrompt | quote }}{{ else }}null{{ end }}
   rag_system_prompt_prefix: {{ if .llmRagSystemPromptPrefix }}{{ .llmRagSystemPromptPrefix | quote }}{{ else }}null{{ end }}
   reasoning_enabled: {{ .Values.serviceConfig.llm.reasoningEnabled }}
+
+agentic:
+  enabled: {{ .Values.serviceConfig.agentic.enabled }}
+  llm_model: {{ if .Values.serviceConfig.agentic.llmModel }}{{ .Values.serviceConfig.agentic.llmModel | quote }}{{ else }}null{{ end }}
+  invoke_url: {{ if .Values.serviceConfig.agentic.invokeUrl }}{{ .Values.serviceConfig.agentic.invokeUrl | quote }}{{ else }}null{{ end }}
+  reasoning_effort: {{ if .Values.serviceConfig.agentic.reasoningEffort }}{{ .Values.serviceConfig.agentic.reasoningEffort | quote }}{{ else }}null{{ end }}
+  backend_top_k: {{ .Values.serviceConfig.agentic.backendTopK }}
+  react_max_steps: {{ .Values.serviceConfig.agentic.reactMaxSteps }}
+  text_truncation: {{ .Values.serviceConfig.agentic.textTruncation }}
+  temperature: {{ .Values.serviceConfig.agentic.temperature }}
+  request_timeout_s: {{ .Values.serviceConfig.agentic.requestTimeoutS }}
 
 pipeline:
   realtime_workers: {{ .Values.serviceConfig.pipeline.realtimeWorkers }}

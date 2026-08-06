@@ -7,7 +7,11 @@ name: nemo-retriever-service-dev
 # Development-only service-mode stack. Production deployments use Helm.
 x-retriever-image: &retriever-image
   image: ${NEMO_RETRIEVER_IMAGE:-nemo-retriever-service:dev}
-  build: {context: ../../.., dockerfile: Dockerfile, target: service}
+  build:
+    context: ../../..
+    dockerfile: Dockerfile
+    target: service
+    args: {DOWNLOAD_DEFAULT_TOKENIZER: "True"}
 x-host-access: &host-access
   extra_hosts: ["host.docker.internal:host-gateway"]
 x-nim-environment: &nim-environment
@@ -39,6 +43,8 @@ services:
     ports: ["${RETRIEVER_HTTP_PORT:-7670}:7670"]
     environment:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NRL_API_TOKEN: ${NRL_API_TOKEN:-}
+      NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:-}
       NEMO_RETRIEVER_LLM_API_KEY: ${ANSWER_LLM_API_KEY:-${NGC_API_KEY:-}}
       AUDIO_GRPC_ENDPOINT: ${NIM_AUDIO_GRPC_ENDPOINT:-}
       INSTALL_FFMPEG: ${INSTALL_FFMPEG:-false}
@@ -79,6 +85,7 @@ services:
     command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --embed-endpoint, "${NIM_EMBED_URL:-https://integrate.api.nvidia.com/v1/embeddings}", --embed-model, "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
     environment:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-${NGC_API_KEY:-}}
+      NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:-}
     volumes: [vectordb_data:/data/vectordb]
     depends_on:
       nim-embedding: {condition: service_healthy, required: false}
@@ -291,7 +298,6 @@ configs:
         extract:
           enabled: ${LOCAL_EXTRACT_ENABLED:-true}
           use_table_structure: ${LOCAL_EXTRACT_USE_TABLE_STRUCTURE:-true}
-          use_graphic_elements: ${LOCAL_EXTRACT_USE_GRAPHIC_ELEMENTS:-true}
           ocr_version: "${LOCAL_EXTRACT_OCR_VERSION:-v2}"
           ocr_lang: ${LOCAL_EXTRACT_OCR_LANG_YAML:-null}
         embed:
@@ -322,6 +328,9 @@ configs:
         batch_queue_size: ${PIPELINE_BATCH_QUEUE_SIZE:-8192}
       mcp:
         enabled: false
+      auth:
+        api_token: "${NRL_API_TOKEN:-}"
+        allow_unscoped_dev: true
       vectordb:
         enabled: true
         lancedb_uri: "/data/vectordb"
