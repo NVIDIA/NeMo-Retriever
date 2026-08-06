@@ -50,6 +50,7 @@ from typing import Any
 from pydantic import Field
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import IngestOperation
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ class DocumentRecord(RichModel):
     """
 
     id: str
+    stable_document_id: str
     job_id: str
     status: DocumentStatus = DocumentStatus.PENDING
     submitted_at: str = ""
@@ -145,8 +147,10 @@ class DocumentRecord(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
-    filename: str | None = None
-    """Original upload filename, surfaced in the dashboard UI."""
+    filename: str | None = Field(default=None, description="Original upload filename surfaced in the dashboard")
+    collection_name: str | None = None
+    content_sha256: str | None = None
+    manifest_entry_id: str | None = None
 
 
 class JobAggregate(RichModel):
@@ -174,13 +178,18 @@ class JobAggregate(RichModel):
     started_at: str | None = None
     finalized_at: str | None = None
     elapsed_s: float | None = None
-    label: str | None = None
-    """Optional client-supplied tag, e.g. ``"Q4-2026-corpus"``."""
+    label: str | None = Field(default=None, description="Optional client-supplied job tag")
     metadata: dict[str, Any] = {}
     trace_id: str | None = None
     trace_context: dict[str, str] = Field(default_factory=dict)
-    retain_results: bool = False
-    """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
+    retain_results: bool = Field(default=False, description="Keep completed document result payloads in memory")
+    collection_name: str | None = None
+    scope: str = "default"
+    operation: IngestOperation = IngestOperation.APPEND
+    target_document_id: str | None = None
+    idempotency_key: str | None = None
+    idempotency_fingerprint: str | None = None
+    document_manifest: list[dict[str, str]] = Field(default_factory=list)
 
 
 # ── eviction tunables (apply to terminal aggregates) ──────────────────
@@ -257,6 +266,8 @@ class JobTracker:
         # counts) we last published, so we don't emit duplicate progress
         # events on every doc transition.
         self._progress_published: dict[str, int] = {}
+        self._idempotency: dict[tuple[str, str], tuple[str, str]] = {}
+        self._accepted_manifest_entries: dict[tuple[str, str], str] = {}
         self._progress_step: int = 10
 
     # ── wiring ───────────────────────────────────────────────────────
@@ -283,6 +294,13 @@ class JobTracker:
         retain_results: bool = False,
         trace_id: str | None = None,
         trace_context: dict[str, str] | None = None,
+        collection_name: str | None = None,
+        scope: str = "default",
+        operation: IngestOperation = IngestOperation.APPEND,
+        target_document_id: str | None = None,
+        idempotency_key: str | None = None,
+        idempotency_fingerprint: str | None = None,
+        document_manifest: list[dict[str, str]] | None = None,
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
@@ -290,6 +308,15 @@ class JobTracker:
         with self._lock:
             now = datetime.now(timezone.utc)
             self._evict_locked(now=now)
+            if idempotency_key and idempotency_fingerprint:
+                entry = self._idempotency.get((scope, idempotency_key))
+                if entry:
+                    existing_job_id, previous_fingerprint = entry
+                    if previous_fingerprint != idempotency_fingerprint:
+                        raise JobFullError("Idempotency key was already used with a different request payload")
+                    existing = self._get_live_job_locked(existing_job_id, now=now)
+                    if existing is not None:
+                        return existing.model_copy(deep=True)
             if job_id in self._jobs:
                 raise JobTrackerError(f"Job {job_id!r} already exists")
             if len(self._jobs) >= self._max_jobs:
@@ -309,9 +336,21 @@ class JobTracker:
                 trace_id=trace_id,
                 trace_context=dict(trace_context or {}),
                 retain_results=retain_results,
+                collection_name=collection_name,
+                scope=scope,
+                operation=operation,
+                target_document_id=target_document_id,
+                idempotency_key=idempotency_key,
+                idempotency_fingerprint=idempotency_fingerprint,
+                document_manifest=list(document_manifest or []),
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
+            if idempotency_key and idempotency_fingerprint:
+                self._idempotency[(scope, idempotency_key)] = (
+                    job_id,
+                    idempotency_fingerprint,
+                )
         logger.info(
             "Job registered: %s (expected_documents=%d, label=%r)",
             job_id,
@@ -371,6 +410,9 @@ class JobTracker:
         *,
         job_id: str,
         filename: str | None = None,
+        content_sha256: str | None = None,
+        stable_document_id: str | None = None,
+        manifest_entry_id: str | None = None,
     ) -> DocumentRecord:
         """Attach a new :class:`DocumentRecord` to *job_id*.
 
@@ -379,11 +421,43 @@ class JobTracker:
         terminal state, or :class:`JobFullError` if the job is at
         capacity (``len(document_ids) == expected_documents``).
         """
+        rec, _ = self.register_document_idempotent(
+            document_id,
+            job_id=job_id,
+            filename=filename,
+            content_sha256=content_sha256,
+            stable_document_id=stable_document_id,
+            manifest_entry_id=manifest_entry_id,
+        )
+        return rec
+
+    def register_document_idempotent(
+        self,
+        attempt_id: str,
+        *,
+        job_id: str,
+        filename: str | None = None,
+        content_sha256: str | None = None,
+        stable_document_id: str | None = None,
+        manifest_entry_id: str | None = None,
+    ) -> tuple[DocumentRecord, bool]:
+        """Register an upload or return its original accepted record.
+
+        Manifest-entry replay is checked before terminal/capacity validation so a
+        client can safely replay every file after losing any upload response.
+        """
         with self._lock:
             now = datetime.now(timezone.utc)
             agg = self._get_live_job_locked(job_id, now=now)
             if agg is None:
                 raise JobNotFoundError(f"Job {job_id!r} not found")
+            if manifest_entry_id:
+                existing_attempt = self._accepted_manifest_entries.get((job_id, manifest_entry_id))
+                if existing_attempt:
+                    existing = self._documents[existing_attempt]
+                    if existing.filename != filename or existing.content_sha256 != content_sha256:
+                        raise JobFullError("Manifest entry was already accepted with different filename or content")
+                    return existing.model_copy(deep=True), False
             if agg.status in _JOB_TERMINAL:
                 raise JobFinalizedError(
                     f"Job {job_id!r} has already finalized with status "
@@ -395,22 +469,28 @@ class JobTracker:
                     f"({agg.expected_documents} documents); rejected document "
                     f"#{len(agg.document_ids) + 1}."
                 )
-            if document_id in self._documents:
-                raise JobTrackerError(f"Document {document_id!r} already registered.")
+            if attempt_id in self._documents:
+                raise JobTrackerError(f"Document attempt {attempt_id!r} already registered.")
             rec = DocumentRecord(
-                id=document_id,
+                id=attempt_id,
+                stable_document_id=stable_document_id or attempt_id,
                 job_id=job_id,
                 status=DocumentStatus.PENDING,
                 submitted_at=_utcnow_iso(),
                 filename=filename,
+                collection_name=agg.collection_name,
+                content_sha256=content_sha256,
+                manifest_entry_id=manifest_entry_id,
             )
-            self._documents[document_id] = rec
-            agg.document_ids.append(document_id)
+            self._documents[attempt_id] = rec
+            agg.document_ids.append(attempt_id)
+            if manifest_entry_id:
+                self._accepted_manifest_entries[(job_id, manifest_entry_id)] = attempt_id
             agg.counts[DocumentStatus.PENDING.value] = agg.counts.get(DocumentStatus.PENDING.value, 0) + 1
             self._reg_count += 1
             if self._reg_count % _EVICTION_INTERVAL == 0:
                 self._evict_locked(now=now)
-        return rec.model_copy(deep=True)
+        return rec.model_copy(deep=True), True
 
     def mark_processing(self, document_id: str) -> None:
         """Transition a document from ``pending`` → ``processing``.
@@ -523,7 +603,7 @@ class JobTracker:
                     "JobTracker.%s: no record of document %r — callback dropped (likely "
                     "gateway-pod restart between upload acceptance and worker callback); "
                     "client may hang waiting for an SSE event that will never arrive",
-                    "mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed",
+                    ("mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed"),
                     document_id,
                 )
                 return MarkOutcome.UNKNOWN_DOCUMENT
@@ -693,8 +773,18 @@ class JobTracker:
         agg = self._jobs.pop(job_id, None)
         if agg is None:
             return
+        if agg.idempotency_key:
+            # Only release the key if this job still owns it; the map is written
+            # solely for jobs that carry a fingerprint, so a keyed job may point
+            # at an entry that now belongs to a later job.
+            entry_key = (agg.scope, agg.idempotency_key)
+            owner = self._idempotency.get(entry_key)
+            if owner is not None and owner[0] == job_id:
+                del self._idempotency[entry_key]
         for did in agg.document_ids:
-            self._documents.pop(did, None)
+            rec = self._documents.pop(did, None)
+            if rec and rec.manifest_entry_id:
+                self._accepted_manifest_entries.pop((job_id, rec.manifest_entry_id), None)
             self._started_mono.pop(did, None)
         self._job_started_mono.pop(job_id, None)
         self._progress_published.pop(job_id, None)
@@ -707,7 +797,8 @@ class JobTracker:
         event: dict[str, Any] = {
             "type": rec.status.value,
             "id": rec.id,
-            "document_id": rec.id,
+            "document_id": rec.stable_document_id,
+            "attempt_id": rec.id,
             "job_id": rec.job_id,
             "status": rec.status.value,
             "result_rows": rec.result_rows,

@@ -151,7 +151,7 @@ jobs:
           target: service
           platforms: linux/amd64
           build-args: |
-            DOWNLOAD_LLAMA_TOKENIZER=True
+            DOWNLOAD_DEFAULT_TOKENIZER=True
             GIT_COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.image }}
           secret-files: hf_token=./scripts/private_local/hf_token.txt

@@ -39,6 +39,7 @@ from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AuthConfig,
     PipelineOverridesConfig,
     PipelinePoolConfig,
     ServiceConfig,
@@ -190,6 +191,7 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch):
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         pipeline_overrides=PipelineOverridesConfig(),
     )

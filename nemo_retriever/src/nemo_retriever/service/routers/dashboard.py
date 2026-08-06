@@ -19,6 +19,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from nemo_retriever.service.auth import internal_auth_headers
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["dashboard"])
@@ -515,6 +517,7 @@ async def vdb_query(req: VdbQueryRequest, request: Request) -> JSONResponse:
             resp = await client.post(
                 f"{vdb_cfg.vectordb_url}/v1/query",
                 json={"query": req.query, "top_k": req.top_k},
+                headers=internal_auth_headers(vdb_cfg.internal_api_token),
             )
             resp.raise_for_status()
             return JSONResponse(resp.json())
