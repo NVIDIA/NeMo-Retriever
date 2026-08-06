@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from nemo_retriever.models.hf_model_registry import is_local_hf_model_dir
+
 if TYPE_CHECKING:
     from nemo_retriever.models.model import BaseModel
 
@@ -64,11 +66,6 @@ LOCAL_EMBED_ARCH_ENV = "NRL_LOCAL_EMBED_ARCH"
 _VALID_LOCAL_EMBED_ARCHS = frozenset({"vl", "text"})
 
 
-def _is_local_checkpoint_dir(model_name: str | None) -> bool:
-    """Return True if *model_name* points at an on-disk checkpoint directory."""
-    return bool(model_name) and os.path.isdir(str(model_name))
-
-
 def _resolve_local_embed_arch(model_arch: str | None) -> bool:
     """Return True (VL) / False (text) for a local checkpoint directory.
 
@@ -88,18 +85,6 @@ def _resolve_local_embed_arch(model_arch: str | None) -> bool:
             f"model_arch) so it routes to the correct embedder. Got {raw!r}."
         )
     return arch == "vl"
-
-
-def resolve_embed_model_use_vl(model_name: str | None, *, model_arch: str | None = None) -> bool:
-    """Return whether *model_name* should use the VL embedder path.
-
-    Registered Hub IDs use the existing VL model allow-list. Local checkpoint
-    directories do not have a stable Hub ID to match against, so they must
-    declare their architecture via *model_arch* or ``NRL_LOCAL_EMBED_ARCH``.
-    """
-    if _is_local_checkpoint_dir(model_name):
-        return _resolve_local_embed_arch(model_arch)
-    return is_vl_embed_model(model_name)
 
 
 def create_local_embedder(
@@ -137,17 +122,19 @@ def create_local_embedder(
     Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
     ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
 
-    A local checkpoint *directory* (e.g. a fine-tuned drop-in or proxy model)
-    is supported on both the text and VL paths. Because a directory carries no
-    registry entry, its architecture (``vl``/``text``) must be declared via
-    *model_arch* or ``NRL_LOCAL_EMBED_ARCH``; it is never inferred.
+    A local checkpoint *directory* (one containing ``config.json``, e.g. a
+    fine-tuned drop-in or proxy model) is supported on both the text and VL
+    paths. Because a directory carries no registry entry, its architecture
+    (``vl``/``text``) must be declared via *model_arch* or
+    ``NRL_LOCAL_EMBED_ARCH``; it is never inferred.
     """
     b = (backend or "vllm").strip().lower()
     if b not in ("vllm", "hf"):
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
-    model_id = resolve_embed_model(model_name)
 
-    use_vl = resolve_embed_model_use_vl(model_name, model_arch=model_arch)
+    model_id = resolve_embed_model(model_name)
+    is_local = is_local_hf_model_dir(model_id)
+    use_vl = _resolve_local_embed_arch(model_arch) if is_local else is_vl_embed_model(model_id)
 
     if use_vl:
         if b == "hf":

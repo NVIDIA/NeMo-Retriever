@@ -315,6 +315,30 @@ retriever ingest ./data/pdf_corpus \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
+### Local embedding checkpoint
+
+Pass a directory to `--embed-model-name` to embed with an on-disk checkpoint,
+such as a fine-tuned drop-in for one of the shipped embedders:
+
+```bash
+export NRL_LOCAL_EMBED_ARCH=text   # or: vl
+
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name /models/my-finetuned-embedder
+```
+
+- The directory must contain `config.json`. Anything else is treated as a Hub
+  model ID and must have a pinned revision in the model registry.
+- `NRL_LOCAL_EMBED_ARCH` is required and is never inferred: `text` loads the
+  checkpoint through the text embedder, `vl` through the vision-language
+  embedder. Loading a checkpoint with the wrong architecture fails loudly.
+- Set the same variable for `retriever query` so ingest and query embed with
+  matching models.
+- The path must resolve identically for every process that loads the model,
+  including each Ray worker in batch mode and each service replica. Prefer an
+  absolute path on shared storage, or a `./`-prefixed relative path, so the
+  value is never mistaken for a built-in model name.
+
 ### OCR language mode
 
 ```bash

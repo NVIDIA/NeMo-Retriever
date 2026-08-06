@@ -44,6 +44,38 @@ def test_extraction_hf_repos_have_pinned_revisions():
     )
 
 
+@pytest.fixture
+def local_checkpoint(tmp_path):
+    """A valid on-disk model directory, i.e. one containing ``config.json``."""
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    return tmp_path
+
+
+def test_local_dir_requires_explicit_opt_in_to_bypass_revision_pin(local_checkpoint):
+    with pytest.raises(ValueError, match="No pinned HuggingFace revision"):
+        registry.get_hf_revision(str(local_checkpoint))
+
+    assert registry.get_hf_revision(str(local_checkpoint), allow_local_path=True) is None
+
+
+def test_local_dir_without_model_config_does_not_bypass_revision_pin(tmp_path):
+    with pytest.raises(ValueError, match="has no config.json"):
+        registry.get_hf_revision(str(tmp_path), allow_local_path=True)
+
+
+def test_registered_hub_id_still_pinned():
+    assert registry.get_hf_revision("nvidia/llama-nemotron-embed-1b-v2") == "b4caa8456edd360b3b4e938d94ed4398dd437fad"
+
+
+def test_unregistered_hub_id_still_raises():
+    with pytest.raises(ValueError, match="No pinned HuggingFace revision"):
+        registry.get_hf_revision("some-org/not-registered")
+
+
+def test_unregistered_hub_id_non_strict_returns_none():
+    assert registry.get_hf_revision("some-org/not-registered", strict=False) is None
+
+
 def test_hf_hub_download_with_pinned_revision_injects_known_revision(monkeypatch):
     calls = []
 
