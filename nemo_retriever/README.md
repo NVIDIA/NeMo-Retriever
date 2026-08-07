@@ -98,7 +98,7 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-> **Corpus size matters for LanceDB indexing.** LanceDB's default IVF index needs at least 16 chunks to train its 16 k-means partitions. A single-PDF run that calls `.vdb_upload()` or `retriever ingest` with indexing will fail at that step. For a first successful indexed ingest, point the CLI (or Python upload path) at a **directory** with enough documents to clear the threshold—for example the bundled [`data/`](../data/) corpus. Extract-and-embed-only examples below are safe on a single file when you omit `.vdb_upload()`.
+> **Corpus size matters for LanceDB indexing.** The default IVF index targets 16 k-means partitions and needs enough embedded chunks to train them. Very small corpora may skip the vector index or use fewer partitions than the default. For a first indexed ingest that matches the default IVF settings, point the CLI (or Python upload path) at a **directory** with enough documents—for example the bundled [`data/`](../data/) corpus. Extract-and-embed-only examples below are safe on a single file when you omit `.vdb_upload()`.
 
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
@@ -116,7 +116,7 @@ ingestor = create_ingestor(run_mode="batch")
 
 # ingestion tasks are chainable and defined lazily
 # Omit .vdb_upload() here so a single-PDF run can inspect chunks without
-# hitting the LanceDB IVF training threshold (see corpus-size callout above).
+# building a LanceDB index (see corpus-size callout above).
 ingestor = (
   ingestor.files(documents)
   .extract(
@@ -183,7 +183,7 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 
 Point `retriever ingest` at a **directory** of documents to produce a ready-to-query
 LanceDB table. The first-run example uses the bundled [`data/`](../data/) corpus so
-indexing clears the LanceDB IVF training threshold (see the corpus-size callout
+indexing can use the default IVF settings (see the corpus-size callout
 at the start of [Run the pipeline](#run-the-pipeline)).
 
 ```bash
