@@ -67,7 +67,11 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
         transport=httpx.MockTransport(_handler),
     )
 
-    result = _run(client.query("What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}))
+    result = _run(
+        client.query(
+            "What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}
+        )
+    )
 
     assert seen == {
         "path": "/v1/query",
@@ -119,7 +123,10 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
                         "hits": [
                             {
                                 "text": None,
-                                "metadata": {"result_source": "selection_agent", "rank": 1},
+                                "metadata": {
+                                    "result_source": "selection_agent",
+                                    "rank": 1,
+                                },
                                 "source": "report.pdf",
                                 "source_id": None,
                                 "path": None,
@@ -146,15 +153,35 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
 
     assert seen == {
         "path": "/v1/query",
-        "body": {"query": "What is indexed?", "top_k": 2, "format": "hits", "agentic": True},
+        "body": {
+            "query": "What is indexed?",
+            "top_k": 2,
+            "format": "hits",
+            "agentic": True,
+        },
     }
     assert result["results"][0]["hits"][0]["source"] == "report.pdf"
 
 
 def test_query_methods_gate_mcp_retrieval_tools() -> None:
-    classic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools())}
-    agentic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools())}
-    all_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="all")).list_tools())}
+    classic = {
+        tool.name
+        for tool in _run(
+            build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools()
+        )
+    }
+    agentic = {
+        tool.name
+        for tool in _run(
+            build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools()
+        )
+    }
+    all_tools = {
+        tool.name
+        for tool in _run(
+            build_mcp(ServiceMCPSettings(query_methods="all")).list_tools()
+        )
+    }
 
     assert "query" in classic
     assert "agentic_query" not in classic
@@ -184,7 +211,9 @@ def test_settings_from_service_config_maps_query_methods_when_agentic_enabled() 
     assert settings.agentic_request_timeout_s == 321.0
 
 
-def test_settings_from_service_config_drops_agentic_tools_when_agentic_disabled() -> None:
+def test_settings_from_service_config_drops_agentic_tools_when_agentic_disabled() -> (
+    None
+):
     settings = settings_from_service_config(
         ServiceConfig(
             agentic=AgenticConfig(enabled=False),
@@ -220,7 +249,10 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:00Z",
                 },
             )
-        if request.method == "POST" and request.url.path == "/v1/ingest/job/job-1/document":
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/ingest/job/job-1/document"
+        ):
             upload_body = request.content
             return httpx.Response(
                 202,
@@ -232,7 +264,10 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:01Z",
                 },
             )
-        if request.method == "GET" and request.url.path == "/v1/ingest/job/job-1/documents":
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/ingest/job/job-1/documents"
+        ):
             return httpx.Response(
                 200,
                 json={
@@ -252,7 +287,9 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     ],
                 },
             )
-        return httpx.Response(404, text=f"unexpected {request.method} {request.url.path}")
+        return httpx.Response(
+            404, text=f"unexpected {request.method} {request.url.path}"
+        )
 
     client = ServiceMCPClient(
         ServiceMCPSettings(base_url="http://service:7670", poll_interval_s=0.01),
@@ -314,3 +351,26 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
 
     assert unauthorized.status_code == 401
     assert authorized.status_code != 401
+
+
+def test_query_tool_client_posts_rerank_controls() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"hits": []}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    _run(client.query("What is indexed?", top_k=3, rerank=True, rerank_top_k=20))
+
+    assert seen["body"] == {
+        "query": "What is indexed?",
+        "top_k": 3,
+        "format": "hits",
+        "rerank": True,
+        "rerank_top_k": 20,
+    }

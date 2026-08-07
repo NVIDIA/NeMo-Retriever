@@ -40,16 +40,44 @@ class QueryRequest(BaseModel):
         ),
     )
 
+    rerank: bool = Field(
+        default=False,
+        description=(
+            "When true, retrieve a larger candidate set from VectorDB, then rerank "
+            "it through the server-configured reranker before returning top_k hits."
+        ),
+    )
+    rerank_top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description=(
+            "Number of VectorDB candidates to retrieve before reranking. Defaults "
+            "to max(top_k, 50) when rerank is enabled."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_agentic_request(self) -> "QueryRequest":
+        if self.rerank:
+            if self.agentic:
+                raise ValueError("rerank cannot be combined with agentic queries")
+            if self.format != "hits":
+                raise ValueError("rerank queries require format='hits'")
+            if self.rerank_top_k is not None and self.rerank_top_k < self.top_k:
+                raise ValueError("rerank_top_k must be greater than or equal to top_k")
         if not self.agentic:
             return self
         if not isinstance(self.query, str):
-            raise ValueError("agentic queries require a single query string, not a list")
+            raise ValueError(
+                "agentic queries require a single query string, not a list"
+            )
         if not self.query.strip():
             raise ValueError("agentic query must be a non-empty string")
         if len(self.query) > MAX_AGENTIC_QUERY_CHARS:
-            raise ValueError(f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters")
+            raise ValueError(
+                f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters"
+            )
         if self.format != "hits":
             raise ValueError("agentic queries require format='hits'")
         return self
@@ -71,7 +99,9 @@ class QueryRequest(BaseModel):
             }
             supplied = sorted(raw_keys.intersection(value))
             if supplied:
-                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
+                raise ValueError(
+                    f"client-selected storage is not supported: {', '.join(supplied)}"
+                )
         return value
 
 
@@ -89,9 +119,13 @@ class QueryResponse(BaseModel):
         ),
     )
 
-    def hits_by_query(self, *, expected_results: int | None = None) -> list[list[dict[str, Any]]]:
+    def hits_by_query(
+        self, *, expected_results: int | None = None
+    ) -> list[list[dict[str, Any]]]:
         if expected_results is not None and len(self.results) != expected_results:
-            raise ValueError(f"expected {expected_results} result set(s), got {len(self.results)}")
+            raise ValueError(
+                f"expected {expected_results} result set(s), got {len(self.results)}"
+            )
         return [result.hits for result in self.results]
 
 

@@ -46,6 +46,7 @@ from nemo_retriever.common.schemas.responses import (
     PageIngestAccepted,
     SidecarUploadResponse,
 )
+from nemo_retriever.service.query_schema import QueryRequest, QueryResponse
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.models.llm.types import (
     AnswerRequest as CoreAnswerRequest,
@@ -180,7 +181,9 @@ def _proxied_response(response: httpx.Response) -> Response:
     )
 
 
-async def _vectordb_get(request: Request, url: str, *, scope: str, failure_detail: str) -> httpx.Response:
+async def _vectordb_get(
+    request: Request, url: str, *, scope: str, failure_detail: str
+) -> httpx.Response:
     """Read one scoped resource from the internal VectorDB service."""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -207,7 +210,9 @@ def _job_idempotency_fingerprint(body: JobCreateRequest) -> str:
                 "target_document_id": body.target_document_id,
                 "metadata": body.metadata,
                 "retain_results": body.retain_results,
-                "document_manifest": [entry.model_dump(mode="json") for entry in body.document_manifest],
+                "document_manifest": [
+                    entry.model_dump(mode="json") for entry in body.document_manifest
+                ],
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -274,7 +279,9 @@ def _register_document_under_job(
     except JobFinalizedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except JobTrackerError as exc:
-        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=getattr(exc, "status_code", 500), detail=str(exc)
+        ) from exc
 
 
 def _resolve_stable_document_id(
@@ -291,18 +298,32 @@ def _resolve_stable_document_id(
     return attempt_id
 
 
-def _validate_manifest_entry(job, manifest_entry_id: str | None, filename: str, content_sha256: str) -> None:
+def _validate_manifest_entry(
+    job, manifest_entry_id: str | None, filename: str, content_sha256: str
+) -> None:
     """Bind an upload to exactly one immutable entry in its job manifest."""
     if not job.document_manifest:
         return
     if not manifest_entry_id:
-        raise HTTPException(409, "manifest_entry_id is required for this idempotent job")
+        raise HTTPException(
+            409, "manifest_entry_id is required for this idempotent job"
+        )
     entry = next(
-        (item for item in job.document_manifest if item.get("manifest_entry_id") == manifest_entry_id),
+        (
+            item
+            for item in job.document_manifest
+            if item.get("manifest_entry_id") == manifest_entry_id
+        ),
         None,
     )
-    if not entry or entry.get("filename") != filename or entry.get("content_sha256") != content_sha256:
-        raise HTTPException(409, "Uploaded document does not match its job manifest entry")
+    if (
+        not entry
+        or entry.get("filename") != filename
+        or entry.get("content_sha256") != content_sha256
+    ):
+        raise HTTPException(
+            409, "Uploaded document does not match its job manifest entry"
+        )
 
 
 def _validate_collection_pipeline_spec(job, spec: PipelineSpec | None) -> None:
@@ -387,7 +408,12 @@ def _worker_result_url(
             status_code=400,
             detail="Completion callback has an invalid result worker IP",
         ) from exc
-    if worker_ip.is_unspecified or worker_ip.is_multicast or worker_ip.is_loopback or worker_ip.is_link_local:
+    if (
+        worker_ip.is_unspecified
+        or worker_ip.is_multicast
+        or worker_ip.is_loopback
+        or worker_ip.is_link_local
+    ):
         raise HTTPException(
             status_code=400,
             detail="Completion callback has an unroutable result worker IP",
@@ -397,9 +423,14 @@ def _worker_result_url(
         try:
             advertised_ip = ipaddress.ip_address(callback_worker_ip)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
+            raise HTTPException(
+                status_code=400,
+                detail="Completion callback has an invalid result worker IP",
+            ) from exc
         if advertised_ip != worker_ip:
-            raise HTTPException(status_code=409, detail="Result worker IP does not match lease owner")
+            raise HTTPException(
+                status_code=409, detail="Result worker IP does not match lease owner"
+            )
 
     peer_value = request.client.host if request.client is not None else ""
     try:
@@ -407,7 +438,9 @@ def _worker_result_url(
     except ValueError:
         peer_ip = None
     if peer_ip is not None and not peer_ip.is_loopback and peer_ip != worker_ip:
-        raise HTTPException(status_code=400, detail="Result worker IP does not match callback peer")
+        raise HTTPException(
+            status_code=400, detail="Result worker IP does not match callback peer"
+        )
 
     host = f"[{worker_ip}]" if worker_ip.version == 6 else str(worker_ip)
     port = request.app.state.config.server.port
@@ -423,7 +456,9 @@ async def _pull_and_store_worker_result(
     """Copy rows from the exact completing worker into the gateway store."""
     url = _worker_result_url(request, document_id, worker_ip, callback_worker_ip)
     try:
-        async with httpx.AsyncClient(timeout=10.0, headers=_internal_auth_headers(request)) as client:
+        async with httpx.AsyncClient(
+            timeout=10.0, headers=_internal_auth_headers(request)
+        ) as client:
             response = await client.get(url)
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -445,7 +480,11 @@ async def _pull_and_store_worker_result(
             status_code=503,
             detail=f"Worker returned invalid result data for {document_id!r}",
         ) from exc
-    if not rows or not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+    if (
+        not rows
+        or not isinstance(rows, list)
+        or not all(isinstance(row, dict) for row in rows)
+    ):
         raise HTTPException(
             status_code=503,
             detail=f"Worker returned invalid result data for {document_id!r}",
@@ -477,14 +516,19 @@ async def _gateway_enqueue(
     worker rebuilds it as one typed object rather than a splat of loose
     fields that :class:`WorkItem` would silently discard.
     """
-    from nemo_retriever.service.services.work_queue import WorkQueueFull, get_work_broker
+    from nemo_retriever.service.services.work_queue import (
+        WorkQueueFull,
+        get_work_broker,
+    )
 
     broker = get_work_broker()
     if broker is None:
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.unregister_pending(work_id)
-        raise HTTPException(status_code=503, detail="Gateway work broker not initialised")
+        raise HTTPException(
+            status_code=503, detail="Gateway work broker not initialised"
+        )
     try:
         await broker.enqueue(
             pool_type,
@@ -495,7 +539,9 @@ async def _gateway_enqueue(
             retain_results=_job_retain_results(job_id),
             pipeline_spec=pipeline_spec,
             trace_context=_safe_inject_trace_context(),
-            extra={"write": write.model_dump(mode="json")} if write is not None else None,
+            extra={"write": write.model_dump(mode="json")}
+            if write is not None
+            else None,
         )
     except WorkQueueFull as exc:
         tracker = get_job_tracker()
@@ -539,7 +585,9 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
         doc.close()
         return n
     except Exception as exc:
-        logger.warning("Could not determine PDF page count; defaulting to 1 page: %s", exc)
+        logger.warning(
+            "Could not determine PDF page count; defaulting to 1 page: %s", exc
+        )
         return 1
 
 
@@ -587,7 +635,9 @@ def _build_policy(request: Request):  # -> PipelineOverridesPolicy
     return cfg.pipeline_overrides.to_policy(caption_enabled=caption_enabled)
 
 
-def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpec | None:
+def _resolve_pipeline_spec(
+    request: Request, meta: IngestRequest
+) -> PipelineSpec | None:
     """Validate ``meta.pipeline`` against the service's override policy.
 
     Returns ``None`` when the spec is missing or empty so the worker
@@ -633,14 +683,20 @@ async def _prepare_job_work_item(
     Returns:
         The work item, its target pool, and the file classification.
     """
-    classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    classification = FileClassifier.classify(
+        file, filename_override=meta.filename or ""
+    )
     enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
-    route = pool_type or _route_by_page_count(file_bytes, meta, file_category=classification.category)
+    route = pool_type or _route_by_page_count(
+        file_bytes, meta, file_category=classification.category
+    )
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
 
-    _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
+    _validate_manifest_entry(
+        job, manifest_entry_id, file.filename or "", content_sha256
+    )
 
     attempt_id = uuid.uuid4().hex
     storage_document_id = _resolve_stable_document_id(
@@ -655,7 +711,9 @@ async def _prepare_job_work_item(
         filename=file.filename,
         callback_headers=_internal_auth_headers(request),
         job_id=job_id,
-        pipeline_spec=validated_spec.model_dump(mode="json") if validated_spec is not None else None,
+        pipeline_spec=validated_spec.model_dump(mode="json")
+        if validated_spec is not None
+        else None,
         retain_results=_job_retain_results(job_id),
         write=DocumentWriteContext(
             scope=job.scope,
@@ -754,7 +812,9 @@ def _safe_extract_trace_context(carrier: dict[str, str] | None) -> Any | None:
         return None
 
 
-def _trace_context_from_request_or_job(request: Request, job_id: str | None) -> dict[str, str]:
+def _trace_context_from_request_or_job(
+    request: Request, job_id: str | None
+) -> dict[str, str]:
     inbound_traceparent = request.headers.get("traceparent")
     if inbound_traceparent:
         carrier = {"traceparent": inbound_traceparent}
@@ -797,7 +857,9 @@ def _start_accept_span(request: Request, job_id: str, name: str):
 # ------------------------------------------------------------------
 
 
-def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None) -> JobAggregateResponse:
+def _aggregate_to_response(
+    agg, *, documents: list[dict[str, Any]] | None = None
+) -> JobAggregateResponse:
     """Project a :class:`JobAggregate` to the wire response model."""
     return JobAggregateResponse(
         job_id=agg.job_id,
@@ -823,7 +885,9 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
     status_code=201,
     summary="Create a new ingestion job aggregate",
 )
-async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse | Response:
+async def create_job(
+    request: Request, response: Response, body: JobCreateRequest
+) -> JobCreatedResponse | Response:
     """Open a job that will receive ``expected_documents`` uploads.
 
     The server returns an opaque ``job_id`` the client uses for every
@@ -845,7 +909,9 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
     if body.collection_name:
         config = request.app.state.config
         if not config.vectordb.enabled:
-            raise HTTPException(404, "VectorDB is not enabled in the service configuration")
+            raise HTTPException(
+                404, "VectorDB is not enabled in the service configuration"
+            )
         target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/collections/{body.collection_name}"
         collection_response = await _vectordb_get(
             request,
@@ -896,10 +962,14 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
                 target_document_id=body.target_document_id,
                 idempotency_key=body.idempotency_key,
                 idempotency_fingerprint=fingerprint,
-                document_manifest=[entry.model_dump(mode="json") for entry in body.document_manifest],
+                document_manifest=[
+                    entry.model_dump(mode="json") for entry in body.document_manifest
+                ],
             )
     except JobTrackerError as exc:
-        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=getattr(exc, "status_code", 500), detail=str(exc)
+        ) from exc
 
     created = agg.job_id == job_id
     if not created:
@@ -1103,8 +1173,12 @@ async def submit_document_to_job(
     request: Request,
     job_id: str,
     file: UploadFile = File(..., description="The file to ingest"),
-    metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
-    manifest_entry_id: str | None = Form(default=None, description="Immutable entry ID from the job manifest"),
+    metadata: str = Form(
+        default="{}", description="JSON-encoded IngestRequest metadata"
+    ),
+    manifest_entry_id: str | None = Form(
+        default=None, description="Immutable entry ID from the job manifest"
+    ),
 ) -> IngestAccepted | Response:
     """General-purpose upload into a job.
 
@@ -1135,7 +1209,9 @@ async def submit_document_to_job(
         )
         now = datetime.now(timezone.utc).isoformat()
 
-        record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
+        record = await _submit_job_work_item(
+            request, route, item, manifest_entry_id=manifest_entry_id
+        )
         if record is not None:
             return IngestAccepted(
                 document_id=record.stable_document_id,
@@ -1146,8 +1222,12 @@ async def submit_document_to_job(
                 created_at=record.submitted_at,
             )
 
-        file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
-        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
+        file_size = (
+            _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
+        )
+        _record_prometheus(
+            request, "/v1/ingest/job/document", "2xx", file_size=file_size
+        )
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/document")
             m.record_document_accepted(
@@ -1184,7 +1264,9 @@ async def submit_page_to_job(
         ...,
         description="Client-assigned ID grouping pages from the same source document",
     ),
-    page_number: int = Form(..., description="1-based page number within the source document"),
+    page_number: int = Form(
+        ..., description="1-based page number within the source document"
+    ),
     filename: str = Form(default="", description="Original source document filename"),
 ) -> PageIngestAccepted | Response:
     if _require_job(job_id, request).collection_name:
@@ -1207,7 +1289,11 @@ async def submit_page_to_job(
             now = datetime.now(timezone.utc).isoformat()
 
             if not dry_run:
-                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+                _register_document_under_job(
+                    document_id=page_id,
+                    job_id=job_id,
+                    filename=filename or file.filename,
+                )
                 await _gateway_enqueue(
                     request,
                     PoolType.REALTIME,
@@ -1314,8 +1400,12 @@ async def submit_whole_document_to_job(
     request: Request,
     job_id: str,
     file: UploadFile = File(..., description="The full document to ingest"),
-    metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
-    manifest_entry_id: str | None = Form(default=None, description="Immutable entry ID from the job manifest"),
+    metadata: str = Form(
+        default="{}", description="JSON-encoded IngestRequest metadata"
+    ),
+    manifest_entry_id: str | None = Form(
+        default=None, description="Immutable entry ID from the job manifest"
+    ),
 ) -> DocumentIngestAccepted | Response:
     try:
         meta = IngestRequest(**json.loads(metadata))
@@ -1341,7 +1431,9 @@ async def submit_whole_document_to_job(
         now = datetime.now(timezone.utc).isoformat()
 
         if not _is_dry_run(request):
-            record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
+            record = await _submit_job_work_item(
+                request, route, item, manifest_entry_id=manifest_entry_id
+            )
             if record is not None:
                 return DocumentIngestAccepted(
                     document_id=record.stable_document_id,
@@ -1353,7 +1445,9 @@ async def submit_whole_document_to_job(
                     created_at=record.submitted_at,
                 )
 
-        file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
+        file_size = (
+            _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
+        )
         _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/whole")
@@ -1402,7 +1496,9 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
         )
     rec = tracker.get_document(item_id)
     if rec is None:
-        raise HTTPException(status_code=404, detail=f"No tracked document with id={item_id!r}")
+        raise HTTPException(
+            status_code=404, detail=f"No tracked document with id={item_id!r}"
+        )
     _require_job(rec.job_id, request)
 
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
@@ -1441,7 +1537,9 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
 )
 async def ingest_sidecar(
     request: Request,
-    file: UploadFile = File(..., description="Sidecar metadata payload (csv / json / parquet)."),
+    file: UploadFile = File(
+        ..., description="Sidecar metadata payload (csv / json / parquet)."
+    ),
     ttl_s: float = Form(
         default=3600.0,
         description="Time-to-live in seconds; the sidecar auto-evicts after this window.",
@@ -1501,7 +1599,11 @@ async def ingest_sidecar(
 
     # Owner-token scoping: use the bearer token when auth is enabled.
     auth_header = request.headers.get("Authorization", "")
-    owner_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
+    owner_token = (
+        auth_header.split(" ", 1)[1].strip()
+        if auth_header.lower().startswith("bearer ")
+        else None
+    )
 
     try:
         entry = store.put(
@@ -1609,7 +1711,9 @@ async def pipeline_config(request: Request):
         for pool_type in (PoolType.REALTIME, PoolType.BATCH):
             label = pool_type.value
             try:
-                resp = await proxy.forward_get(request, pool_type, "/v1/ingest/pipeline-config")
+                resp = await proxy.forward_get(
+                    request, pool_type, "/v1/ingest/pipeline-config"
+                )
                 if resp.status_code == 200:
                     aggregated[label] = json.loads(resp.body)
                 else:
@@ -1653,7 +1757,11 @@ def _text_from_hit(hit: dict[str, Any]) -> str:
 
 
 def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
+    return {
+        k: v
+        for k, v in hit.items()
+        if k not in {"text", "content", "chunk", "page_content", "vector"}
+    }
 
 
 @router.post(
@@ -1661,7 +1769,9 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
     response_model=AnswerResult,
     summary="Search ingested documents and generate an answer",
 )
-async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
+async def answer(
+    req: ServiceAnswerRequest, request: Request
+) -> Response | AnswerResult:
     """Retrieve context from VectorDB and answer with the configured LLM."""
     import httpx
 
@@ -1758,7 +1868,9 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
         **generate_kwargs,
     )
     if gen.error:
-        logger.error("LLM answer generation failed for model %s: %s", gen.model, gen.error)
+        logger.error(
+            "LLM answer generation failed for model %s: %s", gen.model, gen.error
+        )
         raise HTTPException(
             status_code=502,
             detail=f"LLM answer generation failed: {gen.error}",
@@ -1802,80 +1914,123 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity, hybrid, or agentic retrieval",
+    summary="Search ingested documents by semantic similarity, hybrid, agentic, or reranked retrieval",
 )
 async def query(request: Request) -> Response:
-    """Proxy a query request to the VectorDB service.
+    """Run the public query API through VectorDB and optional endpoint reranking.
 
-    * **gateway / standalone** — forwards the JSON body to the vectordb pod.
-    * **worker** — returns 404 (workers don't handle queries).
-
-    When the body sets ``agentic: true``, the long agentic timeout is used and
-    the service must have agentic retrieval configured.
+    ``vectordb_app`` remains responsible only for nearest-neighbor retrieval.
+    With ``rerank=true``, the main service obtains a larger candidate set from
+    VectorDB, calls its server-configured reranking endpoint, and returns the
+    requested ``top_k`` ranked hits.
     """
-    import json
-
     import httpx
 
     config = request.app.state.config
-
     if not config.vectordb.enabled:
         raise HTTPException(
             status_code=404,
             detail="VectorDB is not enabled in the service configuration.",
         )
-
-    mode = _mode(request)
-    if mode in ("realtime", "batch"):
+    if _mode(request) in ("realtime", "batch"):
         raise HTTPException(
             status_code=404,
             detail="Query endpoint is not available on worker pods. Use the gateway.",
         )
 
-    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
-    target = f"{vectordb_url}/v1/query"
-
     body = await request.body()
     agentic = False
+    rerank_request: QueryRequest | None = None
+    query_body = body
     try:
-        parsed = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
+        parsed = json.loads(
+            body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
+        )
         agentic = bool(parsed.get("agentic")) if isinstance(parsed, dict) else False
+        if isinstance(parsed, dict) and parsed.get("rerank"):
+            try:
+                rerank_request = QueryRequest.model_validate(parsed)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if not (config.nim_endpoints.rerank_invoke_url or "").strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Reranking is not configured. Set nim_endpoints.rerank_invoke_url on the main service.",
+                )
+            candidate_k = rerank_request.rerank_top_k or max(rerank_request.top_k, 50)
+            forwarded = dict(parsed)
+            forwarded.pop("rerank", None)
+            forwarded.pop("rerank_top_k", None)
+            forwarded["top_k"] = candidate_k
+            query_body = json.dumps(forwarded).encode("utf-8")
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
         agentic = False
 
     if agentic and not config.agentic.enabled:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Agentic retrieval is not enabled in the service configuration. "
-                "Set agentic.enabled with llm_model and invoke_url."
-            ),
+            detail="Agentic retrieval is not enabled in the service configuration. Set agentic.enabled with llm_model and invoke_url.",
         )
 
+    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
     timeout = config.agentic.request_timeout_s if agentic else 60.0
-
     try:
         from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
-                target,
-                content=body,
+                f"{vectordb_url}/v1/query",
+                content=query_body,
                 headers={
                     "Content-Type": "application/json",
                     "X-NRL-Scope": authorized_scope(request),
                     **internal_auth_headers(config.vectordb.internal_api_token),
                 },
             )
-    except httpx.HTTPError:
-        logger.exception("Failed to proxy query to vectordb at %s", target)
+    except httpx.HTTPError as exc:
+        logger.exception("Failed to proxy query to vectordb at %s", vectordb_url)
         raise HTTPException(
-            status_code=502,
-            detail="VectorDB service is unavailable.",
+            status_code=502, detail="VectorDB service is unavailable."
+        ) from exc
+
+    if rerank_request is None or resp.status_code >= 400:
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type="application/json",
         )
 
+    try:
+        response = QueryResponse.model_validate_json(resp.content)
+        queries = (
+            [rerank_request.query]
+            if isinstance(rerank_request.query, str)
+            else rerank_request.query
+        )
+        if len(response.results) != len(queries):
+            raise ValueError("VectorDB response count did not match the query count")
+
+        from nemo_retriever.operators.rerank import rerank_hits
+
+        for query_text, result in zip(queries, response.results):
+            result.hits = await asyncio.to_thread(
+                rerank_hits,
+                query_text,
+                result.hits,
+                rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
+                model_name=config.nim_endpoints.rerank_model_name
+                or "nvidia/llama-nemotron-rerank-1b-v2",
+                api_key=config.nim_endpoints.api_key or "",
+                top_n=rerank_request.top_k,
+            )
+    except Exception as exc:
+        logger.exception("Failed to rerank VectorDB query results")
+        raise HTTPException(
+            status_code=502, detail="Reranker service is unavailable."
+        ) from exc
+
     return Response(
-        content=resp.content,
+        content=response.model_dump_json(),
         status_code=resp.status_code,
         media_type="application/json",
     )
@@ -1936,22 +2091,32 @@ async def job_callback(request: Request) -> JSONResponse:
     broker = None
     lease_record = None
     if _is_gateway(request):
-        from nemo_retriever.service.services.work_queue import StaleLease, get_work_broker
+        from nemo_retriever.service.services.work_queue import (
+            StaleLease,
+            get_work_broker,
+        )
 
         broker = get_work_broker()
         lease_id = body.get("lease_id")
         lease_generation = body.get("lease_generation")
         if lease_id is not None or lease_generation is not None:
             try:
-                lease_record = broker.validate_callback(item_id, lease_id, int(lease_generation)) if broker else None
+                lease_record = (
+                    broker.validate_callback(item_id, lease_id, int(lease_generation))
+                    if broker
+                    else None
+                )
             except (StaleLease, TypeError, ValueError) as exc:
-                raise HTTPException(status_code=409, detail="Work lease has been superseded") from exc
+                raise HTTPException(
+                    status_code=409, detail="Work lease has been superseded"
+                ) from exc
         elif broker is not None and broker.has_record(item_id):
             raise HTTPException(status_code=409, detail="Missing work lease identity")
 
     if body.get("result_data") is not None:
         logger.warning(
-            "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
+            "Ignoring inline result_data on internal callback for %s "
+            "(%d row(s)); workers must store rows locally.",
             item_id,
             len(body.get("result_data") or []),
         )
@@ -1984,7 +2149,11 @@ async def job_callback(request: Request) -> JSONResponse:
                 status_code=410,
                 detail=f"Gateway has no tracked document {item_id!r} for retained result handoff",
             )
-        if pre_rec is not None and result_rows and tracker.should_retain_results(pre_rec.job_id):
+        if (
+            pre_rec is not None
+            and result_rows
+            and tracker.should_retain_results(pre_rec.job_id)
+        ):
             try:
                 retained_rows = await asyncio.to_thread(get_result_data, item_id)
             except ResultStoreTemporarilyUnavailable as exc:
@@ -2031,7 +2200,9 @@ async def job_callback(request: Request) -> JSONResponse:
     )
     if broker is not None and lease_record is not None:
         try:
-            await broker.acknowledge(item_id, body["lease_id"], int(body["lease_generation"]))
+            await broker.acknowledge(
+                item_id, body["lease_id"], int(body["lease_generation"])
+            )
         except StaleLease:
             logger.warning(
                 "Work lease for %s was already superseded at acknowledge; tracker already updated",
@@ -2186,7 +2357,9 @@ async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
                     )
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S)
+                    event = await asyncio.wait_for(
+                        queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S
+                    )
                     live_count += 1
                     yield f"event: {event.get('type', 'status')}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
@@ -2208,7 +2381,9 @@ async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
     )
 
 
-def _snapshot_terminal_jobs(tracker: Any, *, job_id: str | None = None) -> list[dict[str, Any]]:
+def _snapshot_terminal_jobs(
+    tracker: Any, *, job_id: str | None = None
+) -> list[dict[str, Any]]:
     """Return already-terminal documents so SSE clients get caught up.
 
     If *job_id* is supplied, only documents belonging to that job are
@@ -2286,7 +2461,9 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
             }
 
     terminal_count = sum(
-        1 for r in results.values() if r["status"] in (DocumentStatus.COMPLETED.value, DocumentStatus.FAILED.value)
+        1
+        for r in results.values()
+        if r["status"] in (DocumentStatus.COMPLETED.value, DocumentStatus.FAILED.value)
     )
     return JSONResponse(
         content={

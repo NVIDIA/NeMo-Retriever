@@ -44,6 +44,12 @@ nim_endpoints:
   # Optional LiteLLM provider prefix prepended to embed_model_name for
   # proxies that require provider/model IDs.
   embed_model_provider_prefix: null
+  # Optional remote reranker used by POST /v1/query with rerank=true. The
+  # endpoint can be an in-cluster NIM, a vLLM server, or another compatible
+  # ranking API. This service config does not deploy or manage that endpoint.
+  rerank_invoke_url: null
+  # Optional server-owned model ID sent to the reranking endpoint.
+  rerank_model_name: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
