@@ -74,7 +74,6 @@ def test_root_help_lists_only_product_workflows() -> None:
     assert "service" in result.output
     assert "ingest" in result.output
     assert "query" in result.output
-    assert "harness" in result.output
     for developer_command in (
         "audio",
         "image",
@@ -95,7 +94,7 @@ def test_root_help_lists_only_product_workflows() -> None:
 
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline", "harness"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
