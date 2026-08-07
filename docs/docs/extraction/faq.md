@@ -36,7 +36,7 @@ No. Chart-labeled PDF regions are not routed through Omni captioning. Refer to [
 ## When should I consider advanced visual parsing?
 
 For scanned documents, or documents with complex layouts,
-you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`.
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `method="nemotron_parse"`.
 Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
@@ -55,7 +55,7 @@ For advanced scenarios, you might want to use library mode with self-hosted NIM 
 You can set custom endpoints for each NIM. 
 For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
-When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`.
+When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`. Refer to the [Python API error contract](nemo-retriever-api-reference.md#error-and-failure-contract) and [Python API error triage](troubleshoot.md#python-api-error-triage) for error signals, extraction-path mappings, and escalation criteria.
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? 
 
