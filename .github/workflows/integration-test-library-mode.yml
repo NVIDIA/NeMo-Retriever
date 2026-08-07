@@ -30,8 +30,6 @@ jobs:
             os-label: windows-x64
           - runner: macos-26
             os-label: macos-arm64
-          - runner: macos-26-intel
-            os-label: macos-x64
 
     env:
       # Hosted NIM / integrate.api auth (ExtractParams / EmbedParams read NVIDIA_API_KEY / NGC_API_KEY).

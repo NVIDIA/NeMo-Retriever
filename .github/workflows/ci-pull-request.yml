@@ -56,8 +56,6 @@ jobs:
             os-label: windows-x64
           - runner: macos-26
             os-label: macos-arm64
-          - runner: macos-26-intel
-            os-label: macos-x64
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

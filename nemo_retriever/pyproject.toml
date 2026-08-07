@@ -24,7 +24,7 @@ override-dependencies = [
   "requests>=2.33.0",
   "idna>=3.15",
   "pydantic-settings>=2.14.2",
-  "vllm>=0.25.1",
+  "vllm==0.25.1",
   "transformers>=5.14.1",
   "ray>=2.56.1",
   "nltk>=3.10.1",
@@ -161,9 +161,9 @@ local = [
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
   "vllm>=0.25.1; sys_platform == 'linux'",
-  # vLLM resolves a compatible FlashInfer package pair.
-  "flashinfer-cubin>=0.6.13,<=0.6.14; sys_platform == 'linux'",
-  "flashinfer-python>=0.6.13,<=0.6.14; sys_platform == 'linux'",
+  # Keep the CUDA inference stack reproducible; vLLM 0.25.1 requires FlashInfer 0.6.13.
+  "flashinfer-cubin==0.6.13; sys_platform == 'linux'",
+  "flashinfer-python==0.6.13; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
