@@ -66,4 +66,4 @@ DORI unavailability must not block documentation work.
 |-------------|------------|
 | Docs under `docs/` | From `docs/`: `python -m mkdocs build --strict --config-file mkdocs.yml` when the environment supports it |
 | Library code | Run the targeted tests that cover the changed modules |
-| Docs-only PR scope | `git diff --name-only upstream/main...HEAD` and confirm no runtime/out-of-scope paths |
+| Docs-only PR scope | `git diff --name-only upstream/main...HEAD` (or `origin/main...HEAD`) and confirm no runtime/out-of-scope paths |
