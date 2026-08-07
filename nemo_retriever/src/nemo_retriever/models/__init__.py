@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any
+
+from nemo_retriever.models.hf_model_registry import is_local_hf_model_dir
 
 if TYPE_CHECKING:
     from nemo_retriever.models.model import BaseModel
@@ -59,6 +62,31 @@ def is_vl_rerank_model(model_name: str | None) -> bool:
     return (model_name or "") in _VL_RERANK_MODEL_IDS
 
 
+LOCAL_EMBED_ARCH_ENV = "NRL_LOCAL_EMBED_ARCH"
+_VALID_LOCAL_EMBED_ARCHS = frozenset({"vl", "text"})
+
+
+def _resolve_local_embed_arch(model_arch: str | None) -> bool:
+    """Return True (VL) / False (text) for a local checkpoint directory.
+
+    The architecture is never inferred. It must be declared explicitly via the
+    *model_arch* argument or the ``NRL_LOCAL_EMBED_ARCH`` environment variable,
+    so a local checkpoint can never be silently routed to the wrong embedder.
+
+    Raises:
+        ValueError: when the architecture is unset or not one of ``vl``/``text``.
+    """
+    raw = model_arch if model_arch is not None else os.getenv(LOCAL_EMBED_ARCH_ENV)
+    arch = (raw or "").strip().lower()
+    if arch not in _VALID_LOCAL_EMBED_ARCHS:
+        raise ValueError(
+            "A local embedding checkpoint directory requires its architecture to be "
+            f"declared explicitly: set {LOCAL_EMBED_ARCH_ENV}='vl'|'text' (or pass "
+            f"model_arch) so it routes to the correct embedder. Got {raw!r}."
+        )
+    return arch == "vl"
+
+
 def create_local_embedder(
     model_name: str | None = None,
     *,
@@ -71,6 +99,7 @@ def create_local_embedder(
     normalize: bool = True,
     max_length: int = 8192,
     query_max_length: int = 128,
+    model_arch: str | None = None,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
@@ -92,13 +121,22 @@ def create_local_embedder(
 
     Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
     ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
+
+    A local checkpoint *directory* (one containing ``config.json``, e.g. a
+    fine-tuned drop-in or proxy model) is supported on both the text and VL
+    paths. Because a directory carries no registry entry, its architecture
+    (``vl``/``text``) must be declared via *model_arch* or
+    ``NRL_LOCAL_EMBED_ARCH``; it is never inferred.
     """
     b = (backend or "vllm").strip().lower()
     if b not in ("vllm", "hf"):
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
-    model_id = resolve_embed_model(model_name)
 
-    if is_vl_embed_model(model_name):
+    model_id = resolve_embed_model(model_name)
+    is_local = is_local_hf_model_dir(model_id)
+    use_vl = _resolve_local_embed_arch(model_arch) if is_local else is_vl_embed_model(model_id)
+
+    if use_vl:
         if b == "hf":
             from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
                 LlamaNemotronEmbedVL1BV2Embedder,
@@ -181,6 +219,7 @@ def create_local_query_embedder(
     normalize: bool = True,
     max_length: int = 8192,
     query_max_length: int = 128,
+    model_arch: str | None = None,
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
@@ -188,6 +227,9 @@ def create_local_query_embedder(
 
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
+
+    *model_arch* (``vl``/``text``) declares the architecture of a local
+    checkpoint directory; see :func:`create_local_embedder`.
     """
     b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
 
@@ -202,6 +244,7 @@ def create_local_query_embedder(
         normalize=normalize,
         max_length=int(max_length),
         query_max_length=int(query_max_length),
+        model_arch=model_arch,
     )
 
 

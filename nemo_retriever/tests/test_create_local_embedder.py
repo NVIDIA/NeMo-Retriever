@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_retriever.models import create_local_embedder, create_local_query_embedder
+from nemo_retriever.models import LOCAL_EMBED_ARCH_ENV, create_local_embedder, create_local_query_embedder
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +45,14 @@ def _patch_embedders(monkeypatch):
     monkeypatch.setitem(sys.modules, "nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder", vl_mod)
 
     yield fake_text_vllm, fake_text_hf, fake_vl_hf, fake_vl_vllm
+
+
+@pytest.fixture
+def local_checkpoint(tmp_path, monkeypatch):
+    """A valid on-disk checkpoint directory with no declared architecture."""
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.delenv(LOCAL_EMBED_ARCH_ENV, raising=False)
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +227,103 @@ def test_query_embedder_vl_vllm_uses_vllm_vl(_patch_embedders):
     result = create_local_query_embedder("nvidia/llama-nemotron-embed-vl-1b-v2", backend="vllm")
     fake_vl_vllm.assert_called_once()
     assert result is fake_vl_vllm.return_value
+
+
+# ---------------------------------------------------------------------------
+# Local checkpoint directories — routed by an explicit vl/text declaration
+# ---------------------------------------------------------------------------
+
+
+def test_local_checkpoint_arch_vl_routes_to_vl_vllm(local_checkpoint, _patch_embedders):
+    _, _, _, fake_vl_vllm = _patch_embedders
+    result = create_local_embedder(str(local_checkpoint), model_arch="vl")
+    fake_vl_vllm.assert_called_once()
+    assert fake_vl_vllm.call_args.kwargs["model_id"] == str(local_checkpoint)
+    assert result is fake_vl_vllm.return_value
+
+
+def test_local_checkpoint_arch_vl_hf_routes_to_vl_hf(local_checkpoint, _patch_embedders):
+    _, _, fake_vl_hf, _ = _patch_embedders
+    result = create_local_embedder(str(local_checkpoint), backend="hf", model_arch="vl")
+    fake_vl_hf.assert_called_once()
+    assert fake_vl_hf.call_args.kwargs["model_id"] == str(local_checkpoint)
+    assert result is fake_vl_hf.return_value
+
+
+def test_local_checkpoint_arch_text_routes_to_text_vllm(local_checkpoint, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    result = create_local_embedder(str(local_checkpoint), model_arch="text")
+    fake_text_vllm.assert_called_once()
+    assert fake_text_vllm.call_args.kwargs["model_id"] == str(local_checkpoint)
+    assert result is fake_text_vllm.return_value
+
+
+def test_local_checkpoint_arch_text_hf_routes_to_text_hf(local_checkpoint, _patch_embedders):
+    _, fake_text_hf, _, _ = _patch_embedders
+    result = create_local_embedder(str(local_checkpoint), backend="hf", model_arch="text")
+    fake_text_hf.assert_called_once()
+    assert fake_text_hf.call_args.kwargs["model_id"] == str(local_checkpoint)
+    assert result is fake_text_hf.return_value
+
+
+def test_local_checkpoint_without_arch_fails_loud(local_checkpoint, _patch_embedders):
+    with pytest.raises(ValueError, match=LOCAL_EMBED_ARCH_ENV):
+        create_local_embedder(str(local_checkpoint), backend="hf")
+
+
+def test_local_checkpoint_invalid_arch_fails_loud(local_checkpoint, _patch_embedders):
+    with pytest.raises(ValueError, match=LOCAL_EMBED_ARCH_ENV):
+        create_local_embedder(str(local_checkpoint), backend="hf", model_arch="multimodal")
+
+
+def test_local_checkpoint_arch_from_env(local_checkpoint, monkeypatch, _patch_embedders):
+    _, _, fake_vl_hf, _ = _patch_embedders
+    monkeypatch.setenv(LOCAL_EMBED_ARCH_ENV, "vl")
+    result = create_local_embedder(str(local_checkpoint), backend="hf")
+    fake_vl_hf.assert_called_once()
+    assert result is fake_vl_hf.return_value
+
+
+def test_local_checkpoint_explicit_arch_overrides_env(local_checkpoint, monkeypatch, _patch_embedders):
+    _, fake_text_hf, fake_vl_hf, _ = _patch_embedders
+    monkeypatch.setenv(LOCAL_EMBED_ARCH_ENV, "vl")
+    create_local_embedder(str(local_checkpoint), backend="hf", model_arch="text")
+    fake_text_hf.assert_called_once()
+    fake_vl_hf.assert_not_called()
+
+
+def test_query_embedder_forwards_arch_for_local_checkpoint(local_checkpoint, _patch_embedders):
+    _, _, fake_vl_hf, _ = _patch_embedders
+    result = create_local_query_embedder(str(local_checkpoint), backend="hf", model_arch="vl")
+    fake_vl_hf.assert_called_once()
+    assert result is fake_vl_hf.return_value
+
+
+def test_query_embedder_local_checkpoint_without_arch_fails_loud(local_checkpoint, _patch_embedders):
+    with pytest.raises(ValueError, match=LOCAL_EMBED_ARCH_ENV):
+        create_local_query_embedder(str(local_checkpoint), backend="hf")
+
+
+def test_relative_local_checkpoint_routes_locally(tmp_path, monkeypatch, _patch_embedders):
+    _, fake_text_hf, _, _ = _patch_embedders
+    checkpoint = tmp_path / "my-checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.delenv(LOCAL_EMBED_ARCH_ENV, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    create_local_embedder("./my-checkpoint", backend="hf", model_arch="text")
+
+    assert fake_text_hf.call_args.kwargs["model_id"] == "./my-checkpoint"
+
+
+def test_directory_without_model_config_is_not_a_local_checkpoint(tmp_path, monkeypatch, _patch_embedders):
+    _, fake_text_hf, _, _ = _patch_embedders
+    monkeypatch.delenv(LOCAL_EMBED_ARCH_ENV, raising=False)
+
+    create_local_embedder(str(tmp_path), backend="hf")
+
+    assert fake_text_hf.call_args.kwargs["model_id"] == str(tmp_path)
 
 
 # ---------------------------------------------------------------------------
