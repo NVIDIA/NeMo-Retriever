@@ -188,7 +188,7 @@
         "nemo_retriever/helm/**",
         "nemo_retriever/README.md",
         "nemo_retriever/docs/**",
-        "docs/docs/extraction/**",
+        "docs/docs/**",
         "examples/**",
         "README.md"
       ],
