@@ -2737,7 +2737,7 @@ requires-dist = [
     { name = "universal-pathlib", specifier = ">=0.2.0" },
     { name = "urllib3", specifier = "==2.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
-    { name = "vllm", marker = "sys_platform == 'linux' and extra == 'local'", specifier = ">=0.25.1" },
+    { name = "vllm", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.25.1" },
 ]
 provides-extras = ["service", "local", "multimedia", "nemotron-parse", "tabular", "benchmarks", "llm", "dev", "all"]
 
