@@ -133,7 +133,8 @@ def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
     has_vector = vector_column is not None
     has_fts = bool(fts_columns)
 
-    retrieval_mode = _metadata_retrieval_mode(schema) or _mode_from_capabilities(has_vector, has_fts)
+    physical_mode = _mode_from_capabilities(has_vector, has_fts)
+    retrieval_mode = physical_mode if physical_mode != "unknown" else (_metadata_retrieval_mode(schema) or "unknown")
 
     return LanceTableCapabilities(
         has_vector=has_vector,

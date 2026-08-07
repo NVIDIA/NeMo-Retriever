@@ -338,10 +338,19 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
+| `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
+
+The VectorDB storage default is `indexMode: auto`; most users should leave it
+unchanged. A fresh table creates and waits for its FTS index after the first
+write, while an existing dense table is left dense. Set
+`serviceConfig.vectordb.indexMode=hybrid` only when you explicitly want to
+upgrade an existing dense table. Incremental rows remain searchable through
+LanceDB's unindexed-tail scan; the service runs `optimize()` after 20 writes or
+100,000 added rows and reports FTS and optimization state from `/v1/health`.
 
 The vectordb Pod's `/v1/query` handler embeds the incoming query text
 before searching LanceDB.  It needs a NIM embedding endpoint to do that,

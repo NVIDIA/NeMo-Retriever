@@ -40,11 +40,17 @@ from nemo_retriever.common.input_files import (
     resolve_input_files,
 )
 from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.ingest.index_mode import (
+    RequestedIngestIndexMode,
+    inspect_existing_lancedb_mode,
+    resolve_ingest_index_mode,
+    validate_requested_index_mode,
+)
 
 IngestRunModeValue = Literal["inprocess", "batch"]
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
 IngestProfileValue = Literal["auto", "fast-text"]
-IngestIndexModeValue = Literal["dense", "hybrid", "sparse"]
+IngestIndexModeValue = RequestedIngestIndexMode
 AudioSplitTypeValue = Literal["size", "time", "frame"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
 OcrLangValue = OCRLang
@@ -52,7 +58,6 @@ OcrVersionValue = OCRVersion
 TableOutputFormatValue = Literal["pseudo_markdown", "markdown"]
 _SUPPORTED_RUN_MODES: tuple[IngestRunModeValue, ...] = ("inprocess", "batch")
 _SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto", "fast-text")
-_SUPPORTED_INDEX_MODES: tuple[IngestIndexModeValue, ...] = ("dense", "hybrid", "sparse")
 _SUPPORTED_AUDIO_SPLIT_TYPES: tuple[AudioSplitTypeValue, ...] = ("size", "time", "frame")
 _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "auto",
@@ -205,7 +210,7 @@ class IngestStorageOptions:
     lancedb_uri: str = "lancedb"
     table_name: str = "nemo-retriever"
     overwrite: bool = True
-    index_mode: IngestIndexModeValue = "dense"
+    index_mode: IngestIndexModeValue = "auto"
 
 
 @dataclass(frozen=True)
@@ -241,10 +246,7 @@ def validate_ingest_profile(profile: str) -> IngestProfileValue:
 
 
 def validate_ingest_index_mode(index_mode: str) -> IngestIndexModeValue:
-    normalized = index_mode.strip().lower()
-    if normalized not in _SUPPORTED_INDEX_MODES:
-        raise ValueError(f"index_mode must be one of {', '.join(_SUPPORTED_INDEX_MODES)}, got {index_mode!r}.")
-    return cast(IngestIndexModeValue, normalized)
+    return validate_requested_index_mode(index_mode)
 
 
 def _validate_audio_split_type(split_type: str) -> AudioSplitTypeValue:
@@ -596,7 +598,15 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     validated_run_mode = _validate_run_mode(runtime.run_mode)
     validated_profile = validate_ingest_profile(source.profile)
     validated_input_type = validate_ingest_input_type(source.input_type)
-    validated_index_mode = validate_ingest_index_mode(storage.index_mode)
+    requested_index_mode = validate_ingest_index_mode(storage.index_mode)
+    existing_index_mode = (
+        None if storage.overwrite else inspect_existing_lancedb_mode(storage.lancedb_uri, storage.table_name)
+    )
+    resolved_index_mode = resolve_ingest_index_mode(
+        requested_index_mode,
+        overwrite=storage.overwrite,
+        existing_mode=existing_index_mode,
+    )
     validated_audio_split_type = _validate_audio_split_type(media.audio_split_type)
     document_list = expand_ingest_documents(source.documents, input_type=validated_input_type)
     branches = plan_extraction_branches(build_input_manifest(document_list))
@@ -635,7 +645,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     if extract_tuning is not None:
         extract_kwargs["batch_tuning"] = extract_tuning
 
-    embedding_model_name = None if validated_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
+    embedding_model_name = None if resolved_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
     embed_runtime_model_name = (
         embedding_model_name
         if embed.embed_model_name is not None or embed.embed_model_provider_prefix is not None
@@ -657,16 +667,16 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         embed_gpus_per_actor=embed.batch.embed_gpus_per_actor,
     )
     extract_params = ExtractParams(**extract_kwargs)
-    embed_params = None if validated_index_mode == "sparse" else EmbedParams(**embed_kwargs) if embed_kwargs else None
+    embed_params = None if resolved_index_mode == "sparse" else EmbedParams(**embed_kwargs) if embed_kwargs else None
     vdb_upload_kwargs = {
         "uri": storage.lancedb_uri,
         "table_name": storage.table_name,
         "overwrite": bool(storage.overwrite),
     }
     # Keep dense ingest kwargs unchanged unless the index mode needs additional LanceDB behavior.
-    if validated_index_mode == "sparse":
+    if resolved_index_mode == "sparse":
         vdb_upload_kwargs["sparse"] = True
-    elif validated_index_mode == "hybrid":
+    elif resolved_index_mode == "hybrid":
         vdb_upload_kwargs["hybrid"] = True
     if embedding_model_name is not None:
         vdb_upload_kwargs["embedding_model_name"] = embedding_model_name
@@ -743,5 +753,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         vdb_params=vdb_params,
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
-        sparse=validated_index_mode == "sparse",
+        sparse=resolved_index_mode == "sparse",
     )

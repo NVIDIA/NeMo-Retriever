@@ -16,6 +16,7 @@ from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
 )
+from nemo_retriever.common.vdb.hybrid_fusion import DEFAULT_HYBRID_FUSION_POLICY
 from nemo_retriever.common.vdb.lancedb_capabilities import (
     LanceRetrievalMode,
     LanceTableCapabilities,
@@ -458,6 +459,7 @@ class Retriever:
                 ]
             if mode == "hybrid":
                 vdb_call_kwargs["hybrid"] = True
+                vdb_call_kwargs.setdefault("hybrid_fusion", DEFAULT_HYBRID_FUSION_POLICY)
             elif mode == "dense" and has_mode_override:
                 vdb_call_kwargs["hybrid"] = False
             if caps.vector_column and caps.vector_column != "vector":

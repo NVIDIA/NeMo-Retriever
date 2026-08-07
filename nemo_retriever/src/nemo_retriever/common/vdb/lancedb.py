@@ -9,7 +9,8 @@ import threading
 import time
 
 from collections.abc import Iterable, Sequence
-from datetime import timedelta
+from contextlib import nullcontext
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Final, FrozenSet
 
@@ -32,6 +33,10 @@ from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteResult,
     VDB,
 )
+from nemo_retriever.common.vdb.hybrid_fusion import (
+    HybridFusionPolicy,
+    WeightedRRFReranker,
+)
 from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table_object
 from nemo_retriever.common.vdb.lancedb_schema import (
     build_lancedb_row,
@@ -48,6 +53,8 @@ _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null"
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 _EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
+_SERVICE_OPTIMIZE_WRITE_THRESHOLD: Final[int] = 20
+_SERVICE_OPTIMIZE_ROW_THRESHOLD: Final[int] = 100_000
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -536,6 +543,7 @@ class LanceDB(VDB):
     ):
         create_index = kwargs.pop("create_index", None)
         service_table_schema = bool(kwargs.pop("_service_table_schema", False))
+        service_index_mode = kwargs.pop("_service_index_mode", None)
         if build_index is None:
             build_index = True if create_index is None else bool(create_index)
         elif create_index is not None and bool(create_index) != bool(build_index):
@@ -563,10 +571,82 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         self.expiration_cleanup_enabled = bool(expiration_cleanup_enabled)
         self._service_table_schema = service_table_schema
+        self._service_index_mode = str(service_index_mode) if service_index_mode is not None else None
+        self._service_write_lock = threading.Lock()
+        self._writes_since_optimize = 0
+        self._rows_since_optimize = 0
+        self._last_optimization: dict[str, Any] = {
+            "status": "never",
+            "completed_at": None,
+            "error": None,
+        }
         self._collection_store: Any | None = None
         self._collection_store_init_failed = False
         self._collection_store_lock = threading.Lock()
         super().__init__(**kwargs)
+        if self._service_index_mode is not None and self.hybrid:
+            db = lancedb.connect(uri=self.uri)
+            if self.table_name in db.list_tables().tables:
+                self._ensure_fts_index(db.open_table(self.table_name))
+
+    @staticmethod
+    def _is_fts_index(index: Any) -> bool:
+        index_type = str(getattr(index, "index_type", "") or "").lower()
+        index_name = str(getattr(index, "name", "") or "").lower()
+        return index_type == "fts" or "text" in index_name or "fts" in index_name
+
+    def _ensure_fts_index(self, table: Any) -> None:
+        if inspect_lancedb_table_object(table).has_fts:
+            return
+        started = time.perf_counter()
+        table.create_fts_index("text", language=self.fts_language, replace=True)
+        names = [index.name for index in table.list_indices() if self._is_fts_index(index)]
+        if names:
+            table.wait_for_index(names, timeout=timedelta(seconds=600))
+        _record_timing("lancedb.fts_index_ready", time.perf_counter() - started)
+
+    def _fts_unindexed_rows(self, table: Any) -> int | None:
+        values: list[int] = []
+        for index in table.list_indices():
+            if not self._is_fts_index(index):
+                continue
+            try:
+                stats = table.index_stats(index.name)
+            except Exception:
+                logger.debug("Unable to read LanceDB index stats for %s", index.name, exc_info=True)
+                continue
+            value = (
+                stats.get("num_unindexed_rows")
+                if isinstance(stats, dict)
+                else getattr(stats, "num_unindexed_rows", None)
+            )
+            if value is not None:
+                values.append(int(value))
+        return sum(values) if values else None
+
+    def _optimize_service_table_if_due(self, table: Any) -> None:
+        if (
+            self._writes_since_optimize < _SERVICE_OPTIMIZE_WRITE_THRESHOLD
+            and self._rows_since_optimize < _SERVICE_OPTIMIZE_ROW_THRESHOLD
+        ):
+            return
+        try:
+            table.optimize()
+        except Exception as exc:
+            self._last_optimization = {
+                "status": "error",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(exc),
+            }
+            logger.exception("LanceDB optimization failed for table %r", self.table_name)
+            return
+        self._writes_since_optimize = 0
+        self._rows_since_optimize = 0
+        self._last_optimization = {
+            "status": "ok",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "error": None,
+        }
 
     def _get_collection_store(self) -> Any:
         """Lazily initialize collection catalogs only when a collection API is used."""
@@ -752,16 +832,21 @@ class LanceDB(VDB):
         total_rows = 0
         effective_mode: str | None = None
         retrieval_strategies: list[str] = []
+        table: Any | None = None
+        capabilities = None
         if table_exists:
             try:
-                total_rows = int(db.open_table(self.table_name).count_rows())
+                table = db.open_table(self.table_name)
+                total_rows = int(table.count_rows())
             except Exception:
                 logger.warning(
                     "Failed to count rows in the default LanceDB table",
                     exc_info=True,
                 )
             try:
-                capabilities = inspect_lancedb_table_object(db.open_table(self.table_name))
+                if table is None:
+                    table = db.open_table(self.table_name)
+                capabilities = inspect_lancedb_table_object(table)
                 mode = capabilities.retrieval_mode
                 if mode in {"dense", "hybrid"}:
                     effective_mode = str(mode)
@@ -779,8 +864,22 @@ class LanceDB(VDB):
             raise RuntimeError("Collection catalog initialization failed")
         store = self._collection_store
         collection_health = store.health() if store is not None else LanceDBCollectionStore.empty_health()
+        service_health: dict[str, Any] = {}
+        if self._service_index_mode is not None:
+            service_health = {
+                "configured_index_mode": self._service_index_mode,
+                "effective_index_mode": effective_mode,
+                "fts_present": bool(capabilities and capabilities.has_fts),
+                "fts_unindexed_rows": (
+                    self._fts_unindexed_rows(table)
+                    if table is not None and capabilities is not None and capabilities.has_fts
+                    else None
+                ),
+                "last_optimization": dict(self._last_optimization),
+            }
         return {
             **collection_health,
+            **service_health,
             "total_rows": total_rows,
             "table_exists": table_exists,
             "effective_retrieval_mode": effective_mode,
@@ -1001,24 +1100,43 @@ class LanceDB(VDB):
 
     def run(self, records):
         """Orchestrate index creation and data ingestion."""
-        table = self.create_index(records=records, table_name=self.table_name)
-        if self.build_index:
-            self.write_to_index(
-                records,
-                table=table,
-                index_type=self.index_type,
-                metric=self.metric,
-                num_partitions=self.num_partitions,
-                num_sub_vectors=self.num_sub_vectors,
-                hybrid=self.hybrid,
-                sparse=self.sparse,
-                fts_language=self.fts_language,
-            )
-        else:
-            logger.info(
-                "Skipping LanceDB index creation for table %r because build_index=False.",
-                self.table_name,
-            )
+        service_write = self._service_index_mode is not None
+        lock = self._service_write_lock if service_write else nullcontext()
+        with lock:
+            table_existed = False
+            rows_before = 0
+            if service_write:
+                db = lancedb.connect(uri=self.uri)
+                table_existed = self.table_name in db.list_tables().tables
+                if table_existed:
+                    rows_before = int(db.open_table(self.table_name).count_rows())
+
+            table = self.create_index(records=records, table_name=self.table_name)
+            if self.build_index:
+                self.write_to_index(
+                    records,
+                    table=table,
+                    index_type=self.index_type,
+                    metric=self.metric,
+                    num_partitions=self.num_partitions,
+                    num_sub_vectors=self.num_sub_vectors,
+                    hybrid=self.hybrid,
+                    sparse=self.sparse,
+                    fts_language=self.fts_language,
+                )
+            elif service_write:
+                if self.hybrid:
+                    self._ensure_fts_index(table)
+                if table_existed:
+                    self._writes_since_optimize += 1
+                    self._rows_since_optimize += max(0, int(table.count_rows()) - rows_before)
+                    if self.hybrid:
+                        self._optimize_service_table_if_due(table)
+            else:
+                logger.info(
+                    "Skipping LanceDB index creation for table %r because build_index=False.",
+                    self.table_name,
+                )
         return records
 
     def put(
@@ -1181,8 +1299,13 @@ class LanceDB(VDB):
         query_texts:
             Raw query strings aligned with ``vectors``. Required for
             ``hybrid=True`` and ignored for dense-only retrieval.
+        hybrid_fusion:
+            Optional :class:`HybridFusionPolicy`. When present, each hybrid leg
+            retrieves at least ``candidate_depth`` rows, applies weighted RRF,
+            and returns only the requested ``top_k`` rows.
         """
         hybrid = kwargs.pop("hybrid", self.hybrid)
+        hybrid_fusion = kwargs.pop("hybrid_fusion", None)
         query_texts = kwargs.pop("query_texts", None)
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
@@ -1217,6 +1340,13 @@ class LanceDB(VDB):
                     )
             search_kwargs["query_type"] = "hybrid"
             search_kwargs.setdefault("fts_columns", "text")
+        elif hybrid_fusion is not None:
+            raise ValueError("hybrid_fusion requires hybrid=True")
+
+        if hybrid_fusion is not None and not isinstance(hybrid_fusion, HybridFusionPolicy):
+            raise TypeError(
+                "hybrid_fusion must be a HybridFusionPolicy or None; " f"got {type(hybrid_fusion).__name__}"
+            )
 
         where_clause = kwargs.pop("where", None)
         _filter_fallback = kwargs.pop("_filter", None)
@@ -1251,10 +1381,15 @@ class LanceDB(VDB):
                 query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
             if where_clause is not None:
                 query = query.where(where_clause)
-            query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
+            query_limit = max(top_k, hybrid_fusion.candidate_depth) if hybrid_fusion is not None else top_k
+            query = query.limit(query_limit).refine_factor(refine_factor).nprobes(n_probe)
+            if hybrid_fusion is not None:
+                query = query.rerank(WeightedRRFReranker(hybrid_fusion))
             if result_fields is not None:
                 query = query.select(result_fields)
             results = query.to_list()
+            if hybrid_fusion is not None:
+                results = results[:top_k]
             search_results.append(results)
 
         return search_results

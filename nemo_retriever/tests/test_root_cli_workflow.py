@@ -161,6 +161,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": True,
+        "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
@@ -202,6 +203,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "uri": "/tmp/default-lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
 
@@ -398,6 +400,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "uri": "/tmp/lancedb",
         "table_name": "docs",
         "overwrite": True,
+        "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
@@ -417,6 +420,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
 
@@ -1724,6 +1728,66 @@ def test_root_ingest_rejects_redundant_no_dedup_flag(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert "No such option" in result.output
+
+
+def test_root_ingest_default_builds_vector_and_fts_table(monkeypatch, tmp_path) -> None:
+    lancedb = pytest.importorskip("lancedb")
+    from nemo_retriever.common.vdb.lancedb import LanceDB
+
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+    db_path = tmp_path / "db"
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [1.0, 0.0],
+                    "content": "alpha hybrid manual",
+                    "content_metadata": {"id": "alpha", "page_number": 1},
+                    "source_metadata": {"source_id": str(doc)},
+                },
+            },
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.0, 1.0],
+                    "content": "beta hybrid manual",
+                    "content_metadata": {"id": "beta", "page_number": 2},
+                    "source_metadata": {"source_id": str(doc)},
+                },
+            },
+        ]
+    ]
+
+    def write_with_real_lancedb(params) -> Any:
+        LanceDB(
+            **params.vdb_kwargs,
+            vector_dim=2,
+            num_partitions=1,
+            num_sub_vectors=1,
+        ).run(records)
+        return fake_ingestor
+
+    fake_ingestor.vdb_upload.side_effect = write_with_real_lancedb
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+    monkeypatch.setattr(
+        ingest_execution,
+        "_count_lancedb_rows",
+        lambda uri, table_name: lancedb.connect(uri).open_table(table_name).count_rows(),
+    )
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(doc), "--lancedb-uri", str(db_path), "--table-name", "hybrid_docs"],
+    )
+
+    assert result.exit_code == 0, result.output
+    table = lancedb.connect(str(db_path)).open_table("hybrid_docs")
+    assert "vector" in table.schema.names
+    index_names = {index.name.lower() for index in table.list_indices()}
+    assert any("text" in name or "fts" in name for name in index_names)
 
 
 def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monkeypatch, tmp_path) -> None:

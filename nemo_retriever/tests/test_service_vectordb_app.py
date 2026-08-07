@@ -31,6 +31,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
     VDBResourceConflict,
     VDBResourceNotFound,
 )
+from nemo_retriever.common.vdb.hybrid_fusion import DEFAULT_HYBRID_FUSION_POLICY
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.records import RetrievalContractError
 from nemo_retriever.service.vectordb_app import (
@@ -53,6 +54,7 @@ class FakeVDB(VDB):
         self.legacy_rows = 1 if table_exists else 0
         self.last_write_context: CollectionWriteContext | None = None
         self.last_retrieval: dict[str, Any] | None = None
+        self.last_legacy_retrieval: dict[str, Any] | None = None
         self.health_calls = 0
 
     def create_index(self, **kwargs):
@@ -63,6 +65,7 @@ class FakeVDB(VDB):
         self.table_exists = self.legacy_rows > 0
 
     def retrieval(self, queries: list, **kwargs):
+        self.last_legacy_retrieval = dict(kwargs)
         return [
             [
                 {
@@ -405,32 +408,38 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
     assert backend.legacy_retrieval_calls == 0
 
 
-def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
-    tmp_path,
-    monkeypatch,
-) -> None:
+def test_production_vdb_defaults_to_hybrid_without_vector_index_build(tmp_path) -> None:
     backend = vectordb_module._production_vdb(
         lancedb_uri=str(tmp_path),
         table_name="legacy",
         expiration_cleanup_enabled=True,
+        index_mode="auto",
     )
     assert isinstance(backend, LanceDB)
     assert backend.build_index is False
+    assert backend.hybrid is True
 
-    index_writes = []
-    monkeypatch.setattr(
-        backend,
-        "create_index",
-        lambda records, table_name: object(),
-    )
-    monkeypatch.setattr(
-        backend,
-        "write_to_index",
-        lambda *args, **kwargs: index_writes.append((args, kwargs)),
+
+def test_legacy_hybrid_query_uses_default_weighted_fusion() -> None:
+    backend = FakeVDB(table_exists=True)
+    hybrid_health = backend.health()
+    hybrid_health.update(
+        effective_retrieval_mode="hybrid",
+        retrieval_strategies=["hybrid"],
     )
 
-    assert backend.run([]) == []
-    assert index_writes == []
+    with patch.object(backend, "health", return_value=hybrid_health), patch.object(
+        VectorDBState,
+        "embed_queries",
+        return_value=[[1.0, 0.0]],
+    ):
+        with TestClient(_app(backend)) as client:
+            response = client.post("/v1/query", json={"query": "legacy"})
+
+    assert response.status_code == 200
+    assert backend.last_legacy_retrieval is not None
+    assert backend.last_legacy_retrieval["hybrid"] is True
+    assert backend.last_legacy_retrieval["hybrid_fusion"] == DEFAULT_HYBRID_FUSION_POLICY
 
 
 def test_legacy_write_and_query_keep_existing_vdb_path() -> None:
