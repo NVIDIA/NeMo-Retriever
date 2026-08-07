@@ -181,12 +181,12 @@
       "severity": "low"
     },
     {
-      "id": "user-visible-changes-need-docs",
-      "rule": "Follow AGENTS.md and docs/AGENTS.md. If this PR changes a user-visible surface — public Python API, CLI flags or help text, Helm values/defaults, environment variables, error contracts/messages, supported file types, or README/example behavior customers copy — require matching updates under docs/docs/extraction/ and/or nemo_retriever/README.md (or Helm README), OR an explicit PR note that docs are N/A with rationale. Flag when code/examples change but published docs or README samples still describe the old behavior. Suggest the likely doc pages when possible (overview, support matrix, API guide, FAQ, troubleshoot, workflows).",
+      "id": "documentation-stays-current",
+      "rule": "When this PR changes user-facing code, configuration, examples, or documentation, verify that the affected documentation remains accurate. Compare documented APIs, CLI commands and flags, configuration keys and defaults, supported formats, error behavior, and code examples against the PR's checked-in source and tests. Flag concrete stale, incorrect, contradictory, or missing documentation, and identify the affected page. Do not request documentation for internal-only changes or speculate without a specific mismatch.",
       "scope": [
         "nemo_retriever/src/**",
-        "nemo_retriever/README.md",
         "nemo_retriever/helm/**",
+        "nemo_retriever/README.md",
         "nemo_retriever/docs/**",
         "docs/docs/extraction/**",
         "examples/**",

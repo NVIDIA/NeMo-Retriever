@@ -25,18 +25,6 @@
       "description": "High-level architecture overview of the ingestion pipeline, scaling modes, and system design."
     },
     {
-      "path": "AGENTS.md",
-      "description": "Root agent guidance: detect user-visible code changes (API, CLI, config, defaults, errors, workflows) and require matching documentation updates per docs/AGENTS.md."
-    },
-    {
-      "path": "docs/AGENTS.md",
-      "description": "Documentation agent writing guide and NRL doc patterns for published MkDocs extraction docs."
-    },
-    {
-      "path": "docs/DORI_SETUP.md",
-      "description": "Optional DORI install/config only when explicitly requested; not required for normal docs review."
-    },
-    {
       "path": "api/pyproject.toml",
       "description": "Shared API package dependencies. This is the lowest-level package; its dependencies constrain the entire monorepo.",
       "scope": ["api/**"]
