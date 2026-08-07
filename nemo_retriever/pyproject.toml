@@ -24,6 +24,12 @@ override-dependencies = [
   "requests>=2.33.0",
   "idna>=3.15",
   "pydantic-settings>=2.14.2",
+  "vllm>=0.25.1",
+  "transformers>=5.14.1",
+  "ray>=2.56.1",
+  "nltk>=3.10.1",
+  "litellm>=1.95.0rc3",
+  "pillow>=12.3.0",
   # Suppress opencv-python from transitive deps. nemotron wheels pull in both
   # opencv-python and opencv-python-headless, which stomp on the same cv2/ dir.
   # The 'never' marker makes uv treat this as unsatisfiable on all platforms.
@@ -49,7 +55,7 @@ classifiers = [
 dependencies = [
   # Core orchestration and framework
   "backoff",
-  "ray[data,serve]>=2.49.0",
+  "ray[data,serve]>=2.56.1",
   "ffmpeg-python",
   "pandas>=2.0,<3",
   "sqlglot>=30.0.0",
@@ -61,7 +67,7 @@ dependencies = [
   "fastapi>=0.114.0",
   "uvicorn[standard]>=0.30.0",
   "python-multipart>=0.0.9",
-  "prometheus-fastapi-instrumentator>=7.0,<8",
+  "prometheus-fastapi-instrumentator>=8.0,<9",
   "opentelemetry-api>=1.41.1",
   "opentelemetry-sdk>=1.41.1",
   "opentelemetry-exporter-otlp-proto-grpc>=1.41.1",
@@ -82,8 +88,8 @@ dependencies = [
   # Core ingest packages
   # Document parsing and NIM client libs
   "pypdfium2==4.30.0",
-  "pillow==12.2.0",
-  "nltk==3.9.4",
+  "pillow>=12.3.0",
+  "nltk>=3.10.1",
   "markitdown",
   "langchain-nvidia-ai-endpoints>=1.4.0",
   # Default VDB solution
@@ -112,7 +118,7 @@ service = [
   "tokenizers>=0.21.1",
   "huggingface-hub>=0.34.0",
   # Remote answer generation client used by serviceConfig.llm and /v1/answer
-  "litellm>=1.86.0,<2",
+  "litellm>=1.95.0rc3,<2",
   # Lightweight utilities used by pipeline operators
   "easydict",
   "addict",
@@ -128,7 +134,7 @@ service = [
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
 # Stable Nemotron extraction package selection for published local installs.
 local = [
-  "transformers>=4.57.6,<5",
+  "transformers>=5.14.1,<6",
   "tokenizers>=0.21.1",
   "accelerate==1.12.0",
   "opencv-python-headless>=4.8.0",
@@ -154,10 +160,10 @@ local = [
   # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
-  "vllm==0.20.0; sys_platform == 'linux'",
-  # flashinfer and cubin versions must match
-  "flashinfer-cubin==0.6.8.post1; sys_platform == 'linux'",
-  "flashinfer-python==0.6.8.post1; sys_platform == 'linux'",
+  "vllm>=0.25.1; sys_platform == 'linux'",
+  # vLLM resolves a compatible FlashInfer package pair.
+  "flashinfer-cubin>=0.6.13,<=0.6.14; sys_platform == 'linux'",
+  "flashinfer-python>=0.6.13,<=0.6.14; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
@@ -203,7 +209,7 @@ benchmarks = [
 # or construct an ``LLMJudge`` / ``LiteLLMClient`` directly.  Powers both the
 # live-RAG SDK and the batch evaluation framework.
 llm = [
-  "litellm>=1.86.0,<2",
+  "litellm>=1.95.0rc3,<2",
 ]
 
 dev = [
