@@ -160,7 +160,7 @@ local = [
   # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
-  "vllm>=0.25.1; sys_platform == 'linux'",
+  "vllm==0.25.1; sys_platform == 'linux'",
   # Keep the CUDA inference stack reproducible; vLLM 0.25.1 requires FlashInfer 0.6.13.
   "flashinfer-cubin==0.6.13; sys_platform == 'linux'",
   "flashinfer-python==0.6.13; sys_platform == 'linux'",
