@@ -520,7 +520,7 @@ class ExtractParams(_ParamsModel):
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
     # OCR. Safe to disable for text-only ingests.
     use_page_elements: bool = True
-    use_table_structure: bool = False
+    use_table_structure: bool = True
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     dpi: int = 200
     image_format: str = "jpeg"

@@ -838,7 +838,10 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
     from nemo_retriever.common.params import ExtractParams
 
     local = local or _default_local_models_config()
-    kwargs: dict[str, Any] = {}
+    # ``ExtractParams`` defaults Table Structure on for the in-process and
+    # batch library APIs. Service mode keeps its existing endpoint/local-model
+    # policy: enable it only when the service owns a NIM URL or local models.
+    kwargs: dict[str, Any] = {"use_table_structure": False}
     if nim.page_elements_invoke_url:
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
     if nim.ocr_invoke_url:

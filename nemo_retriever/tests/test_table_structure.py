@@ -526,8 +526,8 @@ class TestExtractParams:
         from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams()
-        assert params.use_table_structure is False
-        assert params.table_output_format == "pseudo_markdown"
+        assert params.use_table_structure is True
+        assert params.table_output_format == "markdown"
         assert params.table_structure_invoke_url is None
 
     def test_auto_enable_when_invoke_url_provided(self) -> None:
@@ -537,11 +537,12 @@ class TestExtractParams:
         assert params.use_table_structure is True
         assert params.table_output_format == "markdown"
 
-    def test_no_auto_enable_when_invoke_url_absent(self) -> None:
+    def test_explicit_disable_without_invoke_url(self) -> None:
         from nemo_retriever.common.params.models import ExtractParams
 
-        params = ExtractParams(table_structure_invoke_url=None)
+        params = ExtractParams(use_table_structure=False)
         assert params.use_table_structure is False
+        assert params.table_output_format == "pseudo_markdown"
 
     def test_auto_markdown_when_use_table_structure(self) -> None:
         from nemo_retriever.common.params.models import ExtractParams

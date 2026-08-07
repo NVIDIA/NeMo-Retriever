@@ -318,6 +318,15 @@ def test_graph_ingestor_action_methods_materialize_default_params() -> None:
     assert isinstance(ingestor._embed_params, EmbedParams)
 
 
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+def test_library_extract_defaults_enable_table_structure(run_mode: str) -> None:
+    ingestor = GraphIngestor(run_mode=run_mode).extract()
+
+    assert ingestor._extract_params is not None
+    assert ingestor._extract_params.use_table_structure is True
+    assert ingestor._extract_params.table_output_format == "markdown"
+
+
 def test_extract_unified_defaults() -> None:
     """`.extract()` defaults: infer extraction_mode at graph-build time and no chunking unless opted in."""
     ingestor = GraphIngestor(run_mode="inprocess").extract()

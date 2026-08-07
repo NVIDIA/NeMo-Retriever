@@ -78,6 +78,13 @@ def test_build_extract_params_local_enables_table_structure() -> None:
     assert ep.page_elements_invoke_url is None
 
 
+def test_build_extract_params_service_default_leaves_table_structure_disabled() -> None:
+    ep = build_extract_params(NimEndpointsConfig(), LocalModelsConfig())
+
+    assert ep.use_table_structure is False
+    assert ep.table_output_format == "pseudo_markdown"
+
+
 def test_build_extract_params_nim_url_wins_over_local_flags() -> None:
     nim = NimEndpointsConfig(table_structure_invoke_url="http://table-nim/v1/infer")
     local = LocalModelsConfig(enabled=True)
