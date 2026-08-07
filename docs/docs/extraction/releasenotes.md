@@ -20,6 +20,7 @@ Highlights for the 26.08 release include:
 - Default VL embed and VL rerank NIM images bump to `2.3.0`
 - Retired compatibility and pipeline CLI paths are fully removed; use `retriever ingest` and `retriever query` only
 - Hosted Nemotron Parse and self-hosted Nemotron Parse use distinct HTTP contracts— select the matching client path for your endpoint
+- macOS Intel (x86_64) is no longer supported for package installs; use Apple Silicon (arm64) macOS, Windows x64, or Linux. Refer to [Packaging and platform](#packaging-and-platform)
 
 ### Models, OCR, and captioning
 
@@ -65,6 +66,7 @@ Highlights for the 26.08 release include:
 
 - Public nightlies published to PyPI while keeping local install extras stable
 - Torch 2.11.0 documented for local GPU (`[local]`) installs
+- Ray raised to `>=2.56.1` for CVE remediation. Ray no longer publishes wheels for macOS Intel (x86_64), so `pip`/`uv` installs fail on Intel Macs (including in-process library mode). Apple Silicon (arm64) macOS remains supported for slim remote/NIM-only installs, alongside Windows x64.
 
 ### Documentation
 
