@@ -2,13 +2,15 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
-## 26.05 Release Notes (26.5.0)
+## 26.08 Release Notes (26.8.0)
 
-NVIDIA® NeMo Retriever Library version 26.05 builds on the 26.03 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
+> **26.08 RC readiness:** GitHub Pages builds from `main` and is the QA review surface for the 26.08 release candidate. docs.nvidia.com remains on the published 26.05 / 26.5.0 snapshot until a separate publish workflow run after GA.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md).
+NVIDIA® NeMo Retriever Library version 26.08 builds on the 26.05 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
 
-Highlights for the 26.05 release include:
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+
+Highlights for the 26.08 release include:
 
 ### Upgrade notes
 
@@ -73,11 +75,11 @@ Highlights for the 26.05 release include:
 ### Documentation
 
 - Documentation aligned to a Helm-first supported path for NIM and service deployment
-- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
+- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 
 ## Release Notes for Previous Versions
 
-- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/)
+- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/) (GA on docs.nvidia.com at time of 26.08 RC)
 - [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
 - [26.1.2](https://archive.docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
 - [26.1.1](https://archive.docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)
@@ -93,4 +95,4 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
-- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)

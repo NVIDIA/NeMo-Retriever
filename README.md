@@ -4,9 +4,9 @@ All rights reserved.
 SPDX-License-Identifier: Apache-2.0
 -->
 
-**Important: The default branch is main, which tracks active development and may be ahead of the latest supported release.**
+**Important: The default branch is `main`, which tracks the active 26.08 release-candidate line and may be ahead of the latest GA release.**
 
-For the latest supported release, use the [26.05 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) (GA PyPI and Helm chart version `26.5.0`). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
+For the latest GA release, use the [26.05 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) (PyPI and Helm chart version `26.5.0`). For 26.08 RC readiness review, use `main` and [GitHub Pages documentation](https://nvidia.github.io/NeMo-Retriever/). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
 
 See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
