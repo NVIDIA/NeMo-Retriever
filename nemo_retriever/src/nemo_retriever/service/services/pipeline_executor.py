@@ -297,6 +297,7 @@ def _post_records_to_vectordb(
     import json
     import urllib.request
     import urllib.error
+    from nemo_retriever.service.auth import internal_auth_headers
 
     if not records or not any(records):
         if context.collection_name:
@@ -322,7 +323,7 @@ def _post_records_to_vectordb(
         data=body,
         headers={
             "Content-Type": "application/json",
-            **({"X-NRL-Internal-Token": internal_api_token} if internal_api_token else {}),
+            **internal_auth_headers(internal_api_token),
         },
         method="POST",
     )

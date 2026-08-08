@@ -693,11 +693,26 @@ serviceConfig:
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
+    # Optional dedicated gateway/worker-to-VectorDB authentication. When
+    # enabled, all Retriever and VectorDB pods read the same existing Secret
+    # key and VectorDB rejects missing or invalid internal credentials.
+    internalAuth:
+      enabled: false
+      existingSecret:
+        name: ""
+        key: token
 
-  # Optional bearer-token authentication. When apiToken is set, every
-  # request must carry "Authorization: Bearer <token>".
+  # Public bearer-token authentication. Production deployments should mount
+  # a Secret-backed scope-token JSON file. Inline apiToken is retained only as
+  # an explicitly enabled insecure development fallback.
   auth:
     apiToken: null
+    allowInsecureInlineApiToken: false
+    defaultScope: "default"
+    allowUnscopedDev: false
+    scopeTokenSecret:
+      name: ""
+      key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
       - "/v1/health"
