@@ -663,6 +663,7 @@ async def _prepare_job_work_item(
             operation=job.operation,
             content_sha256=content_sha256,
             storage_document_id=storage_document_id,
+            document_metadata=meta.metadata,
         ),
     )
     return item, route, classification

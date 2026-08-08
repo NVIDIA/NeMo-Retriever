@@ -841,6 +841,12 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
             storage_document_id="document-1",
             content_sha256="a" * 64,
             document_version="version-2",
+            document_metadata={
+                "category": "Finance_Investment",
+                "source_path": "Finance_Investment/report.pdf",
+                "source_filename": "report.pdf",
+                "page_number": 999,
+            },
         ),
         job_id="job-1",
     )
@@ -864,6 +870,9 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
         "fidelity": "ocr",
         "stored_image_uri": "s3://artifacts/table.png",
         "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+        "category": "Finance_Investment",
+        "source_path": "Finance_Investment/report.pdf",
+        "source_filename": "report.pdf",
     }
     assert payload["scope"] == "tenant-a"
     assert payload["collection_name"] == "papers"

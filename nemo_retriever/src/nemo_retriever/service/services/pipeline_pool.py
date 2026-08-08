@@ -105,6 +105,7 @@ class DocumentWriteContext(RichModel):
     content_sha256: str | None = None
     document_version: str | None = None
     storage_document_id: str | None = None
+    document_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def resolved_version(self) -> str:
