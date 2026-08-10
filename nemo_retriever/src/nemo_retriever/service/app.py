@@ -158,6 +158,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.metrics = None
 
     tracker = init_job_tracker()
+    if app.state.metrics is not None:
+        tracker.add_terminal_observer(app.state.metrics.record_terminal_transition)
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
     app.state.sidecar_store = init_sidecar_store()

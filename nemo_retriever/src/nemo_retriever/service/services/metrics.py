@@ -33,9 +33,14 @@ import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
 from pydantic import ConfigDict, Field
 
 from nemo_retriever.common.schemas.base import RichModel
+
+if TYPE_CHECKING:
+    from nemo_retriever.service.services.job_tracker import DocumentRecord, JobAggregate
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +59,7 @@ class PageMetric(RichModel):
     page_id: str
     document_id: str
     endpoint: str
+    job_id: str | None = None
     page_number: int | None = None
     file_size_bytes: int = 0
     file_category: str = ""
@@ -234,6 +240,7 @@ class IngestMetrics:
         *,
         page_id: str,
         document_id: str,
+        job_id: str | None = None,
         endpoint: str = "",
         page_number: int | None = None,
         file_size_bytes: int = 0,
@@ -248,6 +255,7 @@ class IngestMetrics:
                 PageMetric(
                     page_id=page_id,
                     document_id=document_id,
+                    job_id=job_id,
                     endpoint=endpoint,
                     page_number=page_number,
                     file_size_bytes=file_size_bytes,
@@ -263,10 +271,12 @@ class IngestMetrics:
                         "pages_submitted": doc.pages_submitted + 1,
                     }
                 )
-            job_id = self._documents[document_id].job_id if document_id in self._documents else None
-            if job_id and job_id in self._jobs:
-                job = self._jobs[job_id]
-                self._jobs[job_id] = job.model_copy(
+            resolved_job_id = job_id or (
+                self._documents[document_id].job_id if document_id in self._documents else None
+            )
+            if resolved_job_id and resolved_job_id in self._jobs:
+                job = self._jobs[resolved_job_id]
+                self._jobs[resolved_job_id] = job.model_copy(
                     update={
                         "pages_total": job.pages_total + 1,
                     }
@@ -297,6 +307,64 @@ class IngestMetrics:
                         }
                     )
                     break
+
+    def record_terminal_transition(self, document: DocumentRecord, job: JobAggregate | None) -> None:
+        """Mirror an authoritative tracker terminal transition into metrics."""
+        with self._lock:
+            if document.id in self._documents:
+                metric = self._documents[document.id]
+                self._documents[document.id] = metric.model_copy(
+                    update={
+                        "status": document.status.value,
+                        "completed_at": document.completed_at,
+                        "processing_duration_s": document.elapsed_s,
+                        "error": document.error,
+                    }
+                )
+
+            for index, page in enumerate(self._pages):
+                if page.page_id == document.id:
+                    self._pages[index] = page.model_copy(
+                        update={
+                            "status": document.status.value,
+                            "completed_at": document.completed_at,
+                            "processing_duration_s": document.elapsed_s,
+                            "error": document.error,
+                        }
+                    )
+                    break
+
+            if job is not None and job.job_id in self._jobs:
+                metric_job = self._jobs[job.job_id]
+                # Observer calls may arrive out of order across concurrent
+                # worker completions; terminal counts are monotonic.
+                updates: dict[str, object] = {
+                    "documents_completed": max(
+                        metric_job.documents_completed, job.counts.get("completed", 0)
+                    ),
+                    "documents_failed": max(metric_job.documents_failed, job.counts.get("failed", 0)),
+                }
+                if job.finalized_at is not None:
+                    updates.update(
+                        {
+                            "status": job.status.value,
+                            "completed_at": job.finalized_at,
+                            "wall_duration_s": job.elapsed_s,
+                        }
+                    )
+                self._jobs[job.job_id] = metric_job.model_copy(update=updates)
+
+                # Explicit /page work is associated by job_id. Whole-document
+                # PDFs deliberately contribute no page counts.
+                page_completed = sum(
+                    1 for page in self._pages if page.job_id == job.job_id and page.status == "completed"
+                )
+                page_failed = sum(
+                    1 for page in self._pages if page.job_id == job.job_id and page.status == "failed"
+                )
+                self._jobs[job.job_id] = self._jobs[job.job_id].model_copy(
+                    update={"pages_completed": page_completed, "pages_failed": page_failed}
+                )
 
     # ── single-record lookups ────────────────────────────────────────
 
