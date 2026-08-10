@@ -1215,7 +1215,7 @@ nimOperator:
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.2.2"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
