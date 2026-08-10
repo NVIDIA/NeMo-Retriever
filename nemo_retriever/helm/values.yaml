@@ -1036,7 +1036,7 @@ nimOperator:
     modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1094,7 +1094,7 @@ nimOperator:
     modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1153,7 +1153,7 @@ nimOperator:
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1215,7 +1215,7 @@ nimOperator:
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.3.0"
+      tag: "2.2.2"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
