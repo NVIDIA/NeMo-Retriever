@@ -315,17 +315,23 @@ class Retriever:
         self,
         index_model: str | None,
         runtime_embed_kwargs: Optional[dict[str, Any]],
+        index_revision: str | None = None,
     ) -> dict[str, Any]:
-        """Choose the query model: explicit override, index metadata, or default."""
+        """Choose the query model snapshot: explicit override, index metadata, or default."""
         resolved = dict(runtime_embed_kwargs or {})
-        model_name = (
-            self._embedding_model_from_kwargs(runtime_embed_kwargs)
-            or self._embedding_model_from_kwargs(self.embed_kwargs)
-            or index_model
-        )
+        runtime_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
+        configured_model = self._embedding_model_from_kwargs(self.embed_kwargs)
+        explicit_model = runtime_model or configured_model
+        model_name = explicit_model or index_model
         model_name = resolve_embed_model(model_name)
         resolved["model_name"] = model_name
         resolved["embed_model_name"] = model_name
+        if runtime_model and "embed_model_revision" not in resolved:
+            resolved_configured = resolve_embed_model(configured_model) if configured_model else None
+            if resolved_configured != model_name:
+                resolved["embed_model_revision"] = None
+        if explicit_model is None and index_revision:
+            resolved.setdefault("embed_model_revision", index_revision)
         return resolved
 
     def _execute_sparse_lancedb_queries(
@@ -426,12 +432,14 @@ class Retriever:
 
         vdb_call_kwargs = dict(vdb_kwargs or {})
         index_model: str | None = None
+        index_revision: str | None = None
         explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
             self.embed_kwargs
         )
         if self.graph is None and explicit_model is None:
             metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
             index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
+            index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
 
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
         for key in _QUERY_ROUTING_VDB_KWARGS:
@@ -463,7 +471,7 @@ class Retriever:
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
         if self.graph is None:
-            embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs)
+            embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs, index_revision)
 
         raw_hits = self._execute_queries_graph(
             query_texts,

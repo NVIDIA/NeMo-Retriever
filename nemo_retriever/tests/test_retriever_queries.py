@@ -98,6 +98,60 @@ class TestQueriesGraphExecution:
         assert params.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
         assert params.embed_model_provider_prefix == "nvidia"
 
+    def test_index_model_revision_is_forwarded_to_query_embedder(self) -> None:
+        retriever = _make_retriever(embed_kwargs={})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/fine-tuned-nemotron",
+            None,
+            "a" * 40,
+        )
+
+        assert resolved["embed_model_name"] == "acme/fine-tuned-nemotron"
+        assert resolved["embed_model_revision"] == "a" * 40
+
+    def test_explicit_model_override_does_not_reuse_index_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/override"})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/index-model",
+            None,
+            "a" * 40,
+        )
+
+        assert resolved["embed_model_name"] == "acme/override"
+        assert "embed_model_revision" not in resolved
+
+    def test_runtime_model_change_clears_configured_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/model-a", "embed_model_revision": "a" * 40})
+
+        resolved = retriever._resolve_embed_kwargs(None, {"embed_model_name": "acme/model-b"})
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_name == "acme/model-b"
+        assert params.embed_model_revision is None
+
+    def test_runtime_same_model_keeps_configured_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/model-a", "embed_model_revision": "a" * 40})
+
+        resolved = retriever._resolve_embed_kwargs(None, {"embed_model_name": "acme/model-a"})
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_revision == "a" * 40
+
+    def test_explicit_runtime_revision_overrides_index_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/index-model",
+            {"embed_model_revision": "b" * 40},
+            "a" * 40,
+        )
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_name == "acme/index-model"
+        assert params.embed_model_revision == "b" * 40
+
     def test_local_query_embedding_defaults_to_hf(self) -> None:
         p = _make_retriever()._merge_embed_params()
         assert p.local_ingest_embed_backend == "hf"

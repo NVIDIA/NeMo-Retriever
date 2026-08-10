@@ -162,6 +162,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "table_name": "nemo-retriever",
         "overwrite": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -203,6 +204,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "table_name": "nemo-retriever",
         "overwrite": False,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
     }
 
 
@@ -399,6 +401,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "table_name": "docs",
         "overwrite": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -418,6 +421,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "table_name": "nemo-retriever",
         "overwrite": False,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
     }
 
 
@@ -518,6 +522,10 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert embed_params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
     assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
     assert embed_params.embed_model_provider_prefix == "nvidia"
+    vdb_kwargs = fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs
+    assert vdb_kwargs["embedding_model_name"] == "nvidia/llama-nemotron-embed-1b-v2"
+    assert vdb_kwargs["vector_dim"] is None
+    assert "embedding_model_revision" not in vdb_kwargs
 
 
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
@@ -1702,6 +1710,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "overwrite": True,
         "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
     }
 
 

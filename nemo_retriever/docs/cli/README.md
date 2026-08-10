@@ -315,29 +315,65 @@ retriever ingest ./data/pdf_corpus \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-### Local embedding checkpoint
+### Dense Nemotron embedding checkpoints
 
-Pass a directory to `--embed-model-name` to embed with an on-disk checkpoint,
-such as a fine-tuned drop-in for one of the shipped embedders:
+`--embed-model-name` accepts a Hugging Face repository ID or an on-disk
+checkpoint compatible with a supported dense Nemotron text or vision-language
+embedding profile:
 
 ```bash
-export NRL_LOCAL_EMBED_ARCH=text   # or: vl
-
 retriever ingest ./data/pdf_corpus \
-  --embed-model-name /models/my-finetuned-embedder
+  --embed-model-name acme/my-finetuned-nemotron-embed
 ```
 
-- The directory must contain `config.json`. Anything else is treated as a Hub
-  model ID and must have a pinned revision in the model registry.
-- `NRL_LOCAL_EMBED_ARCH` is required and is never inferred: `text` loads the
-  checkpoint through the text embedder, `vl` through the vision-language
-  embedder. Loading a checkpoint with the wrong architecture fails loudly.
-- Set the same variable for `retriever query` so ingest and query embed with
-  matching models.
-- The path must resolve identically for every process that loads the model,
-  including each Ray worker in batch mode and each service replica. Prefer an
-  absolute path on shared storage, or a `./`-prefixed relative path, so the
-  value is never mistaken for a built-in model name.
+Tested official checkpoints:
+
+- `nvidia/llama-3.2-nv-embedqa-1b-v2`
+- `nvidia/llama-nemotron-embed-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
+- `nvidia/llama-nv-embed-reasoning-3b`
+- `nvidia/llama-embed-nemotron-8b`
+
+Equivalent local checkpoints and weight-only fine-tunes are supported. A
+compatible checkpoint must be complete and loadable, use
+`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
+pooling with a positive output width. LanceDB infers the schema from the
+produced vectors; the tested official checkpoints use 2048, 3072, and 4096
+dimensions. Query and document prompts are read from
+`config_sentence_transformers.json` when the checkpoint supplies it.
+Fine-tunes that require prefixes other than `query: ` and `passage: ` must
+retain that prompt metadata.
+
+This does not add support for every model in the Nemotron RAG collection,
+including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
+parsing models. Nemotron 3 Embed is also excluded because its Ministral3
+architecture requires a newer Transformers stack than this project currently
+supports. Those models require different dependencies, outputs, modalities,
+or operator contracts.
+
+Unregistered Hub repositories are resolved to an immutable commit and loaded
+with `trust_remote_code=True`; only use repositories you trust. The resolved
+model name and revision are recorded on the LanceDB table and reused by local
+query.
+
+For a compatible ModelOpt checkpoint, including FP8 or NVFP4 variants, select
+vLLM for both ingest and query:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
+  --local-ingest-embed-backend vllm
+
+retriever query "What is in this corpus?" \
+  --table-name nemo-retriever \
+  --local-query-embed-backend vllm
+```
+
+Hugging Face remains the default local query backend for compatibility.
+ModelOpt checkpoints fail before weight loading when HF is selected. Local
+directories must contain `config.json`, and their absolute path must be
+available to every Ray worker or service replica that loads the model.
 
 ### OCR language mode
 

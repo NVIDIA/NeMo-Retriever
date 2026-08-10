@@ -84,6 +84,13 @@ EmbedModelProviderPrefixOption = Annotated[
         help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]
+LocalQueryEmbedBackendOption = Annotated[
+    str | None,
+    typer.Option(
+        "--local-query-embed-backend",
+        help="Backend for local query embedding: 'hf' (default) or 'vllm' (required for ModelOpt checkpoints).",
+    ),
+]
 RerankerInvokeUrlOption = Annotated[
     str | None,
     typer.Option("--reranker-invoke-url", help="Reranker endpoint URL."),

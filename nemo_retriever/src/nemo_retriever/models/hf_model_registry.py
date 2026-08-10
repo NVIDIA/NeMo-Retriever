@@ -48,22 +48,7 @@ HF_MODEL_REVISIONS: dict[str, str] = {
 }
 
 
-def is_local_hf_model_dir(model_id: str | None) -> bool:
-    """Return whether *model_id* is a loadable local HF model directory.
-
-    Args:
-        model_id: Candidate model identifier or on-disk checkpoint path.
-
-    Returns:
-        ``True`` when *model_id* is a directory containing ``config.json``.
-    """
-    if not model_id:
-        return False
-    path = str(model_id)
-    return os.path.isdir(path) and os.path.isfile(os.path.join(path, "config.json"))
-
-
-def get_hf_revision(model_id: str, *, strict: bool = True, allow_local_path: bool = False) -> str | None:
+def get_hf_revision(model_id: str, *, strict: bool = True) -> str | None:
     """Return the pinned commit SHA for *model_id*.
 
     Parameters
@@ -75,27 +60,15 @@ def get_hf_revision(model_id: str, *, strict: bool = True, allow_local_path: boo
         no pinned revision.  When ``False``, log a warning and return
         ``None`` so that ``from_pretrained`` falls back to the ``main``
         branch.
-    allow_local_path:
-        When ``True``, a local model directory containing ``config.json`` is
-        allowed to return ``None`` because it has no Hub commit SHA to pin.
     """
     revision = HF_MODEL_REVISIONS.get(model_id)
     if revision is not None:
         return revision
 
-    if allow_local_path and is_local_hf_model_dir(model_id):
-        return None
-
-    if allow_local_path and os.path.isdir(str(model_id)):
-        msg = (
-            f"Local model directory '{model_id}' has no config.json, so it cannot be loaded as a local "
-            "checkpoint, and no pinned HuggingFace revision matches it."
-        )
-    else:
-        msg = (
-            f"No pinned HuggingFace revision for model '{model_id}'. "
-            "Add an entry to HF_MODEL_REVISIONS in hf_model_registry.py to pin it."
-        )
+    msg = (
+        f"No pinned HuggingFace revision for model '{model_id}'. "
+        "Add an entry to HF_MODEL_REVISIONS in hf_model_registry.py to pin it."
+    )
     if strict:
         raise ValueError(msg)
     logger.warning(msg + " Falling back to the default (main) branch.")

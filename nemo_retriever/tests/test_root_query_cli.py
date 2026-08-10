@@ -140,6 +140,8 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
             "nvidia/llama-nemotron-embed-1b-v2",
             "--embed-model-provider-prefix",
             "nvidia",
+            "--local-query-embed-backend",
+            "vllm",
         ],
     )
 
@@ -155,6 +157,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
                 "model_name": "nvidia/llama-nemotron-embed-1b-v2",
                 "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
                 "embed_model_provider_prefix": "nvidia",
+                "local_ingest_embed_backend": "vllm",
             },
         }
     ]
