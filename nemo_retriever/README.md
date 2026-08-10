@@ -5,7 +5,7 @@ NeMo Retriever Library is a retrieval-augmented generation (RAG) ingestion pipel
 This quick start guide shows how to run NeMo Retriever Library as a library in local Python processes without containers. Choose one inference path:
 
 - **Local GPU (Linux):** Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your GPU(s). Requires CUDA 13.x and the `[local]` extra.
-- **Remote NIM:** Call build.nvidia.com hosted or self-hosted NeMo Retriever NIM endpoints over the network. The base package installs on Linux, Windows x64, and macOS; no local GPU is required.
+- **Remote NIM:** Call build.nvidia.com hosted or self-hosted NeMo Retriever NIM endpoints over the network. The base package installs on Linux, Windows x64, and macOS Apple Silicon (arm64); no local GPU is required. macOS Intel (x86_64) is not supported.
 
 The steps below cover environment setup, installation, and a first ingestion run. For Kubernetes or container deployments, refer to [Deployment at a glance](#deployment-at-a-glance) and the [Pre-Requisites & Support Matrix](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/).
 

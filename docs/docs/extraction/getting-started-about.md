@@ -5,7 +5,7 @@ This section walks you from **access and prerequisites** through **first deploym
 Typical order:
 
 1. [Get your API key](api-keys.md) (NGC / API access as required by your workflow).
-2. Confirm the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md) for your OS, GPU, and software stack. Local GPU inference requires Linux; remote NIM workflows can use the base package on Windows x64 and macOS as well.
+2. Confirm the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md) for your OS, GPU, and software stack. Local GPU inference requires Linux; remote NIM workflows can use the base package on Windows x64 and macOS Apple Silicon (arm64) as well. macOS Intel (x86_64) is not supported.
 3. Choose a path in [Deployment options](deployment-options.md) — local library, hosted NIMs, the Helm chart for Kubernetes, or a standalone Docker service.
 4. Explore [Jupyter Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md) for end-to-end examples.
 
