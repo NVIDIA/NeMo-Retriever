@@ -97,7 +97,6 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "ngcImagePullSecret.create=false",
         "--set",
         "ngcApiSecret.create=false",
-        "--set",
         # Opt every default-empty-profile NIM in so this suite exercises
         # their shared modelProfile contract in one render. Defaults are
         # covered separately.
