@@ -5,7 +5,7 @@
 """Regression tests for NIMService GPU resource rendering.
 
 The NIM Operator does not reliably populate ``spec.resources.limits.nvidia.com/gpu``
-from the model profile on all tested versions (for example v3.1.1 on A100/H100).
+from the model profile on all tested versions (for example v3.1.2 on A100/H100).
 The chart therefore defaults to rendering ``nvidia.com/gpu: 1`` via
 ``nimOperator.nimServiceGpuLimit``.
 

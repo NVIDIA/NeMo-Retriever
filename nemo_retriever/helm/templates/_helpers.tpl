@@ -487,7 +487,7 @@ NIMService GPU resources
 By default the chart sets ``spec.resources.limits.nvidia.com/gpu`` on
 every NIMService (see ``nimOperator.nimServiceGpuLimit``) because the
 NIM Operator does **not** reliably populate that field from the model
-profile on all tested versions (for example v3.1.1 on A100/H100), which
+profile on all tested versions (for example v3.1.2 on A100/H100), which
 otherwise leaves NIM pods without GPU access.
 
 Helm and the operator may both server-side-apply the same field; a
@@ -512,25 +512,6 @@ resources:
   limits:
     nvidia.com/gpu: {{ $gpuLimit }}
 {{- end -}}
-{{- end -}}
-
-{{/*
-=============================================================================
-NIM model download mode
-=============================================================================
-
-``nimService`` lets the NIMService create and own its PVC and download the
-model during service startup. ``nimCache`` preserves the legacy, two-resource
-NIMCache + NIMService flow.
-*/}}
-{{- define "nemo-retriever.nim.modelDownloadMode" -}}
-{{- $key := .key -}}
-{{- $cfg := index .context.Values.nimOperator $key -}}
-{{- $mode := get $cfg "modelDownloadMode" | default "nimCache" -}}
-{{- if not (has $mode (list "nimService" "nimCache")) -}}
-{{- fail (printf "nimOperator.%s.modelDownloadMode must be one of: nimService, nimCache (got %q)" $key $mode) -}}
-{{- end -}}
-{{- $mode -}}
 {{- end -}}
 
 {{/*
