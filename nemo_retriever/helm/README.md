@@ -524,7 +524,7 @@ including SM120 plans. Do not override `nimOperator.vlm_embed.command` or
 Use `modelDownloadMode: nimCache` for an affected NIM to restore the legacy
 resource pair. Retained NIMCache CRs and their PVCs from an older release are
 not adopted by direct-service mode and can be removed separately after you no
-longer need rollback. Direct-service mode persists the configured model-store
+longer need rollback. Direct-service mode persists the configured `/model`
 path; it does not retain unrelated files written to `/opt/cache`.
 
 The auto-wired URLs target the 2.x contracts. If you override an affected image
