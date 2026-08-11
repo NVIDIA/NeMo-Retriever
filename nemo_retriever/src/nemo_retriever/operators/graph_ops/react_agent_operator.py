@@ -204,6 +204,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
     def _retrieve_adapter(self, query: str, top_k: int) -> List[Dict[str, Any]]:
         """Adapt ``retriever_fn`` output to the private agent's ``id``/``score``/``text`` contract."""
+        top_k = min(top_k, 1_000)
         out: List[Dict[str, Any]] = []
         for doc in self._retriever_fn(query, top_k):
             doc_id = str(doc.get("doc_id", doc.get("id", "")))
