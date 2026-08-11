@@ -271,6 +271,7 @@ class AuthConfig(RichModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = False
     api_token: str | None = None
     default_scope: str = "default"
     scope_token_file: str | None = None
@@ -618,7 +619,7 @@ def load_config(
     # rendered configuration tree.
     if scope_file := os.environ.get("NRL_SCOPE_TOKEN_FILE"):
         raw.setdefault("auth", {})["scope_token_file"] = scope_file
-    internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN")
+    internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN", "").strip()
     if not internal_token and (internal_token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
         internal_token = Path(internal_token_file).read_text(encoding="utf-8").strip()
     if internal_token:

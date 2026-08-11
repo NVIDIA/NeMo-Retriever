@@ -175,8 +175,8 @@ helm install retriever ./nemo_retriever/helm \
   --set serviceConfig.nimEndpoints.tableStructureInvokeUrl=http://table-structure.svc:8000/v1/table-structure \
   --set serviceConfig.nimEndpoints.ocrInvokeUrl=http://ocr.svc:8000/v1/ocr \
   --set serviceConfig.nimEndpoints.embedInvokeUrl=http://embed.svc:8000/v1/embeddings
-```
 
+```
 `ngcApiSecret` materialises an `ngc-api` Secret containing both
 `NGC_API_KEY` and `NGC_CLI_API_KEY` keys; the service container reads it
 via `optional: true` `secretKeyRef`, so the install still succeeds when
@@ -747,6 +747,11 @@ custom service configuration files.
 | `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret`. |
 | `ngcApiSecret.password`           | `""`           | NGC API key (populates `NGC_API_KEY` + `NGC_CLI_API_KEY`). |
 | `imagePullSecrets`                | `[]`           | Extra pre-existing pull secrets appended to every Pod. |
+| `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable dedicated Secret-backed Retriever-to-VectorDB authentication. |
+| `serviceConfig.vectordb.internalAuth.existingSecret.name` | `""` | Existing Secret shared by Retriever and VectorDB pods. |
+| `serviceConfig.auth.scopeTokenSecret.name` | `""` | Existing Secret containing the public scope-token JSON file. |
+| `serviceConfig.auth.enabled` | `false` | Require bearer authentication for the public gateway. |
+| `serviceConfig.auth.allowInsecureInlineApiToken` | `false` | Explicit development-only gate for ConfigMap-backed `apiToken`. |
 
 ### Optional features
 
@@ -782,6 +787,33 @@ ngcApiSecret:
 The chart will skip Secret creation. Make sure `my-org-ngc-pull` exists
 as `kubernetes.io/dockerconfigjson` and `my-org-ngc-api` as `Opaque` with
 an `NGC_API_KEY` key, in the release namespace.
+
+Protect the public gateway and its dedicated VectorDB hop with two separate
+pre-existing Secrets:
+
+```yaml
+serviceConfig:
+  auth:
+    scopeTokenSecret:
+      name: nrl-public-auth
+      key: scope-tokens.json
+    enabled: true
+  vectordb:
+    internalAuth:
+      enabled: true
+      existingSecret:
+        name: nrl-internal-vdb-auth
+        key: token
+```
+
+`nrl-public-auth` must contain a JSON document such as
+`{"tokens":[{"token":"<secret>","scopes":["workspace-123"]}]}` under the
+configured key. `nrl-internal-vdb-auth` must contain a distinct, high-entropy
+credential. Internal authentication is opt-in for local compatibility; enable
+it for production deployments. When enabled, a missing Secret or key prevents
+the pods from starting instead of falling back to unauthenticated VectorDB
+access. Inline `serviceConfig.auth.apiToken` is rejected unless
+`allowInsecureInlineApiToken=true`, and must never be used for production.
 
 ### Disable one NIM and supply an external URL for it
 

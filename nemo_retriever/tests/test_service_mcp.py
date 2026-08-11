@@ -304,7 +304,7 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
         mode="standalone",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
     )
 
     app = create_app(cfg)

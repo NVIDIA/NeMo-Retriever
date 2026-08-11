@@ -663,6 +663,7 @@ async def _prepare_job_work_item(
             operation=job.operation,
             content_sha256=content_sha256,
             storage_document_id=storage_document_id,
+            document_metadata=meta.metadata,
         ),
     )
     return item, route, classification
@@ -1229,6 +1230,7 @@ async def submit_page_to_job(
                 m.record_page_accepted(
                     page_id=page_id,
                     document_id=document_id,
+                    job_id=job_id,
                     endpoint="/v1/ingest/job/page",
                     page_number=page_number,
                     file_size_bytes=file_size,
@@ -1287,6 +1289,7 @@ async def submit_page_to_job(
             m.record_page_accepted(
                 page_id=page_id,
                 document_id=document_id,
+                job_id=job_id,
                 endpoint="/v1/ingest/job/page",
                 page_number=page_number,
                 file_size_bytes=len(file_bytes),

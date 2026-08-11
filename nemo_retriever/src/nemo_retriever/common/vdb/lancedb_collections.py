@@ -519,8 +519,12 @@ class LanceDBCollectionStore:
             row["description"] = update.get("description", row["description"]) or ""
             if "metadata" in update:
                 row["metadata_json"] = json.dumps(update["metadata"] or {}, sort_keys=True)
-            row["expires_at"] = update.get("expires_at", row["expires_at"]) or ""
-            row["updated_at"] = _now()
+            now = _now()
+            if "expires_at" in update:
+                row["expires_at"] = update["expires_at"] or ""
+                row["updated_at"] = now
+            else:
+                self._refresh_collection_activity_row(row, activity_at=now)
             (
                 self._db.open_table(_COLLECTIONS_TABLE)
                 .merge_insert(["scope", "name"])
@@ -537,6 +541,33 @@ class LanceDBCollectionStore:
             .when_not_matched_insert_all()
             .execute([row])
         )
+
+    @staticmethod
+    def _refresh_collection_activity_row(row: dict[str, Any], *, activity_at: str) -> None:
+        """Advance collection activity while preserving its expiration window."""
+
+        expires_at = str(row.get("expires_at") or "")
+        updated_at = str(row.get("updated_at") or "")
+        row["updated_at"] = activity_at
+        if not expires_at or not updated_at:
+            return
+        ttl = datetime.fromisoformat(expires_at) - datetime.fromisoformat(updated_at)
+        if ttl.total_seconds() > 0:
+            row["expires_at"] = (datetime.fromisoformat(activity_at) + ttl).isoformat()
+
+    def _refresh_collection_activity_locked(self, scope: str, name: str, *, activity_at: str) -> None:
+        """Persist successful indexing activity for an active collection."""
+
+        row = self._collection_row(scope, name)
+        if not row:
+            raise VDBResourceNotFound("Collection not found")
+        if row["status"] != "active":
+            return
+        updated_at = str(row.get("updated_at") or "")
+        if updated_at and datetime.fromisoformat(updated_at) >= datetime.fromisoformat(activity_at):
+            return
+        self._refresh_collection_activity_row(row, activity_at=activity_at)
+        self._persist_collection_row(row)
 
     @staticmethod
     def _retry_at(retry_count: int) -> str:
@@ -797,7 +828,7 @@ class LanceDBCollectionStore:
                     "error": "",
                     "current_document_version": context.document_version,
                     "pending_document_version": "",
-                    "recovery_state": "",
+                    "recovery_state": "refreshing_collection_activity",
                 }
             cached_table = self._opened_tables.get(table_name)
             self._acquire_table_user_locked(table_name)
@@ -856,6 +887,13 @@ class LanceDBCollectionStore:
                 if table is not None:
                     self._opened_tables[table_name] = table
                 if completed_row is not None:
+                    self._persist_document_row(completed_row)
+                    self._refresh_collection_activity_locked(
+                        context.scope,
+                        context.collection_name,
+                        activity_at=completed_row["updated_at"],
+                    )
+                    completed_row["recovery_state"] = ""
                     self._persist_document_row(completed_row)
             return CollectionWriteResult(written=len(rows), total_rows=total_rows)
         finally:
@@ -974,7 +1012,11 @@ class LanceDBCollectionStore:
     def _reconcile_document_row_locked(self, row: dict[str, Any], table_name: str) -> bool:
         """Complete or roll back one interrupted document lifecycle operation."""
 
+        activity_refresh = "refreshing_collection_activity"
         state = str(row.get("recovery_state") or "")
+        scope = str(row["scope"])
+        collection_name = str(row["collection_name"])
+        document_id = str(row["document_id"])
         try:
             if state in {"appending", "replacing"}:
                 pending = str(row.get("pending_document_version") or "")
@@ -982,12 +1024,13 @@ class LanceDBCollectionStore:
                 if self._has_table(table_name):
                     chunks = self._rows(
                         table_name,
-                        f"document_id = {_quoted(row['document_id'])}",
+                        f"document_id = {_quoted(document_id)}",
                         ["document_version", "content_sha256", "filename"],
                     )
                     pending_chunks = [chunk for chunk in chunks if str(chunk.get("document_version") or "") == pending]
                 if pending and pending_chunks:
                     pending_chunk = pending_chunks[0]
+                    activity_at = _now()
                     row.update(
                         {
                             "document_version": pending,
@@ -999,16 +1042,18 @@ class LanceDBCollectionStore:
                             "chunk_count": len(pending_chunks),
                             "pending_document_version": "",
                             "status": "completed",
-                            "recovery_state": "",
-                            "updated_at": _now(),
+                            "recovery_state": activity_refresh,
+                            "updated_at": activity_at,
                             "error": "",
                         }
                     )
+                    self._persist_document_row(row)
+                    state = activity_refresh
                 elif state == "appending" and not row.get("current_document_version"):
                     self._db.open_table(_DOCUMENTS_TABLE).delete(
-                        f"scope = {_quoted(row['scope'])} "
-                        f"AND collection_name = {_quoted(row['collection_name'])} "
-                        f"AND document_id = {_quoted(row['document_id'])}"
+                        f"scope = {_quoted(scope)} "
+                        f"AND collection_name = {_quoted(collection_name)} "
+                        f"AND document_id = {_quoted(document_id)}"
                     )
                     return True
                 else:
@@ -1021,20 +1066,33 @@ class LanceDBCollectionStore:
                             "error": "",
                         }
                     )
+                    self._persist_document_row(row)
+                    return True
+            if state == activity_refresh:
+                self._refresh_collection_activity_locked(
+                    scope,
+                    collection_name,
+                    activity_at=row["updated_at"],
+                )
+                row.update({"recovery_state": "", "error": ""})
                 self._persist_document_row(row)
                 return True
             if state == "deleting_chunks":
                 if self._has_table(table_name):
                     self._wait_for_table_users_locked(table_name)
-                    self._open_table(table_name).delete(f"document_id = {_quoted(row['document_id'])}")
+                    self._open_table(table_name).delete(f"document_id = {_quoted(document_id)}")
                 self._db.open_table(_DOCUMENTS_TABLE).delete(
-                    f"scope = {_quoted(row['scope'])} AND collection_name = {_quoted(row['collection_name'])} "
-                    f"AND document_id = {_quoted(row['document_id'])}"
+                    f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection_name)} "
+                    f"AND document_id = {_quoted(document_id)}"
                 )
                 return True
             return state == ""
         except Exception as exc:
-            row.update({"error": str(exc)[:2000], "updated_at": _now()})
+            row["error"] = str(exc)[:2000]
+            if state == activity_refresh:
+                row["recovery_state"] = activity_refresh
+            else:
+                row["updated_at"] = _now()
             self._persist_document_row(row)
             logger.exception("Document reconciliation paused in state %s", state)
             return False

@@ -163,9 +163,10 @@ gateway:
   timeout_s: 300.0
   max_connections: 100
 
-# Optional bearer-token authentication.  When api_token is set, every
-# request must carry "Authorization: Bearer <token>".
+# Optional bearer-token authentication. When enabled, every request must carry
+# "Authorization: Bearer <token>" unless it is a bypass path.
 auth:
+  enabled: false
   api_token: null
   header_name: "Authorization"
   bypass_paths:
