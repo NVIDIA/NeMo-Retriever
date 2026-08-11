@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, model_validator
 from starlette.responses import StreamingResponse
 
+from nemo_retriever.common.error_normalization import normalize_error
 from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.schemas.requests import IngestRequest, JobCreateRequest
@@ -972,6 +973,7 @@ def _document_to_response(rec, *, result_data=None) -> DocumentStatusResponse:
         result_rows=rec.result_rows,
         result_data=result_data,
         error=rec.error,
+        error_details=rec.error_details,
         collection_name=rec.collection_name,
         content_sha256=rec.content_sha256,
     )
@@ -1426,6 +1428,7 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
         result_rows=rec.result_rows,
         result_data=result_data,
         error=rec.error,
+        error_details=rec.error_details,
     ).model_dump()
 
     if is_terminal:
@@ -1967,12 +1970,18 @@ async def job_callback(request: Request) -> JSONResponse:
     job_id_for_log = pre_rec.job_id if pre_rec is not None else None
 
     status = body.get("status", "completed")
+    error_for_log: str | None = None
     if status == "failed":
+        normalized_error = normalize_error(body.get("error_details") or body.get("error", "unknown error"))
+        error_for_log = normalized_error.summary
         outcome = tracker.mark_failed(
             item_id,
-            body.get("error", "unknown error"),
+            normalized_error.summary,
+            error_details=normalized_error.as_dict(),
             elapsed_s=body.get("elapsed_s"),
         )
+        if outcome == MarkOutcome.TRANSITIONED and (m := get_metrics()) is not None:
+            m.record_terminal_failure(item_id, normalized_error.summary, normalized_error.as_dict())
     else:
         result_rows = body.get("result_rows", 0)
         if pre_rec is None and result_rows and body.get("result_worker_ip"):
@@ -2021,13 +2030,14 @@ async def job_callback(request: Request) -> JSONResponse:
 
     log_fn = logger.warning if outcome == MarkOutcome.UNKNOWN_DOCUMENT else logger.info
     log_fn(
-        "Gateway callback: id=%s job_id=%s status=%s outcome=%s rows=%s subscribers=%d",
+        "Gateway callback: id=%s job_id=%s status=%s outcome=%s rows=%s subscribers=%d error=%s",
         item_id,
         job_id_for_log or "?",
         status,
         outcome.value,
         body.get("result_rows", 0),
         sub_count,
+        error_for_log,
     )
     if broker is not None and lease_record is not None:
         try:
@@ -2232,6 +2242,7 @@ def _snapshot_terminal_jobs(tracker: Any, *, job_id: str | None = None) -> list[
             "result_rows": rec.result_rows,
             "elapsed_s": rec.elapsed_s,
             "error": rec.error,
+            "error_details": rec.error_details,
         }
         for rec in recs
         if rec.status in terminal
@@ -2283,6 +2294,7 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
                 "result_rows": rec.result_rows,
                 "elapsed_s": rec.elapsed_s,
                 "error": rec.error,
+                "error_details": rec.error_details,
             }
 
     terminal_count = sum(

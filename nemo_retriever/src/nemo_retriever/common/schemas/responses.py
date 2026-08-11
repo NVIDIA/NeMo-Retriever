@@ -12,6 +12,15 @@ from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.common.schemas.collections import IngestOperation
 
 
+class ErrorDetails(RichModel):
+    """Redacted structured diagnostics accompanying a compatible error string."""
+
+    type: str
+    stage: str | None = None
+    endpoint: str | None = None
+    message: str
+
+
 class IngestAccepted(RichModel):
     """Response for the general ``POST /v1/ingest`` endpoint."""
 
@@ -58,6 +67,7 @@ class JobStatusResponse(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
 
 
 class SidecarUploadResponse(RichModel):
@@ -130,6 +140,7 @@ class DocumentStatusResponse(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
     collection_name: str | None = None
     content_sha256: str | None = None
 

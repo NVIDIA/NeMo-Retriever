@@ -134,12 +134,14 @@ class GraphIngestionError(RuntimeError):
 
     def __init__(
         self,
-        records: list[Any],
+        records: Any,
         stage_diagnostics: dict[str, _StageDiagnostic] | None = None,
     ) -> None:
-        self.records = records
+        self.records = (
+            [records] if isinstance(records, str) else list(records) if isinstance(records, (list, tuple)) else [records]
+        )
         self.stage_diagnostics = dict(stage_diagnostics) if stage_diagnostics else {}
-        super().__init__(_format_stage_error_message(records, self.stage_diagnostics))
+        super().__init__(_format_stage_error_message(self.records, self.stage_diagnostics))
 
 
 def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:

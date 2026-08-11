@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 from pydantic import ConfigDict, Field
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.responses import ErrorDetails
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class PageMetric(RichModel):
     completed_at: str | None = None
     processing_duration_s: float | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
 
 
 class DocumentMetric(RichModel):
@@ -82,6 +84,7 @@ class DocumentMetric(RichModel):
     completed_at: str | None = None
     processing_duration_s: float | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
 
 
 class JobMetric(RichModel):
@@ -297,6 +300,34 @@ class IngestMetrics:
                         }
                     )
                     break
+
+    def record_terminal_failure(self, item_id: str, error: str, error_details: dict[str, str | None]) -> None:
+        """Record a normalized failure for whichever metric record owns *item_id*."""
+        now = datetime.now(timezone.utc).isoformat()
+        details = ErrorDetails(**error_details)
+        with self._lock:
+            changed = False
+            if item_id in self._documents:
+                doc = self._documents[item_id]
+                self._documents[item_id] = doc.model_copy(
+                    update={"status": "failed", "completed_at": now, "error": error, "error_details": details}
+                )
+                if doc.job_id and doc.job_id in self._jobs:
+                    job = self._jobs[doc.job_id]
+                    self._jobs[doc.job_id] = job.model_copy(
+                        update={"documents_failed": job.documents_failed + 1}
+                    )
+                changed = True
+            for i, page in enumerate(self._pages):
+                if page.page_id == item_id:
+                    self._pages[i] = page.model_copy(
+                        update={"status": "failed", "completed_at": now, "error": error, "error_details": details}
+                    )
+                    changed = True
+                    break
+            if changed:
+                self._total_errors += 1
+                self._errors_by_type[details.type] = self._errors_by_type.get(details.type, 0) + 1
 
     # ── single-record lookups ────────────────────────────────────────
 

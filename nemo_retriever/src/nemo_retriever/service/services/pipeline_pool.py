@@ -160,6 +160,7 @@ async def _fire_gateway_callback(
     *,
     result_rows: int = 0,
     error: str | None = None,
+    error_details: dict[str, str | None] | None = None,
     result_worker_ip: str | None = None,
     callback_headers: Mapping[str, str] | None = None,
     retry_after_cap_s: float = _CALLBACK_RETRY_DELAYS_S[-1],
@@ -181,6 +182,8 @@ async def _fire_gateway_callback(
     }
     if error:
         payload["error"] = error
+    if error_details:
+        payload["error_details"] = error_details
     if result_worker_ip:
         payload["result_worker_ip"] = result_worker_ip
     if lease_id is not None:
@@ -365,6 +368,7 @@ class _Pool:
         status: str,
         result_rows: int = 0,
         error: str | None = None,
+        error_details: dict[str, str | None] | None = None,
         result_worker_ip: str | None = None,
         callback_headers: Mapping[str, str] | None = None,
         retain_results: bool = False,
@@ -389,6 +393,7 @@ class _Pool:
                 status=status,
                 result_rows=result_rows,
                 error=error,
+                error_details=error_details,
                 result_worker_ip=result_worker_ip,
                 callback_headers=callback_headers,
                 retain_results=retain_results,
@@ -431,6 +436,7 @@ class _Pool:
         status: str,
         result_rows: int,
         error: str | None,
+        error_details: dict[str, str | None] | None,
         result_worker_ip: str | None,
         callback_headers: Mapping[str, str] | None,
         retain_results: bool,
@@ -454,6 +460,7 @@ class _Pool:
                 status,
                 result_rows=result_rows,
                 error=error,
+                error_details=error_details,
                 result_worker_ip=result_worker_ip,
                 callback_headers=callback_headers,
                 retry_after_cap_s=_CALLBACK_DEFERRED_MAX_DELAY_S,
@@ -616,13 +623,16 @@ class _Pool:
                     self._processed += 1
                 except Exception as exc:
                     outcome = "failed"
+                    normalized_error = normalize_error(exc)
+                    error = normalized_error.summary
+                    error_details = normalized_error.as_dict()
                     if item.callback_url:
-                        error = f"{type(exc).__name__}: {exc}"
                         callback_outcome = await _fire_gateway_callback(
                             item.callback_url,
                             item.id,
                             "failed",
                             error=error,
+                            error_details=error_details,
                             callback_headers=item.callback_headers,
                             lease_id=item.lease_id,
                             lease_generation=item.lease_generation,
@@ -633,18 +643,20 @@ class _Pool:
                                 item_id=item.id,
                                 status="failed",
                                 error=error,
+                                error_details=error_details,
                                 callback_headers=item.callback_headers,
                                 work_item=item,
                             )
                     else:
                         tracker = get_job_tracker()
                         if tracker is not None:
-                            tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
-                    logger.exception(
-                        "Pool '%s' worker %d failed on item %s",
+                            tracker.mark_failed(item.id, error, error_details=error_details)
+                    logger.error(
+                        "Pool '%s' worker %d failed on item %s: %s",
                         self._name,
                         worker_id,
                         item.id,
+                        error,
                     )
                 finally:
                     # Always observe; cheaper to keep latency series complete
