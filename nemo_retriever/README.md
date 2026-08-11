@@ -116,7 +116,7 @@ ingestor = create_ingestor(run_mode="batch")
 
 # ingestion tasks are chainable and defined lazily
 # Omit .vdb_upload() here so a single-PDF run can inspect chunks without
-# building a LanceDB index (see corpus-size callout above).
+# building a LanceDB index (refer to the corpus-size callout above).
 ingestor = (
   ingestor.files(documents)
   .extract(
@@ -183,7 +183,7 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 
 Point `retriever ingest` at a **directory** of documents to produce a ready-to-query
 LanceDB table. The first-run example uses the bundled [`data/`](../data/) corpus so
-indexing can use the default IVF settings (see the corpus-size callout
+indexing can use the default IVF settings (refer to the corpus-size callout
 at the start of [Run the pipeline](#run-the-pipeline)).
 
 ```bash
@@ -194,7 +194,7 @@ retriever ingest ../data \
 
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
-`[local]` extra installed (see setup), defaults point at local-GPU extraction
+`[local]` extra installed (refer to setup), defaults point at local-GPU extraction
 and embedding. Replace `../data` with your own multi-document directory when you
 move beyond the sample corpus.
 
