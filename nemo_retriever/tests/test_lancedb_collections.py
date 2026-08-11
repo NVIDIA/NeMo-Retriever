@@ -657,11 +657,7 @@ def test_recovery_retries_activity_refresh_without_reextending_expiration(tmp_pa
 
     def fail_first_marker_clear(row):
         nonlocal marker_clear_failed
-        if (
-            not marker_clear_failed
-            and row.get("recovery_state") == ""
-            and row.get("updated_at") == activity_at
-        ):
+        if not marker_clear_failed and row.get("recovery_state") == "" and row.get("updated_at") == activity_at:
             marker_clear_failed = True
             raise RuntimeError("injected marker clear failure")
         return original_persist_document(row)
