@@ -371,8 +371,6 @@ def test_scope_authorizer_defaults_to_unprotected_and_fails_closed_when_enabled(
     )
 
 
-
-
 def test_public_routes_accept_requests_when_auth_is_disabled() -> None:
     app = create_app(ServiceConfig(mode="gateway", auth=AuthConfig()))
     with TestClient(app) as client:
@@ -381,6 +379,7 @@ def test_public_routes_accept_requests_when_auth_is_disabled() -> None:
     # The route is reached and then rejects the disabled VectorDB, rather than
     # being rejected by bearer authentication.
     assert response.status_code == 404
+
 
 def test_service_routes_use_authorized_scope_not_raw_header() -> None:
     app = create_app(
