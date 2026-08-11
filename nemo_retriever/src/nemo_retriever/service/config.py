@@ -320,6 +320,7 @@ class AuthConfig(RichModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = False
     api_token: str | None = None
     default_scope: str = "default"
     scope_token_file: str | None = None

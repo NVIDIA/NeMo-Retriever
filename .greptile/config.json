@@ -179,6 +179,20 @@
       "rule": "Non-obvious design decisions, performance trade-offs, and environmental assumptions must be documented in code comments or docstrings.",
       "scope": ["**/*.py"],
       "severity": "low"
+    },
+    {
+      "id": "documentation-stays-current",
+      "rule": "When this PR changes user-facing code, configuration, examples, or documentation, verify that the affected documentation remains accurate. Compare documented APIs, CLI commands and flags, configuration keys and defaults, supported formats, error behavior, and code examples against the PR's checked-in source and tests. Flag concrete stale, incorrect, contradictory, or missing documentation, and identify the affected page. Do not request documentation for internal-only changes or speculate without a specific mismatch.",
+      "scope": [
+        "nemo_retriever/src/**",
+        "nemo_retriever/helm/**",
+        "nemo_retriever/README.md",
+        "nemo_retriever/docs/**",
+        "docs/docs/**",
+        "examples/**",
+        "README.md"
+      ],
+      "severity": "medium"
     }
   ],
 

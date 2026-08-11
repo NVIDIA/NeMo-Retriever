@@ -176,7 +176,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         Omni 30B is the heaviest NIM in the chart (~62 GiB BF16 weights,
         ~80 GB on-disk NIM cache, requires its own ≥ 80 GiB GPU). It must
         not deploy on a "default" install — that contradicts the docs and
-        the README's [Recommended minimal install (26.05)] guidance.
+        the README's [Recommended minimal install (26.08)] guidance.
         """
         values = _read_required_file(_VALUES_YAML)
         value = _enabled_value_for_block(values, _OMNI_BLOCK)
@@ -357,12 +357,12 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         # Find the heredoc-style minimal install command. The recipe
         # ends with `audio.enabled=false`; the block above that is what
         # we inspect.
-        marker = "Recommended minimal install (26.05)"
+        marker = "Recommended minimal install (26.08)"
         idx = readme.find(marker)
         self.assertNotEqual(
             idx,
             -1,
-            "README must keep a `Recommended minimal install (26.05)` "
+            "README must keep a `Recommended minimal install (26.08)` "
             "section even after the defaults flip — it documents the "
             "two flags that are still needed (`rerankqa` + `audio`).",
         )

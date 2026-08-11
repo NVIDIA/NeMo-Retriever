@@ -119,11 +119,22 @@ callback routes and VectorDB calls require the separate internal credential;
 an external bearer token is never used to authorize those internal routes or
 forwarded to VectorDB.
 
-`expires_at` must be timezone-aware RFC3339 and is normalized to UTC. Expired
-collections enter the same retryable deletion state machine as explicit
-deletion. The local VectorDB reconciler runs every 60 seconds by default,
-applies exponential retry capped at one hour, and resumes replacement,
-document deletion, collection deletion, and expiration cleanup after a crash.
+`expires_at` must be timezone-aware RFC3339 and is normalized to UTC. For an
+expiring collection, successful append and replace indexing activity refreshes
+the expiration while preserving the configured window between `updated_at` and
+`expires_at`. Collection metadata updates do the same when they omit
+`expires_at`; supplying `expires_at` establishes a new window and setting it to
+null disables expiration. Writes that do not commit vector data, including
+empty writes, do not refresh collection activity. During recovery from an
+interrupted write, NRL records activity refresh as durable recovery work. If
+the collection update fails, reconciliation retains the marker and retries the
+refresh. After the refresh succeeds, it clears the marker without refreshing
+the collection again, so retries do not extend the expiration more than once.
+Expired collections enter the
+same retryable deletion state machine as explicit deletion. The local VectorDB
+reconciler runs every 60 seconds by default, applies exponential retry capped at
+one hour, and resumes replacement, document deletion, collection deletion, and
+expiration cleanup after a crash.
 Run one VectorDB replica while this reconciler is enabled; durable distributed
 coordination remains separate infrastructure work. An interval of zero is
 reserved for deployments where an external reconciler owns cleanup.

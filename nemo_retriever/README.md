@@ -55,7 +55,7 @@ try prerelease/nightly Nemotron packages from PyPI within the same supported
 major-version windows, opt in with `--pre`:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.05-RC1"
+uv pip install --pre "nemo-retriever[local]==26.08-RC1"
 ```
 
 **Remote NIM (no local GPU)**
@@ -71,7 +71,7 @@ uv pip install nemo-retriever
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
-This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library. If the workflow performs tokenizer-backed TXT or HTML chunking, install `nemo-retriever[service]` instead; this adds the lightweight tokenizer dependencies without installing Transformers or local model weights.
+This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library. The base install includes the lightweight tokenizer dependencies used for TXT/HTML chunking (no Transformers or local model weights).
 
 If your PDF pipeline uses `method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
@@ -393,8 +393,7 @@ CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --top-k 1 \
-  --agentic-react-max-steps 1 \
-  --agentic-backend-top-k 1
+  --agentic-react-max-steps 1
 ```
 
 You can run the same flow from Python. Omit `invoke_url` for the default local
