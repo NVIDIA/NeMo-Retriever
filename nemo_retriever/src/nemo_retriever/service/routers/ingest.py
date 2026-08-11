@@ -1917,12 +1917,12 @@ async def answer(
     summary="Search ingested documents by semantic similarity, hybrid, agentic, or reranked retrieval",
 )
 async def query(request: Request) -> Response:
-    """Run the public query API through VectorDB and optional endpoint reranking.
+    """Run the public query API through VectorDB and optional reranking.
 
     ``vectordb_app`` remains responsible only for nearest-neighbor retrieval.
     With ``rerank=true``, the main service obtains a larger candidate set from
-    VectorDB, calls its server-configured reranking endpoint, and returns the
-    requested ``top_k`` ranked hits.
+    VectorDB, then uses the server-configured remote endpoint or local model
+    in the main service process, and returns the requested ``top_k`` hits.
     """
     import httpx
 
@@ -1952,10 +1952,18 @@ async def query(request: Request) -> Response:
                 rerank_request = QueryRequest.model_validate(parsed)
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-            if not (config.nim_endpoints.rerank_invoke_url or "").strip():
+            has_remote_reranker = bool(
+                (config.nim_endpoints.rerank_invoke_url or "").strip()
+            )
+            has_local_reranker = config.local_models.rerank.enabled
+            if not (has_remote_reranker or has_local_reranker):
                 raise HTTPException(
                     status_code=400,
-                    detail="Reranking is not configured. Set nim_endpoints.rerank_invoke_url on the main service.",
+                    detail=(
+                        "Reranking is not configured. Set "
+                        "nim_endpoints.rerank_invoke_url or enable "
+                        "local_models.rerank.enabled on the main service."
+                    ),
                 )
             candidate_k = rerank_request.rerank_top_k or max(rerank_request.top_k, 50)
             forwarded = dict(parsed)
@@ -2012,17 +2020,65 @@ async def query(request: Request) -> Response:
 
         from nemo_retriever.operators.rerank import rerank_hits
 
-        for query_text, result in zip(queries, response.results):
-            result.hits = await asyncio.to_thread(
-                rerank_hits,
-                query_text,
-                result.hits,
-                rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
-                model_name=config.nim_endpoints.rerank_model_name
-                or "nvidia/llama-nemotron-rerank-1b-v2",
-                api_key=config.nim_endpoints.api_key or "",
-                top_n=rerank_request.top_k,
-            )
+        local_rerank = config.local_models.rerank
+        use_remote_reranker = bool(
+            (config.nim_endpoints.rerank_invoke_url or "").strip()
+        )
+        rerank_lock: asyncio.Lock | None = None
+        local_reranker = None
+        if not use_remote_reranker:
+            # The local model is service-owned and lazily loaded once. Serialize
+            # scoring too: HF/vLLM model instances are not safe to invoke from
+            # simultaneous request threads, and this avoids duplicate GPU work.
+            rerank_lock = getattr(request.app.state, "local_reranker_lock", None)
+            if rerank_lock is None:
+                rerank_lock = asyncio.Lock()
+                request.app.state.local_reranker_lock = rerank_lock
+
+            async with rerank_lock:
+                local_reranker = getattr(request.app.state, "local_reranker", None)
+                if local_reranker is None:
+                    from nemo_retriever.models import create_local_reranker
+
+                    local_reranker = await asyncio.to_thread(
+                        create_local_reranker,
+                        local_rerank.model_name,
+                        backend=local_rerank.backend,
+                        device=config.local_models.device,
+                        hf_cache_dir=config.local_models.hf_cache_dir,
+                        gpu_memory_utilization=local_rerank.gpu_memory_utilization,
+                    )
+                    request.app.state.local_reranker = local_reranker
+
+        async def _rerank_results() -> None:
+            rerank_kwargs: dict[str, Any] = {"top_n": rerank_request.top_k}
+            if use_remote_reranker:
+                rerank_kwargs.update(
+                    rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
+                    model_name=config.nim_endpoints.rerank_model_name
+                    or "nvidia/llama-nemotron-rerank-1b-v2",
+                    api_key=config.nim_endpoints.api_key or "",
+                )
+            else:
+                rerank_kwargs.update(
+                    model=local_reranker,
+                    model_name=local_rerank.model_name,
+                    max_length=local_rerank.max_length,
+                    batch_size=local_rerank.batch_size,
+                )
+            for query_text, result in zip(queries, response.results):
+                result.hits = await asyncio.to_thread(
+                    rerank_hits,
+                    query_text,
+                    result.hits,
+                    **rerank_kwargs,
+                )
+
+        if rerank_lock is not None:
+            async with rerank_lock:
+                await _rerank_results()
+        else:
+            await _rerank_results()
     except Exception as exc:
         logger.exception("Failed to rerank VectorDB query results")
         raise HTTPException(

@@ -80,6 +80,24 @@ class LocalAsrConfig(RichModel):
     enabled: bool = True
 
 
+class LocalRerankConfig(RichModel):
+    """In-pod reranker used by the main service query API.
+
+    This is deliberately separate from the ingestion process-pool settings:
+    query-time reranking lives in the main service process and is loaded lazily
+    on the first ``rerank=true`` request.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
+    backend: Literal["hf", "vllm"] = "vllm"
+    gpu_memory_utilization: float = Field(default=0.5, gt=0, le=1)
+    max_length: int = Field(default=512, ge=1, le=8192)
+    batch_size: int = Field(default=32, ge=1)
+
+
 class LocalModelsConfig(RichModel):
     """Load Nemotron Hugging Face weights inside the service worker pod.
 
@@ -123,6 +141,7 @@ class LocalModelsConfig(RichModel):
     extract: LocalExtractConfig = Field(default_factory=LocalExtractConfig)
     embed: LocalEmbedConfig = Field(default_factory=LocalEmbedConfig)
     asr: LocalAsrConfig = Field(default_factory=LocalAsrConfig)
+    rerank: LocalRerankConfig = Field(default_factory=LocalRerankConfig)
 
 
 class NimEndpointsConfig(RichModel):

@@ -85,6 +85,17 @@ local_models:
     gpu_memory_utilization: 0.45
   asr:
     enabled: true
+  # Query-time reranking is loaded lazily in the main service process when a
+  # client sends ``rerank: true``. It is independent of ``local_models.enabled``
+  # because it does not run in the ingestion process pools. Leave this disabled
+  # when using a remote/NIM reranker configured under ``nim_endpoints``.
+  rerank:
+    enabled: false
+    model_name: nvidia/llama-nemotron-rerank-1b-v2
+    backend: vllm
+    gpu_memory_utilization: 0.5
+    max_length: 512
+    batch_size: 32
 
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
 # fields when the Super-49B NIM is enabled.
