@@ -214,7 +214,7 @@ def _post_with_retries(
 
             if 400 <= status_code < 500:
                 raise requests.HTTPError(
-                    f"HTTP {status_code} from {invoke_url}: {response.text}",
+                    f"HTTP {status_code} from {_safe_endpoint_attribute(invoke_url)}: {response.text}",
                     response=response,
                 )
             response.raise_for_status()

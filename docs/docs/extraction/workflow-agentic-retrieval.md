@@ -23,10 +23,13 @@ For custom or already deployed chat models, opt into the endpoint path:
 ```bash
 retriever query "find documents about parser behavior" \
   --agentic \
-  --agentic-llm-backend openai_compatible \
   --agentic-llm-model custom-remote-model \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions
 ```
+
+Providing `--agentic-invoke-url` routes the agent to that remote endpoint; the LLM
+client defaults to `callable`, which calls the endpoint over the shared
+chat-completions HTTP client and needs no LLM SDK installed.
 
 ## MCP access for agents
 

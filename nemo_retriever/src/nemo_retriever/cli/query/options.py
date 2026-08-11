@@ -8,10 +8,15 @@ from typing import Annotated
 
 import typer
 
+from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 
 DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
 DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
+
+# Advertised in --agentic-llm-client help; sourced from the registry so a newly
+# registered client shows up without editing this string.
+_AGENTIC_LLM_CLIENT_CHOICES = ", ".join(get_available_backends())
 
 
 QueryArgument = Annotated[str, typer.Argument(..., help="Query text.")]
@@ -184,14 +189,6 @@ AgenticReasoningEffortOption = Annotated[
         help="reasoning_effort forwarded on agentic LLM calls.",
     ),
 ]
-AgenticBackendTopKOption = Annotated[
-    int,
-    typer.Option(
-        "--agentic-backend-top-k",
-        min=1,
-        help="Backend retrieve-pool depth per agentic retrieval call.",
-    ),
-]
 AgenticReactMaxStepsOption = Annotated[
     int,
     typer.Option(
@@ -209,11 +206,26 @@ AgenticTextTruncationOption = Annotated[
     ),
 ]
 AgenticTemperatureOption = Annotated[
-    float,
+    float | None,
     typer.Option(
         "--agentic-temperature",
         min=0.0,
-        help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
+        help=(
+            "Sampling temperature for agentic LLM calls. "
+            "Omit to leave it unset (endpoint/model default; 0.0 = greedy)."
+        ),
+    ),
+]
+AgenticLlmClientOption = Annotated[
+    str | None,
+    typer.Option(
+        "--agentic-llm-client",
+        help=(
+            "LLM client that builds the agent LLM in agentic mode. Optional: defaults to "
+            "'callable' for both in-process local runs and remote (--agentic-invoke-url) runs. "
+            f"Registered clients: {_AGENTIC_LLM_CLIENT_CHOICES}. Any client other than 'callable' "
+            "is remote-only and requires --agentic-invoke-url."
+        ),
     ),
 ]
 ServiceUrlOption = Annotated[

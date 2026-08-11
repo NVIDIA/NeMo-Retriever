@@ -147,7 +147,7 @@ uv run --project nemo_retriever retriever harness run jp20_beir \
   --set query.agentic_invoke_url=http://localhost:9000/v1/chat/completions
 ```
 
-Use `query.agentic_backend_top_k`, `query.agentic_react_max_steps`,
+Use `query.agentic_llm_client`, `query.agentic_react_max_steps`,
 `query.agentic_num_concurrent`, and the local vLLM resource overrides only when
 the experiment requires them. The resolved benchmark records every value.
 
