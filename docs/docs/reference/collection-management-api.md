@@ -126,9 +126,11 @@ the expiration while preserving the configured window between `updated_at` and
 `expires_at`; supplying `expires_at` establishes a new window and setting it to
 null disables expiration. Writes that do not commit vector data, including
 empty writes, do not refresh collection activity. During recovery from an
-interrupted write, activity refreshes only after the document recovery marker
-is durably cleared. Recovery retries that do not finalize the document do not
-extend the expiration. Expired collections enter the
+interrupted write, NRL records activity refresh as durable recovery work. If
+the collection update fails, reconciliation retains the marker and retries the
+refresh. After the refresh succeeds, it clears the marker without refreshing
+the collection again, so retries do not extend the expiration more than once.
+Expired collections enter the
 same retryable deletion state machine as explicit deletion. The local VectorDB
 reconciler runs every 60 seconds by default, applies exponential retry capped at
 one hour, and resumes replacement, document deletion, collection deletion, and

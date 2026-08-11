@@ -618,7 +618,7 @@ def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monk
     assert visible_hits[0][0]["document_id"] == "document-a"
 
 
-def test_recovery_does_not_repeat_activity_refresh_after_collection_update_failure(tmp_path, monkeypatch):
+def test_recovery_retries_activity_refresh_without_reextending_expiration(tmp_path, monkeypatch):
     backend = _backend_with_collection(tmp_path)
     backend.write_collection(_records(), context=_context())
     store = backend._get_collection_store()
@@ -640,21 +640,44 @@ def test_recovery_does_not_repeat_activity_refresh_after_collection_update_failu
         }
     )
     store._persist_document_row(document)
-    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+    activity_at = "2030-01-01T12:00:00+00:00"
+    monkeypatch.setattr(collections_module, "_now", lambda: activity_at)
 
     refreshes = 0
+    original_persist_collection = store._persist_collection_row
 
-    def fail_activity_refresh(row):
+    def count_activity_refresh(row):
         nonlocal refreshes
         refreshes += 1
-        raise RuntimeError("injected collection activity failure")
+        return original_persist_collection(row)
 
-    monkeypatch.setattr(store, "_persist_collection_row", fail_activity_refresh)
+    monkeypatch.setattr(store, "_persist_collection_row", count_activity_refresh)
+    original_persist_document = store._persist_document_row
+    marker_clear_failed = False
+
+    def fail_first_marker_clear(row):
+        nonlocal marker_clear_failed
+        if (
+            not marker_clear_failed
+            and row.get("recovery_state") == ""
+            and row.get("updated_at") == activity_at
+        ):
+            marker_clear_failed = True
+            raise RuntimeError("injected marker clear failure")
+        return original_persist_document(row)
+
+    monkeypatch.setattr(store, "_persist_document_row", fail_first_marker_clear)
 
     assert backend.reconcile_collections() == {"successes": 0, "failures": 1}
-    assert store._document_rows("workspace-a", "collection-a", "document-a")[0]["recovery_state"] == ""
-    assert backend.reconcile_collections() == {"successes": 0, "failures": 0}
+    marker = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    assert marker["recovery_state"] == "refreshing_collection_activity"
+    refreshed = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert refreshed.updated_at == activity_at
+    assert refreshed.expires_at == "2030-01-02T12:00:00+00:00"
+
+    assert backend.reconcile_collections() == {"successes": 1, "failures": 0}
     assert refreshes == 1
+    assert store._document_rows("workspace-a", "collection-a", "document-a")[0]["recovery_state"] == ""
 
 
 def test_reconciliation_filters_recoverable_documents_before_scan_limit(tmp_path, monkeypatch):
