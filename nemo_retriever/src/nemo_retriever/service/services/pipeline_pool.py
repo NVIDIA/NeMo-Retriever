@@ -33,6 +33,7 @@ from typing import Any, Callable, Mapping
 
 from pydantic import ConfigDict, Field
 
+from nemo_retriever.common.error_normalization import normalize_error
 from nemo_retriever.service.config import AuthConfig, PipelinePoolConfig, WorkQueueConfig
 from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.common.schemas.collections import IngestOperation

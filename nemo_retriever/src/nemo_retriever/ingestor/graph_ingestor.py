@@ -138,7 +138,9 @@ class GraphIngestionError(RuntimeError):
         stage_diagnostics: dict[str, _StageDiagnostic] | None = None,
     ) -> None:
         self.records = (
-            [records] if isinstance(records, str) else list(records) if isinstance(records, (list, tuple)) else [records]
+            [records]
+            if isinstance(records, str)
+            else list(records) if isinstance(records, (list, tuple)) else [records]
         )
         self.stage_diagnostics = dict(stage_diagnostics) if stage_diagnostics else {}
         super().__init__(_format_stage_error_message(self.records, self.stage_diagnostics))

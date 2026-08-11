@@ -314,9 +314,7 @@ class IngestMetrics:
                 )
                 if doc.job_id and doc.job_id in self._jobs:
                     job = self._jobs[doc.job_id]
-                    self._jobs[doc.job_id] = job.model_copy(
-                        update={"documents_failed": job.documents_failed + 1}
-                    )
+                    self._jobs[doc.job_id] = job.model_copy(update={"documents_failed": job.documents_failed + 1})
                 changed = True
             for i, page in enumerate(self._pages):
                 if page.page_id == item_id:
