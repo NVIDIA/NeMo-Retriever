@@ -884,12 +884,12 @@ class LanceDBCollectionStore:
                 if table is not None:
                     self._opened_tables[table_name] = table
                 if completed_row is not None:
+                    self._persist_document_row(completed_row)
                     self._refresh_collection_activity_locked(
                         context.scope,
                         context.collection_name,
                         activity_at=completed_row["updated_at"],
                     )
-                    self._persist_document_row(completed_row)
             return CollectionWriteResult(written=len(rows), total_rows=total_rows)
         finally:
             self._release_table_user(table_name)
@@ -1038,11 +1038,6 @@ class LanceDBCollectionStore:
                             "error": "",
                         }
                     )
-                    self._refresh_collection_activity_locked(
-                        row["scope"],
-                        row["collection_name"],
-                        activity_at=activity_at,
-                    )
                 elif state == "appending" and not row.get("current_document_version"):
                     self._db.open_table(_DOCUMENTS_TABLE).delete(
                         f"scope = {_quoted(row['scope'])} "
@@ -1061,6 +1056,12 @@ class LanceDBCollectionStore:
                         }
                     )
                 self._persist_document_row(row)
+                if pending and pending_chunks:
+                    self._refresh_collection_activity_locked(
+                        row["scope"],
+                        row["collection_name"],
+                        activity_at=activity_at,
+                    )
                 return True
             if state == "deleting_chunks":
                 if self._has_table(table_name):

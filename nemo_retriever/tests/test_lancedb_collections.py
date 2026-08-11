@@ -618,6 +618,45 @@ def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monk
     assert visible_hits[0][0]["document_id"] == "document-a"
 
 
+def test_recovery_does_not_repeat_activity_refresh_after_collection_update_failure(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(_records(), context=_context())
+    store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+    document = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    document.update(
+        {
+            "pending_document_version": "v1",
+            "recovery_state": "appending",
+            "status": "appending",
+        }
+    )
+    store._persist_document_row(document)
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+
+    refreshes = 0
+
+    def fail_activity_refresh(row):
+        nonlocal refreshes
+        refreshes += 1
+        raise RuntimeError("injected collection activity failure")
+
+    monkeypatch.setattr(store, "_persist_collection_row", fail_activity_refresh)
+
+    assert backend.reconcile_collections() == {"successes": 0, "failures": 1}
+    assert store._document_rows("workspace-a", "collection-a", "document-a")[0]["recovery_state"] == ""
+    assert backend.reconcile_collections() == {"successes": 0, "failures": 0}
+    assert refreshes == 1
+
+
 def test_reconciliation_filters_recoverable_documents_before_scan_limit(tmp_path, monkeypatch):
     backend = _backend_with_collection(tmp_path)
     backend.write_collection(
