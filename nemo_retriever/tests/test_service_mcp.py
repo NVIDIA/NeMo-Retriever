@@ -374,3 +374,39 @@ def test_query_tool_client_posts_rerank_controls() -> None:
         "rerank": True,
         "rerank_top_k": 20,
     }
+
+
+def test_query_tool_explicit_controls_override_payload() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"hits": []}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    _run(
+        client.query(
+            "authoritative query",
+            top_k=3,
+            payload={
+                "query": "payload query",
+                "top_k": 99,
+                "format": "evidence",
+                "agentic": True,
+                "rerank": True,
+                "rerank_top_k": 50,
+                "filters": {"source": "a.pdf"},
+            },
+        )
+    )
+
+    assert seen["body"] == {
+        "query": "authoritative query",
+        "top_k": 3,
+        "format": "hits",
+        "filters": {"source": "a.pdf"},
+    }

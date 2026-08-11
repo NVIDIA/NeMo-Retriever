@@ -214,3 +214,43 @@ def test_reranked_query_uses_lazy_local_main_service_model(
             "top_n": 1,
         },
     }
+
+
+def test_false_rerank_string_uses_normal_query_path(monkeypatch, tmp_path) -> None:
+    _configure_noop_workers(monkeypatch)
+    seen: dict[str, object] = {}
+
+    class _Response:
+        status_code = 200
+        content = json.dumps({"results": [{"hits": [{"text": "first"}]}]}).encode()
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url, **kwargs):
+            seen["body"] = json.loads(kwargs["content"])
+            return _Response()
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+    config = ServiceConfig(
+        mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        response = client.post(
+            "/v1/query", json={"query": "revenue", "rerank": "false"}
+        )
+
+    assert response.status_code == 200
+    assert seen["body"] == {"query": "revenue", "rerank": "false"}

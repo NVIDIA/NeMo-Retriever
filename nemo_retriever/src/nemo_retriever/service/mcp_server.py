@@ -242,11 +242,12 @@ class ServiceMCPClient:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = dict(payload or {})
-        # Classic query tool must not smuggle agentic=true; use agentic_query instead.
-        body.pop("agentic", None)
-        body.setdefault("query", query)
-        body.setdefault("top_k", top_k)
-        body.setdefault("format", format)
+        # Typed tool arguments are authoritative; payload is only for additional
+        # service options such as filters. In particular, it must not enable
+        # reranking when the explicit rerank argument is false.
+        for key in ("query", "top_k", "format", "agentic", "rerank", "rerank_top_k"):
+            body.pop(key, None)
+        body.update({"query": query, "top_k": top_k, "format": format})
         if rerank:
             body["rerank"] = True
         if rerank_top_k is not None:

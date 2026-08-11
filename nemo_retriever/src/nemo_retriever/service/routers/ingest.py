@@ -1947,30 +1947,34 @@ async def query(request: Request) -> Response:
             body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body
         )
         agentic = bool(parsed.get("agentic")) if isinstance(parsed, dict) else False
-        if isinstance(parsed, dict) and parsed.get("rerank"):
+        if isinstance(parsed, dict) and "rerank" in parsed:
             try:
-                rerank_request = QueryRequest.model_validate(parsed)
+                validated_rerank_request = QueryRequest.model_validate(parsed)
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-            has_remote_reranker = bool(
-                (config.nim_endpoints.rerank_invoke_url or "").strip()
-            )
-            has_local_reranker = config.local_models.rerank.enabled
-            if not (has_remote_reranker or has_local_reranker):
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Reranking is not configured. Set "
-                        "nim_endpoints.rerank_invoke_url or enable "
-                        "local_models.rerank.enabled on the main service."
-                    ),
+            if validated_rerank_request.rerank:
+                rerank_request = validated_rerank_request
+                has_remote_reranker = bool(
+                    (config.nim_endpoints.rerank_invoke_url or "").strip()
                 )
-            candidate_k = rerank_request.rerank_top_k or max(rerank_request.top_k, 50)
-            forwarded = dict(parsed)
-            forwarded.pop("rerank", None)
-            forwarded.pop("rerank_top_k", None)
-            forwarded["top_k"] = candidate_k
-            query_body = json.dumps(forwarded).encode("utf-8")
+                has_local_reranker = config.local_models.rerank.enabled
+                if not (has_remote_reranker or has_local_reranker):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Reranking is not configured. Set "
+                            "nim_endpoints.rerank_invoke_url or enable "
+                            "local_models.rerank.enabled on the main service."
+                        ),
+                    )
+                candidate_k = rerank_request.rerank_top_k or max(
+                    rerank_request.top_k, 50
+                )
+                forwarded = dict(parsed)
+                forwarded.pop("rerank", None)
+                forwarded.pop("rerank_top_k", None)
+                forwarded["top_k"] = candidate_k
+                query_body = json.dumps(forwarded).encode("utf-8")
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
         agentic = False
 
