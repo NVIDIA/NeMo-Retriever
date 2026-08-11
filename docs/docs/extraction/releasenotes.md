@@ -4,8 +4,6 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 ## 26.08 Release Notes (26.8.0)
 
-> **26.08 RC readiness:** GitHub Pages builds from `main` and is the QA review surface for the 26.08 release candidate. docs.nvidia.com remains on the published 26.05 / 26.5.0 snapshot until a separate publish workflow run after GA.
-
 NVIDIA® NeMo Retriever Library version 26.08 builds on the 26.05 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
 
 To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md).
@@ -70,7 +68,7 @@ Highlights for the 26.08 release include:
 
 ### Helm chart
 
-- Helm chart refresh under `nemo_retriever/helm/` with GA VL embedder defaults and optional Nemotron Parse and Omni caption NIMs  
+- Helm chart refresh under `nemo_retriever/helm/` with VL embedder defaults and optional Nemotron Parse and Omni caption NIMs  
 
 ### Documentation
 
@@ -79,7 +77,7 @@ Highlights for the 26.08 release include:
 
 ## Release Notes for Previous Versions
 
-- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/) (GA on docs.nvidia.com at time of 26.08 RC)
+- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/) (published on docs.nvidia.com at time of 26.08 RC)
 - [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
 - [26.1.2](https://archive.docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
 - [26.1.1](https://archive.docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)

@@ -83,7 +83,7 @@ nemo_retriever/helm/
 
 ### 1. Service image { #1-service-image }
 
-The chart defaults to the GA image published to NGC:
+The chart defaults to the image published to NGC:
 
 ```
 nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.0
@@ -291,7 +291,7 @@ short list of knobs you'll touch first.
 
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
-| `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | GA NGC image; override to pin a different build or use a local registry. |
+| `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
 | `service.image.tag`           | `26.8.0`                           |       |
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
