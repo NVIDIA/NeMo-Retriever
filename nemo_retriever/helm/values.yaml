@@ -703,9 +703,12 @@ serviceConfig:
         key: token
 
   # Public bearer-token authentication. Production deployments should mount
-  # a Secret-backed scope-token JSON file. Inline apiToken is retained only as
-  # an explicitly enabled insecure development fallback.
+  # a Secret-backed scope-token JSON file. It is disabled by default so a
+  # standalone deployment accepts gateway requests without a bearer token.
+  # Inline apiToken is retained only as an explicitly enabled insecure
+  # development fallback.
   auth:
+    enabled: false
     apiToken: null
     allowInsecureInlineApiToken: false
     defaultScope: "default"

@@ -283,7 +283,8 @@ def create_app(config: ServiceConfig) -> FastAPI:
         internal_api_token=config.vectordb.internal_api_token,
     )
     logger.info(
-        "Scope authorization configured (header=%s, secret_file=%s, allow_unscoped_dev=%s)",
+        "Scope authorization configured (enabled=%s, header=%s, secret_file=%s, allow_unscoped_dev=%s)",
+        config.auth.enabled,
         config.auth.header_name,
         bool(config.auth.scope_token_file),
         config.auth.allow_unscoped_dev,

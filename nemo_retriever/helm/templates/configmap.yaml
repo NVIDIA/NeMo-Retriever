@@ -20,6 +20,12 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- $auth := $ctx.Values.serviceConfig.auth -}}
 {{- $scopeTokenSecret := $auth.scopeTokenSecret -}}
 {{- $internalAuth := $ctx.Values.serviceConfig.vectordb.internalAuth -}}
+{{- if and $auth.enabled (not $auth.apiToken) (not $scopeTokenSecret.name) -}}
+{{- fail "serviceConfig.auth.enabled=true requires serviceConfig.auth.scopeTokenSecret.name or serviceConfig.auth.apiToken." -}}
+{{- end -}}
+{{- if and (not $auth.enabled) (or $auth.apiToken $scopeTokenSecret.name) -}}
+{{- fail "serviceConfig.auth.apiToken and serviceConfig.auth.scopeTokenSecret.name require serviceConfig.auth.enabled=true." -}}
+{{- end -}}
 {{- if and $auth.apiToken (not $auth.allowInsecureInlineApiToken) -}}
 {{- fail "serviceConfig.auth.apiToken writes a credential to a ConfigMap; set serviceConfig.auth.allowInsecureInlineApiToken=true only for explicit insecure development use, or configure serviceConfig.auth.scopeTokenSecret.name." -}}
 {{- end -}}
@@ -189,6 +195,7 @@ resources:
   max_upload_bytes: {{ $maxUploadBytes }}
 
 auth:
+  enabled: {{ .Values.serviceConfig.auth.enabled }}
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
   default_scope: {{ .Values.serviceConfig.auth.defaultScope | quote }}
   allow_unscoped_dev: {{ .Values.serviceConfig.auth.allowUnscopedDev }}

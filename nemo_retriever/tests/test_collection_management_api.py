@@ -345,7 +345,7 @@ def test_raw_storage_selection_is_rejected_for_query_requests() -> None:
 def test_scope_authorizer_secret_mapping_and_internal_vectordb_token(tmp_path) -> None:
     secret = tmp_path / "scope-tokens.json"
     secret.write_text('{"tokens":[{"token":"alpha-token","scopes":["alpha"]}]}', encoding="utf-8")
-    authorizer = ScopeAuthorizer(AuthConfig(scope_token_file=str(secret), allow_unscoped_dev=False))
+    authorizer = ScopeAuthorizer(AuthConfig(enabled=True, scope_token_file=str(secret), allow_unscoped_dev=False))
     assert authorizer.authorize("alpha-token", "alpha") == ("alpha", None)
     assert authorizer.authorize("alpha-token", "beta") == (None, 401)
     assert authorizer.authorize("invalid", "alpha") == (None, 401)
@@ -362,19 +362,32 @@ def test_scope_authorizer_secret_mapping_and_internal_vectordb_token(tmp_path) -
         assert client.get("/v1/collections", headers={"X-NRL-Internal-Token": "internal-secret"}).status_code == 200
 
 
-def test_scope_authorizer_requires_explicit_unscoped_development_opt_in() -> None:
-    assert ScopeAuthorizer(AuthConfig()).authorize("", "workspace-a") == (None, 401)
-    assert ScopeAuthorizer(AuthConfig(allow_unscoped_dev=True)).authorize("", "workspace-a") == (
+def test_scope_authorizer_defaults_to_unprotected_and_fails_closed_when_enabled() -> None:
+    assert ScopeAuthorizer(AuthConfig()).authorize("", "workspace-a") == ("workspace-a", None)
+    assert ScopeAuthorizer(AuthConfig(enabled=True)).authorize("", "workspace-a") == (None, 401)
+    assert ScopeAuthorizer(AuthConfig(enabled=True, allow_unscoped_dev=True)).authorize("", "workspace-a") == (
         "workspace-a",
         None,
     )
 
+
+
+
+def test_public_routes_accept_requests_when_auth_is_disabled() -> None:
+    app = create_app(ServiceConfig(mode="gateway", auth=AuthConfig()))
+    with TestClient(app) as client:
+        response = client.get("/v1/collections")
+
+    # The route is reached and then rejects the disabled VectorDB, rather than
+    # being rejected by bearer authentication.
+    assert response.status_code == 404
 
 def test_service_routes_use_authorized_scope_not_raw_header() -> None:
     app = create_app(
         ServiceConfig(
             mode="gateway",
             auth=AuthConfig(
+                enabled=True,
                 api_token="alpha-token",
                 default_scope="alpha",
                 allow_unscoped_dev=False,

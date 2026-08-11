@@ -483,7 +483,7 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         mode="gateway",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
     with TestClient(create_app(config)) as client:

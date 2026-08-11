@@ -37,6 +37,8 @@ def _auth_args(*, split: bool = False) -> tuple[str, ...]:
         "--set",
         "serviceConfig.vectordb.internalAuth.existingSecret.name=nrl-internal-auth",
         "--set",
+        "serviceConfig.auth.enabled=true",
+        "--set",
         "serviceConfig.auth.scopeTokenSecret.name=nrl-public-auth",
     )
     if split:
@@ -50,7 +52,7 @@ def _auth_args(*, split: bool = False) -> tuple[str, ...]:
     return args
 
 
-def test_auth_is_unconfigured_by_default_and_public_requests_fail_closed() -> None:
+def test_auth_is_disabled_by_default_for_unprotected_standalone_deployments() -> None:
     documents = _render()
     deployment = next(iter(_deployments(documents).values()))
     assert "NRL_INTERNAL_VDB_TOKEN" not in _container_env(deployment)
@@ -62,6 +64,7 @@ def test_auth_is_unconfigured_by_default_and_public_requests_fail_closed() -> No
     )
     assert "api_token: null" in config
     assert 'default_scope: "default"' in config
+    assert "enabled: false" in config
     assert "allow_unscoped_dev: false" in config
 
 
@@ -137,6 +140,8 @@ def test_public_auth_requires_existing_secret_key() -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
         _render(
             "--set",
+            "serviceConfig.auth.enabled=true",
+            "--set",
             "serviceConfig.auth.scopeTokenSecret.name=nrl-public-auth",
             "--set-string",
             "serviceConfig.auth.scopeTokenSecret.key=",
@@ -146,10 +151,17 @@ def test_public_auth_requires_existing_secret_key() -> None:
 
 def test_inline_public_token_requires_explicit_insecure_gate() -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
-        _render("--set-string", "serviceConfig.auth.apiToken=sentinel-public-token")
+        _render(
+            "--set",
+            "serviceConfig.auth.enabled=true",
+            "--set-string",
+            "serviceConfig.auth.apiToken=sentinel-public-token",
+        )
     assert "allowInsecureInlineApiToken=true" in error.value.stderr
 
     documents = _render(
+        "--set",
+        "serviceConfig.auth.enabled=true",
         "--set-string",
         "serviceConfig.auth.apiToken=sentinel-public-token",
         "--set",
@@ -166,6 +178,8 @@ def test_inline_public_token_requires_explicit_insecure_gate() -> None:
 def test_inline_and_secret_public_auth_are_mutually_exclusive() -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
         _render(
+            "--set",
+            "serviceConfig.auth.enabled=true",
             "--set-string",
             "serviceConfig.auth.apiToken=sentinel-public-token",
             "--set",
@@ -174,3 +188,15 @@ def test_inline_and_secret_public_auth_are_mutually_exclusive() -> None:
             "serviceConfig.auth.scopeTokenSecret.name=nrl-public-auth",
         )
     assert "mutually exclusive" in error.value.stderr
+
+
+def test_enabled_public_auth_requires_a_credential_source() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render("--set", "serviceConfig.auth.enabled=true")
+    assert "auth.enabled=true requires" in error.value.stderr
+
+
+def test_public_credentials_require_auth_to_be_enabled() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render("--set", "serviceConfig.auth.scopeTokenSecret.name=nrl-public-auth")
+    assert "require serviceConfig.auth.enabled=true" in error.value.stderr

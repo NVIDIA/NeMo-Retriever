@@ -175,8 +175,8 @@ helm install retriever ./nemo_retriever/helm \
   --set serviceConfig.nimEndpoints.tableStructureInvokeUrl=http://table-structure.svc:8000/v1/table-structure \
   --set serviceConfig.nimEndpoints.ocrInvokeUrl=http://ocr.svc:8000/v1/ocr \
   --set serviceConfig.nimEndpoints.embedInvokeUrl=http://embed.svc:8000/v1/embeddings
-```
 
+```
 `ngcApiSecret` materialises an `ngc-api` Secret containing both
 `NGC_API_KEY` and `NGC_CLI_API_KEY` keys; the service container reads it
 via `optional: true` `secretKeyRef`, so the install still succeeds when
@@ -776,6 +776,7 @@ custom service configuration files.
 | `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable dedicated Secret-backed Retriever-to-VectorDB authentication. |
 | `serviceConfig.vectordb.internalAuth.existingSecret.name` | `""` | Existing Secret shared by Retriever and VectorDB pods. |
 | `serviceConfig.auth.scopeTokenSecret.name` | `""` | Existing Secret containing the public scope-token JSON file. |
+| `serviceConfig.auth.enabled` | `false` | Require bearer authentication for the public gateway. |
 | `serviceConfig.auth.allowInsecureInlineApiToken` | `false` | Explicit development-only gate for ConfigMap-backed `apiToken`. |
 
 ### Optional features
@@ -822,6 +823,7 @@ serviceConfig:
     scopeTokenSecret:
       name: nrl-public-auth
       key: scope-tokens.json
+    enabled: true
   vectordb:
     internalAuth:
       enabled: true
