@@ -5,6 +5,7 @@
 """Lifecycle projection tests for tracker-owned ingest metrics."""
 
 from nemo_retriever.service.services.job_tracker import JobTracker, MarkOutcome
+from nemo_retriever.service.services import metrics as metrics_module
 from nemo_retriever.service.services.metrics import IngestMetrics
 
 
@@ -29,7 +30,11 @@ def test_terminal_transitions_reconcile_document_and_job_metrics() -> None:
 
     job = metrics.get_job("job")
     assert job is not None
-    assert (job.documents_completed, job.documents_failed, job.status) == (1, 1, "partial_success")
+    assert (job.documents_completed, job.documents_failed, job.status) == (
+        1,
+        1,
+        "partial_success",
+    )
     assert job.completed_at is not None
     assert job.wall_duration_s is not None
     completed = metrics.get_document("ok")
@@ -72,3 +77,21 @@ def test_explicit_page_terminal_transitions_reconcile_page_counts() -> None:
     page = metrics.get_page("page-2")
     assert page is not None
     assert page.job_id == "job" and page.status == "failed" and page.error == "OCR failed"
+
+
+def test_page_terminal_counts_survive_recent_page_eviction(monkeypatch) -> None:
+    monkeypatch.setattr(metrics_module, "MAX_RECENT_PAGES", 1)
+    tracker, metrics = _wired_tracker()
+    tracker.register_job("job", expected_documents=2)
+    metrics.record_job_created("job")
+    for page_id in ("page-1", "page-2"):
+        tracker.register_document(page_id, job_id="job")
+        metrics.record_page_accepted(page_id=page_id, document_id="source", job_id="job")
+        tracker.mark_processing(page_id)
+
+    tracker.mark_completed("page-1")
+    tracker.mark_failed("page-2", "OCR failed")
+
+    job = metrics.get_job("job")
+    assert job is not None
+    assert (job.pages_total, job.pages_completed, job.pages_failed) == (2, 1, 1)

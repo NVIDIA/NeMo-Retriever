@@ -282,9 +282,13 @@ class JobTracker:
     def add_terminal_observer(self, observer: Callable[[DocumentRecord, JobAggregate | None], None]) -> None:
         """Register a callback for real document terminal transitions.
 
-        The callback runs outside the tracker lock, after the document and
-        aggregate state have been updated. Duplicate and unknown callbacks do
-        not invoke it.
+        Args:
+            observer: Callback receiving defensive snapshots of the transitioned
+                document and its aggregate job, when available.
+
+        Returns:
+            None. The callback runs outside the tracker lock after tracker
+            state is updated; duplicate and unknown callbacks do not invoke it.
         """
         self._terminal_observers.append(observer)
 

@@ -176,6 +176,9 @@ class IngestMetrics:
         self._jobs: dict[str, JobMetric] = {}
         self._documents: dict[str, DocumentMetric] = {}
         self._pages: deque[PageMetric] = deque(maxlen=MAX_RECENT_PAGES)
+        # Recent page details are bounded, but page terminal outcomes for
+        # active jobs must not be lost when those details are evicted.
+        self._pending_page_job_ids: dict[str, str] = {}
 
     # ── recording helpers ────────────────────────────────────────────
 
@@ -275,6 +278,7 @@ class IngestMetrics:
                 self._documents[document_id].job_id if document_id in self._documents else None
             )
             if resolved_job_id and resolved_job_id in self._jobs:
+                self._pending_page_job_ids[page_id] = resolved_job_id
                 job = self._jobs[resolved_job_id]
                 self._jobs[resolved_job_id] = job.model_copy(
                     update={
@@ -309,7 +313,17 @@ class IngestMetrics:
                     break
 
     def record_terminal_transition(self, document: DocumentRecord, job: JobAggregate | None) -> None:
-        """Mirror an authoritative tracker terminal transition into metrics."""
+        """Mirror an authoritative terminal document transition into metrics.
+
+        Args:
+            document: Immutable snapshot of the document that reached a terminal
+                state.
+            job: Immutable snapshot of the document's aggregate job, if it is
+                still tracked.
+
+        Returns:
+            None. The method updates in-memory metric records only.
+        """
         with self._lock:
             if document.id in self._documents:
                 metric = self._documents[document.id]
@@ -334,14 +348,13 @@ class IngestMetrics:
                     )
                     break
 
+            page_job_id = self._pending_page_job_ids.pop(document.id, None)
             if job is not None and job.job_id in self._jobs:
                 metric_job = self._jobs[job.job_id]
                 # Observer calls may arrive out of order across concurrent
                 # worker completions; terminal counts are monotonic.
                 updates: dict[str, object] = {
-                    "documents_completed": max(
-                        metric_job.documents_completed, job.counts.get("completed", 0)
-                    ),
+                    "documents_completed": max(metric_job.documents_completed, job.counts.get("completed", 0)),
                     "documents_failed": max(metric_job.documents_failed, job.counts.get("failed", 0)),
                 }
                 if job.finalized_at is not None:
@@ -352,19 +365,12 @@ class IngestMetrics:
                             "wall_duration_s": job.elapsed_s,
                         }
                     )
+                if page_job_id == job.job_id:
+                    if document.status.value == "completed":
+                        updates["pages_completed"] = metric_job.pages_completed + 1
+                    elif document.status.value == "failed":
+                        updates["pages_failed"] = metric_job.pages_failed + 1
                 self._jobs[job.job_id] = metric_job.model_copy(update=updates)
-
-                # Explicit /page work is associated by job_id. Whole-document
-                # PDFs deliberately contribute no page counts.
-                page_completed = sum(
-                    1 for page in self._pages if page.job_id == job.job_id and page.status == "completed"
-                )
-                page_failed = sum(
-                    1 for page in self._pages if page.job_id == job.job_id and page.status == "failed"
-                )
-                self._jobs[job.job_id] = self._jobs[job.job_id].model_copy(
-                    update={"pages_completed": page_completed, "pages_failed": page_failed}
-                )
 
     # ── single-record lookups ────────────────────────────────────────
 
