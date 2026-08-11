@@ -58,11 +58,9 @@ def test_extraction_nims_use_distinct_native_models_and_supported_model_paths() 
     assert "/model-store" not in COMPOSE.read_text(encoding="utf-8")
 
 
-def test_compose_and_presets_select_expected_inference_modes() -> None:
+def test_zero_profile_defaults_to_hosted_endpoints() -> None:
     compose = _compose()
     config = compose["configs"]["retriever_service_config"]["content"]
-    core_preset = set(CORE_PRESET.read_text(encoding="utf-8").splitlines())
-    local_preset = set(LOCAL_PRESET.read_text(encoding="utf-8").splitlines())
 
     hosted_endpoints = (
         "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3}",
@@ -72,6 +70,9 @@ def test_compose_and_presets_select_expected_inference_modes() -> None:
     for endpoint in hosted_endpoints:
         assert endpoint in config
 
+
+def test_nims_core_preset_uses_internal_endpoints() -> None:
+    core_preset = set(CORE_PRESET.read_text(encoding="utf-8").splitlines())
     internal_endpoints = {
         "NIM_PAGE_ELEMENTS_URL=http://nim-page-elements:8000/v1/page-elements",
         "NIM_TABLE_STRUCTURE_URL=http://nim-table-structure:8000/v1/table-structure",
@@ -81,6 +82,9 @@ def test_compose_and_presets_select_expected_inference_modes() -> None:
     assert internal_endpoints <= core_preset
     assert "/v1/infer" not in CORE_PRESET.read_text(encoding="utf-8")
 
+
+def test_local_models_preset_disables_remote_endpoints() -> None:
+    local_preset = set(LOCAL_PRESET.read_text(encoding="utf-8").splitlines())
     disabled_endpoints = {
         "NIM_PAGE_ELEMENTS_URL=",
         "NIM_TABLE_STRUCTURE_URL=",
