@@ -139,7 +139,7 @@ class AgenticRetrievalConfig:
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
     local_hf_batch_size: int = 32
-    local_query_embed_backend: str = "hf"
+    local_query_embed_backend: Optional[str] = None
     reranker: Optional[str] = None
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
@@ -324,10 +324,11 @@ class AgenticRetriever:
         embed_kwargs = build_embed_option_kwargs(
             cfg.embedding_endpoint,
             cfg.query_embedder,
-            local_ingest_embed_backend=str(cfg.local_query_embed_backend),
             embed_api_key=cfg.embedding_api_key,
             embed_model_provider_prefix=cfg.query_embedder_provider_prefix,
         )
+        if cfg.local_query_embed_backend is not None:
+            embed_kwargs["local_ingest_embed_backend"] = str(cfg.local_query_embed_backend)
         embed_kwargs.update(
             {
                 "input_type": "query",

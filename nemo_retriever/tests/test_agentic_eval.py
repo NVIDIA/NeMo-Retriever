@@ -130,9 +130,11 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
         invoke_url="http://localhost/v1/chat/completions",
         max_tokens=77,
     )
-    result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+    result = retriever.retrieve(["0"], ["find doc"])
 
     assert mock_react_step.call_args.kwargs["max_tokens"] == 77
+    assert "local_ingest_embed_backend" not in retriever._retriever.kwargs["embed_kwargs"]
     assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
     assert result["query_id"].tolist() == ["0"] * 10
     assert result["doc_id"].tolist()[0] == "doc_1"

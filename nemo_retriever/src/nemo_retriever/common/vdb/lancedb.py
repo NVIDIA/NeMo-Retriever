@@ -48,6 +48,7 @@ _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null"
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 _EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
+_EMBEDDING_MODEL_REVISION_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_revision"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -142,6 +143,7 @@ def _with_retrieval_mode_metadata(
     schema: pa.Schema,
     retrieval_mode: str | None,
     embedding_model_name: str | None = None,
+    embedding_model_revision: str | None = None,
 ) -> pa.Schema:
     if retrieval_mode is None:
         return schema
@@ -151,6 +153,8 @@ def _with_retrieval_mode_metadata(
     metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
     if embedding_model_name:
         metadata[_EMBEDDING_MODEL_METADATA_KEY] = embedding_model_name.encode("utf-8")
+    if embedding_model_revision:
+        metadata[_EMBEDDING_MODEL_REVISION_METADATA_KEY] = embedding_model_revision.encode("utf-8")
     return schema.with_metadata(metadata)
 
 
@@ -159,6 +163,7 @@ def _lancedb_arrow_schema(
     *,
     retrieval_mode: str | None = None,
     embedding_model_name: str | None = None,
+    embedding_model_revision: str | None = None,
 ) -> pa.Schema:
     schema = pa.schema(
         [
@@ -169,7 +174,12 @@ def _lancedb_arrow_schema(
             pa.field("id", pa.string()),
         ]
     )
-    return _with_retrieval_mode_metadata(schema, retrieval_mode, embedding_model_name)
+    return _with_retrieval_mode_metadata(
+        schema,
+        retrieval_mode,
+        embedding_model_name,
+        embedding_model_revision,
+    )
 
 
 def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
@@ -187,6 +197,17 @@ def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa
 def _table_schema(table: Any) -> pa.Schema:
     schema = table.schema
     return schema() if callable(schema) else schema
+
+
+def _schema_vector_dim(schema: pa.Schema) -> int | None:
+    """Return a fixed vector width from a LanceDB table schema when present."""
+    try:
+        vector_type = schema.field("vector").type
+    except KeyError:
+        return None
+    if pa.types.is_fixed_size_list(vector_type):
+        return int(vector_type.list_size)
+    return None
 
 
 def lancedb_row_count(uri: str, table_name: str) -> int:
@@ -218,6 +239,7 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
 def _validate_append_embedding_model(
     table: Any,
     embedding_model_name: str | None,
+    embedding_model_revision: str | None,
     *,
     table_name: str,
     uri: str,
@@ -236,6 +258,22 @@ def _validate_append_embedding_model(
         raise ValueError(
             f"LanceDB table {table_name!r} at {uri!r} uses embedding model {stored_model!r}; "
             f"cannot append vectors from {embedding_model_name!r}. Use the table model or overwrite the table."
+        )
+
+    stored_revision_value = metadata.get(_EMBEDDING_MODEL_REVISION_METADATA_KEY)
+    if stored_revision_value is None:
+        return
+    stored_revision = stored_revision_value.decode("utf-8", errors="replace").strip()
+    if stored_revision and not embedding_model_revision:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model revision {stored_revision!r}; "
+            "cannot append vectors without a known revision. Use the table revision or overwrite the table."
+        )
+    if stored_revision and stored_revision != embedding_model_revision:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model revision {stored_revision!r}; "
+            f"cannot append vectors from revision {embedding_model_revision!r}. "
+            "Use the table revision or overwrite the table."
         )
 
 
@@ -532,6 +570,7 @@ class LanceDB(VDB):
         validate_vector_length: bool = True,
         build_index: bool | None = None,
         expiration_cleanup_enabled: bool = True,
+        embedding_model_revision: str | None = None,
         **kwargs,
     ):
         create_index = kwargs.pop("create_index", None)
@@ -557,6 +596,7 @@ class LanceDB(VDB):
         self.sparse = bool(sparse)
         self.fts_language = fts_language
         self.embedding_model_name = embedding_model_name
+        self.embedding_model_revision = embedding_model_revision
         self.vector_dim = int(vector_dim) if vector_dim is not None else None
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
         self.fill_value = float(fill_value)
@@ -815,36 +855,50 @@ class LanceDB(VDB):
         connect_start = time.perf_counter()
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
+        record_batches = list(records or [])
 
         if self.sparse:
-            results, counts = _create_sparse_lancedb_results(records or [])
+            results, counts = _create_sparse_lancedb_results(record_batches)
             schema = _sparse_lancedb_arrow_schema()
             write_kwargs: dict[str, Any] = {}
         else:
-            if self.validate_vector_length and self.on_bad_vectors != "error":
-                expected_dim: int | None = self.vector_dim
-            else:
-                expected_dim = None
+            enforce_dim = self.validate_vector_length and self.on_bad_vectors != "error"
+            vector_dim = self.vector_dim
+            if vector_dim is None and not self.overwrite:
+                try:
+                    existing_table = db.open_table(self.table_name)
+                except ValueError as exc:
+                    if not _is_missing_lancedb_table_error(exc):
+                        raise
+                else:
+                    vector_dim = _schema_vector_dim(_table_schema(existing_table))
 
-            results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-            resolved_vector_dim = self.vector_dim
-            if resolved_vector_dim is None:
-                resolved_vector_dim = infer_vector_dim(results)
-                if resolved_vector_dim <= 0:
-                    raise ValueError("Cannot infer vector_dim because no writable embedding was provided")
+            if vector_dim is None:
+                results, counts = _create_lancedb_results(record_batches, expected_dim=None)
+                vector_dim = infer_vector_dim(results)
+                if vector_dim <= 0:
+                    raise ValueError("Cannot infer LanceDB vector_dim because no non-empty embedding was produced.")
+                if enforce_dim:
+                    results, counts = _create_lancedb_results(record_batches, expected_dim=vector_dim)
+            else:
+                results, counts = _create_lancedb_results(
+                    record_batches, expected_dim=vector_dim if enforce_dim else None
+                )
 
             if self._service_table_schema:
                 results = _to_service_lancedb_rows(results)
                 schema = _with_retrieval_mode_metadata(
-                    lancedb_schema(resolved_vector_dim),
+                    lancedb_schema(vector_dim),
                     "hybrid" if self.hybrid else "dense",
                     embedding_model_name=self.embedding_model_name,
+                    embedding_model_revision=self.embedding_model_revision,
                 )
             else:
                 schema = _lancedb_arrow_schema(
-                    resolved_vector_dim,
+                    vector_dim,
                     retrieval_mode="hybrid" if self.hybrid else "dense",
                     embedding_model_name=self.embedding_model_name,
+                    embedding_model_revision=self.embedding_model_revision,
                 )
 
             write_kwargs = {
@@ -887,6 +941,7 @@ class LanceDB(VDB):
                     _validate_append_embedding_model(
                         table,
                         self.embedding_model_name,
+                        self.embedding_model_revision,
                         table_name=table_name,
                         uri=self.uri,
                     )

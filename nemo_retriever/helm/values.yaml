@@ -905,12 +905,9 @@ serviceMonitor:
 nims:
   enabled: true
 
-# Each `nimOperator.<key>` block renders NIM Operator custom resources
-# (apiVersion: apps.nvidia.com/v1alpha1). As a temporary NIM Operator 3.1.1
-# compatibility path, the affected 2.x extraction and retrieval NIMs default to
-# modelDownloadMode: nimService: the NIMService owns a direct PVC
-# and downloads its model at startup. modelDownloadMode: nimCache restores the
-# legacy NIMCache + NIMService pair. Other NIMs retain their NIMCache flow.
+# Each `nimOperator.<key>` block renders a pair of `NIMCache` + `NIMService`
+# custom resources (apiVersion: apps.nvidia.com/v1alpha1) that the NIM
+# Operator reconciles into a Deployment + Service per model.
 #
 # The per-model templates are gated on ALL of:
 #   1. `.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1"` — the
@@ -1050,11 +1047,9 @@ nimOperator:
   # page_elements_invoke_url continues to resolve independently.
   page_elements:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1108,11 +1103,9 @@ nimOperator:
   # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
   table_structure:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1165,13 +1158,11 @@ nimOperator:
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1227,8 +1218,6 @@ nimOperator:
   # the vectordb query path, and multimodal ingest.
   vlm_embed:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
@@ -1367,8 +1356,6 @@ nimOperator:
   # service/Helm release.
   rerankqa:
     enabled: false
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
       tag: "2.3.0"
