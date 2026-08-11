@@ -292,3 +292,51 @@ def test_agentic_retriever_unload_noop_when_no_local_llm() -> None:
         retriever.unload()
 
     assert retriever._chat_completion_fn is None
+
+
+def _offline_llm(sampling_params_cls: Any) -> Any:
+    """A VLLMAgentChatLLM with the engine faked out, so no vLLM install is needed."""
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
+
+    completion = MagicMock(text="hello", finish_reason="stop", token_ids=[1, 2])
+    completion.tool_calls = None
+    completion.tool_call = None
+    request_output = MagicMock(outputs=[completion], prompt_token_ids=[1])
+
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+    llm._llm = MagicMock(chat=MagicMock(return_value=[request_output]))
+    llm._lock = threading.Lock()
+    llm._sampling_params_cls = sampling_params_cls
+    llm._model_path = "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
+    llm._max_tokens = 512
+    llm._request_extras = {}
+    return llm
+
+
+def test_local_llm_maps_unset_temperature_to_greedy() -> None:
+    # The agent forwards temperature=None to mean "unset". There is no provider to
+    # defer to in-process, and adopting vLLM's own sampling default would silently
+    # make every local benchmark non-deterministic -- so None means greedy here.
+    # Deliberately asymmetric with invoke_chat_completion_step, which omits the
+    # field so the remote provider's default applies.
+    sampling_params_cls = MagicMock()
+    _offline_llm(sampling_params_cls)(messages=[{"role": "user", "content": "q"}], temperature=None)
+
+    assert sampling_params_cls.call_args.kwargs["temperature"] == 0.0
+
+
+def test_local_llm_forwards_an_explicit_temperature() -> None:
+    sampling_params_cls = MagicMock()
+    _offline_llm(sampling_params_cls)(messages=[{"role": "user", "content": "q"}], temperature=0.7)
+
+    assert sampling_params_cls.call_args.kwargs["temperature"] == 0.7
+
+
+def test_local_llm_returns_an_openai_shaped_response() -> None:
+    # The callable contract is an OpenAI chat.completion dict; CallableLLMBackend
+    # parses this exact shape.
+    response = _offline_llm(MagicMock())(messages=[{"role": "user", "content": "q"}], temperature=None)
+
+    assert response["choices"][0]["message"] == {"role": "assistant", "content": "hello"}
+    assert response["choices"][0]["finish_reason"] == "stop"
+    assert response["usage"]["total_tokens"] == 3
