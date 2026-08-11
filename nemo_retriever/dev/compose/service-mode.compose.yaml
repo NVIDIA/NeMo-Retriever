@@ -115,8 +115,8 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-page-elements-v3
-      NIM_ENGINE_MODEL_PATH: ${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model-store}/page-elements
-    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model-store}"]
+      NIM_ENGINE_MODEL_PATH: ${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model}/page-elements
+    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_PAGE_ELEMENTS_GPU_ID:-0}"]}]}}}
@@ -137,8 +137,8 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-table-structure-v1
-      NIM_ENGINE_MODEL_PATH: ${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model-store}/table-structure
-    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model-store}"]
+      NIM_ENGINE_MODEL_PATH: ${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model}/table-structure
+    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_TABLE_STRUCTURE_GPU_ID:-1}"]}]}}}
@@ -159,9 +159,9 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-ocr-v2
-      NIM_ENGINE_MODEL_PATH: ${NIM_OCR_CACHE_PATH:-/model-store}/ocr
+      NIM_ENGINE_MODEL_PATH: ${NIM_OCR_CACHE_PATH:-/model}/ocr
       NIM_ENGINE_MODEL_VARIANT: multilingual
-    volumes: ["nim_ocr_cache:${NIM_OCR_CACHE_PATH:-/model-store}"]
+    volumes: ["nim_ocr_cache:${NIM_OCR_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_OCR_GPU_ID:-2}"]}]}}}
@@ -279,9 +279,9 @@ configs:
         file: "/var/lib/nemo-retriever/retriever-service.log"
         format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
       nim_endpoints:
-        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-http://nim-page-elements:8000/v1/page-elements}"
-        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-http://nim-table-structure:8000/v1/table-structure}"
-        ocr_invoke_url: "${NIM_OCR_URL-http://nim-ocr:8000/v1/ocr}"
+        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3}"
+        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1}"
+        ocr_invoke_url: "${NIM_OCR_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2}"
         embed_invoke_url: "${NIM_EMBED_URL-https://integrate.api.nvidia.com/v1/embeddings}"
         embed_model_name: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
         caption_invoke_url: ${NIM_CAPTION_URL:-null}
