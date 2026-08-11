@@ -231,9 +231,7 @@ class CallableLLMBackend(BaseLLMBackend):
 
     def _build_result(self, response: Any, call_kwargs: Dict[str, Any]) -> CompletionResult:
         if not isinstance(response, dict):
-            raise LLMCallError(
-                f"Callable returned {type(response).__name__}, expected an OpenAI chat.completion dict."
-            )
+            raise LLMCallError(f"Callable returned {type(response).__name__}, expected an OpenAI chat.completion dict.")
         choices = response.get("choices")
         if not isinstance(choices, list) or not choices:
             raise LLMCallError("Callable response is missing a non-empty 'choices' list.")

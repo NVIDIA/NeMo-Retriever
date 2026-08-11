@@ -210,7 +210,10 @@ AgenticTemperatureOption = Annotated[
     typer.Option(
         "--agentic-temperature",
         min=0.0,
-        help="Sampling temperature for agentic LLM calls. Omit to leave it unset (endpoint/model default; 0.0 = greedy).",
+        help=(
+            "Sampling temperature for agentic LLM calls. "
+            "Omit to leave it unset (endpoint/model default; 0.0 = greedy)."
+        ),
     ),
 ]
 AgenticLlmClientOption = Annotated[

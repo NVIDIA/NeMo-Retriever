@@ -8,6 +8,11 @@
 the run's candidate documents.
 """
 
+# flake8: noqa: E501
+# The prompt text below exceeds the line limit. Two of the long lines live inside a
+# triple-quoted prompt string, where a trailing ``# noqa`` would be interpolated into
+# the prompt the model sees, so the exemption is applied per file rather than per line.
+
 from __future__ import annotations
 
 from abc import abstractmethod

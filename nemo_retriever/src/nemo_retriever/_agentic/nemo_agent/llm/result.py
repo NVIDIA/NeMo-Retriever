@@ -73,13 +73,9 @@ class CompletionResult:
                 f"got {type(self.message).__name__}"
             )
         if self.message.get("role") != "assistant":
-            raise ValueError(
-                f"CompletionResult.message must have role='assistant', got {self.message.get('role')!r}"
-            )
+            raise ValueError(f"CompletionResult.message must have role='assistant', got {self.message.get('role')!r}")
         if not isinstance(self.finish_reason, str) or not self.finish_reason:
-            raise ValueError(
-                f"CompletionResult.finish_reason must be a non-empty string, got {self.finish_reason!r}"
-            )
+            raise ValueError(f"CompletionResult.finish_reason must be a non-empty string, got {self.finish_reason!r}")
         if not isinstance(self.extra_response_info, dict):
             raise TypeError(
                 f"CompletionResult.extra_response_info must be a dict, "

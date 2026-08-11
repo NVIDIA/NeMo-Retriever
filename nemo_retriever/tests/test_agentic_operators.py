@@ -137,7 +137,7 @@ class TestRRFAggregatorOperator:
                 "is_final_result": [False, True],
             }
         )
-        result = op = RRFAggregatorOperator(k=60).run(df)
+        result = RRFAggregatorOperator(k=60).run(df)
         row = result[result["doc_id"] == "d1"].iloc[0]
         assert abs(row["rrf_score"] - 1 / (1 + 60)) < 1e-10  # only the retrieve hit
         assert int(row["react_final_rank"]) == 1
@@ -218,8 +218,14 @@ class TestReActAgentOperator:
             result = op.run(self._input())
 
         assert set(result.columns) == {
-            "query_id", "query_text", "step_idx", "doc_id", "text", "rank",
-            "has_valid_final_results", "is_final_result",
+            "query_id",
+            "query_text",
+            "step_idx",
+            "doc_id",
+            "text",
+            "rank",
+            "has_valid_final_results",
+            "is_final_result",
         }
         assert result["has_valid_final_results"].all()
         # retrieve steps 0 and 1 present
@@ -252,8 +258,14 @@ class TestReActAgentOperator:
         op = self._op()
         result = op.run(pd.DataFrame({"query_id": [], "query_text": []}))
         assert list(result.columns) == [
-            "query_id", "query_text", "step_idx", "doc_id", "text", "rank",
-            "has_valid_final_results", "is_final_result",
+            "query_id",
+            "query_text",
+            "step_idx",
+            "doc_id",
+            "text",
+            "rank",
+            "has_valid_final_results",
+            "is_final_result",
         ]
         assert result.empty
 
@@ -609,9 +621,7 @@ class TestCallableBackendWiring:
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         def fake_fn(**kwargs):
-            return {
-                "choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}]
-            }
+            return {"choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}]}
 
         op = ReActAgentOperator(
             llm_model="nemotron-8b",
@@ -736,9 +746,7 @@ class TestCallableLLMBackend:
         from nemo_retriever._agentic.nemo_agent.llm import LLMCallError
 
         with pytest.raises(LLMCallError):
-            self._backend(lambda **kwargs: bad_response).completion(
-                messages=[{"role": "user", "content": "q"}]
-            )
+            self._backend(lambda **kwargs: bad_response).completion(messages=[{"role": "user", "content": "q"}])
 
     @staticmethod
     def _seen_kwargs(backend, **call_kwargs):
@@ -756,9 +764,7 @@ class TestCallableLLMBackend:
 
         def backend(fn):
             return create_llm(
-                create_llm_config(
-                    "callable", model="nemotron-8b", parallel_tool_calls=False, reasoning_effort="high"
-                ),
+                create_llm_config("callable", model="nemotron-8b", parallel_tool_calls=False, reasoning_effort="high"),
                 completion_fn=fn,
             )
 
@@ -809,9 +815,7 @@ class TestCallableLLMBackend:
 
     def test_capture_raw_io_off_by_default(self):
         result = self._backend(
-            lambda **kwargs: {
-                "choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}]
-            }
+            lambda **kwargs: {"choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}]}
         ).completion(messages=[{"role": "user", "content": "q"}])
         assert result.raw_request is None
         assert result.raw_response is None

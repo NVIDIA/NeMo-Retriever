@@ -345,9 +345,7 @@ def test_agentic_config_defaults_callable_client_in_process():
 
     # In-process transport, client unset or explicitly callable -> callable.
     assert AgenticRetrievalConfig(llm_model="nemotron-8b").llm_client == "callable"
-    assert (
-        AgenticRetrievalConfig(llm_model="nemotron-8b", llm_client="callable").llm_client == "callable"
-    )
+    assert AgenticRetrievalConfig(llm_model="nemotron-8b", llm_client="callable").llm_client == "callable"
 
 
 def test_agentic_config_rejects_remote_client_without_invoke_url():

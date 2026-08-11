@@ -124,9 +124,7 @@ class Agent(_BaseAgentLoop):
             if not isinstance(tool, BaseTool):
                 raise TypeError(f"tool_overrides[{key!r}] must be a BaseTool, got {type(tool).__name__}.")
             if key != tool.name:
-                raise ValueError(
-                    f"tool_overrides key {key!r} does not match the tool's spec name {tool.name!r}."
-                )
+                raise ValueError(f"tool_overrides key {key!r} does not match the tool's spec name {tool.name!r}.")
             if key == retrieve_tool.name:
                 raise ValueError(
                     f"tool_overrides may not replace the primary retrieve tool {key!r}; "
@@ -134,8 +132,7 @@ class Agent(_BaseAgentLoop):
                 )
             if key == end_tool.name:
                 raise ValueError(
-                    f"tool_overrides may not replace the end tool {key!r}; "
-                    "pass it as the end_tool argument instead."
+                    f"tool_overrides may not replace the end tool {key!r}; " "pass it as the end_tool argument instead."
                 )
             tools[key] = tool
         # End tool after the retrieve tools.
@@ -250,9 +247,7 @@ class Agent(_BaseAgentLoop):
         task_inst_query = f"{instruction}Query:\n{state.query}"
 
         if self.config.user_msg_type == "simple":
-            state.message_history.append(
-                {"role": "user", "content": [{"type": "text", "text": task_inst_query}]}
-            )
+            state.message_history.append({"role": "user", "content": [{"type": "text", "text": task_inst_query}]})
             return
         # "with_results": bootstrap the conversation with an initial retrieve
         # through the primary retrieve tool.
@@ -280,9 +275,7 @@ class Agent(_BaseAgentLoop):
         tool = state.tool_map.get(fn_name)
         if isinstance(tool, BaseRetrieveTool):
             try:
-                content = await self._execute_retrieve(
-                    state, tool=tool, llm_kwargs=fn_kwargs, query_type="agent"
-                )
+                content = await self._execute_retrieve(state, tool=tool, llm_kwargs=fn_kwargs, query_type="agent")
             except Exception as e:
                 raise ToolExecutionError(fn_name, e) from e
             return content, False

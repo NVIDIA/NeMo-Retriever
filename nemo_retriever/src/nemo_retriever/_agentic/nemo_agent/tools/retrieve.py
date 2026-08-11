@@ -88,15 +88,12 @@ class BaseRetrieveTool(BaseTool):
         cls_name = type(self).__name__
         if not isinstance(result, list):
             raise ToolContractError(
-                f"{cls_name}: retrieve result must be a list of document dicts, "
-                f"got {type(result).__name__}."
+                f"{cls_name}: retrieve result must be a list of document dicts, " f"got {type(result).__name__}."
             )
         out: List[Dict[str, Any]] = []
         for i, item in enumerate(result):
             if not isinstance(item, dict):
-                raise ToolContractError(
-                    f"{cls_name}: result item {i} must be a dict, got {type(item).__name__}."
-                )
+                raise ToolContractError(f"{cls_name}: result item {i} must be a dict, got {type(item).__name__}.")
             missing = [k for k in ("id", "score", "text") if k not in item]
             if missing:
                 raise ToolContractError(
@@ -203,9 +200,7 @@ class ReasoningAugmentedRetrieveTool(RetrieveTool):
         super().__init__(retriever_fn, **kwargs)
         if body_template is None:
             if context_mode not in self.BODY_TEMPLATES:
-                raise ValueError(
-                    f"context_mode must be one of {sorted(self.BODY_TEMPLATES)}, got {context_mode!r}."
-                )
+                raise ValueError(f"context_mode must be one of {sorted(self.BODY_TEMPLATES)}, got {context_mode!r}.")
             body_template = self.BODY_TEMPLATES[context_mode]
         try:
             body_template.format(query="", reasoning="", global_query="")
@@ -215,9 +210,7 @@ class ReasoningAugmentedRetrieveTool(RetrieveTool):
                 "supported placeholders are {query}, {reasoning}, {global_query}."
             ) from e
         if empty_reasoning_policy not in ("substitute", "skip"):
-            raise ValueError(
-                f"empty_reasoning_policy must be 'substitute' or 'skip', got {empty_reasoning_policy!r}."
-            )
+            raise ValueError(f"empty_reasoning_policy must be 'substitute' or 'skip', got {empty_reasoning_policy!r}.")
         self._body_template = body_template
         self._empty_reasoning_policy = empty_reasoning_policy
 

@@ -167,9 +167,7 @@ def extract_text_content(content: Any) -> Optional[str]:
                 if text:
                     parts.append(str(text))
         return "\n".join(parts) if parts else None
-    raise LLMCallError(
-        f"Unexpected assistant message content type from provider: {type(content).__name__}"
-    )
+    raise LLMCallError(f"Unexpected assistant message content type from provider: {type(content).__name__}")
 
 
 def extract_reasoning_from_message(message: object) -> Optional[str]:

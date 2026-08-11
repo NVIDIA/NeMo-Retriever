@@ -450,11 +450,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
             react_max_steps=int(query.get("agentic_react_max_steps") or 50),
             text_truncation=int(query.get("agentic_text_truncation") or 0),
             num_concurrent=int(query.get("agentic_num_concurrent") or 1),
-            temperature=(
-                float(query["agentic_temperature"])
-                if query.get("agentic_temperature") is not None
-                else None
-            ),
+            temperature=(float(query["agentic_temperature"]) if query.get("agentic_temperature") is not None else None),
             llm_client=query.get("agentic_llm_client"),
         ),
     )

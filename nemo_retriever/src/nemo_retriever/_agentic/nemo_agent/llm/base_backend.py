@@ -145,10 +145,7 @@ class BaseLLMBackend(ABC):
     def __init__(self, config: BaseLLMConfig) -> None:
         expected = type(self).config_cls
         if not isinstance(config, expected):
-            raise TypeError(
-                f"{type(self).__name__} requires a {expected.__name__}, "
-                f"got {type(config).__name__}"
-            )
+            raise TypeError(f"{type(self).__name__} requires a {expected.__name__}, " f"got {type(config).__name__}")
         self.config = config
         # Name-mangled on purpose: subclasses own the plain `_` namespace, and
         # accidentally clobbering the accumulator must be impossible. Access
@@ -234,8 +231,7 @@ class BaseLLMBackend(ABC):
         """Make a contract violation self-diagnosing instead of a downstream AttributeError."""
         if not isinstance(result, CompletionResult):
             raise TypeError(
-                f"{type(self).__name__}.{impl_name} must return a CompletionResult, "
-                f"got {type(result).__name__}"
+                f"{type(self).__name__}.{impl_name} must return a CompletionResult, " f"got {type(result).__name__}"
             )
         return result
 
@@ -285,8 +281,7 @@ class BaseLLMBackend(ABC):
                 deep_merge_usage(bucket, usage)
         except Exception:
             logger.warning(
-                "Failed to record LLM token usage for query_id=%r stage=%r; "
-                "usage totals will undercount.",
+                "Failed to record LLM token usage for query_id=%r stage=%r; " "usage totals will undercount.",
                 query_id,
                 stage,
                 exc_info=True,

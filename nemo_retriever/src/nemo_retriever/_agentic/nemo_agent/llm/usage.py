@@ -159,8 +159,7 @@ def deep_merge_usage(
             else:
                 # Rule 6: int slot, sample is dict.
                 raise TypeError(
-                    f"deep_merge_usage: type lock conflict at {path!r}: "
-                    f"acc is {type(cur).__name__}, sample is dict"
+                    f"deep_merge_usage: type lock conflict at {path!r}: " f"acc is {type(cur).__name__}, sample is dict"
                 )
             continue
 
@@ -175,8 +174,7 @@ def deep_merge_usage(
             else:
                 # Rule 6: dict (or other) slot, sample is int.
                 raise TypeError(
-                    f"deep_merge_usage: type lock conflict at {path!r}: "
-                    f"acc is {type(cur).__name__}, sample is int"
+                    f"deep_merge_usage: type lock conflict at {path!r}: " f"acc is {type(cur).__name__}, sample is int"
                 )
             continue
 

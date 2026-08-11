@@ -133,9 +133,7 @@ def _find_last_markable_msg_idx(messages: List[Dict[str, Any]]) -> Optional[int]
     return None
 
 
-def _apply_cache_control_to_last_block(
-    message: Dict[str, Any], cache_control: Dict[str, Any]
-) -> Dict[str, Any]:
+def _apply_cache_control_to_last_block(message: Dict[str, Any], cache_control: Dict[str, Any]) -> Dict[str, Any]:
     """Return a copy of ``message`` with ``cache_control`` on its last taggable block.
 
     Handles both content shapes:
@@ -153,9 +151,7 @@ def _apply_cache_control_to_last_block(
         return out
     if not isinstance(content, list):
         return out
-    last_taggable_idx = max(
-        (j for j, p in enumerate(content) if _is_taggable_block(p)), default=-1
-    )
+    last_taggable_idx = max((j for j, p in enumerate(content) if _is_taggable_block(p)), default=-1)
     if last_taggable_idx < 0:
         return out
     new_content: List[Any] = []
@@ -529,9 +525,7 @@ class LiteLLMBackend(BaseLLMBackend):
         message: Dict[str, Any] = {"role": "assistant", "content": extract_text_content(message_obj.content)}
         tool_calls = getattr(message_obj, "tool_calls", None)
         if tool_calls:
-            message["tool_calls"] = [
-                tc.model_dump() if hasattr(tc, "model_dump") else dict(tc) for tc in tool_calls
-            ]
+            message["tool_calls"] = [tc.model_dump() if hasattr(tc, "model_dump") else dict(tc) for tc in tool_calls]
 
         raw_request: Optional[Dict[str, Any]] = None
         raw_response: Optional[Dict[str, Any]] = None

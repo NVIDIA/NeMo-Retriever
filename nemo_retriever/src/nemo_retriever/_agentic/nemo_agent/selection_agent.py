@@ -304,9 +304,7 @@ def _validated_unique_documents(documents: Any) -> List[Dict[str, Any]]:
         for key in ("text", "image"):
             val = doc.get(key)
             if val is not None and not isinstance(val, str):
-                raise ValueError(
-                    f"documents[{idx}] (id {doc_id!r}) has a non-string {key!r}: {type(val).__name__}."
-                )
+                raise ValueError(f"documents[{idx}] (id {doc_id!r}) has a non-string {key!r}: {type(val).__name__}.")
         if doc_id in seen:
             continue
         seen.add(doc_id)
@@ -321,16 +319,12 @@ def _validate_scores_cover(scores: Any, candidates: List[Dict[str, Any]]) -> Non
     missing = [d["id"] for d in candidates if d["id"] not in scores]
     if missing:
         raise ValueError(
-            "scores must cover every candidate document id; missing: "
-            + ", ".join(repr(i) for i in missing)
-            + "."
+            "scores must cover every candidate document id; missing: " + ", ".join(repr(i) for i in missing) + "."
         )
     bad = [d["id"] for d in candidates if not isinstance(scores[d["id"]], (int, float))]
     if bad:
         raise ValueError(
-            "scores values must be numbers; non-numeric score for id(s): "
-            + ", ".join(repr(i) for i in bad)
-            + "."
+            "scores values must be numbers; non-numeric score for id(s): " + ", ".join(repr(i) for i in bad) + "."
         )
 
 
