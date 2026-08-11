@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model, resolve_embed_model_spec
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -115,7 +115,14 @@ class Retriever:
             "embed_inference_batch_size": 32,
             "local_ingest_embed_backend": "hf",
         }
-        merged = {**base, **dict(self.embed_kwargs or {}), **dict(extra or {})}
+        overrides = {**dict(self.embed_kwargs or {}), **dict(extra or {})}
+        merged = {**base, **overrides}
+        endpoint = str(merged.get("embedding_endpoint") or merged.get("embed_invoke_url") or "").strip()
+        if self.run_mode == "local" and not endpoint and overrides.get("local_ingest_embed_backend") is None:
+            model_id = str(merged.get("embed_model_name") or merged.get("model_name") or "").strip()
+            spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
+            merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
+            merged["embed_model_revision"] = spec.revision
         if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:
             merged["local_ingest_embed_backend"] = normalize_backend(
                 str(merged["local_ingest_embed_backend"]),

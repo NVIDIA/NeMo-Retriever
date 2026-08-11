@@ -108,7 +108,6 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
     embed_kwargs = build_embed_option_kwargs(
         request.embed.embed_invoke_url,
         request.embed.embed_model_name,
-        local_ingest_embed_backend=request.embed.local_query_embed_backend,
         embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
     )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
@@ -196,8 +195,6 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
     if request.embed.embed_model_provider_prefix:
         cfg_kwargs["query_embedder_provider_prefix"] = request.embed.embed_model_provider_prefix
-    if request.embed.local_query_embed_backend:
-        cfg_kwargs["local_query_embed_backend"] = request.embed.local_query_embed_backend
     if request.rerank.enabled:
         # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
         # model name, so fall back to the default model when only --rerank is given.

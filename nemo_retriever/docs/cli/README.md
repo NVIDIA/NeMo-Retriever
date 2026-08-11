@@ -358,7 +358,8 @@ model name and revision are recorded on the LanceDB table and reused by local
 query.
 
 For a compatible ModelOpt checkpoint, including FP8 or NVFP4 variants, select
-vLLM for both ingest and query:
+vLLM for ingest. Local query detects the ModelOpt configuration and selects
+vLLM automatically:
 
 ```bash
 retriever ingest ./data/pdf_corpus \
@@ -366,13 +367,11 @@ retriever ingest ./data/pdf_corpus \
   --local-ingest-embed-backend vllm
 
 retriever query "What is in this corpus?" \
-  --table-name nemo-retriever \
-  --local-query-embed-backend vllm
+  --table-name nemo-retriever
 ```
 
-Hugging Face remains the default local query backend for compatibility.
-ModelOpt checkpoints fail before weight loading when HF is selected. Local
-directories must contain `config.json`, and their absolute path must be
+Hugging Face remains the local query backend for non-ModelOpt checkpoints.
+Local directories must contain `config.json`, and their absolute path must be
 available to every Ray worker or service replica that loads the model.
 
 ### OCR language mode

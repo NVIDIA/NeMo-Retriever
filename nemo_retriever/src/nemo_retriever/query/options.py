@@ -27,7 +27,6 @@ class QueryEmbedOptions:
     embed_model_name: str | None = None
     embed_model_provider_prefix: str | None = None
     embed_api_key: str | None = None
-    local_query_embed_backend: Literal["hf", "vllm"] | None = None
 
 
 @dataclass(frozen=True)

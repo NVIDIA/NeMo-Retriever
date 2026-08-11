@@ -37,6 +37,9 @@ def _make_retriever(**overrides: Any) -> Retriever:
         "embed_kwargs": {"model_name": "embedder", "embed_model_name": "embedder"},
     }
     defaults.update(overrides)
+    embed_kwargs = dict(defaults["embed_kwargs"])
+    embed_kwargs.setdefault("local_ingest_embed_backend", "hf")
+    defaults["embed_kwargs"] = embed_kwargs
     return Retriever(**defaults)
 
 
@@ -152,14 +155,57 @@ class TestQueriesGraphExecution:
         assert params.embed_model_name == "acme/index-model"
         assert params.embed_model_revision == "b" * 40
 
-    def test_local_query_embedding_defaults_to_hf(self) -> None:
-        p = _make_retriever()._merge_embed_params()
-        assert p.local_ingest_embed_backend == "hf"
+    @pytest.mark.parametrize(("requires_vllm", "expected_backend"), [(False, "hf"), (True, "vllm")])
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_local_query_embedding_selects_compatible_backend(
+        self, resolve_spec: MagicMock, requires_vllm: bool, expected_backend: str
+    ) -> None:
+        resolve_spec.return_value = MagicMock(requires_vllm=requires_vllm, revision="a" * 40)
+        retriever = _make_retriever(
+            embed_kwargs={
+                "model_name": "embedder",
+                "embed_model_name": "embedder",
+                "local_ingest_embed_backend": None,
+            }
+        )
+
+        p = retriever._merge_embed_params()
+
+        assert p.local_ingest_embed_backend == expected_backend
+        assert p.embed_model_revision == "a" * 40
+        resolve_spec.assert_called_once_with("embedder", revision=None)
+
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_index_model_revision_drives_automatic_backend(self, resolve_spec: MagicMock) -> None:
+        revision = "b" * 40
+        resolve_spec.return_value = MagicMock(requires_vllm=True, revision=revision)
+        retriever = _make_retriever(embed_kwargs={"local_ingest_embed_backend": None})
+        resolved = retriever._resolve_embed_kwargs("acme/index-model", None, revision)
+
+        p = retriever._merge_embed_params(resolved)
+
+        assert p.embed_model_name == "acme/index-model"
+        assert p.embed_model_revision == revision
+        assert p.local_ingest_embed_backend == "vllm"
+        resolve_spec.assert_called_once_with("acme/index-model", revision=revision)
 
     def test_local_query_embedding_backend_can_be_overridden(self) -> None:
         r = _make_retriever(embed_kwargs={"local_ingest_embed_backend": "vllm"})
         p = r._merge_embed_params()
         assert p.local_ingest_embed_backend == "vllm"
+
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_remote_embedding_skips_local_model_resolution(self, resolve_spec: MagicMock) -> None:
+        retriever = _make_retriever(
+            embed_kwargs={
+                "embed_invoke_url": "https://embed.example.com/v1/embeddings",
+                "local_ingest_embed_backend": None,
+            }
+        )
+
+        retriever._merge_embed_params()
+
+        resolve_spec.assert_not_called()
 
     def test_rerank_inflates_retrieval_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
         graph = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
