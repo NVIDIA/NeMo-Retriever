@@ -35,7 +35,11 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.executor import arrow_table_to_pandas, call_pandas_function_on_arrow
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
-from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.graph.ingestor_runtime import (
+    batch_tuning_to_node_overrides,
+    build_graph,
+    default_concurrency_node_names,
+)
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -852,6 +856,15 @@ class GraphIngestor(ingestor):
             num_cpus=self._num_cpus,
             num_gpus=self._num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
+            auto_concurrency_nodes=(
+                default_concurrency_node_names(
+                    effective_extraction.extract_params,
+                    self._embed_params,
+                    self._store_params,
+                    self._caption_params,
+                )
+                - set(self._node_overrides)
+            ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
         result = executor.ingest(executor_input)
