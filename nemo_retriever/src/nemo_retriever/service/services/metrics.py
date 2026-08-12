@@ -33,10 +33,15 @@ import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
 from pydantic import ConfigDict, Field
 
 from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.common.schemas.responses import ErrorDetails
+
+if TYPE_CHECKING:
+    from nemo_retriever.service.services.job_tracker import DocumentRecord, JobAggregate
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,7 @@ class PageMetric(RichModel):
     page_id: str
     document_id: str
     endpoint: str
+    job_id: str | None = None
     page_number: int | None = None
     file_size_bytes: int = 0
     file_category: str = ""
@@ -173,6 +179,9 @@ class IngestMetrics:
         self._jobs: dict[str, JobMetric] = {}
         self._documents: dict[str, DocumentMetric] = {}
         self._pages: deque[PageMetric] = deque(maxlen=MAX_RECENT_PAGES)
+        # Recent page details are bounded, but page terminal outcomes for
+        # active jobs must not be lost when those details are evicted.
+        self._pending_page_job_ids: dict[str, str] = {}
 
     # ── recording helpers ────────────────────────────────────────────
 
@@ -237,6 +246,7 @@ class IngestMetrics:
         *,
         page_id: str,
         document_id: str,
+        job_id: str | None = None,
         endpoint: str = "",
         page_number: int | None = None,
         file_size_bytes: int = 0,
@@ -251,6 +261,7 @@ class IngestMetrics:
                 PageMetric(
                     page_id=page_id,
                     document_id=document_id,
+                    job_id=job_id,
                     endpoint=endpoint,
                     page_number=page_number,
                     file_size_bytes=file_size_bytes,
@@ -266,10 +277,13 @@ class IngestMetrics:
                         "pages_submitted": doc.pages_submitted + 1,
                     }
                 )
-            job_id = self._documents[document_id].job_id if document_id in self._documents else None
-            if job_id and job_id in self._jobs:
-                job = self._jobs[job_id]
-                self._jobs[job_id] = job.model_copy(
+            resolved_job_id = job_id or (
+                self._documents[document_id].job_id if document_id in self._documents else None
+            )
+            if resolved_job_id and resolved_job_id in self._jobs:
+                self._pending_page_job_ids[page_id] = resolved_job_id
+                job = self._jobs[resolved_job_id]
+                self._jobs[resolved_job_id] = job.model_copy(
                     update={
                         "pages_total": job.pages_total + 1,
                     }
@@ -301,31 +315,78 @@ class IngestMetrics:
                     )
                     break
 
-    def record_terminal_failure(self, item_id: str, error: str, error_details: dict[str, str | None]) -> None:
-        """Record a normalized failure for whichever metric record owns *item_id*."""
-        now = datetime.now(timezone.utc).isoformat()
-        details = ErrorDetails(**error_details)
+    def record_terminal_transition(self, document: DocumentRecord, job: JobAggregate | None) -> None:
+        """Mirror an authoritative terminal document transition into metrics.
+
+        Args:
+            document: Immutable snapshot of the document that reached a terminal
+                state.
+            job: Immutable snapshot of the document's aggregate job, if it is
+                still tracked.
+
+        Returns:
+            None. The method updates in-memory metric records only.
+        """
         with self._lock:
-            changed = False
-            if item_id in self._documents:
-                doc = self._documents[item_id]
-                self._documents[item_id] = doc.model_copy(
-                    update={"status": "failed", "completed_at": now, "error": error, "error_details": details}
+            if document.id in self._documents:
+                metric = self._documents[document.id]
+                self._documents[document.id] = metric.model_copy(
+                    update={
+                        "status": document.status.value,
+                        "completed_at": document.completed_at,
+                        "processing_duration_s": document.elapsed_s,
+                        "error": document.error,
+                        "error_details": (
+                            ErrorDetails(**document.error_details) if document.error_details is not None else None
+                        ),
+                    }
                 )
-                if doc.job_id and doc.job_id in self._jobs:
-                    job = self._jobs[doc.job_id]
-                    self._jobs[doc.job_id] = job.model_copy(update={"documents_failed": job.documents_failed + 1})
-                changed = True
-            for i, page in enumerate(self._pages):
-                if page.page_id == item_id:
-                    self._pages[i] = page.model_copy(
-                        update={"status": "failed", "completed_at": now, "error": error, "error_details": details}
+
+            for index, page in enumerate(self._pages):
+                if page.page_id == document.id:
+                    self._pages[index] = page.model_copy(
+                        update={
+                            "status": document.status.value,
+                            "completed_at": document.completed_at,
+                            "processing_duration_s": document.elapsed_s,
+                            "error": document.error,
+                            "error_details": (
+                                ErrorDetails(**document.error_details)
+                                if document.error_details is not None
+                                else None
+                            ),
+                        }
                     )
-                    changed = True
                     break
-            if changed:
+
+            page_job_id = self._pending_page_job_ids.pop(document.id, None)
+            if job is not None and job.job_id in self._jobs:
+                metric_job = self._jobs[job.job_id]
+                # Observer calls may arrive out of order across concurrent
+                # worker completions; terminal counts are monotonic.
+                updates: dict[str, object] = {
+                    "documents_completed": max(metric_job.documents_completed, job.counts.get("completed", 0)),
+                    "documents_failed": max(metric_job.documents_failed, job.counts.get("failed", 0)),
+                }
+                if job.finalized_at is not None:
+                    updates.update(
+                        {
+                            "status": job.status.value,
+                            "completed_at": job.finalized_at,
+                            "wall_duration_s": job.elapsed_s,
+                        }
+                    )
+                if page_job_id == job.job_id:
+                    if document.status.value == "completed":
+                        updates["pages_completed"] = metric_job.pages_completed + 1
+                    elif document.status.value == "failed":
+                        updates["pages_failed"] = metric_job.pages_failed + 1
+                self._jobs[job.job_id] = metric_job.model_copy(update=updates)
+
+            if document.status.value == "failed" and document.error_details is not None:
+                error_type = document.error_details.get("type") or "unknown"
                 self._total_errors += 1
-                self._errors_by_type[details.type] = self._errors_by_type.get(details.type, 0) + 1
+                self._errors_by_type[error_type] = self._errors_by_type.get(error_type, 0) + 1
 
     # ── single-record lookups ────────────────────────────────────────
 

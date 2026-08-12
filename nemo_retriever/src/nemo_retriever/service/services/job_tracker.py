@@ -45,7 +45,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import Field
 
@@ -259,6 +259,9 @@ class JobTracker:
         self._started_mono: dict[str, float] = {}  # per-document elapsed timing
         self._job_started_mono: dict[str, float] = {}  # per-job elapsed timing
         self._event_bus: Any = None
+        # Observers receive defensive snapshots after a genuine terminal
+        # document transition. This keeps all completion paths consistent.
+        self._terminal_observers: list[Callable[[DocumentRecord, JobAggregate | None], None]] = []
         self._ttl_s = ttl_s
         self._stale_job_ttl_s = stale_job_ttl_s
         self._max_jobs = max_jobs
@@ -276,6 +279,19 @@ class JobTracker:
     def set_event_bus(self, bus: Any) -> None:
         """Attach an :class:`EventBus` so state transitions publish SSE events."""
         self._event_bus = bus
+
+    def add_terminal_observer(self, observer: Callable[[DocumentRecord, JobAggregate | None], None]) -> None:
+        """Register a callback for real document terminal transitions.
+
+        Args:
+            observer: Callback receiving defensive snapshots of the transitioned
+                document and its aggregate job, when available.
+
+        Returns:
+            None. The callback runs outside the tracker lock after tracker
+            state is updated; duplicate and unknown callbacks do not invoke it.
+        """
+        self._terminal_observers.append(observer)
 
     def set_progress_step(self, step: int) -> None:
         """Override the progress-event cadence (default: every 10 docs)."""
@@ -634,6 +650,7 @@ class JobTracker:
             agg = self._jobs.get(rec.job_id)
             finalized_snapshot: JobAggregate | None = None
             progress_snapshot: JobAggregate | None = None
+            aggregate_snapshot: JobAggregate | None = None
             if agg is not None:
                 terminal_count = agg.counts.get(DocumentStatus.COMPLETED.value, 0) + agg.counts.get(
                     DocumentStatus.FAILED.value, 0
@@ -649,8 +666,16 @@ class JobTracker:
                     if terminal_count - last_published >= self._progress_step:
                         self._progress_published[rec.job_id] = terminal_count
                         progress_snapshot = agg.model_copy(deep=True)
+                aggregate_snapshot = agg.model_copy(deep=True)
 
-        # Phase 2: publish events with the lock released.
+        # Phase 2: project and publish with the lock released.
+        for observer in tuple(self._terminal_observers):
+            try:
+                observer(doc_snapshot, aggregate_snapshot)
+            except Exception:
+                logger.exception("JobTracker terminal observer failed for document %s", document_id)
+
+        # Events are published after observers see finalized state.
         self._publish_document_event(doc_snapshot)
         if progress_snapshot is not None:
             self._publish_job_event("job_progress", progress_snapshot)

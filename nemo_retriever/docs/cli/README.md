@@ -227,17 +227,21 @@ Agentic-only knobs (apply only with `--agentic`):
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM. Providing it routes agent LLM calls to that remote endpoint.
+  agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
+  to run the in-process local model.
+- `--agentic-llm-client` (optional) — LLM client that builds the agent LLM.
+  Defaults to `callable`. It drives the in-process
+  adapter when `--agentic-invoke-url` is omitted, and the shared chat-completions
+  HTTP client when it is set.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
-- `--agentic-temperature` (default `0.0`) — sampling temperature for agent LLM
-  calls. Local and non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`;
-  NVIDIA-hosted endpoints allow up to `1.0`.
-- `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
-  per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
+- `--agentic-temperature` (default: unset) — sampling temperature for agent LLM
+  calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
+  non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
+  endpoints allow up to `1.0`.
 
 <!-- --8<-- [end:quickstart] -->
 

@@ -158,18 +158,22 @@ class VLLMAgentChatLLM(BaseModel):
         tools: Optional[list[dict[str, Any]]] = None,
         tool_choice: str | dict[str, Any] = "auto",
         timeout_s: float = 120.0,
-        temperature: float = 0.0,
+        temperature: Optional[float] = 0.0,
         max_tokens: Optional[int] = None,
         extra_body: Optional[dict[str, Any]] = None,
         max_retries: int = 10,
         max_429_retries: int = 5,
     ) -> dict[str, Any]:
+        """Run one chat completion on the in-process engine.
+
+        ``temperature=None`` means *unset* and maps to ``0.0`` (greedy).
+        """
         _ = (invoke_url, api_key, timeout_s, max_retries, max_429_retries)
         if model and model != self._model_path:
             logger.debug("Ignoring per-call model=%r for local agent LLM already loaded as %r", model, self._model_path)
 
         sampling_params = self._sampling_params_cls(
-            temperature=float(temperature),
+            temperature=0.0 if temperature is None else float(temperature),
             max_tokens=int(max_tokens) if max_tokens is not None else self._max_tokens,
         )
         chat_kwargs = self._build_chat_kwargs(extra_body)

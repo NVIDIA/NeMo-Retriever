@@ -55,7 +55,7 @@ try prerelease/nightly Nemotron packages from PyPI within the same supported
 major-version windows, opt in with `--pre`:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.05-RC1"
+uv pip install --pre "nemo-retriever[local]==26.08-RC1"
 ```
 
 **Remote NIM (no local GPU)**
@@ -393,8 +393,7 @@ CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --top-k 1 \
-  --agentic-react-max-steps 1 \
-  --agentic-backend-top-k 1
+  --agentic-react-max-steps 1
 ```
 
 You can run the same flow from Python. Omit `invoke_url` for the default local

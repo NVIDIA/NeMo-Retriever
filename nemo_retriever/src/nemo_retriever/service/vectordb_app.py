@@ -66,7 +66,7 @@ from nemo_retriever.service.query_schema import (
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT_QUERIES = 4
-MAX_CONCURRENT_AGENTIC_QUERIES = 2
+MAX_CONCURRENT_AGENTIC_QUERIES = 100
 
 
 class WriteRequest(BaseModel):

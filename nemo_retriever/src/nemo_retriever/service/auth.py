@@ -58,6 +58,7 @@ class ScopeAuthorizer:
 
     def __init__(self, config: AuthConfig) -> None:
         self.default_scope = config.default_scope.strip() or "default"
+        self.enabled = config.enabled
         self.allow_unscoped_dev = config.allow_unscoped_dev
         self._records: list[tuple[str, frozenset[str]]] = []
         if token := (config.api_token or "").strip():
@@ -91,6 +92,8 @@ class ScopeAuthorizer:
         """Resolve an authorized scope without revealing whether a token was recognized."""
 
         requested = (requested_scope or self.default_scope).strip() or self.default_scope
+        if not self.enabled:
+            return requested, None
         if not self._records:
             if self.allow_unscoped_dev:
                 return requested, None

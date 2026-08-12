@@ -44,6 +44,12 @@ nim_endpoints:
   # Optional LiteLLM provider prefix prepended to embed_model_name for
   # proxies that require provider/model IDs.
   embed_model_provider_prefix: null
+  # Optional remote reranker used by POST /v1/query with rerank=true. The
+  # endpoint can be an in-cluster NIM, a vLLM server, or another compatible
+  # ranking API. This service config does not deploy or manage that endpoint.
+  rerank_invoke_url: null
+  # Optional server-owned model ID sent to the reranking endpoint.
+  rerank_model_name: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
@@ -79,6 +85,17 @@ local_models:
     gpu_memory_utilization: 0.45
   asr:
     enabled: true
+  # Query-time reranking is loaded lazily in the main service process when a
+  # client sends ``rerank: true``. It is independent of ``local_models.enabled``
+  # because it does not run in the ingestion process pools. Leave this disabled
+  # when using a remote/NIM reranker configured under ``nim_endpoints``.
+  rerank:
+    enabled: false
+    model_name: nvidia/llama-nemotron-rerank-1b-v2
+    backend: vllm
+    gpu_memory_utilization: 0.5
+    max_length: 512
+    batch_size: 32
 
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
 # fields when the Super-49B NIM is enabled.
@@ -163,9 +180,10 @@ gateway:
   timeout_s: 300.0
   max_connections: 100
 
-# Optional bearer-token authentication.  When api_token is set, every
-# request must carry "Authorization: Bearer <token>".
+# Optional bearer-token authentication. When enabled, every request must carry
+# "Authorization: Bearer <token>" unless it is a bypass path.
 auth:
+  enabled: false
   api_token: null
   header_name: "Authorization"
   bypass_paths:

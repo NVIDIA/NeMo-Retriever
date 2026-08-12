@@ -360,7 +360,11 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         accepted = client.post(
             f"/v1/ingest/job/{job_id}/whole",
             files={"file": ("document.txt", b"hello gateway", "text/plain")},
-            data={"metadata": "{}"},
+            data={
+                "metadata": (
+                    '{"metadata":{"category":"Finance_Investment",' '"source_path":"Finance_Investment/document.txt"}}'
+                )
+            },
         )
         assert accepted.status_code == 202
         document_id = accepted.json()["document_id"]
@@ -385,6 +389,10 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
                 "content_sha256": hashlib.sha256(b"hello gateway").hexdigest(),
                 "document_version": None,
                 "storage_document_id": document_id,
+                "document_metadata": {
+                    "category": "Finance_Investment",
+                    "source_path": "Finance_Investment/document.txt",
+                },
             }
         }
 
@@ -483,7 +491,7 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         mode="gateway",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
     with TestClient(create_app(config)) as client:
