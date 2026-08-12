@@ -264,6 +264,23 @@ def test_dev_compose_helpers_are_feature_scoped():
     assert "nemo_retriever/dev/compose/neo4j.compose.yaml" in neo4j_setup
 
 
+def test_default_service_mode_compose_wires_optional_collection_auth():
+    compose_path = REPO_ROOT / "nemo_retriever" / "dev" / "compose" / "service-mode.compose.yaml"
+    compose_text = compose_path.read_text(encoding="utf-8")
+    compose_data = yaml.safe_load(compose_text)
+
+    retriever = compose_data["services"]["retriever"]
+    vectordb = compose_data["services"]["vectordb"]
+    assert retriever["environment"]["NRL_API_TOKEN"] == "${NRL_API_TOKEN:-}"
+    assert retriever["environment"]["NRL_INTERNAL_VDB_TOKEN"] == "${NRL_INTERNAL_VDB_TOKEN:-}"
+    assert vectordb["environment"]["NRL_INTERNAL_VDB_TOKEN"] == "${NRL_INTERNAL_VDB_TOKEN:-}"
+
+    service_config = compose_data["configs"]["retriever_service_config"]["content"]
+    assert 'api_token: "${NRL_API_TOKEN:-}"' in service_config
+    assert "allow_unscoped_dev: true" in service_config
+    assert "use_graphic_elements" not in service_config
+
+
 def test_legacy_tools_harness_is_removed():
     assert not (REPO_ROOT / "tools" / "harness").exists()
 

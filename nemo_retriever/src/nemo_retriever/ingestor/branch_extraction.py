@@ -41,6 +41,7 @@ class ExtractionBranchExecutor:
     branches: tuple[ExtractionBranchPlan, ...]
     documents: list[str]
     buffers: list[tuple[str, BytesIO]]
+    inline_rows: list[dict[str, str]]
     split_config: dict[str, Any]
     extract_params: Any | None
     text_params: Any | None
@@ -77,7 +78,7 @@ class ExtractionBranchExecutor:
         return self._execute_inprocess()
 
     def _execute_batch(self) -> Any:
-        _ray, cluster_resources = self.ensure_batch_runtime()
+        ray_module, cluster_resources = self.ensure_batch_runtime()
         effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
         branch_datasets: list[Any] = []
         for branch in self.branches:
@@ -99,7 +100,11 @@ class ExtractionBranchExecutor:
                 video_frame_params=effective_extraction.video_frame_params,
             )
             executor = self._ray_executor(graph, derived_overrides)
-            branch_datasets.append(executor.build_dataset(list(branch.input_paths)))
+            file_paths, inline_rows = self._partition_branch_inputs(branch)
+            if file_paths:
+                branch_datasets.append(executor.build_dataset(file_paths))
+            if inline_rows:
+                branch_datasets.append(executor.build_dataset(ray_module.data.from_items(inline_rows)))
 
         normalized = normalize_ray_branch_datasets(branch_datasets)
         combined = normalized[0]
@@ -198,7 +203,8 @@ class ExtractionBranchExecutor:
         )
 
     def _inprocess_branch_input(self, branch: ExtractionBranchPlan) -> Any:
-        if not self.buffers:
+        inline_by_path = self._inline_rows_by_path()
+        if not self.buffers and not any(path in inline_by_path for path in branch.input_paths):
             return list(branch.input_paths)
 
         import pandas as pd
@@ -206,8 +212,11 @@ class ExtractionBranchExecutor:
         buffer_by_name = {name: buf for name, buf in self.buffers}
         file_paths: list[str] = []
         buffer_rows: list[dict[str, Any]] = []
+        inline_rows: list[dict[str, str]] = []
         for path in branch.input_paths:
-            if path in buffer_by_name:
+            if path in inline_by_path:
+                inline_rows.append(inline_by_path[path])
+            elif path in buffer_by_name:
                 buffer_rows.append({"bytes": buffer_by_name[path].getvalue(), "path": path})
             else:
                 file_paths.append(path)
@@ -217,7 +226,24 @@ class ExtractionBranchExecutor:
             frames.append(InprocessExecutor._load_files(file_paths))
         if buffer_rows:
             frames.append(pd.DataFrame(buffer_rows))
+        if inline_rows:
+            frames.append(pd.DataFrame(inline_rows))
         return concat_dataframes(frames)
+
+    def _inline_rows_by_path(self) -> dict[str, dict[str, str]]:
+        return {row["path"]: row for row in self.inline_rows}
+
+    def _partition_branch_inputs(self, branch: ExtractionBranchPlan) -> tuple[list[str], list[dict[str, str]]]:
+        inline_by_path = self._inline_rows_by_path()
+        file_paths: list[str] = []
+        inline_rows: list[dict[str, str]] = []
+        for path in branch.input_paths:
+            row = inline_by_path.get(path)
+            if row is None:
+                file_paths.append(path)
+            else:
+                inline_rows.append(row)
+        return file_paths, inline_rows
 
 
 def merge_node_overrides(

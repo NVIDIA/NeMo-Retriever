@@ -35,6 +35,7 @@ from pydantic import ConfigDict, Field
 
 from nemo_retriever.service.config import AuthConfig, PipelinePoolConfig, WorkQueueConfig
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import IngestOperation
 from nemo_retriever.service.services.prometheus import (
     POOL_CALLBACK_BACKPRESSURE_TOTAL,
     POOL_ACTIVE_SLOTS,
@@ -90,6 +91,42 @@ def _safe_extract_trace_context(carrier: Mapping[str, str] | None, *, pool_name:
         return None
 
 
+class DocumentWriteContext(RichModel):
+    """Durable write identity for one document, carried with its payload.
+
+    Travels intact from upload admission through the gateway broker into the
+    pipeline, so no layer has to rebuild it from loose fields. ``None`` values
+    describe a legacy fixed-table write rather than a collection write.
+    """
+
+    scope: str = "default"
+    collection_name: str | None = None
+    operation: IngestOperation = IngestOperation.APPEND
+    content_sha256: str | None = None
+    document_version: str | None = None
+    storage_document_id: str | None = None
+    document_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def resolved_version(self) -> str:
+        """Durable version key: the explicit version, else the content digest."""
+        return self.document_version or self.content_sha256 or "1"
+
+    def resolved(self, *, fallback_document_id: str) -> "DocumentWriteContext":
+        """Return this context with a guaranteed storage document identity.
+
+        Args:
+            fallback_document_id: Identity to adopt when the upload never
+                resolved one, as on the legacy per-page admission path.
+
+        Returns:
+            This context, or a copy carrying the fallback identity.
+        """
+        if self.storage_document_id:
+            return self
+        return self.model_copy(update={"storage_document_id": fallback_document_id})
+
+
 class WorkItem(RichModel):
     """A unit of work submitted to a pool."""
 
@@ -104,6 +141,7 @@ class WorkItem(RichModel):
     # Owning job aggregate (J1+). Always set today since the only
     # admission path is /v1/ingest/job/{job_id}/document.
     job_id: str | None = None
+    write: DocumentWriteContext = Field(default_factory=DocumentWriteContext)
     retain_results: bool = False
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.
@@ -731,6 +769,7 @@ class PipelinePool:
         batch_work_fn: Callable[[WorkItem], Any] | None = None,
         work_queue_config: WorkQueueConfig | None = None,
         auth_config: AuthConfig | None = None,
+        internal_api_token: str | None = None,
     ) -> None:
         self._config = config
         self._mode = mode
@@ -739,13 +778,16 @@ class PipelinePool:
 
         pull_client = None
         if mode in ("realtime", "batch") and work_queue_config is not None:
-            from nemo_retriever.service.auth import auth_headers
+            from nemo_retriever.service.auth import auth_headers, internal_auth_headers
             from nemo_retriever.service.services.work_queue import GatewayWorkClient
 
+            headers = internal_auth_headers(internal_api_token)
+            if not headers:
+                headers = auth_headers(auth_config or AuthConfig())
             pull_client = GatewayWorkClient(
                 work_queue_config,
                 pool=PoolType(mode),
-                headers=auth_headers(auth_config or AuthConfig()),
+                headers=headers,
             )
 
         if mode in ("standalone", "realtime"):
@@ -820,6 +862,7 @@ def init_pipeline_pool(
     batch_work_fn: Callable[[WorkItem], Any] | None = None,
     work_queue_config: WorkQueueConfig | None = None,
     auth_config: AuthConfig | None = None,
+    internal_api_token: str | None = None,
 ) -> PipelinePool:
     """Create and start the global pipeline pool (call once at startup).
 
@@ -838,6 +881,7 @@ def init_pipeline_pool(
         batch_work_fn=batch_work_fn,
         work_queue_config=work_queue_config,
         auth_config=auth_config,
+        internal_api_token=internal_api_token,
     )
     pool.start()
     _instance = pool

@@ -11,7 +11,7 @@ In addition, NeMo Retriever Library provides preset configurations that you can 
 
 
 
-## Quick Start - Use Preset Configurations
+## Quick Start - Use Preset Configurations { #quick-start-use-preset-configurations }
 
 To get started quickly, use one of the NeMo Retriever Library package-level preset variables. 
 Run the code below that corresponds to your use case; production, development, or debugging. 
@@ -33,7 +33,7 @@ export INGEST_RAY_LOG_LEVEL=DEBUG
 ```
 
 
-### PRODUCTION Log Level
+### PRODUCTION Log Level { #production-log-level }
 
 The `PRODUCTION` log level is optimized for production deployments with minimal logging overhead. 
 
@@ -51,7 +51,7 @@ This log level uses the following settings:
 - **Encoding** – TEXT
 
 
-### DEVELOPMENT Log Level
+### DEVELOPMENT Log Level { #development-log-level }
 
 The `DEVELOPMENT` log level is a balanced configuration for development work, 
 and is the default log level.
@@ -70,7 +70,7 @@ This log level uses the following settings:
 - **Encoding** – TEXT
 
 
-### DEBUG Log Level
+### DEBUG Log Level { #debug-log-level }
 
 The `DEBUG` log level provides maximum visibility for troubleshooting issues. 
 
@@ -89,7 +89,7 @@ This log level uses the following settings:
 
 
 
-## Configuration Reference
+## Configuration Reference { #configuration-reference }
 
 The following are the environment variables that you can set to control Ray logging behavior. 
 If you specify an invalid value, the variable reverts to the default value with a warning message.
@@ -109,7 +109,7 @@ If you specify an invalid value, the variable reverts to the default value with 
 
 
 
-## Configuration Examples
+## Configuration Examples { #configuration-examples }
 
 ### Use a Preset With A Manual Override
 
@@ -174,7 +174,7 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 
 
 
-## Log Output Examples
+## Log Output Examples { #log-output-examples }
 
 ### INFO level (Default)
 
@@ -208,6 +208,6 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 ```
 
 
-## Related Topics
+## Related Topics { #related-topics }
 
-- [Environment Variables](https://docs.nvidia.com/nemo/retriever/latest/extraction/environment-config/)
+- [Environment Variables](environment-config.md)

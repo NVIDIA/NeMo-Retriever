@@ -11,7 +11,7 @@ from typing import Any, List, Optional, Sequence
 import torch
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -23,7 +23,7 @@ def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 @dataclass
 class LlamaNemotronEmbed1BV2Embedder:
     """
-    Local text embedder for ``nvidia/llama-nemotron-embed-1b-v2`` via vLLM.
+    vLLM embedder for compatible dense LlamaBidirectional Nemotron checkpoints.
 
     Uses vLLM's pooling runner (``llm.embed()``) for throughput. No HTTP remote
     calls — load and inference stay in-process.
@@ -33,6 +33,7 @@ class LlamaNemotronEmbed1BV2Embedder:
 
     ``device`` is deprecated and ignored; it remains only for backward compatibility
     with callers that constructed the former HuggingFace embedder with ``device=``.
+    The legacy class name is retained for compatibility.
     """
 
     model_id: Optional[str] = None
@@ -43,6 +44,9 @@ class LlamaNemotronEmbed1BV2Embedder:
     dimensions: Optional[int] = None
     normalize: bool = True
     max_length: int = 8192
+    revision: Optional[str] = None
+    query_prefix: str = "query: "
+    document_prefix: str = "passage: "
 
     _llm: Any = field(default=None, init=False, repr=False)
 
@@ -68,7 +72,7 @@ class LlamaNemotronEmbed1BV2Embedder:
         max_model_len = int(self.max_length) if int(self.max_length) > 0 else None
         self._llm = create_vllm_llm(
             str(model_id),
-            revision=get_hf_revision(model_id),
+            revision=resolve_embed_model_revision(model_id, self.revision),
             dimensions=self.dimensions,
             gpu_memory_utilization=self.gpu_memory_utilization,
             enforce_eager=self.enforce_eager,
@@ -90,10 +94,10 @@ class LlamaNemotronEmbed1BV2Embedder:
             return _l2_normalize(t)
         return t
 
-    def embed(self, texts: Sequence[str], *, batch_size: int = 64, prefix: str = "passage: ") -> torch.Tensor:
+    def embed(self, texts: Sequence[str], *, batch_size: int = 64, prefix: str | None = None) -> torch.Tensor:
         """Embed texts. Returns CPU tensor ``[N, D]``.
 
-        ``prefix`` is prepended to every string before encoding (default ``passage: ``).
+        ``prefix`` overrides the checkpoint-declared document prefix when set.
         """
         self._ensure_loaded()
         from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
@@ -105,7 +109,7 @@ class LlamaNemotronEmbed1BV2Embedder:
             texts_list,
             self._llm,
             batch_size=max(1, int(batch_size)),
-            prefix=prefix,
+            prefix=self.document_prefix if prefix is None else prefix,
             normalize=self.normalize,
         )
         return self._finalize_vectors(vectors)
@@ -122,7 +126,7 @@ class LlamaNemotronEmbed1BV2Embedder:
             texts_list,
             self._llm,
             batch_size=max(1, int(batch_size)),
-            prefix="query: ",
+            prefix=self.query_prefix,
             normalize=self.normalize,
         )
         return self._finalize_vectors(vectors)

@@ -61,6 +61,7 @@ def _fake_materialize_completed_document(
     document_id: str,
     *,
     return_results: bool,
+    client: Any = None,
 ) -> list[dict[str, Any]] | None:
     if not return_results and self._save_to_disk_dir is None:
         return None
@@ -280,3 +281,14 @@ def test_ingest_async_forwards_return_results(stub_ingestor: ServiceIngestor) ->
     out = future.result(timeout=5.0)
     assert isinstance(out, ServiceIngestResult)
     assert out.dataframe is None
+
+
+def test_ingest_return_results_false_creates_no_result_client(stub_ingestor: ServiceIngestor) -> None:
+    with patch.object(
+        stub_ingestor,
+        "_new_result_fetch_client",
+        side_effect=AssertionError("result client must not be created"),
+    ):
+        result = stub_ingestor.ingest(return_results=False)
+
+    assert result.dataframe is None

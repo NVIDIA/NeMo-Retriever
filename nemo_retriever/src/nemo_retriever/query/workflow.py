@@ -163,7 +163,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     """
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    api_key = resolve_remote_api_key()
+    api_key = resolve_remote_api_key(request.embed.embed_api_key)
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
@@ -183,11 +183,11 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "local_max_num_seqs": request.agentic.local_max_num_seqs,
         "api_key": api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
-        "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
-        "temperature": float(request.agentic.temperature),
+        "temperature": request.agentic.temperature,
+        "llm_client": request.agentic.llm_client,
     }
     if request.agentic.llm_backend:
         cfg_kwargs["llm_backend"] = request.agentic.llm_backend
@@ -234,10 +234,13 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
             result = result.sort_values("rank")
         ranked: list[dict[str, Any]] = []
         for _, row in result.iterrows():
+            doc_id = str(row.get("doc_id", "")).strip()
+            if not doc_id:
+                continue
             ranked.append(
                 {
                     "rank": int(row.get("rank", len(ranked) + 1)),
-                    "doc_id": str(row.get("doc_id", "")),
+                    "doc_id": doc_id,
                     "result_source": str(row.get("result_source", "")),
                 }
             )

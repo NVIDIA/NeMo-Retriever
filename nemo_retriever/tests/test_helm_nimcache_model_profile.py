@@ -265,7 +265,7 @@ class NimCacheModelProfileTests(TestCase):
         )
         self.assertEqual(
             ocr_cache["spec"]["source"]["ngc"]["modelPuller"],
-            "nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0",
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1",
         )
 
         ocr_service = next(
@@ -277,12 +277,12 @@ class NimCacheModelProfileTests(TestCase):
             ocr_service["spec"]["image"]["repository"],
             "nvcr.io/nim/nvidia/nemotron-ocr-v2",
         )
-        self.assertEqual(ocr_service["spec"]["image"]["tag"], "1.4.0")
+        self.assertEqual(ocr_service["spec"]["image"]["tag"], "2.0.1")
 
         configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
         self.assertTrue(
             any(
-                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/infer"'
+                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/ocr"'
                 in doc.get("data", {}).get("retriever-service.yaml", "")
                 for doc in configmaps
             ),

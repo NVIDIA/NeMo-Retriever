@@ -2,11 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""HuggingFace-only text embedder for ``nvidia/llama-nemotron-embed-1b-v2``.
-
-Used when local query embedding should match classic HF pooling (e.g. recall
-evaluation) while document ingestion uses vLLM elsewhere.
-"""
+"""Hugging Face loader for compatible LlamaBidirectional embedding checkpoints."""
 
 from __future__ import annotations
 
@@ -18,7 +14,7 @@ from typing import List, Optional, Sequence
 import torch
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +27,7 @@ def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 @dataclass
 class LlamaNemotronEmbed1BV2HFEmbedder:
-    """Mean-pooled HF embeddings with Nemotron-style ``query:`` / ``passage:`` prefixes."""
+    """Mean-pooled HF embeddings with checkpoint-declared text prefixes."""
 
     device: Optional[str] = None
     hf_cache_dir: Optional[str] = None
@@ -41,6 +37,9 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     # values preserve more text but increase query embedding cost.
     query_max_length: int = 128
     model_id: Optional[str] = None
+    revision: Optional[str] = None
+    query_prefix: str = "query: "
+    document_prefix: str = "passage: "
 
     def __post_init__(self) -> None:
         self._tokenizer = None
@@ -56,7 +55,7 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         model_id = self.model_id or _DEFAULT_EMBED_MODEL
         dev = torch.device(self.device or ("cuda" if torch.cuda.is_available() else "cpu"))
         hf_cache_dir = configure_global_hf_cache_base(self.hf_cache_dir)
-        _revision = get_hf_revision(model_id)
+        _revision = resolve_embed_model_revision(model_id, self.revision)
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             revision=_revision,
@@ -125,16 +124,22 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
 
         return torch.cat(outs, dim=0) if outs else torch.empty((0, 0), dtype=torch.float32)
 
-    def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
-        """Document strings; each line is prefixed with ``passage:`` for parity with vLLM."""
-        texts_list = []
-        for t in texts:
-            raw = str(t)
+    @staticmethod
+    def _prepare_texts(texts: Sequence[str], prefix: str) -> List[str]:
+        """Drop blank inputs and apply *prefix* to any line that lacks it."""
+        prepared: List[str] = []
+        for text in texts:
+            raw = str(text)
             if not raw.strip():
                 continue
-            if not raw.lower().startswith("passage:"):
-                raw = "passage: " + raw
-            texts_list.append(raw)
+            if prefix and not raw.lower().startswith(prefix.lower()):
+                raw = prefix + raw
+            prepared.append(raw)
+        return prepared
+
+    def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
+        """Embed documents after applying the checkpoint-declared prefix."""
+        texts_list = self._prepare_texts(texts, self.document_prefix)
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         return self._embed_local(texts_list, batch_size=batch_size)
@@ -172,15 +177,8 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
             )
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
-        """Query strings; each line is prefixed with ``query:`` (same rules as vLLM embed_queries)."""
-        texts_list = []
-        for t in texts:
-            raw = str(t)
-            if not raw.strip():
-                continue
-            if not raw.lower().startswith("query:"):
-                raw = "query: " + raw
-            texts_list.append(raw)
+        """Embed queries after applying the checkpoint-declared prefix."""
+        texts_list = self._prepare_texts(texts, self.query_prefix)
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         # The Nemotron text embedder is sensitive to padding length. Use fixed
