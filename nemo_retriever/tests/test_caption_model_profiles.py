@@ -495,11 +495,10 @@ def test_local_captioner_uses_profile_gpu_memory_default(
     assert FakeLLM.instances[-1].kwargs["gpu_memory_utilization"] == expected_utilization
 
 
-def test_caption_params_resolves_profile_gpu_memory_default():
+def test_caption_params_preserves_an_omitted_gpu_memory_utilization():
     from nemo_retriever.common.params import CaptionParams
 
-    assert CaptionParams(model_name=NANO_BF16).gpu_memory_utilization == 0.5
-    assert CaptionParams(model_name=OMNI_BF16).gpu_memory_utilization == 0.95
+    assert CaptionParams(model_name=OMNI_BF16).gpu_memory_utilization is None
     assert CaptionParams(model_name=OMNI_BF16, gpu_memory_utilization=0.8).gpu_memory_utilization == 0.8
 
 
