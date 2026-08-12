@@ -64,16 +64,16 @@ Highlights for the 26.08 release include:
 
 ### Packaging and platform
 
-- Optional install extras (`[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and others), including slim remote/NIM-only installs on Mac and Windows  
+- Optional install extras (`[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and others), including slim remote/NIM-only installs on Mac and Windows
 
 ### Helm chart
 
-- Helm chart refresh under `nemo_retriever/helm/` with VL embedder defaults and optional Nemotron Parse and Omni caption NIMs  
+- Helm chart refresh under `nemo_retriever/helm/` with VL embedder defaults and optional Nemotron Parse and Omni caption NIMs
 
 ### Documentation
 
 - Documentation aligned to a Helm-first supported path for NIM and service deployment
-- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
+- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)
 
 ## Release Notes for Previous Versions
 

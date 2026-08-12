@@ -147,6 +147,7 @@ class DocumentRecord(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+    error_details: dict[str, str | None] | None = None
     filename: str | None = Field(default=None, description="Original upload filename surfaced in the dashboard")
     collection_name: str | None = None
     content_sha256: str | None = None
@@ -580,6 +581,7 @@ class JobTracker:
         document_id: str,
         error: str,
         *,
+        error_details: dict[str, str | None] | None = None,
         elapsed_s: float | None = None,
     ) -> MarkOutcome:
         """Transition a document to ``failed``; maybe finalize the job.
@@ -590,6 +592,7 @@ class JobTracker:
             document_id,
             new_status=DocumentStatus.FAILED,
             error=error,
+            error_details=error_details,
             elapsed_s=elapsed_s,
         )
 
@@ -601,6 +604,7 @@ class JobTracker:
         result_rows: int = 0,
         result_data: list[dict[str, Any]] | None = None,
         error: str | None = None,
+        error_details: dict[str, str | None] | None = None,
         elapsed_s: float | None = None,
     ) -> MarkOutcome:
         # Phase 1: under lock, mutate state and gather snapshots.
@@ -633,6 +637,7 @@ class JobTracker:
             retain_results = bool(agg_for_retain.retain_results) if agg_for_retain is not None else False
             rec.result_data = copy.deepcopy(result_data) if retain_results else None
             rec.error = error
+            rec.error_details = copy.deepcopy(error_details) if error_details is not None else None
             if elapsed_s is not None:
                 rec.elapsed_s = elapsed_s
             else:
@@ -829,6 +834,7 @@ class JobTracker:
             "result_rows": rec.result_rows,
             "elapsed_s": rec.elapsed_s,
             "error": rec.error,
+            "error_details": rec.error_details,
             "filename": rec.filename,
         }
         self._event_bus.publish_sync(event, job_id=rec.job_id)

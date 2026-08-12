@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict, Field
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.responses import ErrorDetails
 
 if TYPE_CHECKING:
     from nemo_retriever.service.services.job_tracker import DocumentRecord, JobAggregate
@@ -69,6 +70,7 @@ class PageMetric(RichModel):
     completed_at: str | None = None
     processing_duration_s: float | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
 
 
 class DocumentMetric(RichModel):
@@ -88,6 +90,7 @@ class DocumentMetric(RichModel):
     completed_at: str | None = None
     processing_duration_s: float | None = None
     error: str | None = None
+    error_details: ErrorDetails | None = None
 
 
 class JobMetric(RichModel):
@@ -333,6 +336,9 @@ class IngestMetrics:
                         "completed_at": document.completed_at,
                         "processing_duration_s": document.elapsed_s,
                         "error": document.error,
+                        "error_details": (
+                            ErrorDetails(**document.error_details) if document.error_details is not None else None
+                        ),
                     }
                 )
 
@@ -344,6 +350,11 @@ class IngestMetrics:
                             "completed_at": document.completed_at,
                             "processing_duration_s": document.elapsed_s,
                             "error": document.error,
+                            "error_details": (
+                                ErrorDetails(**document.error_details)
+                                if document.error_details is not None
+                                else None
+                            ),
                         }
                     )
                     break
@@ -371,6 +382,11 @@ class IngestMetrics:
                     elif document.status.value == "failed":
                         updates["pages_failed"] = metric_job.pages_failed + 1
                 self._jobs[job.job_id] = metric_job.model_copy(update=updates)
+
+            if document.status.value == "failed" and document.error_details is not None:
+                error_type = document.error_details.get("type") or "unknown"
+                self._total_errors += 1
+                self._errors_by_type[error_type] = self._errors_by_type.get(error_type, 0) + 1
 
     # ── single-record lookups ────────────────────────────────────────
 
