@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import preflight_executors
 from nemo_retriever.graph.ingestor_runtime import (
     batch_tuning_to_node_overrides,
     build_graph,
@@ -86,6 +87,7 @@ class ExtractionBranchExecutor:
         ray_module, cluster_resources = self.ensure_batch_runtime()
         effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
         branch_datasets: list[Any] = []
+        branch_executors: list[RayDataExecutor] = []
         for branch in self.branches:
             effective_extraction = self._resolve_branch(branch)
             logger.info(
@@ -109,6 +111,7 @@ class ExtractionBranchExecutor:
                 derived_overrides,
                 default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
             )
+            branch_executors.append(executor)
             file_paths, inline_rows = self._partition_branch_inputs(branch)
             if file_paths:
                 branch_datasets.append(executor.build_dataset(file_paths))
@@ -140,11 +143,14 @@ class ExtractionBranchExecutor:
             caption_params=self.caption_params,
             video_frame_params=None,
         )
-        return self._ray_executor(
+        post_executor = self._ray_executor(
             post_graph,
             post_overrides,
             default_concurrency_node_names(None, self.embed_params, self.store_params, self.caption_params),
-        ).ingest(combined)
+        )
+        if hasattr(cluster_resources, "available_cpu_count"):
+            preflight_executors([*branch_executors, post_executor], cluster_resources)
+        return post_executor.ingest(combined)
 
     def _execute_inprocess(self) -> Any:
         frames = []

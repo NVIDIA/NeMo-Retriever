@@ -14,7 +14,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
-from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor, preflight_executors
 from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
 from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
     AUDIO_EXTENSIONS,
@@ -1073,6 +1073,33 @@ class TestRayDataExecutor:
         g.add_root(root)
         with pytest.raises(ValueError, match="fan-out"):
             RayDataExecutor._linearize(g)
+
+    def test_shared_preflight_bounds_multiple_lazy_executors(self):
+        first_graph = Graph()
+        first_graph.add_root(CPUAdaptiveAddOperator())
+        second_graph = Graph()
+        second_graph.add_root(CPUAdaptiveAddOperator())
+        first = RayDataExecutor(
+            first_graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 16, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+        second = RayDataExecutor(
+            second_graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 16, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=4, gpu_count=0)
+        preflight_executors([first, second], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert (
+            first._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
+            + second._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
+            <= 4
+        )
 
     def test_preflight_counts_implicit_gpu_operator_reservation(self):
         graph = Graph()

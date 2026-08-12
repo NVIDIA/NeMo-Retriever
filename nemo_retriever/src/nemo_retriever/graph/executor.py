@@ -13,6 +13,7 @@ import pandas as pd
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
     expand_input_file_patterns,
@@ -34,6 +35,66 @@ logger = logging.getLogger(__name__)
 # Heuristic GPU fraction for GPUOperator nodes that load a local model.
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
+
+
+def preflight_executors(executors: list[Any], cluster_resources: ClusterResources) -> None:
+    """Plan all lazy executor pools against one shared Ray resource snapshot."""
+    entries = []
+    available_cpus = cluster_resources.available_cpu_count()
+    available_gpus = cluster_resources.available_gpu_count()
+    for executor in executors:
+        for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
+            override = executor._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            if isinstance(concurrency, tuple):
+                concurrency = concurrency[-1] if len(concurrency) == 3 else concurrency[0]
+            entries.append(
+                (
+                    executor,
+                    node.name,
+                    int(concurrency),
+                    float(override.get("num_cpus", executor._default_num_cpus)),
+                    executor._scheduled_num_gpus(node, override, available_gpus),
+                    node.name in executor._auto_concurrency_nodes,
+                )
+            )
+    fixed = [item for item in entries if not item[5]]
+    auto = [item for item in entries if item[5]]
+    fixed_cpu = sum(item[2] * item[3] for item in fixed)
+    fixed_gpu = sum(item[2] * item[4] for item in fixed)
+    min_cpu = sum(item[3] for item in auto)
+    min_gpu = sum(item[4] for item in auto)
+    if fixed_cpu + min_cpu > available_cpus or fixed_gpu + min_gpu > available_gpus:
+        raise ValueError(
+            "Infeasible Ray CPU/GPU plan: requested at least "
+            f"{fixed_cpu + min_cpu:g} CPUs and {fixed_gpu + min_gpu:g} GPUs, but Ray reports "
+            f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+            "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+        )
+    used_cpu, used_gpu = fixed_cpu + min_cpu, fixed_gpu + min_gpu
+    planned = {(id(item[0]), item[1]): 1 for item in auto}
+    while True:
+        candidates = sorted(
+            (item for item in auto if planned[(id(item[0]), item[1])] < item[2]),
+            key=lambda item: planned[(id(item[0]), item[1])] / item[2],
+        )
+        selected = next(
+            (
+                item
+                for item in candidates
+                if used_cpu + item[3] <= available_cpus and used_gpu + item[4] <= available_gpus
+            ),
+            None,
+        )
+        if selected is None:
+            break
+        planned[(id(selected[0]), selected[1])] += 1
+        used_cpu += selected[3]
+        used_gpu += selected[4]
+    for executor, name, _count, _cpu, _gpu, _auto in auto:
+        executor._node_overrides[name]["concurrency"] = planned[(id(executor), name)]
+    for executor in executors:
+        executor._resources_preflight_complete = True
 
 
 class AbstractExecutor(ABC):
