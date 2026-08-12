@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
 import pytest
+from ray.data.block import BlockAccessor
 
 from nemo_retriever.graph import Graph
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -432,7 +434,8 @@ class _FakeDataset:
         return SimpleNamespace(names=self.columns)
 
     def map_batches(self, *_args: Any, **kwargs: Any) -> "_FakeDataset":
-        self.normalized_columns = kwargs["fn_kwargs"]["columns"]
+        assert kwargs["batch_format"] == "pyarrow"
+        self.normalized_columns = kwargs["fn_kwargs"]["fn_kwargs"]["columns"]
         return self
 
     def union(self, other: "_FakeDataset") -> "_FakeDataset":
@@ -453,6 +456,26 @@ class _LazySchemaDataset:
         return self
 
 
+class _SlicedArrowDataset:
+    def __init__(self, table: pa.Table) -> None:
+        self.table = table
+
+    def schema(self, *, fetch_if_missing: bool = True) -> Any:
+        assert fetch_if_missing is False
+        return self.table.schema
+
+    def map_batches(self, fn: Any, *, batch_format: str, fn_kwargs: dict[str, Any]) -> Any:
+        if batch_format == "pandas":
+            batch = BlockAccessor.for_block(self.table).to_pandas()
+        else:
+            assert batch_format == "pyarrow"
+            batch = self.table
+        result = fn(batch, **fn_kwargs)
+        roundtripped = BlockAccessor.batch_to_block(result)
+        roundtripped.validate(full=True)
+        return result
+
+
 def test_ray_schema_normalization_does_not_trigger_lazy_schema_fetch() -> None:
     datasets = [_LazySchemaDataset(), _LazySchemaDataset()]
 
@@ -460,6 +483,22 @@ def test_ray_schema_normalization_does_not_trigger_lazy_schema_fetch() -> None:
 
     assert normalized == datasets
     assert all(not dataset.map_batches_called for dataset in datasets)
+
+
+def test_ray_schema_normalization_compacts_sliced_nested_arrow_batches() -> None:
+    table = pa.Table.from_pylist(
+        [
+            {
+                "path": f"document-{index}.pdf",
+                "metadata": {"source_path": f"document-{index}.pdf", "error": None},
+            }
+            for index in range(4)
+        ]
+    ).slice(2, 2)
+
+    result = normalize_ray_branch_datasets([_SlicedArrowDataset(table)])[0]
+
+    assert result["path"].tolist() == ["document-2.pdf", "document-3.pdf"]
 
 
 def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path) -> None:
@@ -505,3 +544,102 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path) -> Non
     assert len(combined.unioned) == 1
     assert combined.normalized_columns == ("path", "pdf_value", "image_value")
     assert result["done"].tolist() == [True]
+
+
+def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    image = tmp_path / "scan.png"
+    pdf.write_bytes(b"pdf")
+    image.write_bytes(b"png")
+    datasets = [_FakeDataset(["path", "pdf_value"]), _FakeDataset(["path", "image_value"])]
+    calls: list[str] = []
+
+    class FakeCluster:
+        def available_cpu_count(self) -> int:
+            return 16
+
+        def available_gpu_count(self) -> int:
+            return 0
+
+        def total_gpu_count(self) -> int:
+            return 0
+
+        def total_cpu_count(self) -> int:
+            return 16
+
+    class FakeExecutor:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            calls.append("construct")
+
+        def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("build")
+            return datasets.pop(0)
+
+        def ingest(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("ingest")
+            return pd.DataFrame({"done": [True]})
+
+    def fake_preflight(executors: list[Any], resources: Any) -> None:
+        assert len(executors) == 3
+        assert resources.available_cpu_count() == 16
+        calls.append("preflight")
+
+    monkeypatch.setattr(GraphIngestor, "_ensure_batch_runtime", lambda self: (None, FakeCluster()))
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.RayDataExecutor", FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.preflight_executors", fake_preflight)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", lambda **_kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", lambda **_kwargs: Graph())
+
+    GraphIngestor(run_mode="batch").files([str(pdf), str(image)]).extract().ingest()
+
+    assert calls == ["construct", "construct", "construct", "preflight", "build", "build", "ingest"]
+
+
+def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "manual.txt"
+    document.write_text("from file")
+    datasets = [_FakeDataset(["path", "value"]), _FakeDataset(["path", "value"])]
+    calls: list[str] = []
+
+    class FakeCluster:
+        def available_cpu_count(self) -> int:
+            return 16
+
+        def available_gpu_count(self) -> int:
+            return 0
+
+        def total_gpu_count(self) -> int:
+            return 0
+
+        def total_cpu_count(self) -> int:
+            return 16
+
+    class FakeExecutor:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            calls.append("construct")
+
+        def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("build")
+            return datasets.pop(0)
+
+        def ingest(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("ingest")
+            return pd.DataFrame({"done": [True]})
+
+    def fake_preflight(executors: list[Any], resources: Any) -> None:
+        assert len(executors) == 3
+        calls.append("preflight")
+
+    monkeypatch.setattr(
+        GraphIngestor,
+        "_ensure_batch_runtime",
+        lambda self: (SimpleNamespace(data=SimpleNamespace(from_items=lambda rows: {"rows": rows})), FakeCluster()),
+    )
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.RayDataExecutor", FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.preflight_executors", fake_preflight)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", lambda **_kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", lambda **_kwargs: Graph())
+
+    GraphIngestor(run_mode="batch").files([str(document)]).texts(["from inline"]).extract().ingest()
+
+    assert calls == ["construct", "construct", "construct", "preflight", "build", "build", "ingest"]

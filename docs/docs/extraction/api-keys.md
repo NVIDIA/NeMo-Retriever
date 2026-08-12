@@ -29,7 +29,7 @@ When you call hosted object-detection NIMs (Page Elements, Table Structure, Grap
 
     The `NVIDIA_API_KEY` from build.nvidia.com is not the same string as your NGC personal key used for Helm and `nvcr.io` access. Do not substitute one for the other unless your tooling explicitly documents that mapping.
 
-## Credential references in persisted graphs
+## Credential references in persisted graphs { #credential-references-in-persisted-graphs }
 
 Persisted pipeline graphs never contain literal API keys. Configure a graph with an explicit worker-side environment reference such as:
 
@@ -41,7 +41,9 @@ Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` fo
 
 Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
 
-## NGC personal key (Helm and `nvcr.io`)
+For how persisted graphs store credential references, refer to [Persisted graphs are trusted configuration](nemo-retriever-api-reference.md#persisted-graphs-are-trusted-configuration) in the Python API guide.
+
+## NGC personal key (Helm and `nvcr.io`) { #ngc-personal-key }
 
 Many public assets on NGC can be used without authentication. For a Kubernetes deployment, the cluster must still pull NIM and microservice images from `nvcr.io` and may need NGC API access; the Helm chart expects credentials derived from an NGC personal key.
 
@@ -59,6 +61,6 @@ When you create an NGC key, select the following for **Services Included**.
 ![Generate Personal Key](images/generate_personal_key.png)
 
 
-## Using your NGC key with Helm
+## Using your NGC key with Helm { #using-your-ngc-key-with-helm }
 
 Configure your key through the chart values described in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md): for example `imagePullSecret.create` / `imagePullSecret.password` for pulls from `nvcr.io`, `nimApiKey` (inline value or `existingSecret`) for the retriever service, and `nims.ngcApiKey` when `nims.enabled=true`. Exact paths are versioned—use the **Secrets** section in that README and [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml) as the source of truth.

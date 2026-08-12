@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -190,6 +191,28 @@ class TestExplodeContentToRows:
         assert list(result["_embed_modality"]) == ["text", "text"]
         assert "_image_b64" not in result.columns
 
+    def test_arrow_backed_structured_arrays_expand_into_element_rows(self):
+        """Ray Arrow-backed list cells expand like their Python-list equivalents."""
+        df = pd.DataFrame(
+            {
+                "text": ["page text"],
+                "table": [np.array([{"text": "table text"}], dtype=object)],
+                "chart": [np.array([{"text": "chart text"}], dtype=object)],
+            }
+        )
+
+        result = explode_content_to_rows(df)
+
+        assert result["text"].tolist() == ["page text", "table text", "chart text"]
+        assert result["_content_type"].tolist() == ["text", "table", "chart"]
+        assert result.iloc[0]["table"] is not result.iloc[1]["table"]
+
+    @pytest.mark.parametrize("value", [np.array(1, dtype=object), np.ones((2, 2))])
+    def test_non_collection_arrays_are_not_expanded(self, value):
+        result = explode_content_to_rows(pd.DataFrame({"text": ["page text"], "table": [value]}))
+
+        assert result["text"].tolist() == ["page text"]
+
     @patch("nemo_retriever.common.modality.content_transforms._crop_b64_image_by_norm_bbox")
     def test_text_image_carries_image(self, mock_crop):
         """text_image mode copies page image to _image_b64, crops for structured content."""
@@ -245,6 +268,20 @@ class TestCollapseContentToPageRows:
         assert len(result) == 1
         assert result["text"].iloc[0] == "Hello world\n\ntable data\n\nchart data"
         assert result["_embed_modality"].iloc[0] == "text"
+
+    def test_arrow_backed_structured_arrays_are_collapsed_into_page_text(self):
+        """Ray Arrow-backed list cells contribute their text to the page row."""
+        df = pd.DataFrame(
+            {
+                "text": ["page text"],
+                "table": [np.array([{"text": "table text"}], dtype=object)],
+                "chart": [np.array([{"text": "chart text"}], dtype=object)],
+            }
+        )
+
+        result = collapse_content_to_page_rows(df)
+
+        assert result["text"].tolist() == ["page text\n\ntable text\n\nchart text"]
 
     def test_full_page_image_used(self):
         """In image modalities, _image_b64 is the full page image (no cropping)."""

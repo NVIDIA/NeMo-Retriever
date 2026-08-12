@@ -4,7 +4,7 @@ The following are the environment variables that you can use to configure [NeMo 
 You can specify these in a .env file in your working directory or directly as shell environment variables.
 
 
-## General Environment Variables
+## General Environment Variables { #general-environment-variables }
 
 | Name                             | Example                        | Description                                                           |
 |----------------------------------|--------------------------------|-----------------------------------------------------------------------|
@@ -15,6 +15,8 @@ You can specify these in a .env file in your working directory or directly as sh
 | `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4317` <br/>                       | The endpoint for the OpenTelemetry exporter, used for sending telemetry data. |
 
 
-## Related Topics
+## Related Topics { #related-topics }
 
-- [Configure Ray Logging](https://docs.nvidia.com/nemo/retriever/latest/extraction/ray-logging/)
+- [Configure Ray Logging](ray-logging.md)
+- [Authentication and API keys](api-keys.md)
+- [Python API guide](nemo-retriever-api-reference.md)

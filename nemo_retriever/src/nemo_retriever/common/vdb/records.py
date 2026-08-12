@@ -204,6 +204,19 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _bbox_from_graph_row(row: dict[str, Any]) -> list[Any] | None:
+    """Return a JSON-safe bbox without testing array truthiness."""
+    for key in ("_bbox_xyxy_norm", "bbox_xyxy_norm"):
+        value = row.get(key)
+        if hasattr(value, "tolist"):
+            value = value.tolist()
+        elif isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list) and value:
+            return value
+    return None
+
+
 def _is_image_backed_row(row: dict[str, Any]) -> bool:
     """Return whether a post-embed graph row retains its image or stored URI."""
     return bool(
@@ -265,8 +278,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     stored_image_uri = _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"))
     if stored_image_uri:
         content_metadata.setdefault("stored_image_uri", stored_image_uri)
-    bbox = row.get("_bbox_xyxy_norm") or row.get("bbox_xyxy_norm")
-    if bbox:
+    bbox = _bbox_from_graph_row(row)
+    if bbox is not None:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
     for key in (

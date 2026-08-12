@@ -1327,6 +1327,8 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
             "http://vlm:8000/v1/chat/completions",
             "--caption-model-name",
             "nvidia/test-vlm",
+            "--caption-gpu-memory-utilization",
+            "0.8",
             "--caption-context-text-max-chars",
             "512",
             "--caption-infographics",
@@ -1346,6 +1348,7 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     assert isinstance(caption_params, CaptionParams)
     assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
     assert caption_params.model_name == "nvidia/test-vlm"
+    assert caption_params.gpu_memory_utilization == 0.8
     assert caption_params.context_text_max_chars == 512
     assert caption_params.caption_infographics is True
 
@@ -1364,6 +1367,8 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
             str(document),
             "--caption-invoke-url",
             "http://vlm:8000/v1/chat/completions",
+            "--caption-gpu-memory-utilization",
+            "0.8",
         ],
     )
 
