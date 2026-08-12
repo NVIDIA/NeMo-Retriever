@@ -1074,6 +1074,17 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="fan-out"):
             RayDataExecutor._linearize(g)
 
+    def test_preflight_counts_implicit_gpu_operator_reservation(self):
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+        )
+
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            executor._preflight_resources(executor._linearize(graph), available_cpus=11, available_gpus=1)
+
     def test_node_overrides_stored(self):
         g = Graph()
         g.add_chain(AddOperator(1))
