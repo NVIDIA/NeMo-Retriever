@@ -69,15 +69,11 @@ class QueryRequest(BaseModel):
         if not self.agentic:
             return self
         if not isinstance(self.query, str):
-            raise ValueError(
-                "agentic queries require a single query string, not a list"
-            )
+            raise ValueError("agentic queries require a single query string, not a list")
         if not self.query.strip():
             raise ValueError("agentic query must be a non-empty string")
         if len(self.query) > MAX_AGENTIC_QUERY_CHARS:
-            raise ValueError(
-                f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters"
-            )
+            raise ValueError(f"agentic query exceeds max length of {MAX_AGENTIC_QUERY_CHARS} characters")
         if self.format != "hits":
             raise ValueError("agentic queries require format='hits'")
         return self
@@ -99,9 +95,7 @@ class QueryRequest(BaseModel):
             }
             supplied = sorted(raw_keys.intersection(value))
             if supplied:
-                raise ValueError(
-                    f"client-selected storage is not supported: {', '.join(supplied)}"
-                )
+                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
         return value
 
 
@@ -119,13 +113,9 @@ class QueryResponse(BaseModel):
         ),
     )
 
-    def hits_by_query(
-        self, *, expected_results: int | None = None
-    ) -> list[list[dict[str, Any]]]:
+    def hits_by_query(self, *, expected_results: int | None = None) -> list[list[dict[str, Any]]]:
         if expected_results is not None and len(self.results) != expected_results:
-            raise ValueError(
-                f"expected {expected_results} result set(s), got {len(self.results)}"
-            )
+            raise ValueError(f"expected {expected_results} result set(s), got {len(self.results)}")
         return [result.hits for result in self.results]
 
 

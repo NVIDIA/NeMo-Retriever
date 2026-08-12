@@ -127,18 +127,14 @@ def test_reranked_query_requires_main_service_reranker(monkeypatch, tmp_path) ->
     assert "rerank_invoke_url" in response.json()["detail"]
 
 
-def test_reranked_query_uses_lazy_local_main_service_model(
-    monkeypatch, tmp_path
-) -> None:
+def test_reranked_query_uses_lazy_local_main_service_model(monkeypatch, tmp_path) -> None:
     _configure_noop_workers(monkeypatch)
     seen: dict[str, object] = {}
     local_model = object()
 
     class _Response:
         status_code = 200
-        content = json.dumps(
-            {"results": [{"hits": [{"text": "first"}, {"text": "second"}]}]}
-        ).encode()
+        content = json.dumps({"results": [{"hits": [{"text": "first"}, {"text": "second"}]}]}).encode()
 
     class _Client:
         def __init__(self, *args, **kwargs) -> None:
@@ -163,9 +159,7 @@ def test_reranked_query_uses_lazy_local_main_service_model(
         return [{"_rerank_score": 0.9, **hits[1]}]
 
     monkeypatch.setattr("httpx.AsyncClient", _Client)
-    monkeypatch.setattr(
-        "nemo_retriever.models.create_local_reranker", _create_local_reranker
-    )
+    monkeypatch.setattr("nemo_retriever.models.create_local_reranker", _create_local_reranker)
     monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _rerank)
     config = ServiceConfig(
         mode="standalone",
@@ -189,9 +183,7 @@ def test_reranked_query_uses_lazy_local_main_service_model(
     )
 
     with TestClient(create_app(config)) as client:
-        response = client.post(
-            "/v1/query", json={"query": "revenue", "top_k": 1, "rerank": True}
-        )
+        response = client.post("/v1/query", json={"query": "revenue", "top_k": 1, "rerank": True})
 
     assert response.status_code == 200
     assert seen["body"] == {"query": "revenue", "top_k": 50}
@@ -248,9 +240,7 @@ def test_false_rerank_string_uses_normal_query_path(monkeypatch, tmp_path) -> No
     )
 
     with TestClient(create_app(config)) as client:
-        response = client.post(
-            "/v1/query", json={"query": "revenue", "rerank": "false"}
-        )
+        response = client.post("/v1/query", json={"query": "revenue", "rerank": "false"})
 
     assert response.status_code == 200
     assert seen["body"] == {"query": "revenue", "rerank": "false"}

@@ -67,11 +67,7 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
         transport=httpx.MockTransport(_handler),
     )
 
-    result = _run(
-        client.query(
-            "What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}
-        )
-    )
+    result = _run(client.query("What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}))
 
     assert seen == {
         "path": "/v1/query",
@@ -164,24 +160,9 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
 
 
 def test_query_methods_gate_mcp_retrieval_tools() -> None:
-    classic = {
-        tool.name
-        for tool in _run(
-            build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools()
-        )
-    }
-    agentic = {
-        tool.name
-        for tool in _run(
-            build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools()
-        )
-    }
-    all_tools = {
-        tool.name
-        for tool in _run(
-            build_mcp(ServiceMCPSettings(query_methods="all")).list_tools()
-        )
-    }
+    classic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools())}
+    agentic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools())}
+    all_tools = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="all")).list_tools())}
 
     assert "query" in classic
     assert "agentic_query" not in classic
@@ -211,9 +192,7 @@ def test_settings_from_service_config_maps_query_methods_when_agentic_enabled() 
     assert settings.agentic_request_timeout_s == 321.0
 
 
-def test_settings_from_service_config_drops_agentic_tools_when_agentic_disabled() -> (
-    None
-):
+def test_settings_from_service_config_drops_agentic_tools_when_agentic_disabled() -> None:
     settings = settings_from_service_config(
         ServiceConfig(
             agentic=AgenticConfig(enabled=False),
@@ -249,10 +228,7 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:00Z",
                 },
             )
-        if (
-            request.method == "POST"
-            and request.url.path == "/v1/ingest/job/job-1/document"
-        ):
+        if request.method == "POST" and request.url.path == "/v1/ingest/job/job-1/document":
             upload_body = request.content
             return httpx.Response(
                 202,
@@ -264,10 +240,7 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:01Z",
                 },
             )
-        if (
-            request.method == "GET"
-            and request.url.path == "/v1/ingest/job/job-1/documents"
-        ):
+        if request.method == "GET" and request.url.path == "/v1/ingest/job/job-1/documents":
             return httpx.Response(
                 200,
                 json={
@@ -287,9 +260,7 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     ],
                 },
             )
-        return httpx.Response(
-            404, text=f"unexpected {request.method} {request.url.path}"
-        )
+        return httpx.Response(404, text=f"unexpected {request.method} {request.url.path}")
 
     client = ServiceMCPClient(
         ServiceMCPSettings(base_url="http://service:7670", poll_interval_s=0.01),
