@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
-from nemo_retriever.common.modality.collections import bbox_coordinates, multimodal_collection
 from nemo_retriever.common.io.image_store import inline_image_b64
 from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
@@ -24,8 +23,8 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
     if isinstance(base, str) and base.strip():
         parts.append(base.strip())
     for col in content_columns:
-        content_list = multimodal_collection(row.get(col))
-        if content_list is not None:
+        content_list = row.get(col)
+        if isinstance(content_list, list):
             for item in content_list:
                 if isinstance(item, dict):
                     text = item.get("text", "")
@@ -42,7 +41,7 @@ def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
 
     out: Dict[str, Any] = {}
     for key, value in row_dict.items():
-        if isinstance(value, (dict, list, tuple)) or multimodal_collection(value) is not None:
+        if isinstance(value, (dict, list)):
             out[key] = copy.deepcopy(value)
         else:
             out[key] = value
@@ -106,8 +105,8 @@ def explode_content_to_rows(
             exploded_any = True
 
         for column in content_columns:
-            content_list = multimodal_collection(row_dict.get(column))
-            if content_list is None:
+            content_list = row_dict.get(column)
+            if not isinstance(content_list, list):
                 continue
             for item in content_list:
                 if not isinstance(item, dict):
@@ -125,8 +124,8 @@ def explode_content_to_rows(
                         if item_b64:
                             content_row["_image_b64"] = item_b64
                         elif page_image_b64:
-                            bbox = bbox_coordinates(item.get("bbox_xyxy_norm"))
-                            if bbox is not None:
+                            bbox = item.get("bbox_xyxy_norm")
+                            if bbox and len(bbox) == 4:
                                 cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
                                 content_row["_image_b64"] = cropped_b64
                             else:

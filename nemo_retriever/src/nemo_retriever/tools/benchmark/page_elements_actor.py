@@ -11,7 +11,6 @@ import ray.data as rd
 import typer
 
 from nemo_retriever.operators.extract.page_elements.gpu_actor import PageElementDetectionActor
-from nemo_retriever.graph.executor import make_arrow_pandas_operator_adapter
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
@@ -46,16 +45,13 @@ def run(
 
     def _map(ds: rd.Dataset, worker_count: int, batch_size: int) -> rd.Dataset:
         return ds.map_batches(
-            make_arrow_pandas_operator_adapter(PageElementDetectionActor),
+            PageElementDetectionActor,
             batch_size=int(batch_size),
-            batch_format="pyarrow",
+            batch_format="pandas",
             num_cpus=float(num_cpus),
             num_gpus=float(num_gpus),
             compute=rd.ActorPoolStrategy(size=int(worker_count)),
-            fn_constructor_kwargs={
-                "operator_class": PageElementDetectionActor,
-                "operator_kwargs": {"inference_batch_size": int(inference_batch_size)},
-            },
+            fn_constructor_kwargs={"inference_batch_size": int(inference_batch_size)},
         )
 
     best, results = benchmark_sweep(

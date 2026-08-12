@@ -11,7 +11,6 @@ import ray.data as rd
 import typer
 
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
-from nemo_retriever.graph.executor import call_pandas_function_on_arrow
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
@@ -42,13 +41,12 @@ def run(
 
     def _map(ds: rd.Dataset, worker_count: int, batch_size: int) -> rd.Dataset:
         return ds.map_batches(
-            call_pandas_function_on_arrow,
+            PDFSplitActor(),
             batch_size=int(batch_size),
-            batch_format="pyarrow",
+            batch_format="pandas",
             num_cpus=1,
             num_gpus=0,
             compute=rd.TaskPoolStrategy(size=int(worker_count)),
-            fn_kwargs={"fn": PDFSplitActor()},
         )
 
     best, results = benchmark_sweep(

@@ -77,21 +77,29 @@ def test_adapter_normalizes_pickled_object_columns_for_pandas_row_operations() -
     result = _ArrowPandasOperatorAdapter(_PassthroughOperator, {})(table)
 
     assert result["tables"].dtype == object
+    assert all(isinstance(value, np.ndarray) and value.size == 0 for value in result["tables"])
     assert result.apply(lambda row: row["text"], axis=1).tolist() == ["first", "second", "third"]
 
 
-def test_adapter_preserves_page_and_element_content_semantics_for_sliced_pdf_rows() -> None:
-    table = pa.Table.from_pylist(
-        [
+def test_adapter_preserves_numeric_numpy_arrays() -> None:
+    table = BlockAccessor.batch_to_block(pd.DataFrame({"embedding": [np.array([0.1, 0.2])]}))
+
+    result = _ArrowPandasOperatorAdapter(_PassthroughOperator, {})(table)
+
+    assert isinstance(result.iloc[0]["embedding"], np.ndarray)
+    np.testing.assert_array_equal(result.iloc[0]["embedding"], np.array([0.1, 0.2]))
+
+
+def test_adapter_preserves_multimodal_content_semantics() -> None:
+    table = BlockAccessor.batch_to_block(
+        pd.DataFrame(
             {
-                "text": f"page {page_number}",
-                "table": [{"text": f"table {page_number}"}],
-                "chart": [{"text": f"chart {page_number}"}],
-                "metadata": {"source_path": "document.pdf", "error": None},
+                "text": ["page text"],
+                "table": [np.array([{"text": "table text"}], dtype=object)],
+                "chart": [np.array([{"text": "chart text"}], dtype=object)],
             }
-            for page_number in range(3)
-        ]
-    ).slice(2, 1)
+        )
+    )
 
     page_result = _ArrowPandasOperatorAdapter(
         UDFOperator,
@@ -108,8 +116,8 @@ def test_adapter_preserves_page_and_element_content_semantics_for_sliced_pdf_row
         },
     )(table)
 
-    assert page_result["text"].tolist() == ["page 2\n\ntable 2\n\nchart 2"]
-    assert element_result["text"].tolist() == ["page 2", "table 2", "chart 2"]
+    assert page_result["text"].tolist() == ["page text\n\ntable text\n\nchart text"]
+    assert element_result["text"].tolist() == ["page text", "table text", "chart text"]
     assert element_result["_content_type"].tolist() == ["text", "table", "chart"]
     pa.Table.from_pandas(page_result, preserve_index=False).validate(full=True)
     pa.Table.from_pandas(element_result, preserve_index=False).validate(full=True)

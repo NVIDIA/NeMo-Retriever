@@ -13,7 +13,6 @@ from typing import Any, TypedDict
 
 from pydantic import ValidationError
 
-from nemo_retriever.common.modality.collections import multimodal_collection
 from nemo_retriever.common.schemas.collections import QueryHit
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -196,8 +195,8 @@ def _add_detection_metadata(
             content_metadata.setdefault("page_elements_v3_counts_by_label", normalized_counts)
 
     for content_type in ("table", "chart", "infographic"):
-        detections = multimodal_collection(row.get(content_type))
-        if detections is not None:
+        detections = row.get(content_type)
+        if isinstance(detections, list):
             content_metadata.setdefault(f"ocr_{content_type}_detections", len(detections))
 
 

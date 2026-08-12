@@ -25,7 +25,6 @@ _logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
-from nemo_retriever.common.modality.collections import bbox_coordinates, multimodal_collection
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.modality.table_and_chart import join_table_structure_and_ocr_output
@@ -176,8 +175,7 @@ def _crop_all_from_page(
             continue
 
         bbox = det.get("bbox_xyxy_norm")
-        bbox = bbox_coordinates(bbox)
-        if bbox is None or len(bbox) != 4:
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             continue
 
         try:
@@ -622,8 +620,7 @@ def _find_ts_detections_for_bbox(
         if not isinstance(region, dict):
             continue
         region_bbox = region.get("bbox_xyxy_norm")
-        region_bbox = bbox_coordinates(region_bbox)
-        if region_bbox is None or len(region_bbox) != 4:
+        if not isinstance(region_bbox, (list, tuple)) or len(region_bbox) != 4:
             continue
         if not _bboxes_close(table_bbox, region_bbox):
             continue
@@ -701,7 +698,9 @@ def _prepare_ocr_rows(
             page_elements = getattr(row, "page_elements_v3", None)
             detections: List[Dict[str, Any]] = []
             if isinstance(page_elements, dict):
-                detections = multimodal_collection(page_elements.get("detections")) or []
+                detections = page_elements.get("detections") or []
+            if not isinstance(detections, list):
+                detections = []
 
             page_image = getattr(row, "page_image", None) or {}
             page_image_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None

@@ -32,23 +32,19 @@ When no endpoint is configured the model is loaded directly from HuggingFace
 Ray Data actor usage::
 
     import ray
-    from nemo_retriever.graph.executor import make_arrow_pandas_operator_adapter
     ds = ds.map_batches(
-        make_arrow_pandas_operator_adapter(NemotronRerankActor),
+        NemotronRerankActor,
         batch_size=64,
-        batch_format="pyarrow",
+        batch_format="pandas",
         num_gpus=1,
         compute=ray.data.ActorPoolStrategy(size=4),
         fn_constructor_kwargs={
-            "operator_class": NemotronRerankActor,
-            "operator_kwargs": {
-                "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
-                "query_column": "query",
-                "text_column": "text",
-                "score_column": "rerank_score",
-                "max_length": 512,
-                "batch_size": 32,
-            },
+            "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+            "query_column": "query",
+            "text_column": "text",
+            "score_column": "rerank_score",
+            "max_length": 512,
+            "batch_size": 32,
         },
     )
 """
@@ -62,7 +58,6 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from nemo_retriever.common.modality.collections import bbox_coordinates
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -329,12 +324,11 @@ def rerank_hits(
                     render_cache[cache_key] = render_page_image_b64(h["path"], int(h["page_number"]))
                 page_b64 = render_cache[cache_key]
                 # Crop to element bbox if available (tables/charts).
-                bbox_value = h.get("bbox_xyxy_norm")
-                if page_b64 and bbox_value is not None:
+                bbox_str = h.get("bbox_xyxy_norm", "")
+                if page_b64 and bbox_str:
                     try:
-                        bbox = json.loads(bbox_value) if isinstance(bbox_value, str) else bbox_value
-                        bbox = bbox_coordinates(bbox)
-                        if bbox is not None and len(bbox) == 4:
+                        bbox = json.loads(bbox_str)
+                        if isinstance(bbox, list) and len(bbox) == 4:
                             cropped, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
                             images_b64.append(cropped)
                             continue
@@ -420,23 +414,19 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     Usage with Ray Data::
 
         import ray
-        from nemo_retriever.graph.executor import make_arrow_pandas_operator_adapter
         ds = ds.map_batches(
-            make_arrow_pandas_operator_adapter(NemotronRerankActor),
+            NemotronRerankActor,
             batch_size=64,
-            batch_format="pyarrow",
+            batch_format="pandas",
             num_gpus=1,
             compute=ray.data.ActorPoolStrategy(size=4),
             fn_constructor_kwargs={
-                "operator_class": NemotronRerankActor,
-                "operator_kwargs": {
-                    "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
-                    "query_column": "query",
-                    "text_column": "text",
-                    "score_column": "rerank_score",
-                    "max_length": 512,
-                    "batch_size": 32,
-                },
+                "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                "query_column": "query",
+                "text_column": "text",
+                "score_column": "rerank_score",
+                "max_length": 512,
+                "batch_size": 32,
             },
         )
 

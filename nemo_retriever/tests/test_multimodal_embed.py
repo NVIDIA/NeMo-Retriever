@@ -205,6 +205,13 @@ class TestExplodeContentToRows:
 
         assert result["text"].tolist() == ["page text", "table text", "chart text"]
         assert result["_content_type"].tolist() == ["text", "table", "chart"]
+        assert result.iloc[0]["table"] is not result.iloc[1]["table"]
+
+    @pytest.mark.parametrize("value", [np.array(1, dtype=object), np.ones((2, 2))])
+    def test_non_collection_arrays_are_not_expanded(self, value):
+        result = explode_content_to_rows(pd.DataFrame({"text": ["page text"], "table": [value]}))
+
+        assert result["text"].tolist() == ["page text"]
 
     @patch("nemo_retriever.common.modality.content_transforms._crop_b64_image_by_norm_bbox")
     def test_text_image_carries_image(self, mock_crop):

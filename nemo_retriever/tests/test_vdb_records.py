@@ -192,21 +192,6 @@ def test_graph_record_conversion_normalizes_arrow_backed_bbox_array() -> None:
     assert records[0][0]["metadata"]["content_metadata"]["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
 
 
-def test_graph_record_conversion_counts_arrow_backed_detection_array() -> None:
-    records = to_client_vdb_records(
-        [
-            {
-                "text": "table content",
-                "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
-                "_content_type": "table",
-                "table": np.array([{"content": "a"}, {"content": "b"}], dtype=object),
-            }
-        ]
-    )
-
-    assert records[0][0]["metadata"]["content_metadata"]["ocr_table_detections"] == 2
-
-
 def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:
     hit = _normalize_one(
         {

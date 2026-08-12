@@ -9,8 +9,6 @@ from typing import Any, Dict, Optional, List, Tuple, Set
 
 import pandas as pd
 
-from nemo_retriever.common.modality.collections import bbox_coordinates
-
 from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
 from nemo_retriever.common.api.internal.schemas.mutate.mutate_image_dedup_schema import ImageDedupSchema
 
@@ -114,8 +112,7 @@ def _get_image_bbox_info(row: pd.Series) -> Optional[Dict[str, Any]]:
         bbox = image_metadata.get("image_location")
         max_dims = image_metadata.get("image_location_max_dimensions", (0, 0))
 
-        bbox = bbox_coordinates(bbox)
-        if bbox is None:
+        if bbox is None or not isinstance(bbox, (tuple, list)) or len(bbox) < 4:
             return None
 
         # Normalize bbox by max dimensions
@@ -156,8 +153,7 @@ def _get_structured_bbox_info(row: pd.Series) -> Optional[Dict[str, Any]]:
         bbox = table_metadata.get("table_location")
         max_dims = table_metadata.get("table_location_max_dimensions", (0, 0))
 
-        bbox = bbox_coordinates(bbox)
-        if bbox is None:
+        if bbox is None or not isinstance(bbox, (tuple, list)) or len(bbox) < 4:
             return None
 
         # Normalize bbox by max dimensions

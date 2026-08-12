@@ -17,7 +17,6 @@ from nemo_retriever.common.modality.caption.model_profiles import (
     merge_request_extras,
     resolve_caption_model_name,
 )
-from nemo_retriever.common.modality.collections import bbox_coordinates, multimodal_collection
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -373,8 +372,8 @@ def caption_images(
     for row_idx, row in batch_df.iterrows():
         # Unstructured images.
         if has_images:
-            images = multimodal_collection(row.get("images"))
-            if images is not None:
+            images = row.get("images")
+            if isinstance(images, list):
                 for item_idx, item in enumerate(images):
                     if not isinstance(item, dict):
                         continue
@@ -386,8 +385,8 @@ def caption_images(
 
         # Infographics — crop from page image.
         if has_infographics:
-            infographics = multimodal_collection(row.get("infographic"))
-            if infographics is not None:
+            infographics = row.get("infographic")
+            if isinstance(infographics, list):
                 page_image = row.get("page_image")
                 page_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
                 if page_b64:
@@ -396,8 +395,8 @@ def caption_images(
                             continue
                         if item.get("caption"):
                             continue  # already captioned
-                        bbox = bbox_coordinates(item.get("bbox_xyxy_norm"))
-                        if bbox is None:
+                        bbox = item.get("bbox_xyxy_norm")
+                        if not bbox or len(bbox) < 4:
                             continue
                         cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
                         if cropped_b64 and _image_meets_min_size(cropped_b64):

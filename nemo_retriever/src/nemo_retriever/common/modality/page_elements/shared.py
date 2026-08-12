@@ -461,7 +461,7 @@ def detect_page_elements_v3(
     Run Nemotron Page Elements v3 on a pandas batch.
 
     Input:
-      - `pages_df`: pandas.DataFrame (provided by NRL's safe Arrow adapter in Ray Data pipelines)
+      - `pages_df`: pandas.DataFrame (typical Ray Data `batch_format="pandas"`)
         Must contain an image base64 source either in `image_b64` or one of
         `images`/`tables`/`charts`/`infographics` (each as list[{"image_b64": ...}]).
 

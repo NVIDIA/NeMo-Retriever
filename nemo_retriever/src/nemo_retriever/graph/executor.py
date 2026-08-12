@@ -124,7 +124,7 @@ class _ArrowPandasOperatorAdapter:
         return self._operator(arrow_table_to_pandas(table))
 
 
-def make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
+def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
     """Keep the wrapped operator recognizable in Ray plans and worker logs."""
     adapter_name = f"{operator_class.__name__}ArrowPandasAdapter"
     return type(adapter_name, (_ArrowPandasOperatorAdapter,), {})
@@ -453,7 +453,7 @@ class RayDataExecutor(AbstractExecutor):
                 # Ray's Arrow-backed pandas conversion can preserve unsafe
                 # offsets for sliced structs with inferred null children.
                 # Compact the valid Arrow batch before that conversion.
-                map_operator_class = make_arrow_pandas_operator_adapter(node.operator_class)
+                map_operator_class = _make_arrow_pandas_operator_adapter(node.operator_class)
                 map_batch_format = "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,

@@ -80,7 +80,7 @@ def embed_text_1b_v2(
     Embed a batch of text rows using the local `LlamaNemotronEmbed1BV2Embedder`.
 
     Input:
-      - `batch_df`: pandas.DataFrame (provided by NRL's safe Arrow adapter in Ray Data pipelines)
+      - `batch_df`: pandas.DataFrame (Ray Data `batch_format="pandas"` compatible)
       - `text_column`: preferred column name to read text from (defaults to `"text"`)
 
     Output:
