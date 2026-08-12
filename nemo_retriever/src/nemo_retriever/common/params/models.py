@@ -24,7 +24,10 @@ from pydantic import (
     model_validator,
 )
 
-from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
+from nemo_retriever.common.modality.caption.model_profiles import (
+    DEFAULT_LOCAL_CAPTION_MODEL_ID,
+    get_caption_model_profile,
+)
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
@@ -989,7 +992,7 @@ class CaptionParams(LLMInferenceParams):
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.5
+    gpu_memory_utilization: Optional[float] = Field(default=None, gt=0, le=1)
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
@@ -999,6 +1002,15 @@ class CaptionParams(LLMInferenceParams):
         if value is None:
             raise ValueError("temperature cannot be None for captioning")
         return value
+
+    @model_validator(mode="after")
+    def _resolve_local_gpu_memory_utilization(self) -> "CaptionParams":
+        """Use the selected local caption profile's vLLM memory default."""
+        if self.gpu_memory_utilization is None:
+            profile = get_caption_model_profile(self.model_name, target="local", strict=False)
+            if profile is not None:
+                self.gpu_memory_utilization = profile.local_gpu_memory_utilization
+        return self
 
 
 class WebhookParams(_ParamsModel):

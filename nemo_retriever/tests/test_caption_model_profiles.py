@@ -473,6 +473,34 @@ def test_local_captioner_applies_vllm_startup_defaults_before_constructing_llm(
     NemotronVLMCaptioner(model_path=OMNI_BF16)
 
     assert FakeLLM.instances[-1].deep_gemm_warmup == "skip"
+    assert FakeLLM.instances[-1].kwargs["gpu_memory_utilization"] == 0.95
+
+
+@pytest.mark.parametrize(
+    ("model_name", "expected_utilization"),
+    [
+        (NANO_BF16, 0.5),
+        (OMNI_BF16, 0.95),
+    ],
+)
+def test_local_captioner_uses_profile_gpu_memory_default(
+    isolated_local_captioner_imports, model_name, expected_utilization
+):
+    FakeLLM, _FakeSamplingParams = _install_fake_vllm()
+
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+
+    NemotronVLMCaptioner(model_path=model_name)
+
+    assert FakeLLM.instances[-1].kwargs["gpu_memory_utilization"] == expected_utilization
+
+
+def test_caption_params_resolves_profile_gpu_memory_default():
+    from nemo_retriever.common.params import CaptionParams
+
+    assert CaptionParams(model_name=NANO_BF16).gpu_memory_utilization == 0.5
+    assert CaptionParams(model_name=OMNI_BF16).gpu_memory_utilization == 0.95
+    assert CaptionParams(model_name=OMNI_BF16, gpu_memory_utilization=0.8).gpu_memory_utilization == 0.8
 
 
 def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_captioner_imports):
