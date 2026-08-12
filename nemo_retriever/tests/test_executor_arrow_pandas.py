@@ -6,8 +6,10 @@
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
+from ray.data.block import BlockAccessor
 from ray.data import DataContext
 
 from nemo_retriever.graph.executor import _ArrowPandasOperatorAdapter
@@ -57,3 +59,19 @@ def test_adapter_preserves_ray_pandas_conversion_policy() -> None:
         context.enable_arrow_backed_pandas_conversion = original
 
     assert not isinstance(result.dtypes["value"], pd.ArrowDtype)
+
+
+def test_adapter_normalizes_pickled_object_columns_for_pandas_row_operations() -> None:
+    table = BlockAccessor.batch_to_block(
+        pd.DataFrame(
+            {
+                "text": ["first", "second", "third"],
+                "tables": [np.array([], dtype=object) for _ in range(3)],
+            }
+        )
+    )
+
+    result = _ArrowPandasOperatorAdapter(_PassthroughOperator, {})(table)
+
+    assert result["tables"].dtype == object
+    assert result.apply(lambda row: row["text"], axis=1).tolist() == ["first", "second", "third"]

@@ -71,6 +71,20 @@ def _compact_vulnerable_arrow_columns(table: Any) -> Any:
     return compacted
 
 
+def _normalize_pickled_object_columns(table: Any, frame: pd.DataFrame) -> pd.DataFrame:
+    """Convert Ray's pickled-object extension columns to plain pandas objects."""
+    import pyarrow as pa
+
+    if not isinstance(table, pa.Table):
+        return frame
+
+    for index, field in enumerate(table.schema):
+        if getattr(field.type, "extension_name", None) != "ray.data.arrow_pickled_object":
+            continue
+        frame[field.name] = pd.Series(table.column(index).to_pylist(), index=frame.index, dtype=object)
+    return frame
+
+
 class _ArrowPandasOperatorAdapter:
     """Convert valid Arrow batches to pandas before invoking an NRL operator."""
 
@@ -82,6 +96,7 @@ class _ArrowPandasOperatorAdapter:
 
         table = _compact_vulnerable_arrow_columns(table)
         frame = BlockAccessor.for_block(table).to_pandas()
+        frame = _normalize_pickled_object_columns(table, frame)
         return self._operator(frame)
 
 
