@@ -45,6 +45,7 @@ Highlights for the 26.05 release include:
 
 - Video retrieval pipeline with frame extraction, OCR, audio-visual fusion, and text deduplication  
 - Long-audio Parakeet chunking with time-aligned segments; punctuation-based audio segmenting; ASR batch/streaming improvements  
+- Fixed an issue that could cause local Hugging Face batch audio extraction to hang in interactive terminals when FFmpeg inherited the parent process's standard input.
 
 ### Retrieval and RAG
 
