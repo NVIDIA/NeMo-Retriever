@@ -502,3 +502,49 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path) -> Non
     assert len(combined.unioned) == 1
     assert combined.normalized_columns == ("path", "pdf_value", "image_value")
     assert result["done"].tolist() == [True]
+
+
+def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    image = tmp_path / "scan.png"
+    pdf.write_bytes(b"pdf")
+    image.write_bytes(b"png")
+    datasets = [_FakeDataset(["path", "pdf_value"]), _FakeDataset(["path", "image_value"])]
+    calls: list[str] = []
+
+    class FakeCluster:
+        def available_cpu_count(self) -> int:
+            return 16
+
+        def available_gpu_count(self) -> int:
+            return 0
+
+        def total_cpu_count(self) -> int:
+            return 16
+
+    class FakeExecutor:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            calls.append("construct")
+
+        def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("build")
+            return datasets.pop(0)
+
+        def ingest(self, data: Any, **kwargs: Any) -> Any:
+            calls.append("ingest")
+            return pd.DataFrame({"done": [True]})
+
+    def fake_preflight(executors: list[Any], resources: Any) -> None:
+        assert len(executors) == 3
+        assert resources.available_cpu_count() == 16
+        calls.append("preflight")
+
+    monkeypatch.setattr(GraphIngestor, "_ensure_batch_runtime", lambda self: (None, FakeCluster()))
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.RayDataExecutor", FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.preflight_executors", fake_preflight)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", lambda **_kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", lambda **_kwargs: Graph())
+
+    GraphIngestor(run_mode="batch").files([str(pdf), str(image)]).extract().ingest()
+
+    assert calls == ["construct", "construct", "construct", "preflight", "build", "build", "ingest"]

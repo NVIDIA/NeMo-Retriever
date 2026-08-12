@@ -252,6 +252,7 @@ class RayDataExecutor(AbstractExecutor):
         self._default_num_gpus = num_gpus
         self._node_overrides = node_overrides or {}
         self._auto_concurrency_nodes = auto_concurrency_nodes or set()
+        self._resources_preflight_complete = False
 
     def _has_remote_endpoint(self, node: Node) -> bool:
         """Return whether a node delegates inference to a remote endpoint."""
@@ -404,7 +405,7 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
-        if nodes:
+        if nodes and not self._resources_preflight_complete:
             self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))

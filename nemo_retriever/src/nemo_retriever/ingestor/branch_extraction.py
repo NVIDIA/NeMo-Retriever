@@ -88,6 +88,7 @@ class ExtractionBranchExecutor:
         effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
         branch_datasets: list[Any] = []
         branch_executors: list[RayDataExecutor] = []
+        branch_inputs: list[tuple[RayDataExecutor, list[str], list[dict[str, str]]]] = []
         for branch in self.branches:
             effective_extraction = self._resolve_branch(branch)
             logger.info(
@@ -113,15 +114,7 @@ class ExtractionBranchExecutor:
             )
             branch_executors.append(executor)
             file_paths, inline_rows = self._partition_branch_inputs(branch)
-            if file_paths:
-                branch_datasets.append(executor.build_dataset(file_paths))
-            if inline_rows:
-                branch_datasets.append(executor.build_dataset(ray_module.data.from_items(inline_rows)))
-
-        normalized = normalize_ray_branch_datasets(branch_datasets)
-        combined = normalized[0]
-        for branch_ds in normalized[1:]:
-            combined = combined.union(branch_ds)
+            branch_inputs.append((executor, file_paths, inline_rows))
 
         logger.info("Retriever ingest post-extraction stages: %s", format_post_stage_summary(self.post_extract_order))
         post_graph = build_post_extract_graph(
@@ -150,6 +143,16 @@ class ExtractionBranchExecutor:
         )
         if hasattr(cluster_resources, "available_cpu_count"):
             preflight_executors([*branch_executors, post_executor], cluster_resources)
+
+        for executor, file_paths, inline_rows in branch_inputs:
+            if file_paths:
+                branch_datasets.append(executor.build_dataset(file_paths))
+            if inline_rows:
+                branch_datasets.append(executor.build_dataset(ray_module.data.from_items(inline_rows)))
+        normalized = normalize_ray_branch_datasets(branch_datasets)
+        combined = normalized[0]
+        for branch_ds in normalized[1:]:
+            combined = combined.union(branch_ds)
         return post_executor.ingest(combined)
 
     def _execute_inprocess(self) -> Any:
