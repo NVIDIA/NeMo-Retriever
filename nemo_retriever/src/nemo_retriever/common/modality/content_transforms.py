@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
+import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.io.image_store import inline_image_b64
@@ -15,6 +16,11 @@ from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbo
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
 _CONTENT_COLUMNS = ("table", "chart", "infographic")
+
+
+def _is_content_collection(value: Any) -> bool:
+    """Return whether a value is a supported extracted-content collection."""
+    return isinstance(value, list) or (isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object)
 
 
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
@@ -25,7 +31,7 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
         parts.append(base.strip())
     for col in content_columns:
         content_list = row.get(col)
-        if isinstance(content_list, list):
+        if _is_content_collection(content_list):
             for item in content_list:
                 if isinstance(item, dict):
                     text = item.get("text", "")
@@ -43,7 +49,7 @@ def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
 
     out: Dict[str, Any] = {}
     for key, value in row_dict.items():
-        if isinstance(value, (dict, list)):
+        if isinstance(value, (dict, list)) or _is_content_collection(value):
             out[key] = copy.deepcopy(value)
         else:
             out[key] = value
@@ -108,7 +114,7 @@ def explode_content_to_rows(
 
         for column in content_columns:
             content_list = row_dict.get(column)
-            if not isinstance(content_list, list):
+            if not _is_content_collection(content_list):
                 continue
             for item in content_list:
                 if not isinstance(item, dict):

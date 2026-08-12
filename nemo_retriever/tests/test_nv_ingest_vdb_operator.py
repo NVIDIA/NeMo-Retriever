@@ -581,6 +581,24 @@ def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     assert merged_content_meta["page_number"] == 7
 
 
+def test_ingest_operator_preserves_sidecar_kwargs_for_graph_reconstruction() -> None:
+    meta_df = pd.DataFrame({"source_id": ["/tmp/doc-a.pdf"], "category": ["legal"]})
+    operator = IngestVdbOperator(
+        vdb=FakeVDB(),
+        vdb_kwargs={
+            "meta_dataframe": meta_df,
+            "meta_source_field": "source_id",
+            "meta_fields": ["category"],
+        },
+    )
+
+    reconstructed_kwargs = operator.get_constructor_kwargs()["vdb_kwargs"]
+
+    assert reconstructed_kwargs["meta_dataframe"] is meta_df
+    assert reconstructed_kwargs["meta_source_field"] == "source_id"
+    assert reconstructed_kwargs["meta_fields"] == ["category"]
+
+
 def test_ingest_operator_preserves_canonical_batches_for_collection_write() -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)

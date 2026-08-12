@@ -146,7 +146,7 @@ To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray acto
 
 **Python client (`pdf_split_config`):** Only `create_ingestor(run_mode="service")` implements `.pdf_split_config(pages_per_chunk=...)`, which records page-chunking settings in the request pipeline spec for the remote gateway. Local graph ingest (`run_mode="inprocess"` or `"batch"`) raises `NotImplementedError` if you call this method; PDFs are split automatically on the default ingest path without client-side configuration.
 
-## One-shot text generation
+## One-shot text generation { #one-shot-text-generation }
 
 `TextGenerationOperator` is the reusable base for synchronous, one-request-per-row text generation. It is a provisional text-only API: it does not support tool calls, agent loops, streaming, multiple choices, or structured domain results.
 
@@ -192,7 +192,7 @@ To define another one-request/one-text-result task, subclass `TextGenerationTask
 
 Generation failures are collected per row using stable error codes: `empty_input`, `request_error`, `transport_error`, `unsupported_response`, `parse_error`, `empty_output`, and the RAG-specific `thinking_truncated`. Raw provider exceptions and credentials are not written to DataFrame outputs.
 
-## Persisted graphs are trusted configuration
+## Persisted graphs are trusted configuration { #persisted-graphs-are-trusted-configuration }
 
 Graph loading imports operator classes and invokes their constructors. Load graph JSON only from trusted sources; do not expose graph payloads, callable references, or class names as model- or user-controlled agent tools.
 

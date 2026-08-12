@@ -129,6 +129,7 @@ def create_local_embedder(
             revision=spec.revision,
             gpu_memory_utilization=gpu_memory_utilization,
             enforce_eager=enforce_eager,
+            normalize=normalize,
             output_dimension=spec.output_dimension,
             query_prefix=spec.query_prefix,
             document_prefix=spec.document_prefix,

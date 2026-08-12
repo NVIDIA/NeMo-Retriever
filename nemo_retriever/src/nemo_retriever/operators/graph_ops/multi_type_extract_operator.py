@@ -39,7 +39,7 @@ from nemo_retriever.common.params import VideoFrameParams
 from nemo_retriever.common.params import VideoFrameTextDedupParams
 from nemo_retriever.common.params import resolve_split_params
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
-from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor, TxtSplitActor
@@ -323,17 +323,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             batch_df = self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
         else:
             # standard non-parse path: continue with PDFExtractionActor and detection
-            extract_kwargs: dict[str, Any] = {
-                "method": extract_params.method,
-                "dpi": int(extract_params.dpi),
-                "extract_text": extract_params.extract_text,
-                "extract_images": extract_params.extract_images,
-                "extract_tables": extract_params.extract_tables,
-                "extract_charts": extract_params.extract_charts,
-                "extract_infographics": extract_params.extract_infographics,
-                "extract_page_as_image": extract_params.extract_page_as_image,
-                "api_key": extract_params.api_key,
-            }
+            extract_kwargs = build_pdf_extraction_kwargs(extract_params)
             batch_df = PDFExtractionActor(**extract_kwargs).run(batch_df)
             batch_df = self._run_detection_pipeline(batch_df)
         return self._maybe_chunk(batch_df, "pdf")

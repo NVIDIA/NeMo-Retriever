@@ -2,9 +2,12 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 from PIL import Image
+from ray.data.block import BlockAccessor
 
 import nemo_retriever
 from nemo_retriever.graph.ingestor_runtime import build_graph
@@ -743,21 +746,21 @@ def test_strict_remote_error_policy_accepts_batch_dataset_rows() -> None:
         columns = ["page_elements_v3", "metadata"]
 
         def iter_batches(self, *, batch_format: str):
-            assert batch_format == "pandas"
-            yield pd.DataFrame(
-                {
-                    "page_elements_v3": [
-                        {
+            assert batch_format == "pyarrow"
+            yield pa.Table.from_pylist(
+                [
+                    {
+                        "page_elements_v3": {
                             "timing": None,
                             "error": {
                                 "stage": "remote_inference",
                                 "type": "ConnectionError",
                                 "message": "connection refused",
                             },
-                        }
-                    ],
-                    "metadata": [{"source": "test.pdf"}],
-                }
+                        },
+                        "metadata": {"source": "test.pdf"},
+                    }
+                ]
             )
 
     ingestor = GraphIngestor(run_mode="batch").extract(
@@ -873,12 +876,12 @@ def test_get_error_rows_maps_batch_dataset_with_columns_property() -> None:
         def __getitem__(self, key: str):
             raise AssertionError(f"expected map_batches path, got pandas access for {key}")
 
-        def map_batches(self, fn, *, batch_format: str):
-            assert batch_format == "pandas"
-            batch = pd.DataFrame(
-                {
-                    "page_elements_v3": [
-                        {
+        def map_batches(self, fn, *, batch_format: str, fn_kwargs: dict[str, object]):
+            assert batch_format == "pyarrow"
+            batch = pa.Table.from_pylist(
+                [
+                    {
+                        "page_elements_v3": {
                             "timing": None,
                             "error": {
                                 "stage": "remote_inference",
@@ -886,14 +889,39 @@ def test_get_error_rows_maps_batch_dataset_with_columns_property() -> None:
                                 "message": "connection refused",
                             },
                         },
-                        {"timing": None, "error": None},
-                    ],
-                    "text": ["first page", "second page"],
-                }
+                        "text": "first page",
+                    },
+                    {"page_elements_v3": {"timing": None, "error": None}, "text": "second page"},
+                ]
             )
-            return fn(batch)
+            return fn(batch, **fn_kwargs)
 
     errors = GraphIngestor(run_mode="batch").get_error_rows(RayLikeDataset())
 
     assert len(errors) == 1
     assert errors.iloc[0]["text"] == "first page"
+
+
+def test_stage_error_records_normalizes_arrow_object_arrays_before_row_iteration() -> None:
+    table = BlockAccessor.batch_to_block(
+        pd.DataFrame(
+            {
+                "text": ["first page", "second page"],
+                "tables": [np.array([], dtype=object), np.array([], dtype=object)],
+            }
+        )
+    )
+
+    class RayLikeDataset:
+        columns = ["text", "tables"]
+
+        def iter_batches(self, *, batch_format: str):
+            if batch_format == "pandas":
+                yield BlockAccessor.for_block(table).to_pandas()
+            else:
+                assert batch_format == "pyarrow"
+                yield table
+
+    records = GraphIngestor._stage_error_records(RayLikeDataset(), columns=[])
+
+    assert records == []

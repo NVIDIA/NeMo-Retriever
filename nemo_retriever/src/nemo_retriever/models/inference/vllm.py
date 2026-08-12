@@ -99,6 +99,22 @@ def create_vllm_llm(
     return LLM(**kwargs)
 
 
+def _pooling_params_for_normalize(normalize: Optional[bool]) -> Any:
+    """Create per-request vLLM pooling parameters when normalization is disabled."""
+    if normalize is not False:
+        return None
+    try:
+        from vllm.pooling_params import PoolingParams
+
+        return PoolingParams(use_activation=False)
+    except (ImportError, TypeError) as e:
+        raise RuntimeError(
+            f"Failed to create PoolingParams for normalize=False: {e}. "
+            "Ensure your vLLM installation supports PoolingParams "
+            "(install with: uv pip install -e '.[local]')."
+        ) from e
+
+
 def embed_with_vllm_llm(
     prompts: List[str],
     llm: Any,
@@ -121,18 +137,7 @@ def embed_with_vllm_llm(
             pooler activation, such as L2 normalization. ``True`` and ``None``
             omit ``PoolingParams`` and preserve vLLM's compiled defaults.
     """
-    pooling_params = None
-    if normalize is False:
-        try:
-            from vllm.pooling_params import PoolingParams
-
-            pooling_params = PoolingParams(use_activation=False)
-        except (ImportError, TypeError) as e:
-            raise RuntimeError(
-                f"Failed to create PoolingParams for normalize=False: {e}. "
-                "Ensure your vLLM installation supports PoolingParams "
-                "(install with: uv pip install -e '.[local]')."
-            ) from e
+    pooling_params = _pooling_params_for_normalize(normalize)
 
     if prefix:
         prompts = [str(prefix) + p for p in prompts]
@@ -165,6 +170,7 @@ def embed_multimodal_with_vllm_llm(
     llm: Any,
     *,
     batch_size: int = 64,
+    normalize: Optional[bool] = None,
 ) -> List[List[float]]:
     """
     Compute embeddings for multimodal prompts using an existing vLLM LLM instance.
@@ -174,15 +180,20 @@ def embed_multimodal_with_vllm_llm(
       - ``"multi_modal_data"``: ``{"image": PIL.Image.Image}``
 
     The LLM must have been created with ``limit_mm_per_prompt={"image": 1}``.
+    ``normalize=False`` disables the model pooler's normalization activation.
     Returns one embedding vector (list of floats) per input; ``[]`` for failures.
     """
     if not prompt_dicts:
         return []
 
+    pooling_params = _pooling_params_for_normalize(normalize)
     all_embeddings: List[List[float]] = []
     for i in range(0, len(prompt_dicts), max(1, batch_size)):
         batch = prompt_dicts[i : i + max(1, batch_size)]
-        outputs = llm.embed(batch)
+        if pooling_params is None:
+            outputs = llm.embed(batch)
+        else:
+            outputs = llm.embed(batch, pooling_params=pooling_params)
         for out in outputs:
             emb = getattr(getattr(out, "outputs", None), "embedding", None)
             if emb is not None:

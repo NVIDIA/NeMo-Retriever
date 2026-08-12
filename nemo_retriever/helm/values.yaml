@@ -1083,7 +1083,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS
@@ -1139,7 +1139,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS
@@ -1196,7 +1196,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS

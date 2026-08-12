@@ -173,6 +173,24 @@ class TestEmbedMultimodalWithVllmLlm:
         assert len(result) == 1
         assert len(result[0]) == 2
 
+    def test_normalize_false_translates_to_pooling_params(self, monkeypatch):
+        class FakePoolingParams:
+            def __init__(self, *, use_activation):
+                self.use_activation = use_activation
+
+        fake_vllm = ModuleType("vllm")
+        fake_vllm.__path__ = []
+        fake_pooling_params = ModuleType("vllm.pooling_params")
+        fake_pooling_params.PoolingParams = FakePoolingParams
+        monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
+        monkeypatch.setitem(sys.modules, "vllm.pooling_params", fake_pooling_params)
+
+        llm = MagicMock()
+        llm.embed.return_value = [_make_output([0.0])]
+        embed_multimodal_with_vllm_llm([{"prompt": "<image>"}], llm, normalize=False)
+        pooling_params = llm.embed.call_args.kwargs["pooling_params"]
+        assert pooling_params.use_activation is False
+
 
 class TestCreateVllmLlm:
     def setup_method(self):
@@ -270,6 +288,17 @@ class TestVLLMEmbedderImages:
         assert result.shape == (1, 2)
         assert abs(float(torch.norm(result, dim=-1).item()) - 1.0) < 1e-5
 
+    def test_output_is_unnormalized_when_normalize_false(self):
+        self.embedder.normalize = False
+        b64 = _make_minimal_b64()
+        with patch(
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
+            return_value=[[3.0, 4.0]],
+        ) as mock_mm:
+            result = self.embedder.embed_images([b64])
+        assert mock_mm.call_args.kwargs["normalize"] is False
+        assert result.tolist() == [[3.0, 4.0]]
+
     def test_no_valid_embeddings_returns_empty_tensor(self):
         b64 = _make_minimal_b64()
         with patch(
@@ -349,6 +378,24 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
 
 
+class TestLlamaNemotronEmbedVL1BV2VLLMEmbedderNormalization:
+    def test_text_output_unnormalized_when_normalize_false(self):
+        embedder = _make_vllm_vl_embedder()
+        embedder.normalize = False
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
+            result = embedder.embed(["text"])
+        assert mock_fn.call_args.kwargs["normalize"] is False
+        assert result.tolist() == [[3.0, 4.0]]
+
+    def test_query_output_unnormalized_when_normalize_false(self):
+        embedder = _make_vllm_vl_embedder()
+        embedder.normalize = False
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
+            result = embedder.embed_queries(["text"])
+        assert mock_fn.call_args.kwargs["normalize"] is False
+        assert result.tolist() == [[3.0, 4.0]]
+
+
 class TestVLLMEmbedderTextImage:
     def setup_method(self):
         self.embedder = _make_vllm_vl_embedder()
@@ -400,3 +447,14 @@ class TestVLLMEmbedderTextImage:
             result = self.embedder.embed_text_image(["text"], [b64])
         assert result.shape == (1, 2)
         assert abs(float(torch.norm(result, dim=-1).item()) - 1.0) < 1e-5
+
+    def test_output_is_unnormalized_when_normalize_false(self):
+        self.embedder.normalize = False
+        b64 = _make_minimal_b64()
+        with patch(
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
+            return_value=[[3.0, 4.0]],
+        ) as mock_mm:
+            result = self.embedder.embed_text_image(["text"], [b64])
+        assert mock_mm.call_args.kwargs["normalize"] is False
+        assert result.tolist() == [[3.0, 4.0]]

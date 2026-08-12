@@ -162,7 +162,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "table_name": "nemo-retriever",
         "overwrite": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
+        "embedding_model_revision": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -204,7 +204,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "table_name": "nemo-retriever",
         "overwrite": False,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
+        "embedding_model_revision": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
     }
 
 
@@ -401,7 +401,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "table_name": "docs",
         "overwrite": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
+        "embedding_model_revision": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -421,7 +421,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "table_name": "nemo-retriever",
         "overwrite": False,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
+        "embedding_model_revision": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
     }
 
 
@@ -1327,6 +1327,8 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
             "http://vlm:8000/v1/chat/completions",
             "--caption-model-name",
             "nvidia/test-vlm",
+            "--caption-gpu-memory-utilization",
+            "0.8",
             "--caption-context-text-max-chars",
             "512",
             "--caption-infographics",
@@ -1346,6 +1348,7 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     assert isinstance(caption_params, CaptionParams)
     assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
     assert caption_params.model_name == "nvidia/test-vlm"
+    assert caption_params.gpu_memory_utilization == 0.8
     assert caption_params.context_text_max_chars == 512
     assert caption_params.caption_infographics is True
 
@@ -1364,6 +1367,8 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
             str(document),
             "--caption-invoke-url",
             "http://vlm:8000/v1/chat/completions",
+            "--caption-gpu-memory-utilization",
+            "0.8",
         ],
     )
 
@@ -1710,7 +1715,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "overwrite": True,
         "hybrid": True,
         "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "4ef1bfa6da3a909de6bd00611950b7ed99203117",
+        "embedding_model_revision": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
     }
 
 

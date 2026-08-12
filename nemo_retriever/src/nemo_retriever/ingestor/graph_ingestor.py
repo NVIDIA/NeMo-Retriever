@@ -33,8 +33,13 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import arrow_table_to_pandas, call_pandas_function_on_arrow
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
-from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.graph.ingestor_runtime import (
+    batch_tuning_to_node_overrides,
+    build_graph,
+    default_concurrency_node_names,
+)
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -834,7 +839,7 @@ class GraphIngestor(ingestor):
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
         )
-        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.total_gpu_count() == 0
         derived_overrides = batch_tuning_to_node_overrides(
             effective_extraction.extract_params,
             self._embed_params,
@@ -851,6 +856,15 @@ class GraphIngestor(ingestor):
             num_cpus=self._num_cpus,
             num_gpus=self._num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
+            auto_concurrency_nodes=(
+                default_concurrency_node_names(
+                    effective_extraction.extract_params,
+                    self._embed_params,
+                    self._store_params,
+                    self._caption_params,
+                )
+                - set(self._node_overrides)
+            ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
         result = executor.ingest(executor_input)
@@ -1171,7 +1185,7 @@ class GraphIngestor(ingestor):
         requested_columns = list(columns) if columns is not None else None
 
         if callable(iter_batches):
-            batches = iter_batches(batch_format="pandas")
+            batches = (arrow_table_to_pandas(batch_df) for batch_df in iter_batches(batch_format="pyarrow"))
         else:
             batches = (batch,)
 
@@ -1353,7 +1367,11 @@ class GraphIngestor(ingestor):
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
         if isinstance(target, pd.DataFrame):
             return self.extract_error_rows(target)
-        return target.map_batches(self.extract_error_rows, batch_format="pandas")
+        return target.map_batches(
+            call_pandas_function_on_arrow,
+            batch_format="pyarrow",
+            fn_kwargs={"fn": self.extract_error_rows},
+        )
 
     def get_dataset(self) -> Any:
         return self._rd_dataset
