@@ -48,7 +48,8 @@ For per-feature GPU memory, disk, and co-residency rules, refer to [Model hardwa
 
 ### Resource Consumption Notes
 
-- The pipeline performs runtime allocation of parallel resources based on system configuration
+- Batch mode sizes unspecified actor pools from the CPU and GPU resources that Ray reports as available at pipeline submission.
+- Explicit batch worker counts and direct Ray node overrides must fit the available resource budget. The library rejects infeasible plans before submission.
 - Memory usage can reach up to the full system capacity for large document processing
 - CPU utilization scales with the number of concurrent processing tasks
 - GPU is required for inference using HuggingFace models or NIMs

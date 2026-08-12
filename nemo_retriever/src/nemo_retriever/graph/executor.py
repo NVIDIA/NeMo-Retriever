@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 
 from nemo_retriever.operators.gpu_operator import GPUOperator
@@ -181,6 +181,7 @@ class RayDataExecutor(AbstractExecutor):
         num_cpus: float = 1,
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+        auto_concurrency_nodes: Optional[Set[str]] = None,
     ) -> None:
         super().__init__(graph)
         self._ray_address = ray_address
@@ -189,6 +190,46 @@ class RayDataExecutor(AbstractExecutor):
         self._default_num_cpus = num_cpus
         self._default_num_gpus = num_gpus
         self._node_overrides = node_overrides or {}
+        self._auto_concurrency_nodes = auto_concurrency_nodes or set()
+
+    def _preflight_resources(self, nodes: List[Node], available_cpus: int, available_gpus: int) -> None:
+        """Reduce unspecified pools and reject infeasible explicit plans."""
+        entries = []
+        for node in nodes:
+            override = self._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            if isinstance(concurrency, tuple):
+                concurrency = concurrency[-1] if len(concurrency) == 3 else concurrency[0]
+            entries.append((node.name, int(concurrency), float(override.get("num_cpus", self._default_num_cpus)), float(override.get("num_gpus", self._default_num_gpus))))
+        fixed = [item for item in entries if item[0] not in self._auto_concurrency_nodes]
+        auto = [item for item in entries if item[0] in self._auto_concurrency_nodes]
+        fixed_cpu = sum(count * cpu for _name, count, cpu, _gpu in fixed)
+        fixed_gpu = sum(count * gpu for _name, count, _cpu, gpu in fixed)
+        minimum_cpu = sum(cpu for _name, _count, cpu, _gpu in auto)
+        minimum_gpu = sum(gpu for _name, _count, _cpu, gpu in auto)
+        if fixed_cpu + minimum_cpu > available_cpus or fixed_gpu + minimum_gpu > available_gpus:
+            raise ValueError(
+                "Infeasible Ray CPU/GPU plan: requested at least "
+                f"{fixed_cpu + minimum_cpu:g} CPUs and {fixed_gpu + minimum_gpu:g} GPUs, but Ray reports "
+                f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+                "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+            )
+        used_cpu, used_gpu = fixed_cpu + minimum_cpu, fixed_gpu + minimum_gpu
+        planned = {name: 1 for name, _count, _cpu, _gpu in auto}
+        while True:
+            candidates = sorted(
+                (item for item in auto if planned[item[0]] < item[1]),
+                key=lambda item: planned[item[0]] / item[1],
+            )
+            selected = next((item for item in candidates if used_cpu + item[2] <= available_cpus and used_gpu + item[3] <= available_gpus), None)
+            if selected is None:
+                break
+            name, _count, cpu, gpu = selected
+            planned[name] += 1
+            used_cpu += cpu
+            used_gpu += gpu
+        for name, count in planned.items():
+            self._node_overrides[name]["concurrency"] = count
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
@@ -256,6 +297,8 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
+        if nodes:
+            self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)

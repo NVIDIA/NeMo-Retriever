@@ -64,6 +64,7 @@ inspect row columns and service logs directly.
 | A per-document entry in `ServiceIngestResult.failures` | Upload or pipeline processing failed after a service job was created | Correlate the document ID with the job ID and service logs. Other documents in the same result can still have succeeded. |
 | Successful ingest with fewer rows than inputs (caption or ASR enabled) | Caption inference failed before row collection, or ASR dropped failed rows and logged warnings | Re-run with logging enabled. For caption, verify endpoint credentials and payload limits. For ASR, verify gRPC endpoint, `function_id`, and `NVIDIA_API_KEY`. |
 | OOM, worker exit, or pod restart | Host or GPU resources were exhausted, or an orchestrator terminated the worker | Reduce batch size or concurrency, use smaller document groups, and inspect host, Ray, Kubernetes, and NIM resource telemetry. |
+| `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](performance_guide.md). |
 
 The service can retry some transient transport, `429`, and `5xx` failures.
 Report the final status returned after retries, not an intermediate warning.

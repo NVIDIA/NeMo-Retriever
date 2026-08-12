@@ -361,6 +361,67 @@ def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_bu
     assert requested_cpu <= cluster.total_cpu_count()
 
 
+def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=16, gpu_count=8),
+        available_resources=Resources(cpu_count=16, gpu_count=8),
+    )
+    params = ExtractParams(
+        extract_text=True, extract_images=False, extract_tables=True, extract_charts=False,
+        extract_infographics=False, extract_page_as_image=False, use_page_elements=True,
+        use_table_structure=True,
+    )
+    derived = batch_tuning_to_node_overrides(params, None, cluster_resources=cluster)
+    executor = RayDataExecutor(
+        build_graph(extract_params=params, stage_order=()),
+        node_overrides=derived,
+        auto_concurrency_nodes={name for name, values in derived.items() if "concurrency" in values},
+    )
+    executor._preflight_resources(executor._linearize(executor.graph), 16, 8)
+
+    assert derived["PageElementDetectionActor"]["concurrency"] < 24
+    assert derived["TableStructureActor"]["concurrency"] < 16
+    assert derived["OCRActor"]["concurrency"] < 24
+    assert all(derived[name]["concurrency"] >= 1 for name in (
+        "PageElementDetectionActor", "TableStructureActor", "OCRActor",
+    ))
+
+
+def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    params = ExtractParams(batch_tuning=BatchTuningParams(page_elements_workers=24))
+    derived = batch_tuning_to_node_overrides(
+        params, None,
+        cluster_resources=ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=8),
+            available_resources=Resources(cpu_count=16, gpu_count=8),
+        ),
+    )
+    graph = build_graph(extract_params=params, stage_order=())
+    executor = RayDataExecutor(
+        graph, node_overrides=derived,
+        auto_concurrency_nodes=default_concurrency_node_names(params, None, None, None),
+    )
+    with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+        executor._preflight_resources(executor._linearize(graph), 16, 8)
+
+
+def test_batch_preflight_rejects_infeasible_direct_override() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+
+    graph = build_graph(extract_params=ExtractParams(), stage_order=())
+    executor = RayDataExecutor(
+        graph,
+        node_overrides={"PDFExtractionActor": {"concurrency": 17, "num_cpus": 1}},
+    )
+    with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+        executor._preflight_resources(executor._linearize(graph), 16, 8)
+
+
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
     extract_params = ExtractParams(
         use_table_structure=True,

@@ -12,7 +12,9 @@ from io import BytesIO
 from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
-from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph, build_post_extract_graph
+from nemo_retriever.graph.ingestor_runtime import (
+    batch_tuning_to_node_overrides, build_graph, build_post_extract_graph, default_concurrency_node_names,
+)
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -99,7 +101,10 @@ class ExtractionBranchExecutor:
                 caption_params=None,
                 video_frame_params=effective_extraction.video_frame_params,
             )
-            executor = self._ray_executor(graph, derived_overrides)
+            executor = self._ray_executor(
+                graph, derived_overrides,
+                default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
+            )
             file_paths, inline_rows = self._partition_branch_inputs(branch)
             if file_paths:
                 branch_datasets.append(executor.build_dataset(file_paths))
@@ -131,7 +136,10 @@ class ExtractionBranchExecutor:
             caption_params=self.caption_params,
             video_frame_params=None,
         )
-        return self._ray_executor(post_graph, post_overrides).ingest(combined)
+        return self._ray_executor(
+            post_graph, post_overrides,
+            default_concurrency_node_names(None, self.embed_params, self.store_params, self.caption_params),
+        ).ingest(combined)
 
     def _execute_inprocess(self) -> Any:
         frames = []
@@ -192,7 +200,9 @@ class ExtractionBranchExecutor:
             stage_order=(),
         )
 
-    def _ray_executor(self, graph: Any, derived_overrides: dict[str, dict[str, Any]]) -> RayDataExecutor:
+    def _ray_executor(
+        self, graph: Any, derived_overrides: dict[str, dict[str, Any]], auto_concurrency_nodes: set[str],
+    ) -> RayDataExecutor:
         return RayDataExecutor(
             graph,
             ray_address=self.ray_address,
@@ -200,6 +210,7 @@ class ExtractionBranchExecutor:
             num_cpus=self.num_cpus,
             num_gpus=self.num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self.node_overrides),
+            auto_concurrency_nodes=auto_concurrency_nodes - set(self.node_overrides),
         )
 
     def _inprocess_branch_input(self, branch: ExtractionBranchPlan) -> Any:
