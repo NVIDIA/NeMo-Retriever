@@ -6,7 +6,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.08 builds on the 26.05 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 Highlights for the 26.08 release include:
 
@@ -73,7 +73,7 @@ Highlights for the 26.08 release include:
 ### Documentation
 
 - Documentation aligned to a Helm-first supported path for NIM and service deployment
-- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
+- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 
 ## Release Notes for Previous Versions
 
@@ -93,4 +93,4 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
-- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
