@@ -177,6 +177,21 @@ def _row_image_represents_page(row: pd.Series, *, image_source: str | None) -> b
     return content_type == "text"
 
 
+def _ensure_object_column(df: pd.DataFrame, column: str) -> None:
+    """Convert Arrow-backed columns so dict/list payloads can be assigned.
+
+    Pandas ArrowExtensionArray rejects ``DataFrame.at`` assignment of updated
+    Python dicts into struct/list columns (``cast_struct`` /
+    string-to-struct NotImplementedError). Object dtype preserves nested
+    payloads that add fields such as ``stored_image_uri``.
+    """
+    if column not in df.columns:
+        return
+    dtype = df[column].dtype
+    if isinstance(dtype, pd.ArrowDtype):
+        df[column] = df[column].astype(object)
+
+
 def _store_row_images(
     df: pd.DataFrame,
     *,
@@ -195,6 +210,8 @@ def _store_row_images(
         return df
 
     out = df.copy()
+    for column in (*image_columns, *row_image_columns):
+        _ensure_object_column(out, column)
     fallback_format = _normalize_image_format(image_format)
     fsspec_options = dict(storage_options or {})
 
