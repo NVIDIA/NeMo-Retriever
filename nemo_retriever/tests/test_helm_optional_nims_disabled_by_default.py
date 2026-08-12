@@ -28,9 +28,9 @@ These tests pin the chart-side fix:
   auto-wiring).
 * Explicit opt-in still reconciles them, so the documented
   ``--set nimOperator.<key>.enabled=true`` workflow keeps working.
-* The README and ``values.yaml`` document the ``1.7.0-variant`` tag
-  used by Parse + Omni so air-gapped mirror pipelines and
-  reproducibility audits can map it to the 26.05 release.
+* The README and ``values.yaml`` document the ``-variant`` tags used by
+  Parse + Omni so air-gapped mirror pipelines and reproducibility audits
+  can map them to the release that qualified them.
 
 The integration tests shell out to ``helm template`` when ``helm`` is
 on ``$PATH``; otherwise they skip cleanly.
@@ -72,7 +72,8 @@ _OMNI_SERVICE_NAME = "name: nemotron-3-nano-omni-30b-a3b-reasoning"
 # values.yaml and the README keeps air-gapped mirror pipelines aligned.
 _PARSE_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-parse-v2.0"
 _PARSE_VARIANT_TAG = "2.0.8-variant"
-_OMNI_VARIANT_TAG = "1.7.0-variant"
+_OMNI_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+_OMNI_VARIANT_TAG = "2.0.4-variant"
 
 # Repositories the rerank NIM may be pinned to. The chart MUST point at
 # the VL SKU — the text-only SKU silently degrades multimodal
@@ -107,6 +108,27 @@ def _enabled_value_for_block(values_text: str, block_header: str) -> str:
         if stripped.startswith("enabled:"):
             return stripped.split(":", 1)[1].strip()
     raise AssertionError(f"No `enabled:` field found within {window} lines after " f"{block_header!r} in values.yaml.")
+
+
+def _image_field_for_block(values_text: str, block_header: str, field: str) -> str:
+    """Return an ``image:`` field value from the NIM block under ``block_header``.
+
+    Reading the field from inside the block keeps the assertion honest when two
+    NIMs pin similar tags — a swapped Parse/Omni pin still fails.
+    """
+    lines = values_text.splitlines()
+    try:
+        start = lines.index(block_header)
+    except ValueError as exc:
+        raise AssertionError(
+            f"Could not find block header {block_header!r} in values.yaml; did the block name change?"
+        ) from exc
+    window = 12
+    for line in lines[start + 1 : start + 1 + window]:
+        stripped = line.lstrip()
+        if stripped.startswith(f"{field}:"):
+            return stripped.split(":", 1)[1].strip()
+    raise AssertionError(f"No `{field}:` field found within {window} lines after {block_header!r} in values.yaml.")
 
 
 def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProcess[str]:
@@ -249,10 +271,12 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         covers it in more depth.
         """
         values = _read_required_file(_VALUES_YAML)
-        self.assertIn(f"repository: {_PARSE_REPOSITORY}", values)
-        self.assertNotIn("repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2", values)
-        self.assertIn(f'tag: "{_PARSE_VARIANT_TAG}"', values)
-        self.assertIn(f'tag: "{_OMNI_VARIANT_TAG}"', values)
+        for block, repository, tag in (
+            (_PARSE_BLOCK, _PARSE_REPOSITORY, _PARSE_VARIANT_TAG),
+            (_OMNI_BLOCK, _OMNI_REPOSITORY, _OMNI_VARIANT_TAG),
+        ):
+            self.assertEqual(_image_field_for_block(values, block, "repository"), repository)
+            self.assertEqual(_image_field_for_block(values, block, "tag"), f'"{tag}"')
         # The comment must explain what `-variant` means, not just
         # mention the literal string.
         self.assertIn(
@@ -537,7 +561,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
 
     def test_helm_template_omni_image_tag_pins_to_variant(self) -> None:
-        """Opt-in Omni must render with the pinned ``1.7.0-variant`` tag, not ``:latest``.
+        """Opt-in Omni must render with the release-pinned variant tag, not ``:latest``.
 
         The bug report's reproducibility concern: substituting
         ``:latest`` would silently move to a different NIM build.

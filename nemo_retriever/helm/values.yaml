@@ -1465,8 +1465,8 @@ nimOperator:
   # Operator from the model profile (override with `kubectl edit
   # nimservice` if necessary).
   #
-  # The default image tag (`1.7.0-variant`) is the Omni NIM SKU shipped
-  # alongside the 26.05 release; the `-variant` suffix marks it as the
+  # The default image tag (`2.0.4-variant`) is the Omni NIM SKU shipped
+  # alongside the 26.08 release; the `-variant` suffix marks it as the
   # build that ships with the per-GPU TensorRT engine variants required
   # by NIM Operator profile reconciliation, matching the row for the
   # Omni caption NIM in
@@ -1477,7 +1477,7 @@ nimOperator:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-      tag: "1.7.0-variant"
+      tag: "2.0.4-variant"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
