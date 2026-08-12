@@ -369,8 +369,13 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
         available_resources=Resources(cpu_count=16, gpu_count=8),
     )
     params = ExtractParams(
-        extract_text=True, extract_images=False, extract_tables=True, extract_charts=False,
-        extract_infographics=False, extract_page_as_image=False, use_page_elements=True,
+        extract_text=True,
+        extract_images=False,
+        extract_tables=True,
+        extract_charts=False,
+        extract_infographics=False,
+        extract_page_as_image=False,
+        use_page_elements=True,
         use_table_structure=True,
     )
     derived = batch_tuning_to_node_overrides(params, None, cluster_resources=cluster)
@@ -384,9 +389,14 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert derived["PageElementDetectionActor"]["concurrency"] < 24
     assert derived["TableStructureActor"]["concurrency"] < 16
     assert derived["OCRActor"]["concurrency"] < 24
-    assert all(derived[name]["concurrency"] >= 1 for name in (
-        "PageElementDetectionActor", "TableStructureActor", "OCRActor",
-    ))
+    assert all(
+        derived[name]["concurrency"] >= 1
+        for name in (
+            "PageElementDetectionActor",
+            "TableStructureActor",
+            "OCRActor",
+        )
+    )
 
 
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
@@ -395,7 +405,8 @@ def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
 
     params = ExtractParams(batch_tuning=BatchTuningParams(page_elements_workers=24))
     derived = batch_tuning_to_node_overrides(
-        params, None,
+        params,
+        None,
         cluster_resources=ClusterResources(
             total_resources=Resources(cpu_count=16, gpu_count=8),
             available_resources=Resources(cpu_count=16, gpu_count=8),
@@ -403,7 +414,8 @@ def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     )
     graph = build_graph(extract_params=params, stage_order=())
     executor = RayDataExecutor(
-        graph, node_overrides=derived,
+        graph,
+        node_overrides=derived,
         auto_concurrency_nodes=default_concurrency_node_names(params, None, None, None),
     )
     with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):

@@ -54,7 +54,10 @@ def _batch_tuning(params: Any) -> Any:
 
 
 def default_concurrency_node_names(
-    extract_params: Any | None, embed_params: Any | None, store_params: Any | None, caption_params: Any | None,
+    extract_params: Any | None,
+    embed_params: Any | None,
+    store_params: Any | None,
+    caption_params: Any | None,
 ) -> set[str]:
     """Return pools whose concurrency came from an unspecified default."""
     names: set[str] = set()
@@ -67,7 +70,9 @@ def default_concurrency_node_names(
             PDFExtractionActor.__name__: "pdf_extract_workers",
             NemotronParseActor.__name__: "nemotron_parse_workers",
         }
-        names.update(name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None)))
+        names.update(
+            name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
+        )
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)

@@ -13,7 +13,10 @@ from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import (
-    batch_tuning_to_node_overrides, build_graph, build_post_extract_graph, default_concurrency_node_names,
+    batch_tuning_to_node_overrides,
+    build_graph,
+    build_post_extract_graph,
+    default_concurrency_node_names,
 )
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
@@ -102,7 +105,8 @@ class ExtractionBranchExecutor:
                 video_frame_params=effective_extraction.video_frame_params,
             )
             executor = self._ray_executor(
-                graph, derived_overrides,
+                graph,
+                derived_overrides,
                 default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
             )
             file_paths, inline_rows = self._partition_branch_inputs(branch)
@@ -137,7 +141,8 @@ class ExtractionBranchExecutor:
             video_frame_params=None,
         )
         return self._ray_executor(
-            post_graph, post_overrides,
+            post_graph,
+            post_overrides,
             default_concurrency_node_names(None, self.embed_params, self.store_params, self.caption_params),
         ).ingest(combined)
 
@@ -201,7 +206,10 @@ class ExtractionBranchExecutor:
         )
 
     def _ray_executor(
-        self, graph: Any, derived_overrides: dict[str, dict[str, Any]], auto_concurrency_nodes: set[str],
+        self,
+        graph: Any,
+        derived_overrides: dict[str, dict[str, Any]],
+        auto_concurrency_nodes: set[str],
     ) -> RayDataExecutor:
         return RayDataExecutor(
             graph,

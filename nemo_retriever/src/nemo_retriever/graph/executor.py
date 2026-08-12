@@ -200,7 +200,14 @@ class RayDataExecutor(AbstractExecutor):
             concurrency = override.get("concurrency", 1)
             if isinstance(concurrency, tuple):
                 concurrency = concurrency[-1] if len(concurrency) == 3 else concurrency[0]
-            entries.append((node.name, int(concurrency), float(override.get("num_cpus", self._default_num_cpus)), float(override.get("num_gpus", self._default_num_gpus))))
+            entries.append(
+                (
+                    node.name,
+                    int(concurrency),
+                    float(override.get("num_cpus", self._default_num_cpus)),
+                    float(override.get("num_gpus", self._default_num_gpus)),
+                )
+            )
         fixed = [item for item in entries if item[0] not in self._auto_concurrency_nodes]
         auto = [item for item in entries if item[0] in self._auto_concurrency_nodes]
         fixed_cpu = sum(count * cpu for _name, count, cpu, _gpu in fixed)
@@ -221,7 +228,14 @@ class RayDataExecutor(AbstractExecutor):
                 (item for item in auto if planned[item[0]] < item[1]),
                 key=lambda item: planned[item[0]] / item[1],
             )
-            selected = next((item for item in candidates if used_cpu + item[2] <= available_cpus and used_gpu + item[3] <= available_gpus), None)
+            selected = next(
+                (
+                    item
+                    for item in candidates
+                    if used_cpu + item[2] <= available_cpus and used_gpu + item[3] <= available_gpus
+                ),
+                None,
+            )
             if selected is None:
                 break
             name, _count, cpu, gpu = selected
