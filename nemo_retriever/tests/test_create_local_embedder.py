@@ -161,11 +161,13 @@ def test_kwargs_forwarded_to_default_vllm_embedder(_patch_embedders):
         device="cuda:1",
         hf_cache_dir="/tmp/cache",
         gpu_memory_utilization=0.6,
+        normalize=False,
     )
     kw = fake_vl_vllm.call_args.kwargs
     assert kw["device"] == "cuda:1"
     assert kw["hf_cache_dir"] == "/tmp/cache"
     assert kw["gpu_memory_utilization"] == 0.6
+    assert kw["normalize"] is False
 
 
 def test_kwargs_forwarded_to_default_hf_embedder(_patch_embedders):

@@ -197,6 +197,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
     output_dimension: int = 2048
     query_prefix: str = "query: "
     document_prefix: str = "passage: "
+    normalize: bool = True
 
     _llm: Any = field(default=None, init=False, repr=False)
 
@@ -248,13 +249,14 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         return False
 
     def _finalize_vectors(self, vectors: Sequence[Sequence[float]]) -> torch.Tensor:
-        """Zero-pad rows vLLM failed to embed to the returned width, then normalize."""
+        """Zero-pad rows vLLM failed to embed, then optionally normalize."""
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
         dim = len(valid[0])
         padded = [v if v else [0.0] * dim for v in vectors]
-        return _l2_normalize(torch.tensor(padded, dtype=torch.float32))
+        tensor = torch.tensor(padded, dtype=torch.float32)
+        return _l2_normalize(tensor) if self.normalize else tensor
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, D]``."""
@@ -269,6 +271,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             self._llm,
             batch_size=max(1, int(batch_size)),
             prefix=self.document_prefix,
+            normalize=self.normalize,
         )
         return self._finalize_vectors(vectors)
 
@@ -285,6 +288,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             self._llm,
             batch_size=max(1, int(batch_size)),
             prefix=self.query_prefix,
+            normalize=self.normalize,
         )
         return self._finalize_vectors(vectors)
 
@@ -301,7 +305,12 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             {"prompt": f"{self.document_prefix}<image> ", "multi_modal_data": {"image": _b64_to_pil(b64)}}
             for b64 in valid_b64
         ]
-        vectors = embed_multimodal_with_vllm_llm(prompt_dicts, self._llm, batch_size=max(1, int(batch_size)))
+        vectors = embed_multimodal_with_vllm_llm(
+            prompt_dicts,
+            self._llm,
+            batch_size=max(1, int(batch_size)),
+            normalize=self.normalize,
+        )
         return self._finalize_vectors(vectors)
 
     def embed_text_image(
@@ -325,7 +334,12 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             {"prompt": f"{self.document_prefix}<image> {text}", "multi_modal_data": {"image": _b64_to_pil(b64)}}
             for text, b64 in zip(paired_texts, paired_b64)
         ]
-        vectors = embed_multimodal_with_vllm_llm(prompt_dicts, self._llm, batch_size=max(1, int(batch_size)))
+        vectors = embed_multimodal_with_vllm_llm(
+            prompt_dicts,
+            self._llm,
+            batch_size=max(1, int(batch_size)),
+            normalize=self.normalize,
+        )
         return self._finalize_vectors(vectors)
 
     def unload(self) -> None:
