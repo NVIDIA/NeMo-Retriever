@@ -12,14 +12,14 @@ The model can embed documents in the form of an image, text, or a combination of
 Documents can then be retrieved given a user query in text form. 
 The model supports images that contain text, tables, charts, and infographics.
 
-## Example with Default Text-Based Embedding
+## Example with Default Text-Based Embedding { #example-with-default-text-based-embedding }
 
 When you use the multimodal model, by default, all extracted content (text, tables, charts) is treated as plain text. 
 The following example provides a strong baseline for retrieval.
 
 - The `embed` method is called with no arguments.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -34,7 +34,7 @@ results = ingestor.ingest()
 ```
 
 
-## Example with Embedding Structured Elements as Text + Images
+## Example with Embedding Structured Elements as Text + Images { #example-with-embedding-structured-elements-as-text-images }
 
 It is common to process PDFs by embedding standard text as text and embed visual elements such as tables and charts as images. 
 The following example enables the multimodal model to capture the spatial and structural information of the visual content.
@@ -42,7 +42,7 @@ The following example enables the multimodal model to capture the spatial and st
 - The `embed` method is configured with `embed_modality="text_image"` to embed the extracted tables and charts as images.
 - This configuration is more accurate than text only, with a performance cost.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -59,7 +59,7 @@ results = ingestor.ingest()
 ```
 
 
-## Example with Embedding Entire PDF Pages as Images
+## Example with Embedding Entire PDF Pages as Images { #example-with-embedding-entire-pdf-pages-as-images }
 
 For documents where the entire page layout is important (such as infographics, complex diagrams, or forms), 
 you can configure NeMo Retriever Library to treat every page as a single image.
@@ -67,7 +67,7 @@ The following example extracts and embeds each page as an image.
 
 - The `embed` method processes the page images.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -84,7 +84,7 @@ ingestor = (
 results = ingestor.ingest()
 ```
 
-## Related Topics
+## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)

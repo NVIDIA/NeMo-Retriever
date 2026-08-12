@@ -12,7 +12,7 @@ NeMo Retriever Library splits documents into pages, classifies sub-page content 
 
     Some individual NIM microservices and models that the library calls—for example, the default NIMs in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#default-helm-nims)—may be covered by NVAIE on their own. That coverage applies only to those individual NIMs and models. It does **not** extend to the NeMo Retriever Library or its end-to-end extraction workflow. Using NVAIE-supported NIMs or models through the NeMo Retriever Library does not make the library, its container, or its chart NVAIE-supported.
 
-## What NeMo Retriever Library Is ✔️
+## What NeMo Retriever Library Is ✔️ { #what-nemo-retriever-library-is }
 
 The following diagram shows the retriever pipeline.
 
@@ -50,7 +50,7 @@ NeMo Retriever Library supports the following file types:
 - `txt`
 - `wav`
 
-## Related Topics
+## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
