@@ -27,6 +27,10 @@ LOGO = "https://developer-blogs.nvidia.com/wp-content/uploads/2024/03/nemo-retri
 _NOT_FOUND_EXC = frozenset({"ResourceNotFoundException", "ChartNotFoundException"})
 _ALREADY_EXISTS_EXC = frozenset({"ResourceAlreadyExistsException", "ChartAlreadyExistsException"})
 
+# Tags that move over time. A published release must not depend on them because
+# the artifact a customer pulls would drift away from the qualified set.
+_FLOATING_TAGS = frozenset({"latest", "main", "master", "dev", "devel", "nightly", "edge", "stable"})
+
 
 def _exc_name(exc: BaseException) -> str:
     return type(exc).__name__
@@ -69,6 +73,54 @@ def _set_release_versions(chart_dir: Path, name: str, version: str) -> None:
     _set_yaml_scalar(chart_path, ("version",), version)
     _set_yaml_scalar(chart_path, ("appVersion",), version)
     _set_yaml_scalar(chart_dir / "values.yaml", ("service", "image", "tag"), version)
+
+
+def _collect_image_references(values: object, prefix: tuple[str, ...] = ()) -> list[tuple[str, str, str]]:
+    """Return every ``(values path, repository, tag)`` image the chart deploys.
+
+    Blocks whose ``repository`` is empty are skipped because the chart resolves
+    those to another image (for example ``service.gpuImage``).
+    """
+    if not isinstance(values, dict):
+        return []
+
+    references: list[tuple[str, str, str]] = []
+    repository = values.get("repository")
+    if isinstance(repository, str) and repository.strip():
+        tag = values.get("tag")
+        references.append((".".join(prefix), repository.strip(), str(tag if tag is not None else "").strip()))
+
+    for key, child in values.items():
+        references.extend(_collect_image_references(child, prefix + (str(key),)))
+
+    return references
+
+
+def _validate_pinned_image_tags(references: list[tuple[str, str, str]]) -> None:
+    offenders = [
+        f"{path}: {repository}:{tag or '<empty>'}"
+        for path, repository, tag in references
+        if not tag or tag.lower() in _FLOATING_TAGS
+    ]
+    if offenders:
+        raise ValueError(
+            "Every image in a published chart must pin an explicit, non-floating tag. Offending values:\n  "
+            + "\n  ".join(offenders)
+        )
+
+
+def _render_image_inventory(references: list[tuple[str, str, str]], name: str, version: str) -> str:
+    """Render the artifact set a chart release deploys, for release qualification."""
+    lines = [
+        f"### Helm chart artifact inventory - `{name}:{version}`",
+        "",
+        "Compare this packaged artifact set against the release test plan matrix.",
+        "",
+        "| Values path | Image |",
+        "|-------------|-------|",
+    ]
+    lines += [f"| `{path}` | `{repository}:{tag}` |" for path, repository, tag in sorted(references)]
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
@@ -138,6 +190,11 @@ def main() -> None:
     )
 
     parser.add_argument("-r", "--dry-run", action="store_true", default=False)
+    parser.add_argument(
+        "--image-inventory",
+        action="store",
+        help="Write a Markdown inventory of every image the packaged chart deploys to this path",
+    )
     args = parser.parse_args()
 
     n = args.name
@@ -163,6 +220,14 @@ def main() -> None:
     )
 
     _set_release_versions(Path("dist") / n, n, v)
+
+    packaged_values = yaml.safe_load((Path("dist") / n / "values.yaml").read_text(encoding="utf-8"))
+    image_references = _collect_image_references(packaged_values)
+    _validate_pinned_image_tags(image_references)
+    inventory = _render_image_inventory(image_references, n, v)
+    print(inventory)
+    if args.image_inventory:
+        Path(args.image_inventory).write_text(inventory, encoding="utf-8")
 
     overview = f"dist/{n}/README.md"
     logo = args.logo_url if args.logo_url else LOGO
