@@ -439,6 +439,26 @@ def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> No
     assert overrides["MultiTypeExtractOperator"] == {"concurrency": 8, "num_cpus": 1, "num_gpus": 0.0}
 
 
+def test_batch_preflight_reduces_file_backed_text_pool_for_reader_cpu() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    resources = Resources(cpu_count=4, gpu_count=0)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    overrides = batch_tuning_to_node_overrides(None, None, cluster_resources=cluster, extraction_mode="text")
+    graph = build_graph(extraction_mode="text", stage_order=())
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=overrides,
+        auto_concurrency_nodes=default_concurrency_node_names(None, None, None, None),
+        source_cpu_reservation=1,
+    )
+
+    executor._preflight_resources(executor._linearize(graph), 4, 0)
+
+    assert overrides["MultiTypeExtractOperator"]["concurrency"] == 3
+
+
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names

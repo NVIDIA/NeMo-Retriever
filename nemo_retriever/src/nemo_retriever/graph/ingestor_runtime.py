@@ -83,6 +83,7 @@ def default_concurrency_node_names(
 ) -> set[str]:
     """Return pools whose concurrency came from an unspecified default."""
     names: set[str] = set()
+    names.add(MultiTypeExtractOperator.__name__)
     extract_tuning = _batch_tuning(extract_params)
     if extract_params is not None:
         worker_fields = {
@@ -95,7 +96,6 @@ def default_concurrency_node_names(
         names.update(
             name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
         )
-        names.add(MultiTypeExtractOperator.__name__)
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
