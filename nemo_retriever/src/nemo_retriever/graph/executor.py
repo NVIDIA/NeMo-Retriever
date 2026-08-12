@@ -144,33 +144,33 @@ def _requires_stable_pandas_blocks(nodes: list[Node]) -> bool:
     return any(_preserves_pandas_output(node.operator_class, node.operator_kwargs) for node in nodes)
 
 
-def _concurrency_target(concurrency: Any) -> int:
-    """Return the largest actor-pool size that resource planning can permit."""
+def _concurrency_bounds(concurrency: Any) -> tuple[int, int, int]:
+    """Return the minimum, maximum, and initial actor-pool sizes."""
     if isinstance(concurrency, tuple):
         if len(concurrency) not in (2, 3):
             raise ValueError("Ray actor-pool concurrency tuples must contain (min, max) or (min, max, initial)")
-        return int(concurrency[1])
-    return int(concurrency)
+        minimum, maximum = int(concurrency[0]), int(concurrency[1])
+        initial = int(concurrency[2]) if len(concurrency) == 3 else minimum
+        return minimum, maximum, initial
+    return 1, int(concurrency), 1
+
+
+def _concurrency_target(concurrency: Any) -> int:
+    """Return the largest actor-pool size that resource planning can permit."""
+    return _concurrency_bounds(concurrency)[1]
 
 
 def _concurrency_initial(concurrency: Any) -> int:
     """Return the number of actors Ray creates when the pool starts."""
-    if isinstance(concurrency, tuple):
-        if len(concurrency) == 3:
-            return int(concurrency[2])
-        if len(concurrency) == 2:
-            return int(concurrency[0])
-        raise ValueError("Ray actor-pool concurrency tuples must contain (min, max) or (min, max, initial)")
-    return 1
+    return _concurrency_bounds(concurrency)[2]
 
 
 def _planned_concurrency(concurrency: Any, planned: int) -> Any:
     """Preserve Ray's actor-pool tuple while capping its maximum size."""
+    minimum, _maximum, initial = _concurrency_bounds(concurrency)
     if isinstance(concurrency, tuple) and len(concurrency) == 3:
-        minimum, _maximum, initial = (int(value) for value in concurrency)
         return (minimum, max(minimum, initial, planned), initial)
     if isinstance(concurrency, tuple) and len(concurrency) == 2:
-        minimum, _maximum = (int(value) for value in concurrency)
         return (min(minimum, planned), planned)
     return planned
 
