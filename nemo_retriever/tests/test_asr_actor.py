@@ -336,3 +336,42 @@ def test_local_asr_apply_asr_to_df():
             sys.modules.pop("nemo_retriever.models.local", None)
         else:
             sys.modules["nemo_retriever.models.local"] = prev_local
+
+
+def test_asr_actor_resolves_gpu_when_fractional_gpu_available():
+    """Local HF ASR must not flip to NVCF CPU when Ray reports 0.9 GPU free."""
+    from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Resources, gather_cluster_resources
+    from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
+
+    mock_ray = type(
+        "Ray",
+        (),
+        {
+            "is_initialized": staticmethod(lambda: True),
+            "cluster_resources": staticmethod(lambda: {"CPU": 4.0, "GPU": 1.0}),
+            "available_resources": staticmethod(lambda: {"CPU": 3.9, "GPU": 0.9}),
+        },
+    )()
+
+    resources = gather_cluster_resources(mock_ray)
+    assert resources.total_gpu_count() == 1
+    assert resources.available_gpu_count() == 1
+
+    resolved = ASRActor.resolve_operator_class(
+        resources,
+        operator_kwargs={"params": ASRParams(audio_endpoints=(None, None))},
+    )
+    assert resolved is ASRGPUActor
+
+    # Even if available GPUs are fully reserved, capability comes from total.
+    fully_reserved = ClusterResources(
+        total_resources=Resources(cpu_count=4, gpu_count=1),
+        available_resources=Resources(cpu_count=4, gpu_count=0),
+    )
+    assert (
+        ASRActor.resolve_operator_class(
+            fully_reserved,
+            operator_kwargs={"params": ASRParams(audio_endpoints=(None, None))},
+        )
+        is ASRGPUActor
+    )

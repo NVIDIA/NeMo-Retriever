@@ -474,6 +474,9 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path) -> Non
         def available_gpu_count(self) -> int:
             return 0
 
+        def total_gpu_count(self) -> int:
+            return 0
+
         def total_cpu_count(self) -> int:
             return 64
 

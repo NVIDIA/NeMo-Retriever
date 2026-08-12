@@ -216,7 +216,10 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
             return 0
         if parsed <= 0:
             return 0
-        return int(parsed)
+        # Truncation alone turns e.g. 0.9 available GPUs into 0, which incorrectly
+        # signals "no GPU" and can flip local HF actors to remote/NVCF CPU variants.
+        floored = int(parsed)
+        return floored if floored > 0 else 1
 
     total_resources: dict[str, object] = ray.cluster_resources()
     available_resources: dict[str, object] = ray.available_resources()
@@ -521,9 +524,15 @@ def resolve_requested_plan(
     override_caption_gpus_per_actor: Optional[float] = None,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
-
-    if available_gpu_count == 0 and not allow_no_gpu:
+    total_gpu_count = max(0, int(cluster_resources.total_gpu_count()))
+    # Capability comes from total cluster GPUs. Transient available==0 (or a
+    # fractional value previously truncated to 0) must not abort local HF plans.
+    if total_gpu_count == 0 and not allow_no_gpu:
         raise ValueError("No GPUs available")
+    # Scale actor pools from currently free GPUs when possible; fall back to
+    # total so a fully reserved cluster still requests GPU actors (Ray waits).
+    if available_gpu_count == 0 and total_gpu_count > 0:
+        available_gpu_count = total_gpu_count
 
     def _resolve_int_actors(override: Optional[int], default: int, multiply_by_available_num_gpu: bool) -> int:
         if override is not None and override > 0:

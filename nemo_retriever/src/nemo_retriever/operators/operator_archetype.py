@@ -12,8 +12,14 @@ from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Reso
 
 
 def _available_gpu_count(resources: ClusterResources | Resources) -> int:
+    """Return GPU *capability* used for local-vs-remote operator selection.
+
+    For cluster resources this is total GPU count, not transient available
+    GPUs. Fractional available values (e.g. 0.9) were previously truncated
+    to 0 and silently selected remote/NVCF CPU actors for local HF workflows.
+    """
     if isinstance(resources, ClusterResources):
-        return int(resources.available_gpu_count())
+        return int(resources.total_gpu_count())
     return int(resources.gpu_count)
 
 
@@ -108,7 +114,7 @@ class ArchetypeOperator(AbstractOperator):
 def _delegate_cache_key(resources: ClusterResources | Resources) -> tuple[int, int]:
     if isinstance(resources, ClusterResources):
         return (
-            int(resources.available_cpu_count()),
-            int(resources.available_gpu_count()),
+            int(resources.total_cpu_count()),
+            int(resources.total_gpu_count()),
         )
     return (int(resources.cpu_count), int(resources.gpu_count))
