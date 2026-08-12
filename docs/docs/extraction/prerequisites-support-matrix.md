@@ -48,7 +48,8 @@ For per-feature GPU memory, disk, and co-residency rules, refer to [Model hardwa
 
 ### Resource Consumption Notes
 
-- The pipeline performs runtime allocation of parallel resources based on system configuration
+- Batch mode sizes unspecified actor pools from the CPU and GPU resources that Ray reports as available at pipeline submission.
+- Explicit batch worker counts and direct Ray node overrides must fit the available resource budget. The library rejects infeasible plans before submission.
 - Memory usage can reach up to the full system capacity for large document processing
 - CPU utilization scales with the number of concurrent processing tasks
 - GPU is required for inference using HuggingFace models or NIMs
@@ -134,6 +135,8 @@ Optional features in the table above require GPU capacity **beyond the four defa
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
+The Omni rows in the following table describe self-hosted NIM deployments. Direct local Hugging Face inference uses vLLM and also needs GPU memory for the KV cache and runtime allocations. For the local Omni BF16 profile, NeMo Retriever Library uses `gpu_memory_utilization=0.95` by default. On an 80 GB GPU, dedicate the GPU to local captioning. A checkpoint's approximately 62 GiB weight size alone does not establish local vLLM capacity.
+
 ## Model Hardware Requirements { #model-hardware-requirements }
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
@@ -166,7 +169,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ⁴ Self-hosted [audio/video extraction](audio-video.md) through Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
-³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory for this NIM deployment; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 

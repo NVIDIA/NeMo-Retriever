@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
     expand_input_file_patterns,
@@ -34,6 +35,89 @@ logger = logging.getLogger(__name__)
 # Heuristic GPU fraction for GPUOperator nodes that load a local model.
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
+
+
+def _concurrency_target(concurrency: Any) -> int:
+    """Return the largest actor-pool size that resource planning can permit."""
+    if isinstance(concurrency, tuple):
+        return int(concurrency[1] if len(concurrency) == 3 else concurrency[0])
+    return int(concurrency)
+
+
+def _concurrency_initial(concurrency: Any) -> int:
+    """Return the number of actors Ray creates when the pool starts."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        return int(concurrency[2])
+    return 1
+
+
+def _planned_concurrency(concurrency: Any, planned: int) -> Any:
+    """Preserve Ray's actor-pool tuple while capping its maximum size."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        minimum, _maximum, initial = (int(value) for value in concurrency)
+        return (minimum, max(minimum, initial, planned), initial)
+    return planned
+
+
+def preflight_executors(executors: list[Any], cluster_resources: ClusterResources) -> None:
+    """Plan all lazy executor pools against one shared Ray resource snapshot."""
+    entries = []
+    available_cpus = cluster_resources.available_cpu_count()
+    available_gpus = cluster_resources.available_gpu_count()
+    for executor in executors:
+        for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
+            override = executor._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            entries.append(
+                (
+                    executor,
+                    node.name,
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
+                    float(override.get("num_cpus", executor._default_num_cpus)),
+                    executor._scheduled_num_gpus(node, override, available_gpus),
+                    node.name in executor._auto_concurrency_nodes,
+                )
+            )
+    fixed = [item for item in entries if not item[7]]
+    auto = [item for item in entries if item[7]]
+    fixed_cpu = sum(item[3] * item[5] for item in fixed)
+    fixed_gpu = sum(item[3] * item[6] for item in fixed)
+    min_cpu = sum(item[4] * item[5] for item in auto)
+    min_gpu = sum(item[4] * item[6] for item in auto)
+    if fixed_cpu + min_cpu > available_cpus or fixed_gpu + min_gpu > available_gpus:
+        raise ValueError(
+            "Infeasible Ray CPU/GPU plan: requested at least "
+            f"{fixed_cpu + min_cpu:g} CPUs and {fixed_gpu + min_gpu:g} GPUs, but Ray reports "
+            f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+            "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+        )
+    used_cpu, used_gpu = fixed_cpu + min_cpu, fixed_gpu + min_gpu
+    planned = {(id(item[0]), item[1]): item[4] for item in auto}
+    while True:
+        candidates = sorted(
+            (item for item in auto if planned[(id(item[0]), item[1])] < item[3]),
+            key=lambda item: planned[(id(item[0]), item[1])] / item[3],
+        )
+        selected = next(
+            (
+                item
+                for item in candidates
+                if used_cpu + item[5] <= available_cpus and used_gpu + item[6] <= available_gpus
+            ),
+            None,
+        )
+        if selected is None:
+            break
+        planned[(id(selected[0]), selected[1])] += 1
+        used_cpu += selected[5]
+        used_gpu += selected[6]
+    for executor, name, concurrency, _target, _initial, _cpu, _gpu, _auto in auto:
+        executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
+    for executor in executors:
+        executor._resources_preflight_complete = True
+        executor._preflight_cluster_resources = cluster_resources
 
 
 class AbstractExecutor(ABC):
@@ -181,14 +265,103 @@ class RayDataExecutor(AbstractExecutor):
         num_cpus: float = 1,
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+        auto_concurrency_nodes: Optional[Set[str]] = None,
     ) -> None:
         super().__init__(graph)
+        self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
         self._default_batch_size = batch_size
         self._default_batch_format = batch_format
         self._default_num_cpus = num_cpus
         self._default_num_gpus = num_gpus
         self._node_overrides = node_overrides or {}
+        self._auto_concurrency_nodes = auto_concurrency_nodes or set()
+        self._resources_preflight_complete = False
+
+    def _has_remote_endpoint(self, node: Node) -> bool:
+        """Return whether a node delegates inference to a remote endpoint."""
+        if any("invoke_url" in key and bool(value) for key, value in node.operator_kwargs.items()):
+            return True
+        return any(
+            hasattr(value, "model_dump")
+            and any("invoke_url" in key and bool(item) for key, item in value.model_dump(exclude_none=True).items())
+            for value in node.operator_kwargs.values()
+        )
+
+    def _scheduled_num_gpus(self, node: Node, overrides: Dict[str, Any], available_gpus: int) -> float:
+        """Resolve the GPU reservation passed to Ray for a graph node."""
+        if "num_gpus" in overrides:
+            return float(overrides["num_gpus"])
+        if not issubclass(node.operator_class, GPUOperator) or self._has_remote_endpoint(node):
+            return float(self._default_num_gpus)
+        if available_gpus > 0:
+            from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
+
+            if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
+                return max(float(self._default_num_gpus), VLLM_GPUS_PER_ACTOR)
+            return max(float(self._default_num_gpus), _DEFAULT_GPU_OPERATOR_NUM_GPUS)
+        logger.warning(
+            "Node %r is a GPUOperator with no remote endpoint but the Ray cluster reports 0 available GPUs. "
+            "The actor will be scheduled with num_gpus=0 and will likely fail to load its model. "
+            "Pass --ocr-invoke-url / --page-elements-invoke-url / --embed-invoke-url to use remote endpoints, "
+            "or ensure GPUs are visible to Ray.",
+            node.name,
+        )
+        return float(self._default_num_gpus)
+
+    def _preflight_resources(self, nodes: List[Node], available_cpus: int, available_gpus: int) -> None:
+        """Reduce unspecified pools and reject infeasible explicit plans."""
+        entries = []
+        for node in nodes:
+            override = self._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            entries.append(
+                (
+                    node.name,
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
+                    float(override.get("num_cpus", self._default_num_cpus)),
+                    self._scheduled_num_gpus(node, override, available_gpus),
+                )
+            )
+        fixed = [item for item in entries if item[0] not in self._auto_concurrency_nodes]
+        auto = [item for item in entries if item[0] in self._auto_concurrency_nodes]
+        fixed_cpu = sum(count * cpu for _name, _concurrency, count, _initial, cpu, _gpu in fixed)
+        fixed_gpu = sum(count * gpu for _name, _concurrency, count, _initial, _cpu, gpu in fixed)
+        minimum_cpu = sum(initial * cpu for _name, _concurrency, _count, initial, cpu, _gpu in auto)
+        minimum_gpu = sum(initial * gpu for _name, _concurrency, _count, initial, _cpu, gpu in auto)
+        if fixed_cpu + minimum_cpu > available_cpus or fixed_gpu + minimum_gpu > available_gpus:
+            raise ValueError(
+                "Infeasible Ray CPU/GPU plan: requested at least "
+                f"{fixed_cpu + minimum_cpu:g} CPUs and {fixed_gpu + minimum_gpu:g} GPUs, but Ray reports "
+                f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+                "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+            )
+        used_cpu, used_gpu = fixed_cpu + minimum_cpu, fixed_gpu + minimum_gpu
+        planned = {name: initial for name, _concurrency, _count, initial, _cpu, _gpu in auto}
+        while True:
+            candidates = sorted(
+                (item for item in auto if planned[item[0]] < item[2]),
+                key=lambda item: planned[item[0]] / item[2],
+            )
+            selected = next(
+                (
+                    item
+                    for item in candidates
+                    if used_cpu + item[4] <= available_cpus and used_gpu + item[5] <= available_gpus
+                ),
+                None,
+            )
+            if selected is None:
+                break
+            name, _concurrency, _count, _initial, cpu, gpu = selected
+            planned[name] += 1
+            used_cpu += cpu
+            used_gpu += gpu
+        for name, concurrency, _count, _initial, _cpu, _gpu in auto:
+            self._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[name])
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
@@ -244,7 +417,7 @@ class RayDataExecutor(AbstractExecutor):
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
 
-        cluster = gather_cluster_resources(ray)
+        cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
 
@@ -256,6 +429,8 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         nodes = self._linearize(resolved_graph)
+        if nodes and not self._resources_preflight_complete:
+            self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
@@ -285,57 +460,8 @@ class RayDataExecutor(AbstractExecutor):
                 batch_size = None
                 target_num_rows_per_block = None
 
-            # When no explicit num_gpus override is given, auto-detect from the
-            # GPUOperator mixin using actual cluster GPU availability.
-            if "num_gpus" in overrides:
-                num_gpus = overrides.pop("num_gpus")
-            elif issubclass(node.operator_class, GPUOperator):
-                has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
-                # For composite operators (e.g. MultiTypeExtractOperator) the
-                # invoke URLs live inside a nested ExtractParams object rather
-                # than as top-level kwargs.  Check those too.
-                if not has_remote_endpoint:
-                    for v in node.operator_kwargs.values():
-                        if hasattr(v, "model_dump"):
-                            has_remote_endpoint = any(
-                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
-                            )
-                            if has_remote_endpoint:
-                                break
-                if has_remote_endpoint:
-                    # Remote endpoint handles the model — no local GPU needed.
-                    num_gpus = self._default_num_gpus
-                elif available_gpus > 0:
-                    # Local model, GPUs present: assign the heuristic fraction so
-                    # Ray can co-schedule multiple actors per GPU.
-                    # Exception: actors backed by vLLM (NemotronParse, Caption)
-                    # manage their own KV-cache and require exclusive GPU access.
-                    from nemo_retriever.operators.extract.parse.nemotron_parse import (
-                        NemotronParseActor,
-                        NemotronParseGPUActor,
-                    )
-                    from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
-
-                    if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
-                        num_gpus = max(self._default_num_gpus, VLLM_GPUS_PER_ACTOR)
-                    else:
-                        num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
-                else:
-                    # No GPUs in the cluster — operator will likely fail to load
-                    # its CUDA model.  Warn loudly rather than silently requesting
-                    # a fraction that would stall the pipeline indefinitely.
-                    logger.warning(
-                        "Node %r is a GPUOperator with no remote endpoint but "
-                        "the Ray cluster reports 0 available GPUs. "
-                        "The actor will be scheduled with num_gpus=0 and will "
-                        "likely fail to load its model. Pass --ocr-invoke-url / "
-                        "--page-elements-invoke-url / --embed-invoke-url to use "
-                        "remote endpoints, or ensure GPUs are visible to Ray.",
-                        node.name,
-                    )
-                    num_gpus = self._default_num_gpus
-            else:
-                num_gpus = self._default_num_gpus
+            num_gpus = self._scheduled_num_gpus(node, overrides, available_gpus)
+            overrides.pop("num_gpus", None)
 
             if requires_global_batch:
                 # ``num_blocks=1`` is exact; ``target_num_rows_per_block`` is a
