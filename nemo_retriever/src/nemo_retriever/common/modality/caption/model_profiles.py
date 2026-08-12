@@ -60,8 +60,11 @@ class CaptionModelProfile:
     local_request_extras: Mapping[str, Any] = field(default_factory=dict)
     remote_request_extras: Mapping[str, Any] = field(default_factory=dict)
     local_engine_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    local_gpu_memory_utilization: float = 0.5
 
     def __post_init__(self) -> None:
+        if not 0 < self.local_gpu_memory_utilization <= 1:
+            raise ValueError("local_gpu_memory_utilization must be greater than 0 and no greater than 1")
         object.__setattr__(self, "local_request_extras", _freeze_metadata(self.local_request_extras))
         object.__setattr__(self, "remote_request_extras", _freeze_metadata(self.remote_request_extras))
         object.__setattr__(self, "local_engine_kwargs", _freeze_metadata(self.local_engine_kwargs))
@@ -274,6 +277,9 @@ _OMNI_BF16_PROFILE = CaptionModelProfile(
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,
     local_engine_kwargs=_BF16_ENGINE_KWARGS,
+    # The 62 GiB BF16 checkpoint needs a high vLLM reservation to leave KV
+    # cache capacity on the supported 80 GiB local GPU configuration.
+    local_gpu_memory_utilization=0.95,
 )
 _OMNI_FP8_PROFILE = CaptionModelProfile(
     family="nemotron-3-nano-omni",

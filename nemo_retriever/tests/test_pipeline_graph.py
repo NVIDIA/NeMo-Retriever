@@ -14,7 +14,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
-from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor, preflight_executors
 from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
 from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
     AUDIO_EXTENSIONS,
@@ -1073,6 +1073,109 @@ class TestRayDataExecutor:
         g.add_root(root)
         with pytest.raises(ValueError, match="fan-out"):
             RayDataExecutor._linearize(g)
+
+    def test_shared_preflight_bounds_multiple_lazy_executors(self):
+        first_graph = Graph()
+        first_graph.add_root(CPUAdaptiveAddOperator())
+        second_graph = Graph()
+        second_graph.add_root(CPUAdaptiveAddOperator())
+        first = RayDataExecutor(
+            first_graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 16, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+        second = RayDataExecutor(
+            second_graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 16, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=4, gpu_count=0)
+        preflight_executors([first, second], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert (
+            first._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
+            + second._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
+            <= 4
+        )
+
+    def test_preflight_counts_implicit_gpu_operator_reservation(self):
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+        )
+
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            executor._preflight_resources(executor._linearize(graph), available_cpus=11, available_gpus=1)
+
+    def test_preflight_preserves_and_caps_actor_pool_tuples(self):
+        def executor() -> RayDataExecutor:
+            graph = Graph()
+            graph.add_root(CPUAdaptiveAddOperator())
+            return RayDataExecutor(
+                graph,
+                node_overrides={"CPUAdaptiveAddOperator": {"concurrency": (1, 4, 1), "num_cpus": 1}},
+                auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+            )
+
+        ample = executor()
+        ample._preflight_resources(ample._linearize(ample.graph), available_cpus=4, available_gpus=0)
+
+        constrained = executor()
+        constrained._preflight_resources(constrained._linearize(constrained.graph), available_cpus=1, available_gpus=0)
+
+        assert ample._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == (1, 4, 1)
+        assert constrained._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == (1, 1, 1)
+
+    def test_build_dataset_uses_shared_preflight_resource_snapshot(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            def map_batches(self, _operator_class, **kwargs):
+                captured.update(kwargs)
+                return self
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        captured: dict[str, object] = {}
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: (_ for _ in ()).throw(AssertionError("must retain the shared preflight snapshot")),
+        )
+
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 1}},
+            auto_concurrency_nodes={"GPUAdaptiveAddOperator"},
+        )
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=1, gpu_count=1)
+        preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+
+        executor.build_dataset(fake_dataset)
+
+        assert executor._preflight_cluster_resources is not None
+
+        assert captured["num_gpus"] == 0.1
 
     def test_node_overrides_stored(self):
         g = Graph()

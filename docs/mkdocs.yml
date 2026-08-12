@@ -98,6 +98,7 @@ nav:
       - "Vector databases": extraction/vdbs.md
   - "7. Deployment & operations":
       - "Ray and distributed ingest": extraction/ray-logging.md
+      - "Batch resource sizing": extraction/performance_guide.md
   - "8. Customize & extend":
       - "Customize & extend": extraction/customize-extend.md
   - "9. Integrations & ecosystem":
@@ -197,6 +198,8 @@ plugins:
 markdown_extensions:
   - attr_list
   - md_in_html
+  - toc:
+      permalink: true
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.snippets:
@@ -228,7 +231,6 @@ exclude_docs: |
   extraction/agentic-retrieval-concept.md
   extraction/workflow-build-searchable-collection.md
   extraction/vector-db-partners.md
-  extraction/performance_guide.md
 
 extra:
   generator: false

@@ -53,6 +53,37 @@ def _batch_tuning(params: Any) -> Any:
     return getattr(params, "batch_tuning", None)
 
 
+def default_concurrency_node_names(
+    extract_params: Any | None,
+    embed_params: Any | None,
+    store_params: Any | None,
+    caption_params: Any | None,
+) -> set[str]:
+    """Return pools whose concurrency came from an unspecified default."""
+    names: set[str] = set()
+    extract_tuning = _batch_tuning(extract_params)
+    if extract_params is not None:
+        worker_fields = {
+            resolve_ocr_archetype(extract_params).__name__: "ocr_workers",
+            PageElementDetectionActor.__name__: "page_elements_workers",
+            TableStructureActor.__name__: "table_structure_workers",
+            PDFExtractionActor.__name__: "pdf_extract_workers",
+            NemotronParseActor.__name__: "nemotron_parse_workers",
+        }
+        names.update(
+            name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
+        )
+    embed_tuning = _batch_tuning(embed_params)
+    if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
+        names.add(_BatchEmbedActor.__name__)
+    store_tuning = _batch_tuning(store_params)
+    if store_params is not None and not _positive(getattr(store_tuning, "store_workers", None)):
+        names.add(StoreOperator.__name__)
+    if caption_params is not None:
+        names.add(CaptionActor.__name__)
+    return names
+
+
 def _positive(value: Any) -> Any:
     return value if value not in (None, 0, 0.0, "", False) else None
 
