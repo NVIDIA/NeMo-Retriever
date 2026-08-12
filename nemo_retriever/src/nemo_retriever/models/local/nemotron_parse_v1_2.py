@@ -28,6 +28,7 @@ ImageInput = Union[torch.Tensor, np.ndarray, Image.Image, str, Path]
 # the processor class at import time to pop the conflicting kwarg.
 
 _VLLM_PROCESSOR_PATCHED = False
+_VLLM_TIED_LM_HEAD_PATCHED = False
 
 
 def _patch_vllm_nemotron_parse_processor() -> None:
@@ -51,16 +52,49 @@ def _patch_vllm_nemotron_parse_processor() -> None:
     _VLLM_PROCESSOR_PATCHED = True
 
 
+def _patch_vllm_nemotron_parse_tied_lm_head() -> None:
+    """Restore tied decoder weights omitted by compact Parse 2.0 checkpoints."""
+    global _VLLM_TIED_LM_HEAD_PATCHED
+    if _VLLM_TIED_LM_HEAD_PATCHED:
+        return
+
+    try:
+        from vllm.model_executor.models.nemotron_parse import (
+            NemotronParseForConditionalGeneration,
+        )
+    except ImportError:
+        return
+
+    original_load_weights = NemotronParseForConditionalGeneration.load_weights
+
+    def load_weights_with_tied_lm_head(self: Any, weights: Any) -> Any:
+        buffered_weights = list(weights)
+        has_lm_head = any(name.startswith("lm_head.") for name, _ in buffered_weights)
+        result = original_load_weights(self, buffered_weights)
+
+        decoder_config = getattr(getattr(self, "config", None), "decoder", None)
+        tie_word_embeddings = bool(
+            getattr(decoder_config, "tie_word_embeddings", False)
+            or getattr(getattr(self, "config", None), "tie_word_embeddings", False)
+        )
+        if tie_word_embeddings and not has_lm_head:
+            self.lm_head.weight = self.decoder.embed_tokens.weight
+        return result
+
+    NemotronParseForConditionalGeneration.load_weights = load_weights_with_tied_lm_head
+    _VLLM_TIED_LM_HEAD_PATCHED = True
+
+
 # ---------------------------------------------------------------------------
 # Model wrapper
 # ---------------------------------------------------------------------------
 
 
-class NemotronParseV12(BaseModel):
+class NemotronParse(BaseModel):
     """
-    NVIDIA Nemotron Parse v1.2 local wrapper backed by vLLM.
+    NVIDIA Nemotron Parse local wrapper backed by vLLM.
 
-    This wrapper loads ``nvidia/NVIDIA-Nemotron-Parse-v1.2`` via vLLM's offline
+    This wrapper loads ``nvidia/NVIDIA-Nemotron-Parse-2.0`` via vLLM's offline
     ``LLM`` engine for image-to-structured-text generation (document parsing).
     vLLM handles KV-cache management, continuous batching, and GPU scheduling
     internally, avoiding the transformers cache-API incompatibility that affects
@@ -71,7 +105,7 @@ class NemotronParseV12(BaseModel):
 
     def __init__(
         self,
-        model_path: str = "nvidia/NVIDIA-Nemotron-Parse-v1.2",
+        model_path: str = "nvidia/NVIDIA-Nemotron-Parse-2.0",
         device: Optional[str] = None,
         hf_cache_dir: Optional[str] = None,
         task_prompt: str = _DEFAULT_TASK_PROMPT,
@@ -92,6 +126,7 @@ class NemotronParseV12(BaseModel):
             ) from e
 
         _patch_vllm_nemotron_parse_processor()
+        _patch_vllm_nemotron_parse_tied_lm_head()
 
         self._model_path = model_path
         self._task_prompt = task_prompt
@@ -222,7 +257,7 @@ class NemotronParseV12(BaseModel):
 
     @property
     def model_name(self) -> str:
-        return "NVIDIA-Nemotron-Parse-v1.2"
+        return self._model_path.rsplit("/", 1)[-1]
 
     @property
     def model_type(self) -> str:
@@ -246,9 +281,13 @@ class NemotronParseV12(BaseModel):
         return {
             "type": "text",
             "format": "string",
-            "description": "Generated structured parse text from Nemotron Parse v1.2.",
+            "description": f"Generated structured parse text from {self.model_name}.",
         }
 
     @property
     def input_batch_size(self) -> int:
         return 64
+
+
+# Backward-compatible alias for callers that imported the versioned wrapper.
+NemotronParseV12 = NemotronParse

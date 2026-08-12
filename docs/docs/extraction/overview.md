@@ -26,7 +26,7 @@ NeMo Retriever Library does the following:
 - Apply pre- and post-processing: text splitting and chunking, transforms and filtering, embedding generation, and image offloading to storage
 
 !!! note
-    To use `method="nemotron_parse"` with PDFs, install the Nemotron Parse client dependencies with the `nemotron-parse` extra, for example `uv pip install "nemo-retriever[nemotron-parse]"`. You can use the equivalent `pip install` command if you do not use UV.
+    To use `method="nemotron_parse"` with PDFs, install `uv pip install "nemo-retriever[local,nemotron-parse]"` for managed local inference or `uv pip install "nemo-retriever[nemotron-parse]"` for a remote endpoint. You can use the equivalent `pip install` command if you do not use UV. Without a configured endpoint, NeMo Retriever Library manages local in-process inference and defaults to `nvidia/NVIDIA-Nemotron-Parse-2.0`.
 
 NeMo Retriever Library supports the following file types:
 

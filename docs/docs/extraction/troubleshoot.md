@@ -235,7 +235,7 @@ When you run PDF extraction with `method="nemotron_parse"`, you might see an err
 ModuleNotFoundError: No module named 'open_clip'
 ```
 
-The Nemotron Parse NIM client requires the `open_clip` Python module, provided by `open-clip-torch`. That package is not part of the default `nemo-retriever` install or the `[local]` extra.
+The Nemotron Parse client requires the `open_clip` Python module, provided by `open-clip-torch`. That package is not part of the default `nemo-retriever` install or the `[local]` extra.
 
 Install the dedicated PyPI extra before running Nemotron Parse extraction:
 
@@ -264,9 +264,17 @@ When you run PDF extraction with `method="nemotron_parse"`, a mismatched model a
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-This can occur when you send a tagged or versioned `v1.2` model (for example `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+This can occur when you send a tagged or versioned self-hosted model (for example, `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library can replace the raw HTTP error with a targeted model and contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send versioned `v1.2` models only to a compatible self-hosted chat endpoint. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send versioned models only to a compatible self-hosted chat endpoint. For local managed inference, omit `nemotron_parse_invoke_url`; the library defaults to `nvidia/NVIDIA-Nemotron-Parse-2.0` and does not require a separate server. For more information, refer to [Nemotron Parse deployment options](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+
+## Self-hosted Nemotron Parse 2.0 returns empty output { #self-hosted-nemotron-parse-2-returns-empty-output }
+
+A self-hosted vLLM server can return an empty successful response when it loads the compact `nvidia/NVIDIA-Nemotron-Parse-2.0` checkpoint without restoring its tied language-model head.
+
+When you run `vllm serve` yourself, add the model repository's `vllm_tied_patch` directory to `PYTHONPATH` before starting the server. Follow the [NVIDIA Nemotron Parse 2.0 model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-2.0), and configure NeMo Retriever Library with the server's `/v1/chat/completions` URL and `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0"`.
+
+This step does not apply to normal local extraction with `method="nemotron_parse"`. NeMo Retriever Library loads Parse 2.0 in process and applies the tied-weight support automatically.
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
