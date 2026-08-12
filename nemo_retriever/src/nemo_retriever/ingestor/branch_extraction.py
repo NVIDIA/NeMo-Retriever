@@ -88,7 +88,7 @@ class ExtractionBranchExecutor:
         effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
         branch_datasets: list[Any] = []
         branch_executors: list[RayDataExecutor] = []
-        branch_inputs: list[tuple[RayDataExecutor, list[str], list[dict[str, str]]]] = []
+        branch_inputs: list[tuple[RayDataExecutor, Any]] = []
         for branch in self.branches:
             effective_extraction = self._resolve_branch(branch)
             logger.info(
@@ -107,14 +107,20 @@ class ExtractionBranchExecutor:
                 caption_params=None,
                 video_frame_params=effective_extraction.video_frame_params,
             )
-            executor = self._ray_executor(
-                graph,
-                derived_overrides,
-                default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
-            )
-            branch_executors.append(executor)
             file_paths, inline_rows = self._partition_branch_inputs(branch)
-            branch_inputs.append((executor, file_paths, inline_rows))
+            inputs = []
+            if file_paths:
+                inputs.append(file_paths)
+            if inline_rows:
+                inputs.append(ray_module.data.from_items(inline_rows))
+            for input_data in inputs:
+                executor = self._ray_executor(
+                    graph,
+                    derived_overrides,
+                    default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
+                )
+                branch_executors.append(executor)
+                branch_inputs.append((executor, input_data))
 
         logger.info("Retriever ingest post-extraction stages: %s", format_post_stage_summary(self.post_extract_order))
         post_graph = build_post_extract_graph(
@@ -144,11 +150,8 @@ class ExtractionBranchExecutor:
         if hasattr(cluster_resources, "available_cpu_count"):
             preflight_executors([*branch_executors, post_executor], cluster_resources)
 
-        for executor, file_paths, inline_rows in branch_inputs:
-            if file_paths:
-                branch_datasets.append(executor.build_dataset(file_paths))
-            if inline_rows:
-                branch_datasets.append(executor.build_dataset(ray_module.data.from_items(inline_rows)))
+        for executor, input_data in branch_inputs:
+            branch_datasets.append(executor.build_dataset(input_data))
         normalized = normalize_ray_branch_datasets(branch_datasets)
         combined = normalized[0]
         for branch_ds in normalized[1:]:
