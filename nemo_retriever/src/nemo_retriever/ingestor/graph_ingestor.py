@@ -865,6 +865,7 @@ class GraphIngestor(ingestor):
             allow_no_gpu=effective_allow_no_gpu,
             caption_params=self._caption_params,
             video_frame_params=effective_extraction.video_frame_params,
+            extraction_mode=effective_extraction.extraction_mode,
         )
         executor = RayDataExecutor(
             graph,

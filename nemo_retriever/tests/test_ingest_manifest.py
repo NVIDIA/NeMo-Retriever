@@ -580,9 +580,10 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 
-    def fake_preflight(executors: list[Any], resources: Any) -> None:
+    def fake_preflight(executors: list[Any], resources: Any, *, reserved_cpus: float = 0.0) -> None:
         assert [executor._source_cpu_reservation for executor in executors] == [1, 1, 0]
         assert resources.available_cpu_count() == 16
+        assert reserved_cpus == 2
         calls.append("preflight")
 
     monkeypatch.setattr(GraphIngestor, "_ensure_batch_runtime", lambda self: (None, FakeCluster()))
@@ -628,8 +629,9 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 
-    def fake_preflight(executors: list[Any], resources: Any) -> None:
+    def fake_preflight(executors: list[Any], resources: Any, *, reserved_cpus: float = 0.0) -> None:
         assert [executor._source_cpu_reservation for executor in executors] == [1, 0, 0]
+        assert reserved_cpus == 2
         calls.append("preflight")
 
     monkeypatch.setattr(

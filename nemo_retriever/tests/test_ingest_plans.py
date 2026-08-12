@@ -378,6 +378,22 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=32, gpu_count=1),
+        available_resources=Resources(cpu_count=32, gpu_count=1),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        ExtractParams(),
+        None,
+        cluster_resources=cluster,
+        extraction_mode="text",
+    )
+
+    assert overrides["MultiTypeExtractOperator"] == {"concurrency": 8, "num_cpus": 1, "num_gpus": 0.0}
+
+
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names

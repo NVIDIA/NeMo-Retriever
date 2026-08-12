@@ -73,6 +73,7 @@ def default_concurrency_node_names(
         names.update(
             name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
         )
+        names.add(MultiTypeExtractOperator.__name__)
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
@@ -109,6 +110,7 @@ def batch_tuning_to_node_overrides(
     caption_gpus_per_actor: float | None = None,
     video_frame_params: Any | None = None,
     store_params: Any | None = None,
+    extraction_mode: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from stage params into RayDataExecutor node_overrides.
 
@@ -118,8 +120,8 @@ def batch_tuning_to_node_overrides(
     already initialised).  Without ``cluster_resources`` only explicit values
     are emitted, matching the previous behaviour.
 
-    PDF extract concurrency is capped so that it cannot exhaust the cluster CPU
-    budget when all other persistent actors are running simultaneously.
+    Final actor-pool sizing is reconciled after graph resolution by the executor
+    resource preflight.
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
@@ -366,6 +368,13 @@ def batch_tuning_to_node_overrides(
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
+
+    if extraction_mode == "text" and cluster_resources is not None:
+        available_cpus = cluster_resources.available_cpu_count()
+        if available_cpus > 0:
+            _set(MultiTypeExtractOperator.__name__, "concurrency", min(available_cpus, 8))
+            _set(MultiTypeExtractOperator.__name__, "num_cpus", 1)
+            _force_cpu_only(MultiTypeExtractOperator.__name__)
 
     # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
     # per actor during decode. Default Ray Data concurrency=1 serialises every
