@@ -117,6 +117,7 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
         executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
     for executor in executors:
         executor._resources_preflight_complete = True
+        executor._preflight_cluster_resources = cluster_resources
 
 
 class AbstractExecutor(ABC):
@@ -267,6 +268,7 @@ class RayDataExecutor(AbstractExecutor):
         auto_concurrency_nodes: Optional[Set[str]] = None,
     ) -> None:
         super().__init__(graph)
+        self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
         self._default_batch_size = batch_size
         self._default_batch_format = batch_format
@@ -415,7 +417,7 @@ class RayDataExecutor(AbstractExecutor):
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
 
-        cluster = gather_cluster_resources(ray)
+        cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
 
