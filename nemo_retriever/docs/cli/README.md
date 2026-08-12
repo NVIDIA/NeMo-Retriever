@@ -157,8 +157,16 @@ It must always be greater than or equal to `--top-k`.
 
 Page deduplication and content-type filtering are applied after vector
 retrieval, preserving retriever ranking order and truncating the final output to
-`--top-k`. When querying a local table ingested with an explicit embedding
-model, pass the same `--embed-model-name` to `retriever query`.
+`--top-k`. Local and batch ingest record the canonical embedding model on the
+LanceDB table, and non-service query uses that model automatically. Use
+`--embed-model-name` only as an explicit override or when querying a legacy or
+third-party table without model metadata. Endpoint URLs and provider prefixes
+remain runtime configuration, so continue to pass `--embed-invoke-url` and
+`--embed-model-provider-prefix` when the selected model must be routed remotely.
+For example, a table can store the canonical model
+`nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
+`nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
+are intentionally not persisted on the table.
 
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
@@ -199,7 +207,8 @@ Unlike the dense path (which returns text-enriched hits), agentic mode returns
 the agent's ranked document IDs as JSON, each annotated with the source that
 produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
-`--embed-model-name` options as standard retrieval.
+`--embed-model-name` options as standard retrieval. Agentic retrieval uses the
+selected table's model automatically when `--embed-model-name` is omitted.
 
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:
@@ -218,17 +227,21 @@ Agentic-only knobs (apply only with `--agentic`):
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM. Providing it routes agent LLM calls to that remote endpoint.
+  agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
+  to run the in-process local model.
+- `--agentic-llm-client` (optional) — LLM client that builds the agent LLM.
+  Defaults to `callable`. It drives the in-process
+  adapter when `--agentic-invoke-url` is omitted, and the shared chat-completions
+  HTTP client when it is set.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
-- `--agentic-temperature` (default `0.0`) — sampling temperature for agent LLM
-  calls. Local and non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`;
-  NVIDIA-hosted endpoints allow up to `1.0`.
-- `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
-  per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
+- `--agentic-temperature` (default: unset) — sampling temperature for agent LLM
+  calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
+  non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
+  endpoints allow up to `1.0`.
 
 <!-- --8<-- [end:quickstart] -->
 
@@ -305,6 +318,65 @@ retriever ingest ./data/pdf_corpus \
   --profile fast-text \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
+
+### Dense Nemotron embedding checkpoints
+
+`--embed-model-name` accepts a Hugging Face repository ID or an on-disk
+checkpoint compatible with a supported dense Nemotron text or vision-language
+embedding profile:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name acme/my-finetuned-nemotron-embed
+```
+
+Tested official checkpoints:
+
+- `nvidia/llama-3.2-nv-embedqa-1b-v2`
+- `nvidia/llama-nemotron-embed-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
+- `nvidia/llama-nv-embed-reasoning-3b`
+- `nvidia/llama-embed-nemotron-8b`
+
+Equivalent local checkpoints and weight-only fine-tunes are supported. A
+compatible checkpoint must be complete and loadable, use
+`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
+pooling with a positive output width. LanceDB infers the schema from the
+produced vectors; the tested official checkpoints use 2048, 3072, and 4096
+dimensions. Query and document prompts are read from
+`config_sentence_transformers.json` when the checkpoint supplies it.
+Fine-tunes that require prefixes other than `query: ` and `passage: ` must
+retain that prompt metadata.
+
+This does not add support for every model in the Nemotron RAG collection,
+including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
+parsing models. Nemotron 3 Embed is also excluded because its Ministral3
+architecture requires a newer Transformers stack than this project currently
+supports. Those models require different dependencies, outputs, modalities,
+or operator contracts.
+
+Unregistered Hub repositories are resolved to an immutable commit and loaded
+with `trust_remote_code=True`; only use repositories you trust. The resolved
+model name and revision are recorded on the LanceDB table and reused by local
+query.
+
+For a compatible ModelOpt checkpoint, including FP8 or NVFP4 variants, select
+vLLM for ingest. Local query detects the ModelOpt configuration and selects
+vLLM automatically:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
+  --local-ingest-embed-backend vllm
+
+retriever query "What is in this corpus?" \
+  --table-name nemo-retriever
+```
+
+Hugging Face remains the local query backend for non-ModelOpt checkpoints.
+Local directories must contain `config.json`, and their absolute path must be
+available to every Ray worker or service replica that loads the model.
 
 ### OCR language mode
 

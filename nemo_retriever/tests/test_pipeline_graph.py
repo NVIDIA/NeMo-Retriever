@@ -72,6 +72,40 @@ def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
     assert "ExplodeContentToRows" not in _graph_node_names(graph)
 
 
+def test_batch_graph_forwards_resolvable_hosted_parse_contract() -> None:
+    from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+    endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
+    model = "nvidia/nemotron-parse"
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_invoke_url=endpoint,
+            nemotron_parse_model=model,
+        ),
+    )
+
+    nodes: list[Node] = []
+
+    def collect(node: Node) -> None:
+        nodes.append(node)
+        for child in node.children:
+            collect(child)
+
+    for root in graph.roots:
+        collect(root)
+    parse_node = next(node for node in nodes if node.operator.__class__.__name__ == "NemotronParseActor")
+
+    assert parse_node.operator_kwargs["nemotron_parse_invoke_url"] == endpoint
+    assert parse_node.operator_kwargs["nemotron_parse_model"] == model
+    contract = _resolve_nemotron_parse_contract(
+        parse_node.operator_kwargs["nemotron_parse_invoke_url"],
+        parse_node.operator_kwargs["nemotron_parse_model"],
+    )
+    assert (contract.model, contract.profile.value) == (model, "hosted_tool_call")
+
+
 def test_auto_extract_extension_sets_share_manifest_registry() -> None:
     assert PDF_EXTENSIONS == INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
     assert TEXT_EXTENSIONS == INPUT_TYPE_EXTENSIONS["txt"]
@@ -902,7 +936,7 @@ class TestMultiTypeExtractOperator:
         )
 
         def _fake_resolve(operator_class, resources, operator_kwargs=None):
-            calls.append((operator_class.__name__, resources))
+            calls.append((operator_class.__name__, resources, operator_kwargs))
             return _IdentityStage
 
         monkeypatch.setattr(
@@ -913,16 +947,31 @@ class TestMultiTypeExtractOperator:
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
+        endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
+        model = "nvidia/nemotron-parse"
         op = MultiTypeExtractCPUActor(
             extraction_mode="pdf",
-            extract_params=ExtractParams(method="nemotron_parse"),
+            extract_params=ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_invoke_url=endpoint,
+                nemotron_parse_model=model,
+            ),
         )
 
         batch_df = pd.DataFrame({"path": ["/tmp/test.pdf"]})
         result = op._run_pdf_pipeline(batch_df)
 
         pd.testing.assert_frame_equal(result, batch_df)
-        assert [name for name, _resources in calls] == ["NemotronParseActor"]
+        assert [name for name, _resources, _kwargs in calls] == ["NemotronParseActor"]
+        parse_kwargs = calls[0][2]
+        assert parse_kwargs["nemotron_parse_invoke_url"] == endpoint
+        assert parse_kwargs["nemotron_parse_model"] == model
+        from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+        contract = _resolve_nemotron_parse_contract(
+            parse_kwargs["nemotron_parse_invoke_url"], parse_kwargs["nemotron_parse_model"]
+        )
+        assert (contract.model, contract.profile.value) == (model, "hosted_tool_call")
 
 
 class TestFileListLoaderOperator:

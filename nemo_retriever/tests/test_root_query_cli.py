@@ -152,8 +152,9 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
             "embed_kwargs": {
                 "embed_invoke_url": "http://embed:8000/v1/embeddings",
                 "embedding_endpoint": "http://embed:8000/v1/embeddings",
-                "model_name": "nvidia/nvidia/llama-nemotron-embed-1b-v2",
-                "embed_model_name": "nvidia/nvidia/llama-nemotron-embed-1b-v2",
+                "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+                "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+                "embed_model_provider_prefix": "nvidia",
             },
         }
     ]
@@ -399,6 +400,10 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     assert "llm_backend" not in cfg
     assert cfg["local_llm_backend"] == "vllm"
     assert cfg["llm_model"] == "nemotron-8b"
+    # --agentic-llm-client is optional and unset here; the callable default is
+    # resolved in AgenticRetrievalConfig.__post_init__ (faked here), so the
+    # pre-resolution kwarg is still None.
+    assert cfg["llm_client"] is None
     assert cfg["temperature"] == 1.25
     # --top-k is honored end-to-end: plumbed into the agentic config (drives the
     # ReAct target / RRF / selection cut), not just applied as a post-filter.
@@ -472,6 +477,116 @@ def test_root_query_agentic_openai_compatible_allows_custom_model(monkeypatch) -
     assert "llm_backend" not in config_calls[-1]
     assert config_calls[-1]["llm_model"] == "custom-remote-model"
     assert config_calls[-1]["invoke_url"] == "http://localhost:8000/v1/chat/completions"
+
+
+def test_root_query_agentic_llm_client_override_plumbed_into_config(monkeypatch) -> None:
+    """`--agentic-llm-client` selects the LLM client wired into AgenticRetrievalConfig."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+            "--agentic-llm-client",
+            "litellm",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert config_calls[0]["llm_client"] == "litellm"
+
+
+def test_root_query_agentic_accepts_callable_client_with_invoke_url(monkeypatch) -> None:
+    """`callable` is valid remotely: it wraps the shared HTTP client, not just the local engine."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+            "--agentic-llm-client",
+            "callable",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert config_calls[0]["llm_client"] == "callable"
+
+
+def test_root_query_agentic_rejects_remote_client_without_invoke_url() -> None:
+    """A client that can only talk to an endpoint still needs one."""
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["query", "q", "--agentic", "--agentic-llm-model", "m", "--agentic-llm-client", "litellm"],
+    )
+
+    assert result.exit_code == 1
+    assert "requires --agentic-invoke-url" in result.output
+
+
+def test_root_query_agentic_rejects_unknown_client() -> None:
+    """An unsupported --agentic-llm-client fails fast before any retrieval work."""
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["query", "q", "--agentic", "--agentic-llm-model", "m", "--agentic-llm-client", "bogus"],
+    )
+
+    assert result.exit_code == 1
+    assert "agentic_llm_client must be one of" in result.output
 
 
 def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
@@ -658,11 +773,13 @@ def test_root_query_local_help_shows_retrieval_mode_not_hybrid() -> None:
     assert "--hybrid" not in result.output
 
 
-def test_root_query_local_help_names_default_models() -> None:
+def test_root_query_local_help_describes_model_resolution() -> None:
     result = RUNNER.invoke(cli_main.app, ["query", "q", "--help"])
 
     assert result.exit_code == 0
-    assert "Default embedding model" in result.output
+    assert "Embedding model: read from the selected table" in result.output
+    assert "legacy tables" in result.output
+    assert "fall back" in result.output
     assert VL_EMBED_MODEL in result.output
     assert "Default local reranker model" in result.output
     assert VL_RERANK_MODEL in result.output

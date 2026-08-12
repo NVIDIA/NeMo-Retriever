@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from typing import Any, Sequence, cast
 
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type
-from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.common.vdb.records import RetrievalHit, normalize_content_type
 from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
 
 
-def normalize_query_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
+def normalize_query_content_type_allowlist(
+    content_types: str | Sequence[str] | None,
+) -> set[str] | None:
     """Normalize query-time content type filters to stored hit metadata values."""
     if content_types is None:
         return None

@@ -21,6 +21,7 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import multiprocessing as mp
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
         NimEndpointsConfig,
         ServiceConfig,
     )
-    from nemo_retriever.service.services.pipeline_pool import WorkItem
+    from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext, WorkItem
 
 logger = logging.getLogger(__name__)
 
@@ -279,38 +280,72 @@ def shutdown_process_executors() -> None:
     logger.info("All pipeline process executors shut down")
 
 
-def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filename: str) -> None:
-    """Fire-and-forget POST of LanceDB rows to the vectordb service."""
+def _post_records_to_vectordb(
+    records: list[list[dict[str, Any]]],
+    vectordb_url: str,
+    filename: str,
+    *,
+    context: DocumentWriteContext,
+    job_id: str | None = None,
+    internal_api_token: str | None = None,
+) -> None:
+    """Post canonical NRL record batches to VectorDB, preserving legacy best-effort behavior.
+
+    Collection-managed writes are lifecycle-authoritative and therefore fail
+    the job when storage rejects the write. Legacy fixed-table writes retain
+    their historical best-effort behavior.
+    """
     import json
     import urllib.request
     import urllib.error
+    from nemo_retriever.service.auth import internal_auth_headers
 
-    if not rows:
+    if not records or not any(records):
+        if context.collection_name:
+            raise ValueError(f"No vector rows were produced for collection document {filename}")
         return
 
     url = vectordb_url.rstrip("/") + "/internal/vectordb/write"
-    body = json.dumps({"rows": rows}).encode()
+    body = json.dumps(
+        {
+            "records": records,
+            "scope": context.scope,
+            "collection_name": context.collection_name,
+            "document_id": context.storage_document_id,
+            "job_id": job_id,
+            "filename": filename,
+            "content_sha256": context.content_sha256,
+            "document_version": context.resolved_version,
+            "operation": context.operation,
+        }
+    ).encode()
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **internal_auth_headers(internal_api_token),
+        },
         method="POST",
     )
+    record_count = sum(len(batch) for batch in records)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             logging.getLogger(__name__).info(
-                "Posted %d rows to vectordb for %s — HTTP %d",
-                len(rows),
+                "Posted %d records to vectordb for %s — HTTP %d",
+                record_count,
                 filename,
                 resp.status,
             )
     except Exception as exc:
         logging.getLogger(__name__).warning(
-            "Failed to POST %d rows to vectordb for %s: %s",
-            len(rows),
+            "Failed to POST %d records to vectordb for %s: %s",
+            record_count,
             filename,
             exc,
         )
+        if context.collection_name:
+            raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
 
 
 _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
@@ -322,6 +357,7 @@ _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
     "ocr_api_key",
     "table_structure_invoke_url",
     "nemotron_parse_invoke_url",
+    "nemotron_parse_model",
 )
 _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embed_invoke_url",
@@ -358,6 +394,24 @@ def _merge_server_owned(
         if k in base:
             merged[k] = base[k]
     return merged
+
+
+def _resolve_extract_params(
+    base_extract: dict[str, Any],
+    extract_override: dict[str, Any] | None,
+) -> Any:
+    """Merge extraction settings while isolating Parse-only server fields."""
+    from nemo_retriever.common.params import ExtractParams
+
+    extract_kwargs = _merge_server_owned(
+        base_extract,
+        extract_override,
+        _TRUST_OWNED_EXTRACT_KEYS,
+    )
+    if extract_kwargs.get("method", "pdfium") != "nemotron_parse":
+        extract_kwargs.pop("nemotron_parse_invoke_url", None)
+        extract_kwargs.pop("nemotron_parse_model", None)
+    return ExtractParams(**extract_kwargs)
 
 
 def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -517,7 +571,6 @@ def _build_graph_ingestor_from_spec(
         ASRParams,
         CaptionParams,
         DedupParams,
-        ExtractParams,
         StoreParams,
         VdbUploadParams,
         WebhookParams,
@@ -527,8 +580,7 @@ def _build_graph_ingestor_from_spec(
     extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
     split_config = spec.get("split_config")
 
-    extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
-    extract_params = ExtractParams(**extract_kwargs)
+    extract_params = _resolve_extract_params(base_extract, spec.get("extract_params"))
 
     embed_override = spec.get("embed_params")
     embed_params = _resolve_embed_params(base_embed, embed_override)
@@ -555,8 +607,6 @@ def _build_graph_ingestor_from_spec(
 
     if extraction_mode == "image":
         ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
-    elif extraction_mode == "text" and split_config is None:
-        ingestor = ingestor.extract_txt()
     elif extraction_mode == "html" and split_config is None:
         ingestor = ingestor.extract_html()
     else:
@@ -655,6 +705,9 @@ def _run_pipeline_in_process(
     trace_context: dict[str, str] | None = None,
     pool_label: str | None = None,
     service_role: str | None = None,
+    write_context: DocumentWriteContext | None = None,
+    job_id: str | None = None,
+    internal_api_token: str | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -697,6 +750,10 @@ def _run_pipeline_in_process(
             )
 
             result_df = ingestor.ingest()
+            _merge_document_metadata(
+                result_df,
+                write_context.document_metadata if write_context is not None else None,
+            )
     finally:
         tracing.force_flush(timeout_millis=500)
 
@@ -718,10 +775,18 @@ def _run_pipeline_in_process(
         # Skip the out-of-graph fan-out when the client already wired
         # IngestVdbOperator into the spec — that operator handles
         # persistence itself.
-        from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows
+        from nemo_retriever.common.vdb.records import to_client_vdb_records
+        from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 
-        lancedb_rows = build_lancedb_rows(result_df)
-        _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
+        records = to_client_vdb_records(result_df)
+        _post_records_to_vectordb(
+            records,
+            vectordb_url,
+            filename,
+            context=write_context or DocumentWriteContext(),
+            job_id=job_id,
+            internal_api_token=internal_api_token,
+        )
 
     result_options = pipeline_spec or {}
     result_schema = result_options.get("result_schema", "legacy")
@@ -732,6 +797,40 @@ def _run_pipeline_in_process(
         return_images=bool(result_options.get("return_images", False)),
     )
     return row_count, result_data, elapsed
+
+
+def _merge_document_metadata(result: Any, document_metadata: dict[str, Any] | None) -> None:
+    """Merge request metadata into extracted rows without replacing parser fields."""
+    if not document_metadata:
+        return
+
+    # Validate and copy at the child-process boundary so storage receives no
+    # aliases or values that cannot be represented in JSON query hits.
+    canonical = json.loads(json.dumps(document_metadata, ensure_ascii=False))
+
+    def merge_row(row: Any) -> None:
+        if not isinstance(row, dict):
+            return
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            row["metadata"] = metadata
+        content_metadata = metadata.get("content_metadata")
+        if not isinstance(content_metadata, dict):
+            content_metadata = {}
+            metadata["content_metadata"] = content_metadata
+        for key, value in canonical.items():
+            content_metadata.setdefault(key, copy.deepcopy(value))
+
+    if isinstance(result, list):
+        for row in result:
+            merge_row(row)
+        return
+    if hasattr(result, "iterrows"):
+        for index, row in result.iterrows():
+            holder = {"metadata": row.get("metadata")}
+            merge_row(holder)
+            result.at[index, "metadata"] = holder["metadata"]
 
 
 def _local_model_runtime_kwargs(local: "LocalModelsConfig") -> dict[str, Any]:
@@ -786,6 +885,13 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
         kwargs["ocr_invoke_url"] = nim.ocr_invoke_url
     if nim.table_structure_invoke_url:
         kwargs["table_structure_invoke_url"] = nim.table_structure_invoke_url
+    if nim.nemotron_parse_invoke_url:
+        # ExtractParams validates that Parse-specific configuration and the
+        # extraction method are selected together.
+        kwargs["method"] = "nemotron_parse"
+        kwargs["nemotron_parse_invoke_url"] = nim.nemotron_parse_invoke_url
+        if nim.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = nim.nemotron_parse_model
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 
@@ -977,6 +1083,7 @@ def _make_work_fn(
         loop = asyncio.get_running_loop()
 
         resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
+        write_context = item.write.resolved(fallback_document_id=item.id)
 
         try:
             trace_context = _capture_trace_context_for_pipeline()
@@ -994,6 +1101,9 @@ def _make_work_fn(
                 trace_context,
                 label,
                 config.mode,
+                write_context,
+                item.job_id,
+                config.vectordb.internal_api_token,
             )
         except BrokenProcessPool:
             logger.error(

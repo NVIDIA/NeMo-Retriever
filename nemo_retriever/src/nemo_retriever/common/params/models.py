@@ -568,6 +568,13 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if self.method != "nemotron_parse" and (
+            self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
+        ):
+            raise ValueError(
+                "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
+                "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
+            )
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
             enabled = [name for name, on in consumers if on]
@@ -585,6 +592,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_revision: Optional[str] = None
     embed_model_provider_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"

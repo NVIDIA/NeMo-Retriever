@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
-
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
@@ -29,7 +27,7 @@ def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any
 
 
 def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize embedding endpoint aliases in an existing kwargs dict."""
+    """Normalize embedding endpoint aliases without changing model identity."""
     normalized = dict(kwargs)
     embed_invoke_url = (
         str(normalized.get("embed_invoke_url") or "").strip() if "embed_invoke_url" in normalized else None
@@ -52,12 +50,6 @@ def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     if "embed_invoke_url" in normalized:
         normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
-    endpoint = normalized.get("embedding_endpoint") or normalized.get("embed_invoke_url")
-    model_provider_prefix = normalized.pop("embed_model_provider_prefix", None)
-    if endpoint and model_provider_prefix:
-        for key in ("model_name", "embed_model_name"):
-            if key in normalized:
-                normalized[key] = prepend_model_provider_prefix(normalized[key], str(model_provider_prefix))
     return normalized
 
 
@@ -75,6 +67,7 @@ def build_embed_option_kwargs(
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
     embed_gpus_per_actor: float | None = None,
+    embed_model_revision: str | None = None,
 ) -> Dict[str, Any]:
     """Build ``EmbedParams`` kwargs from CLI/request option values."""
     embed_kwargs: Dict[str, Any] = {}
@@ -84,6 +77,8 @@ def build_embed_option_kwargs(
         # Remote HTTP embedding reads model_name; local/GPU paths read embed_model_name.
         embed_kwargs["model_name"] = embed_model_name
         embed_kwargs["embed_model_name"] = embed_model_name
+    if embed_model_revision is not None:
+        embed_kwargs["embed_model_revision"] = embed_model_revision
     if local_ingest_embed_backend is not None:
         embed_kwargs["local_ingest_embed_backend"] = local_ingest_embed_backend
     if embed_api_key is not None:

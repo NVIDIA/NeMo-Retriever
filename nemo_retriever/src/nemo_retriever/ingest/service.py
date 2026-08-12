@@ -132,9 +132,10 @@ class ServiceIngestExecutionResult:
     """Structured result from executing a resolved service ingest request.
 
     Service mode does not locally verify the remote vector database after
-    ingest. ``result_n_rows`` counts rows from the service ingest result when
-    available, and ``n_rows`` mirrors that value so root CLI summaries keep the
-    same top-level row-count contract as local ingest results.
+    ingest. ``result_n_rows`` sums the row counts reported by successful
+    document-completion events, and ``n_rows`` mirrors that value so root CLI
+    summaries keep the same top-level row-count contract as local ingest
+    results without downloading retained result payloads.
     """
 
     request: ServiceIngestRequest
@@ -268,10 +269,19 @@ def build_service_ingestor(request: ServiceIngestRequest) -> Any:
     return ingestor
 
 
-def execute_service_ingest_request(request: ServiceIngestRequest) -> ServiceIngestExecutionResult:
-    """Execute a service ingest request and return its structured result."""
+def execute_service_ingest_request(
+    request: ServiceIngestRequest,
+    *,
+    return_results: bool = True,
+) -> ServiceIngestExecutionResult:
+    """Execute a service ingest request and return its structured result.
 
-    result = build_service_ingestor(request).ingest()
+    ``return_results`` defaults to the user-facing service client behavior.
+    Callers that only need completion metadata may disable retained-result
+    downloads explicitly.
+    """
+
+    result = build_service_ingestor(request).ingest(return_results=return_results)
     failures = list(getattr(result, "failures", ()) or ())
     if failures:
         document, detail = failures[0]
@@ -463,9 +473,26 @@ def _sanitize_service_caption_params(caption_params: CaptionParams) -> CaptionPa
 
 def _count_service_result_rows(result: object) -> int | None:
     dataframe = getattr(result, "dataframe", None)
-    if dataframe is None:
-        return None
+    if dataframe is not None:
+        try:
+            return len(dataframe)
+        except TypeError:
+            return None
+
     try:
-        return len(dataframe)
+        events = iter(result)
     except TypeError:
         return None
+
+    total = 0
+    for event in events:
+        if not isinstance(event, dict) or event.get("status") != "completed":
+            continue
+        result_rows = event.get("result_rows", 0)
+        if result_rows is None:
+            continue
+        try:
+            total += int(result_rows)
+        except (TypeError, ValueError):
+            return None
+    return total
