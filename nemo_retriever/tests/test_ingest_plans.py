@@ -464,6 +464,31 @@ def test_batch_tuning_to_node_overrides_adds_default_store_tuning() -> None:
     assert overrides["StoreOperator"] == {"concurrency": (1, 4, 1), "num_cpus": 0.1}
 
 
+def test_batch_preflight_preserves_default_store_actor_pool() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import build_post_extract_graph, default_concurrency_node_names
+
+    store_params = StoreParams(storage_uri="memory://stored")
+    resources = Resources(cpu_count=64, gpu_count=8)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=None,
+        embed_params=None,
+        store_params=store_params,
+        cluster_resources=cluster,
+    )
+    graph = build_post_extract_graph(store_params=store_params, stage_order=("store",))
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=overrides,
+        auto_concurrency_nodes=default_concurrency_node_names(None, None, store_params, None),
+    )
+
+    executor._preflight_resources(executor._linearize(graph), available_cpus=64, available_gpus=8)
+
+    assert overrides["StoreOperator"] == {"concurrency": (1, 4, 1), "num_cpus": 0.1}
+
+
 def test_batch_tuning_to_node_overrides_honors_store_tuning() -> None:
     store_params = StoreParams(
         storage_uri="memory://stored",

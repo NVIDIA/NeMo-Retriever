@@ -37,6 +37,28 @@ logger = logging.getLogger(__name__)
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
 
 
+def _concurrency_target(concurrency: Any) -> int:
+    """Return the largest actor-pool size that resource planning can permit."""
+    if isinstance(concurrency, tuple):
+        return int(concurrency[1] if len(concurrency) == 3 else concurrency[0])
+    return int(concurrency)
+
+
+def _concurrency_initial(concurrency: Any) -> int:
+    """Return the number of actors Ray creates when the pool starts."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        return int(concurrency[2])
+    return 1
+
+
+def _planned_concurrency(concurrency: Any, planned: int) -> Any:
+    """Preserve Ray's actor-pool tuple while capping its maximum size."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        minimum, _maximum, initial = (int(value) for value in concurrency)
+        return (minimum, max(minimum, initial, planned), initial)
+    return planned
+
+
 def preflight_executors(executors: list[Any], cluster_resources: ClusterResources) -> None:
     """Plan all lazy executor pools against one shared Ray resource snapshot."""
     entries = []
@@ -46,24 +68,24 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
         for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
             override = executor._node_overrides.get(node.name, {})
             concurrency = override.get("concurrency", 1)
-            if isinstance(concurrency, tuple):
-                concurrency = concurrency[-1] if len(concurrency) == 3 else concurrency[0]
             entries.append(
                 (
                     executor,
                     node.name,
-                    int(concurrency),
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
                     float(override.get("num_cpus", executor._default_num_cpus)),
                     executor._scheduled_num_gpus(node, override, available_gpus),
                     node.name in executor._auto_concurrency_nodes,
                 )
             )
-    fixed = [item for item in entries if not item[5]]
-    auto = [item for item in entries if item[5]]
-    fixed_cpu = sum(item[2] * item[3] for item in fixed)
-    fixed_gpu = sum(item[2] * item[4] for item in fixed)
-    min_cpu = sum(item[3] for item in auto)
-    min_gpu = sum(item[4] for item in auto)
+    fixed = [item for item in entries if not item[7]]
+    auto = [item for item in entries if item[7]]
+    fixed_cpu = sum(item[3] * item[5] for item in fixed)
+    fixed_gpu = sum(item[3] * item[6] for item in fixed)
+    min_cpu = sum(item[4] * item[5] for item in auto)
+    min_gpu = sum(item[4] * item[6] for item in auto)
     if fixed_cpu + min_cpu > available_cpus or fixed_gpu + min_gpu > available_gpus:
         raise ValueError(
             "Infeasible Ray CPU/GPU plan: requested at least "
@@ -72,27 +94,27 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
             "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
         )
     used_cpu, used_gpu = fixed_cpu + min_cpu, fixed_gpu + min_gpu
-    planned = {(id(item[0]), item[1]): 1 for item in auto}
+    planned = {(id(item[0]), item[1]): item[4] for item in auto}
     while True:
         candidates = sorted(
-            (item for item in auto if planned[(id(item[0]), item[1])] < item[2]),
-            key=lambda item: planned[(id(item[0]), item[1])] / item[2],
+            (item for item in auto if planned[(id(item[0]), item[1])] < item[3]),
+            key=lambda item: planned[(id(item[0]), item[1])] / item[3],
         )
         selected = next(
             (
                 item
                 for item in candidates
-                if used_cpu + item[3] <= available_cpus and used_gpu + item[4] <= available_gpus
+                if used_cpu + item[5] <= available_cpus and used_gpu + item[6] <= available_gpus
             ),
             None,
         )
         if selected is None:
             break
         planned[(id(selected[0]), selected[1])] += 1
-        used_cpu += selected[3]
-        used_gpu += selected[4]
-    for executor, name, _count, _cpu, _gpu, _auto in auto:
-        executor._node_overrides[name]["concurrency"] = planned[(id(executor), name)]
+        used_cpu += selected[5]
+        used_gpu += selected[6]
+    for executor, name, concurrency, _target, _initial, _cpu, _gpu, _auto in auto:
+        executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
     for executor in executors:
         executor._resources_preflight_complete = True
 
@@ -292,22 +314,22 @@ class RayDataExecutor(AbstractExecutor):
         for node in nodes:
             override = self._node_overrides.get(node.name, {})
             concurrency = override.get("concurrency", 1)
-            if isinstance(concurrency, tuple):
-                concurrency = concurrency[-1] if len(concurrency) == 3 else concurrency[0]
             entries.append(
                 (
                     node.name,
-                    int(concurrency),
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
                     float(override.get("num_cpus", self._default_num_cpus)),
                     self._scheduled_num_gpus(node, override, available_gpus),
                 )
             )
         fixed = [item for item in entries if item[0] not in self._auto_concurrency_nodes]
         auto = [item for item in entries if item[0] in self._auto_concurrency_nodes]
-        fixed_cpu = sum(count * cpu for _name, count, cpu, _gpu in fixed)
-        fixed_gpu = sum(count * gpu for _name, count, _cpu, gpu in fixed)
-        minimum_cpu = sum(cpu for _name, _count, cpu, _gpu in auto)
-        minimum_gpu = sum(gpu for _name, _count, _cpu, gpu in auto)
+        fixed_cpu = sum(count * cpu for _name, _concurrency, count, _initial, cpu, _gpu in fixed)
+        fixed_gpu = sum(count * gpu for _name, _concurrency, count, _initial, _cpu, gpu in fixed)
+        minimum_cpu = sum(initial * cpu for _name, _concurrency, _count, initial, cpu, _gpu in auto)
+        minimum_gpu = sum(initial * gpu for _name, _concurrency, _count, initial, _cpu, gpu in auto)
         if fixed_cpu + minimum_cpu > available_cpus or fixed_gpu + minimum_gpu > available_gpus:
             raise ValueError(
                 "Infeasible Ray CPU/GPU plan: requested at least "
@@ -316,28 +338,28 @@ class RayDataExecutor(AbstractExecutor):
                 "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
             )
         used_cpu, used_gpu = fixed_cpu + minimum_cpu, fixed_gpu + minimum_gpu
-        planned = {name: 1 for name, _count, _cpu, _gpu in auto}
+        planned = {name: initial for name, _concurrency, _count, initial, _cpu, _gpu in auto}
         while True:
             candidates = sorted(
-                (item for item in auto if planned[item[0]] < item[1]),
-                key=lambda item: planned[item[0]] / item[1],
+                (item for item in auto if planned[item[0]] < item[2]),
+                key=lambda item: planned[item[0]] / item[2],
             )
             selected = next(
                 (
                     item
                     for item in candidates
-                    if used_cpu + item[2] <= available_cpus and used_gpu + item[3] <= available_gpus
+                    if used_cpu + item[4] <= available_cpus and used_gpu + item[5] <= available_gpus
                 ),
                 None,
             )
             if selected is None:
                 break
-            name, _count, cpu, gpu = selected
+            name, _concurrency, _count, _initial, cpu, gpu = selected
             planned[name] += 1
             used_cpu += cpu
             used_gpu += gpu
-        for name, count in planned.items():
-            self._node_overrides[name]["concurrency"] = count
+        for name, concurrency, _count, _initial, _cpu, _gpu in auto:
+            self._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[name])
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:

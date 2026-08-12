@@ -1112,6 +1112,25 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
             executor._preflight_resources(executor._linearize(graph), available_cpus=11, available_gpus=1)
 
+    def test_preflight_preserves_and_caps_actor_pool_tuples(self):
+        def executor() -> RayDataExecutor:
+            graph = Graph()
+            graph.add_root(CPUAdaptiveAddOperator())
+            return RayDataExecutor(
+                graph,
+                node_overrides={"CPUAdaptiveAddOperator": {"concurrency": (1, 4, 1), "num_cpus": 1}},
+                auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+            )
+
+        ample = executor()
+        ample._preflight_resources(ample._linearize(ample.graph), available_cpus=4, available_gpus=0)
+
+        constrained = executor()
+        constrained._preflight_resources(constrained._linearize(constrained.graph), available_cpus=1, available_gpus=0)
+
+        assert ample._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == (1, 4, 1)
+        assert constrained._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == (1, 1, 1)
+
     def test_node_overrides_stored(self):
         g = Graph()
         g.add_chain(AddOperator(1))
