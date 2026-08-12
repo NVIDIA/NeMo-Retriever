@@ -4,6 +4,7 @@
 
 """Unit tests for nemo_retriever.operators.dedup."""
 
+import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.api.internal.mutate.deduplicate import calculate_iou
@@ -65,6 +66,22 @@ class TestContentHashDedup:
         result = dedup_images(df, content_hash=True, bbox_iou=False)
         assert len(result.iloc[0]["images"]) == 2
 
+    def test_removes_duplicate_images_from_arrow_object_array(self):
+        df = _make_df(
+            [
+                {
+                    "images": np.array(
+                        [_make_image("AAA"), _make_image("BBB"), _make_image("AAA")],
+                        dtype=object,
+                    ),
+                }
+            ]
+        )
+
+        result = dedup_images(df, content_hash=True, bbox_iou=False)
+
+        assert [image["image_b64"] for image in result.iloc[0]["images"]] == ["AAA", "BBB"]
+
 
 # ── bbox IoU dedup ─────────────────────────────────────────────────────────
 
@@ -125,6 +142,25 @@ class TestBboxIouDedup:
         )
         result = dedup_images(df, content_hash=False, bbox_iou=True)
         assert len(result.iloc[0]["images"]) == 1
+
+    def test_drops_arrow_object_array_image_overlapping_with_structured_content(self):
+        df = _make_df(
+            [
+                {
+                    "images": np.array([_make_image("X", bbox=[0.0, 0.0, 1.0, 1.0])], dtype=object),
+                    "table": np.array(
+                        [{"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": "t"}],
+                        dtype=object,
+                    ),
+                    "chart": np.array([], dtype=object),
+                    "infographic": np.array([], dtype=object),
+                }
+            ]
+        )
+
+        result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
+
+        assert result.iloc[0]["images"] == []
 
 
 # ── edge cases ─────────────────────────────────────────────────────────────

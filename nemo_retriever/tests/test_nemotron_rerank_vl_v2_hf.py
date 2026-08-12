@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -264,6 +265,34 @@ class TestRerankHitsVL:
         call_kwargs = model.score.call_args
         assert call_kwargs.kwargs["images_b64"] == [None, None]
         assert len(out) == 2
+
+    def test_rerank_hits_crops_arrow_backed_bbox_array(self):
+        from nemo_retriever.operators.rerank import rerank_hits
+
+        model = MagicMock()
+        model.model_name = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+        model.score.return_value = [1.0]
+        hits = [
+            {
+                "text": "table",
+                "path": "/tmp/document.pdf",
+                "page_number": 1,
+                "bbox_xyxy_norm": np.array([0.1, 0.2, 0.8, 0.9]),
+            }
+        ]
+
+        with (
+            patch("nemo_retriever.common.io.image_store.render_page_image_b64", return_value="page") as render,
+            patch(
+                "nemo_retriever.operators.extract.ocr.ocr._crop_b64_image_by_norm_bbox",
+                return_value=("crop", None),
+            ) as crop,
+        ):
+            rerank_hits("q", hits, model=model, modality="text_image")
+
+        render.assert_called_once_with("/tmp/document.pdf", 1)
+        crop.assert_called_once_with("page", bbox_xyxy_norm=[0.1, 0.2, 0.8, 0.9])
+        assert model.score.call_args.kwargs["images_b64"] == ["crop"]
 
 
 # ---------------------------------------------------------------------------

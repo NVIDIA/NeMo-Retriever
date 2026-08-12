@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import call_pandas_function_on_arrow
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph, build_post_extract_graph
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
@@ -341,9 +342,12 @@ def normalize_ray_branch_datasets(branch_datasets: list[Any]) -> list[Any]:
     stable_columns = tuple(columns)
     return [
         dataset.map_batches(
-            ensure_pandas_columns,
-            batch_format="pandas",
-            fn_kwargs={"columns": stable_columns},
+            call_pandas_function_on_arrow,
+            batch_format="pyarrow",
+            fn_kwargs={
+                "fn": ensure_pandas_columns,
+                "fn_kwargs": {"columns": stable_columns},
+            },
         )
         for dataset in branch_datasets
     ]

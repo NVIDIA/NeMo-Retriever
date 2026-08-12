@@ -10,7 +10,16 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from nemo_retriever.common.modality.collections import bbox_coordinates, multimodal_collection
 from nemo_retriever.common.vdb.records import normalize_content_type
+
+
+def _embedding_list(value: Any) -> Optional[List[float]]:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    elif isinstance(value, tuple):
+        value = list(value)
+    return value if isinstance(value, list) and value else None
 
 
 def extract_embedding_from_row(
@@ -22,15 +31,15 @@ def extract_embedding_from_row(
     """Extract an embedding vector from a row."""
     meta = getattr(row, "metadata", None)
     if isinstance(meta, dict):
-        emb = meta.get("embedding")
-        if isinstance(emb, list) and emb:
-            return emb  # type: ignore[return-value]
+        emb = _embedding_list(meta.get("embedding"))
+        if emb is not None:
+            return emb
 
     payload = getattr(row, embedding_column, None)
     if isinstance(payload, dict):
-        emb = payload.get(embedding_key)
-        if isinstance(emb, list) and emb:
-            return emb  # type: ignore[return-value]
+        emb = _embedding_list(payload.get(embedding_key))
+        if emb is not None:
+            return emb
     return None
 
 
@@ -114,8 +123,8 @@ def _build_detection_metadata(row: Any) -> Dict[str, Any]:
         }
 
     for ocr_column in ("table", "chart", "infographic"):
-        entries = getattr(row, ocr_column, None)
-        if isinstance(entries, list):
+        entries = multimodal_collection(getattr(row, ocr_column, None))
+        if entries is not None:
             out[f"ocr_{ocr_column}_detections"] = int(len(entries))
 
     return out
@@ -186,8 +195,8 @@ def build_lancedb_row(
     content_type = getattr(row, "_content_type", None)
     row_out["content_type"] = str(content_type) if content_type else ""
 
-    bbox = getattr(row, "_bbox_xyxy_norm", None)
-    row_out["bbox_xyxy_norm"] = json.dumps(bbox) if bbox else ""
+    bbox = bbox_coordinates(getattr(row, "_bbox_xyxy_norm", None))
+    row_out["bbox_xyxy_norm"] = json.dumps(bbox) if bbox is not None else ""
 
     return row_out
 
@@ -259,8 +268,8 @@ def lancedb_schema(vector_dim: int = 2048, *, collection_managed: bool = False) 
 def infer_vector_dim(rows: List[Dict[str, Any]]) -> int:
     """Return the embedding dimension from the first row that has a vector."""
     for row in rows:
-        vector = row.get("vector")
-        if isinstance(vector, list) and vector:
+        vector = _embedding_list(row.get("vector"))
+        if vector is not None:
             return len(vector)
     return 0
 

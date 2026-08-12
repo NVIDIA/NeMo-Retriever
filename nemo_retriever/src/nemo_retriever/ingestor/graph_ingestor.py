@@ -33,6 +33,7 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import arrow_table_to_pandas, call_pandas_function_on_arrow
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
 from nemo_retriever.ingestor.manifest import (
@@ -1171,7 +1172,7 @@ class GraphIngestor(ingestor):
         requested_columns = list(columns) if columns is not None else None
 
         if callable(iter_batches):
-            batches = iter_batches(batch_format="pandas")
+            batches = (arrow_table_to_pandas(batch_df) for batch_df in iter_batches(batch_format="pyarrow"))
         else:
             batches = (batch,)
 
@@ -1353,7 +1354,11 @@ class GraphIngestor(ingestor):
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
         if isinstance(target, pd.DataFrame):
             return self.extract_error_rows(target)
-        return target.map_batches(self.extract_error_rows, batch_format="pandas")
+        return target.map_batches(
+            call_pandas_function_on_arrow,
+            batch_format="pyarrow",
+            fn_kwargs={"fn": self.extract_error_rows},
+        )
 
     def get_dataset(self) -> Any:
         return self._rd_dataset

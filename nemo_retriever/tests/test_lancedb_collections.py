@@ -15,6 +15,7 @@ import threading
 from dataclasses import replace
 
 import lancedb
+import numpy as np
 import pytest
 
 import nemo_retriever.common.vdb.lancedb_collections as collections_module
@@ -161,6 +162,15 @@ def test_collection_row_conversion_preserves_identity_and_provenance():
     assert row["document_version"] == "v1"
     assert row["content_sha256"] == "sha-v1"
     assert row["chunk_id"] == hashlib.sha256(b"document-a\x00v1\x000").hexdigest()
+
+
+def test_collection_row_conversion_normalizes_arrow_backed_bbox_array():
+    records = _records()
+    records[0][0]["metadata"]["content_metadata"]["bbox_xyxy_norm"] = np.array([0.1, 0.2, 0.8, 0.9])
+
+    rows = _collection_rows(records, context=_context())
+
+    assert json.loads(rows[0]["bbox_xyxy_norm"]) == [0.1, 0.2, 0.8, 0.9]
 
 
 @pytest.mark.parametrize(

@@ -18,8 +18,11 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     """
     Ray-friendly callable that initializes Nemotron Page Elements v3 once.
 
-    Use with Ray Data:
-      ds = ds.map_batches(PageElementDetectionActor, fn_constructor_kwargs={...}, batch_format="pandas")
+    Ray Data callers should use
+    :func:`nemo_retriever.graph.executor.make_arrow_pandas_operator_adapter`
+    with ``batch_format="pyarrow"`` so nested Arrow batches are normalized
+    before this pandas operator runs. ``RayDataExecutor`` applies that adapter
+    automatically.
     """
 
     def __init__(self, **detect_kwargs: Any) -> None:

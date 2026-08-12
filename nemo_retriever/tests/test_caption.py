@@ -8,6 +8,7 @@ import base64
 import io
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -39,6 +40,21 @@ def test_caption_images_writes_back():
     result = caption_images(_make_page_df(), model=mock_model)
     assert result.iloc[0]["images"][0]["text"] == "cap1"
     assert result.iloc[0]["images"][1]["text"] == "cap2"
+
+
+def test_caption_images_writes_back_to_arrow_object_array():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    source = _make_page_df(num_images=1).iloc[0].to_dict()
+    source["images"] = np.array(source["images"], dtype=object)
+    df = pd.DataFrame([source])
+    mock_model = MagicMock()
+    mock_model.caption_batch.return_value = ["captioned"]
+
+    result = caption_images(df, model=mock_model)
+
+    mock_model.caption_batch.assert_called_once()
+    assert result.iloc[0]["images"][0]["text"] == "captioned"
 
 
 def test_caption_images_skips_already_captioned():

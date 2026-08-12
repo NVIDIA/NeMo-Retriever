@@ -23,6 +23,7 @@ from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.common.modality.audio.media_interface import is_media_available
 from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
 from nemo_retriever.common.params import AudioChunkParams
+from nemo_retriever.graph.executor import call_pandas_function_on_arrow
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
@@ -91,20 +92,22 @@ def run_benchmark(
             asr_actor = ASRActor(params=asr_params_from_env())
 
         ds = ds.map_batches(
-            chunk_actor,
+            call_pandas_function_on_arrow,
             batch_size=int(batch_size),
-            batch_format="pandas",
+            batch_format="pyarrow",
             num_cpus=1,
             num_gpus=0,
             compute=rd.TaskPoolStrategy(size=int(worker_count)),
+            fn_kwargs={"fn": chunk_actor},
         )
         ds = ds.map_batches(
-            asr_actor,
+            call_pandas_function_on_arrow,
             batch_size=int(batch_size),
-            batch_format="pandas",
+            batch_format="pyarrow",
             num_cpus=1,
             num_gpus=0.25 if not mock_asr else 0,
             compute=rd.TaskPoolStrategy(size=int(worker_count)),
+            fn_kwargs={"fn": asr_actor},
         )
         return ds
 

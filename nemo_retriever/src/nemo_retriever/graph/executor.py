@@ -85,6 +85,35 @@ def _normalize_pickled_object_columns(table: Any, frame: pd.DataFrame) -> pd.Dat
     return frame
 
 
+def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
+    """Convert a Ray Arrow batch to a row-safe pandas DataFrame.
+
+    Ray 2.56+ preserves Arrow-backed pandas dtypes. Before conversion, sliced
+    nested columns with inferred null children must be compacted. Ray's
+    pickled-object extension columns also need to be materialized as ordinary
+    object columns so pandas row operations do not interpret their payloads as
+    malformed extension arrays.
+    """
+    if isinstance(table, pd.DataFrame):
+        return table
+
+    from ray.data.block import BlockAccessor
+
+    table = _compact_vulnerable_arrow_columns(table)
+    frame = BlockAccessor.for_block(table).to_pandas()
+    return _normalize_pickled_object_columns(table, frame)
+
+
+def call_pandas_function_on_arrow(
+    table: Any,
+    *,
+    fn: Any,
+    fn_kwargs: dict[str, Any] | None = None,
+) -> Any:
+    """Invoke a pandas batch function through the safe Arrow boundary."""
+    return fn(arrow_table_to_pandas(table), **(fn_kwargs or {}))
+
+
 class _ArrowPandasOperatorAdapter:
     """Convert valid Arrow batches to pandas before invoking an NRL operator."""
 
@@ -92,15 +121,10 @@ class _ArrowPandasOperatorAdapter:
         self._operator = operator_class(**operator_kwargs)
 
     def __call__(self, table: Any) -> Any:
-        from ray.data.block import BlockAccessor
-
-        table = _compact_vulnerable_arrow_columns(table)
-        frame = BlockAccessor.for_block(table).to_pandas()
-        frame = _normalize_pickled_object_columns(table, frame)
-        return self._operator(frame)
+        return self._operator(arrow_table_to_pandas(table))
 
 
-def _named_arrow_pandas_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
+def make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
     """Keep the wrapped operator recognizable in Ray plans and worker logs."""
     adapter_name = f"{operator_class.__name__}ArrowPandasAdapter"
     return type(adapter_name, (_ArrowPandasOperatorAdapter,), {})
@@ -429,7 +453,7 @@ class RayDataExecutor(AbstractExecutor):
                 # Ray's Arrow-backed pandas conversion can preserve unsafe
                 # offsets for sliced structs with inferred null children.
                 # Compact the valid Arrow batch before that conversion.
-                map_operator_class = _named_arrow_pandas_adapter(node.operator_class)
+                map_operator_class = make_arrow_pandas_operator_adapter(node.operator_class)
                 map_batch_format = "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,

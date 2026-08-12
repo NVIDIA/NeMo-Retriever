@@ -128,7 +128,9 @@ def _decode_cursor(
 def _json_string(value: Any) -> str:
     if isinstance(value, str):
         return value
-    return json.dumps(value or {}, ensure_ascii=False, separators=(",", ":"), default=str)
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    return json.dumps({} if value is None else value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _content_text(record: dict[str, Any], metadata: dict[str, Any]) -> str:
@@ -227,7 +229,7 @@ def _collection_rows(
                     "metadata": _json_string(content_metadata),
                     "stored_image_uri": stored_image_uri,
                     "content_type": content_type,
-                    "bbox_xyxy_norm": _json_string(bbox) if bbox else "",
+                    "bbox_xyxy_norm": _json_string(bbox) if bbox is not None else "",
                     "chunk_id": hashlib.sha256(
                         f"{context.document_id}\0{context.document_version}\0{row_index}".encode()
                     ).hexdigest(),

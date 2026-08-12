@@ -15,6 +15,8 @@ import logging
 from typing import Any, Dict, List, Optional, Sequence, Tuple  # noqa: F401
 
 import numpy as np
+
+from nemo_retriever.common.modality.collections import bbox_coordinates
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -396,8 +398,8 @@ def _structure_dets_to_class_boxes(
     grouped: Dict[str, list] = {}
     for d in dets:
         name = d.get("label_name", "")
-        bbox = d.get("bbox_xyxy_norm")
-        if not bbox or len(bbox) != 4:
+        bbox = bbox_coordinates(d.get("bbox_xyxy_norm"))
+        if bbox is None or len(bbox) != 4:
             continue
         x1, y1, x2, y2 = float(bbox[0]) * W, float(bbox[1]) * H, float(bbox[2]) * W, float(bbox[3]) * H
         grouped.setdefault(name, []).append([x1, y1, x2, y2])

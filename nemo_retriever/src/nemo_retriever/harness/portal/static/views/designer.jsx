@@ -105,6 +105,7 @@ function _generateRayDataCode(nodes, edges) {
   const imports = new Set();
   imports.add('import ray');
   imports.add('import ray.data');
+  imports.add('from nemo_retriever.graph.executor import make_arrow_pandas_operator_adapter');
   chain.forEach(n => {
     if (n.operator && n.operator.type !== 'ray_data_source') {
       imports.add(n.operator.import_path);
@@ -161,10 +162,13 @@ function _generateRayDataCode(nodes, edges) {
 
     lines.push(`# Stage: ${op.display_name || op.class_name}`);
     lines.push(`ds = ds.map_batches(`);
-    lines.push(`    ${op.class_name},`);
-    lines.push(`    fn_constructor_kwargs=${kwargsStr},`);
+    lines.push(`    make_arrow_pandas_operator_adapter(${op.class_name}),`);
+    lines.push(`    fn_constructor_kwargs={`);
+    lines.push(`        "operator_class": ${op.class_name},`);
+    lines.push(`        "operator_kwargs": ${kwargsStr},`);
+    lines.push(`    },`);
     lines.push(`    batch_size=1,`);
-    lines.push(`    batch_format="pandas",`);
+    lines.push(`    batch_format="pyarrow",`);
     if (isGpu) {
       lines.push(`    num_cpus=0,`);
       lines.push(`    num_gpus=1,`);
@@ -191,10 +195,13 @@ function _generateRayDataCode(nodes, edges) {
 
     lines.push(`# Sink: ${op.display_name || op.class_name}`);
     lines.push(`ds = ds.map_batches(`);
-    lines.push(`    ${op.class_name},`);
-    lines.push(`    fn_constructor_kwargs=${kwargsStr},`);
+    lines.push(`    make_arrow_pandas_operator_adapter(${op.class_name}),`);
+    lines.push(`    fn_constructor_kwargs={`);
+    lines.push(`        "operator_class": ${op.class_name},`);
+    lines.push(`        "operator_kwargs": ${kwargsStr},`);
+    lines.push(`    },`);
     lines.push(`    batch_size=1,`);
-    lines.push(`    batch_format="pandas",`);
+    lines.push(`    batch_format="pyarrow",`);
     if (sinkConcurrency !== undefined && sinkConcurrency !== '') {
       lines.push(`    concurrency=${parseInt(sinkConcurrency, 10) || 1},`);
     }

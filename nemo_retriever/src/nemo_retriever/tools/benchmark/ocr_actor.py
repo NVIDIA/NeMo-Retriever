@@ -11,6 +11,7 @@ import ray.data as rd
 import typer
 
 from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor
+from nemo_retriever.graph.executor import make_arrow_pandas_operator_adapter
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
@@ -54,16 +55,19 @@ def run(
 
     def _map(ds: rd.Dataset, worker_count: int, batch_size: int) -> rd.Dataset:
         return ds.map_batches(
-            OCRActor,
+            make_arrow_pandas_operator_adapter(OCRActor),
             batch_size=int(batch_size),
-            batch_format="pandas",
+            batch_format="pyarrow",
             num_cpus=float(num_cpus),
             num_gpus=float(num_gpus),
             compute=rd.ActorPoolStrategy(size=int(worker_count)),
             fn_constructor_kwargs={
-                "extract_tables": bool(extract_tables),
-                "extract_charts": bool(extract_charts),
-                "extract_infographics": bool(extract_infographics),
+                "operator_class": OCRActor,
+                "operator_kwargs": {
+                    "extract_tables": bool(extract_tables),
+                    "extract_charts": bool(extract_charts),
+                    "extract_infographics": bool(extract_infographics),
+                },
             },
         )
 

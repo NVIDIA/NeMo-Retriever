@@ -10,6 +10,7 @@ from typing import Any, List, Tuple
 import pandas as pd
 
 from nemo_retriever.common.api.internal.mutate.deduplicate import calculate_iou
+from nemo_retriever.common.modality.collections import bbox_coordinates, multimodal_collection
 from nemo_retriever.common.params import DedupParams
 
 _STRUCTURED_COLUMNS = ("table", "chart", "infographic")
@@ -19,14 +20,14 @@ def _collect_structured_bboxes(row: pd.Series) -> List[Tuple[float, ...]]:
     """Gather all bounding boxes from tables, charts, and infographics columns."""
     bboxes: List[Tuple[float, ...]] = []
     for col in _STRUCTURED_COLUMNS:
-        items = row.get(col)
-        if not isinstance(items, list):
+        items = multimodal_collection(row.get(col))
+        if items is None:
             continue
         for item in items:
             if not isinstance(item, dict):
                 continue
-            bbox = item.get("bbox_xyxy_norm")
-            if bbox and len(bbox) >= 4:
+            bbox = bbox_coordinates(item.get("bbox_xyxy_norm"))
+            if bbox is not None:
                 bboxes.append(tuple(bbox[:4]))
     return bboxes
 
@@ -55,8 +56,8 @@ def dedup_images(
         return batch_df
 
     for row_idx, row in batch_df.iterrows():
-        images = row.get("images")
-        if not isinstance(images, list) or not images:
+        images = multimodal_collection(row.get("images"))
+        if not images:
             continue
 
         filtered = list(images)
@@ -88,8 +89,8 @@ def dedup_images(
                     if not isinstance(item, dict):
                         surviving.append(item)
                         continue
-                    img_bbox = item.get("bbox_xyxy_norm")
-                    if not img_bbox or len(img_bbox) < 4:
+                    img_bbox = bbox_coordinates(item.get("bbox_xyxy_norm"))
+                    if img_bbox is None:
                         surviving.append(item)
                         continue
                     img_bbox_t = tuple(img_bbox[:4])

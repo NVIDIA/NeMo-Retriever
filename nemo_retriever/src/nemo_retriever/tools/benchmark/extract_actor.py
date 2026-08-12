@@ -11,6 +11,7 @@ import ray.data as rd
 import typer
 
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+from nemo_retriever.graph.executor import call_pandas_function_on_arrow
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
@@ -52,12 +53,13 @@ def run(
             dpi=int(dpi),
         )
         return ds.map_batches(
-            actor,
+            call_pandas_function_on_arrow,
             batch_size=int(batch_size),
-            batch_format="pandas",
+            batch_format="pyarrow",
             num_cpus=1,
             num_gpus=0,
             compute=rd.TaskPoolStrategy(size=int(worker_count)),
+            fn_kwargs={"fn": actor},
         )
 
     best, results = benchmark_sweep(
