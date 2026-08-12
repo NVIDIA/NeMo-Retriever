@@ -165,7 +165,8 @@ class NimEndpointsConfig(RichModel):
         description=(
             "Model identifier passed to the remote Nemotron Parse endpoint. "
             "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
-            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "the deployed versioned model ID, such as nvidia/nemotron-parse-v1.2 "
+            "or nvidia/nemotron-parse-v2.0, for a self-hosted NIM. "
             "Server-owned — clients cannot override the deployed Parse SKU."
         ),
     )

@@ -414,6 +414,36 @@ class TestNemotronParseActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
+    def test_local_gpu_actor_defaults_to_parse_2(self, monkeypatch):
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
+
+        mock_parse = MagicMock()
+        monkeypatch.setitem(local_models.__dict__, "NemotronParse", mock_parse)
+        actor = NemotronParseGPUActor(extract_text=True)
+
+        assert actor._model is None
+        actor._ensure_model()
+
+        mock_parse.assert_called_once_with(
+            model_path="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            task_prompt="</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        )
+
+    def test_local_gpu_actor_honors_explicit_model(self, monkeypatch):
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
+
+        mock_parse = MagicMock()
+        monkeypatch.setitem(local_models.__dict__, "NemotronParse", mock_parse)
+        actor = NemotronParseGPUActor(nemotron_parse_model="org/custom-parse")
+        actor._ensure_model()
+
+        mock_parse.assert_called_once_with(
+            model_path="org/custom-parse",
+            task_prompt="</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+
+        )
     def test_remote_chat_completions_uses_v1_2_protocol(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import (
             NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
@@ -444,6 +474,32 @@ class TestNemotronParseActor:
         assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
         assert client.kwargs["repetition_penalty"] == 1.1
+
+    def test_remote_chat_completions_supports_v2_0_nim(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                return ["<x_0><y_0>Parse 2 text<x_1><y_1><class_Text>"]
+
+        client = _FakeNIMClient()
+        result = nemotron_parse_pages(
+            pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]}),
+            invoke_url="http://nemotron-parse:8000/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v2.0",
+            extract_text=True,
+            nim_client=client,
+        )
+
+        assert result["text"].tolist() == ["Parse 2 text"]
+        assert client.kwargs["model"] == "nvidia/nemotron-parse-v2.0"
+        # The 9,000-token NIM context includes the control prompt, so requesting
+        # all 9,000 tokens for output is rejected by the 2.0.8 container.
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
 
     def test_remote_chat_completions_supports_legacy_tool_call_protocol(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages

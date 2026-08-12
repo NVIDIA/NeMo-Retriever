@@ -18,11 +18,12 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
   For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
-- For PDF extraction with `method="nemotron_parse"`, install the Nemotron Parse
-  client dependencies with `uv pip install "nemo-retriever[nemotron-parse]"` (pulls
-  `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
-  NIM client). The base `nemo-retriever` install and `[local]` extra do not include this
-  package. You can use the equivalent `pip install` command if you do not use UV.
+- For PDF extraction with `method="nemotron_parse"`, use
+  `uv pip install "nemo-retriever[local,nemotron-parse]"` for managed local inference or
+  `uv pip install "nemo-retriever[nemotron-parse]"` for a remote endpoint. The
+  `nemotron-parse` extra pulls `open-clip-torch`, which provides the `open_clip` module
+  required by the Nemotron Parse client. The base `nemo-retriever` install and `[local]`
+  extra do not include this package. You can use equivalent `pip install` commands.
 
 > **Note**
 >
@@ -106,21 +107,23 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
 | llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
-| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted `nemotron-parse-v1.2` use different request contracts; the library selects the matching contract automatically. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
+| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build uses a different request contract from versioned self-hosted models. Refer to [Nemotron Parse deployment options](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
 | llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
 
 <a id="nemotron-parse-hosted-vs-self-hosted"></a>
 
-!!! note "Nemotron Parse: hosted Build endpoint vs self-hosted NIM"
+!!! note "Nemotron Parse deployment options"
 
-    Hosted NVIDIA Build and self-hosted Nemotron Parse use **different request contracts**. The library selects the matching contract from the endpoint and model:
+    Nemotron Parse supports local managed inference and optional remote endpoints:
 
-    - **Hosted Build** (`https://integrate.api.nvidia.com/v1/chat/completions`) resolves to model ID `nvidia/nemotron-parse` and uses an image-only tool-call contract.
-    - **Self-hosted chat endpoints** default to model ID `nvidia/nemotron-parse-v1.2` and use the tagged text-prompt contract.
+    - **Local managed inference:** Set `method="nemotron_parse"` without `nemotron_parse_invoke_url`. NeMo Retriever Library loads `nvidia/NVIDIA-Nemotron-Parse-2.0` in process, applies the compatibility needed by its compact checkpoint, and uses up to 9,000 generation tokens. You do not need a separate endpoint or a `vllm serve` process. Set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"` to retain the earlier local model.
+    - **Hosted NVIDIA Build:** Set `nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions"`. The endpoint uses model ID `nvidia/nemotron-parse` and an image-only tool-call contract. You can normally omit `nemotron_parse_model` because the library selects the hosted model automatically.
+    - **Self-hosted NIM:** The shipped Compose and Helm defaults remain `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant`. To use Parse 2.0 explicitly, deploy `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant`, set the chat-completions endpoint, and set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"`.
+    - **Self-hosted vLLM:** Set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0"` explicitly. When you serve the compact Hugging Face checkpoint outside NeMo Retriever Library, load the model-provided [`vllm_tied_patch/sitecustomize.py`](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-2.0/blob/main/vllm_tied_patch/sitecustomize.py) through `PYTHONPATH` before starting vLLM. The managed local path applies equivalent support automatically.
 
-    To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL (and set `method="nemotron_parse"`). You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract. Mixed Build and self-hosted endpoint lists require an explicit model.
+    Hosted NVIDIA Build and versioned self-hosted models use different request contracts. If you set `nemotron_parse_model`, match it to the endpoint. Mixed Build and self-hosted endpoint lists require an explicit model.
 
     For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 

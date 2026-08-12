@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Nemotron Parse v1.2 pipeline stage.
+Nemotron Parse pipeline stage.
 
 Runs the Nemotron Parse model on full page images to extract structured
 document content (text, tables, charts, infographics) in a single pass,
@@ -51,7 +51,7 @@ except Exception:  # pragma: no cover
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
-NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-2.0"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
@@ -309,7 +309,7 @@ def nemotron_parse_pages(
     nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Run Nemotron Parse v1.2 on full page images.
+    """Run Nemotron Parse on full page images.
 
     Each page is parsed in a single model call.  The structured output is
     split by element class (Text, Table, Chart, Picture, …) and routed to
@@ -419,7 +419,7 @@ def nemotron_parse_pages(
                         )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
-                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
+                # Local vLLM model: uses task_prompt and returns tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
@@ -507,7 +507,7 @@ def nemotron_parse_pages(
 
 
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initialises Nemotron Parse once per actor."""
 
     def __init__(
         self,
@@ -554,9 +554,12 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            self._model = NemotronParse(
+                model_path=self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+                task_prompt=self._task_prompt,
+            )
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
