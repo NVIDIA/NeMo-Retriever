@@ -989,7 +989,12 @@ class CaptionParams(LLMInferenceParams):
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
-    gpu_memory_utilization: Optional[float] = Field(default=None, gt=0, le=1)
+    gpu_memory_utilization: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Fraction of GPU memory reserved for local vLLM captioning; defaults to the model profile.",
+    )
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
