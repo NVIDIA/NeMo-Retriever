@@ -121,7 +121,7 @@ def test_gather_cluster_resources_coerces_fractional_values() -> None:
 
 
 def test_gather_cluster_resources_preserves_fractional_available_gpu() -> None:
-    """Ray can report e.g. 0.9 GPU free; truncating that to 0 is a silent GPU miss."""
+    """Positive fractional available GPUs remain a non-zero count."""
     mock_ray = types.SimpleNamespace(
         is_initialized=lambda: True,
         cluster_resources=lambda: {"CPU": 4.0, "GPU": 1.0},

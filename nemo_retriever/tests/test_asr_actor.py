@@ -339,7 +339,7 @@ def test_local_asr_apply_asr_to_df():
 
 
 def test_asr_actor_resolves_gpu_when_fractional_gpu_available():
-    """Local HF ASR must not flip to NVCF CPU when Ray reports 0.9 GPU free."""
+    """Local HF ASR resolves to the GPU actor when fractional GPU is free."""
     from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Resources, gather_cluster_resources
     from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
 

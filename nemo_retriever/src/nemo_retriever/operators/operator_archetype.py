@@ -12,11 +12,11 @@ from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Reso
 
 
 def _available_gpu_count(resources: ClusterResources | Resources) -> int:
-    """Return GPU *capability* used for local-vs-remote operator selection.
+    """Return GPU capability used for local-vs-remote operator selection.
 
-    For cluster resources this is total GPU count, not transient available
-    GPUs. Fractional available values (e.g. 0.9) were previously truncated
-    to 0 and silently selected remote/NVCF CPU actors for local HF workflows.
+    For cluster resources this is total GPU count so selection does not
+    depend on transient free capacity; Ray schedules the actor when a
+    fractional share becomes free.
     """
     if isinstance(resources, ClusterResources):
         return int(resources.total_gpu_count())
