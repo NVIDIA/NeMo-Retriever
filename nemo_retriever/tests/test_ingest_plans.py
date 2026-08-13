@@ -333,34 +333,6 @@ def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> N
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
 
 
-def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_budget() -> None:
-    cluster = ClusterResources(
-        total_resources=Resources(cpu_count=224, gpu_count=8),
-        available_resources=Resources(cpu_count=224, gpu_count=8),
-    )
-
-    overrides = batch_tuning_to_node_overrides(
-        extract_params=ExtractParams(extract_tables=True, use_table_structure=True),
-        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
-        cluster_resources=cluster,
-    )
-
-    # The documented extract -> chunk -> dedup -> reshape -> embed pipeline
-    # has six additional one-CPU tasks alongside these persistent actor pools.
-    requested_cpu = 6 + sum(
-        overrides[actor]["concurrency"] * overrides[actor].get("num_cpus", 1)
-        for actor in (
-            "PDFExtractionActor",
-            "PageElementDetectionActor",
-            "TableStructureActor",
-            "OCRActor",
-            "_BatchEmbedActor",
-        )
-    )
-
-    assert requested_cpu <= cluster.total_cpu_count()
-
-
 def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
 
@@ -383,6 +355,7 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
         build_graph(extract_params=params, stage_order=()),
         node_overrides=derived,
         auto_concurrency_nodes={name for name, values in derived.items() if "concurrency" in values},
+        source_cpu_reservation=1,
     )
     executor._preflight_resources(executor._linearize(executor.graph), 16, 8)
 
@@ -397,6 +370,12 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
             "OCRActor",
         )
     )
+    actor_cpu = sum(
+        derived[name]["concurrency"] * derived[name].get("num_cpus", 1)
+        for name in ("PDFExtractionActor", "PageElementDetectionActor", "TableStructureActor", "OCRActor")
+    )
+    # DocToPdf and PDFSplit use one CPU each; ReadBinary needs the reserved CPU.
+    assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
@@ -420,6 +399,27 @@ def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     )
     with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
         executor._preflight_resources(executor._linearize(graph), 16, 8)
+
+
+def test_batch_preflight_reserves_cpu_for_file_sources() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph import UDFOperator
+
+    graph = Graph()
+    graph.add_root(UDFOperator(lambda data: data))
+    file_executor = RayDataExecutor(
+        graph,
+        node_overrides={"UDFOperator": {"concurrency": 16, "num_cpus": 1}},
+        source_cpu_reservation=1,
+    )
+    inline_executor = RayDataExecutor(
+        graph,
+        node_overrides={"UDFOperator": {"concurrency": 16, "num_cpus": 1}},
+    )
+
+    with pytest.raises(ValueError, match="including 1 for source reads"):
+        file_executor._preflight_resources(file_executor._linearize(graph), 16, 0)
+    inline_executor._preflight_resources(inline_executor._linearize(graph), 16, 0)
 
 
 @pytest.mark.parametrize("extraction_mode", ["image", "pdf"])
