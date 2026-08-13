@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 from urllib.parse import urlparse
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -165,6 +166,55 @@ class TestStoreOperatorInGraph:
         assert files[0].read_bytes() == base64.b64decode(b64)
         assert result.iloc[0]["_stored_image_uri"].startswith("file://")
         assert result.iloc[0]["image_b64"] is None
+
+    def test_store_operator_writes_uri_into_null_typed_arrow_column(self, tmp_path: Path):
+        pa = pytest.importorskip("pyarrow")
+
+        b64 = _make_tiny_png_b64()
+        arrow_table = pa.table(
+            {
+                "page_image": pa.array([{"image_b64": b64}], type=pa.struct([("image_b64", pa.string())])),
+                "_content_type": pa.array(["text"], type=pa.string()),
+                # Upstream content transforms emit an all-None column, which Arrow types as null.
+                "_stored_image_uri": pa.array([None], type=pa.null()),
+            }
+        )
+        df = arrow_table.to_pandas(types_mapper=pd.ArrowDtype)
+        assert isinstance(df["_stored_image_uri"].dtype, pd.ArrowDtype)
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        stored_uri = result.iloc[0]["_stored_image_uri"]
+        assert isinstance(stored_uri, str)
+        assert stored_uri.startswith("file://")
+        assert Path(urlparse(stored_uri).path).read_bytes() == base64.b64decode(b64)
+        assert result.iloc[0]["page_image"]["stored_image_uri"] == stored_uri
+        pa.Table.from_pandas(result)
+
+    def test_store_operator_stores_numpy_backed_element_images(self, tmp_path: Path):
+        pa = pytest.importorskip("pyarrow")
+
+        element_b64 = _make_tiny_png_b64(color=(0, 0, 255))
+        arrow_table = pa.table(
+            {
+                "images": pa.array(
+                    [[{"text": "fig", "image_b64": element_b64}]],
+                    type=pa.list_(pa.struct([("text", pa.string()), ("image_b64", pa.string())])),
+                ),
+                "_content_type": pa.array(["images"], type=pa.string()),
+            }
+        )
+        # Ray Data hands batches over with list columns converted to NumPy arrays.
+        df = arrow_table.to_pandas()
+        assert isinstance(df.iloc[0]["images"], np.ndarray)
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        element = result.iloc[0]["images"][0]
+        assert element["image_b64"] is None
+        assert Path(urlparse(element["stored_image_uri"]).path).read_bytes() == base64.b64decode(element_b64)
+        # Ray Data re-serializes each returned batch through Arrow.
+        pa.Table.from_pandas(result)
 
     def test_store_operator_updates_arrow_backed_page_image_struct(self, tmp_path: Path):
         pa = pytest.importorskip("pyarrow")

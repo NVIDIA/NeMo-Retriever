@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import fsspec
+import numpy as np
 import pandas as pd
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -106,6 +107,11 @@ def _store_nested_image_payloads(
     strip_base64: bool,
 ) -> Any:
     """Persist nested ``image_b64`` values and replace them with URIs."""
+    if isinstance(value, np.ndarray) and value.ndim == 1:
+        # Batch element cells arrive as NumPy arrays; ``DataFrame.at`` collapses
+        # those to a 0-d array, which breaks Arrow conversion of the result.
+        value = value.tolist()
+
     if isinstance(value, list):
         return [
             _store_nested_image_payloads(
@@ -178,12 +184,12 @@ def _row_image_represents_page(row: pd.Series, *, image_source: str | None) -> b
 
 
 def _ensure_object_column(df: pd.DataFrame, column: str) -> None:
-    """Convert Arrow-backed columns so dict/list payloads can be assigned.
+    """Convert Arrow-backed columns so Python payloads can be assigned.
 
     Pandas ArrowExtensionArray rejects ``DataFrame.at`` assignment of updated
-    Python dicts into struct/list columns (``cast_struct`` /
-    string-to-struct NotImplementedError). Object dtype preserves nested
-    payloads that add fields such as ``stored_image_uri``.
+    Python dicts into struct/list columns, and of a URI string into a
+    null-typed column that upstream stages left empty. Object dtype accepts
+    both.
     """
     if column not in df.columns:
         return
@@ -210,7 +216,7 @@ def _store_row_images(
         return df
 
     out = df.copy()
-    for column in (*image_columns, *row_image_columns):
+    for column in (*image_columns, *row_image_columns, "_stored_image_uri"):
         _ensure_object_column(out, column)
     fallback_format = _normalize_image_format(image_format)
     fsspec_options = dict(storage_options or {})
