@@ -24,7 +24,7 @@ Use the Ray dashboard to verify the available-resource snapshot and the planned 
 
 ## Shared preflight for custom Ray Data graphs
 
-`GraphIngestor` reserves source capacity automatically. For custom graphs, declare source capacity before calling `preflight_executors(...)`. Set `source_cpu_reservation=1` on each `RayDataExecutor` that will receive a filesystem path or glob. An executor that only receives an existing Ray dataset can omit the reservation.
+`GraphIngestor` reserves source capacity automatically. For custom graphs, declare source capacity before calling `preflight_executors(...)`. Set `source_cpu_reservation=1` on each `RayDataExecutor` that will receive a filesystem path or glob. `source_cpu_reservation` must be a finite, non-negative CPU value. An executor that only receives an existing Ray dataset can omit the reservation.
 
 ```python
 file_executor = RayDataExecutor(graph, source_cpu_reservation=1)

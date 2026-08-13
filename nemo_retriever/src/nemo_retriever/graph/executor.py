@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import math
 from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 
@@ -367,6 +368,9 @@ class RayDataExecutor(AbstractExecutor):
         source_cpu_reservation: float = 0,
     ) -> None:
         super().__init__(graph)
+        source_cpu_reservation = float(source_cpu_reservation)
+        if not math.isfinite(source_cpu_reservation) or source_cpu_reservation < 0:
+            raise ValueError("source_cpu_reservation must be a finite, non-negative CPU value.")
         self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
         self._source_cpu_reservation = source_cpu_reservation

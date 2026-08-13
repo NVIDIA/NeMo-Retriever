@@ -1289,6 +1289,11 @@ class TestRayDataExecutor:
 
         assert executor.build_dataset(fake_dataset) is fake_dataset
 
+    @pytest.mark.parametrize("source_cpu_reservation", [-1, float("nan"), float("inf")])
+    def test_rejects_invalid_source_cpu_reservation(self, source_cpu_reservation):
+        with pytest.raises(ValueError, match="finite, non-negative"):
+            RayDataExecutor(Graph(), source_cpu_reservation=source_cpu_reservation)
+
     def test_node_overrides_stored(self):
 
         g = Graph()
