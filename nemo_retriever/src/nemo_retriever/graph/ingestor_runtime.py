@@ -363,28 +363,6 @@ def batch_tuning_to_node_overrides(
             plan.pdf_extract_tasks if plan else None,
         )
 
-        # Cap PDF extract concurrency so persistent actors for page-elements,
-        # table structure, OCR, embed, and caption plus fixed pipeline tasks (DocToPdf,
-        # PDFSplit, UDFOperator(s), ReadBinary) cannot exhaust the cluster
-        # CPU budget.
-        if pdf_extract_tasks is not None and cluster_resources is not None:
-            # Conservative fixed overhead for the documented PDF flow:
-            # ReadBinary + DocToPdf + PDFSplit + TextChunk + DedupImages +
-            # the content-reshape UDF before embedding. Caption adds its actor
-            # and one additional UDF.
-            fixed_cpu_overhead = 6 + (2 if caption_params is not None else 0)
-            non_pdf_cpu_overhead = (
-                fixed_cpu_overhead
-                + page_elements_concurrency * page_elements_cpus
-                + ocr_concurrency * ocr_cpus
-                + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
-            )
-            pdf_extract_tasks = min(
-                pdf_extract_tasks,
-                max(1, int((cluster_resources.total_cpu_count() - non_pdf_cpu_overhead) // pdf_extract_cpus)),
-            )
-
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
