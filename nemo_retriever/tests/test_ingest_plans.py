@@ -463,6 +463,7 @@ def test_batch_preflight_remote_caption_materializes_missing_override(extraction
 
     assert overrides["CaptionActor"]["concurrency"] == 1
 
+
 def test_batch_preflight_rejects_infeasible_direct_override() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
 
