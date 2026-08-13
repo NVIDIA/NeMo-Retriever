@@ -189,6 +189,7 @@ class TestStoreOperatorInGraph:
         assert stored_uri.startswith("file://")
         assert Path(urlparse(stored_uri).path).read_bytes() == base64.b64decode(b64)
         assert result.iloc[0]["page_image"]["stored_image_uri"] == stored_uri
+        list(result.iterrows())
         pa.Table.from_pandas(result)
 
     def test_store_operator_stores_numpy_backed_element_images(self, tmp_path: Path):
@@ -213,7 +214,7 @@ class TestStoreOperatorInGraph:
         element = result.iloc[0]["images"][0]
         assert element["image_b64"] is None
         assert Path(urlparse(element["stored_image_uri"]).path).read_bytes() == base64.b64decode(element_b64)
-        # Ray Data re-serializes each returned batch through Arrow.
+        list(result.iterrows())
         pa.Table.from_pandas(result)
 
     def test_store_operator_updates_arrow_backed_page_image_struct(self, tmp_path: Path):
