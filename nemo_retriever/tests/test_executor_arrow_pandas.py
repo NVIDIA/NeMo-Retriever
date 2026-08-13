@@ -130,11 +130,13 @@ def test_text_chunk_operator_preserves_heterogeneous_pandas_output() -> None:
     assert _preserves_pandas_output(TextChunkCPUActor, {})
 
 
-def test_only_opted_in_udf_graphs_require_stable_pandas_blocks() -> None:
+def test_only_opted_in_graphs_require_stable_pandas_blocks() -> None:
     stable_graph = Graph() >> UDFOperator(lambda frame: frame, preserve_pandas_output=True)
     default_graph = Graph() >> UDFOperator(lambda frame: frame)
+    text_chunk_graph = Graph() >> TextChunkCPUActor()
 
     assert _requires_stable_pandas_blocks([stable_graph.roots[0]])
+    assert _requires_stable_pandas_blocks([text_chunk_graph.roots[0]])
     assert not _requires_stable_pandas_blocks([default_graph.roots[0]])
 
 

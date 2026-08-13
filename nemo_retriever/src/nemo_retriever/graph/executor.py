@@ -152,6 +152,8 @@ def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, An
     """Return whether an operator's heterogeneous rows should stay in pandas."""
     from nemo_retriever.operators.graph_ops.custom_operator import UDFOperator
 
+    if bool(getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False)):
+        return True
     return issubclass(operator_class, UDFOperator) and bool(operator_kwargs.get("preserve_pandas_output", False))
 
 
