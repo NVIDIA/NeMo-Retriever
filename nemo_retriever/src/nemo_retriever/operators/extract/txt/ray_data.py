@@ -46,7 +46,7 @@ class TextChunkCPUActor(AbstractOperator, CPUOperator):
     # Chunk expansion mixes retained Arrow-backed nested values with empty
     # Python collections on continuation rows. Keep that heterogeneous result
     # in pandas so Ray does not infer incompatible extension arrays.
-    PRESERVE_PANDAS_OUTPUT = True
+    PRESERVE_PANDAS_OUTPUT: bool = True
 
     def __init__(self, params: TextChunkParams | None = None) -> None:
         super().__init__()
