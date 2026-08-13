@@ -1165,6 +1165,24 @@ kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
 curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 ```
 
+### Prometheus metrics from the OpenTelemetry Collector
+
+When `topology.otel.enabled=true`, the chart-owned OpenTelemetry Collector
+exposes metrics received through OTLP in Prometheus format. The endpoint uses
+`topology.otel.ports.prometheus`, which defaults to port `8889`. The
+chart-owned OpenTelemetry Collector Service exposes the same port.
+
+After your workload sends telemetry, verify the endpoint by port-forwarding the
+Collector Service:
+
+```bash
+kubectl port-forward svc/<release>-nemo-retriever-otel 8889:8889
+curl -fsS http://127.0.0.1:8889/metrics
+```
+
+Set `topology.otel.ports.prometheus` to use a different port. The chart updates
+the Collector listener and Service port together.
+
 Common opt-out and override knobs:
 
 ```yaml
