@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.api.internal.mutate.deduplicate import calculate_iou
@@ -15,19 +16,44 @@ from nemo_retriever.common.params import DedupParams
 _STRUCTURED_COLUMNS = ("table", "chart", "infographic")
 
 
+def _as_element_list(value: Any) -> Optional[List[Any]]:
+    """Return an extracted-element cell as a plain list, or ``None`` if unsupported.
+
+    Batch mode delivers structural-element cells as one-dimensional NumPy
+    object arrays (Arrow list columns converted to pandas), while inprocess
+    mode uses Python lists.
+    """
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, np.ndarray) and value.ndim == 1:
+        return value.tolist()
+    return None
+
+
+def _as_bbox(value: Any) -> Optional[Tuple[float, ...]]:
+    """Return the first four bbox coordinates as a plain tuple."""
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if not isinstance(value, (list, tuple)) or len(value) < 4:
+        return None
+    return tuple(value[:4])
+
+
 def _collect_structured_bboxes(row: pd.Series) -> List[Tuple[float, ...]]:
     """Gather all bounding boxes from tables, charts, and infographics columns."""
     bboxes: List[Tuple[float, ...]] = []
     for col in _STRUCTURED_COLUMNS:
-        items = row.get(col)
-        if not isinstance(items, list):
+        items = _as_element_list(row.get(col))
+        if items is None:
             continue
         for item in items:
             if not isinstance(item, dict):
                 continue
-            bbox = item.get("bbox_xyxy_norm")
-            if bbox and len(bbox) >= 4:
-                bboxes.append(tuple(bbox[:4]))
+            bbox = _as_bbox(item.get("bbox_xyxy_norm"))
+            if bbox is not None:
+                bboxes.append(bbox)
     return bboxes
 
 
@@ -54,9 +80,13 @@ def dedup_images(
     if "images" not in batch_df.columns:
         return batch_df
 
+    # Arrow-backed columns reject assignment of a filtered Python list.
+    if isinstance(batch_df["images"].dtype, pd.ArrowDtype):
+        batch_df["images"] = batch_df["images"].astype(object)
+
     for row_idx, row in batch_df.iterrows():
-        images = row.get("images")
-        if not isinstance(images, list) or not images:
+        images = _as_element_list(row.get("images"))
+        if not images:
             continue
 
         filtered = list(images)
@@ -88,11 +118,10 @@ def dedup_images(
                     if not isinstance(item, dict):
                         surviving.append(item)
                         continue
-                    img_bbox = item.get("bbox_xyxy_norm")
-                    if not img_bbox or len(img_bbox) < 4:
+                    img_bbox_t = _as_bbox(item.get("bbox_xyxy_norm"))
+                    if img_bbox_t is None:
                         surviving.append(item)
                         continue
-                    img_bbox_t = tuple(img_bbox[:4])
                     overlaps = any(calculate_iou(img_bbox_t, sb) >= iou_threshold for sb in structured_bboxes)
                     if not overlaps:
                         surviving.append(item)
