@@ -422,6 +422,48 @@ def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
         executor._preflight_resources(executor._linearize(graph), 16, 8)
 
 
+@pytest.mark.parametrize("extraction_mode", ["image", "pdf"])
+def test_batch_preflight_remote_caption_materializes_missing_override(extraction_mode: str) -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+    from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
+    )
+    extract_params = ExtractParams(extract_images=True)
+    caption_params = CaptionParams(
+        endpoint_url="http://omni-nim.example/v1/chat/completions",
+        model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    )
+    overrides = batch_tuning_to_node_overrides(
+        extract_params,
+        None,
+        cluster_resources=cluster,
+        caption_params=caption_params,
+    )
+    graph = build_graph(
+        extraction_mode=extraction_mode,
+        extract_params=extract_params,
+        caption_params=caption_params,
+        stage_order=(),
+    ).resolve(cluster.total_resources)
+    caption_node = next(node for node in _linear_nodes(graph) if node.name == "CaptionActor")
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=overrides,
+        auto_concurrency_nodes=default_concurrency_node_names(extract_params, None, None, caption_params),
+    )
+
+    assert "CaptionActor" not in overrides
+    assert caption_node.operator_class is CaptionCPUActor
+
+    executor._preflight_resources(executor._linearize(graph), available_cpus=224, available_gpus=8)
+
+    assert overrides["CaptionActor"]["concurrency"] == 1
+
+
 def test_batch_preflight_rejects_infeasible_direct_override() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
 
