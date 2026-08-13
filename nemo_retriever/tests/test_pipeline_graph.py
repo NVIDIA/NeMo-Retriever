@@ -1112,6 +1112,18 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
             executor._preflight_resources(executor._linearize(graph), available_cpus=11, available_gpus=1)
 
+    def test_shared_preflight_materializes_missing_auto_override(self):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(graph, auto_concurrency_nodes={"CPUAdaptiveAddOperator"})
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=4, gpu_count=0)
+        preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 1
+
     def test_preflight_preserves_and_caps_actor_pool_tuples(self):
         def executor() -> RayDataExecutor:
             graph = Graph()

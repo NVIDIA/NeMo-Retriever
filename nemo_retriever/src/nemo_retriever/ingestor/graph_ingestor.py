@@ -65,6 +65,7 @@ from nemo_retriever.common.params import (
     ExtractParams,
     HtmlChunkParams,
     IngestExecuteParams,
+    NO_API_KEY,
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
@@ -382,6 +383,9 @@ def _resolve_api_key(params: Any) -> Any:
     """Auto-resolve api_key from NVIDIA_API_KEY / NGC_API_KEY if not explicitly set."""
     if params is None:
         return params
+    uses_no_api_key = getattr(params, "_uses_no_api_key", None)
+    if callable(uses_no_api_key) and uses_no_api_key("api_key"):
+        return params
     if not getattr(params, "api_key", None) and hasattr(params, "model_copy"):
         key = resolve_remote_api_key()
         if key:
@@ -400,7 +404,20 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
     if not kwargs:
         return params
     if hasattr(params, "model_copy"):
-        return params.model_copy(update=kwargs)
+        values = params.model_dump()
+        uses_no_api_key = getattr(params, "_uses_no_api_key", None)
+        api_key_env_reference = getattr(params, "_api_key_env_reference", None)
+        for field_name in type(params).model_fields:
+            if field_name in kwargs:
+                continue
+            if callable(uses_no_api_key) and uses_no_api_key(field_name):
+                values[field_name] = NO_API_KEY
+                continue
+            if callable(api_key_env_reference):
+                reference = api_key_env_reference(field_name)
+                if reference is not None:
+                    values[field_name] = reference
+        return type(params).model_validate(values | kwargs)
     return params
 
 
@@ -1199,7 +1216,11 @@ class GraphIngestor(ingestor):
                 if requested_columns is None
                 else [c for c in requested_columns if c in available_columns]
             )
-            for row_index, row in batch_df.iterrows():
+            # ``iterrows`` materializes the full frame through NumPy, which is
+            # unsafe for Ray pickled-object columns containing empty arrays.
+            row_values = batch_df.itertuples(index=False, name=None)
+            for row_index, values in zip(batch_df.index, row_values):
+                row = dict(zip(available_columns, values))
                 source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):

@@ -25,6 +25,7 @@ import copy
 import json
 import logging
 import multiprocessing as mp
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -567,12 +568,20 @@ def _build_graph_ingestor_from_spec(
     handles persistence when ``vdb_upload_params`` is present.
     """
     from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
+        DEFAULT_AUDIO_SPLIT_INTERVAL,
+        DEFAULT_VIDEO_FRAME_FPS,
+    )
     from nemo_retriever.common.params import (
         ASRParams,
+        AudioChunkParams,
+        AudioVisualFuseParams,
         CaptionParams,
         DedupParams,
         StoreParams,
         VdbUploadParams,
+        VideoFrameParams,
+        VideoFrameTextDedupParams,
         WebhookParams,
     )
 
@@ -605,7 +614,31 @@ def _build_graph_ingestor_from_spec(
     ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
-    if extraction_mode == "image":
+    if extraction_mode == "video":
+        # Service auto-routing resolves supported video extensions before this
+        # point. Preserve the canonical video branch defaults instead of
+        # passing the MP4 bytes through the generic PDF extraction path. ASR
+        # remains optional, but frame extraction, frame OCR, and frame-text
+        # deduplication run for every video. Fusion is appended only when the
+        # audio branch is enabled.
+        ingestor = ingestor.extract(
+            extract_params,
+            split_config=split_config,
+            extraction_mode=extraction_mode,
+            audio_chunk_params=AudioChunkParams(
+                enabled=asr_params is not None,
+                split_type="size",
+                split_interval=DEFAULT_AUDIO_SPLIT_INTERVAL,
+            ),
+            asr_params=asr_params,
+            video_frame_params=VideoFrameParams(enabled=True, fps=DEFAULT_VIDEO_FRAME_FPS, dedup=True),
+            video_text_dedup_params=VideoFrameTextDedupParams(
+                enabled=True,
+                max_dropped_frames=2,
+            ),
+            av_fuse_params=AudioVisualFuseParams(enabled=True),
+        )
+    elif extraction_mode == "image":
         ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
     elif extraction_mode == "html" and split_config is None:
         ingestor = ingestor.extract_html()
@@ -942,10 +975,13 @@ def build_asr_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None
     if nim.audio_grpc_endpoint:
         from nemo_retriever.common.params import ASRParams
 
+        function_id = (os.environ.get("AUDIO_FUNCTION_ID") or "").strip() or None
+        auth_token = nim.api_key or (os.environ.get("NVIDIA_API_KEY") or "").strip() or None
         return ASRParams(
             audio_endpoints=(nim.audio_grpc_endpoint, None),
             audio_infer_protocol="grpc",
-            auth_token=nim.api_key,
+            auth_token=auth_token,
+            function_id=function_id,
         )
     if local.enabled and local.asr.enabled:
         from nemo_retriever.common.params import ASRParams

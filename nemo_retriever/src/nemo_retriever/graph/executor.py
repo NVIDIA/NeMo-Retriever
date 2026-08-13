@@ -220,7 +220,9 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
         used_cpu += selected[5]
         used_gpu += selected[6]
     for executor, name, concurrency, _target, _initial, _cpu, _gpu, _auto in auto:
-        executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
+        executor._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(
+            concurrency, planned[(id(executor), name)]
+        )
     for executor in executors:
         executor._resources_preflight_complete = True
         executor._preflight_cluster_resources = cluster_resources
@@ -467,7 +469,7 @@ class RayDataExecutor(AbstractExecutor):
             used_cpu += cpu
             used_gpu += gpu
         for name, concurrency, _count, _initial, _cpu, _gpu in auto:
-            self._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[name])
+            self._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(concurrency, planned[name])
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
