@@ -48,11 +48,7 @@ def _set_yaml_scalar(path: Path, key_path: tuple[str, ...], value: str) -> None:
         if not isinstance(current, MappingNode):
             raise KeyError(f"{'.'.join(key_path)} is not a mapping path in {path}")
         match = next(
-            (
-                child
-                for key_node, child in current.value
-                if isinstance(key_node, ScalarNode) and key_node.value == key
-            ),
+            (child for key_node, child in current.value if isinstance(key_node, ScalarNode) and key_node.value == key),
             None,
         )
         if match is None:
