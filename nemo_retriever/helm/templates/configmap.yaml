@@ -109,6 +109,8 @@ nim_endpoints:
 {{- else }}
   embed_model_provider_prefix: null
 {{- end }}
+  rerank_invoke_url: {{ if .Values.serviceConfig.nimEndpoints.rerankInvokeUrl }}{{ .Values.serviceConfig.nimEndpoints.rerankInvokeUrl | quote }}{{ else }}null{{ end }}
+  rerank_model_name: {{ if .Values.serviceConfig.nimEndpoints.rerankModelName }}{{ .Values.serviceConfig.nimEndpoints.rerankModelName | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
