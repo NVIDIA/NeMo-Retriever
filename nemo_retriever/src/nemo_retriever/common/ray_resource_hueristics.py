@@ -216,7 +216,9 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
             return 0
         if parsed <= 0:
             return 0
-        return int(parsed)
+        # Keep a positive fractional Ray count (e.g. 0.9 GPU) as present (1).
+        floored = int(parsed)
+        return floored if floored > 0 else 1
 
     total_resources: dict[str, object] = ray.cluster_resources()
     available_resources: dict[str, object] = ray.available_resources()
@@ -521,9 +523,13 @@ def resolve_requested_plan(
     override_caption_gpus_per_actor: Optional[float] = None,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
-
-    if available_gpu_count == 0 and not allow_no_gpu:
+    total_gpu_count = max(0, int(cluster_resources.total_gpu_count()))
+    # Plan against total cluster GPU capacity; Ray waits if GPUs are busy.
+    if total_gpu_count == 0 and not allow_no_gpu:
         raise ValueError("No GPUs available")
+    # Prefer free GPUs for sizing; if none are free, size from total capacity.
+    if available_gpu_count == 0 and total_gpu_count > 0:
+        available_gpu_count = total_gpu_count
 
     def _resolve_int_actors(override: Optional[int], default: int, multiply_by_available_num_gpu: bool) -> int:
         if override is not None and override > 0:

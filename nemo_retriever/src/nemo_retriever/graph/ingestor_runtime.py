@@ -121,7 +121,7 @@ def batch_tuning_to_node_overrides(
     PDF extract concurrency is capped so that it cannot exhaust the cluster CPU
     budget when all other persistent actors are running simultaneously.
     """
-    auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.available_gpu_count() == 0)
+    auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
     plan = (
         resolve_requested_plan(

@@ -839,7 +839,7 @@ class GraphIngestor(ingestor):
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
         )
-        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.total_gpu_count() == 0
         derived_overrides = batch_tuning_to_node_overrides(
             effective_extraction.extract_params,
             self._embed_params,

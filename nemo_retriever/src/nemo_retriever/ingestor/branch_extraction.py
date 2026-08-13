@@ -85,7 +85,7 @@ class ExtractionBranchExecutor:
 
     def _execute_batch(self) -> Any:
         ray_module, cluster_resources = self.ensure_batch_runtime()
-        effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.total_gpu_count() == 0
         branch_datasets: list[Any] = []
         branch_executors: list[RayDataExecutor] = []
         branch_inputs: list[tuple[RayDataExecutor, Any]] = []
