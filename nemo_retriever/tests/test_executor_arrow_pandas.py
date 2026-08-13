@@ -97,33 +97,29 @@ def test_adapter_preserves_numeric_numpy_arrays() -> None:
     np.testing.assert_array_equal(result.iloc[0]["embedding"], np.array([0.1, 0.2]))
 
 
-def test_adapter_can_preserve_heterogeneous_udf_output_as_pandas() -> None:
+def test_adapter_does_not_mutate_output_block_context() -> None:
     context = DataContext.get_current()
     original_arrow_format = context.batch_to_block_arrow_format
     original_tensor_casting = context.enable_tensor_extension_casting
     context.batch_to_block_arrow_format = True
     context.enable_tensor_extension_casting = True
     try:
-        result = _ArrowPandasOperatorAdapter(
-            _PassthroughOperator,
-            {},
-            preserve_pandas_output=True,
-        )(pa.table({"value": [1, 2]}))
+        _ArrowPandasOperatorAdapter(_PassthroughOperator, {})(pa.table({"value": [1, 2]}))
 
-        assert isinstance(BlockAccessor.batch_to_block(result), pd.DataFrame)
-        assert not context.enable_tensor_extension_casting
+        assert context.batch_to_block_arrow_format
+        assert context.enable_tensor_extension_casting
     finally:
         context.batch_to_block_arrow_format = original_arrow_format
         context.enable_tensor_extension_casting = original_tensor_casting
 
 
-def test_only_opted_in_udfs_preserve_pandas_output() -> None:
+def test_only_opted_in_operators_preserve_pandas_output() -> None:
     opted_in = UDFOperator(lambda frame: frame, preserve_pandas_output=True)
     default = UDFOperator(lambda frame: frame)
 
     assert _preserves_pandas_output(type(opted_in), opted_in.get_constructor_kwargs())
     assert not _preserves_pandas_output(type(default), default.get_constructor_kwargs())
-    assert not _preserves_pandas_output(_PassthroughOperator, {"preserve_pandas_output": True})
+    assert _preserves_pandas_output(_PassthroughOperator, {"preserve_pandas_output": True})
 
 
 def test_text_chunk_operator_preserves_heterogeneous_pandas_output() -> None:
@@ -249,22 +245,14 @@ def test_collapse_returns_iterrows_safe_page_rows() -> None:
         )
     )
 
-    context = DataContext.get_current()
-    original_arrow_format = context.batch_to_block_arrow_format
-    original_tensor_casting = context.enable_tensor_extension_casting
-    try:
-        result = _ArrowPandasOperatorAdapter(
-            UDFOperator,
-            {
-                "fn": partial(collapse_content_to_page_rows, modality="text"),
-                "name": "CollapseContentToPageRows",
-                "preserve_pandas_output": True,
-            },
-            preserve_pandas_output=True,
-        )(table)
-    finally:
-        context.batch_to_block_arrow_format = original_arrow_format
-        context.enable_tensor_extension_casting = original_tensor_casting
+    result = _ArrowPandasOperatorAdapter(
+        UDFOperator,
+        {
+            "fn": partial(collapse_content_to_page_rows, modality="text"),
+            "name": "CollapseContentToPageRows",
+            "preserve_pandas_output": True,
+        },
+    )(table)
 
     rows = list(result.iterrows())
     assert len(rows) == 1

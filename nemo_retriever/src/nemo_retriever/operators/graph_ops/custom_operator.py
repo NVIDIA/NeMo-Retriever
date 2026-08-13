@@ -20,19 +20,12 @@ from nemo_retriever.graph.designer import designer_component
 class UDFOperator(AbstractOperator):
     """A small operator wrapper for user-defined Python functions."""
 
-    def __init__(
-        self,
-        fn: Callable[[Any], Any],
-        name: Optional[str] = None,
-        preserve_pandas_output: bool = False,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, fn: Callable[[Any], Any], name: Optional[str] = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError("fn must be callable")
         self.fn = fn
         self.name = name or type(self).__name__
-        self.preserve_pandas_output = preserve_pandas_output
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

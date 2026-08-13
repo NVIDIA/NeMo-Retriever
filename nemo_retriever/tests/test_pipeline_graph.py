@@ -1182,10 +1182,12 @@ class TestRayDataExecutor:
         from types import SimpleNamespace
 
         captured: list[dict[str, Any]] = []
+        captured_contexts: list[tuple[bool, bool]] = []
 
         class _FakeDataContext:
             enable_rich_progress_bars = False
             use_ray_tqdm = True
+            batch_to_block_arrow_format = True
             enable_tensor_extension_casting = True
 
             @classmethod
@@ -1203,6 +1205,12 @@ class TestRayDataExecutor:
 
             def map_batches(self, _operator_class, **kwargs):
                 captured.append(kwargs)
+                captured_contexts.append(
+                    (
+                        self.context.batch_to_block_arrow_format,
+                        self.context.enable_tensor_extension_casting,
+                    )
+                )
                 return self
 
         fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
@@ -1224,7 +1232,9 @@ class TestRayDataExecutor:
         executor.build_dataset(input_dataset)
 
         assert [call["batch_format"] for call in captured] == ["pyarrow", "pandas"]
-        assert [call["fn_constructor_kwargs"]["preserve_pandas_output"] for call in captured] == [True, True]
+        assert all("preserve_pandas_output" not in call["fn_constructor_kwargs"] for call in captured)
+        assert captured_contexts == [(False, False), (False, False)]
+        assert input_dataset.context.batch_to_block_arrow_format
         assert input_dataset.context.enable_tensor_extension_casting
 
     def test_node_overrides_stored(self):

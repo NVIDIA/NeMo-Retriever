@@ -118,28 +118,11 @@ def call_pandas_function_on_arrow(
 class _ArrowPandasOperatorAdapter:
     """Convert valid Arrow batches to pandas before invoking an NRL operator."""
 
-    def __init__(
-        self,
-        operator_class: type,
-        operator_kwargs: dict[str, Any],
-        preserve_pandas_output: bool = False,
-    ) -> None:
+    def __init__(self, operator_class: type, operator_kwargs: dict[str, Any]) -> None:
         self._operator = operator_class(**operator_kwargs)
-        self._preserve_pandas_output = preserve_pandas_output
 
     def __call__(self, table: Any) -> Any:
-        result = self._operator(arrow_table_to_pandas(table))
-        if self._preserve_pandas_output and isinstance(result, pd.DataFrame):
-            # UDF stages reshape rows with heterogeneous nested metadata. Ray's
-            # automatic pandas-to-Arrow and ndarray-to-tensor conversions can
-            # infer incompatible schemas across blocks, so retain plain pandas
-            # object columns at this boundary.
-            from ray.data import DataContext
-
-            context = DataContext.get_current()
-            context.batch_to_block_arrow_format = False
-            context.enable_tensor_extension_casting = False
-        return result
+        return self._operator(arrow_table_to_pandas(table))
 
 
 def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
@@ -150,11 +133,9 @@ def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPand
 
 def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, Any]) -> bool:
     """Return whether an operator's heterogeneous rows should stay in pandas."""
-    from nemo_retriever.operators.graph_ops.custom_operator import UDFOperator
-
-    if bool(getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False)):
-        return True
-    return issubclass(operator_class, UDFOperator) and bool(operator_kwargs.get("preserve_pandas_output", False))
+    return bool(
+        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False) or operator_kwargs.get("preserve_pandas_output", False)
+    )
 
 
 def _requires_stable_pandas_blocks(nodes: list[Node]) -> bool:
@@ -552,9 +533,9 @@ class RayDataExecutor(AbstractExecutor):
             ds = rd.Dataset.copy(data, _deep_copy=True) if requires_stable_pandas_blocks else data
             if requires_stable_pandas_blocks:
                 # Ray copies this context into repartition workers. Disabling
-                # tensor promotion only on the UDF actor is too late because a
-                # preceding repartition can already have converted list-valued
-                # object columns into TensorArray columns.
+                # Arrow output and tensor promotion only on an operator actor is
+                # too late because Ray converts its result after the call.
+                ds.context.batch_to_block_arrow_format = False
                 ds.context.enable_tensor_extension_casting = False
         else:
             try:
@@ -562,12 +543,15 @@ class RayDataExecutor(AbstractExecutor):
                     # read_binary_files snapshots the current context onto the
                     # new Dataset; restore the process default immediately so
                     # unrelated pipelines retain Ray's standard behavior.
+                    original_arrow_format = ctx.batch_to_block_arrow_format
                     original_tensor_extension_casting = ctx.enable_tensor_extension_casting
+                    ctx.batch_to_block_arrow_format = False
                     ctx.enable_tensor_extension_casting = False
                 try:
                     ds = rd.read_binary_files(input_paths, include_paths=True)
                 finally:
                     if requires_stable_pandas_blocks:
+                        ctx.batch_to_block_arrow_format = original_arrow_format
                         ctx.enable_tensor_extension_casting = original_tensor_extension_casting
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
@@ -638,14 +622,13 @@ class RayDataExecutor(AbstractExecutor):
                 preserve_pandas_output = preserve_pandas_output or _preserves_pandas_output(
                     node.operator_class, node.operator_kwargs
                 )
-                # The reshaping UDF still needs the compacting Arrow adapter on
-                # its input. Its downstream consumers must not ask Ray to turn
-                # the intentionally preserved pandas block back into Arrow.
+                # The opting-in stage still needs the compacting Arrow adapter
+                # on its input. Its downstream consumers must not ask Ray to
+                # turn the intentionally preserved pandas block back into Arrow.
                 map_batch_format = "pandas" if stable_pandas_input else "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,
                     "operator_kwargs": node.operator_kwargs,
-                    "preserve_pandas_output": preserve_pandas_output,
                 }
 
             ds = ds.map_batches(
