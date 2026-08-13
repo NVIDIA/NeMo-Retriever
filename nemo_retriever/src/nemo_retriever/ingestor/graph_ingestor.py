@@ -1199,7 +1199,11 @@ class GraphIngestor(ingestor):
                 if requested_columns is None
                 else [c for c in requested_columns if c in available_columns]
             )
-            for row_index, row in batch_df.iterrows():
+            # ``iterrows`` materializes the full frame through NumPy, which is
+            # unsafe for Ray pickled-object columns containing empty arrays.
+            row_values = batch_df.itertuples(index=False, name=None)
+            for row_index, values in zip(batch_df.index, row_values):
+                row = dict(zip(available_columns, values))
                 source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):
