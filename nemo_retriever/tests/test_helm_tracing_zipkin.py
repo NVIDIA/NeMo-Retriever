@@ -306,6 +306,17 @@ def test_otel_prometheus_exporter_requires_metrics_pipeline() -> None:
     )
 
 
+def test_otel_prometheus_exporter_requires_metric_exporter_list() -> None:
+    proc = _helm_template_process(
+        extra_args=["--set-string", "topology.otel.config.service.pipelines.metrics.exporters=debug"]
+    )
+
+    assert proc.returncode != 0
+    assert (
+        "topology.otel.config.service.pipelines.metrics.exporters must be a list " "when topology.otel.enabled=true"
+    ) in proc.stderr
+
+
 def test_default_injects_managed_service_and_nim_otel_env() -> None:
     docs = _helm_template()
     service_env = _deployment_env(_find(docs, "Deployment", FULLNAME))

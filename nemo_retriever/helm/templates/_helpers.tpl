@@ -329,6 +329,9 @@ Tracing helpers
 {{- $_ := set $exporters "prometheus" $prometheusExporter -}}
 {{- $_ := set $config "exporters" $exporters -}}
 {{- $metricExporters := get $metrics "exporters" | default list -}}
+{{- if not (kindIs "slice" $metricExporters) -}}
+{{- fail "topology.otel.config.service.pipelines.metrics.exporters must be a list when topology.otel.enabled=true" -}}
+{{- end -}}
 {{- if not (has "prometheus" $metricExporters) -}}
 {{- $metricExporters = append $metricExporters "prometheus" -}}
 {{- end -}}
