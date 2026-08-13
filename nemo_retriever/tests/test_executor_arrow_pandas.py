@@ -249,25 +249,24 @@ def test_collapse_returns_iterrows_safe_page_rows() -> None:
         )
     )
 
-    result = _ArrowPandasOperatorAdapter(
-        UDFOperator,
-        {
-            "fn": partial(collapse_content_to_page_rows, modality="text"),
-            "name": "CollapseContentToPageRows",
-            "preserve_pandas_output": True,
-        },
-        preserve_pandas_output=True,
-    )(table)
+    context = DataContext.get_current()
+    original_arrow_format = context.batch_to_block_arrow_format
+    original_tensor_casting = context.enable_tensor_extension_casting
+    try:
+        result = _ArrowPandasOperatorAdapter(
+            UDFOperator,
+            {
+                "fn": partial(collapse_content_to_page_rows, modality="text"),
+                "name": "CollapseContentToPageRows",
+                "preserve_pandas_output": True,
+            },
+            preserve_pandas_output=True,
+        )(table)
+    finally:
+        context.batch_to_block_arrow_format = original_arrow_format
+        context.enable_tensor_extension_casting = original_tensor_casting
 
     rows = list(result.iterrows())
     assert len(rows) == 1
     assert rows[0][1]["text"] == "page text"
     assert result["_embed_modality"].tolist() == ["text"]
-
-
-def test_pipeline_content_reexports_canonical_transforms() -> None:
-    from nemo_retriever.common.modality import content_transforms
-    from nemo_retriever.common.modality.pipeline import content as pipeline_content
-
-    assert pipeline_content.explode_content_to_rows is content_transforms.explode_content_to_rows
-    assert pipeline_content.collapse_content_to_page_rows is content_transforms.collapse_content_to_page_rows

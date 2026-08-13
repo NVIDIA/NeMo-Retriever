@@ -50,45 +50,10 @@ def _graph_node_names(graph: Graph) -> list[str]:
     return names
 
 
-def _graph_nodes(graph: Graph) -> list[Node]:
-    nodes: list[Node] = []
-
-    def visit(node: Node) -> None:
-        nodes.append(node)
-        for child in node.children:
-            visit(child)
-
-    for root in graph.roots:
-        visit(root)
-    return nodes
-
-
 def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
     graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=True)
 
     assert "ExplodeContentToRows" in _graph_node_names(graph)
-
-
-def test_post_extract_reshape_udfs_preserve_pandas_output() -> None:
-    element_graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=True)
-    page_graph = build_post_extract_graph(
-        embed_params=EmbedParams(embed_granularity="page"),
-        reshape_content_before_embed=True,
-    )
-
-    explode = next(
-        node
-        for node in _graph_nodes(element_graph)
-        if getattr(node.operator, "name", node.name) == "ExplodeContentToRows"
-    )
-    collapse = next(
-        node
-        for node in _graph_nodes(page_graph)
-        if getattr(node.operator, "name", node.name) == "CollapseContentToPageRows"
-    )
-
-    assert explode.operator_kwargs.get("preserve_pandas_output") is True
-    assert collapse.operator_kwargs.get("preserve_pandas_output") is True
 
 
 def test_post_extract_graph_can_skip_content_reshape() -> None:

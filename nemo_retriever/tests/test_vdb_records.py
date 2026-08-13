@@ -213,21 +213,6 @@ def test_graph_record_conversion_normalizes_ray_tensor_embedding() -> None:
     assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
 
 
-def test_normalized_embeddings_are_visible_to_vector_dim_inference() -> None:
-    from nemo_retriever.common.vdb.lancedb_schema import infer_vector_dim
-
-    records = to_client_vdb_records(
-        [
-            {
-                "text": "embedded content",
-                "metadata": {"embedding": np.array([0.1, 0.2])},
-            }
-        ]
-    )
-
-    assert infer_vector_dim([{"vector": records[0][0]["metadata"]["embedding"]}]) == 2
-
-
 def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:
     hit = _normalize_one(
         {

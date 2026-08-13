@@ -193,10 +193,8 @@ def collapse_content_to_page_rows(
     modality: str = "text",
 ) -> Any:
     """Collapse each page into a single row for page-level embedding."""
-    if not isinstance(batch_df, pd.DataFrame):
+    if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
-    if batch_df.empty:
-        return _normalize_bbox_column(batch_df)
 
     has_page_image = "page_image" in batch_df.columns
     new_rows: List[Dict[str, Any]] = []
