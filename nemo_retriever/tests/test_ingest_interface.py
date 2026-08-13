@@ -22,6 +22,7 @@ from nemo_retriever.common.params import (
     ExtractParams,
     HtmlChunkParams,
     IngestExecuteParams,
+    NO_API_KEY,
     RemoteRetryParams,
     TextChunkParams,
 )
@@ -361,6 +362,28 @@ def test_extract_rejects_unknown_kwargs() -> None:
     expected_rejected = repr(sorted(["document_type", "extract_method", "extract_audio_params"]))
     assert expected_rejected in message
     assert "asr_params" in message
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+def test_extract_validates_overrides_to_existing_params(run_mode: str) -> None:
+    params = ExtractParams()
+
+    with pytest.raises(ValueError, match="pdfium_hybrid"):
+        GraphIngestor(run_mode=run_mode).extract(params, method="unsupported")
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+@pytest.mark.parametrize("overrides", [{}, {"dpi": 300}])
+def test_extract_preserves_explicit_api_key_suppression(
+    monkeypatch: pytest.MonkeyPatch, run_mode: str, overrides: dict[str, int]
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-review-secret")
+    params = ExtractParams(api_key=NO_API_KEY)
+
+    resolved = GraphIngestor(run_mode=run_mode).extract(params, **overrides)._extract_params
+
+    assert resolved.api_key is None
+    assert resolved._uses_no_api_key("api_key")
 
 
 def test_extract_default_pdf_only_builds_dedicated_pdf_graph(tmp_path) -> None:
