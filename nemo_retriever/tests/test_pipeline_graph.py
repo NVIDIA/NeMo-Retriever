@@ -1177,7 +1177,120 @@ class TestRayDataExecutor:
 
         assert captured["num_gpus"] == 0.1
 
+    def test_shared_preflight_rejects_late_filesystem_source_without_reservation(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        source = tmp_path / "sample.pdf"
+        source.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        def _unexpected_read_binary_files(*_args, **_kwargs):
+            raise AssertionError("late filesystem source must fail before read_binary_files")
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_unexpected_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        executor = RayDataExecutor(Graph())
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=1, gpu_count=0)
+        preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+
+        with pytest.raises(ValueError, match="source_cpu_reservation=1"):
+            executor.build_dataset(str(source))
+
+    def test_shared_preflight_allows_filesystem_source_with_reservation(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        source = tmp_path / "sample.pdf"
+        source.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        captured: dict[str, object] = {}
+
+        def _read_binary_files(paths, include_paths=True):
+            captured["paths"] = list(paths)
+            captured["include_paths"] = include_paths
+            return fake_dataset
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        executor = RayDataExecutor(Graph(), source_cpu_reservation=1)
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=1, gpu_count=0)
+        preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert executor.build_dataset(str(source)) is fake_dataset
+        assert captured == {"paths": [str(source)], "include_paths": True}
+
+    def test_shared_preflight_allows_dataset_after_conservative_source_reservation(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        executor = RayDataExecutor(Graph(), source_cpu_reservation=1)
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=1, gpu_count=0)
+        preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert executor.build_dataset(fake_dataset) is fake_dataset
+
     def test_node_overrides_stored(self):
+
         g = Graph()
         g.add_chain(AddOperator(1))
         overrides = {"AddOperator": {"batch_size": 16, "num_gpus": 0.5}}

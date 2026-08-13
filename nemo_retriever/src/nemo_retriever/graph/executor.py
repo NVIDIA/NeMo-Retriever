@@ -214,6 +214,7 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
         executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
     for executor in executors:
         executor._resources_preflight_complete = True
+        executor._preflight_source_cpu_reservation = executor._source_cpu_reservation
         executor._preflight_cluster_resources = cluster_resources
 
 
@@ -369,6 +370,10 @@ class RayDataExecutor(AbstractExecutor):
         self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
         self._source_cpu_reservation = source_cpu_reservation
+        # ``preflight_executors`` records the source reservation it budgeted.
+        # A filesystem input supplied later must not silently increase that
+        # shared plan: re-planning this executor alone would ignore its peers.
+        self._preflight_source_cpu_reservation: float | None = None
         self._default_batch_size = batch_size
         self._default_batch_format = batch_format
         self._default_num_cpus = num_cpus
@@ -517,8 +522,22 @@ class RayDataExecutor(AbstractExecutor):
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
-        if not isinstance(data, rd.Dataset):
-            self._source_cpu_reservation = 1
+        is_filesystem_source = not isinstance(data, rd.Dataset)
+        if is_filesystem_source:
+            required_source_cpu_reservation = 1
+            if self._resources_preflight_complete:
+                planned_source_cpu_reservation = self._preflight_source_cpu_reservation
+                if (
+                    planned_source_cpu_reservation is None
+                    or planned_source_cpu_reservation < required_source_cpu_reservation
+                ):
+                    raise ValueError(
+                        "Filesystem inputs require 1 CPU for Ray Data source reads, but shared Ray resource "
+                        "preflight completed without that reservation. Construct RayDataExecutor with "
+                        "source_cpu_reservation=1 before calling preflight_executors."
+                    )
+            else:
+                self._source_cpu_reservation = required_source_cpu_reservation
 
         cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
