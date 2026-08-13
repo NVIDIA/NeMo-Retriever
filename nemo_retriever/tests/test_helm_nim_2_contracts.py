@@ -17,13 +17,13 @@ CHART = Path(__file__).resolve().parents[1] / "helm"
 EXPECTED_MODELS = {
     "nemotron-page-elements-v3": (
         "nvidia/nemotron-page-elements-v3",
-        "/model/page-elements",
+        "/model-store/page-elements",
     ),
     "nemotron-table-structure-v1": (
         "nvidia/nemotron-table-structure-v1",
-        "/model/table-structure",
+        "/model-store/table-structure",
     ),
-    "nemotron-ocr-v2": ("nvidia/nemotron-ocr-v2", "/model/ocr"),
+    "nemotron-ocr-v2": ("nvidia/nemotron-ocr-v2", "/model-store/ocr"),
 }
 
 

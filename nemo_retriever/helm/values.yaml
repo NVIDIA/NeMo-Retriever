@@ -1084,7 +1084,7 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_NAME
         value: nvidia/nemotron-page-elements-v3
       - name: NIM_ENGINE_MODEL_PATH
-        value: /model/page-elements
+        value: /model-store/page-elements
 
   # Table structure detector. Uses the same nemotron-object-detection NIM image
   # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
@@ -1142,7 +1142,7 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_NAME
         value: nvidia/nemotron-table-structure-v1
       - name: NIM_ENGINE_MODEL_PATH
-        value: /model/table-structure
+        value: /model-store/table-structure
 
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
@@ -1201,7 +1201,7 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_NAME
         value: nvidia/nemotron-ocr-v2
       - name: NIM_ENGINE_MODEL_PATH
-        value: /model/ocr
+        value: /model-store/ocr
       - name: NIM_ENGINE_MODEL_VARIANT
         value: multilingual
 
