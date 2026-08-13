@@ -1294,6 +1294,66 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="finite, non-negative"):
             RayDataExecutor(Graph(), source_cpu_reservation=source_cpu_reservation)
 
+    def test_build_dataset_keeps_consumers_after_heterogeneous_udf_in_pandas(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        captured: list[dict[str, Any]] = []
+        captured_contexts: list[tuple[bool, bool]] = []
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+            batch_to_block_arrow_format = True
+            enable_tensor_extension_casting = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                assert _deep_copy
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                captured_contexts.append(
+                    (
+                        self.context.batch_to_block_arrow_format,
+                        self.context.enable_tensor_extension_casting,
+                    )
+                )
+                return self
+
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = (
+            Graph() >> UDFOperator(lambda frame: frame, preserve_pandas_output=True) >> UDFOperator(lambda frame: frame)
+        )
+        executor = RayDataExecutor(graph)
+        executor._resources_preflight_complete = True
+        input_dataset = _FakeDataset()
+        executor.build_dataset(input_dataset)
+
+        assert [call["batch_format"] for call in captured] == ["pyarrow", "pandas"]
+        assert all("preserve_pandas_output" not in call["fn_constructor_kwargs"] for call in captured)
+        assert captured_contexts == [(False, False), (False, False)]
+        assert input_dataset.context.batch_to_block_arrow_format
+        assert input_dataset.context.enable_tensor_extension_casting
+
     def test_node_overrides_stored(self):
 
         g = Graph()

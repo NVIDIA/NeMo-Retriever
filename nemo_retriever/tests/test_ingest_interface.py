@@ -8,6 +8,7 @@ import pyarrow as pa
 import pytest
 from PIL import Image
 from ray.data.block import BlockAccessor
+from ray.data.extensions import ArrowPythonObjectArray
 
 import nemo_retriever
 from nemo_retriever.graph.ingestor_runtime import build_graph
@@ -22,6 +23,7 @@ from nemo_retriever.common.params import (
     ExtractParams,
     HtmlChunkParams,
     IngestExecuteParams,
+    NO_API_KEY,
     RemoteRetryParams,
     TextChunkParams,
 )
@@ -361,6 +363,28 @@ def test_extract_rejects_unknown_kwargs() -> None:
     expected_rejected = repr(sorted(["document_type", "extract_method", "extract_audio_params"]))
     assert expected_rejected in message
     assert "asr_params" in message
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+def test_extract_validates_overrides_to_existing_params(run_mode: str) -> None:
+    params = ExtractParams()
+
+    with pytest.raises(ValueError, match="pdfium_hybrid"):
+        GraphIngestor(run_mode=run_mode).extract(params, method="unsupported")
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+@pytest.mark.parametrize("overrides", [{}, {"dpi": 300}])
+def test_extract_preserves_explicit_api_key_suppression(
+    monkeypatch: pytest.MonkeyPatch, run_mode: str, overrides: dict[str, int]
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-review-secret")
+    params = ExtractParams(api_key=NO_API_KEY)
+
+    resolved = GraphIngestor(run_mode=run_mode).extract(params, **overrides)._extract_params
+
+    assert resolved.api_key is None
+    assert resolved._uses_no_api_key("api_key")
 
 
 def test_extract_default_pdf_only_builds_dedicated_pdf_graph(tmp_path) -> None:
@@ -902,26 +926,54 @@ def test_get_error_rows_maps_batch_dataset_with_columns_property() -> None:
     assert errors.iloc[0]["text"] == "first page"
 
 
-def test_stage_error_records_normalizes_arrow_object_arrays_before_row_iteration() -> None:
-    table = BlockAccessor.batch_to_block(
-        pd.DataFrame(
-            {
-                "text": ["first page", "second page"],
-                "tables": [np.array([], dtype=object), np.array([], dtype=object)],
+@pytest.mark.parametrize("error_row", [None, 1])
+def test_batch_ingest_finalization_handles_ray_pickled_object_arrays(
+    error_row: int | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage_values = []
+    for row_index in range(3):
+        error = None
+        if row_index == error_row:
+            error = {
+                "stage": "remote_inference",
+                "type": "ConnectionError",
+                "message": "connection refused",
             }
-        )
+        stage_values.append({"timing": None, "error": error})
+
+    table = pa.Table.from_arrays(
+        [
+            pa.array(["first.pdf", "second.pdf", "third.pdf"]),
+            pa.array(stage_values),
+            ArrowPythonObjectArray.from_objects([np.array([], dtype=object) for _ in range(3)]),
+        ],
+        names=["path", "page_elements_v3", "images"],
+    )
+    batch_df = BlockAccessor.for_block(table).to_pandas()
+    assert str(batch_df["images"].dtype) == "python_object()"
+
+    ingestor = GraphIngestor(run_mode="batch").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
     )
 
-    class RayLikeDataset:
-        columns = ["text", "tables"]
+    if error_row is None:
+        result = _run_graph_ingest_with_result(ingestor, batch_df, monkeypatch)
 
-        def iter_batches(self, *, batch_format: str):
-            if batch_format == "pandas":
-                yield BlockAccessor.for_block(table).to_pandas()
-            else:
-                assert batch_format == "pyarrow"
-                yield table
+        assert result is batch_df
+        assert len(result) == 3
+        assert str(result["images"].dtype) == "python_object()"
+    else:
+        with pytest.raises(GraphIngestionError) as exc_info:
+            _run_graph_ingest_with_result(ingestor, batch_df, monkeypatch)
 
-    records = GraphIngestor._stage_error_records(RayLikeDataset(), columns=[])
-
-    assert records == []
+        records = exc_info.value.records
+        assert len(records) == 1
+        assert records[0]["row_index"] == error_row
+        assert records[0]["source_identifier"] == "second.pdf"
+        assert records[0]["column"] == "page_elements_v3"
+        assert records[0]["path"] == "error"

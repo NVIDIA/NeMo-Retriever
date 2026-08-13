@@ -132,6 +132,18 @@ def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPand
     return type(adapter_name, (_ArrowPandasOperatorAdapter,), {})
 
 
+def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, Any]) -> bool:
+    """Return whether an operator's heterogeneous rows should stay in pandas."""
+    return bool(
+        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False) or operator_kwargs.get("preserve_pandas_output", False)
+    )
+
+
+def _requires_stable_pandas_blocks(nodes: list[Node]) -> bool:
+    """Return whether repartitions must not promote object columns to tensors."""
+    return any(_preserves_pandas_output(node.operator_class, node.operator_kwargs) for node in nodes)
+
+
 def _concurrency_target(concurrency: Any) -> int:
     """Return the largest actor-pool size that resource planning can permit."""
     if isinstance(concurrency, tuple):
@@ -212,7 +224,9 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
         used_cpu += selected[5]
         used_gpu += selected[6]
     for executor, name, concurrency, _target, _initial, _cpu, _gpu, _auto in auto:
-        executor._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[(id(executor), name)])
+        executor._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(
+            concurrency, planned[(id(executor), name)]
+        )
     for executor in executors:
         executor._resources_preflight_complete = True
         executor._preflight_source_cpu_reservation = executor._source_cpu_reservation
@@ -471,7 +485,7 @@ class RayDataExecutor(AbstractExecutor):
             used_cpu += cpu
             used_gpu += gpu
         for name, concurrency, _count, _initial, _cpu, _gpu in auto:
-            self._node_overrides[name]["concurrency"] = _planned_concurrency(concurrency, planned[name])
+            self._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(concurrency, planned[name])
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
@@ -546,17 +560,38 @@ class RayDataExecutor(AbstractExecutor):
         cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
+        nodes = self._linearize(resolved_graph)
+        requires_stable_pandas_blocks = _requires_stable_pandas_blocks(nodes)
 
         if isinstance(data, rd.Dataset):
-            ds = data
+            ds = rd.Dataset.copy(data, _deep_copy=True) if requires_stable_pandas_blocks else data
+            if requires_stable_pandas_blocks:
+                # Ray copies this context into repartition workers. Disabling
+                # Arrow output and tensor promotion only on an operator actor is
+                # too late because Ray converts its result after the call.
+                ds.context.batch_to_block_arrow_format = False
+                ds.context.enable_tensor_extension_casting = False
         else:
             try:
-                ds = rd.read_binary_files(input_paths, include_paths=True)
+                if requires_stable_pandas_blocks:
+                    # read_binary_files snapshots the current context onto the
+                    # new Dataset; restore the process default immediately so
+                    # unrelated pipelines retain Ray's standard behavior.
+                    original_arrow_format = ctx.batch_to_block_arrow_format
+                    original_tensor_extension_casting = ctx.enable_tensor_extension_casting
+                    ctx.batch_to_block_arrow_format = False
+                    ctx.enable_tensor_extension_casting = False
+                try:
+                    ds = rd.read_binary_files(input_paths, include_paths=True)
+                finally:
+                    if requires_stable_pandas_blocks:
+                        ctx.batch_to_block_arrow_format = original_arrow_format
+                        ctx.enable_tensor_extension_casting = original_tensor_extension_casting
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
-        nodes = self._linearize(resolved_graph)
         if nodes and not self._resources_preflight_complete:
             self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
+        preserve_pandas_output = False
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
@@ -612,7 +647,19 @@ class RayDataExecutor(AbstractExecutor):
                 # offsets for sliced structs with inferred null children.
                 # Compact the valid Arrow batch before that conversion.
                 map_operator_class = _make_arrow_pandas_operator_adapter(node.operator_class)
-                map_batch_format = "pyarrow"
+                stable_pandas_input = preserve_pandas_output
+                # Once an operator reshapes the dataset into heterogeneous
+                # object rows, keep those rows in pandas through every
+                # downstream map stage. Re-enabling Arrow at embedding would
+                # otherwise split optional bbox values into object and tensor
+                # schemas that Ray cannot concatenate.
+                preserve_pandas_output = preserve_pandas_output or _preserves_pandas_output(
+                    node.operator_class, node.operator_kwargs
+                )
+                # The opting-in stage still needs the compacting Arrow adapter
+                # on its input. Its downstream consumers must not ask Ray to
+                # turn the intentionally preserved pandas block back into Arrow.
+                map_batch_format = "pandas" if stable_pandas_input else "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,
                     "operator_kwargs": node.operator_kwargs,

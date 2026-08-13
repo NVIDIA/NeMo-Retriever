@@ -623,6 +623,57 @@ def test_build_graph_ingestor_attaches_asr_params_for_audio_upload() -> None:
     assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
 
 
+def test_build_graph_ingestor_preserves_canonical_video_defaults() -> None:
+    """Auto-routed MP4 uploads must build the full video extraction branch."""
+    base_extract = {"ocr_invoke_url": "https://server.example/v1/ocr"}
+    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        "talk.mp4",
+        b"video bytes",
+        base_extract,
+        None,
+        spec,
+        base_asr=base_asr,
+    )
+
+    assert mode == "video"
+    assert ingestor._extraction_mode == "video"
+    assert ingestor._extract_params.ocr_invoke_url == "https://server.example/v1/ocr"
+    assert ingestor._audio_chunk_params.enabled is True
+    assert ingestor._audio_chunk_params.split_type == "size"
+    assert ingestor._audio_chunk_params.split_interval == 500000
+    assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
+    assert ingestor._video_frame_params.enabled is True
+    assert ingestor._video_frame_params.fps == 0.5
+    assert ingestor._video_frame_params.dedup is True
+    assert ingestor._video_text_dedup_params.enabled is True
+    assert ingestor._video_text_dedup_params.max_dropped_frames == 2
+    assert ingestor._av_fuse_params.enabled is True
+
+
+def test_build_graph_ingestor_keeps_video_frames_when_asr_is_unconfigured() -> None:
+    """An unconfigured ASR endpoint disables audio, not frame OCR."""
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        "silent.mp4",
+        b"video bytes",
+        {"ocr_invoke_url": "https://server.example/v1/ocr"},
+        None,
+        spec,
+        base_asr=None,
+    )
+
+    assert mode == "video"
+    assert ingestor._audio_chunk_params.enabled is False
+    assert ingestor._asr_params is None
+    assert ingestor._video_frame_params.enabled is True
+    assert ingestor._video_text_dedup_params.enabled is True
+    assert ingestor._av_fuse_params.enabled is True
+
+
 def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> None:
     """``extraction_mode='audio'`` must always attach the worker ASR params."""
     base_extract: dict[str, object] = {}

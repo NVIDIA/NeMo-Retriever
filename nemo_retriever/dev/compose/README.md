@@ -61,6 +61,10 @@ Use the NVCR authentication described above before pulling a self-hosted NIM.
 Keep `NGC_API_KEY` exported so it is also available to the NIM containers. The
 hosted-only stack does not require `NGC_API_KEY` at runtime.
 
+Routing is selected when Compose renders the configuration: self-hosted mode
+requires both the `nims-core` preset and profile, and it does not fail over to
+hosted endpoints if a local NIM becomes unavailable.
+
 Start the four core extraction/retrieval NIM services with their checked-in internal
 endpoint wiring:
 

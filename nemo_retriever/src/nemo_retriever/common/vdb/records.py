@@ -132,9 +132,21 @@ class RetrievalHit(TypedDict, total=False):
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
     if metadata.get("embedding") is not None:
-        return metadata["embedding"]
-    payload = row.get("text_embeddings_1b_v2")
-    return payload.get("embedding") if isinstance(payload, dict) else None
+        embedding = metadata["embedding"]
+    else:
+        payload = row.get("text_embeddings_1b_v2")
+        embedding = payload.get("embedding") if isinstance(payload, dict) else None
+
+    if not isinstance(embedding, list):
+        to_numpy = getattr(embedding, "to_numpy", None)
+        if callable(to_numpy):
+            embedding = to_numpy()
+        tolist = getattr(embedding, "tolist", None)
+        if callable(tolist):
+            embedding = tolist()
+        elif isinstance(embedding, tuple):
+            embedding = list(embedding)
+    return embedding
 
 
 def _first_str(*values: Any) -> str:

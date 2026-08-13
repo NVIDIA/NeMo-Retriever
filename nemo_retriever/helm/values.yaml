@@ -405,7 +405,9 @@ topology:
   # ---------------------------------------------------------------------------
   # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
   # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
-  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  # gRPC (4317) and OTLP HTTP (4318) receivers, plus a Prometheus metrics
+  # endpoint (8889), by default. The chart-managed Prometheus exporter uses
+  # `ports.prometheus` and exports metrics received through the OTLP receiver.
   otel:
     enabled: true
     image:

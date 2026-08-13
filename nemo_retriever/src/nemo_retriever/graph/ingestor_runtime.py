@@ -556,6 +556,7 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="CollapseContentToPageRows",
+                        preserve_pandas_output=True,
                     )
                 else:
                     graph = graph >> UDFOperator(
@@ -568,6 +569,7 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="ExplodeContentToRows",
+                        preserve_pandas_output=True,
                     )
             graph = graph >> _BatchEmbedActor(params=embed_params)
 
