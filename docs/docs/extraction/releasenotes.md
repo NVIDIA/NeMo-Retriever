@@ -4,10 +4,6 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 ## 26.08 Release Notes (26.8.0) { #release-2608 }
 
-> **26.08 RC readiness:** GitHub Pages builds from `main` and is the QA review surface for the 26.08 release candidate. docs.nvidia.com remains on the published 26.05 / 26.5.0 snapshot until a separate publish workflow run after GA.
-
-NVIDIA® NeMo Retriever Library version 26.08 covers functionality on `main` that was not in the 26.05 / 26.5.0 release: a refreshed OCR and object-detection stack, first-class agentic retrieval, collection and document APIs, expanded service and query surfaces, and broader text ingest support.
-
 To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 Highlights for the 26.08 release include:
