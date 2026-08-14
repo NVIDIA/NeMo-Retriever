@@ -977,3 +977,41 @@ def test_batch_ingest_finalization_handles_ray_pickled_object_arrays(
         assert records[0]["source_identifier"] == "second.pdf"
         assert records[0]["column"] == "page_elements_v3"
         assert records[0]["path"] == "error"
+
+
+def test_batch_ingest_finalization_skips_unrelated_arrow_extension_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = pa.Table.from_arrays(
+        [
+            pa.array(["first.pdf"]),
+            pa.array([{"timing": None, "error": None}]),
+            pa.array([[{"stored_image_uri": "file:///tmp/stored-images/first.png"}]]),
+        ],
+        names=["path", "page_elements_v3", "images"],
+    )
+    batch_df = table.to_pandas(types_mapper=pd.ArrowDtype)
+    assert pa.types.is_list(batch_df["images"].dtype.pyarrow_dtype)
+
+    original_iter = pd.arrays.ArrowExtensionArray.__iter__
+
+    def fail_for_arrow_list_column(values):
+        # Reproduce the RC3 failure without requiring the customer NIM output:
+        # only whole-column iteration of the stored image payload is invalid.
+        if pa.types.is_list(values.dtype.pyarrow_dtype):
+            raise pa.ArrowIndexError("index with value of 1 is out-of-bounds for array of length 1")
+        return original_iter(values)
+
+    monkeypatch.setattr(pd.arrays.ArrowExtensionArray, "__iter__", fail_for_arrow_list_column)
+    ingestor = GraphIngestor(run_mode="batch").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    result = _run_graph_ingest_with_result(ingestor, batch_df, monkeypatch)
+
+    assert result is batch_df

@@ -91,6 +91,7 @@ _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
 _ERROR_MESSAGE_LIMIT = 256
+_SOURCE_IDENTIFIER_COLUMNS = ("document_id", "path", "source_path", "metadata", "source_id", "source_name")
 logger = logging.getLogger(__name__)
 _HTTP_STATUS_FIELDS: tuple[str, ...] = ("status_code", "http_status", "status", "code")
 _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
@@ -1201,14 +1202,15 @@ class GraphIngestor(ingestor):
             return []
         requested_columns = list(columns) if columns is not None else None
 
-        if callable(iter_batches):
-            batches = (arrow_table_to_pandas(batch_df) for batch_df in iter_batches(batch_format="pyarrow"))
-        else:
-            batches = (batch,)
+        batches = iter_batches(batch_format="pyarrow") if callable(iter_batches) else (batch,)
 
         records: list[dict[str, Any]] = []
-        for batch_df in batches:
-            available_columns = getattr(batch_df, "columns", None)
+        for raw_batch in batches:
+            available_columns = (
+                getattr(raw_batch, "column_names", None)
+                if callable(iter_batches)
+                else getattr(raw_batch, "columns", None)
+            )
             if available_columns is None:
                 continue
             target_columns = (
@@ -1216,11 +1218,24 @@ class GraphIngestor(ingestor):
                 if requested_columns is None
                 else [c for c in requested_columns if c in available_columns]
             )
-            # ``iterrows`` materializes the full frame through NumPy, which is
-            # unsafe for Ray pickled-object columns containing empty arrays.
-            row_values = batch_df.itertuples(index=False, name=None)
-            for row_index, values in zip(batch_df.index, row_values):
-                row = dict(zip(available_columns, values))
+            if not target_columns:
+                continue
+            # Finalization only needs diagnostic payloads and source context.
+            # Reading the full frame can iterate unrelated Arrow-backed image
+            # columns that pandas cannot safely materialize row by row.
+            scan_columns = list(
+                dict.fromkeys(
+                    [*target_columns, *(column for column in _SOURCE_IDENTIFIER_COLUMNS if column in available_columns)]
+                )
+            )
+            batch_df = (
+                arrow_table_to_pandas(raw_batch.select(scan_columns))
+                if callable(iter_batches)
+                else raw_batch.loc[:, scan_columns]
+            )
+            column_values = {column: batch_df[column].array for column in scan_columns}
+            for row_position, row_index in enumerate(batch_df.index):
+                row = {column: values[row_position] for column, values in column_values.items()}
                 source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):

@@ -14,6 +14,7 @@ import pytest
 
 from nemo_retriever.common.modality.txt.split import (
     TextChunkParams,
+    split_df,
     split_text_by_tokens,
     text_to_chunks_df,
     txt_bytes_to_chunks_df,
@@ -61,6 +62,23 @@ def test_split_text_by_tokens_max_tokens_positive():
     tokenizer = _MockTokenizer()
     with pytest.raises(ValueError, match="max_tokens must be positive"):
         split_text_by_tokens("hello", tokenizer=tokenizer, max_tokens=0)
+
+
+def test_split_df_preserves_source_page_numbers(monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+    source = pd.DataFrame(
+        [
+            {"text": "one two three four", "page_number": 2, "metadata": {}},
+            {"text": "five six seven eight", "page_number": 7, "metadata": {}},
+        ]
+    )
+
+    chunks = split_df(source, max_tokens=2)
+
+    assert chunks["page_number"].tolist() == [2, 2, 7, 7]
+    assert [metadata["chunk_index"] for metadata in chunks["metadata"]] == [0, 1, 0, 1]
 
 
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
