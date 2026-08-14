@@ -546,8 +546,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         self.assertIn(
             'rerank_model_name: "nvidia/llama-nemotron-rerank-vl-1b-v2"',
             proc.stdout,
-            "rerankqa opt-in must auto-set nim_endpoints.rerank_model_name "
-            "to the VL model id.",
+            "rerankqa opt-in must auto-set nim_endpoints.rerank_model_name " "to the VL model id.",
         )
 
     def test_helm_template_omni_image_tag_pins_to_variant(self) -> None:

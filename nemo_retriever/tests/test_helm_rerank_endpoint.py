@@ -218,8 +218,7 @@ class HelmRerankEndpointTests(TestCase):
                 "--set",
                 "nimOperator.rerankqa.enabled=true",
                 "--set",
-                "serviceConfig.nimEndpoints.rerankInvokeUrl="
-                "http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking",
+                "serviceConfig.nimEndpoints.rerankInvokeUrl=" "http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking",
                 "--set",
                 f"serviceConfig.nimEndpoints.rerankModelName={_RERANK_REMOTE_MODEL_ID}",
             ),
