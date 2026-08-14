@@ -10,10 +10,33 @@ Some NIM microservices and models that the library calls may be individually cov
 
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? { #use-with-existing-retrieval-pipeline }
 
-You can use the CLI or Python APIs to perform extraction only, and then consume the results.
-Using the Python API, `results` is a list object with one entry.
-For code examples, refer to the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) 
-and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb).
+Yes. Use the Python API to extract content, then pass the extracted rows into your existing retrieval stack.
+
+Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. Typical columns include `text`, `content`, `path`, `page_number`, and `metadata`. For field-level metadata, refer to [Metadata reference](content-metadata.md). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
+The following example extracts Markdown without embedding or writing an index.
+
+```python
+from nemo_retriever import create_ingestor
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["document.md"])
+    .extract()
+    .ingest()
+)
+
+for record in result.to_dict(orient="records"):
+    text = record.get("text") or record.get("content")
+    source_path = record["path"]
+    metadata = record.get("metadata")
+```
+
+Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, and metadata to your retriever.
+
+The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+
+For Python ingest and indexing, refer to [Ingest documents into a searchable VDB collection](workflow-document-ingestion.md). After you have an index, the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb) show framework integration.
 
 ## Where does NeMo Retriever Library ingest to? { #where-does-nrl-ingest-to }
 
