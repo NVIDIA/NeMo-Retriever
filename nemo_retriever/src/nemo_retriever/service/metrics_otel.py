@@ -99,12 +99,31 @@ def instrument_app(app: "FastAPI", *, role: str) -> None:
         try:
             response = await call_next(request)
         except Exception:
-            record_ingest_request(role=role, endpoint=request.url.path, status="5xx", duration_s=time.perf_counter() - started)
+            record_ingest_request(
+                role=role,
+                endpoint=_ingest_route_template(request),
+                status="5xx",
+                duration_s=time.perf_counter() - started,
+            )
             raise
 
         status = f"{response.status_code // 100}xx"
-        record_ingest_request(role=role, endpoint=request.url.path, status=status, duration_s=time.perf_counter() - started)
+        record_ingest_request(
+            role=role,
+            endpoint=_ingest_route_template(request),
+            status=status,
+            duration_s=time.perf_counter() - started,
+        )
         return response
+
+
+def _ingest_route_template(request: Any) -> str:
+    """Return a bounded metric label for the matched ingest route."""
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    if isinstance(path, str) and path.startswith("/v1/ingest/"):
+        return path
+    return "/v1/ingest/unmatched"
 
 
 def record_ingest_accepted(*, role: str, endpoint: str, file_size: int, is_page: bool) -> None:

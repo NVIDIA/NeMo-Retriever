@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from nemo_retriever.service import metrics_otel
@@ -85,3 +87,34 @@ def test_disabled_metrics_do_not_create_instruments(monkeypatch: pytest.MonkeyPa
     assert not metrics_otel.configure_metrics(service_role="standalone")
     metrics_otel.record_ingest_accepted(role="standalone", endpoint="/v1/ingest/job/document", file_size=1, is_page=False)
     assert not metrics_otel._METRICS
+
+
+def test_ingest_middleware_uses_route_templates_for_metric_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: list[dict[str, Any]] = []
+    monkeypatch.setattr(metrics_otel, "record_ingest_request", lambda **kwargs: recorded.append(kwargs))
+
+    app = FastAPI()
+
+    @app.get("/v1/ingest/job/{job_id}")
+    async def get_job(job_id: str) -> dict[str, str]:
+        return {"job_id": job_id}
+
+    @app.get("/v1/ingest/job/{job_id}/fail")
+    async def fail_job(job_id: str) -> None:
+        raise RuntimeError(job_id)
+
+    metrics_otel.instrument_app(app, role="standalone")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.get("/v1/ingest/job/job-one").status_code == 200
+        assert client.get("/v1/ingest/job/job-two").status_code == 200
+        assert client.get("/v1/ingest/job/job-three/fail").status_code == 500
+        assert client.get("/v1/ingest/not-a-route").status_code == 404
+
+    assert [entry["endpoint"] for entry in recorded] == [
+        "/v1/ingest/job/{job_id}",
+        "/v1/ingest/job/{job_id}",
+        "/v1/ingest/job/{job_id}/fail",
+        "/v1/ingest/unmatched",
+    ]
+    assert [entry["status"] for entry in recorded] == ["2xx", "2xx", "5xx", "4xx"]
