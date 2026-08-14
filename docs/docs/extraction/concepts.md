@@ -4,7 +4,17 @@ These terms appear throughout NeMo Retriever Library documentation.
 
 ## Job { #job }
 
-An **ingestion job** is a unit of work you run on input content (documents, audio, video, and other supported types). You submit jobs through the **ingestor Python API** (for example `Ingestor` task chains such as `.extract(...)`) or the **`retriever ingest` CLI**—not by posting a standalone JSON job document. Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations. For UDFs and other extension paths, refer to [Customize & extend](customize-extend.md). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
+An **ingestion job** is a unit of work you run on input content (documents, audio, video, and other supported types). Submit jobs through any of these supported entry points:
+
+- **Python API** — `Ingestor` task chains such as `.extract(...)`. Library and batch modes run ingest in-process. Against a deployed Retriever service (`run_mode="service"`), the client wraps the REST contract below. Refer to the [Python API guide](nemo-retriever-api-reference.md).
+- **`retriever ingest` CLI** — including `retriever ingest service` for a running service. Refer to the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+- **Retriever service REST API** — the public two-step ingest workflow:
+  1. Create and configure the job aggregate with `POST /v1/ingest/job` and an `application/json` `JobCreateRequest` body. The JSON sets job-level fields such as `expected_documents`; it does not embed document bytes.
+  2. Upload document content separately with multipart requests to job-scoped endpoints such as `POST /v1/ingest/job/{job_id}/document`.
+
+Creating the JSON job aggregate does not complete ingestion. For the live OpenAPI schema, open `/docs` or `/openapi.json` on a running service. Refer to the [Docker service image guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+
+Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations. For UDFs and other extension paths, refer to [Customize & extend](customize-extend.md). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
 
 ## Pipeline and tasks { #pipeline-and-tasks }
 
