@@ -65,11 +65,16 @@ def configure_metrics(*, service_role: str, service_name: str | None = None) -> 
     reader: Any | None = None
     exporter: Any | None = None
     try:
-        if any(component is None for component in (OTLPMetricExporter, MeterProvider, PeriodicExportingMetricReader, Resource)):
+        if any(
+            component is None
+            for component in (OTLPMetricExporter, MeterProvider, PeriodicExportingMetricReader, Resource)
+        ):
             raise RuntimeError("OpenTelemetry metrics SDK/exporter packages are not importable")
 
         resolved_service_name = (service_name or os.environ.get("OTEL_SERVICE_NAME") or _DEFAULT_SERVICE_NAME).strip()
-        resource = Resource.create({"service.name": resolved_service_name or _DEFAULT_SERVICE_NAME, "service.role": service_role})
+        resource = Resource.create(
+            {"service.name": resolved_service_name or _DEFAULT_SERVICE_NAME, "service.role": service_role}
+        )
         exporter = OTLPMetricExporter()
         reader = PeriodicExportingMetricReader(exporter)
         provider = MeterProvider(resource=resource, metric_readers=[reader])

@@ -66,9 +66,7 @@ def test_configured_metrics_export_ingest_core_instruments(monkeypatch: pytest.M
     metrics_otel.record_ingest_accepted(
         role="standalone", endpoint="/v1/ingest/job/document", file_size=42, is_page=False
     )
-    metrics_otel.record_ingest_accepted(
-        role="standalone", endpoint="/v1/ingest/job/page", file_size=7, is_page=True
-    )
+    metrics_otel.record_ingest_accepted(role="standalone", endpoint="/v1/ingest/job/page", file_size=7, is_page=True)
 
     points = _metric_points(reader)
     assert sum(point.value for point in points["nemo_retriever.ingest.requests"]) == 2
@@ -85,7 +83,9 @@ def test_disabled_metrics_do_not_create_instruments(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
 
     assert not metrics_otel.configure_metrics(service_role="standalone")
-    metrics_otel.record_ingest_accepted(role="standalone", endpoint="/v1/ingest/job/document", file_size=1, is_page=False)
+    metrics_otel.record_ingest_accepted(
+        role="standalone", endpoint="/v1/ingest/job/document", file_size=1, is_page=False
+    )
     assert not metrics_otel._METRICS
 
 
