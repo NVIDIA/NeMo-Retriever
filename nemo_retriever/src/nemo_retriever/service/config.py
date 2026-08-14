@@ -315,7 +315,7 @@ class AuthConfig(RichModel):
     scope_token_file: str | None = None
     allow_unscoped_dev: bool = False
     header_name: str = "Authorization"
-    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
+    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/live", "/v1/health", "/docs", "/openapi.json", "/redoc"])
 
 
 class MCPConfig(RichModel):

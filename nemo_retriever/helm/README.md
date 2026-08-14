@@ -306,6 +306,18 @@ that path — use a prebuilt service image instead; refer to [Audio and video on
 For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
+### Health probes
+
+The service exposes unauthenticated health endpoints for Kubernetes probes:
+
+| Endpoint | Purpose | Default Helm use |
+| --- | --- | --- |
+| `GET /v1/live` | Shallow process liveness. The endpoint does not check worker backends or wait for service readiness. | Startup and liveness probes. In split mode, the realtime and batch init containers use this endpoint while waiting for the gateway. |
+| `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe. |
+
+When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from the Service endpoints until its required workers are ready. The response includes backend health details to help diagnose the unavailable dependency.
+
+
 
 To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
 

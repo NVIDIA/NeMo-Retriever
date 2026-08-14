@@ -187,6 +187,7 @@ auth:
   api_token: null
   header_name: "Authorization"
   bypass_paths:
+    - "/v1/live"
     - "/v1/health"
     - "/docs"
     - "/openapi.json"

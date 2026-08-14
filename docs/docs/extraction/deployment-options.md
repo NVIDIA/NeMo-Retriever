@@ -22,6 +22,11 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
+The Helm chart uses `GET /v1/live` for startup and liveness probes and
+`GET /v1/health` for readiness. Both endpoints are unauthenticated. In split
+topology, `/v1/health` returns HTTP `503` when the required realtime or batch
+worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
+Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
 **Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:2.3.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 
 For audio and video extraction in Kubernetes, refer to [Audio and video](audio-video.md).

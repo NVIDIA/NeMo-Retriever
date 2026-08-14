@@ -211,7 +211,9 @@ class GatewayProxy:
         client = self._client_for(pool_type)
         try:
             resp = await client.get("/v1/health", timeout=5.0)
-            return {"status": "ok", "code": resp.status_code}
+            if 200 <= resp.status_code < 300:
+                return {"status": "ok", "code": resp.status_code}
+            return {"status": "unhealthy", "code": resp.status_code}
         except httpx.HTTPError as exc:
             return {"status": "unreachable", "error": str(exc)}
 

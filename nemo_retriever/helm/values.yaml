@@ -148,12 +148,12 @@ service:
     count: 0
     productClass: ""
 
-  # Liveness, readiness, and startup probes.  All use the dedicated
-  # GET /v1/health endpoint which returns {"status":"ok"} with no auth.
+  # Startup and liveness use the shallow, unauthenticated GET /v1/live
+  # endpoint. Readiness uses the deep, unauthenticated GET /v1/health endpoint.
   livenessProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 30
     periodSeconds: 30
@@ -173,7 +173,7 @@ service:
   startupProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -720,6 +720,7 @@ serviceConfig:
       key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
+      - "/v1/live"
       - "/v1/health"
       - "/docs"
       - "/openapi.json"
