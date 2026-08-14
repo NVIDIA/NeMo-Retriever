@@ -81,6 +81,83 @@ nemo_retriever/helm/
 
 ## Quick start
 
+### Persistent storage prerequisite { #persistent-storage-prerequisite }
+
+The default chart creates **seven** PersistentVolumeClaims: three
+chart-managed service claims and four NIM Operator NIMCache claims for
+the core NIMs. `helm install` reports `STATUS: deployed` when the
+release is rendered, even if every claim stays `Pending`. Confirm a
+working persistent-volume binding strategy before you install.
+
+Run the following preflight commands:
+
+```bash
+kubectl get storageclass
+kubectl get pv
+```
+
+Use one of the following strategies:
+
+- A default StorageClass (`(default)` in `kubectl get storageclass`)
+  backed by a working provisioner.
+- Explicit `storageClass` values for every default claim, each backed
+  by a working provisioner or matching persistent volumes.
+- Compatible static persistent volumes, or pre-created claims where
+  the chart supports `existingClaim`.
+
+When a `storageClass` value is empty, the chart omits
+`storageClassName`. Kubernetes then assigns the default StorageClass
+if one exists. If none exists, the claim binds only to a compatible
+classless persistent volume that matches the requested size and
+`ReadWriteOnce` access mode.
+
+The following table lists the default claims for a release named
+`retriever`:
+
+| Example claim name | Default size | Helm value path |
+| --- | --- | --- |
+| `retriever-nemo-retriever-data` | `50Gi` | `persistence.storageClass` |
+| `retriever-nemo-retriever-retriever-results` | `50Gi` | `retrieverResults.storageClass` |
+| `retriever-nemo-retriever-vectordb-data` | `50Gi` | `topology.vectordb.persistence.storageClass` |
+| `nemotron-page-elements-v3-pvc` | `25Gi` | `nimOperator.page_elements.storage.pvc.storageClass` |
+| `nemotron-table-structure-v1-pvc` | `25Gi` | `nimOperator.table_structure.storage.pvc.storageClass` |
+| `nemotron-ocr-v2-pvc` | `25Gi` | `nimOperator.ocr.storage.pvc.storageClass` |
+| `llama-nemotron-embed-vl-1b-v2-pvc` | `50Gi` | `nimOperator.vlm_embed.storage.pvc.storageClass` |
+
+When `nims.enabled=false`, the four NIMCache claims are not created.
+The three chart-managed claims still are, unless you disable those
+persistence blocks. Enabling an optional NIM adds another NIMCache
+claim for that key.
+
+To pin a named StorageClass on every default claim, pass the following
+`--set` flags with your cluster class name:
+
+```bash
+helm install retriever ./nemo_retriever/helm \
+  --set persistence.storageClass=<STORAGE_CLASS> \
+  --set retrieverResults.storageClass=<STORAGE_CLASS> \
+  --set topology.vectordb.persistence.storageClass=<STORAGE_CLASS> \
+  --set nimOperator.page_elements.storage.pvc.storageClass=<STORAGE_CLASS> \
+  --set nimOperator.table_structure.storage.pvc.storageClass=<STORAGE_CLASS> \
+  --set nimOperator.ocr.storage.pvc.storageClass=<STORAGE_CLASS> \
+  --set nimOperator.vlm_embed.storage.pvc.storageClass=<STORAGE_CLASS> \
+  --set ngcImagePullSecret.create=true \
+  --set ngcImagePullSecret.password=$NGC_API_KEY \
+  --set ngcApiSecret.create=true \
+  --set ngcApiSecret.password=$NGC_API_KEY
+```
+
+Set each per-NIM `nimOperator.<key>.storage.pvc.storageClass` path.
+The chart-level `nimOperator.nimCache.pvc.storageClass` value is not
+applied to the four core NIMCache resources.
+
+`persistence.existingClaim` and `retrieverResults.existingClaim` skip
+chart PVC creation and mount the named claim. The VectorDB claim does
+not have an `existingClaim` path.
+
+If `helm install` already succeeded and claims stay `Pending`, refer
+to [Helm install succeeds but PersistentVolumeClaims stay Pending](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-pvcs).
+
 ### 1. Service image { #1-service-image }
 
 The chart defaults to the image published to NGC:
@@ -160,6 +237,10 @@ USER nemo
 
 ### 2. Install with external NIM endpoints (operator not required)
 
+Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+before you install. With `nims.enabled=false`, the chart still creates
+the three service claims unless you disable those persistence blocks.
+
 If you already have NIM endpoints reachable from the cluster (e.g. another
 namespace, or NVIDIA Build), turn the master switch off and supply the
 URLs directly:
@@ -184,6 +265,9 @@ the secret is absent (useful for fully local NIM endpoints).
 
 ### 3. Install with the NIM Operator (in-cluster NIMs)
 
+Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+before you install. The default path creates all seven claims.
+
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
 registered. A plain `helm install` reconciles the four core NIMs
@@ -204,6 +288,9 @@ helm install retriever ./nemo_retriever/helm \
 ```
 
 ### Recommended minimal install (26.08) { #recommended-minimal-install-2608 }
+
+Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+before you install.
 
 Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
 
@@ -492,6 +579,7 @@ gated on three conditions ALL holding:
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
+| `nimOperator.<key>.storage.pvc.storageClass` | `""` | Per-NIM NIMCache StorageClass. An empty value renders an empty class on the NIMCache CR, so the operator-created claim uses the cluster default when one exists. Set this path for each enabled NIM. `nimOperator.nimCache.pvc.storageClass` is not applied to per-NIM caches. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
 | `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
 | `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
@@ -701,13 +789,24 @@ when the OCR service runs outside the operator sub-stack.
 
 ### Persistence
 
+Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+before a default install. Empty `storageClass` values omit
+`storageClassName` and rely on a default StorageClass or a compatible
+classless persistent volume.
+
 | Path                       | Default                       | Notes |
 |----------------------------|-------------------------------|-------|
 | `persistence.enabled`      | `true`                        | Mount the pre-existing general PVC for logs and other non-scheduler uses. |
 | `persistence.size`         | `50Gi`                        |       |
 | `persistence.accessModes`  | `[ReadWriteOnce]`             | Access mode for the general PVC. |
 | `persistence.storageClass` | `""`                          | Use cluster default unless set. Use `"-"` to disable a `storageClassName`. |
+| `persistence.existingClaim` | `""`                         | When set, skip PVC creation and mount this claim. |
 | `persistence.mountPath`    | `/var/lib/nemo-retriever`     | General persistent files only; scheduler state and payloads are never stored here. |
+| `retrieverResults.enabled` | `true`                        | Create the results PVC unless `existingClaim` is set. |
+| `retrieverResults.storageClass` | `""`                     | Use cluster default unless set. Use `"-"` to disable a `storageClassName`. |
+| `retrieverResults.existingClaim` | `""`                     | When set, skip PVC creation and mount this claim. |
+| `topology.vectordb.persistence.enabled` | `true`           | Create the VectorDB PVC when `serviceConfig.vectordb.enabled` is `true`. |
+| `topology.vectordb.persistence.storageClass` | `""`        | Use cluster default unless set. Use `"-"` to disable a `storageClassName`. No `existingClaim` path. |
 
 The gateway enforces active-lease budgets independently of worker replicas.
 `serviceConfig.workQueue.maxActiveLeases.realtime` defaults to `8` and

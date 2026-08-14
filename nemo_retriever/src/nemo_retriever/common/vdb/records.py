@@ -240,6 +240,16 @@ def _is_image_backed_row(row: dict[str, Any]) -> bool:
     )
 
 
+def _is_inherited_page_uri(row: dict[str, Any], stored_image_uri: str, content_type: str | None) -> bool:
+    """Return whether a structured row only carries its page image URI."""
+    if content_type not in {"table", "chart", "infographic"}:
+        return False
+
+    page_image = row.get("page_image")
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+    return bool(_first_str(page_uri) == stored_image_uri)
+
+
 def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metadata: dict[str, Any]) -> str | None:
     """Map a chunk's modality + real provenance signals to a trust tier.
 
@@ -290,6 +300,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     stored_image_uri = _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"))
     if stored_image_uri:
         content_metadata.setdefault("stored_image_uri", stored_image_uri)
+        if not _is_inherited_page_uri(row, stored_image_uri, content_type):
+            content_metadata.setdefault("uploaded_image_uri", stored_image_uri)
     bbox = _bbox_from_graph_row(row)
     if bbox is not None:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)

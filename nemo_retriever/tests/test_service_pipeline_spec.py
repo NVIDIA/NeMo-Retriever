@@ -935,6 +935,7 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
         "type": "table",
         "fidelity": "ocr",
         "stored_image_uri": "s3://artifacts/table.png",
+        "uploaded_image_uri": "s3://artifacts/table.png",
         "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
         "category": "Finance_Investment",
         "source_path": "Finance_Investment/report.pdf",
