@@ -426,17 +426,17 @@ This event means the claim omitted `storageClassName` and the cluster has neithe
 
 Complete the following checks:
 
-1. Run `kubectl get storageclass` and `kubectl get pv`. Confirm a default StorageClass, a named class you set on every default claim, or compatible Available persistent volumes.
+1. Run `kubectl get storageclass` and `kubectl get pv`. Confirm a default StorageClass, a named class you set on every default claim, or compatible `Available` persistent volumes.
 2. Run `kubectl get pvc --namespace <namespace>`. A default install creates seven claims. All seven must reach `Bound` before the functional workloads can start.
 3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
 4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
 
-For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm storage requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
 ## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Kubernetes Helm storage requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
+- [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

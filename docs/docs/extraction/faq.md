@@ -63,13 +63,13 @@ you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as 
 Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
-## Why does Helm report deployed while pods stay Pending? { #helm-deployed-pending-pvcs }
+## Why does Helm report deployed while PersistentVolumeClaims stay Pending? { #helm-deployed-pending-pvcs }
 
 `STATUS: deployed` means Helm rendered the release. It does not mean PersistentVolumeClaims bound or that pods can schedule.
 
 The default chart creates seven PersistentVolumeClaims. If the cluster has no default StorageClass and no compatible static persistent volumes, those claims stay `Pending` and the retriever service, VectorDB, and core NIM workloads remain unschedulable.
 
-A common claim event is `no persistent volumes available for this claim and no storage class is set`. Confirm storage before you install, or set the documented `storageClass` values. Refer to [Kubernetes Helm storage requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
+A common claim event is `no persistent volumes available for this claim and no storage class is set`. Confirm storage before you install, or set the documented `storageClass` values. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
 
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
