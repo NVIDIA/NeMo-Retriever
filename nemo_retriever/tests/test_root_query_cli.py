@@ -434,9 +434,7 @@ def test_root_query_agentic_local_tensor_parallel_size_plumbed_into_config(
             self.cfg = cfg
 
         def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
-            return pd.DataFrame(
-                [{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}]
-            )
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
 
         def unload(self) -> None:
             return None
