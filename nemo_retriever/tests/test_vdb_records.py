@@ -129,6 +129,25 @@ def test_canonical_record_batches_pass_through_without_reconversion() -> None:
     assert to_client_vdb_records(records) is records
 
 
+@pytest.mark.parametrize(
+    ("records", "expected"),
+    [
+        pytest.param([[]], [], id="single-empty-batch"),
+        pytest.param([[], []], [], id="multiple-empty-batches"),
+        pytest.param(
+            [[], [{"metadata": {"content": "canonical"}}], []],
+            [[{"metadata": {"content": "canonical"}}]],
+            id="mixed",
+        ),
+    ],
+)
+def test_canonical_record_batches_remove_empty_inner_batches(
+    records: list[list[dict]],
+    expected: list[list[dict]],
+) -> None:
+    assert to_client_vdb_records(records) == expected
+
+
 def test_graph_record_conversion_preserves_service_provenance() -> None:
     records = to_client_vdb_records(
         [

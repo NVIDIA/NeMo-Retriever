@@ -84,9 +84,14 @@ from nemo_retriever.common.input_files import (
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.ray_runtime import ensure_local_ray_runtime
 from nemo_retriever.common.ray_resource_hueristics import gather_cluster_resources
+from nemo_retriever.common.stage_errors import (
+    ERROR_FIELD_KEYS,
+    is_populated_error_field,
+    iter_stage_errors_from_value,
+)
 from nemo_retriever.common.modality.txt.split import empty_text_chunks_df
 
-_ERROR_FIELD_KEYS = ("error", "errors", "exception", "traceback", "failed")
+_ERROR_FIELD_KEYS = ERROR_FIELD_KEYS
 _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
@@ -1106,35 +1111,11 @@ class GraphIngestor(ingestor):
 
     @staticmethod
     def _is_populated_error_field(key: str, value: Any) -> bool:
-        if value is None:
-            return False
-        if key == "failed" and isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return bool(value.strip())
-        if isinstance(value, (list, tuple, set, dict)):
-            return len(value) > 0
-        return bool(value)
+        return is_populated_error_field(key, value)
 
     @classmethod
     def _iter_stage_errors_from_value(cls, value: Any, *, path: str = "") -> Iterator[dict[str, Any]]:
-        if isinstance(value, dict):
-            for key in _ERROR_FIELD_KEYS:
-                if key in value and cls._is_populated_error_field(key, value.get(key)):
-                    yield {
-                        "path": f"{path}.{key}" if path else key,
-                        "error": value.get(key),
-                    }
-            for key, child in value.items():
-                if key in _ERROR_FIELD_KEYS and cls._is_populated_error_field(key, child):
-                    continue
-                child_path = f"{path}.{key}" if path else str(key)
-                yield from cls._iter_stage_errors_from_value(child, path=child_path)
-            return
-        if isinstance(value, (list, tuple)):
-            for i, child in enumerate(value):
-                child_path = f"{path}[{i}]" if path else f"[{i}]"
-                yield from cls._iter_stage_errors_from_value(child, path=child_path)
+        yield from iter_stage_errors_from_value(value, path=path)
 
     @staticmethod
     def _row_value(row: Any, key: str) -> Any:
