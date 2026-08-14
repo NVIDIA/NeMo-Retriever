@@ -27,6 +27,20 @@ class _HealthProxy:
         return self._statuses[pool_type.value]
 
 
+class _ConcurrentHealthProxy:
+    def __init__(self) -> None:
+        self._checks_started = 0
+        self._both_checks_started = asyncio.Event()
+
+    async def check_backend(self, pool_type: PoolType) -> dict[str, object]:
+        self._checks_started += 1
+        if self._checks_started == 2:
+            self._both_checks_started.set()
+
+        await asyncio.wait_for(self._both_checks_started.wait(), timeout=0.5)
+        return {"status": "ok", "code": 200, "pool": pool_type.value}
+
+
 class _HealthClient:
     def __init__(self, status_code: int) -> None:
         self._status_code = status_code
@@ -82,6 +96,19 @@ def test_gateway_health_reflects_required_backend_readiness(
     assert response.json()["backends"] == statuses
     assert response.json()["status"] == ("ok" if expected_status == 200 else "unavailable")
 
+
+def test_gateway_health_checks_backends_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(proxy_module, "get_proxy", _ConcurrentHealthProxy)
+    app = create_app(ServiceConfig(mode="gateway"))
+
+    with TestClient(app) as client:
+        response = client.get("/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["backends"] == {
+        "realtime": {"status": "ok", "code": 200, "pool": "realtime"},
+        "batch": {"status": "ok", "code": 200, "pool": "batch"},
+    }
 
 @pytest.mark.parametrize("status_code", [400, 500, 503])
 def test_backend_non_success_response_is_unhealthy(status_code: int) -> None:

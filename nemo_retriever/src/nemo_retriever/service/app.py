@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -357,9 +358,13 @@ def create_app(config: ServiceConfig) -> FastAPI:
             else:
                 from nemo_retriever.service.services.pipeline_pool import PoolType
 
+                realtime, batch = await asyncio.gather(
+                    proxy.check_backend(PoolType.REALTIME),
+                    proxy.check_backend(PoolType.BATCH),
+                )
                 base["backends"] = {
-                    "realtime": await proxy.check_backend(PoolType.REALTIME),
-                    "batch": await proxy.check_backend(PoolType.BATCH),
+                    "realtime": realtime,
+                    "batch": batch,
                 }
                 if any(backend["status"] != "ok" for backend in base["backends"].values()):
                     base["status"] = "unavailable"
