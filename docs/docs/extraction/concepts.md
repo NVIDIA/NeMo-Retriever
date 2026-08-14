@@ -12,7 +12,7 @@ An **ingestion job** is a unit of work you run on input content (documents, audi
   1. Create and configure the job aggregate with `POST /v1/ingest/job` and an `application/json` `JobCreateRequest` body. The JSON sets job-level fields such as `expected_documents`; it does not embed document bytes.
   2. Upload document content separately with multipart requests to job-scoped endpoints such as `POST /v1/ingest/job/{job_id}/document`.
 
-Creating the JSON job aggregate does not complete ingestion. For the live OpenAPI schema, open `/docs` or `/openapi.json` on a running service. Refer to the [Docker service image guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+Creating the JSON job aggregate does not complete ingestion. For the live OpenAPI schema, open `/docs` or `/openapi.json` on a running service. For how to run a service, refer to [Deployment options](deployment-options.md).
 
 Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations. For UDFs and other extension paths, refer to [Customize & extend](customize-extend.md). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
 

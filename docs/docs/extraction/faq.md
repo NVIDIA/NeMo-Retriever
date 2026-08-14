@@ -12,7 +12,9 @@ Some NIM microservices and models that the library calls may be individually cov
 
 Yes. Use the Python API to extract content, then pass the extracted rows into your existing retrieval stack.
 
-Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. Typical columns include `text`, `content`, `path`, `page_number`, and `metadata`. For field-level metadata, refer to [Metadata reference](content-metadata.md).
+Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. Typical columns include `text`, `content`, `path`, `page_number`, and `metadata`. For field-level metadata, refer to [Metadata reference](content-metadata.md). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
+The following example extracts Markdown without embedding or writing an index.
 
 ```python
 from nemo_retriever import create_ingestor

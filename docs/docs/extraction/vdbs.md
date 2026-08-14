@@ -75,11 +75,13 @@ LanceDB uses the `LanceDB` operator class from the client library. You can confi
 
 ### CLI
 
+The following command runs local ingest into the default LanceDB table:
+
 ```bash
 retriever ingest ./data/multimodal_test.pdf
 ```
 
-Local and batch ingest write to LanceDB. Service ingest writes to service-configured storage. Use `--lancedb-uri` and `--table-name` on the local and batch commands when you need a non-default LanceDB location. For modes and flags, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+Use `--lancedb-uri` and `--table-name` on the local and batch commands when you need a non-default LanceDB location. For modes and flags, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 ### Programmatic API (Python)
 
@@ -87,7 +89,7 @@ Local and batch ingest write to LanceDB. Service ingest writes to service-config
 
 For URI, table name, and other parameters, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
-You can also construct a `LanceDB` instance and call `run` / `retrieval` directly:
+You can also construct a `LanceDB` instance and call `run` and `retrieval` directly:
 
 ```python
 from nemo_retriever.common.vdb.lancedb import LanceDB
@@ -191,4 +193,4 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 - [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
 - [Environment Variables](environment-config.md)
-- [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
+- [Troubleshoot NeMo Retriever Extraction](troubleshoot.md)
