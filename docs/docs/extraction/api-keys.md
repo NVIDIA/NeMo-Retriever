@@ -66,7 +66,7 @@ When you create an NGC key, select the following for **Services Included**.
 Set the chart values in the [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) section of the Helm chart README so the chart renders `ngc-secret` and `ngc-api`:
 
 - `ngcImagePullSecret.create` and `ngcImagePullSecret.password` create the `ngc-secret` dockerconfigjson Secret for pulls from `nvcr.io`.
-- `ngcApiSecret.create` and `ngcApiSecret.password` create the `ngc-api` Secret. The service container reads `NGC_API_KEY` and `NVIDIA_API_KEY` from that Secret when it exists.
+- `ngcApiSecret.create` and `ngcApiSecret.password` create the `ngc-api` Secret with `NGC_API_KEY` and `NGC_CLI_API_KEY`. The service container maps `NGC_API_KEY` and `NVIDIA_API_KEY` from the Secret `NGC_API_KEY` key when the Secret exists.
 
 ```bash
 helm install retriever ./nemo_retriever/helm \

@@ -3,7 +3,7 @@
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
 Set them in the process environment before you run the public SDK or the `retriever` CLI. The SDK and CLI do not load a working-directory `.env` file automatically.
 
-If you keep values in a `.env` file, export that file into the current shell first:
+If you keep values in a `.env` file, source that file into the current shell first:
 
 ```bash
 set -a
