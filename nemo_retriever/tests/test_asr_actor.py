@@ -162,6 +162,45 @@ def test_asr_actor_remote_segment_audio():
         assert out["metadata"].iloc[1]["segment_end_seconds"] == 2.5
 
 
+def test_asr_actor_clamps_negative_boundary_and_replaces_invalid_ranges():
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
+        mock_client = MagicMock()
+        mock_client.infer.return_value = (
+            [
+                {"start": -0.08, "end": 4.0, "text": "Boundary sentence."},
+                {"start": float("nan"), "end": 5.0, "text": "Invalid sentence."},
+            ],
+            "Boundary sentence. Invalid sentence.",
+        )
+        mock_get.return_value = mock_client
+
+        actor = ASRActor(params=ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True))
+        out = actor(
+            pd.DataFrame(
+                [
+                    {
+                        "path": "/tmp/chunk.wav",
+                        "bytes": b"fake_audio",
+                        "source_path": "/tmp/source.wav",
+                        "duration": 10.0,
+                        "chunk_index": 0,
+                        "metadata": {"chunk_start_seconds": 0.0},
+                        "page_number": 0,
+                    }
+                ]
+            )
+        )
+
+        assert out["text"].tolist() == ["Boundary sentence.", "Invalid sentence."]
+        first_metadata = out["metadata"].iloc[0]
+        assert first_metadata["segment_start_seconds"] == 0.0
+        assert first_metadata["segment_end_seconds"] == 4.0
+        assert first_metadata["segment_count"] == 2
+        second_metadata = out["metadata"].iloc[1]
+        assert second_metadata["segment_start_seconds"] == 0.0
+        assert second_metadata["segment_end_seconds"] == 10.0
+
+
 def test_apply_asr_to_df_segment_audio():
     with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
