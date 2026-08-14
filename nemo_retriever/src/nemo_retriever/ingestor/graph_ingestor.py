@@ -778,6 +778,7 @@ class GraphIngestor(ingestor):
             service-style ``(source, error)`` tuples.
         """
         return_failures = self._resolve_return_failures(params, kwargs)
+        self._validate_input_sources(self._inline_texts)
         if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
             result = empty_text_chunks_df()
             if self._run_mode == "batch":

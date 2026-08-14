@@ -343,6 +343,7 @@ def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
         "type": "image",
         "page_number": 7,
         "stored_image_uri": "file:///tmp/scanned-page-7.png",
+        "uploaded_image_uri": "file:///tmp/scanned-page-7.png",
     }
 
 
