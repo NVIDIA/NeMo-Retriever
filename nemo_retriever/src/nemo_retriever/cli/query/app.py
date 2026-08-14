@@ -182,7 +182,7 @@ def _local_command(
     reranker_api_key_env: opts.RerankerApiKeyEnvOption = None,
     reranker_model_name: opts.RerankerModelNameOption = None,
     reranker_backend: opts.RerankerBackendOption = None,
-    rerank: opts.RerankOption = False,
+    rerank: opts.RerankOption = None,
     retrieval_mode: opts.RetrievalModeOption = "auto",
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
@@ -199,7 +199,7 @@ def _local_command(
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    if click.get_current_context().get_parameter_source("rerank") is click.core.ParameterSource.DEFAULT:
+    if rerank is None:
         rerank = bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:

@@ -122,7 +122,7 @@ RerankerBackendOption = Annotated[
     ),
 ]
 RerankOption = Annotated[
-    bool,
+    bool | None,
     typer.Option(
         "--rerank/--no-rerank",
         help=(
