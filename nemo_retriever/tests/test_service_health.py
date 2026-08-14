@@ -110,6 +110,7 @@ def test_gateway_health_checks_backends_concurrently(monkeypatch: pytest.MonkeyP
         "batch": {"status": "ok", "code": 200, "pool": "batch"},
     }
 
+
 @pytest.mark.parametrize("status_code", [400, 500, 503])
 def test_backend_non_success_response_is_unhealthy(status_code: int) -> None:
     proxy = GatewayProxy.__new__(GatewayProxy)
