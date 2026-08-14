@@ -5,7 +5,23 @@
 """Unit tests for the local vLLM-backed Nemotron Parse model."""
 
 import os
+import tomllib
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+from packaging.requirements import Requirement
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_core_dependencies_exclude_tokenizers_duplicate_pattern_regression():
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+    tokenizers = next(Requirement(dependency) for dependency in dependencies if dependency.startswith("tokenizers"))
+
+    assert tokenizers.specifier.contains("0.22.2")
+    assert not tokenizers.specifier.contains("0.23.0rc0", prereleases=True)
 
 
 def test_applies_vllm_startup_defaults_before_constructing_llm(monkeypatch):
