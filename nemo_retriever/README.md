@@ -187,7 +187,7 @@ that PDF or with your own file or directory.
 > 16 IVF partitions by default. When the table has fewer rows, the adapter
 > clamps that count to one less than the row count. An ingest that produces
 > 2 through 15 rows still builds an IVF index. A one-row table is stored
-> without a vector index and does not fail. An ingest that produces zero rows
+> without a vector index, and ingest succeeds. An ingest that produces zero rows
 > is a separate empty-result error. Use a larger corpus when you want more
 > representative retrieval quality.
 
