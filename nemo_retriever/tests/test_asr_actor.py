@@ -237,9 +237,9 @@ def test_asr_actor_preserves_transcript_for_mixed_ranges_without_duration():
 
         assert out["text"].tolist() == ["Valid sentence. Malformed sentence."]
         metadata = out["metadata"].iloc[0]
-        assert metadata["segment_start_seconds"] == 2.1
-        assert metadata["segment_end_seconds"] == 2.5
-        assert metadata["segment_count"] == 1
+        assert "segment_start_seconds" not in metadata
+        assert "segment_end_seconds" not in metadata
+        assert "segment_count" not in metadata
 
 
 def test_apply_asr_to_df_segment_audio():

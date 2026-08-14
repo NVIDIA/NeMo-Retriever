@@ -276,7 +276,7 @@ class _ASRActorBase:
             out_rows: List[Dict[str, Any]] = []
             valid_segments: List[tuple[str, float, float]] = []
             segment_texts: List[str] = []
-            combine_with_valid_range = False
+            use_unaligned_fallback = False
             for segment in segments:
                 if not isinstance(segment, dict):
                     continue
@@ -288,12 +288,12 @@ class _ASRActorBase:
                 if segment_range is None:
                     if chunk_dur <= 0:
                         logger.warning(
-                            "Combining transcript over valid ASR ranges because segment range "
+                            "Falling back to an unaligned transcript because segment range "
                             "start=%r end=%r is invalid and chunk duration is unavailable",
                             segment.get("start"),
                             segment.get("end"),
                         )
-                        combine_with_valid_range = True
+                        use_unaligned_fallback = True
                         continue
                     logger.warning(
                         "Replacing invalid ASR segment range start=%r end=%r " "with chunk bounds",
@@ -303,11 +303,9 @@ class _ASRActorBase:
                     segment_range = (0.0, chunk_dur)
                 valid_segments.append((segment_text, *segment_range))
 
-            if combine_with_valid_range and valid_segments:
-                combined_text = transcript.strip() or " ".join(segment_texts)
-                combined_start = min(start for _, start, _ in valid_segments)
-                combined_end = max(end for _, _, end in valid_segments)
-                valid_segments = [(combined_text, combined_start, combined_end)]
+            if use_unaligned_fallback:
+                transcript = transcript.strip() or " ".join(segment_texts)
+                valid_segments = []
 
             segment_count = len(valid_segments)
             for segment_index, (segment_text, seg_s_secs, seg_e_secs) in enumerate(valid_segments):
@@ -335,10 +333,14 @@ class _ASRActorBase:
             if out_rows:
                 return out_rows
 
-        # Per-chunk fallback: anchor the row's span to the chunk's wall-clock
-        # window so audio_segment recall still works without per-utterance data.
-        metadata.setdefault("segment_start_seconds", chunk_start)
-        metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        # Per-chunk fallback: publish a wall-clock span only when the chunk
+        # duration is known; otherwise keep the transcript explicitly unaligned.
+        if chunk_dur > 0:
+            metadata.setdefault("segment_start_seconds", chunk_start)
+            metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        else:
+            metadata.pop("segment_start_seconds", None)
+            metadata.pop("segment_end_seconds", None)
         metadata["_content_type"] = "audio"
         metadata.setdefault("modality", "audio_segment")
         return [
