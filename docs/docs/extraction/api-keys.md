@@ -60,6 +60,13 @@ When you create an NGC key, select the following for **Services Included**.
 
 ![Generate Personal Key](images/generate_personal_key.png)
 
+After you copy the key, set it in your environment. The Helm example below reads `$NGC_API_KEY`. If that variable is empty, Helm fails because `ngcImagePullSecret.password` is required when `create=true`.
+
+```bash
+export NGC_API_KEY="<ngc-personal-key>"
+```
+
+On Windows PowerShell you can use `$env:NGC_API_KEY = "<ngc-personal-key>"`.
 
 ## Using your NGC key with Helm { #using-your-ngc-key-with-helm }
 
