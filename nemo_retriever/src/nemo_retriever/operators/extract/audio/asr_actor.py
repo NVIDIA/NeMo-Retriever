@@ -275,20 +275,25 @@ class _ASRActorBase:
         if self._params.segment_audio and segments:
             out_rows: List[Dict[str, Any]] = []
             valid_segments: List[tuple[str, float, float]] = []
+            segment_texts: List[str] = []
+            combine_with_valid_range = False
             for segment in segments:
                 if not isinstance(segment, dict):
                     continue
                 segment_text = str(segment.get("text") or "").strip()
                 if not segment_text:
                     continue
+                segment_texts.append(segment_text)
                 segment_range = _validated_chunk_relative_range(segment.get("start"), segment.get("end"), chunk_dur)
                 if segment_range is None:
                     if chunk_dur <= 0:
                         logger.warning(
-                            "Dropping invalid ASR segment range start=%r end=%r; " "chunk duration is unavailable",
+                            "Combining transcript over valid ASR ranges because segment range "
+                            "start=%r end=%r is invalid and chunk duration is unavailable",
                             segment.get("start"),
                             segment.get("end"),
                         )
+                        combine_with_valid_range = True
                         continue
                     logger.warning(
                         "Replacing invalid ASR segment range start=%r end=%r " "with chunk bounds",
@@ -297,6 +302,12 @@ class _ASRActorBase:
                     )
                     segment_range = (0.0, chunk_dur)
                 valid_segments.append((segment_text, *segment_range))
+
+            if combine_with_valid_range and valid_segments:
+                combined_text = transcript.strip() or " ".join(segment_texts)
+                combined_start = min(start for _, start, _ in valid_segments)
+                combined_end = max(end for _, _, end in valid_segments)
+                valid_segments = [(combined_text, combined_start, combined_end)]
 
             segment_count = len(valid_segments)
             for segment_index, (segment_text, seg_s_secs, seg_e_secs) in enumerate(valid_segments):
