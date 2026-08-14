@@ -32,8 +32,12 @@ It does not store the embeddings for images.
 
     To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, and other object stores). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
-NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)).
-Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)) and through the public `retriever ingest` CLI.
+
+- **Local and batch CLI ingest** (`retriever ingest`, `retriever ingest local`, `retriever ingest batch`) persist embeddings to LanceDB (default URI `lancedb`, table `nemo-retriever`).
+- **Service CLI ingest** (`retriever ingest service`) writes to service-configured storage.
+
+For supported modes and target storage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 `.vdb_upload()` does not generate embeddings. For dense SDK ingestion, include `.embed()` in the pipeline:
 
@@ -67,13 +71,23 @@ This combination of file format, index strategy, and in-process runtime supports
 
 ## Upload to LanceDB { #upload-to-lancedb }
 
-LanceDB uses the `LanceDB` operator class from the client library. You can configure it through the Python API.
+LanceDB uses the `LanceDB` operator class from the client library. You can configure it through the Python API or the CLI.
+
+### CLI
+
+```bash
+retriever ingest ./data/multimodal_test.pdf
+```
+
+Local and batch ingest write to LanceDB. Service ingest writes to service-configured storage. Use `--lancedb-uri` and `--table-name` on the local and batch commands when you need a non-default LanceDB location. For modes and flags, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 ### Programmatic API (Python)
 
-Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and pass it as `vdb_op`.
+`GraphIngestor.vdb_upload()` selects LanceDB when you omit `vdb_op`. `VdbUploadParams.vdb_op` defaults to `"lancedb"`. Passing `vdb_op="lancedb"` is optional explicitness, not a requirement.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+For URI, table name, and other parameters, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
+You can also construct a `LanceDB` instance and call `run` / `retrieval` directly:
 
 ```python
 from nemo_retriever.common.vdb.lancedb import LanceDB
@@ -93,7 +107,7 @@ docs = vdb.retrieval(queries, top_k=10)
 
 Query ingested tables with `LanceDB.retrieval()` (precomputed vectors) or with [`Retriever.query`](nemo-retriever-api-reference.md) (embeds the query string for you). Optional `where` predicates and client-side filters are documented under [Metadata and filtering](#metadata-and-filtering).
 
-When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `LanceDB` instance so uploads target LanceDB. If you omit `vdb_op`, the ingestion Python client still defaults the string argument to `"milvus"` for backward compatibility, which is not the LanceDB operator—always pass `vdb_op="lancedb"` when you intend LanceDB.
+To use a custom operator, pass a `VDB` instance as `vdb` to `IngestVdbOperator` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)).
 
 ## Semantic retrieval { #semantic-retrieval }
 
@@ -137,11 +151,11 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
+| **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — default `vdb_op` is `"lancedb"`. |
 
-On `GraphIngestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; refer to [Upload to LanceDB](#upload-to-lancedb).
+`GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb).
 
-Pass `vdb_op="lancedb"` or a `LanceDB` instance. To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)).
+To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)).
 
 ### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 
@@ -174,6 +188,7 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 - [Customize & extend](customize-extend.md)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
+- [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
 - [Environment Variables](environment-config.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
