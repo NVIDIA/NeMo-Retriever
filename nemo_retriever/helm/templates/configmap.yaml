@@ -178,7 +178,7 @@ pipeline:
   batch_queue_size: {{ .Values.serviceConfig.pipeline.batchQueueSize }}
 
 work_queue:
-  gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.serviceConfig.server.port }}"
+  gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.networkService.port }}"
   spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
   spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
   claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
@@ -222,7 +222,7 @@ vectordb:
 
 {{- $vectordbSvc := printf "%s-vectordb" (include "nemo-retriever.fullname" .) -}}
 {{- $vectordbPort := ((.Values.topology.vectordb).port | default 7671) -}}
-{{- $gatewaySvc := printf "%s-gateway" (include "nemo-retriever.fullname" .) -}}
+{{- $gatewaySvc := include "nemo-retriever.fullname" . -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ConfigMap with mode: standalone
@@ -243,8 +243,9 @@ data:
 # =========================================================================
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $realtimeSvc := printf "%s-realtime" $fullname -}}
+{{- $gatewaySvc = printf "%s-gateway" $fullname -}}
 {{- $batchSvc := printf "%s-batch" $fullname -}}
-{{- $port := .Values.serviceConfig.server.port -}}
+{{- $port := .Values.networkService.port -}}
 {{- $roles := list "gateway" "realtime" "batch" }}
 {{- range $role := $roles }}
 ---

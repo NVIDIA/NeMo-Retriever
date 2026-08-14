@@ -316,11 +316,22 @@ To run self-hosted Parakeet for [audio and video extraction](https://github.com/
 
 The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
 
+### Service networking
+
+| Path | Default | Notes |
+|------|---------|-------|
+| `networkService.port` | `7670` | Kubernetes Service port. The chart uses this port for generated Service DNS URLs. |
+| `serviceConfig.server.port` | `7670` | Retriever service container listener port. |
+
+You can set these values independently. When they differ, Kubernetes Services
+listen on `networkService.port` and route to the container listener on
+`serviceConfig.server.port`.
+
 ### Service configuration (rendered into `retriever-service.yaml`)
 
 | Path                                              | Default | Notes |
 |---------------------------------------------------|---------|-------|
-| `serviceConfig.server.port`                       | `7670`  | Container + Service port. |
+| `serviceConfig.server.port`                       | `7670`  | Retriever service container listener port. Refer to [Service networking](#service-networking). |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |

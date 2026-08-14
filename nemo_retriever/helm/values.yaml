@@ -209,6 +209,7 @@ service:
 # =============================================================================
 networkService:
   type: NodePort
+  # Kubernetes Service port, including chart-generated Service-DNS URLs.
   port: 7670
   # Optional: override the targetPort name. Should match container port name.
   targetPort: http
@@ -531,6 +532,7 @@ topology:
 serviceConfig:
   server:
     host: "0.0.0.0"
+    # Retriever process listener and named container port.
     port: 7670
 
   logging:

@@ -44,7 +44,61 @@ def test_split_work_queue_identity_spool_and_gateway_url() -> None:
     )
 
 
+def test_chart_service_urls_use_network_service_port() -> None:
+    documents = _render(
+        "--set",
+        "topology.mode=split",
+        "--set",
+        "networkService.port=18080",
+        "--set",
+        "serviceMonitor.autoEnableInSplitMode=false",
+    )
+    services = [document for document in documents if document.get("kind") == "Service"]
+    assert len(services) == 3
+    assert all(service["spec"]["ports"][0]["port"] == 18080 for service in services)
+
+    configs = {
+        document["metadata"]["labels"]["app.kubernetes.io/component"]: document["data"]["retriever-service.yaml"]
+        for document in documents
+        if document.get("kind") == "ConfigMap" and "retriever-service.yaml" in document.get("data", {})
+    }
+    assert 'realtime_url: "http://shared-results-test-nemo-retriever-realtime:18080"' in configs["gateway"]
+    assert 'batch_url: "http://shared-results-test-nemo-retriever-batch:18080"' in configs["gateway"]
+    assert all(
+        'gateway_url: "http://shared-results-test-nemo-retriever-gateway:18080"' in config
+        for config in configs.values()
+    )
+    assert all(
+        next(
+            container
+            for container in deployment["spec"]["template"]["spec"]["containers"]
+            if container["name"] == "nemo-retriever"
+        )["ports"][0]["containerPort"]
+        == 7670
+        for deployment in _service_deployments(documents)
+    )
+
+
+def test_standalone_work_queue_gateway_url_uses_service_port_and_name() -> None:
+    documents = _render("--set", "networkService.port=18080")
+    service = next(document for document in documents if document.get("kind") == "Service")
+    assert service["metadata"]["name"] == "shared-results-test-nemo-retriever"
+    assert service["spec"]["ports"][0]["port"] == 18080
+
+    config = next(
+        document["data"]["retriever-service.yaml"]
+        for document in documents
+        if document.get("kind") == "ConfigMap" and "retriever-service.yaml" in document.get("data", {})
+    )
+    assert 'gateway_url: "http://shared-results-test-nemo-retriever:18080"' in config
+    deployment = _service_deployments(documents)[0]
+    container = next(
+        item for item in deployment["spec"]["template"]["spec"]["containers"] if item["name"] == "nemo-retriever"
+    )
+    assert container["ports"][0]["containerPort"] == 7670
 def test_split_gateway_spool_size_limit_preserves_sub_gib_bytes() -> None:
+
+
     documents = _render(
         "--set",
         "topology.mode=split",
