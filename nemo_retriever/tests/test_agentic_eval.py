@@ -189,6 +189,46 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_forwards_reranker_endpoint_as_rerank_invoke_url():
+    """A configured reranker endpoint must reach the remote rerank variant.
+
+    ``NemotronRerankActor`` dispatches on ``rerank_invoke_url``; any other key
+    leaves the URL unused and loads the reranker locally instead.
+    """
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="http://localhost:8015",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] == "http://localhost:8015"
+    assert "invoke_url" not in rerank_kwargs
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is True
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_without_reranker_endpoint_uses_local_variant():
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="   ",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] is None
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is False
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_run_agentic_beir_evaluation_loads_queries_and_qrels():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_beir_evaluation
     from nemo_retriever.tools.recall.beir import BeirDataset
