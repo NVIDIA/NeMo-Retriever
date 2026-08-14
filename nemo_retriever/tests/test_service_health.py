@@ -47,7 +47,7 @@ class _HealthClient:
 
     async def get(self, path: str, *, timeout: float) -> httpx.Response:
         assert path == "/v1/health"
-        assert timeout == 5.0
+        assert timeout == 3.0
         return httpx.Response(self._status_code)
 
 
