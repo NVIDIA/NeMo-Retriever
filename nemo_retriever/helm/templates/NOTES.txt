@@ -79,7 +79,10 @@ Services:
      (auto-wired into the retriever service config as `llm.api_base` for `/v1/answer`)
 {{- end }}
 {{- if .Values.nimOperator.rerankqa.enabled }}
-   - llama-nemotron-rerank-vl-1b-v2 → http://llama-nemotron-rerank-vl-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}
+   - llama-nemotron-rerank-vl-1b-v2 → http://llama-nemotron-rerank-vl-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}/v1/ranking
+     (auto-wired into the retriever service config as
+      `nim_endpoints.rerank_invoke_url` / `rerank_model_name` for
+      `/v1/query` with `rerank=true` — see Helm README "Query-time reranking")
 {{- end }}
 {{- if .Values.nimOperator.nemotron_parse.enabled }}
    - nemotron-parse              → http://nemotron-parse:{{ .Values.nimOperator.nemotron_parse.expose.service.port }}

@@ -568,13 +568,13 @@ Mapping (key -> Service name, default invokePath):
   table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
   ocr                                    -> nemotron-ocr-v2                          /v1/ocr
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 
 Audio ASR (Parakeet) is configured directly via
   serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
-
 {{/*
 Emit ``helm.sh/resource-policy: keep`` on NIMCache when
 ``nimOperator.nimCache.keepOnUninstall`` is true (default). Helm uninstall

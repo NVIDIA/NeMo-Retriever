@@ -536,6 +536,19 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "repository — that is the bug the 26.05 fix exists to "
             "prevent.",
         )
+        self.assertIn(
+            'rerank_invoke_url: "http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking"',
+            proc.stdout,
+            "rerankqa opt-in must auto-wire nim_endpoints.rerank_invoke_url. "
+            "If this fails the NIM deploys but /v1/query with rerank=true "
+            "returns HTTP 400.",
+        )
+        self.assertIn(
+            'rerank_model_name: "nvidia/llama-nemotron-rerank-vl-1b-v2"',
+            proc.stdout,
+            "rerankqa opt-in must auto-set nim_endpoints.rerank_model_name "
+            "to the VL model id.",
+        )
 
     def test_helm_template_omni_image_tag_pins_to_variant(self) -> None:
         """Opt-in Omni must render with the pinned ``1.7.0-variant`` tag, not ``:latest``.
