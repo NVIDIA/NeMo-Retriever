@@ -189,6 +189,46 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_forwards_reranker_endpoint_as_rerank_invoke_url():
+    """A configured reranker endpoint must reach the remote rerank variant.
+
+    ``NemotronRerankActor`` dispatches on ``rerank_invoke_url``; any other key
+    leaves the URL unused and loads the reranker locally instead.
+    """
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="http://localhost:8015",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] == "http://localhost:8015"
+    assert "invoke_url" not in rerank_kwargs
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is True
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_without_reranker_endpoint_uses_local_variant():
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="   ",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] is None
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is False
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_run_agentic_beir_evaluation_loads_queries_and_qrels():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_beir_evaluation
     from nemo_retriever.tools.recall.beir import BeirDataset
@@ -397,3 +437,31 @@ def test_agentic_config_validates_local_vllm_knobs():
     assert cfg.local_tensor_parallel_size == 2
     assert cfg.local_max_model_len == 8192
     assert cfg.local_max_num_seqs == 4
+
+
+def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
+    from nemo_retriever.query.agentic import (
+        AgenticRetrievalConfig,
+        _build_agent_chat_completion_fn,
+    )
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="super-49b",
+        local_tensor_parallel_size=2,
+    )
+
+    with patch(
+        "nemo_retriever.models.create_local_agent_llm",
+        return_value=object(),
+    ) as create_local_llm:
+        _build_agent_chat_completion_fn(cfg)
+
+    create_local_llm.assert_called_once_with(
+        "super-49b",
+        backend="vllm",
+        hf_cache_dir=None,
+        gpu_memory_utilization=0.8,
+        tensor_parallel_size=2,
+        max_model_len=None,
+        max_num_seqs=None,
+    )

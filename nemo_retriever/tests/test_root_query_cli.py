@@ -452,6 +452,51 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     ]
 
 
+def test_root_query_agentic_local_tensor_parallel_size_plumbed_into_config(
+    monkeypatch,
+) -> None:
+    """The local tensor-parallel CLI option reaches agentic configuration."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "super-49b",
+            "--agentic-local-tensor-parallel-size",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert config_calls[-1]["llm_model"] == "super-49b"
+    assert config_calls[-1]["local_tensor_parallel_size"] == 2
+
+
 def test_root_query_agentic_rejects_custom_in_process_llm_model() -> None:
     result = RUNNER.invoke(
         cli_main.app,

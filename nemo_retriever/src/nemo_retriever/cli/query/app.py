@@ -193,6 +193,7 @@ def _local_command(
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
     agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
     agentic_temperature: opts.AgenticTemperatureOption = None,
+    agentic_local_tensor_parallel_size: opts.AgenticLocalTensorParallelSizeOption = 1,
     agentic_llm_client: opts.AgenticLlmClientOption = None,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
@@ -277,6 +278,7 @@ def _local_command(
                     react_max_steps=agentic_react_max_steps,
                     text_truncation=agentic_text_truncation,
                     temperature=agentic_temperature,
+                    local_tensor_parallel_size=agentic_local_tensor_parallel_size,
                     llm_client=agentic_llm_client,
                 ),
             )
