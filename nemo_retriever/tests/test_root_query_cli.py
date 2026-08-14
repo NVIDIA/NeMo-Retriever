@@ -203,6 +203,43 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     assert json.loads(result.output) == []
 
 
+def test_root_query_no_rerank_overrides_reranker_options(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "http://rerank:8000/v1/ranking",
+            "--reranker-model-name",
+            "reranker-model",
+            "--reranker-backend",
+            "hf",
+            "--no-rerank",
+        ],
+        env={"NVIDIA_API_KEY": "", "NGC_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {
+            "top_k": 10,
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
+        }
+    ]
+
+
 def test_root_query_passes_reranker_api_key_env(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)

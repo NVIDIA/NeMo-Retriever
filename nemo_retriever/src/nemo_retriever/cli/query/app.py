@@ -198,7 +198,8 @@ def _local_command(
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
+    if click.get_current_context().get_parameter_source("rerank") is click.core.ParameterSource.DEFAULT:
+        rerank = bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:
         # Relaxed model gating: an explicit model is required only for the remote

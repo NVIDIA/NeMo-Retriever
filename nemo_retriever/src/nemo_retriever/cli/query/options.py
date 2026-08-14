@@ -126,8 +126,8 @@ RerankOption = Annotated[
     typer.Option(
         "--rerank/--no-rerank",
         help=(
-            "Enable reranking after vector retrieval. Default off. Implicitly enabled when "
-            "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
+            "Enable reranking after vector retrieval. Default off. When neither flag is passed, implicitly enabled "
+            "when any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
         ),
     ),
 ]
