@@ -1948,7 +1948,7 @@ async def query(request: Request) -> Response:
             if use_remote_reranker:
                 rerank_kwargs.update(
                     rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
-                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-1b-v2",
+                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-vl-1b-v2",
                     api_key=config.nim_endpoints.api_key or "",
                 )
             else:

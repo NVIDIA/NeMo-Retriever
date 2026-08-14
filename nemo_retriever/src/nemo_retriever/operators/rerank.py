@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Reranking stage using nvidia/llama-nemotron-rerank-1b-v2.
+Reranking stage using nvidia/llama-nemotron-rerank-vl-1b-v2.
 
 Provides:
   - ``rerank_hits``         – rerank a list of LanceDB hits for a single query
@@ -18,7 +18,7 @@ URLs append ``/v1/ranking`` automatically::
 
     POST /v1/ranking
     {
-      "model": "nvidia/llama-nemotron-rerank-1b-v2",
+      "model": "nvidia/llama-nemotron-rerank-vl-1b-v2",
       "query": {"text": "..."},
       "passages": [{"text": "..."}, {"text": "..."}],
       "truncate": "END"
@@ -39,7 +39,7 @@ Ray Data actor usage::
         num_gpus=1,
         compute=ray.data.ActorPoolStrategy(size=4),
         fn_constructor_kwargs={
-            "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+            "model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2",
             "query_column": "query",
             "text_column": "text",
             "score_column": "rerank_score",
@@ -70,7 +70,7 @@ from nemo_retriever.common.remote_auth import resolve_remote_api_key
 logger = logging.getLogger(__name__)
 
 _render_warned = False
-_DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
+_DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 _DEFAULT_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
 _DEFAULT_VL_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 _DEFAULT_MAX_LENGTH = 512
@@ -208,7 +208,7 @@ def _rerank_via_endpoint(
         already end with ``/reranking``, ``/ranking``, or ``/rerank``.
     model_name:
         Model identifier sent to the remote endpoint (default
-        ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint (if required).
 
@@ -278,7 +278,7 @@ def rerank_hits(
         already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
-        ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint.
     max_length:
@@ -404,7 +404,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
-    Initialises ``nvidia/llama-nemotron-rerank-1b-v2`` **once** per actor
+    Initialises ``nvidia/llama-nemotron-rerank-vl-1b-v2`` **once** per actor
     instance and reuses it across batches, avoiding repeated model loads.
 
     Each row in the input DataFrame is expected to have a *query* column and a
@@ -421,7 +421,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             num_gpus=1,
             compute=ray.data.ActorPoolStrategy(size=4),
             fn_constructor_kwargs={
-                "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                "model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2",
                 "query_column": "query",
                 "text_column": "text",
                 "score_column": "rerank_score",
@@ -433,7 +433,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     Parameters
     ----------
     model_name:
-        HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint.
     device:

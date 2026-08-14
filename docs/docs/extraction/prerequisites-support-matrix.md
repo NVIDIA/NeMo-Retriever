@@ -94,6 +94,25 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](audio-video.md) transcription | No |
 | `answer_llm` | [llama-3.3-nemotron-super-49b-v1.5](https://build.nvidia.com/nvidia/llama-3.3-nemotron-super-49b-v1.5) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` | Optional `/v1/answer` generation LLM (not part of the default extraction pipeline) | No |
 
+### Configure query reranking with Helm { #configure-query-reranking-with-helm }
+
+The optional `nimOperator.rerankqa` NIM is not auto-wired into the retriever service. To use service query reranking, enable the NIM and explicitly configure its in-cluster ranking endpoint and model ID. Add the following values to your Helm values file:
+
+```yaml
+nimOperator:
+  rerankqa:
+    enabled: true
+
+serviceConfig:
+  nimEndpoints:
+    rerankInvokeUrl: http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking
+    rerankModelName: nvidia/llama-nemotron-rerank-vl-1b-v2
+```
+
+The chart renders these values as `nim_endpoints.rerank_invoke_url` and `nim_endpoints.rerank_model_name` in the retriever service configuration. After deployment, send `rerank: true` in a `/v1/query` request to use the configured reranker.
+
+Setting `nimOperator.rerankqa.enabled=true` without these `serviceConfig.nimEndpoints` values deploys the NIM but does not enable query reranking.
+
 <a id="nemotron-ocr-v2-language-mode"></a>
 
 ### Default NVCF endpoints { #default-nvcf-endpoints }

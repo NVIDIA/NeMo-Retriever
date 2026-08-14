@@ -554,6 +554,13 @@ serviceConfig:
     # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
     nemotronParseModel: ""
     embedInvokeUrl: ""
+    # Optional remote reranking endpoint used by POST /v1/query with
+    # rerank=true. The optional rerankqa NIM is not auto-wired; set this
+    # explicitly to its in-cluster Service URL or another compatible endpoint.
+    rerankInvokeUrl: ""
+    # Server-owned model identifier sent to rerankInvokeUrl. Use the VL
+    # reranker ID for the chart's optional rerankqa NIM.
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`

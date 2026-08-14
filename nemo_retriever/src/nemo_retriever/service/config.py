@@ -91,7 +91,7 @@ class LocalRerankConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
+    model_name: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
     backend: Literal["hf", "vllm"] = "vllm"
     gpu_memory_utilization: float = Field(default=0.5, gt=0, le=1)
     max_length: int = Field(default=512, ge=1, le=8192)
@@ -195,7 +195,7 @@ class NimEndpointsConfig(RichModel):
     rerank_model_name: str | None = Field(
         default=None,
         description=(
-            "Model identifier passed to rerank_invoke_url. Defaults to the " "Nemotron text reranker when omitted."
+            "Model identifier passed to rerank_invoke_url. Defaults to the " "Nemotron VL reranker when omitted."
         ),
     )
     audio_grpc_endpoint: str | None = Field(
