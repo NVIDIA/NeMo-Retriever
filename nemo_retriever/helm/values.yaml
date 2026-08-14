@@ -187,7 +187,7 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
-  # OpenTelemetry env defaults for the retriever service container.
+  # OpenTelemetry defaults for the retriever service container. The chart exports metrics every 5 seconds by default; override through service.otel.env.
   otel:
     enabled: true
     serviceName: nemo-retriever-service
@@ -1003,8 +1003,9 @@ nimOperator:
     env:
       NIM_ENABLE_OTEL: "true"
       NIM_OTEL_TRACES_EXPORTER: "otlp"
-      NIM_OTEL_METRICS_EXPORTER: "console"
+      NIM_OTEL_METRICS_EXPORTER: "otlp"
       TRITON_OTEL_RATE: "1"
+      OTEL_METRIC_EXPORT_INTERVAL: "5000"
 
   # ---------------------------------------------------------------------------
   # Per-NIM defaults

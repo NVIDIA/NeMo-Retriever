@@ -327,6 +327,7 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
     assert service_values["OTEL_SERVICE_NAME"] == "nemo-retriever-service"
     assert service_values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert service_values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert service_values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert service_values["OTEL_LOGS_EXPORTER"] == "none"
     assert service_values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert service_values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -343,8 +344,9 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 
@@ -695,6 +697,7 @@ def test_standalone_service_gets_otel_env_without_duplicate_user_overrides() -> 
     assert values["OTEL_SERVICE_NAME"] == "user-service-name"
     assert values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert values["OTEL_LOGS_EXPORTER"] == "none"
     assert values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -728,8 +731,9 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 

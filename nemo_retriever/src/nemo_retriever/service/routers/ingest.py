@@ -75,6 +75,7 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
+from nemo_retriever.service.metrics_otel import record_ingest_accepted
 from nemo_retriever.service.services.worker_result_store import (
     ResultStoreTemporarilyUnavailable,
     get_result_data,
@@ -232,6 +233,7 @@ def _record_prometheus(
         INGEST_PAGES_TOTAL.labels(role=role).inc()
     else:
         INGEST_DOCUMENTS_TOTAL.labels(role=role).inc()
+    record_ingest_accepted(role=role, endpoint=endpoint, file_size=file_size, is_page=is_page)
 
 
 def _register_document_under_job(

@@ -225,6 +225,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     shutdown_event_bus()
     shutdown_job_tracker()
     shutdown_metrics()
+    from nemo_retriever.service.metrics_otel import shutdown_metrics as shutdown_otel_metrics
+
+    shutdown_otel_metrics()
     logger.info("Retriever service stopped")
 
 
@@ -262,8 +265,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
                 exc,
             )
 
+    from nemo_retriever.service.metrics_otel import configure_metrics, instrument_app as instrument_otel_metrics
     from nemo_retriever.service.tracing import configure_tracing
 
+    configure_metrics(service_role=config.mode)
     configure_tracing(service_role=config.mode)
 
     app = FastAPI(
@@ -306,6 +311,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
     # role; the handler self-reports an empty pool dict on gateway pods.
     app.include_router(admin.router, prefix="/v1")
     app.include_router(work.router, prefix="/v1")
+    instrument_otel_metrics(app, role=config.mode)
     instrument_app(app, role=config.mode)
 
     if config.mode == "gateway":

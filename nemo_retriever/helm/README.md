@@ -1116,8 +1116,8 @@ sanity check before opening Grafana.
 Helm installs the chart-owned OpenTelemetry Collector and Zipkin backend on by
 default. This is intentional: the legacy 26.1.2 Helm chart shipped with a
 managed Zipkin deployment enabled, so the new chart keeps a default trace
-backend available for functional parity. Pod trace export is also enabled by
-default for retriever service pods and chart-managed NIMs:
+backend available for functional parity. OTLP trace and metric export is also
+enabled by default for retriever service pods and chart-managed NIMs:
 
 ```yaml
 topology:
@@ -1141,10 +1141,12 @@ before upgrading if your deployment uses an external backend or should not run
 chart-owned Zipkin.
 
 With default values, retriever service pods and chart-managed NIMs emit OTLP to
-the chart's OpenTelemetry Collector, which exports traces to the chart-owned
-Zipkin service. Set `service.otel.enabled=false` or
-`nimOperator.otel.enabled=false` to opt out by surface. Open a job and read the
-Zipkin lookup key from either the JSON body or the `x-trace-id` response header:
+the chart's OpenTelemetry Collector. The Collector exports traces to the
+chart-owned Zipkin service and exposes received metrics in Prometheus format.
+The chart configures a 5-second metric export interval. Set
+`service.otel.enabled=false` or `nimOperator.otel.enabled=false` to opt out by
+surface. Open a job and read the Zipkin lookup key from either the JSON body or
+the `x-trace-id` response header:
 
 ```bash
 kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
@@ -1170,18 +1172,36 @@ curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 When `topology.otel.enabled=true`, the chart-owned OpenTelemetry Collector
 exposes metrics received through OTLP in Prometheus format. The endpoint uses
 `topology.otel.ports.prometheus`, which defaults to port `8889`. The
-chart-owned OpenTelemetry Collector Service exposes the same port.
+chart-owned OpenTelemetry Collector Service exposes the same port. With default
+values, the retriever service and chart-managed NIMs export OTLP metrics to this
+endpoint.
 
-After your workload sends telemetry, verify the endpoint by port-forwarding the
-Collector Service:
+The retriever service also retains its native Prometheus `/metrics` endpoint.
+Enable `serviceMonitor.enabled=true` when a Prometheus Operator should scrape
+that endpoint directly. Direct scraping remains useful for service metrics that
+do not use OTLP, including the worker-pool metrics used by split-mode
+autoscaling.
+
+After a successful ingestion, allow up to 30 seconds for metric export and
+verify the endpoint by port-forwarding the Collector Service:
 
 ```bash
 kubectl port-forward svc/<release>-nemo-retriever-otel 8889:8889
-curl -fsS http://127.0.0.1:8889/metrics
+metric_found=false
+for attempt in {1..30}; do
+  if curl -fsS http://127.0.0.1:8889/metrics | grep -q '^nemo_retriever_'; then
+    metric_found=true
+    break
+  fi
+  sleep 1
+done
+test "${metric_found}" = true
 ```
 
 Set `topology.otel.ports.prometheus` to use a different port. The chart updates
-the Collector listener and Service port together.
+the Collector listener and Service port together. If the command does not find
+a metric after 30 seconds, confirm that `topology.otel.enabled` and the
+workload's OpenTelemetry settings are enabled, then inspect the Collector logs.
 
 Common opt-out and override knobs:
 
@@ -1195,23 +1215,35 @@ topology:
 
 service:
   otel:
-    enabled: false                 # do not inject service pod instrumentation env
+    enabled: true                  # required for the following service overrides to render
+    env:
+      OTEL_METRICS_EXPORTER: none  # retain tracing, but do not export service metrics
+      OTEL_METRIC_EXPORT_INTERVAL: "10000" # service metric cadence in milliseconds
+# To opt out of all service OTLP telemetry instead, set `service.otel.enabled: false`.
 
 nimOperator:
   otel:
-    enabled: false                 # do not inject inherited NIM OTLP env
+    enabled: true                  # required for the following inherited NIM override to render
+    env:
+      NIM_OTEL_METRICS_EXPORTER: "console" # do not send inherited NIM metrics to OTLP
+# To opt out of all inherited NIM OTLP telemetry instead, set `nimOperator.otel.enabled: false`.
   page_elements:
     otel:
       enabled: false               # per-NIM opt-out
   ocr:
     otel:
       env:
+        NIM_OTEL_METRICS_EXPORTER: "console" # per-NIM metric-export opt-out
         TRITON_OTEL_RATE: "10"     # per-NIM Triton OTel override
 ```
 
 Set `topology.zipkin.exporter.endpoint` when you run your own Zipkin-compatible
 collector. Set `topology.otel.enabled=false` to disable the chart-owned collector
-and all chart-rendered collector wiring.
+and all chart-rendered collector wiring. Values in `service.env` override the
+chart-managed service OpenTelemetry environment variables. Existing NIM
+container environment variables take precedence over inherited
+`nimOperator.otel.env` values, and per-NIM `nimOperator.<key>.otel.env` values
+override the inherited NIM values.
 
 ---
 
