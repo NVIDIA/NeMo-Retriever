@@ -53,8 +53,17 @@ def test_chart_service_urls_use_network_service_port() -> None:
         "--set",
         "serviceMonitor.autoEnableInSplitMode=false",
     )
-    services = [document for document in documents if document.get("kind") == "Service"]
-    assert len(services) == 3
+    services = [
+        document
+        for document in documents
+        if document.get("kind") == "Service"
+        and document["metadata"]["labels"].get("app.kubernetes.io/component") in {"gateway", "realtime", "batch"}
+    ]
+    assert {service["metadata"]["labels"]["app.kubernetes.io/component"] for service in services} == {
+        "gateway",
+        "realtime",
+        "batch",
+    }
     assert all(service["spec"]["ports"][0]["port"] == 18080 for service in services)
 
     configs = {
@@ -81,7 +90,11 @@ def test_chart_service_urls_use_network_service_port() -> None:
 
 def test_standalone_work_queue_gateway_url_uses_service_port_and_name() -> None:
     documents = _render("--set", "networkService.port=18080")
-    service = next(document for document in documents if document.get("kind") == "Service")
+    service = next(
+        document
+        for document in documents
+        if document.get("kind") == "Service" and document["metadata"]["name"] == "shared-results-test-nemo-retriever"
+    )
     assert service["metadata"]["name"] == "shared-results-test-nemo-retriever"
     assert service["spec"]["ports"][0]["port"] == 18080
 
