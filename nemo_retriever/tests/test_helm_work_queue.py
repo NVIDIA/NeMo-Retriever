@@ -96,9 +96,9 @@ def test_standalone_work_queue_gateway_url_uses_service_port_and_name() -> None:
         item for item in deployment["spec"]["template"]["spec"]["containers"] if item["name"] == "nemo-retriever"
     )
     assert container["ports"][0]["containerPort"] == 7670
+
+
 def test_split_gateway_spool_size_limit_preserves_sub_gib_bytes() -> None:
-
-
     documents = _render(
         "--set",
         "topology.mode=split",
