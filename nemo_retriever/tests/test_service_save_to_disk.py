@@ -207,7 +207,7 @@ def _result_row(document_id: str) -> dict[str, Any]:
 
 
 def test_ingest_reuses_one_result_client_across_documents(monkeypatch: pytest.MonkeyPatch) -> None:
-    ing = ServiceIngestor(base_url="http://example:7670")
+    ing = ServiceIngestor(base_url="http://example:7670").files(["a.pdf", "b.pdf"])
     monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a", "doc-b")))
     requests: list[httpx.Request] = []
     clients: list[httpx.Client] = []
@@ -241,7 +241,7 @@ def test_ingest_retries_transient_result_fetch_on_fresh_client(
     monkeypatch: pytest.MonkeyPatch,
     error_type: type[Exception],
 ) -> None:
-    ing = ServiceIngestor(base_url="http://example:7670")
+    ing = ServiceIngestor(base_url="http://example:7670").files(["a.pdf"])
     monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
     clients: list[httpx.Client] = []
 
@@ -269,7 +269,7 @@ def test_ingest_retries_transient_result_fetch_on_fresh_client(
 
 
 def test_ingest_exhausted_result_retry_remains_visible(monkeypatch: pytest.MonkeyPatch) -> None:
-    ing = ServiceIngestor(base_url="http://example:7670")
+    ing = ServiceIngestor(base_url="http://example:7670").files(["a.pdf"])
     monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
     clients: list[httpx.Client] = []
 
@@ -292,7 +292,7 @@ def test_ingest_exhausted_result_retry_remains_visible(monkeypatch: pytest.Monke
 
 
 def test_ingest_does_not_retry_http_status_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    ing = ServiceIngestor(base_url="http://example:7670")
+    ing = ServiceIngestor(base_url="http://example:7670").files(["a.pdf"])
     monkeypatch.setattr(ing, "ingest_stream", lambda **_kwargs: iter(_completion_events("doc-a")))
     clients: list[httpx.Client] = []
 

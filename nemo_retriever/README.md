@@ -178,17 +178,21 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 
 ### Ingest a test corpus (CLI)
 
-Point `retriever ingest` at a **directory** of PDFs to produce a ready-to-query
-LanceDB table.
+`retriever ingest` accepts a file or a directory and writes a ready-to-query
+LanceDB table. From a clone of this repository, `./data/multimodal_test.pdf`
+is a valid first-run input. Replace `/path/to/file-or-directory` below with
+that PDF or with your own file or directory.
 
-> **Corpus size matters.** LanceDB's default IVF index needs at least 16
-> chunks to train its 16 k-means partitions. Single-PDF ingestion will fail
-> at the indexing step; point `retriever ingest` at a directory with enough
-> documents to clear that threshold. Replace `/your-example-dir` below with
-> the path to your own corpus.
+> **Small corpora are supported.** The NeMo Retriever LanceDB adapter requests
+> 16 IVF partitions by default. When the table has fewer rows, the adapter
+> clamps that count to one less than the row count. An ingest that produces
+> 2 through 15 rows still builds an IVF index. A one-row table is stored
+> without a vector index, and ingest succeeds. An ingest that produces zero rows
+> is a separate empty-result error. Use a larger corpus when you want more
+> representative retrieval quality.
 
 ```bash
-retriever ingest /your-example-dir \
+retriever ingest /path/to/file-or-directory \
   --lancedb-uri lancedb \
   --table-name nemo-retriever
 ```
@@ -196,8 +200,7 @@ retriever ingest /your-example-dir \
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
 `[local]` extra installed (see setup), defaults point at local-GPU extraction
-and embedding. Use enough documents in the directory to clear the LanceDB IVF
-training threshold described above.
+and embedding.
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
@@ -205,7 +208,7 @@ through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 ```bash
 export NVIDIA_API_KEY=nvapi-...
 
-retriever ingest /your-example-dir \
+retriever ingest /path/to/file-or-directory \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
