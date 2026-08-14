@@ -119,7 +119,10 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
                         "hits": [
                             {
                                 "text": None,
-                                "metadata": {"result_source": "selection_agent", "rank": 1},
+                                "metadata": {
+                                    "result_source": "selection_agent",
+                                    "rank": 1,
+                                },
                                 "source": "report.pdf",
                                 "source_id": None,
                                 "path": None,
@@ -146,7 +149,12 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
 
     assert seen == {
         "path": "/v1/query",
-        "body": {"query": "What is indexed?", "top_k": 2, "format": "hits", "agentic": True},
+        "body": {
+            "query": "What is indexed?",
+            "top_k": 2,
+            "format": "hits",
+            "agentic": True,
+        },
     }
     assert result["results"][0]["hits"][0]["source"] == "report.pdf"
 
@@ -304,7 +312,7 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
         mode="standalone",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
     )
 
     app = create_app(cfg)
@@ -314,3 +322,62 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
 
     assert unauthorized.status_code == 401
     assert authorized.status_code != 401
+
+
+def test_query_tool_client_posts_rerank_controls() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"hits": []}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    _run(client.query("What is indexed?", top_k=3, rerank=True, rerank_top_k=20))
+
+    assert seen["body"] == {
+        "query": "What is indexed?",
+        "top_k": 3,
+        "format": "hits",
+        "rerank": True,
+        "rerank_top_k": 20,
+    }
+
+
+def test_query_tool_explicit_controls_override_payload() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"hits": []}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    _run(
+        client.query(
+            "authoritative query",
+            top_k=3,
+            payload={
+                "query": "payload query",
+                "top_k": 99,
+                "format": "evidence",
+                "agentic": True,
+                "rerank": True,
+                "rerank_top_k": 50,
+                "filters": {"source": "a.pdf"},
+            },
+        )
+    )
+
+    assert seen["body"] == {
+        "query": "authoritative query",
+        "top_k": 3,
+        "format": "hits",
+        "filters": {"source": "a.pdf"},
+    }

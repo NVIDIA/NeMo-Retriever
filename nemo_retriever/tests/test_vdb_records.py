@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+from ray.data.extensions import TensorArray
 import pytest
 from pydantic import ValidationError
 
@@ -174,6 +176,41 @@ def test_graph_record_conversion_preserves_service_provenance() -> None:
         "segment_start_seconds": 1.5,
         "frame_timestamp_seconds": 2.5,
     }
+
+
+def test_graph_record_conversion_normalizes_arrow_backed_bbox_array() -> None:
+    records = to_client_vdb_records(
+        [
+            {
+                "text": "table content",
+                "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+                "_content_type": "table",
+                "_bbox_xyxy_norm": np.array([0.1, 0.2, 0.8, 0.9]),
+            }
+        ]
+    )
+
+    assert records[0][0]["metadata"]["content_metadata"]["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
+
+
+def test_graph_record_conversion_normalizes_arrow_backed_embedding_array() -> None:
+    records = to_client_vdb_records(
+        [
+            {
+                "text": "embedded content",
+                "metadata": {"embedding": np.array([0.1, 0.2])},
+            }
+        ]
+    )
+
+    assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
+
+
+def test_graph_record_conversion_normalizes_ray_tensor_embedding() -> None:
+    embedding = TensorArray([np.array([0.1, 0.2])])[0]
+    records = to_client_vdb_records([{"text": "embedded content", "metadata": {"embedding": embedding}}])
+
+    assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
 
 
 def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:

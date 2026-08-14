@@ -132,9 +132,21 @@ class RetrievalHit(TypedDict, total=False):
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
     if metadata.get("embedding") is not None:
-        return metadata["embedding"]
-    payload = row.get("text_embeddings_1b_v2")
-    return payload.get("embedding") if isinstance(payload, dict) else None
+        embedding = metadata["embedding"]
+    else:
+        payload = row.get("text_embeddings_1b_v2")
+        embedding = payload.get("embedding") if isinstance(payload, dict) else None
+
+    if not isinstance(embedding, list):
+        to_numpy = getattr(embedding, "to_numpy", None)
+        if callable(to_numpy):
+            embedding = to_numpy()
+        tolist = getattr(embedding, "tolist", None)
+        if callable(tolist):
+            embedding = tolist()
+        elif isinstance(embedding, tuple):
+            embedding = list(embedding)
+    return embedding
 
 
 def _first_str(*values: Any) -> str:
@@ -204,6 +216,19 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _bbox_from_graph_row(row: dict[str, Any]) -> list[Any] | None:
+    """Return a JSON-safe bbox without testing array truthiness."""
+    for key in ("_bbox_xyxy_norm", "bbox_xyxy_norm"):
+        value = row.get(key)
+        if hasattr(value, "tolist"):
+            value = value.tolist()
+        elif isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list) and value:
+            return value
+    return None
+
+
 def _is_image_backed_row(row: dict[str, Any]) -> bool:
     """Return whether a post-embed graph row retains its image or stored URI."""
     return bool(
@@ -265,8 +290,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     stored_image_uri = _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"))
     if stored_image_uri:
         content_metadata.setdefault("stored_image_uri", stored_image_uri)
-    bbox = row.get("_bbox_xyxy_norm") or row.get("bbox_xyxy_norm")
-    if bbox:
+    bbox = _bbox_from_graph_row(row)
+    if bbox is not None:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
     for key in (
@@ -304,6 +329,13 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     return {"document_type": str(document_type), "metadata": record_metadata}
 
 
+def _row_has_uploadable_content_without_embedding(row: dict[str, Any]) -> bool:
+    metadata = _dict_or_empty(row.get("metadata"))
+    if _embedding_from_graph_row(row, metadata) is not None:
+        return False
+    return bool(_text_from_graph_row(row, metadata)) or _is_image_backed_row(row)
+
+
 def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     """Convert graph-ingest rows into the nested record shape expected by client VDBs.
 
@@ -312,6 +344,8 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     ``if not records`` skips :meth:`~nemo_retriever.vdb.adt_vdb.VDB.run`.
     When at least one row converts, returns ``[batch]`` with a single non-empty inner list
     (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
+    Uploadable graph content without an embedding raises ``ValueError`` when no
+    row survives conversion. Genuinely empty input continues to return ``[]``.
     """
     if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
         return rows
@@ -319,14 +353,16 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
         rows = rows.to_pandas()
     if hasattr(rows, "to_dict"):
         rows = rows.to_dict("records")
+    graph_rows = [row for row in rows or [] if isinstance(row, dict)]
     # Walrus: bind conversion once per row — a plain ``if f(row)`` + ``f(row)`` list comp
     # would call _client_record_from_graph_row twice per row on large datasets.
     # isinstance(row, dict): plain lists are not normalized like DataFrame rows; skip None/Series/etc.
-    inner = [
-        record
-        for row in rows or []
-        if isinstance(row, dict) and (record := _client_record_from_graph_row(row)) is not None
-    ]
+    inner = [record for row in graph_rows if (record := _client_record_from_graph_row(row)) is not None]
+    if not inner and any(_row_has_uploadable_content_without_embedding(row) for row in graph_rows):
+        raise ValueError(
+            "vdb_upload requires embedded records, but no embeddings were found. "
+            "Add an embed stage or provide a supported embedding column."
+        )
     # Preserve legacy contract: no uploadable rows → [], not [[]].
     return [inner] if inner else []
 

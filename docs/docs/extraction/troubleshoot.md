@@ -64,6 +64,7 @@ inspect row columns and service logs directly.
 | A per-document entry in `ServiceIngestResult.failures` | Upload or pipeline processing failed after a service job was created | Correlate the document ID with the job ID and service logs. Other documents in the same result can still have succeeded. |
 | Successful ingest with fewer rows than inputs (caption or ASR enabled) | Caption inference failed before row collection, or ASR dropped failed rows and logged warnings | Re-run with logging enabled. For caption, verify endpoint credentials and payload limits. For ASR, verify gRPC endpoint, `function_id`, and `NVIDIA_API_KEY`. |
 | OOM, worker exit, or pod restart | Host or GPU resources were exhausted, or an orchestrator terminated the worker | Reduce batch size or concurrency, use smaller document groups, and inspect host, Ray, Kubernetes, and NIM resource telemetry. |
+| `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides, including required Ray Data source capacity for filesystem inputs, exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](performance_guide.md). |
 
 The service can retry some transient transport, `429`, and `5xx` failures.
 Report the final status returned after retries, not an intermediate warning.
@@ -125,13 +126,13 @@ is incorrect.
     shown in current NeMo Retriever Library output exists in `25.4.2`; include
     the exact old exception and logs when escalating.
 
-## Can't process long, non-language text strings
+## Can't process long, non-language text strings { #cant-process-long-non-language-text-strings }
 
 NeMo Retriever Library is designed to process language and language-length strings.
 If you submit a document that contains extremely long, or non-language text strings,
 such as a DNA sequence, errors or unexpected results occur.
 
-## Can't process malformed input files
+## Can't process malformed input files { #cant-process-malformed-input-files }
 
 When you run a job you might see errors similar to the following:
 
@@ -181,7 +182,7 @@ service:
 
 This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
-## Can't start new thread error
+## Can't start new thread error { #cant-start-new-thread-error }
 
 In rare cases, when you run a job you might an see an error similar to `can't start new thread`.
 This error occurs when the maximum number of processes available to a single user is too low.
@@ -197,7 +198,7 @@ ulimit -u 10000
 
 
 
-## Out-of-Memory (OOM) Error when Processing Large Datasets
+## Out-of-Memory (OOM) Error when Processing Large Datasets { #out-of-memory-oom-error-when-processing-large-datasets }
 
 When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error.
 This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs.
@@ -212,7 +213,7 @@ To reduce memory pressure, try one or more of the following:
 
 
 
-## Embedding service fails to start with an unsupported batch size error
+## Embedding service fails to start with an unsupported batch size error { #embedding-service-fails-unsupported-batch-size }
 
 On certain hardware, for example RTX 6000,
 the embedding service might fail to start and you might see an error similar to the following.
@@ -222,8 +223,7 @@ ValueError: Configured max_batch_size (30) is larger than the model''s supported
 ```
 
 If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
-You can set the variable in your .env file or directly in your environment.
+you must set `EMBEDDER_BATCH_SIZE=3` in the process environment. For example, run `export EMBEDDER_BATCH_SIZE=3`. The SDK and CLI do not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
 
 
 
@@ -251,7 +251,7 @@ pip install "nemo-retriever[local,nemotron-parse]"
 
 Also refer to [NeMo Retriever Library Overview](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
-## Extract method nemotron-parse doesn't support image files
+## Extract method nemotron-parse doesn't support image files { #extract-method-nemotron-parse-doesnt-support-image-files }
 
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
 To work around this issue, convert image files to PDFs before you use `method="nemotron_parse"`.
@@ -362,7 +362,7 @@ For the request schema, refer to the [Object Detection NIM API reference](https:
 
 Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
-## Too many open files error
+## Too many open files error { #too-many-open-files-error }
 
 In rare cases, when you run a job you might an see an error similar to `too many open files` or `max open file descriptor`.
 This error occurs when the open file descriptor limit for your service user account is too low.
@@ -378,7 +378,7 @@ ulimit -n 10000
 
 
 
-## Triton server INFO messages incorrectly logged as errors
+## Triton server INFO messages incorrectly logged as errors { #triton-server-info-messages-incorrectly-logged-as-errors }
 
 Sometimes messages are incorrectly logged as errors, when they are information.
 When this happens, you can ignore the errors, and treat the messages as information.
@@ -411,7 +411,7 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 
 
 
-## Related Topics
+## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)

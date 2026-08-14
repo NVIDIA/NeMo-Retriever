@@ -405,7 +405,9 @@ topology:
   # ---------------------------------------------------------------------------
   # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
   # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
-  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  # gRPC (4317) and OTLP HTTP (4318) receivers, plus a Prometheus metrics
+  # endpoint (8889), by default. The chart-managed Prometheus exporter uses
+  # `ports.prometheus` and exports metrics received through the OTLP receiver.
   otel:
     enabled: true
     image:
@@ -693,11 +695,29 @@ serviceConfig:
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
+    # Optional dedicated gateway/worker-to-VectorDB authentication. When
+    # enabled, all Retriever and VectorDB pods read the same existing Secret
+    # key and VectorDB rejects missing or invalid internal credentials.
+    internalAuth:
+      enabled: false
+      existingSecret:
+        name: ""
+        key: token
 
-  # Optional bearer-token authentication. When apiToken is set, every
-  # request must carry "Authorization: Bearer <token>".
+  # Public bearer-token authentication. Production deployments should mount
+  # a Secret-backed scope-token JSON file. It is disabled by default so a
+  # standalone deployment accepts gateway requests without a bearer token.
+  # Inline apiToken is retained only as an explicitly enabled insecure
+  # development fallback.
   auth:
+    enabled: false
     apiToken: null
+    allowInsecureInlineApiToken: false
+    defaultScope: "default"
+    allowUnscopedDev: false
+    scopeTokenSecret:
+      name: ""
+      key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
       - "/v1/health"
@@ -887,12 +907,9 @@ serviceMonitor:
 nims:
   enabled: true
 
-# Each `nimOperator.<key>` block renders NIM Operator custom resources
-# (apiVersion: apps.nvidia.com/v1alpha1). As a temporary NIM Operator 3.1.1
-# compatibility path, the affected 2.x extraction and retrieval NIMs default to
-# modelDownloadMode: nimService: the NIMService owns a direct PVC
-# and downloads its model at startup. modelDownloadMode: nimCache restores the
-# legacy NIMCache + NIMService pair. Other NIMs retain their NIMCache flow.
+# Each `nimOperator.<key>` block renders a pair of `NIMCache` + `NIMService`
+# custom resources (apiVersion: apps.nvidia.com/v1alpha1) that the NIM
+# Operator reconciles into a Deployment + Service per model.
 #
 # The per-model templates are gated on ALL of:
 #   1. `.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1"` — the
@@ -1032,11 +1049,9 @@ nimOperator:
   # page_elements_invoke_url continues to resolve independently.
   page_elements:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1070,7 +1085,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS
@@ -1090,11 +1105,9 @@ nimOperator:
   # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
   table_structure:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1128,7 +1141,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS
@@ -1147,13 +1160,11 @@ nimOperator:
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "2.0.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1187,7 +1198,7 @@ nimOperator:
       - name: NIM_SERVER_BIND_ADDR
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
-        value: "0"
+        value: "1"
       - name: NIM_SERVER_MODE
         value: latency
       - name: NIM_SERVER_MAX_WAIT_MS
@@ -1209,8 +1220,6 @@ nimOperator:
   # the vectordb query path, and multimodal ingest.
   vlm_embed:
     enabled: true
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
@@ -1349,8 +1358,6 @@ nimOperator:
   # service/Helm release.
   rerankqa:
     enabled: false
-    # nimService: direct PVC + startup download; nimCache: legacy cache job.
-    modelDownloadMode: nimService
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
       tag: "2.3.0"

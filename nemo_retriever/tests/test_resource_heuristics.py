@@ -120,6 +120,32 @@ def test_gather_cluster_resources_coerces_fractional_values() -> None:
     assert cr.available_gpu_count() == 1
 
 
+def test_gather_cluster_resources_preserves_fractional_available_gpu() -> None:
+    """Positive fractional available GPUs remain a non-zero count."""
+    mock_ray = types.SimpleNamespace(
+        is_initialized=lambda: True,
+        cluster_resources=lambda: {"CPU": 4.0, "GPU": 1.0},
+        available_resources=lambda: {"CPU": 3.9, "GPU": 0.9},
+    )
+
+    cr = rh.gather_cluster_resources(mock_ray)
+
+    assert cr.total_gpu_count() == 1
+    assert cr.available_gpu_count() == 1
+
+
+def test_resolve_requested_plan_uses_total_when_available_gpus_are_zero() -> None:
+    cr = rh.ClusterResources(
+        total_resources=rh.Resources(cpu_count=4, gpu_count=1),
+        available_resources=rh.Resources(cpu_count=4, gpu_count=0),
+    )
+
+    plan = rh.resolve_requested_plan(cluster_resources=cr)
+
+    assert plan.embed_gpus_per_actor == rh.EMBED_SINGLE_GPU_GPUS_PER_ACTOR
+    assert plan.ocr_gpus_per_actor == rh.OCR_GPUS_PER_ACTOR
+
+
 # ---------------------------------------------------------------------------
 # resolve_requested_plan — defaults
 # ---------------------------------------------------------------------------

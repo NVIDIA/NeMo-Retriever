@@ -119,12 +119,35 @@ def test_build_asr_params_local_when_enabled() -> None:
     assert asr.audio_endpoints == (None, None)
 
 
-def test_build_asr_params_remote_grpc_wins() -> None:
+def test_build_asr_params_remote_grpc_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "hosted-function-id")
+    monkeypatch.setenv("NVIDIA_API_KEY", "environment-key")
     nim = NimEndpointsConfig(audio_grpc_endpoint="parakeet-nim:50051", api_key="k")
     asr = build_asr_params(nim, LocalModelsConfig(enabled=True))
     assert asr is not None
     assert asr.audio_endpoints == ("parakeet-nim:50051", None)
     assert asr.auth_token == "k"
+    assert asr.function_id == "hosted-function-id"
+
+
+def test_build_asr_params_remote_uses_environment_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "environment-key")
+    nim = NimEndpointsConfig(audio_grpc_endpoint="grpc.nvcf.nvidia.com:443")
+
+    asr = build_asr_params(nim)
+
+    assert asr is not None
+    assert asr.auth_token == "environment-key"
+
+
+def test_build_asr_params_ignores_blank_function_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "  ")
+    nim = NimEndpointsConfig(audio_grpc_endpoint="parakeet-nim:50051")
+
+    asr = build_asr_params(nim)
+
+    assert asr is not None
+    assert asr.function_id is None
 
 
 def test_embed_params_enabled_detects_local_model_name() -> None:

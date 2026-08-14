@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import base64
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import numpy as np
 import pandas as pd
 from PIL import Image
 
@@ -17,6 +19,7 @@ from nemo_retriever.common.modality.caption.model_profiles import (
     merge_request_extras,
     resolve_caption_model_name,
 )
+from nemo_retriever.common.modality.image.load import SUPPORTED_IMAGE_EXTENSIONS
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -48,6 +51,49 @@ def _image_meets_min_size(b64: str) -> bool:
         return w >= _MIN_IMAGE_DIMENSION and h >= _MIN_IMAGE_DIMENSION
     except Exception:
         return False
+
+
+def _is_direct_image_row(row: pd.Series) -> bool:
+    """Return whether a pipeline row originated from a standalone image file."""
+    metadata = row.get("metadata")
+    source_path = metadata.get("source_path") if isinstance(metadata, dict) else None
+    for candidate in (row.get("path"), source_path):
+        if isinstance(candidate, str) and Path(candidate).suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+            return True
+    return False
+
+
+def _as_image_list(value: Any) -> List[Any] | None:
+    """Normalize image collections materialized by pandas or Ray."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object:
+        return value.tolist()
+    return None
+
+
+def _ensure_object_column(batch_df: pd.DataFrame, column: str) -> None:
+    """Make a nested Arrow column accept complete Python collection replacements."""
+    if column in batch_df.columns and isinstance(batch_df[column].dtype, pd.ArrowDtype):
+        batch_df[column] = batch_df[column].astype(object)
+
+
+def _write_caption(
+    batch_df: pd.DataFrame,
+    *,
+    row_idx: Any,
+    column: str,
+    item_idx: int,
+    field: str,
+    caption: str,
+) -> None:
+    """Persist a caption by replacing the complete nested collection cell."""
+    items = _as_image_list(batch_df.at[row_idx, column])
+    if items is None or item_idx >= len(items) or not isinstance(items[item_idx], dict):
+        return
+    updated_items = [dict(item) if isinstance(item, dict) else item for item in items]
+    updated_items[item_idx][field] = caption
+    batch_df.at[row_idx, column] = updated_items
 
 
 def _create_local_model(kwargs: dict) -> "Any":
@@ -326,6 +372,9 @@ def caption_images(
     empty will be captioned.  The returned caption is written back into
     ``images[i]["text"]``.
 
+    For a standalone image row with an empty ``images`` list, the full
+    ``page_image`` is materialized as an image entry before captioning.
+
     When ``caption_infographics`` is True, infographic entries are cropped
     from the page image and captioned.  The VLM caption is written to the
     ``caption`` field, preserving the existing OCR ``text``.
@@ -334,9 +383,18 @@ def caption_images(
         return batch_df
 
     has_images = "images" in batch_df.columns
+    has_page_image = "page_image" in batch_df.columns
+    has_direct_page_image = has_page_image and any(_is_direct_image_row(row) for _, row in batch_df.iterrows())
     has_infographics = caption_infographics and "infographic" in batch_df.columns
-    if not has_images and not has_infographics:
+    if not has_images and not has_direct_page_image and not has_infographics:
         return batch_df
+    if not has_images and has_direct_page_image:
+        batch_df["images"] = [[] for _ in range(len(batch_df))]
+        has_images = True
+    if has_images:
+        _ensure_object_column(batch_df, "images")
+    if has_infographics:
+        _ensure_object_column(batch_df, "infographic")
 
     request_extras: Dict[str, Any] = {}
     if endpoint_url:
@@ -372,8 +430,20 @@ def caption_images(
     for row_idx, row in batch_df.iterrows():
         # Unstructured images.
         if has_images:
-            images = row.get("images")
-            if isinstance(images, list):
+            images = _as_image_list(row.get("images"))
+            if images is not None:
+                if not images and _is_direct_image_row(row):
+                    page_image = row.get("page_image")
+                    page_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
+                    if page_b64 and _image_meets_min_size(page_b64):
+                        image_entry = {
+                            "image_b64": page_b64,
+                            "text": "",
+                            "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+                        }
+                        batch_df.at[row_idx, "images"] = [image_entry]
+                        pending.append((row_idx, "images", 0, page_b64))
+                    continue
                 for item_idx, item in enumerate(images):
                     if not isinstance(item, dict):
                         continue
@@ -425,7 +495,14 @@ def caption_images(
             )
             # Infographics keep OCR text; VLM caption goes to a separate field.
             field = "caption" if col == "infographic" else "text"
-            batch_df.at[row_idx, col][item_idx][field] = caption
+            _write_caption(
+                batch_df,
+                row_idx=row_idx,
+                column=col,
+                item_idx=item_idx,
+                field=field,
+                caption=caption,
+            )
     else:
         all_b64 = [b64 for _, _, _, b64 in pending]
 
@@ -458,6 +535,13 @@ def caption_images(
 
         for (row_idx, col, item_idx, _), caption in zip(pending, all_captions):
             field = "caption" if col == "infographic" else "text"
-            batch_df.at[row_idx, col][item_idx][field] = caption
+            _write_caption(
+                batch_df,
+                row_idx=row_idx,
+                column=col,
+                item_idx=item_idx,
+                field=field,
+                caption=caption,
+            )
 
     return batch_df

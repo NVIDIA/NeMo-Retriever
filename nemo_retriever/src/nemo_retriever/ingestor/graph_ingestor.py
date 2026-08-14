@@ -33,8 +33,13 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.graph.executor import arrow_table_to_pandas, call_pandas_function_on_arrow
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
-from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.graph.ingestor_runtime import (
+    batch_tuning_to_node_overrides,
+    build_graph,
+    default_concurrency_node_names,
+)
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -60,6 +65,7 @@ from nemo_retriever.common.params import (
     ExtractParams,
     HtmlChunkParams,
     IngestExecuteParams,
+    NO_API_KEY,
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
@@ -85,6 +91,7 @@ _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
 _ERROR_MESSAGE_LIMIT = 256
+_SOURCE_IDENTIFIER_COLUMNS = ("document_id", "path", "source_path", "metadata", "source_id", "source_name")
 logger = logging.getLogger(__name__)
 _HTTP_STATUS_FIELDS: tuple[str, ...] = ("status_code", "http_status", "status", "code")
 _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
@@ -377,6 +384,9 @@ def _resolve_api_key(params: Any) -> Any:
     """Auto-resolve api_key from NVIDIA_API_KEY / NGC_API_KEY if not explicitly set."""
     if params is None:
         return params
+    uses_no_api_key = getattr(params, "_uses_no_api_key", None)
+    if callable(uses_no_api_key) and uses_no_api_key("api_key"):
+        return params
     if not getattr(params, "api_key", None) and hasattr(params, "model_copy"):
         key = resolve_remote_api_key()
         if key:
@@ -395,7 +405,20 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
     if not kwargs:
         return params
     if hasattr(params, "model_copy"):
-        return params.model_copy(update=kwargs)
+        values = params.model_dump()
+        uses_no_api_key = getattr(params, "_uses_no_api_key", None)
+        api_key_env_reference = getattr(params, "_api_key_env_reference", None)
+        for field_name in type(params).model_fields:
+            if field_name in kwargs:
+                continue
+            if callable(uses_no_api_key) and uses_no_api_key(field_name):
+                values[field_name] = NO_API_KEY
+                continue
+            if callable(api_key_env_reference):
+                reference = api_key_env_reference(field_name)
+                if reference is not None:
+                    values[field_name] = reference
+        return type(params).model_validate(values | kwargs)
     return params
 
 
@@ -834,7 +857,7 @@ class GraphIngestor(ingestor):
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
         )
-        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.total_gpu_count() == 0
         derived_overrides = batch_tuning_to_node_overrides(
             effective_extraction.extract_params,
             self._embed_params,
@@ -851,6 +874,15 @@ class GraphIngestor(ingestor):
             num_cpus=self._num_cpus,
             num_gpus=self._num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
+            auto_concurrency_nodes=(
+                default_concurrency_node_names(
+                    effective_extraction.extract_params,
+                    self._embed_params,
+                    self._store_params,
+                    self._caption_params,
+                )
+                - set(self._node_overrides)
+            ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
         result = executor.ingest(executor_input)
@@ -1170,14 +1202,15 @@ class GraphIngestor(ingestor):
             return []
         requested_columns = list(columns) if columns is not None else None
 
-        if callable(iter_batches):
-            batches = iter_batches(batch_format="pandas")
-        else:
-            batches = (batch,)
+        batches = iter_batches(batch_format="pyarrow") if callable(iter_batches) else (batch,)
 
         records: list[dict[str, Any]] = []
-        for batch_df in batches:
-            available_columns = getattr(batch_df, "columns", None)
+        for raw_batch in batches:
+            available_columns = (
+                getattr(raw_batch, "column_names", None)
+                if callable(iter_batches)
+                else getattr(raw_batch, "columns", None)
+            )
             if available_columns is None:
                 continue
             target_columns = (
@@ -1185,7 +1218,24 @@ class GraphIngestor(ingestor):
                 if requested_columns is None
                 else [c for c in requested_columns if c in available_columns]
             )
-            for row_index, row in batch_df.iterrows():
+            if not target_columns:
+                continue
+            # Finalization only needs diagnostic payloads and source context.
+            # Reading the full frame can iterate unrelated Arrow-backed image
+            # columns that pandas cannot safely materialize row by row.
+            scan_columns = list(
+                dict.fromkeys(
+                    [*target_columns, *(column for column in _SOURCE_IDENTIFIER_COLUMNS if column in available_columns)]
+                )
+            )
+            batch_df = (
+                arrow_table_to_pandas(raw_batch.select(scan_columns))
+                if callable(iter_batches)
+                else raw_batch.loc[:, scan_columns]
+            )
+            column_values = {column: batch_df[column].array for column in scan_columns}
+            for row_position, row_index in enumerate(batch_df.index):
+                row = {column: values[row_position] for column, values in column_values.items()}
                 source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):
@@ -1353,7 +1403,11 @@ class GraphIngestor(ingestor):
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
         if isinstance(target, pd.DataFrame):
             return self.extract_error_rows(target)
-        return target.map_batches(self.extract_error_rows, batch_format="pandas")
+        return target.map_batches(
+            call_pandas_function_on_arrow,
+            batch_format="pyarrow",
+            fn_kwargs={"fn": self.extract_error_rows},
+        )
 
     def get_dataset(self) -> Any:
         return self._rd_dataset

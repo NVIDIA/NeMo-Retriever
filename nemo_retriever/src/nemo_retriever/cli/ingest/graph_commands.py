@@ -216,6 +216,7 @@ def _graph_ingest_command(
     caption_invoke_url: opts.CaptionInvokeUrlOption = None,
     api_key: opts.ApiKeyOption = None,
     caption_model_name: opts.CaptionModelNameOption = None,
+    caption_gpu_memory_utilization: opts.CaptionGpuMemoryUtilizationOption = None,
     caption_context_text_max_chars: opts.CaptionContextTextMaxCharsOption = None,
     caption_infographics: opts.CaptionInfographicsOption = None,
     dedup: opts.DedupOption = False,

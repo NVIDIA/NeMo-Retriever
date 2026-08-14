@@ -153,6 +153,18 @@ CaptionModelNameOption = Annotated[
         ),
     ),
 ]
+CaptionGpuMemoryUtilizationOption = Annotated[
+    float | None,
+    typer.Option(
+        "--caption-gpu-memory-utilization",
+        min=0.001,
+        max=1.0,
+        help=(
+            "Fraction of GPU memory reserved by local vLLM captioning. "
+            "Defaults to the selected local caption model profile."
+        ),
+    ),
+]
 CaptionContextTextMaxCharsOption = Annotated[
     int | None,
     typer.Option(

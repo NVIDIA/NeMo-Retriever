@@ -46,6 +46,7 @@ from nemo_retriever.common.schemas.responses import (
     PageIngestAccepted,
     SidecarUploadResponse,
 )
+from nemo_retriever.service.query_schema import QueryRequest, QueryResponse
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.models.llm.types import (
     AnswerRequest as CoreAnswerRequest,
@@ -397,7 +398,10 @@ def _worker_result_url(
         try:
             advertised_ip = ipaddress.ip_address(callback_worker_ip)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Completion callback has an invalid result worker IP") from exc
+            raise HTTPException(
+                status_code=400,
+                detail="Completion callback has an invalid result worker IP",
+            ) from exc
         if advertised_ip != worker_ip:
             raise HTTPException(status_code=409, detail="Result worker IP does not match lease owner")
 
@@ -477,7 +481,10 @@ async def _gateway_enqueue(
     worker rebuilds it as one typed object rather than a splat of loose
     fields that :class:`WorkItem` would silently discard.
     """
-    from nemo_retriever.service.services.work_queue import WorkQueueFull, get_work_broker
+    from nemo_retriever.service.services.work_queue import (
+        WorkQueueFull,
+        get_work_broker,
+    )
 
     broker = get_work_broker()
     if broker is None:
@@ -663,6 +670,7 @@ async def _prepare_job_work_item(
             operation=job.operation,
             content_sha256=content_sha256,
             storage_document_id=storage_document_id,
+            document_metadata=meta.metadata,
         ),
     )
     return item, route, classification
@@ -1207,7 +1215,11 @@ async def submit_page_to_job(
             now = datetime.now(timezone.utc).isoformat()
 
             if not dry_run:
-                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+                _register_document_under_job(
+                    document_id=page_id,
+                    job_id=job_id,
+                    filename=filename or file.filename,
+                )
                 await _gateway_enqueue(
                     request,
                     PoolType.REALTIME,
@@ -1229,6 +1241,7 @@ async def submit_page_to_job(
                 m.record_page_accepted(
                     page_id=page_id,
                     document_id=document_id,
+                    job_id=job_id,
                     endpoint="/v1/ingest/job/page",
                     page_number=page_number,
                     file_size_bytes=file_size,
@@ -1287,6 +1300,7 @@ async def submit_page_to_job(
             m.record_page_accepted(
                 page_id=page_id,
                 document_id=document_id,
+                job_id=job_id,
                 endpoint="/v1/ingest/job/page",
                 page_number=page_number,
                 file_size_bytes=len(file_bytes),
@@ -1802,80 +1816,167 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity, hybrid, or agentic retrieval",
+    summary="Search ingested documents by semantic similarity, hybrid, agentic, or reranked retrieval",
 )
 async def query(request: Request) -> Response:
-    """Proxy a query request to the VectorDB service.
+    """Run the public query API through VectorDB and optional reranking.
 
-    * **gateway / standalone** — forwards the JSON body to the vectordb pod.
-    * **worker** — returns 404 (workers don't handle queries).
-
-    When the body sets ``agentic: true``, the long agentic timeout is used and
-    the service must have agentic retrieval configured.
+    ``vectordb_app`` remains responsible only for nearest-neighbor retrieval.
+    With ``rerank=true``, the main service obtains a larger candidate set from
+    VectorDB, then uses the server-configured remote endpoint or local model
+    in the main service process, and returns the requested ``top_k`` hits.
     """
-    import json
-
     import httpx
 
     config = request.app.state.config
-
     if not config.vectordb.enabled:
         raise HTTPException(
             status_code=404,
             detail="VectorDB is not enabled in the service configuration.",
         )
-
-    mode = _mode(request)
-    if mode in ("realtime", "batch"):
+    if _mode(request) in ("realtime", "batch"):
         raise HTTPException(
             status_code=404,
             detail="Query endpoint is not available on worker pods. Use the gateway.",
         )
 
-    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
-    target = f"{vectordb_url}/v1/query"
-
     body = await request.body()
     agentic = False
+    rerank_request: QueryRequest | None = None
+    query_body = body
     try:
         parsed = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
         agentic = bool(parsed.get("agentic")) if isinstance(parsed, dict) else False
+        if isinstance(parsed, dict) and "rerank" in parsed:
+            try:
+                validated_rerank_request = QueryRequest.model_validate(parsed)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if validated_rerank_request.rerank:
+                rerank_request = validated_rerank_request
+                has_remote_reranker = bool((config.nim_endpoints.rerank_invoke_url or "").strip())
+                has_local_reranker = config.local_models.rerank.enabled
+                if not (has_remote_reranker or has_local_reranker):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Reranking is not configured. Set "
+                            "nim_endpoints.rerank_invoke_url or enable "
+                            "local_models.rerank.enabled on the main service."
+                        ),
+                    )
+                candidate_k = rerank_request.rerank_top_k or max(rerank_request.top_k, 50)
+                forwarded = dict(parsed)
+                forwarded.pop("rerank", None)
+                forwarded.pop("rerank_top_k", None)
+                forwarded["top_k"] = candidate_k
+                query_body = json.dumps(forwarded).encode("utf-8")
     except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
         agentic = False
 
     if agentic and not config.agentic.enabled:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Agentic retrieval is not enabled in the service configuration. "
-                "Set agentic.enabled with llm_model and invoke_url."
-            ),
+            detail="Agentic retrieval is not enabled in the service configuration. "
+            "Set agentic.enabled with llm_model and invoke_url.",
         )
 
+    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
     timeout = config.agentic.request_timeout_s if agentic else 60.0
-
     try:
         from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
-                target,
-                content=body,
+                f"{vectordb_url}/v1/query",
+                content=query_body,
                 headers={
                     "Content-Type": "application/json",
                     "X-NRL-Scope": authorized_scope(request),
                     **internal_auth_headers(config.vectordb.internal_api_token),
                 },
             )
-    except httpx.HTTPError:
-        logger.exception("Failed to proxy query to vectordb at %s", target)
-        raise HTTPException(
-            status_code=502,
-            detail="VectorDB service is unavailable.",
+    except httpx.HTTPError as exc:
+        logger.exception("Failed to proxy query to vectordb at %s", vectordb_url)
+        raise HTTPException(status_code=502, detail="VectorDB service is unavailable.") from exc
+
+    if rerank_request is None or resp.status_code >= 400:
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type="application/json",
         )
 
+    try:
+        response = QueryResponse.model_validate_json(resp.content)
+        queries = [rerank_request.query] if isinstance(rerank_request.query, str) else rerank_request.query
+        if len(response.results) != len(queries):
+            raise ValueError("VectorDB response count did not match the query count")
+
+        from nemo_retriever.operators.rerank import rerank_hits
+
+        local_rerank = config.local_models.rerank
+        use_remote_reranker = bool((config.nim_endpoints.rerank_invoke_url or "").strip())
+        rerank_lock: asyncio.Lock | None = None
+        local_reranker = None
+        if not use_remote_reranker:
+            # The local model is service-owned and lazily loaded once. Serialize
+            # scoring too: HF/vLLM model instances are not safe to invoke from
+            # simultaneous request threads, and this avoids duplicate GPU work.
+            rerank_lock = getattr(request.app.state, "local_reranker_lock", None)
+            if rerank_lock is None:
+                rerank_lock = asyncio.Lock()
+                request.app.state.local_reranker_lock = rerank_lock
+
+            async with rerank_lock:
+                local_reranker = getattr(request.app.state, "local_reranker", None)
+                if local_reranker is None:
+                    from nemo_retriever.models import create_local_reranker
+
+                    local_reranker = await asyncio.to_thread(
+                        create_local_reranker,
+                        local_rerank.model_name,
+                        backend=local_rerank.backend,
+                        device=config.local_models.device,
+                        hf_cache_dir=config.local_models.hf_cache_dir,
+                        gpu_memory_utilization=local_rerank.gpu_memory_utilization,
+                    )
+                    request.app.state.local_reranker = local_reranker
+
+        async def _rerank_results() -> None:
+            rerank_kwargs: dict[str, Any] = {"top_n": rerank_request.top_k}
+            if use_remote_reranker:
+                rerank_kwargs.update(
+                    rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
+                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-1b-v2",
+                    api_key=config.nim_endpoints.api_key or "",
+                )
+            else:
+                rerank_kwargs.update(
+                    model=local_reranker,
+                    model_name=local_rerank.model_name,
+                    max_length=local_rerank.max_length,
+                    batch_size=local_rerank.batch_size,
+                )
+            for query_text, result in zip(queries, response.results):
+                result.hits = await asyncio.to_thread(
+                    rerank_hits,
+                    query_text,
+                    result.hits,
+                    **rerank_kwargs,
+                )
+
+        if rerank_lock is not None:
+            async with rerank_lock:
+                await _rerank_results()
+        else:
+            await _rerank_results()
+    except Exception as exc:
+        logger.exception("Failed to rerank VectorDB query results")
+        raise HTTPException(status_code=502, detail="Reranker service is unavailable.") from exc
+
     return Response(
-        content=resp.content,
+        content=response.model_dump_json(),
         status_code=resp.status_code,
         media_type="application/json",
     )
@@ -1936,7 +2037,10 @@ async def job_callback(request: Request) -> JSONResponse:
     broker = None
     lease_record = None
     if _is_gateway(request):
-        from nemo_retriever.service.services.work_queue import StaleLease, get_work_broker
+        from nemo_retriever.service.services.work_queue import (
+            StaleLease,
+            get_work_broker,
+        )
 
         broker = get_work_broker()
         lease_id = body.get("lease_id")

@@ -222,8 +222,8 @@ def _agentic_retrieve(
     try:
         cfg = build_agentic_config(query_request, top_k=agentic_target_top_k("beir", list(ks)))
     except (ValueError, TypeError) as exc:
-        # Invalid agentic config (e.g. out-of-range temperature, backend_top_k < top_k)
-        # surfaces as a structured harness failure rather than an unhandled exception.
+        # Invalid agentic config (e.g. out-of-range temperature) surfaces as a
+        # structured harness failure rather than an unhandled exception.
         raise HarnessRunError(
             EXIT_INVALID,
             FailurePayload(

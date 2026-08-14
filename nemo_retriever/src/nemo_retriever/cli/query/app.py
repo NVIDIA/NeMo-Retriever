@@ -16,7 +16,10 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
-from nemo_retriever.query.agentic_options import agentic_backend_top_k_error, agentic_temperature_error
+from nemo_retriever.query.agentic_options import (
+    agentic_llm_client_error,
+    agentic_temperature_error,
+)
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -187,10 +190,11 @@ def _local_command(
     agentic_llm_model: opts.AgenticLlmModelOption = None,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
-    agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
     agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
-    agentic_temperature: opts.AgenticTemperatureOption = 0.0,
+    agentic_temperature: opts.AgenticTemperatureOption = None,
+    agentic_local_tensor_parallel_size: opts.AgenticLocalTensorParallelSizeOption = 1,
+    agentic_llm_client: opts.AgenticLlmClientOption = None,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
@@ -198,6 +202,8 @@ def _local_command(
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:
+        # Relaxed model gating: an explicit model is required only for the remote
+        # (invoke_url) path; in-process runs default to the local model.
         if agentic_invoke_url and not agentic_llm_model:
             typer.echo(
                 "Error: --agentic-invoke-url requires --agentic-llm-model.",
@@ -207,15 +213,31 @@ def _local_command(
         if not agentic_invoke_url and not agentic_llm_model:
             agentic_llm_model = "nemotron-8b"
 
-        backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
-        if backend_error:
-            typer.echo(f"Error: {backend_error}", err=True)
-            raise typer.Exit(1)
-        temperature_invoke_url = agentic_invoke_url or "local://in-process"
-        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
-        if temperature_error:
-            typer.echo(f"Error: {temperature_error}", err=True)
-            raise typer.Exit(1)
+        if agentic_temperature is not None:
+            # Use a local sentinel so in-process runs get the in-process bound.
+            temperature_invoke_url = agentic_invoke_url or "local://in-process"
+            temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=temperature_invoke_url)
+            if temperature_error:
+                typer.echo(f"Error: {temperature_error}", err=True)
+                raise typer.Exit(1)
+
+        # Fast-fail with a flag-named message; AgenticRetrievalConfig.__post_init__
+        # is the authoritative resolver. `callable` drives either an in-process
+        # engine or the shared HTTP client, so it is valid with and without an
+        # invoke_url; every other client is remote-only.
+        if agentic_llm_client is not None:
+            client_error = agentic_llm_client_error(agentic_llm_client, field_name="agentic_llm_client")
+            if client_error:
+                typer.echo(f"Error: {client_error}", err=True)
+                raise typer.Exit(1)
+            client = agentic_llm_client.strip().lower()
+            if not agentic_invoke_url and client != "callable":
+                typer.echo(
+                    "Error: a remote LLM client requires --agentic-invoke-url; "
+                    "omit --agentic-llm-client to run the local in-process model.",
+                    err=True,
+                )
+                raise typer.Exit(1)
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
@@ -252,10 +274,11 @@ def _local_command(
                     llm_model=agentic_llm_model,
                     invoke_url=agentic_invoke_url,
                     reasoning_effort=agentic_reasoning_effort,
-                    backend_top_k=agentic_backend_top_k,
                     react_max_steps=agentic_react_max_steps,
                     text_truncation=agentic_text_truncation,
                     temperature=agentic_temperature,
+                    local_tensor_parallel_size=agentic_local_tensor_parallel_size,
+                    llm_client=agentic_llm_client,
                 ),
             )
             with quiet_capture():

@@ -220,6 +220,44 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
 
 
 @pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param({"text": "extracted chunk"}, id="text"),
+        pytest.param({"text": "", "_image_b64": "page-image"}, id="image"),
+    ],
+)
+def test_ingest_operator_rejects_uploadable_dataframe_without_embeddings(row: dict[str, Any]) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame([row])
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_rejects_unembedded_content_when_embedded_row_is_filtered() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {"text": "", "metadata": {"embedding": [0.1]}},
+            {"text": "extracted chunk"},
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+@pytest.mark.parametrize(
     "text",
     [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
 )
@@ -308,36 +346,28 @@ def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
     }
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        pytest.param(
-            {
-                "text": "",
-                "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
-                "source_id": "/tmp/empty.pdf",
-                "page_number": 1,
-            },
-            id="no-image-backing",
-        ),
-        pytest.param(
-            {
-                "text": "",
-                "text_embeddings_1b_v2": {"embedding": None},
-                "_image_b64": "page-image",
-                "source_id": "/tmp/scanned.pdf",
-                "page_number": 7,
-            },
-            id="no-embedding",
-        ),
-    ],
-)
-def test_ingest_operator_drops_ineligible_blank_row(row: dict[str, Any]) -> None:
+def test_ingest_operator_drops_embedded_blank_row_without_image_backing() -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
-    data = [row]
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "source_id": "/tmp/empty.pdf",
+            "page_number": 1,
+        }
+    ]
 
     assert operator(data) is data
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_allows_genuinely_empty_dataframe() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame()
+
+    assert operator.process(data) is data
     assert vdb.run_calls == []
 
 
@@ -579,6 +609,24 @@ def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     # Sidecar column merged in alongside the per-row ``page_number``.
     assert merged_content_meta["category"] == "legal"
     assert merged_content_meta["page_number"] == 7
+
+
+def test_ingest_operator_preserves_sidecar_kwargs_for_graph_reconstruction() -> None:
+    meta_df = pd.DataFrame({"source_id": ["/tmp/doc-a.pdf"], "category": ["legal"]})
+    operator = IngestVdbOperator(
+        vdb=FakeVDB(),
+        vdb_kwargs={
+            "meta_dataframe": meta_df,
+            "meta_source_field": "source_id",
+            "meta_fields": ["category"],
+        },
+    )
+
+    reconstructed_kwargs = operator.get_constructor_kwargs()["vdb_kwargs"]
+
+    assert reconstructed_kwargs["meta_dataframe"] is meta_df
+    assert reconstructed_kwargs["meta_source_field"] == "source_id"
+    assert reconstructed_kwargs["meta_fields"] == ["category"]
 
 
 def test_ingest_operator_preserves_canonical_batches_for_collection_write() -> None:

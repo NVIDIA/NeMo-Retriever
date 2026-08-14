@@ -44,6 +44,16 @@ def test_extraction_hf_repos_have_pinned_revisions():
     )
 
 
+def test_local_hf_nemotron_models_use_transformers_5_compatible_revisions() -> None:
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-embed-1b-v2"] == "113abe4acafa848e77ead9c0623205e511932348"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-rerank-vl-1b-v2"]
+        == "9c20c4aedf9ec87b6b7346c3bc4754ea030dab35"
+    )
+
+
 def test_hf_hub_download_with_pinned_revision_injects_known_revision(monkeypatch):
     calls = []
 

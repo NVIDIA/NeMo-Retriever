@@ -23,6 +23,17 @@ not parse them as stable codes. The stable text-generation codes documented in
 [One-shot text generation](#one-shot-text-generation) apply to generation
 operator output columns, not to document extraction.
 
+### Select a supported extraction method
+
+`ExtractParams` validates `method` when you construct the model. For PDF
+extraction, use `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The
+`audio` value remains available for the legacy params-driven audio path. For
+new audio pipelines, use `GraphIngestor.extract_audio()` instead.
+
+Any other value raises a Pydantic `ValidationError` before pipeline setup. The
+error lists the supported values, so spelling and configuration errors do not
+silently select another extraction path.
+
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when
@@ -146,7 +157,7 @@ To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray acto
 
 **Python client (`pdf_split_config`):** Only `create_ingestor(run_mode="service")` implements `.pdf_split_config(pages_per_chunk=...)`, which records page-chunking settings in the request pipeline spec for the remote gateway. Local graph ingest (`run_mode="inprocess"` or `"batch"`) raises `NotImplementedError` if you call this method; PDFs are split automatically on the default ingest path without client-side configuration.
 
-## One-shot text generation
+## One-shot text generation { #one-shot-text-generation }
 
 `TextGenerationOperator` is the reusable base for synchronous, one-request-per-row text generation. It is a provisional text-only API: it does not support tool calls, agent loops, streaming, multiple choices, or structured domain results.
 
@@ -192,7 +203,7 @@ To define another one-request/one-text-result task, subclass `TextGenerationTask
 
 Generation failures are collected per row using stable error codes: `empty_input`, `request_error`, `transport_error`, `unsupported_response`, `parse_error`, `empty_output`, and the RAG-specific `thinking_truncated`. Raw provider exceptions and credentials are not written to DataFrame outputs.
 
-## Persisted graphs are trusted configuration
+## Persisted graphs are trusted configuration { #persisted-graphs-are-trusted-configuration }
 
 Graph loading imports operator classes and invokes their constructors. Load graph JSON only from trusted sources; do not expose graph payloads, callable references, or class names as model- or user-controlled agent tools.
 

@@ -21,9 +21,11 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import multiprocessing as mp
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -297,6 +299,7 @@ def _post_records_to_vectordb(
     import json
     import urllib.request
     import urllib.error
+    from nemo_retriever.service.auth import internal_auth_headers
 
     if not records or not any(records):
         if context.collection_name:
@@ -322,7 +325,7 @@ def _post_records_to_vectordb(
         data=body,
         headers={
             "Content-Type": "application/json",
-            **({"X-NRL-Internal-Token": internal_api_token} if internal_api_token else {}),
+            **internal_auth_headers(internal_api_token),
         },
         method="POST",
     )
@@ -565,12 +568,20 @@ def _build_graph_ingestor_from_spec(
     handles persistence when ``vdb_upload_params`` is present.
     """
     from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
+        DEFAULT_AUDIO_SPLIT_INTERVAL,
+        DEFAULT_VIDEO_FRAME_FPS,
+    )
     from nemo_retriever.common.params import (
         ASRParams,
+        AudioChunkParams,
+        AudioVisualFuseParams,
         CaptionParams,
         DedupParams,
         StoreParams,
         VdbUploadParams,
+        VideoFrameParams,
+        VideoFrameTextDedupParams,
         WebhookParams,
     )
 
@@ -603,7 +614,31 @@ def _build_graph_ingestor_from_spec(
     ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
-    if extraction_mode == "image":
+    if extraction_mode == "video":
+        # Service auto-routing resolves supported video extensions before this
+        # point. Preserve the canonical video branch defaults instead of
+        # passing the MP4 bytes through the generic PDF extraction path. ASR
+        # remains optional, but frame extraction, frame OCR, and frame-text
+        # deduplication run for every video. Fusion is appended only when the
+        # audio branch is enabled.
+        ingestor = ingestor.extract(
+            extract_params,
+            split_config=split_config,
+            extraction_mode=extraction_mode,
+            audio_chunk_params=AudioChunkParams(
+                enabled=asr_params is not None,
+                split_type="size",
+                split_interval=DEFAULT_AUDIO_SPLIT_INTERVAL,
+            ),
+            asr_params=asr_params,
+            video_frame_params=VideoFrameParams(enabled=True, fps=DEFAULT_VIDEO_FRAME_FPS, dedup=True),
+            video_text_dedup_params=VideoFrameTextDedupParams(
+                enabled=True,
+                max_dropped_frames=2,
+            ),
+            av_fuse_params=AudioVisualFuseParams(enabled=True),
+        )
+    elif extraction_mode == "image":
         ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
     elif extraction_mode == "html" and split_config is None:
         ingestor = ingestor.extract_html()
@@ -748,6 +783,10 @@ def _run_pipeline_in_process(
             )
 
             result_df = ingestor.ingest()
+            _merge_document_metadata(
+                result_df,
+                write_context.document_metadata if write_context is not None else None,
+            )
     finally:
         tracing.force_flush(timeout_millis=500)
 
@@ -791,6 +830,40 @@ def _run_pipeline_in_process(
         return_images=bool(result_options.get("return_images", False)),
     )
     return row_count, result_data, elapsed
+
+
+def _merge_document_metadata(result: Any, document_metadata: dict[str, Any] | None) -> None:
+    """Merge request metadata into extracted rows without replacing parser fields."""
+    if not document_metadata:
+        return
+
+    # Validate and copy at the child-process boundary so storage receives no
+    # aliases or values that cannot be represented in JSON query hits.
+    canonical = json.loads(json.dumps(document_metadata, ensure_ascii=False))
+
+    def merge_row(row: Any) -> None:
+        if not isinstance(row, dict):
+            return
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            row["metadata"] = metadata
+        content_metadata = metadata.get("content_metadata")
+        if not isinstance(content_metadata, dict):
+            content_metadata = {}
+            metadata["content_metadata"] = content_metadata
+        for key, value in canonical.items():
+            content_metadata.setdefault(key, copy.deepcopy(value))
+
+    if isinstance(result, list):
+        for row in result:
+            merge_row(row)
+        return
+    if hasattr(result, "iterrows"):
+        for index, row in result.iterrows():
+            holder = {"metadata": row.get("metadata")}
+            merge_row(holder)
+            result.at[index, "metadata"] = holder["metadata"]
 
 
 def _local_model_runtime_kwargs(local: "LocalModelsConfig") -> dict[str, Any]:
@@ -902,10 +975,13 @@ def build_asr_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None
     if nim.audio_grpc_endpoint:
         from nemo_retriever.common.params import ASRParams
 
+        function_id = (os.environ.get("AUDIO_FUNCTION_ID") or "").strip() or None
+        auth_token = nim.api_key or (os.environ.get("NVIDIA_API_KEY") or "").strip() or None
         return ASRParams(
             audio_endpoints=(nim.audio_grpc_endpoint, None),
             audio_infer_protocol="grpc",
-            auth_token=nim.api_key,
+            auth_token=auth_token,
+            function_id=function_id,
         )
     if local.enabled and local.asr.enabled:
         from nemo_retriever.common.params import ASRParams

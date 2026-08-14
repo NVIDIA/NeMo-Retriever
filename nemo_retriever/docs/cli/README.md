@@ -226,18 +226,26 @@ Agentic-only knobs (apply only with `--agentic`):
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
+- `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
+  `tensor_parallel_size` for the in-process agent LLM. Set to `2` (with two
+  visible GPUs via `CUDA_VISIBLE_DEVICES`) for local `super-49b`. Ignored when
+  `--agentic-invoke-url` is set.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM. Providing it routes agent LLM calls to that remote endpoint.
+  agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
+  to run the in-process local model.
+- `--agentic-llm-client` (optional) — LLM client that builds the agent LLM.
+  Defaults to `callable`. It drives the in-process
+  adapter when `--agentic-invoke-url` is omitted, and the shared chat-completions
+  HTTP client when it is set.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
-- `--agentic-temperature` (default `0.0`) — sampling temperature for agent LLM
-  calls. Local and non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`;
-  NVIDIA-hosted endpoints allow up to `1.0`.
-- `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
-  per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
+- `--agentic-temperature` (default: unset) — sampling temperature for agent LLM
+  calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
+  non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
+  endpoints allow up to `1.0`.
 
 <!-- --8<-- [end:quickstart] -->
 
@@ -261,7 +269,8 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
 | `--caption` | off | Add a captioning stage. |
-| `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights and requires correspondingly larger GPU capacity; Nano models remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
+| `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights. On a dedicated 80 GB GPU, its local profile reserves `0.95` of GPU memory for vLLM model and KV-cache use. Nano models retain the `0.5` profile default and remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
+| `--caption-gpu-memory-utilization` | model profile | Fraction of a local caption GPU that vLLM can reserve. The Omni BF16 profile defaults to `0.95`; other local caption profiles default to `0.5`. Use this option only with `--caption` and local vLLM captioning. |
 | `--dedup` | off | Add image deduplication before captioning and embedding. |
 | `--text-chunk` | off | Enable token chunking during extraction. |
 | `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
@@ -315,6 +324,65 @@ retriever ingest ./data/pdf_corpus \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
+### Dense Nemotron embedding checkpoints
+
+`--embed-model-name` accepts a Hugging Face repository ID or an on-disk
+checkpoint compatible with a supported dense Nemotron text or vision-language
+embedding profile:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name acme/my-finetuned-nemotron-embed
+```
+
+Tested official checkpoints:
+
+- `nvidia/llama-3.2-nv-embedqa-1b-v2`
+- `nvidia/llama-nemotron-embed-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
+- `nvidia/llama-nv-embed-reasoning-3b`
+- `nvidia/llama-embed-nemotron-8b`
+
+Equivalent local checkpoints and weight-only fine-tunes are supported. A
+compatible checkpoint must be complete and loadable, use
+`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
+pooling with a positive output width. LanceDB infers the schema from the
+produced vectors; the tested official checkpoints use 2048, 3072, and 4096
+dimensions. Query and document prompts are read from
+`config_sentence_transformers.json` when the checkpoint supplies it.
+Fine-tunes that require prefixes other than `query: ` and `passage: ` must
+retain that prompt metadata.
+
+This does not add support for every model in the Nemotron RAG collection,
+including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
+parsing models. Nemotron 3 Embed is also excluded because its Ministral3
+architecture requires a newer Transformers stack than this project currently
+supports. Those models require different dependencies, outputs, modalities,
+or operator contracts.
+
+Unregistered Hub repositories are resolved to an immutable commit and loaded
+with `trust_remote_code=True`; only use repositories you trust. The resolved
+model name and revision are recorded on the LanceDB table and reused by local
+query.
+
+For a compatible ModelOpt checkpoint, including FP8 or NVFP4 variants, select
+vLLM for ingest. Local query detects the ModelOpt configuration and selects
+vLLM automatically:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
+  --local-ingest-embed-backend vllm
+
+retriever query "What is in this corpus?" \
+  --table-name nemo-retriever
+```
+
+Hugging Face remains the local query backend for non-ModelOpt checkpoints.
+Local directories must contain `config.json`, and their absolute path must be
+available to every Ray worker or service replica that loads the model.
+
 ### OCR language mode
 
 ```bash
@@ -344,6 +412,19 @@ retriever ingest ./data/test.pdf \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images
 ```
+
+For local Hugging Face Omni BF16 captioning, use a dedicated GPU. The default
+profile reserves `0.95` of GPU memory so that vLLM can allocate both the model
+and its KV cache. Override that reservation when your deployment requires it:
+
+```bash
+retriever ingest ./data/test.png \
+  --caption \
+  --caption-gpu-memory-utilization 0.95
+```
+
+An 80 GB requirement for a self-hosted Omni NIM does not by itself establish
+that direct local Hugging Face vLLM inference has sufficient KV-cache capacity.
 
 ## Results and diagnostics
 
