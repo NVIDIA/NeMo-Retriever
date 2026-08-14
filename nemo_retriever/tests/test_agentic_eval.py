@@ -397,3 +397,31 @@ def test_agentic_config_validates_local_vllm_knobs():
     assert cfg.local_tensor_parallel_size == 2
     assert cfg.local_max_model_len == 8192
     assert cfg.local_max_num_seqs == 4
+
+
+def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
+    from nemo_retriever.query.agentic import (
+        AgenticRetrievalConfig,
+        _build_agent_chat_completion_fn,
+    )
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="super-49b",
+        local_tensor_parallel_size=2,
+    )
+
+    with patch(
+        "nemo_retriever.models.create_local_agent_llm",
+        return_value=object(),
+    ) as create_local_llm:
+        _build_agent_chat_completion_fn(cfg)
+
+    create_local_llm.assert_called_once_with(
+        "super-49b",
+        backend="vllm",
+        hf_cache_dir=None,
+        gpu_memory_utilization=0.8,
+        tensor_parallel_size=2,
+        max_model_len=None,
+        max_num_seqs=None,
+    )

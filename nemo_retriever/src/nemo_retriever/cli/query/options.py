@@ -216,6 +216,18 @@ AgenticTemperatureOption = Annotated[
         ),
     ),
 ]
+AgenticLocalTensorParallelSizeOption = Annotated[
+    int,
+    typer.Option(
+        "--agentic-local-tensor-parallel-size",
+        min=1,
+        help=(
+            "vLLM tensor_parallel_size for the in-process agent LLM. "
+            "Use 2 (with two visible GPUs) for local super-49b; ignored when "
+            "--agentic-invoke-url is set."
+        ),
+    ),
+]
 AgenticLlmClientOption = Annotated[
     str | None,
     typer.Option(

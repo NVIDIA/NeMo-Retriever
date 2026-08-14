@@ -357,6 +357,8 @@ embedding endpoint.
 **Local in-process vLLM agent LLM.** Omit `--agentic-invoke-url` to load the
 supported local agent LLM directly in the Python process. `nemotron-8b` is the
 default; `super-49b` is also supported when the process has enough visible GPUs.
+For `super-49b`, set `--agentic-local-tensor-parallel-size 2` with two visible
+GPUs (for example `CUDA_VISIBLE_DEVICES=0,1`).
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
@@ -366,6 +368,15 @@ CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is 
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
+```bash
+CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
+  --agentic \
+  --agentic-llm-model super-49b \
+  --agentic-local-tensor-parallel-size 2 \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever \
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
+```
 **OpenAI-compatible agent endpoint.** Pass `--agentic-invoke-url` when you want a
 custom model or a separately hosted chat-completions server, such as vLLM server
 mode or a self-hosted NIM. When an invoke URL is provided, `--agentic-llm-model`
