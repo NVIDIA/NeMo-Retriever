@@ -223,8 +223,7 @@ ValueError: Configured max_batch_size (30) is larger than the model''s supported
 ```
 
 If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
-You can set the variable in your .env file or directly in your environment.
+you must set `EMBEDDER_BATCH_SIZE=3` in the process environment (for example `export EMBEDDER_BATCH_SIZE=3`). The Library does not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
 
 
 
