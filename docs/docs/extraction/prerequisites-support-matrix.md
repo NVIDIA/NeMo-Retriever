@@ -1,6 +1,6 @@
 # Pre-Requisites & Support Matrix
 
-Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance on this page.
+Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance on this page.
 
 **Platform summary:** Supported **local GPU inference** requires **Linux** and CUDA 13. For **remote NIM inference**, the base Python package also installs on **Windows x64** and **macOS Apple Silicon (arm64)**; local GPU inference is not supported on those platforms. **macOS Intel (x86_64) is not supported** — `pip`/`uv` installs fail because Ray no longer publishes Intel Mac wheels.
 
@@ -27,6 +27,27 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 > **Note**
 >
 > When you use UV, create the environment with Python 3.12 — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
+
+## Kubernetes Helm storage requirements { #kubernetes-helm-storage-requirements }
+
+The production Helm chart requires a working persistent-volume provisioning and binding strategy. A default install creates **seven** PersistentVolumeClaims: three chart-managed service claims and four NIM Operator NIMCache claims for the core NIMs.
+
+Before you run `helm install`, confirm that the cluster can bind those claims. Use one of the following strategies:
+
+- A default StorageClass backed by a working provisioner.
+- Explicit `storageClass` values for every default claim, each backed by a working provisioner or matching persistent volumes.
+- Compatible static persistent volumes, or pre-created claims where the chart supports `existingClaim`.
+
+Run the following preflight commands:
+
+```bash
+kubectl get storageclass
+kubectl get pv
+```
+
+If the cluster has no StorageClass and no compatible Available persistent volumes, stop and add a binding strategy before you install. `helm install` can report `STATUS: deployed` while every claim remains `Pending`, which leaves the retriever service, VectorDB, and core NIM workloads unschedulable.
+
+For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
 
 ## Hardware Requirements { #hardware-requirements }
 
@@ -181,6 +202,7 @@ and run only the embedder, reranker, and your vector database.
 - [Release Notes](releasenotes.md)
 - [Deployment options](deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite)
 - [NVIDIA NIM for Object Detection (support matrix)](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html)
 - [NVIDIA NIM for Image OCR (support matrix)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html)
 - [NVIDIA NIM for Vision Language Models (support matrix)](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
