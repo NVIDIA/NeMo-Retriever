@@ -554,6 +554,8 @@ serviceConfig:
     # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
     nemotronParseModel: ""
     embedInvokeUrl: ""
+    rerankInvokeUrl: ""
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
