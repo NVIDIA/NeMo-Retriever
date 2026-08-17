@@ -117,6 +117,22 @@ def test_split_mounts_public_secret_only_on_gateway_and_internal_secret_everywhe
         assert all(item["name"] != "scope-token" for item in pod_spec.get("volumes", []))
 
 
+def test_split_without_internal_auth_mounts_public_secret_on_workers() -> None:
+    deployments = _deployments(
+        _render(
+            "--set",
+            "topology.mode=split",
+            "--set",
+            "serviceConfig.auth.enabled=true",
+            "--set",
+            "serviceConfig.auth.scopeTokenSecret.name=nrl-public-auth",
+        )
+    )
+
+    for component in ("gateway", "realtime", "batch"):
+        assert "NRL_SCOPE_TOKEN_FILE" in _container_env(deployments[component])
+
+
 def test_internal_auth_requires_existing_secret_name() -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
         _render("--set", "serviceConfig.vectordb.internalAuth.enabled=true")

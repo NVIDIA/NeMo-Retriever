@@ -31,6 +31,11 @@ _GATEWAY_HANDOFF_VALUE = "v1"
 _GATEWAY_PROXY_PATHS = frozenset({"/v1/ingest/sidecar", "/v1/ingest/pipeline-config"})
 
 
+def _is_gateway_proxy_path(path: str) -> bool:
+    """Return whether *path* is a gateway-to-worker sidecar or config route."""
+    return path in _GATEWAY_PROXY_PATHS or path.startswith("/v1/ingest/sidecar/")
+
+
 def _strip_bearer(value: str) -> str:
     if value.lower().startswith(_BEARER_PREFIX):
         return value[len(_BEARER_PREFIX) :].strip()
@@ -60,13 +65,27 @@ def authorized_scope(request: Request) -> str:
 
 
 def caller_fingerprint(request: Request) -> str | None:
-    """Return the authenticated caller fingerprint, never a raw bearer token."""
+    """Return the authenticated caller fingerprint, or ``None`` when unavailable.
+
+    The returned value is derived from the bearer token and never contains the
+    raw bearer token.
+    """
     value = getattr(request.state, "caller_fingerprint", None)
     return str(value) if value else None
 
 
 def gateway_handoff_headers(*, internal_api_token: str | None, scope: str, caller_fingerprint: str | None) -> dict[str, str]:
-    """Build the gateway-controlled authentication context for worker proxy calls."""
+    """Build gateway-controlled worker authentication headers.
+
+    Args:
+        internal_api_token: Shared credential used to authenticate the worker.
+        scope: Scope previously authorized by the gateway.
+        caller_fingerprint: Optional non-secret caller identity fingerprint.
+
+    Returns:
+        Headers for a restricted gateway-to-worker handoff, or an empty
+        dictionary when no internal credential is configured.
+    """
     headers = internal_auth_headers(internal_api_token)
     if not headers:
         return {}
@@ -181,7 +200,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
         if (
             self._service_mode in ("realtime", "batch")
-            and path in _GATEWAY_PROXY_PATHS
+            and _is_gateway_proxy_path(path)
             and self._internal_api_token
             and request.headers.get(_GATEWAY_HANDOFF_HEADER) == _GATEWAY_HANDOFF_VALUE
         ):

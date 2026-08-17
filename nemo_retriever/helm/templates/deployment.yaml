@@ -318,7 +318,7 @@ spec:
                   key: {{ $internalAuth.existingSecret.key | quote }}
                   optional: false
             {{- end }}
-            {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+            {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
             - name: NRL_SCOPE_TOKEN_FILE
               value: {{ printf "%s/scope-tokens.json" $scopeTokenMountPath | quote }}
             {{- end }}
@@ -388,7 +388,7 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
-            {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+            {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
             - name: scope-token
               mountPath: {{ $scopeTokenMountPath | quote }}
               readOnly: true

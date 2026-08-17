@@ -113,14 +113,17 @@ class GatewayProxy:
         reserved = {
             "host",
             "transfer-encoding",
-            self._public_auth_header,
             "x-nrl-scope",
             "x-nrl-internal-token",
             "x-nrl-gateway-handoff",
             "x-nrl-authorized-scope",
             "x-nrl-caller-fingerprint",
         }
+        if self._internal_api_token:
+            reserved.add(self._public_auth_header)
         headers = {key: value for key, value in request.headers.items() if key.lower() not in reserved}
+        if not self._internal_api_token:
+            headers["X-NRL-Scope"] = authorized_scope(request)
         headers.update(
             gateway_handoff_headers(
                 internal_api_token=self._internal_api_token,
