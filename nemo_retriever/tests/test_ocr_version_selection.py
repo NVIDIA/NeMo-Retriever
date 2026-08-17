@@ -412,7 +412,7 @@ def test_ocr_stage_needed_false_when_extract_text_disabled() -> None:
     assert _ocr_stage_needed(params) is False
 
 
-def test_detection_pipeline_includes_ocr_for_default_method(monkeypatch):
+def test_detection_pipeline_includes_ocr_for_default_method(monkeypatch) -> None:
     """In-process detection pipeline must include OCR when method='pdfium' and extract_text=True."""
     from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
     from nemo_retriever.common.ray_resource_hueristics import Resources
@@ -453,3 +453,44 @@ def test_detection_pipeline_includes_ocr_for_default_method(monkeypatch):
 
     op._run_detection_pipeline(pd.DataFrame({"page_image": ["x"]}))
     assert "OCRActor" in calls
+
+
+def test_pdf_extraction_sets_needs_ocr_for_scanned_default_method() -> None:
+    """PDF extraction must set needs_ocr_for_text=True for scanned pages under default method='pdfium'.
+
+    Regression test for https://github.com/NVIDIA/NeMo-Retriever/issues/2443
+    (Greptile review finding: PDF OCR eligibility remains disabled).
+    Previously ocr_extraction_needed_for_text was gated on
+    method in ('pdfium_hybrid', 'ocr'), so scanned PDF pages with
+    method='pdfium' never received OCR text extraction.
+    """
+    import io
+    from unittest.mock import patch
+
+    import pandas as pd
+
+    pdfium = pytest.importorskip("pypdfium2")
+    from nemo_retriever.operators.extract.pdf.extract import pdf_extraction
+
+    doc = pdfium.PdfDocument.new()
+    doc.new_page(612, 792)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    def _fake_is_scanned(_page):
+        return True
+
+    with patch(
+        "nemo_retriever.operators.extract.pdf.extract._is_scanned_page",
+        side_effect=_fake_is_scanned,
+    ):
+        result = pdf_extraction(
+            pd.DataFrame([{"bytes": buf.getvalue(), "path": "scanned.pdf", "page_number": 1}]),
+            extract_text=True,
+            text_extraction_method="pdfium",
+        )
+
+    row = result.iloc[0]
+    assert row["text"] == ""
+    assert row["metadata"]["needs_ocr_for_text"] is True
