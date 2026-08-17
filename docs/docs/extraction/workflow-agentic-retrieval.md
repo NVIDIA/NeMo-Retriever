@@ -14,9 +14,9 @@ The larger `super-49b` profile is also supported. Pass
 `--agentic-local-tensor-parallel-size 2` with two visible GPUs for that
 profile (and the same pattern for other multi-GPU local TP runs).
 Tensor-parallel startup automatically disables NVLink multicast collectives
-(`NCCL_NVLS_ENABLE=0`, `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`) when the
-CUDA-visible GPUs have no NVLink — common on dual-GPU PCIe workstations —
-where those collectives abort vLLM startup. Other custom in-process LLMs are not supported yet because the agent
+(`NCCL_NVLS_ENABLE=0`, `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`) when the TP
+device group has no NVLink — common on dual-GPU PCIe workstations — where
+those collectives abort vLLM startup. Other custom in-process LLMs are not supported yet because the agent
 loop depends on OpenAI-style tool-call messages; use an OpenAI-compatible
 endpoint for custom models.
 

@@ -44,19 +44,20 @@ def apply_vllm_startup_defaults(*, tensor_parallel_size: int = 1) -> None:
     # when the optional DeepGEMM/CUDA-toolkit stack is not discoverable.
     os.environ.setdefault("VLLM_DEEP_GEMM_WARMUP", VLLM_DEEP_GEMM_WARMUP_DEFAULT)
 
-    if int(tensor_parallel_size) > 1 and not nvlink_is_available():
+    tp = int(tensor_parallel_size)
+    if tp > 1 and not nvlink_is_available(tensor_parallel_size=tp):
         for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items():
             os.environ.setdefault(name, value)
         logger.info(
-            "No NVLink detected among the CUDA-visible GPUs; running tensor_parallel_size=%d with %s "
+            "No NVLink detected in the tensor-parallel GPU group; running tensor_parallel_size=%d with %s "
             "so vLLM does not start NVLink multicast collectives.",
-            int(tensor_parallel_size),
+            tp,
             ", ".join(f"{name}={value}" for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items()),
         )
 
 
 def _visible_nvml_device_indices(device_count: int) -> list[int] | None:
-    """Map ``CUDA_VISIBLE_DEVICES`` to physical NVML indices for the TP group.
+    """Map ``CUDA_VISIBLE_DEVICES`` to physical NVML indices.
 
     NVML always enumerates every physical GPU, so scanning the whole host would
     misclassify a PCIe-only visible pair on a machine that also has an
@@ -79,8 +80,12 @@ def _visible_nvml_device_indices(device_count: int) -> list[int] | None:
     return indices
 
 
-def nvlink_is_available() -> bool:
-    """Return whether NVML reports an active NVLink on the CUDA-visible GPUs.
+def nvlink_is_available(*, tensor_parallel_size: int | None = None) -> bool:
+    """Return whether NVML reports an active NVLink in the vLLM TP GPU group.
+
+    When ``tensor_parallel_size`` is set, only the first N CUDA-visible devices
+    are checked — matching vLLM's default rank→device mapping — so extra visible
+    GPUs outside the TP group cannot mask a PCIe-only shard.
 
     Unknown counts as available so an NVML gap never silently downgrades
     collectives on a host that does have NVLink among the selected devices.
@@ -106,6 +111,12 @@ def nvlink_is_available() -> bool:
             )
             return True
 
+        if tensor_parallel_size is not None:
+            tp = int(tensor_parallel_size)
+            if tp < 1:
+                return True
+            device_indices = device_indices[:tp]
+
         max_links = int(getattr(pynvml, "NVML_NVLINK_MAX_LINKS", 18))
         for device_index in device_indices:
             handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
@@ -115,7 +126,7 @@ def nvlink_is_available() -> bool:
                         return True
                 except pynvml.NVMLError:
                     # Not supported on this device, or the link index is beyond
-                    # what it exposes; keep probing the remaining visible devices.
+                    # what it exposes; keep probing the remaining TP devices.
                     break
         return False
     except pynvml.NVMLError:

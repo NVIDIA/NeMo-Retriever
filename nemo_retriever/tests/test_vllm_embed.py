@@ -245,7 +245,7 @@ class TestVllmStartupDefaults:
     def test_single_gpu_keeps_nvlink_collectives_untouched(self, monkeypatch):
         monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
         monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
-        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda **_kwargs: False)
 
         apply_vllm_startup_defaults(tensor_parallel_size=1)
 
@@ -255,7 +255,7 @@ class TestVllmStartupDefaults:
     def test_tensor_parallel_without_nvlink_disables_multicast_collectives(self, monkeypatch):
         monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
         monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
-        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda **_kwargs: False)
 
         apply_vllm_startup_defaults(tensor_parallel_size=2)
 
@@ -265,7 +265,7 @@ class TestVllmStartupDefaults:
     def test_tensor_parallel_with_nvlink_keeps_multicast_collectives(self, monkeypatch):
         monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
         monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
-        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: True)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda **_kwargs: True)
 
         apply_vllm_startup_defaults(tensor_parallel_size=2)
 
@@ -275,7 +275,7 @@ class TestVllmStartupDefaults:
     def test_nvlink_fallback_respects_user_override(self, monkeypatch):
         monkeypatch.setenv("NCCL_NVLS_ENABLE", "1")
         monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
-        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda **_kwargs: False)
 
         apply_vllm_startup_defaults(tensor_parallel_size=2)
 
@@ -335,7 +335,7 @@ class TestNvlinkDetection:
             devices_link_states=[[1], [1], [0], [0]],
         )
 
-        assert vllm_inference.nvlink_is_available() is False
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is False
 
     def test_visible_nvlink_pair_reports_available(self, monkeypatch):
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
@@ -344,14 +344,26 @@ class TestNvlinkDetection:
             devices_link_states=[[1], [1], [0], [0]],
         )
 
-        assert vllm_inference.nvlink_is_available() is True
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is True
+
+    def test_tp_group_ignores_extra_visible_nvlink_devices(self, monkeypatch):
+        # Four visible GPUs: TP=2 uses physical 0/1 (PCIe-only). NVLink on 2/3
+        # must not keep multicast enabled for the TP shard.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3")
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[0], [0], [1], [1]],
+        )
+
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is False
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=4) is True
 
     def test_uuid_visible_devices_assume_available(self, monkeypatch):
         """UUID selections are not resolved here, so keep vLLM's own defaults."""
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-deadbeef")
         self._install_fake_pynvml(monkeypatch, devices_link_states=[[0], [0]])
 
-        assert vllm_inference.nvlink_is_available() is True
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is True
 
     def test_missing_nvml_assumes_available(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "pynvml", None)
