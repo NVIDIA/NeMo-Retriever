@@ -85,6 +85,16 @@ def _default_rerank_invoke_url(model_name: str | None) -> str:
     return _DEFAULT_RERANK_INVOKE_URL
 
 
+def _configured_rerank_invoke_url(kwargs: dict[str, Any] | None) -> str:
+    """Return the configured endpoint, preferring ``rerank_invoke_url`` over its ``invoke_url`` alias.
+
+    Each candidate is stripped before the choice so a blank canonical value does
+    not shadow a usable alias.
+    """
+    candidates = kwargs or {}
+    return str(candidates.get("rerank_invoke_url") or "").strip() or str(candidates.get("invoke_url") or "").strip()
+
+
 # ---------------------------------------------------------------------------
 # Remote endpoint helper
 # ---------------------------------------------------------------------------
@@ -459,7 +469,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
-        if str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip():
+        if _configured_rerank_invoke_url(self._kwargs):
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
@@ -501,7 +511,7 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        configured_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
+        configured_url = _configured_rerank_invoke_url(self._kwargs)
         rerank_invoke_url = configured_url or _default_rerank_invoke_url(
             str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
         )
@@ -544,8 +554,7 @@ class NemotronRerankActor(ArchetypeOperator):
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(_configured_rerank_invoke_url(operator_kwargs))
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
