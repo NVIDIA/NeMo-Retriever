@@ -178,8 +178,9 @@ schedules only one NIM pod. The other three stay `Pending`.
 Choose one of the following before you install:
 
 - Provide four allocatable `nvidia.com/gpu` slots for the default
-  core topology. Each optional NIM you enable adds another exclusive
-  request.
+  core topology. Each optional NIM adds its per-NIM GPU request.
+  Most optional keys use `nimServiceGpuLimit` (one GPU). The default
+  `answer_llm` Super-49B resources request two GPUs.
 - Configure GPU sharing so one physical GPU advertises at least four
   `nvidia.com/gpu` replicas. Time-slicing works on GPUs that do not
   support MIG (including A10G). MIG is an alternative on GPUs that
@@ -231,8 +232,10 @@ kubectl patch clusterpolicies.nvidia.com/cluster-policy \
 ```
 
 Increase `replicas` if you also enable optional NIMs on the same
-shared GPU and combined VRAM still fits. For the full procedure,
-node labels, and limitations, refer to
+shared GPU and combined VRAM still fits. Count each NIM's Helm GPU
+request. The default `answer_llm` Super-49B profile requests two
+GPUs for tensor parallel and is not a small core NIM. For the full
+procedure, node labels, and limitations, refer to
 [Time-Slicing GPUs in Kubernetes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
 For MIG on supported GPUs, refer to
 [GPU Operator with MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html).

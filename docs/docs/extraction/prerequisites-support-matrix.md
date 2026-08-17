@@ -59,10 +59,10 @@ On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another s
 
 Choose one of the following strategies before you run `helm install`:
 
-- Provide **four allocatable GPU slots** for the default self-hosted Helm topology. Each optional NIM you enable adds another exclusive `nvidia.com/gpu: 1` request.
+- Provide **four allocatable GPU slots** for the default self-hosted Helm topology. Each optional NIM you enable adds its Helm GPU request. Most optional NIMs request `nvidia.com/gpu: 1`. The default `answer_llm` Super-49B NIMService requests `nvidia.com/gpu: 2`.
 - Configure GPU sharing so one physical GPU advertises at least four `nvidia.com/gpu` replicas. Time-slicing is the portable path, including on GPUs that do not support MIG. MIG is an alternative on GPUs that support it.
 
-The chart still renders `nvidia.com/gpu: 1` per NIMService. Sharing is cluster configuration (GPU Operator), not a Helm value. Time-slicing does not isolate GPU memory. Combined VRAM of the scheduled NIMs must still fit on the physical GPU.
+The chart still renders `nvidia.com/gpu: 1` per NIMService unless a per-NIM `resources` block overrides it. Sharing is cluster configuration (GPU Operator), not a Helm value. Time-slicing does not isolate GPU memory. Combined VRAM of the scheduled NIMs must still fit on the physical GPU.
 
 For the time-slicing ConfigMap, ClusterPolicy patch, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
 
@@ -110,7 +110,7 @@ The NeMo Retriever Library extraction core pipeline features have a combined GPU
 
 The default Helm chart creates four independent NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, you need **four allocatable GPU slots**. To run all four core NIMs on one physical GPU, configure GPU sharing before you install. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
-Optional advanced features (audio and video transcription, Nemotron Parse, Omni image captioning, and the VL reranker) are **not** part of that core footprint. Audio, video, Nemotron Parse, and Omni captioning each need **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs. The VL reranker can share the core GPU when it has at least 80 GB VRAM. Capacity requirements are listed in the **Additional Dedicated GPUs** rows of the [model hardware requirements](#model-hardware-requirements) table below. On a conventional exclusive-GPU Helm cluster, each optional NIMService adds another allocatable GPU slot.
+Optional advanced features (audio and video transcription, Nemotron Parse, Omni image captioning, and the VL reranker) are **not** part of that core footprint. Audio, video, Nemotron Parse, and Omni captioning each need **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs. The VL reranker can share the core GPU when it has at least 80 GB VRAM. Capacity requirements are listed in the **Additional Dedicated GPUs** rows of the [model hardware requirements](#model-hardware-requirements) table below. On a conventional exclusive-GPU Helm cluster, each optional NIMService adds its Helm GPU request. Most optional NIMs request one GPU slot. The default `answer_llm` Super-49B NIMService requests two.
 
 <a id="optional-helm-nims-not-auto-wired-by-default"></a>
 
@@ -192,7 +192,7 @@ For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image 
 
 Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [Default NIMs](#default-helm-nims) table above.
 
-Optional features in the table above require GPU capacity **beyond the four default NIMs**. Audio and video transcription, Nemotron Parse, and Omni image captioning each need a **dedicated additional GPU** (or two, for Omni on L40S) separate from the core pipeline GPU. The VL reranker can share the core GPU only when that GPU has at least 80 GB of VRAM. Otherwise, treat the reranker as a standalone workload. Each optional feature also needs extra disk space and feature-specific system dependencies. On a conventional exclusive-GPU Helm cluster, each optional NIMService also requests another allocatable GPU slot.
+Optional features in the table above require GPU capacity **beyond the four default NIMs**. Audio and video transcription, Nemotron Parse, and Omni image captioning each need a **dedicated additional GPU** (or two, for Omni on L40S) separate from the core pipeline GPU. The VL reranker can share the core GPU only when that GPU has at least 80 GB of VRAM. Otherwise, treat the reranker as a standalone workload. Each optional feature also needs extra disk space and feature-specific system dependencies. On a conventional exclusive-GPU Helm cluster, each optional NIMService also adds its Helm GPU request. Most optional NIMs request one GPU slot. The default `answer_llm` Super-49B NIMService requests two.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
@@ -204,7 +204,7 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 
 **Total GPUs** for Core Features is combined VRAM co-residency for the four default NIMs (one A10G or better). It is not the number of exclusive Kubernetes GPU requests the default Helm chart makes. Without GPU sharing, plan for four allocatable GPU slots. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
-**Additional Dedicated GPUs** counts VRAM required **in addition to** that core co-residency. For example, a library-mode or GPU-shared deployment that runs the core pipeline on one H100 and self-hosted Parakeet ASR needs **two GPUs total**. On a conventional exclusive-GPU Helm cluster, the same optional ASR NIM adds a fifth allocatable GPU slot.
+**Additional Dedicated GPUs** counts VRAM required **in addition to** that core co-residency. For example, a library-mode or GPU-shared deployment that runs the core pipeline on one H100 and self-hosted Parakeet ASR needs **two GPUs total**. On a conventional exclusive-GPU Helm cluster, the same optional ASR NIM adds a fifth allocatable GPU slot. Enabling the default `answer_llm` Super-49B profile adds two GPU slots, not one.
 
 - **HF model weights** — approximate Hugging Face checkpoint footprint (files such as `model*.safetensors`, `weights.pth`, or other published weight bundles in the model repository). Values are rounded from the current public file listing and can change when the repository is updated.
 - **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, refer to the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning).
