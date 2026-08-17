@@ -47,9 +47,7 @@ def _helm_template(*args: str) -> subprocess.CompletedProcess[str]:
 
 class HelmAudioEndpointTests(TestCase):
     def test_values_expose_manual_audio_endpoint(self) -> None:
-        values = (_repo_root() / "nemo_retriever/helm/values.yaml").read_text(
-            encoding="utf-8"
-        )
+        values = (_repo_root() / "nemo_retriever/helm/values.yaml").read_text(encoding="utf-8")
         self.assertIn('audioGrpcEndpoint: ""', values)
         self.assertIn("Not auto-wired when nimOperator.audio is enabled", values)
 
