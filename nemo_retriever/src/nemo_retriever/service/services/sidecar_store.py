@@ -35,8 +35,13 @@ from typing import Optional
 
 from redis.exceptions import (
     BusyLoadingError,
+    ClusterDownError,
     ConnectionError as RedisConnectionError,
+    MasterDownError,
+    OutOfMemoryError,
+    ReadOnlyError,
     TimeoutError as RedisTimeoutError,
+    TryAgainError,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,7 +172,16 @@ return redis.call("DEL", KEYS[1])
         pipe.pexpire(key, max(1, int(ttl * 1000)))
         try:
             pipe.execute()
-        except (RedisConnectionError, RedisTimeoutError, BusyLoadingError) as exc:
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
             raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
         return entry
 
@@ -175,7 +189,16 @@ return redis.call("DEL", KEYS[1])
         """Return an owner-matching sidecar without consuming it, if present."""
         try:
             data = self._client.hgetall(self._key(sidecar_id))
-        except (RedisConnectionError, RedisTimeoutError, BusyLoadingError) as exc:
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
             raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
         if not data:
             return None
@@ -188,7 +211,16 @@ return redis.call("DEL", KEYS[1])
         """Atomically return and optionally delete an owner-matching sidecar."""
         try:
             raw_data = self._client.eval(self._CONSUME_SCRIPT, 1, self._key(sidecar_id), owner_token or "")
-        except (RedisConnectionError, RedisTimeoutError, BusyLoadingError) as exc:
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
             raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
         if not raw_data:
             return None
@@ -199,7 +231,16 @@ return redis.call("DEL", KEYS[1])
         """Atomically delete an owner-matching sidecar and report success."""
         try:
             return bool(self._client.eval(self._DELETE_SCRIPT, 1, self._key(sidecar_id), owner_token or ""))
-        except (RedisConnectionError, RedisTimeoutError, BusyLoadingError) as exc:
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
             raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
 
     def stats(self) -> dict[str, int | float]:

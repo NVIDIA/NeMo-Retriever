@@ -328,6 +328,10 @@ class WorkBroker:
         condition = self._conditions[record.pool]
         async with condition:
             record = self._current(work_id, lease_id, generation)
+            if reason == "sidecar_store_unavailable":
+                # A Redis availability outage is not a failed work delivery.
+                # Preserve the delivery budget while the shared store recovers.
+                record.delivery_attempt = max(0, record.delivery_attempt - 1)
             self._requeue_or_exhaust_locked(record, reason)
             self._publish_metrics()
             condition.notify_all()

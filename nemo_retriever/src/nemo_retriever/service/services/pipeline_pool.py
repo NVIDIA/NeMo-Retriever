@@ -58,6 +58,7 @@ _QUEUE_DEPTH_REPORT_INTERVAL_S = 1.0
 _CALLBACK_RETRY_DELAYS_S = (0.5, 1.0, 2.0, 4.0, 8.0)
 _CALLBACK_DEFERRED_INITIAL_DELAY_S = 16.0
 _CALLBACK_DEFERRED_MAX_DELAY_S = 300.0
+_SIDECAR_STORE_RETRY_DELAY_S = 5.0
 
 
 class PoolType(str, Enum):
@@ -621,6 +622,7 @@ class _Pool:
 
                     if isinstance(exc, SidecarStoreUnavailable) and item.callback_url and self._pull_client is not None:
                         outcome = "retrying"
+                        await asyncio.sleep(_SIDECAR_STORE_RETRY_DELAY_S)
                         await self._pull_client.release(
                             {
                                 "work_id": item.id,

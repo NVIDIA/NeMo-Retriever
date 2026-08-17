@@ -88,6 +88,34 @@ async def test_fifo_spool_integrity_and_ack_cleanup(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_transient_sidecar_release_preserves_delivery_budget(tmp_path):
+    broker = WorkBroker(
+        _config(tmp_path, max_delivery_attempts=1),
+        PipelinePoolConfig(batch_queue_size=1),
+    )
+    await broker.start()
+    try:
+        record = await _enqueue(broker, "redis-retry")
+        claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
+        assert claim is not None and claim.lease is not None
+
+        await broker.release(
+            record.work_id,
+            claim.lease.lease_id,
+            claim.lease.generation,
+            reason="sidecar_store_unavailable",
+        )
+
+        assert broker.has_record(record.work_id)
+        assert record.delivery_attempt == 0
+        retry = await broker.claim(PoolType.BATCH, worker_uid="pod-b", worker_ip="10.0.0.2")
+        assert retry is record
+        assert record.delivery_attempt == 1
+    finally:
+        await broker.shutdown()
+
+
+@pytest.mark.anyio
 async def test_acknowledge_revalidates_lease_after_acquiring_condition(tmp_path):
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
     await broker.start()

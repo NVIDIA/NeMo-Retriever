@@ -136,6 +136,20 @@ def test_redis_store_uses_bounded_operations_and_translates_outage(
         store.get("sidecar-id")
 
 
+def test_redis_store_translates_transient_command_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from redis.exceptions import OutOfMemoryError
+
+    class UnavailableClient:
+        def hgetall(self, _key: str) -> dict[bytes, bytes]:
+            raise OutOfMemoryError("OOM command not allowed")
+
+    monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: UnavailableClient())
+    store = RedisSidecarStore("redis://sidecars")
+
+    with pytest.raises(SidecarStoreUnavailable, match="temporarily unavailable"):
+        store.get("sidecar-id")
+
+
 # ----------------------------------------------------------------------
 # Worker-side materialisation
 # ----------------------------------------------------------------------

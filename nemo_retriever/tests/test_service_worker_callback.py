@@ -748,9 +748,14 @@ def test_service_auth_headers_preserve_worker_pull_credentials() -> None:
     assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
 
 
-def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable() -> None:
+def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.services import pipeline_pool
     from nemo_retriever.service.services.pipeline_pool import WorkItem, _Pool
     from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable
+
+    monkeypatch.setattr(pipeline_pool, "_SIDECAR_STORE_RETRY_DELAY_S", 0.0)
 
     released: list[tuple[dict[str, object], str]] = []
     release_complete = asyncio.Event()
