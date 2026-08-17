@@ -409,6 +409,34 @@ cluster allows runtime package installation. **OpenShift restricted-v2** blocks
 that path — use a prebuilt service image instead; refer to [Audio and video on restricted OpenShift](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
 For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
+### Audio and video (Parakeet ASR) { #audio-video-parakeet }
+
+Parakeet ASR is disabled by default. The chart default is `nimOperator.audio.enabled=false`. The chart does not auto-wire the in-cluster ASR endpoint when you enable the audio NIM.
+
+To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md), set both of the following values:
+
+```yaml
+nimOperator:
+  audio:
+    enabled: true
+
+serviceConfig:
+  nimEndpoints:
+    audioGrpcEndpoint: audio:50051
+```
+
+Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
+
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
+
+After you set those values, complete the following steps:
+
+1. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
+2. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
+3. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
+
+The in-cluster gRPC Service name is `audio` on port `50051`. Graph ingest does not read this Helm value. Pass the same endpoint through `ASRParams.audio_endpoints` in Python. Refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
+
 ### Health probes
 
 The service exposes unauthenticated health endpoints for Kubernetes probes:
@@ -419,24 +447,6 @@ The service exposes unauthenticated health endpoints for Kubernetes probes:
 | `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe. |
 
 When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from the Service endpoints until its required workers are ready. The response includes backend health details to help diagnose the unavailable dependency.
-
-### Audio and video (Parakeet ASR) { #audio-video-parakeet }
-
-To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
-
-1. Enable the optional ASR NIM and set its in-cluster gRPC endpoint. Parakeet is **off by default** and is **not** auto-wired into the retriever service (refer to [Recommended minimal install](#recommended-minimal-install-2608)):
-
-   ```bash
-   helm upgrade --install retriever ./nemo_retriever/helm \
-     --set nimOperator.audio.enabled=true \
-     --set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051
-   ```
-
-   Enabling `nimOperator.audio.enabled=true` without `serviceConfig.nimEndpoints.audioGrpcEndpoint` deploys the Parakeet `NIMService` but leaves `audio_grpc_endpoint` null in the service config.
-
-2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
-3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
-4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
 
 ### Service networking
 
@@ -461,7 +471,7 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
 | `serviceConfig.nimEndpoints.rerankInvokeUrl`      | `""`    | Ranking API URL used by `POST /v1/query` when `rerank=true`. The optional `rerankqa` NIM is not auto-wired; configure this URL explicitly. |
 | `serviceConfig.nimEndpoints.rerankModelName`      | `""`    | Model ID sent to the ranking API. Defaults to `nvidia/llama-nemotron-rerank-vl-1b-v2` when a rerank URL is configured; set it explicitly for a different compatible reranker. |
-| `serviceConfig.nimEndpoints.audioGrpcEndpoint`    | `""`    | Parakeet ASR gRPC endpoint (for example `audio:50051`). The optional `audio` NIM is not auto-wired; pair with `nimOperator.audio.enabled=true`. |
+| `serviceConfig.nimEndpoints.audioGrpcEndpoint`    | `""`    | gRPC endpoint for Parakeet ASR. Not auto-wired from `nimOperator.audio`. Set `audio:50051` when you enable the audio NIM. |
 | `serviceConfig.llm.enabled`                         | `false` | Enables `POST /v1/answer`. Auto-flips to true when `nimOperator.answer_llm` is enabled and the operator URL resolves. |
 | `serviceConfig.llm.apiBase`                         | `""`    | OpenAI-compatible LLM base URL. Explicit value wins; otherwise `answer_llm` opt-in resolves to `http://answer-llm:8000/v1` by default. |
 | `serviceConfig.llm.apiKeySecret.name`                | `""`    | Optional Secret name for external LLM credentials. Explicit values win; otherwise operator-managed `answer_llm` mounts its `authSecret` as `NEMO_RETRIEVER_LLM_API_KEY` so LiteLLM/OpenAI has a credential value without writing it to the ConfigMap. |
