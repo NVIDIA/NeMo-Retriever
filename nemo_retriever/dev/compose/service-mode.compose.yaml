@@ -99,11 +99,11 @@ services:
     restart: unless-stopped
 
   # Page-elements and table-structure are separate Compose services (matching
-  # Helm) but both run the combined nemotron-object-detection:2.0.0 image.
+  # Helm) but both run the combined nemotron-object-detection:2.0.1 image.
   nim-page-elements:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_PAGE_ELEMENTS_TAG:-2.0.0}
+    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_PAGE_ELEMENTS_TAG:-2.0.1}
     ports: ["${NIM_PAGE_ELEMENTS_HOST_PORT:-8001}:8000"]
     environment:
       <<: *nim-environment
@@ -125,7 +125,7 @@ services:
   nim-table-structure:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_TABLE_STRUCTURE_TAG:-2.0.0}
+    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-object-detection}:${NIM_TABLE_STRUCTURE_TAG:-2.0.1}
     ports: ["${NIM_TABLE_STRUCTURE_HOST_PORT:-8002}:8000"]
     environment:
       <<: *nim-environment
@@ -147,7 +147,7 @@ services:
   nim-ocr:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-2.0.0}
+    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-2.0.1}
     ports: ["${NIM_OCR_HOST_PORT:-8003}:8000"]
     environment:
       <<: *nim-environment
@@ -170,7 +170,7 @@ services:
   nim-embedding:
     <<: *nim-service
     profiles: [nims-core]
-    image: ${NIM_EMBED_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2}:${NIM_EMBED_TAG:-1.12.0}
+    image: ${NIM_EMBED_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2}:${NIM_EMBED_TAG:-2.3.0}
     ports: ["${NIM_EMBED_HOST_PORT:-8004}:8000"]
     environment:
       <<: *nim-environment

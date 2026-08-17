@@ -212,13 +212,22 @@ default, `best_effort`, logs capture write failures and continues ingestion.
 Each HTTP JSON attempt writes `manifest.json` and `request.json` in its own
 capture directory. A Triton gRPC attempt writes `manifest.json` and `request.bin`,
 a NumPy `savez_compressed` archive of input tensors; its manifest records the
-input/output names, data types, and inference parameters. The recorder does not
-persist authorization headers, API keys, or endpoint query strings.
+input/output names, data types, and inference parameters. Embedding HTTP
+captures also include an optional replay-metadata sidecar in `manifest.json` at
+`metadata.replay`; it does not alter the raw `request.json` payload. Version 1
+metadata has `records` aligned with request input positions. Each record includes
+the input index, a SHA-256 hash of the input, and its source row. The source row
+preserves available VectorDB identity, document context, or application query
+identity, but does not provide a normalized VDB schema or a dedicated query-ID
+field. `manifest.json` labels service ingestion as `operation: "ingest"` and
+VectorDB query embedding as `operation: "query"`. The recorder does not persist
+authorization headers, API keys, or endpoint query strings.
 
-Capture artifacts can include document text and base64-encoded page images. Use
-an approved destination with suitable access controls, encryption, and retention
-policies. This feature is separate from pipeline `.store()`, which persists
-ingest output artifacts rather than outbound NIM requests.
+Capture artifacts can include document text, base64-encoded page images, source
+row metadata, retrieved content, and query-identifying fields. Use an approved
+destination with suitable access controls, encryption, and retention policies.
+This feature is separate from pipeline `.store()`, which persists ingest output
+artifacts rather than outbound NIM requests.
 
 ### 3. Install with the NIM Operator (in-cluster NIMs)
 

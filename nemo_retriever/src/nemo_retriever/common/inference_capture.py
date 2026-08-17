@@ -209,6 +209,7 @@ def record_json_request(
     model: str | None = None,
     attempt: int = 0,
     operation: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """Persist one final JSON request when capture is active.
 
@@ -241,6 +242,7 @@ def record_json_request(
             "model": model,
             "attempt": int(attempt),
             "content_type": "application/json",
+            "metadata": metadata or {},
         }
         _write_capture(config, capture_id, manifest, body, "json")
     except Exception as exc:

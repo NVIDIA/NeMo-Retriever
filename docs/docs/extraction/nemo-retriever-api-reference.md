@@ -181,8 +181,24 @@ and `request.bin`, a NumPy `savez_compressed` archive of the input tensors. Its
 manifest has `protocol: "grpc"` and records the input names, data types, requested
 output names, and inference parameters. All manifests record the operation,
 stage, sanitized endpoint, model when available, timestamp, and retry attempt.
-Request inputs are persisted for replay. The recorder does not persist
-authorization headers, API keys, or endpoint query strings.
+Request inputs are persisted for replay. Embedding HTTP captures also add an
+optional replay-metadata sidecar in `manifest.json` at `metadata.replay`. It does
+not change `request.json`, so the captured request remains the exact payload
+sent to the NIM.
+
+`metadata.replay.replay_version` is `1`. Its `records` list is aligned with the
+request `input` positions. Each item includes `input_index`, an `input_sha256`,
+and the source `record`. The source record preserves available row identity and
+context, including VectorDB fields or application query-identifying fields when
+they are present. It omits `_content` and any `metadata.embedding` value. Do not
+assume a normalized VectorDB identity or a dedicated query-ID field.
+
+The manifest `operation` labels ingestion as `ingest` and retrieval embedding as
+`query`. Use the operation, input position, and replay record together to map a
+captured embedding request back to its source row. The replay record can contain
+document metadata, retrieved content, and query identifiers. Treat it as
+sensitive data. The recorder does not persist authorization headers, API keys,
+or endpoint query strings.
 
 By default, `failure_mode="best_effort"` logs a capture write failure and still
 sends the inference request. Set `failure_mode="required"` when you generate

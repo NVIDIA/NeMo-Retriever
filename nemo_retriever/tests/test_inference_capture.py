@@ -4,7 +4,10 @@
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
+
+from nemo_retriever.models.inference.main_text_embed import _embedding_replay_records
 
 from nemo_retriever.common.inference_capture import (
     InferenceCaptureConfig,
@@ -75,3 +78,24 @@ def test_environment_config_captures_query_requests(tmp_path: Path, monkeypatch:
     manifest = json.loads((capture_dir / "manifest.json").read_text())
     assert manifest["operation"] == "query"
     assert manifest["stage"] == "embed"
+
+
+def test_embedding_replay_metadata_is_aligned_and_does_not_change_payload(tmp_path: Path) -> None:
+    row = pd.Series({"id": "chunk-1", "text": "hello", "metadata": {"source_id": "doc-1", "embedding": [1.0]}})
+    replay_records = _embedding_replay_records([row], ["hello"])
+
+    with activate_inference_capture(InferenceCaptureConfig(str(tmp_path), failure_mode="required"), operation="ingest"):
+        record_json_request(
+            stage="embed",
+            endpoint="http://nim/v1/embeddings",
+            payload={"input": ["hello"], "input_type": "passage"},
+            metadata={"replay": {"replay_version": 1, "records": replay_records}},
+        )
+
+    capture_dir = next(tmp_path.iterdir())
+    manifest = json.loads((capture_dir / "manifest.json").read_text())
+    assert json.loads((capture_dir / "request.json").read_text()) == {"input": ["hello"], "input_type": "passage"}
+    record = manifest["metadata"]["replay"]["records"][0]
+    assert record["input_index"] == 0
+    assert record["record"]["id"] == "chunk-1"
+    assert record["record"]["metadata"] == {"source_id": "doc-1"}
