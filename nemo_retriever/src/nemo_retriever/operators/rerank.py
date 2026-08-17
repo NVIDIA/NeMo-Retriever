@@ -12,7 +12,8 @@ Provides:
 Remote endpoint
 ---------------
 When ``rerank_invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes a ranking REST API. The helper accepts fully qualified
+server that exposes a ranking REST API. ``invoke_url`` is accepted as a
+compatibility alias (same pattern as OCR). The helper accepts fully qualified
 ``.../reranking``, ``.../v1/ranking``, or ``.../v1/rerank`` URLs. Other base
 URLs append ``/v1/ranking`` automatically::
 
@@ -458,7 +459,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
-        if str(self._kwargs.get("rerank_invoke_url") or "").strip():
+        if str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip():
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
@@ -500,7 +501,7 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        configured_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
+        configured_url = str(self._kwargs.get("rerank_invoke_url") or self._kwargs.get("invoke_url") or "").strip()
         rerank_invoke_url = configured_url or _default_rerank_invoke_url(
             str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
         )
@@ -544,7 +545,7 @@ class NemotronRerankActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("rerank_invoke_url") or "").strip())
+        return bool(str(kwargs.get("rerank_invoke_url") or kwargs.get("invoke_url") or "").strip())
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

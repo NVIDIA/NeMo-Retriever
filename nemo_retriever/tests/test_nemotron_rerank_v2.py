@@ -607,6 +607,44 @@ class TestNemotronRerankActor:
         assert actor._model is None
         assert actor._kwargs.get("rerank_invoke_url") == "http://localhost:8000"
 
+    def test_cpu_actor_accepts_invoke_url_alias(self):
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
+
+        actor = NemotronRerankCPUActor(invoke_url="http://localhost:8015")
+
+        assert actor._model is None
+        assert actor._kwargs["rerank_invoke_url"] == "http://localhost:8015"
+
+    def test_cpu_actor_prefers_canonical_endpoint_key_over_alias(self):
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
+
+        actor = NemotronRerankCPUActor(
+            rerank_invoke_url="http://canonical:8015",
+            invoke_url="http://alias:8015",
+        )
+
+        assert actor._kwargs["rerank_invoke_url"] == "http://canonical:8015"
+
+    def test_archetype_selects_remote_variant_for_invoke_url_alias(self):
+        from nemo_retriever.operators.rerank import NemotronRerankActor, NemotronRerankCPUActor
+
+        actor = NemotronRerankActor(invoke_url="http://localhost:8015")
+        delegate = actor._resolve_delegate()
+
+        assert NemotronRerankActor.prefers_cpu_variant({"invoke_url": "http://localhost:8015"}) is True
+        assert NemotronRerankActor.prefers_cpu_variant({"invoke_url": "   "}) is False
+        assert isinstance(delegate, NemotronRerankCPUActor)
+        assert delegate._kwargs["rerank_invoke_url"] == "http://localhost:8015"
+
+    def test_gpu_actor_rejects_invoke_url_alias_without_loading_local_model(self):
+        from nemo_retriever.operators.rerank import NemotronRerankGPUActor
+
+        with patch("nemo_retriever.models.create_local_reranker") as create_local_reranker:
+            with pytest.raises(ValueError, match="does not support remote endpoint"):
+                NemotronRerankGPUActor(invoke_url="http://localhost:8015")
+
+        create_local_reranker.assert_not_called()
+
     def test_actor_call_scores_dataframe(self):
         import pandas as pd
         from nemo_retriever.operators.rerank import NemotronRerankActor
