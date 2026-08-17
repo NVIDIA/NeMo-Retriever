@@ -936,7 +936,7 @@ immutable. Kubernetes rejects an update with a message similar to:
 modelPuller is an immutable field. Please create a new NIMCache resource instead when you want to change this container.
 ```
 
-A `helm upgrade` that only changes the repository or tag therefore fails
+A `helm upgrade` that only changes the repository or tag fails
 on the existing object. Other release resources can already have been
 applied before that rejection, which leaves the release partially upgraded.
 
@@ -960,8 +960,8 @@ complete the following steps for every NIM whose image changes.
 The affected NIM is unavailable while the operator re-caches weights.
 
 1. Drain ingest traffic that depends on that NIM.
-2. Confirm that `metadata.name` is unchanged and that `modelPuller`
-   would change:
+2. Confirm the live `modelPuller` value differs from the new
+   `repository:tag`:
 
    ```bash
    NS=retriever

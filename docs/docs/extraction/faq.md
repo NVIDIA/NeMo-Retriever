@@ -79,7 +79,7 @@ On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending
 
 ## Why does Helm upgrade fail after I change a NIM image tag? { #helm-nim-image-tag-upgrade }
 
-The chart keeps the same `NIMCache` name when you change `nimOperator.<key>.image.repository` or `image.tag`. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
+The chart keeps the same `NIMCache` name when you change a NIM image repository or tag. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
 
 Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
