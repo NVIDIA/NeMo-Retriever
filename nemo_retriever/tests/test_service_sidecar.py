@@ -14,6 +14,7 @@ Three layers:
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import time
@@ -49,6 +50,20 @@ from nemo_retriever.service.services.sidecar_store import (
 # ----------------------------------------------------------------------
 # SidecarStore unit behaviour
 # ----------------------------------------------------------------------
+
+
+def test_limited_sidecar_read_stops_after_configured_limit() -> None:
+    from fastapi import HTTPException, UploadFile
+    from nemo_retriever.service.routers.ingest import _read_upload_limited
+
+    upload = UploadFile(filename="meta.csv", file=io.BytesIO(b"four"))
+
+    async def read() -> None:
+        with pytest.raises(HTTPException) as exc:
+            await _read_upload_limited(upload, 3, label="Sidecar upload")
+        assert exc.value.status_code == 413
+
+    asyncio.run(read())
 
 
 def test_store_put_get_consume_roundtrip() -> None:

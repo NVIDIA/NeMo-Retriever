@@ -549,6 +549,21 @@ def _check_upload_size(file: UploadFile, request: Request) -> None:
         )
 
 
+async def _read_upload_limited(file: UploadFile, limit: int, *, label: str) -> bytes:
+    """Read an upload in bounded chunks and reject it once it exceeds *limit*."""
+    if file.size is not None and file.size > limit:
+        raise HTTPException(status_code=413, detail=f"{label} exceeds limit of {limit:,} bytes")
+
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(min(64 * 1024, limit - total + 1)):
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail=f"{label} exceeds limit of {limit:,} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _count_pdf_pages(file_bytes: bytes) -> int:
     """Return the number of pages in a PDF, or 1 for non-PDF / errors."""
     try:
@@ -1509,7 +1524,7 @@ async def ingest_sidecar(
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
 
-    payload = await file.read()
+    payload = await _read_upload_limited(file, config.sidecar_store.max_payload_bytes, label="Sidecar upload")
     if not payload:
         raise HTTPException(status_code=400, detail="Sidecar upload is empty")
 
