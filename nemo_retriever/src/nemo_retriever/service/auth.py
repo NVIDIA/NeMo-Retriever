@@ -74,7 +74,9 @@ def caller_fingerprint(request: Request) -> str | None:
     return str(value) if value else None
 
 
-def gateway_handoff_headers(*, internal_api_token: str | None, scope: str, caller_fingerprint: str | None) -> dict[str, str]:
+def gateway_handoff_headers(
+    *, internal_api_token: str | None, scope: str, caller_fingerprint: str | None
+) -> dict[str, str]:
     """Build gateway-controlled worker authentication headers.
 
     Args:
