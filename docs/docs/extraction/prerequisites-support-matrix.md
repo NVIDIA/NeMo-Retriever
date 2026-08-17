@@ -55,11 +55,11 @@ The [model hardware requirements](#model-hardware-requirements) **Total GPUs** r
 
 The default Helm chart does not pack those NIMs onto one Kubernetes GPU request. It creates four independent `NIMService` workloads (`page_elements`, `table_structure`, `ocr`, and `vlm_embed`). Each replica requests `nvidia.com/gpu: 1` through `nimOperator.nimServiceGpuLimit` (default `1`).
 
-On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, the scheduler treats those as four exclusive GPU claims. A node that advertises one allocatable GPU can run only one of the four core NIM pods. The other pods stay `Pending`, and the documented core workflow is incomplete.
+On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, the scheduler treats those as four exclusive GPU claims. Those claims can land on different eligible nodes. Four one-GPU nodes provide enough conventional capacity. A cluster that has only one allocatable GPU schedules only one of the four core NIM pods. The other pods stay `Pending`, and the documented core workflow is incomplete.
 
 Choose one of the following strategies before you run `helm install`:
 
-- Provide **four allocatable GPU slots** for the default self-hosted Helm topology. Each optional NIM you enable adds its Helm GPU request. Most optional NIMs request `nvidia.com/gpu: 1`. The default `answer_llm` Super-49B NIMService requests `nvidia.com/gpu: 2`.
+- Provide **four allocatable GPU slots across eligible nodes** for the default self-hosted Helm topology. Each optional NIM you enable adds its Helm GPU request. Most optional NIMs request `nvidia.com/gpu: 1`. The default `answer_llm` Super-49B NIMService requests `nvidia.com/gpu: 2`.
 - Configure GPU sharing so the cluster advertises at least four `nvidia.com/gpu` slots. Time-slicing is the documented sharing path, including on GPUs that do not support Multi-Instance GPU (MIG).
 
 Time-slicing creates logical GPU slots. It does not pin the four independently scheduled NIM pods onto one physical GPU. The scheduler can spread them across GPUs or nodes. All four core NIMs land on one physical GPU when the target node has one physical GPU and advertises at least four replicas, or when you pin the four NIMServices to that node with `nimOperator.<key>.nodeSelector`. The default `answer_llm` Super-49B NIMService is outside that one-physical-GPU recipe. It requires two physical GPUs unless you override it with a separately validated model and profile. Time-slice replicas cannot satisfy that tensor-parallel request.
@@ -110,7 +110,7 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features have a combined GPU memory footprint that fits on a single A10G or better GPU (about 4.8 GiB). That figure is model capacity. It is not a Kubernetes scheduling guarantee.
 
-The default Helm chart creates four independent NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, you need **four allocatable GPU slots**. To run all four core NIMs on one physical GPU, configure GPU sharing on a single-GPU target node before you install, or pin the four NIMServices to that node. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
+The default Helm chart creates four independent NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, you need **four allocatable GPU slots across eligible nodes**. To run all four core NIMs on one physical GPU, configure GPU sharing on a single-GPU target node before you install, and pin the four NIMServices to that node. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
 Optional advanced features (audio and video transcription, Nemotron Parse, Omni image captioning, and the VL reranker) are **not** part of that core footprint. Audio, video, Nemotron Parse, and Omni captioning each need **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs. The VL reranker can share the core GPU when it has at least 80 GB VRAM. Capacity requirements are listed in the **Additional Dedicated GPUs** rows of the [model hardware requirements](#model-hardware-requirements) table below. On a conventional exclusive-GPU Helm cluster, each optional NIMService adds its Helm GPU request. Most optional NIMs request one GPU slot. The default `answer_llm` Super-49B NIMService requests two.
 
@@ -204,7 +204,7 @@ The Omni rows in the following table describe self-hosted NIM deployments. Direc
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
 
-**Total GPUs** for Core Features is combined VRAM co-residency for the four default NIMs (one A10G or better). It is not the number of exclusive Kubernetes GPU requests the default Helm chart makes. Without GPU sharing, plan for four allocatable GPU slots. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
+**Total GPUs** for Core Features is combined VRAM co-residency for the four default NIMs (one A10G or better). It is not the number of exclusive Kubernetes GPU requests the default Helm chart makes. Without GPU sharing, plan for four allocatable GPU slots across eligible nodes. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
 **Additional Dedicated GPUs** counts VRAM required **in addition to** that core co-residency. For example, a library-mode or GPU-shared deployment that runs the core pipeline on one H100 and self-hosted Parakeet ASR needs **two GPUs total**. On a conventional exclusive-GPU Helm cluster, the same optional ASR NIM adds a fifth allocatable GPU slot. Enabling the default `answer_llm` Super-49B profile adds two physical GPUs, not one. Time-slice replicas cannot satisfy that tensor-parallel request.
 
@@ -236,7 +236,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory for this NIM deployment; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
-⁵ **Total GPUs** is combined VRAM co-residency for the four core models. The default Helm chart still requests `nvidia.com/gpu: 1` per NIMService. Without GPU sharing, plan for four allocatable GPU slots. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
+⁵ **Total GPUs** is combined VRAM co-residency for the four core models. The default Helm chart still requests `nvidia.com/gpu: 1` per NIMService. Without GPU sharing, plan for four allocatable GPU slots across eligible nodes. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 

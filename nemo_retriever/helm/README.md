@@ -172,15 +172,18 @@ A default install creates four `NIMService` resources
 renders `spec.resources.limits.nvidia.com/gpu: 1` from
 `nimOperator.nimServiceGpuLimit` (default `1`). On a conventional
 cluster without MIG, time-slicing, or another sharing mechanism, the
-scheduler consumes **four allocatable GPU slots**. A one-GPU node
-schedules only one NIM pod. The other three stay `Pending`.
+scheduler consumes **four allocatable GPU slots across eligible
+nodes**. Four one-GPU nodes satisfy that topology. A cluster that
+has only one allocatable GPU schedules only one NIM pod. The other
+three stay `Pending`.
 
 Choose one of the following before you install:
 
-- Provide four allocatable `nvidia.com/gpu` slots for the default
-  core topology. Each optional NIM adds its per-NIM GPU request.
-  Most optional keys use `nimServiceGpuLimit` (one GPU). The default
-  `answer_llm` Super-49B resources request two physical GPUs.
+- Provide four allocatable `nvidia.com/gpu` slots across eligible
+  nodes for the default core topology. Each optional NIM adds its
+  per-NIM GPU request. Most optional keys use `nimServiceGpuLimit`
+  (one GPU). The default `answer_llm` Super-49B resources request
+  two physical GPUs.
 - Configure GPU sharing so the cluster advertises at least four
   `nvidia.com/gpu` slots. Time-slicing is the documented sharing
   path. It works on GPUs that do not support Multi-Instance GPU
@@ -192,14 +195,17 @@ request. Sharing is cluster configuration through the
 Time-slicing does not isolate GPU memory. Combined VRAM of the
 scheduled NIMs must still fit on the physical GPU.
 
-Confirm allocatable GPU slots:
+Confirm allocatable GPU slots across the cluster:
 
 ```bash
-kubectl describe node <gpu-node>
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu
 ```
 
-Inspect `Allocatable` for `nvidia.com/gpu`. A default core install
-needs a value of `4` or greater unless sharing is already configured.
+Sum `GPU` across eligible nodes. A default core install needs four
+slots across the cluster. Four nodes that each report `1` are
+enough. A single node needs a value of `4` or greater only when you
+pack all four core NIMs onto one physical GPU with sharing and
+placement constraints.
 
 The following GPU Operator time-slicing ConfigMap advertises four
 replicas per physical GPU. On a node with one physical GPU, that
@@ -242,7 +248,9 @@ Time-slicing oversubscribes allocatable slots. It does not place
 the four NIM pods on one physical GPU. The scheduler can spread
 them across GPUs or nodes. All four default NIMs share one
 physical GPU when the target node has one physical GPU and
-advertises at least four replicas.
+advertises at least four replicas. Confirm that node's
+`Allocatable` `nvidia.com/gpu` is `4` or greater, and pin the four
+core NIMServices to that node as shown below.
 
 The default `answer_llm` Super-49B NIMService is outside that
 one-physical-GPU recipe. It requests two GPUs (`nvidia.com/gpu: 2`
@@ -942,7 +950,8 @@ access (`The NVIDIA Driver was not detected`).
 
 This per-NIM `1` request is not the support-matrix VRAM figure of
 one A10G for all four core models combined. On a conventional
-cluster, plan for four allocatable GPUs or configure sharing.
+cluster, plan for four allocatable GPUs across eligible nodes or
+configure sharing.
 Refer to [GPU scheduling prerequisite](#gpu-scheduling-prerequisite).
 
 **Trade-off:** Helm and the NIM Operator may both server-side-apply
