@@ -33,6 +33,7 @@ Highlights for the 26.08 release include:
 - Retriever Service v2 adds a scalable multi-pod architecture with gateway, process isolation, and VectorDB integration  
 - OpenTelemetry basic support for pipeline and service observability  
 - Expanded air-gapped deployment guidance in [deployment options](deployment-options.md) and the Helm chart README  
+- Fixed Retriever Service OpenAPI `info.version` reporting a stale `26.5.0` value. The service now reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.  
 
 ### Models, OCR, and captioning { #models-ocr-and-captioning }
 

@@ -110,6 +110,8 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            - name: RETRIEVER_SERVICE_VERSION
+              value: {{ include "nemo-retriever.runtime.image.tag" . | quote }}
             {{- if $internalAuth.enabled }}
             - name: NRL_INTERNAL_VDB_TOKEN
               valueFrom:
@@ -310,6 +312,8 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            - name: RETRIEVER_SERVICE_VERSION
+              value: {{ include "nemo-retriever.runtime.image.tag" $ | quote }}
             {{- if $internalAuth.enabled }}
             - name: NRL_INTERNAL_VDB_TOKEN
               valueFrom:

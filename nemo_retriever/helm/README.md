@@ -178,6 +178,8 @@ then override `service.image.repository` / `service.image.tag`:
 docker build \
     --target service \
     --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
+    --build-arg RETRIEVER_VERSION=<TAG> \
+    --build-arg RETRIEVER_RELEASE_TYPE=release \
     -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
 ```
@@ -397,7 +399,8 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           |       |
+| `service.image.tag`           | `26.5.0`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
+
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
@@ -954,8 +957,12 @@ configured key. `nrl-internal-vdb-auth` must contain a distinct, high-entropy
 credential. Internal authentication is opt-in for local compatibility; enable
 it for production deployments. When enabled, a missing Secret or key prevents
 the pods from starting instead of falling back to unauthenticated VectorDB
-access. Inline `serviceConfig.auth.apiToken` is rejected unless
-`allowInsecureInlineApiToken=true`, and must never be used for production.
+access. In `topology.mode=split`, `serviceConfig.auth.scopeTokenSecret.name`
+also requires `serviceConfig.vectordb.internalAuth.enabled=true`: pull workers
+never mount the public scope-token Secret, so they need the dedicated internal
+credential to claim `/v1/internal/work/claim`. Inline `serviceConfig.auth.apiToken`
+is rejected unless `allowInsecureInlineApiToken=true`, and must never be used
+for production.
 
 ### Disable one NIM and supply an external URL for it
 
