@@ -100,7 +100,9 @@ dependencies = [
   # targets the public NVCF Parakeet endpoint (the default) or any remote NIM.
   "nvidia-riva-client>=2.25.1",
   # Exact tokenizer-only TXT/HTML chunking (no transformers, torch, or weights).
-  "tokenizers>=0.21.1",
+  # Nemotron Parse 2.0's published tokenizer contains NFKC-equivalent added
+  # tokens that tokenizers 0.23 rejects with DuplicatePatternError.
+  "tokenizers>=0.21.1,<0.23",
   "huggingface-hub>=0.34.0",
 ]
 

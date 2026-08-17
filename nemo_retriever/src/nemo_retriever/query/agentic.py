@@ -371,7 +371,9 @@ class AgenticRetriever:
             rerank=bool(cfg.reranker),
             rerank_kwargs={
                 "model_name": cfg.reranker or VL_RERANK_MODEL,
-                "invoke_url": cfg.reranker_endpoint,
+                # NemotronRerankActor selects its remote CPU variant on
+                # ``rerank_invoke_url``; any other key silently loads a local model.
+                "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
                 "api_key": cfg.reranker_api_key,
                 "local_reranker_backend": str(cfg.local_reranker_backend),
                 "modality": str(cfg.embed_modality),

@@ -15,7 +15,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteResult,
     VDB,
 )
-from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
@@ -301,7 +301,7 @@ def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
         pytest.param(np.ones((2, 2), dtype=np.uint8), id="numpy"),
     ],
 )
-def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthiness(
+def test_ingest_operator_rejects_noncanonical_image_payload_without_truthiness(
     image_payload: Any,
 ) -> None:
     vdb = FakeVDB()
@@ -316,7 +316,11 @@ def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthin
         }
     ]
 
-    assert operator(data) is data
+    with pytest.raises(
+        VdbUploadError,
+        match=r"none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
     assert vdb.run_calls == []
 
 
@@ -343,10 +347,11 @@ def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
         "type": "image",
         "page_number": 7,
         "stored_image_uri": "file:///tmp/scanned-page-7.png",
+        "uploaded_image_uri": "file:///tmp/scanned-page-7.png",
     }
 
 
-def test_ingest_operator_drops_embedded_blank_row_without_image_backing() -> None:
+def test_ingest_operator_rejects_nonempty_batch_with_zero_uploadable_records() -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
     data = [
@@ -358,7 +363,48 @@ def test_ingest_operator_drops_embedded_blank_row_without_image_backing() -> Non
         }
     ]
 
-    assert operator(data) is data
+    with pytest.raises(
+        VdbUploadError,
+        match=r"received 1 row\(s\), but none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_reports_upstream_error_counts_without_payloads() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {
+                "text": "",
+                "metadata": {
+                    "source_path": "/tmp/scanned.pdf",
+                    "error": {
+                        "stage": "ocr-nvapi-secret",
+                        "type": "CustomerDocumentText",
+                        "message": "private document content Authorization: Bearer token-secret",
+                    },
+                    "exception": "password=credential-secret",
+                    "traceback": "Traceback containing private customer text",
+                },
+            }
+        ]
+    )
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"reported 3 structured row error\(s\) \(error=1, exception=1, traceback=1\)",
+    ) as exc_info:
+        operator.process(data)
+    rendered = str(exc_info.value)
+    assert "payloads are omitted because they may contain sensitive data" in rendered
+    assert "nvapi-secret" not in rendered
+    assert "CustomerDocumentText" not in rendered
+    assert "private document content" not in rendered
+    assert "token-secret" not in rendered
+    assert "credential-secret" not in rendered
+    assert "private customer text" not in rendered
     assert vdb.run_calls == []
 
 

@@ -226,6 +226,10 @@ Agentic-only knobs (apply only with `--agentic`):
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
+- `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
+  `tensor_parallel_size` for the in-process agent LLM. Set to `2` (with two
+  visible GPUs via `CUDA_VISIBLE_DEVICES`) for local `super-49b`. Ignored when
+  `--agentic-invoke-url` is set.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
   to run the in-process local model.

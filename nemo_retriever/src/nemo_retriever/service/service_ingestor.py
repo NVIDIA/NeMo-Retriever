@@ -1190,6 +1190,7 @@ class ServiceIngestor(ingestor):
             self._resolve_execute_flags(params, kwargs)
         )
         del params, kwargs
+        self._validate_input_sources(self._inline_texts)
         if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
             self._document_ids.clear()
             self._last_run_elapsed_s = 0.0
@@ -1609,6 +1610,7 @@ class ServiceIngestor(ingestor):
 
     def _collect_inputs(self) -> list[UploadInput]:
         """Gather filesystem and in-memory inputs for the service client."""
+        self._validate_input_sources(self._inline_texts)
         if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
             return []
 

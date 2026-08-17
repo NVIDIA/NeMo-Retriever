@@ -287,11 +287,11 @@ spec:
               GATEWAY="{{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}"
               PORT="{{ $.Values.networkService.port }}"
               echo "Waiting for gateway at ${GATEWAY}:${PORT} ..."
-              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/health" >/dev/null 2>&1; do
-                echo "  gateway not ready — retrying in 3s"
+              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/live" >/dev/null 2>&1; do
+                echo "  gateway not live — retrying in 3s"
                 sleep 3
               done
-              echo "Gateway is healthy — starting worker"
+              echo "Gateway is live — starting worker"
       {{- end }}
       containers:
         - name: nemo-retriever
