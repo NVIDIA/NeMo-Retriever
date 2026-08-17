@@ -411,7 +411,7 @@ For air-gapped clusters, refer to [Deployment options — Air-gapped and disconn
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
 
-Parakeet ASR is disabled by default (`nimOperator.audio.enabled=false`). The chart does not auto-wire the in-cluster ASR endpoint when you enable the audio NIM.
+Parakeet ASR is disabled by default. The chart default is `nimOperator.audio.enabled=false`. The chart does not auto-wire the in-cluster ASR endpoint when you enable the audio NIM.
 
 To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md), set both of the following values:
 
@@ -427,9 +427,9 @@ serviceConfig:
 
 Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
 
-Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService` and leaves `audio_grpc_endpoint` unset. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need per [Recommended minimal install](#recommended-minimal-install-2608).
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
 
-Then complete these steps:
+After you set those values, complete the following steps:
 
 1. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
 2. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
