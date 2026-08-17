@@ -159,6 +159,7 @@ vectordb:
   enabled: true
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
+  index_mode: {{ .Values.serviceConfig.vectordb.indexMode | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"

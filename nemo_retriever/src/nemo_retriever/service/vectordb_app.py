@@ -34,6 +34,7 @@ import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Any, AsyncIterator, Union
 
 import lancedb
@@ -129,6 +130,7 @@ class VectorDBState:
         embed_api_key: str,
         *,
         embed_model_provider_prefix: str | None = None,
+        index_mode: str = "dense",
         local_embed: bool = False,
         local_embed_backend: str = "hf",
         hf_cache_dir: str | None = None,
@@ -140,6 +142,9 @@ class VectorDBState:
         self.embed_endpoint = embed_endpoint
         self.embed_model = embed_model
         self.embed_model_provider_prefix = embed_model_provider_prefix
+        if index_mode not in {"dense", "hybrid"}:
+            raise ValueError("index_mode must be 'dense' or 'hybrid'")
+        self.index_mode = index_mode
         self.embed_api_key = embed_api_key
         self.local_embed = local_embed
         self.local_embed_backend = local_embed_backend
@@ -247,6 +252,18 @@ class VectorDBState:
                 self._table_exists = True
                 logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
 
+            if self.index_mode == "hybrid":
+                table = self._db.open_table(self.table_name)
+                caps = inspect_lancedb_table_object(table)
+                if not caps.has_fts:
+                    table.create_fts_index("text", replace=True)
+                    fts_indices = [
+                        index.name
+                        for index in table.list_indices()
+                        if "text" in index.name.lower() or "fts" in index.name.lower()
+                    ]
+                    if fts_indices:
+                        table.wait_for_index(fts_indices, timeout=timedelta(seconds=600))
         return len(rows)
 
     def total_rows(self) -> int:
@@ -346,6 +363,7 @@ def create_vectordb_app(
     embed_api_key: str = "",
     *,
     local_embed: bool = False,
+    index_mode: str = "dense",
     local_embed_backend: str = "hf",
     hf_cache_dir: str | None = None,
     device: str | None = None,
@@ -363,6 +381,7 @@ def create_vectordb_app(
             embed_model=embed_model,
             embed_model_provider_prefix=embed_model_provider_prefix,
             embed_api_key=embed_api_key,
+            index_mode=index_mode,
             local_embed=local_embed,
             local_embed_backend=local_embed_backend,
             hf_cache_dir=hf_cache_dir,
@@ -481,6 +500,12 @@ def create_vectordb_app(
 def main() -> None:
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
     parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
+    parser.add_argument(
+        "--index-mode",
+        choices=("dense", "hybrid"),
+        default="dense",
+        help="LanceDB index mode to create when the table is first written.",
+    )
     parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
@@ -530,6 +555,7 @@ def main() -> None:
         embed_model_provider_prefix=args.embed_model_provider_prefix or None,
         embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
         local_embed=args.local_embed,
+        index_mode=args.index_mode,
         local_embed_backend=args.local_embed_backend,
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,

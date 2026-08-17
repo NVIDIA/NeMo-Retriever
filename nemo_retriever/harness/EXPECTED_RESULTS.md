@@ -149,6 +149,28 @@ a runtime failure rather than an observed quality result. Dense mode remains a
 supported ingestion contract and may be used as a diagnostic control, but it
 is not part of this VL modality qualification sweep.
 
+### BO767 VL managed-Helm modality sweep
+
+The managed-Helm equivalent evaluates the same two VL ingestion modalities
+through the deployed service. It is a separate qualification from the
+library-mode batch sweep above. The service-mode runfiles retain the same
+integrity gates; their paired Helm configurations own the chart-specific
+deployment settings, including the hybrid VectorDB index and an isolated table
+per modality.
+
+| Runfile | Helm configuration | Ingest modality | Index mode | NIM precision | Expected quality |
+|---------|--------------------|-----------------|------------|---------------|------------------|
+| `bo767_vl_text_image_hybrid_beir_service.json` | `managed-helm-bo767-vl-text-image-fp16.yaml` | `text_image` | `hybrid` | `fp16` on `vlm_embed` only | Record after full validation |
+| `bo767_vl_image_hybrid_beir_service.json` | `managed-helm-bo767-vl-image-fp16.yaml` | `image` | `hybrid` | `fp16` on `vlm_embed` only | Record after full validation |
+
+Run these with `retriever-harness run-helm`; the command forces service mode
+and uses the paired Helm configuration to deploy the operator-managed VL
+embedder. `NIM_ENGINE_PRECISION=fp16` is intentionally scoped to
+`nimOperator.vlm_embed.env`; do not apply it to the service or other core NIMs.
+Both runs require 767 files, 54,730 pages, and 991 queries. As with the
+library-mode sweep, do not add quality thresholds or observed values until a
+complete managed-Helm session succeeds.
+
 ## FinanceBench
 
 Dataset:

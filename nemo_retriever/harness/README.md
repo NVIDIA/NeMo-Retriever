@@ -326,6 +326,40 @@ never reads a Slack webhook. After the terminal session exists, read each
 child's `results.json` for metrics and optionally invoke `post-slack --preview`
 or `post-slack` as a separate operation.
 
+### Qualify BO767 VL modalities through managed Helm
+
+Use the managed-Helm BO767 VL runfiles when qualifying the service deployment
+rather than library-mode batch ingest. Each runfile is explicitly service-mode;
+`run-helm` also forces service mode as a guardrail. The runfiles keep the
+BO767 file, page, and query gates plus the VL embedding modality. Their paired
+Helm configurations own the deployment-specific settings: the VL embed model,
+a hybrid VectorDB index with an isolated table name, and the
+`NIM_ENGINE_PRECISION=fp16` environment variable for the operator-managed
+`vlm_embed` NIM only. The precision setting does not apply to the service,
+page-elements, table-structure, or OCR workloads.
+
+Run the two modalities as separate Helm sessions because each requires its own
+Helm configuration and isolated table:
+
+```bash
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/helm-bo767-vl-image-$(date -u +%Y%m%d_%H%M%S_UTC)
+
+uv run --project nemo_retriever retriever-harness run-helm \
+  --config nemo_retriever/harness/examples/managed-helm-bo767-vl-image-fp16.yaml \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --session-name helm_bo767_vl_image \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/bo767_vl_image_hybrid_beir_service.json
+```
+
+For the `text_image` modality, use
+[`managed-helm-bo767-vl-text-image-fp16.yaml`](examples/managed-helm-bo767-vl-text-image-fp16.yaml)
+with
+[`bo767_vl_text_image_hybrid_beir_service.json`](runfiles/bo767_vl_text_image_hybrid_beir_service.json)
+and a distinct session name and output directory. Do not replace the VL NIM's
+environment list with only `NIM_ENGINE_PRECISION`: the checked-in configuration
+retains the chart defaults before adding the FP16 setting.
+
 The legacy module invocation remains supported for compatibility:
 
 ```bash

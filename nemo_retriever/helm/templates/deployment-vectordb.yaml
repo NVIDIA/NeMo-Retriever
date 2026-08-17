@@ -75,6 +75,8 @@ spec:
             - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
             - --table-name
             - {{ .Values.serviceConfig.vectordb.tableName | quote }}
+            - --index-mode
+            - {{ .Values.serviceConfig.vectordb.indexMode | quote }}
             {{- if $embedURL }}
             - --embed-endpoint
             - {{ $embedURL | quote }}

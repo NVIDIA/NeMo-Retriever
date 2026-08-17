@@ -322,6 +322,8 @@ class VectorDbConfig(RichModel):
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
+    index_mode: Literal["dense", "hybrid"] = "dense"
+    index_mode: Literal["dense", "hybrid"] = "dense"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
