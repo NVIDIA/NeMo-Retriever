@@ -246,11 +246,12 @@ workloads that share those nodes.
 
 Time-slicing oversubscribes allocatable slots. It does not place
 the four NIM pods on one physical GPU. The scheduler can spread
-them across GPUs or nodes. All four default NIMs share one
-physical GPU when the target node has one physical GPU and
-advertises at least four replicas. Confirm that node's
-`Allocatable` `nvidia.com/gpu` is `4` or greater, and pin the four
-core NIMServices to that node as shown below.
+them across GPUs or nodes. The one-physical-GPU recipe requires
+both of the following: the target node has one physical GPU and
+advertises at least four replicas, and all four NIMServices are
+pinned to that node. Confirm that node's `Allocatable`
+`nvidia.com/gpu` is `4` or greater, and pin the four core
+NIMServices as shown below.
 
 The default `answer_llm` Super-49B NIMService is outside that
 one-physical-GPU recipe. It requests two GPUs (`nvidia.com/gpu: 2`
@@ -264,8 +265,11 @@ profile. Refer to [Answer generation](#answer-generation-llm).
 On a multi-GPU or multi-node cluster, pin the four core
 NIMServices to a single-GPU node. Set
 `nimOperator.<key>.nodeSelector` on `page_elements`,
-`table_structure`, `ocr`, and `vlm_embed`. This chart does not
-render pod affinity or topology spread constraints:
+`table_structure`, `ocr`, and `vlm_embed`. `nodeSelector`
+constrains node placement. On a multi-GPU node, it does not
+ensure all four pods receive logical replicas from the same
+physical GPU. This chart does not render pod affinity or
+topology spread constraints:
 
 ```yaml
 nimOperator:
