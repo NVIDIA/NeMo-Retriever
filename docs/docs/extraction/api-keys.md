@@ -37,7 +37,7 @@ Persisted pipeline graphs never contain literal API keys. Configure a graph with
 api_key="os.environ/NVIDIA_API_KEY"
 ```
 
-Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` for an OpenAI model. The reference is stored in graph JSON and resolved only when the operator is constructed or invoked on the worker.
+Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` for an OpenAI model. For an OpenAI-compatible gateway such as [OrcaRouter](https://www.orcarouter.ai), use `os.environ/ORCAROUTER_API_KEY`. The reference is stored in graph JSON and resolved only when the operator is constructed or invoked on the worker.
 
 Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
 
