@@ -229,7 +229,10 @@ Agentic-only knobs (apply only with `--agentic`):
 - `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
   `tensor_parallel_size` for the in-process agent LLM. Set to `2` (with two
   visible GPUs via `CUDA_VISIBLE_DEVICES`) for local `super-49b`. Ignored when
-  `--agentic-invoke-url` is set.
+  `--agentic-invoke-url` is set. On a host whose GPUs are not NVLink-connected,
+  tensor-parallel startup automatically sets `NCCL_NVLS_ENABLE=0` and
+  `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, because NVLink multicast collectives
+  abort vLLM startup there; set either variable yourself to override.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
   to run the in-process local model.

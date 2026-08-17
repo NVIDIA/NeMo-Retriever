@@ -15,6 +15,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from nemo_retriever.models.inference import vllm as vllm_inference
 from nemo_retriever.models.inference.vllm import (
     apply_vllm_startup_defaults,
     embed_multimodal_with_vllm_llm,
@@ -240,6 +241,92 @@ class TestVllmStartupDefaults:
         apply_vllm_startup_defaults()
 
         assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "full"
+
+    def test_single_gpu_keeps_nvlink_collectives_untouched(self, monkeypatch):
+        monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
+        monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+
+        apply_vllm_startup_defaults(tensor_parallel_size=1)
+
+        assert "NCCL_NVLS_ENABLE" not in os.environ
+        assert "TORCH_SYMM_MEM_DISABLE_MULTICAST" not in os.environ
+
+    def test_tensor_parallel_without_nvlink_disables_multicast_collectives(self, monkeypatch):
+        monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
+        monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+
+        apply_vllm_startup_defaults(tensor_parallel_size=2)
+
+        assert os.environ["NCCL_NVLS_ENABLE"] == "0"
+        assert os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] == "1"
+
+    def test_tensor_parallel_with_nvlink_keeps_multicast_collectives(self, monkeypatch):
+        monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
+        monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: True)
+
+        apply_vllm_startup_defaults(tensor_parallel_size=2)
+
+        assert "NCCL_NVLS_ENABLE" not in os.environ
+        assert "TORCH_SYMM_MEM_DISABLE_MULTICAST" not in os.environ
+
+    def test_nvlink_fallback_respects_user_override(self, monkeypatch):
+        monkeypatch.setenv("NCCL_NVLS_ENABLE", "1")
+        monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
+        monkeypatch.setattr(vllm_inference, "nvlink_is_available", lambda: False)
+
+        apply_vllm_startup_defaults(tensor_parallel_size=2)
+
+        assert os.environ["NCCL_NVLS_ENABLE"] == "1"
+        assert os.environ["TORCH_SYMM_MEM_DISABLE_MULTICAST"] == "1"
+
+
+class TestNvlinkDetection:
+    def _install_fake_pynvml(self, monkeypatch, *, link_states, device_count=2):
+        class FakeNVMLError(Exception):
+            pass
+
+        fake = ModuleType("pynvml")
+        fake.NVMLError = FakeNVMLError
+        fake.NVML_NVLINK_MAX_LINKS = len(link_states) or 1
+        fake.nvmlInit = lambda: None
+        fake.nvmlShutdown = lambda: None
+        fake.nvmlDeviceGetCount = lambda: device_count
+        fake.nvmlDeviceGetHandleByIndex = lambda index: index
+
+        def get_nvlink_state(_handle, link):
+            try:
+                state = link_states[link]
+            except IndexError as exc:
+                raise FakeNVMLError("invalid link") from exc
+            if state is None:
+                raise FakeNVMLError("not supported")
+            return state
+
+        fake.nvmlDeviceGetNvLinkState = get_nvlink_state
+        monkeypatch.setitem(sys.modules, "pynvml", fake)
+
+    def test_active_link_reports_available(self, monkeypatch):
+        self._install_fake_pynvml(monkeypatch, link_states=[0, 1])
+
+        assert vllm_inference.nvlink_is_available() is True
+
+    def test_no_link_support_reports_unavailable(self, monkeypatch):
+        self._install_fake_pynvml(monkeypatch, link_states=[None])
+
+        assert vllm_inference.nvlink_is_available() is False
+
+    def test_inactive_links_report_unavailable(self, monkeypatch):
+        self._install_fake_pynvml(monkeypatch, link_states=[0, 0])
+
+        assert vllm_inference.nvlink_is_available() is False
+
+    def test_missing_nvml_assumes_available(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "pynvml", None)
+
+        assert vllm_inference.nvlink_is_available() is True
 
 
 class TestVLLMEmbedderImages:

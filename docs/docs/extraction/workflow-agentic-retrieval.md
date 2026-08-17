@@ -12,9 +12,11 @@ in-process local vLLM agent LLM. If no agent model is provided, the library load
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host.
 The larger `super-49b` profile is also supported. Pass
 `--agentic-local-tensor-parallel-size 2` with two visible GPUs for that
-profile. Other custom in-process LLMs
-are not supported yet because the agent loop depends on OpenAI-style tool-call
-messages; use an OpenAI-compatible endpoint for custom models.
+profile. Tensor-parallel startup automatically disables NVLink multicast
+collectives (`NCCL_NVLS_ENABLE=0`, `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`) on
+hosts without NVLink, where they abort vLLM startup. Other custom in-process
+LLMs are not supported yet because the agent loop depends on OpenAI-style
+tool-call messages; use an OpenAI-compatible endpoint for custom models.
 
 ```bash
 retriever query "find documents about parser behavior" --agentic

@@ -25,14 +25,75 @@ VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
 VLLM_DEEP_GEMM_WARMUP_DEFAULT = "skip"
 
+# Multi-GPU collectives that rely on NVLink multicast (NCCL NVLS and torch
+# symmetric-memory all-reduce) abort with "NCCL error: unhandled cuda error"
+# during engine startup when the visible GPUs are only PCIe-connected, which is
+# the common two-workstation-card layout. Falling back to ring collectives costs
+# throughput that these hosts cannot use anyway.
+VLLM_NO_NVLINK_ENV_DEFAULTS = {
+    "NCCL_NVLS_ENABLE": "0",
+    "TORCH_SYMM_MEM_DISABLE_MULTICAST": "1",
+}
 
-def apply_vllm_startup_defaults() -> None:
+
+def apply_vllm_startup_defaults(*, tensor_parallel_size: int = 1) -> None:
     """Apply conservative vLLM startup defaults without overriding users."""
 
     # DeepGEMM can still be used by vLLM at runtime. This only skips the
     # ahead-of-time warmup path, which may fail before local inference starts
     # when the optional DeepGEMM/CUDA-toolkit stack is not discoverable.
     os.environ.setdefault("VLLM_DEEP_GEMM_WARMUP", VLLM_DEEP_GEMM_WARMUP_DEFAULT)
+
+    if int(tensor_parallel_size) > 1 and not nvlink_is_available():
+        for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items():
+            os.environ.setdefault(name, value)
+        logger.info(
+            "No NVLink detected on this host; running tensor_parallel_size=%d with %s "
+            "so vLLM does not start NVLink multicast collectives.",
+            int(tensor_parallel_size),
+            ", ".join(f"{name}={value}" for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items()),
+        )
+
+
+def nvlink_is_available() -> bool:
+    """Return whether NVML reports at least one active NVLink on this host.
+
+    Unknown counts as available so an NVML gap never silently downgrades
+    collectives on a host that does have NVLink.
+    """
+
+    try:
+        import pynvml
+    except ImportError:
+        return True
+
+    try:
+        pynvml.nvmlInit()
+    except Exception:
+        logger.debug("NVML unavailable; assuming NVLink is present", exc_info=True)
+        return True
+
+    try:
+        max_links = int(getattr(pynvml, "NVML_NVLINK_MAX_LINKS", 18))
+        for device_index in range(int(pynvml.nvmlDeviceGetCount())):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+            for link in range(max_links):
+                try:
+                    if pynvml.nvmlDeviceGetNvLinkState(handle, link) == 1:
+                        return True
+                except pynvml.NVMLError:
+                    # Not supported on this device, or the link index is beyond
+                    # what it exposes; keep probing the remaining devices.
+                    break
+        return False
+    except Exception:
+        logger.debug("NVML NVLink query failed; assuming NVLink is present", exc_info=True)
+        return True
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:
+            logger.debug("Ignoring NVML shutdown error", exc_info=True)
 
 
 def create_vllm_llm(
@@ -55,7 +116,7 @@ def create_vllm_llm(
     Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
 
     """
-    apply_vllm_startup_defaults()
+    apply_vllm_startup_defaults(tensor_parallel_size=tensor_parallel_size)
     try:
         from vllm import LLM
     except ImportError as e:
@@ -210,6 +271,7 @@ def embed_multimodal_with_vllm_llm(
 
 __all__ = [
     "apply_vllm_startup_defaults",
+    "nvlink_is_available",
     "create_vllm_llm",
     "embed_with_vllm_llm",
     "embed_multimodal_with_vllm_llm",
