@@ -527,6 +527,10 @@ Helm on uninstall.
 | `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
 | `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
 
+To change a NIM image on a later install or upgrade, delete the kept
+`NIMCache` first. Refer to
+[Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
+
 **Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
 
 ```bash
@@ -894,7 +898,8 @@ plain semver and the `-variant` form — and do not substitute `:latest`.
 Substituting `:latest` would pin to a moving target that may not match
 the engine plans the NIM Operator profile expects for a given GPU.
 
-If you want a different NIM build, override the tag explicitly:
+If you want a different NIM build on a **new** install, override the tag
+explicitly:
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
@@ -905,6 +910,12 @@ helm upgrade --install retriever ./nemo_retriever/helm \
 and validate against the same release of the retriever service before
 production rollout.
 
+If a `NIMCache` for that NIM already exists, do not change
+`image.repository` or `image.tag` with `helm upgrade` alone.
+The NIM Operator rejects in-place `modelPuller` updates.
+Delete the cache first, then upgrade. Refer to
+[Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
+
 **Charts and captioning.** Charts and infographics use **Page Elements, Table Structure**
 and **ocr**. For image
 captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — refer to
@@ -912,6 +923,95 @@ captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true
 chart-side wiring and
 [Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning)
 for the product matrix.
+
+#### Changing a NIM image repository or tag { #changing-nim-image-repository-or-tag }
+
+Each chart NIM renders a `NIMCache` whose `metadata.name` stays the same
+across image changes. `spec.source.ngc.modelPuller` is the concatenation
+of `nimOperator.<key>.image.repository` and `nimOperator.<key>.image.tag`.
+The NIM Operator `NIMCache` CRD (including 3.1.2) marks `modelPuller`
+immutable. Kubernetes rejects an update with a message similar to:
+
+```text
+modelPuller is an immutable field. Please create a new NIMCache resource instead when you want to change this container.
+```
+
+A `helm upgrade` that only changes the repository or tag therefore fails
+on the existing object. Other release resources can already have been
+applied before that rejection, which leaves the release partially upgraded.
+
+Do not rename `nimOperator.<key>.nimServiceName` as a workaround.
+A new name creates a second cache and Service DNS label. The previous
+`NIMCache` remains, especially when `nimOperator.nimCache.keepOnUninstall`
+is `true` (the default).
+
+The following table lists default `NIMCache` names for the core NIMs.
+Optional NIMs follow the same immutable-`modelPuller` rule.
+
+| Helm key | Default `NIMCache` name |
+| --- | --- |
+| `nimOperator.page_elements` | `nemotron-page-elements-v3` |
+| `nimOperator.table_structure` | `nemotron-table-structure-v1` |
+| `nimOperator.ocr` | `nimOperator.ocr.nimServiceName` (`nemotron-ocr-v2`) |
+| `nimOperator.vlm_embed` | `nimOperator.vlm_embed.nimServiceName` (`llama-nemotron-embed-vl-1b-v2`) |
+
+**Before you change a repository or tag** on an existing release,
+complete the following steps for every NIM whose image changes.
+The affected NIM is unavailable while the operator re-caches weights.
+
+1. Drain ingest traffic that depends on that NIM.
+2. Confirm that `metadata.name` is unchanged and that `modelPuller`
+   would change:
+
+   ```bash
+   NS=retriever
+   CACHE=nemotron-page-elements-v3
+
+   kubectl get nimcache "${CACHE}" -n "${NS}" \
+     -o jsonpath='{.metadata.name}{" "}{.spec.source.ngc.modelPuller}{"\n"}'
+   ```
+
+   Compare that `modelPuller` value with
+   `<new-repository>:<new-tag>`.
+3. Delete the `NIMCache`. Helm `keep` annotations do not block
+   `kubectl delete`:
+
+   ```bash
+   kubectl delete nimcache "${CACHE}" -n "${NS}"
+   ```
+
+4. If the operator-created PVC remains, delete it so the new image
+   re-pulls weights. List operator PVCs, then delete the claim for
+   that cache. The claim name often matches the cache name:
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
+   kubectl delete pvc "${CACHE}" -n "${NS}"
+   ```
+
+5. Run `helm upgrade` with the new `image.repository` or `image.tag`.
+   Helm creates a new `NIMCache` with the updated `modelPuller`.
+6. Wait until the new cache is ready before you send traffic:
+
+   ```bash
+   kubectl get nimcache "${CACHE}" -n "${NS}"
+   kubectl get nimservice "${CACHE}" -n "${NS}"
+   kubectl describe nimcache "${CACHE}" -n "${NS}"
+   ```
+
+Repeat those steps for each NIM whose repository or tag changes,
+including chart default tag bumps between releases.
+
+`helm uninstall` does not remove kept `NIMCache` objects when
+`keepOnUninstall` is `true`. A later install or upgrade with a
+different image still requires this delete and re-cache sequence.
+
+**If `helm upgrade` already failed** with the immutable-`modelPuller`
+message, delete the existing `NIMCache` and its PVC, then re-run the
+same upgrade so Helm creates the cache instead of patching it.
+
+Changing `service.image.repository` or `service.image.tag` does not
+use `NIMCache` and is not subject to this rule.
 
 #### Image captioning (Omni 30B) { #image-captioning-omni-30b }
 
@@ -1004,10 +1104,17 @@ limits, use one of:
 To pin a non-default GPU count chart-wide, set `nimServiceGpuLimit: 2`
 (or set per-NIM `resources.limits.nvidia.com/gpu`).
 
+A failed upgrade that reports an immutable `modelPuller` field is a
+different class of error. Refer to
+[Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
+
 ### OCR NIM configuration { #ocr-nim-configuration }
 
 The core OCR NIM is configured under [`nimOperator.ocr`](./values.yaml) (the `ocr:`
 block). Confirm `image.repository` and `image.tag` before you upgrade.
+If either value changes on an existing release, delete the OCR `NIMCache`
+before you upgrade. Refer to
+[Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
 
 | Path | Role |
 |------|------|
