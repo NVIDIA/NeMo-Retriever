@@ -215,8 +215,8 @@ def _production_vdb(
     lancedb_uri: str,
     table_name: str,
     expiration_cleanup_enabled: bool,
-) -> VDB:
     index_mode: str = "dense",
+) -> VDB:
     """Construct the sole production VDB implementation for this service."""
     vdb_cls = get_vdb_op_cls("lancedb")
     if index_mode not in {"dense", "hybrid"}:

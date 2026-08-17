@@ -433,6 +433,19 @@ def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
     assert index_writes == []
 
 
+def test_production_vdb_hybrid_mode_enables_hybrid_index(tmp_path) -> None:
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="hybrid",
+        expiration_cleanup_enabled=True,
+        index_mode="hybrid",
+    )
+
+    assert isinstance(backend, LanceDB)
+    assert backend.hybrid is True
+    assert backend.build_index is True
+
+
 def test_legacy_write_and_query_keep_existing_vdb_path() -> None:
     backend = FakeVDB()
     app = _app(backend)

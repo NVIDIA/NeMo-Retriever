@@ -36,13 +36,9 @@ RUNFILES_DIR = Path(__file__).resolve().parents[1] / "harness" / "runfiles"
 
 
 @pytest.mark.parametrize(("runfile_name", "modality"), BO767_VL_HYBRID_RUNFILES.items())
-def test_bo767_vl_hybrid_runfiles_resolve_expected_sweep(
-    runfile_name: str, modality: str
-) -> None:
+def test_bo767_vl_hybrid_runfiles_resolve_expected_sweep(runfile_name: str, modality: str) -> None:
     request = load_runfile(RUNFILES_DIR / runfile_name)
-    resolved = resolve_benchmark(
-        request.benchmark, mode=request.mode or "local", overrides=request.overrides
-    )
+    resolved = resolve_benchmark(request.benchmark, mode=request.mode or "local", overrides=request.overrides)
 
     assert request.name == runfile_name.removesuffix(".json")
     assert request.benchmark == "bo767_beir"
