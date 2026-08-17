@@ -48,18 +48,42 @@ def apply_vllm_startup_defaults(*, tensor_parallel_size: int = 1) -> None:
         for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items():
             os.environ.setdefault(name, value)
         logger.info(
-            "No NVLink detected on this host; running tensor_parallel_size=%d with %s "
+            "No NVLink detected among the CUDA-visible GPUs; running tensor_parallel_size=%d with %s "
             "so vLLM does not start NVLink multicast collectives.",
             int(tensor_parallel_size),
             ", ".join(f"{name}={value}" for name, value in VLLM_NO_NVLINK_ENV_DEFAULTS.items()),
         )
 
 
+def _visible_nvml_device_indices(device_count: int) -> list[int] | None:
+    """Map ``CUDA_VISIBLE_DEVICES`` to physical NVML indices for the TP group.
+
+    NVML always enumerates every physical GPU, so scanning the whole host would
+    misclassify a PCIe-only visible pair on a machine that also has an
+    NVLink-connected pair. ``None`` means the selection is not resolvable here
+    (UUID or MIG tokens) and callers treat it as unknown connectivity.
+    """
+
+    raw = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    if not raw:
+        return list(range(device_count))
+
+    indices: list[int] = []
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if not token.isdigit() or int(token) >= device_count:
+            return None
+        indices.append(int(token))
+    return indices
+
+
 def nvlink_is_available() -> bool:
-    """Return whether NVML reports at least one active NVLink on this host.
+    """Return whether NVML reports an active NVLink on the CUDA-visible GPUs.
 
     Unknown counts as available so an NVML gap never silently downgrades
-    collectives on a host that does have NVLink.
+    collectives on a host that does have NVLink among the selected devices.
     """
 
     try:
@@ -69,13 +93,21 @@ def nvlink_is_available() -> bool:
 
     try:
         pynvml.nvmlInit()
-    except Exception:
+    except pynvml.NVMLError:
         logger.debug("NVML unavailable; assuming NVLink is present", exc_info=True)
         return True
 
     try:
+        device_indices = _visible_nvml_device_indices(int(pynvml.nvmlDeviceGetCount()))
+        if device_indices is None:
+            logger.debug(
+                "Could not resolve CUDA_VISIBLE_DEVICES=%r to NVML indices; assuming NVLink is present",
+                os.environ.get("CUDA_VISIBLE_DEVICES"),
+            )
+            return True
+
         max_links = int(getattr(pynvml, "NVML_NVLINK_MAX_LINKS", 18))
-        for device_index in range(int(pynvml.nvmlDeviceGetCount())):
+        for device_index in device_indices:
             handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
             for link in range(max_links):
                 try:
@@ -83,16 +115,16 @@ def nvlink_is_available() -> bool:
                         return True
                 except pynvml.NVMLError:
                     # Not supported on this device, or the link index is beyond
-                    # what it exposes; keep probing the remaining devices.
+                    # what it exposes; keep probing the remaining visible devices.
                     break
         return False
-    except Exception:
+    except pynvml.NVMLError:
         logger.debug("NVML NVLink query failed; assuming NVLink is present", exc_info=True)
         return True
     finally:
         try:
             pynvml.nvmlShutdown()
-        except Exception:
+        except pynvml.NVMLError:
             logger.debug("Ignoring NVML shutdown error", exc_info=True)
 
 

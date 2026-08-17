@@ -381,8 +381,9 @@ CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal i
   --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
-On hosts whose GPUs are not NVLink-connected, tensor-parallel startup
-automatically sets `NCCL_NVLS_ENABLE=0` and
+When the CUDA-visible GPUs are not NVLink-connected (typical dual-GPU PCIe
+workstations; detection is scoped to the visible devices), tensor-parallel
+startup automatically sets `NCCL_NVLS_ENABLE=0` and
 `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, since NVLink multicast collectives abort
 vLLM startup with a NCCL CUDA error there. Set either variable yourself to
 override the fallback.

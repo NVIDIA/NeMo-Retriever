@@ -284,21 +284,21 @@ class TestVllmStartupDefaults:
 
 
 class TestNvlinkDetection:
-    def _install_fake_pynvml(self, monkeypatch, *, link_states, device_count=2):
+    def _install_fake_pynvml(self, monkeypatch, *, devices_link_states):
         class FakeNVMLError(Exception):
             pass
 
         fake = ModuleType("pynvml")
         fake.NVMLError = FakeNVMLError
-        fake.NVML_NVLINK_MAX_LINKS = len(link_states) or 1
+        fake.NVML_NVLINK_MAX_LINKS = max((len(states) for states in devices_link_states), default=1)
         fake.nvmlInit = lambda: None
         fake.nvmlShutdown = lambda: None
-        fake.nvmlDeviceGetCount = lambda: device_count
+        fake.nvmlDeviceGetCount = lambda: len(devices_link_states)
         fake.nvmlDeviceGetHandleByIndex = lambda index: index
 
-        def get_nvlink_state(_handle, link):
+        def get_nvlink_state(handle, link):
             try:
-                state = link_states[link]
+                state = devices_link_states[int(handle)][link]
             except IndexError as exc:
                 raise FakeNVMLError("invalid link") from exc
             if state is None:
@@ -307,24 +307,69 @@ class TestNvlinkDetection:
 
         fake.nvmlDeviceGetNvLinkState = get_nvlink_state
         monkeypatch.setitem(sys.modules, "pynvml", fake)
+        return fake
 
     def test_active_link_reports_available(self, monkeypatch):
-        self._install_fake_pynvml(monkeypatch, link_states=[0, 1])
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        self._install_fake_pynvml(monkeypatch, devices_link_states=[[0, 1], [0, 1]])
 
         assert vllm_inference.nvlink_is_available() is True
 
     def test_no_link_support_reports_unavailable(self, monkeypatch):
-        self._install_fake_pynvml(monkeypatch, link_states=[None])
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        self._install_fake_pynvml(monkeypatch, devices_link_states=[[None], [None]])
 
         assert vllm_inference.nvlink_is_available() is False
 
     def test_inactive_links_report_unavailable(self, monkeypatch):
-        self._install_fake_pynvml(monkeypatch, link_states=[0, 0])
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        self._install_fake_pynvml(monkeypatch, devices_link_states=[[0, 0], [0, 0]])
 
         assert vllm_inference.nvlink_is_available() is False
 
+    def test_visible_pcie_pair_ignores_unrelated_nvlink_devices(self, monkeypatch):
+        # Host has NVLink on 0/1, but CUDA_VISIBLE_DEVICES selects the PCIe-only 2/3 pair.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,3")
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[1], [1], [0], [0]],
+        )
+
+        assert vllm_inference.nvlink_is_available() is False
+
+    def test_visible_nvlink_pair_reports_available(self, monkeypatch):
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[1], [1], [0], [0]],
+        )
+
+        assert vllm_inference.nvlink_is_available() is True
+
+    def test_uuid_visible_devices_assume_available(self, monkeypatch):
+        """UUID selections are not resolved here, so keep vLLM's own defaults."""
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-deadbeef")
+        self._install_fake_pynvml(monkeypatch, devices_link_states=[[0], [0]])
+
+        assert vllm_inference.nvlink_is_available() is True
+
     def test_missing_nvml_assumes_available(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "pynvml", None)
+
+        assert vllm_inference.nvlink_is_available() is True
+
+    def test_nvml_init_error_assumes_available(self, monkeypatch):
+        class FakeNVMLError(Exception):
+            pass
+
+        fake = ModuleType("pynvml")
+        fake.NVMLError = FakeNVMLError
+
+        def fail_init():
+            raise FakeNVMLError("init failed")
+
+        fake.nvmlInit = fail_init
+        monkeypatch.setitem(sys.modules, "pynvml", fake)
 
         assert vllm_inference.nvlink_is_available() is True
 
