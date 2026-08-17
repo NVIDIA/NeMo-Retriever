@@ -61,8 +61,7 @@ def test_split_roles_inherit_common_service_settings() -> None:
         "--set-json",
         'service.extraVolumes=[{"name":"common-settings","emptyDir":{}}]',
         "--set-json",
-        'service.extraVolumeMounts=[{"name":"common-settings",'
-        '"mountPath":"/common-settings","readOnly":true}]',
+        'service.extraVolumeMounts=[{"name":"common-settings",' '"mountPath":"/common-settings","readOnly":true}]',
     )
 
     deployments = _service_deployments(documents)
