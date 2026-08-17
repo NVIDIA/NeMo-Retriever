@@ -304,6 +304,22 @@ class ResourceLimitsConfig(RichModel):
     )
 
 
+class SidecarStoreConfig(RichModel):
+    """Backend shared by split-sidecar gateway and worker processes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    backend: Literal["memory", "redis"] = "memory"
+    redis_url: str | None = None
+    max_payload_bytes: int = Field(default=33_554_432, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_redis_url(self) -> "SidecarStoreConfig":
+        if self.backend == "redis" and not (self.redis_url or "").strip():
+            raise ValueError("sidecar_store.redis_url must be set when sidecar_store.backend is redis")
+        return self
+
+
 class AuthConfig(RichModel):
     """Bearer authentication and authorization for logical workspace scopes."""
 
@@ -571,12 +587,21 @@ class ServiceConfig(RichModel):
     agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    sidecar_store: SidecarStoreConfig = Field(default_factory=SidecarStoreConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+
+    @model_validator(mode="after")
+    def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
+        if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
+            raise ValueError(
+                "sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes"
+            )
+        return self
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -666,10 +691,12 @@ def load_config(
         internal_token = internal_token.strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
+    if redis_url := os.environ.get("NRL_SIDECAR_REDIS_URL"):
+        raw.setdefault("sidecar_store", {})["redis_url"] = redis_url
 
     config = ServiceConfig(**raw)
 
-    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "redis_url", "password", "secret"})
 
     from rich.console import Console
     from rich.tree import Tree

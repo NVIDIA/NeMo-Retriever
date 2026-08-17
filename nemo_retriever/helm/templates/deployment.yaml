@@ -19,6 +19,8 @@
 {{- end -}}
 {{- $svc := .Values.service -}}
 {{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
+{{- $sidecarStore := .Values.serviceConfig.sidecarStore -}}
+{{- $sidecarRedisSecret := $sidecarStore.redis.existingSecret -}}
 {{- $scopeTokenSecret := .Values.serviceConfig.auth.scopeTokenSecret -}}
 {{- $scopeTokenMountPath := "/var/run/secrets/nemo-retriever/auth" -}}
 {{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
@@ -116,6 +118,14 @@ spec:
                 secretKeyRef:
                   name: {{ $internalAuth.existingSecret.name | quote }}
                   key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if eq $sidecarStore.backend "redis" }}
+            - name: NRL_SIDECAR_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $sidecarRedisSecret.name | quote }}
+                  key: {{ $sidecarRedisSecret.key | quote }}
                   optional: false
             {{- end }}
             {{- if $scopeTokenSecret.name }}
@@ -316,6 +326,14 @@ spec:
                 secretKeyRef:
                   name: {{ $internalAuth.existingSecret.name | quote }}
                   key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if eq $sidecarStore.backend "redis" }}
+            - name: NRL_SIDECAR_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $sidecarRedisSecret.name | quote }}
+                  key: {{ $sidecarRedisSecret.key | quote }}
                   optional: false
             {{- end }}
             {{- if and (eq $role "gateway") $scopeTokenSecret.name }}

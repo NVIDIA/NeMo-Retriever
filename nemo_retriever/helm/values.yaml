@@ -695,6 +695,16 @@ serviceConfig:
     gpuDevices: []
     maxUploadBytes: 500000000
 
+  # Split sidecar uploads need shared storage. Redis URL stays in an existing
+  # Secret; memory is supported only for standalone sidecar operations.
+  sidecarStore:
+    backend: memory
+    maxPayloadBytes: 33554432
+    redis:
+      existingSecret:
+        name: ""
+        key: url
+
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
   # /v1/query to it for retrieval.
@@ -704,9 +714,10 @@ serviceConfig:
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
-    # Optional dedicated gateway/worker-to-VectorDB authentication. When
-    # enabled, all Retriever and VectorDB pods read the same existing Secret
-    # key and VectorDB rejects missing or invalid internal credentials.
+    # Optional service-internal authentication. When enabled, Retriever and
+    # VectorDB pods read the same existing Secret key. In split topology, the
+    # gateway also uses this credential for restricted gateway-to-worker
+    # handoffs. Public bearer credentials are never forwarded to workers.
     internalAuth:
       enabled: false
       existingSecret:

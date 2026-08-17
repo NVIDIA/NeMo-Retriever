@@ -163,7 +163,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         tracker.add_terminal_observer(app.state.metrics.record_terminal_transition)
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
-    app.state.sidecar_store = init_sidecar_store()
+    app.state.sidecar_store = init_sidecar_store(
+        redis_url=config.sidecar_store.redis_url if config.sidecar_store.backend == "redis" else None,
+        max_payload_bytes=config.sidecar_store.max_payload_bytes,
+    )
 
     if mode == "gateway":
         app.state.proxy = init_proxy(config.gateway)

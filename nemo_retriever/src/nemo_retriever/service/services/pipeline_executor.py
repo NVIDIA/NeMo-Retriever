@@ -415,7 +415,9 @@ def _resolve_extract_params(
     return ExtractParams(**extract_kwargs)
 
 
-def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
+def _resolve_sidecar_in_spec(
+    spec: dict[str, Any] | None, *, sidecar_owner_fingerprint: str | None = None
+) -> dict[str, Any] | None:
     """Resolve ``vdb_upload_params.meta_dataframe_id`` to in-band bytes.
 
     The pipeline runs in a child process that cannot reach the
@@ -435,14 +437,17 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     if not sidecar_id:
         return spec
 
-    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import RedisSidecarStore, get_sidecar_store
 
     store = get_sidecar_store()
     if store is None:
         raise RuntimeError(
             "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
         )
-    entry = store.consume(sidecar_id)
+    entry = store.consume(
+        sidecar_id,
+        owner_token=sidecar_owner_fingerprint if isinstance(store, RedisSidecarStore) else None,
+    )
     if entry is None:
         raise RuntimeError(
             f"Sidecar id {sidecar_id!r} not found. The sidecar may have "
@@ -1118,7 +1123,9 @@ def _make_work_fn(
         filename = item.filename or item.id
         loop = asyncio.get_running_loop()
 
-        resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
+        resolved_spec = _resolve_sidecar_in_spec(
+            item.pipeline_spec, sidecar_owner_fingerprint=item.sidecar_owner_fingerprint
+        )
         write_context = item.write.resolved(fallback_document_id=item.id)
 
         try:

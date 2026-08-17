@@ -27,6 +27,14 @@ The Helm chart uses `GET /v1/live` for startup and liveness probes and
 topology, `/v1/health` returns HTTP `503` when the required realtime or batch
 worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
 Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
+
+In split topology, send public requests only to the gateway Service. The
+gateway validates public bearer tokens and authenticates restricted worker
+handoffs with the configured internal credential. Public scope-token records
+remain on the gateway. If you upload sidecar metadata for `vdb_upload`,
+configure the externally managed Redis sidecar store. The in-memory sidecar
+store is supported only for standalone deployments. Refer to the Helm chart
+[authentication and shared-sidecar configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets).
 **Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:2.3.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 
 For audio and video extraction in Kubernetes, refer to [Audio and video](audio-video.md).

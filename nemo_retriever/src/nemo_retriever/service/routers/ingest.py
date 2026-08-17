@@ -143,6 +143,12 @@ def _role(request: Request) -> str:
     return getattr(request.app.state, "prometheus_role", "standalone")
 
 
+def _sidecar_owner_fingerprint(request: Request) -> str | None:
+    """Return the gateway-authenticated sidecar owner when available."""
+    value = getattr(request.state, "caller_fingerprint", None)
+    return str(value) if value else None
+
+
 def _is_gateway(request: Request) -> bool:
     return _mode(request) == "gateway"
 
@@ -476,6 +482,7 @@ async def _gateway_enqueue(
     filename: str | None,
     pipeline_spec: dict[str, Any] | None = None,
     write: DocumentWriteContext | None = None,
+    sidecar_owner_fingerprint: str | None = None,
 ) -> None:
     """Admit split-mode work to the gateway broker after atomic spooling.
 
@@ -504,7 +511,10 @@ async def _gateway_enqueue(
             retain_results=_job_retain_results(job_id),
             pipeline_spec=pipeline_spec,
             trace_context=_safe_inject_trace_context(),
-            extra={"write": write.model_dump(mode="json")} if write is not None else None,
+            extra={
+                **({"write": write.model_dump(mode="json")} if write is not None else {}),
+                **({"sidecar_owner_fingerprint": sidecar_owner_fingerprint} if sidecar_owner_fingerprint else {}),
+            } or None,
         )
     except WorkQueueFull as exc:
         tracker = get_job_tracker()
@@ -666,6 +676,7 @@ async def _prepare_job_work_item(
         job_id=job_id,
         pipeline_spec=validated_spec.model_dump(mode="json") if validated_spec is not None else None,
         retain_results=_job_retain_results(job_id),
+        sidecar_owner_fingerprint=_sidecar_owner_fingerprint(request),
         write=DocumentWriteContext(
             scope=job.scope,
             collection_name=job.collection_name,
@@ -721,6 +732,7 @@ async def _submit_job_work_item(
             filename=item.filename,
             pipeline_spec=item.pipeline_spec,
             write=item.write,
+            sidecar_owner_fingerprint=item.sidecar_owner_fingerprint,
         )
     else:
         await _enqueue_or_reject(pool_type, item)
@@ -1485,30 +1497,12 @@ async def ingest_sidecar(
 
     _check_upload_size(file, request)
 
-    # Forward to the gateway's backend so the realtime worker pool has
-    # the sidecar available when the matching ingest call arrives. We
-    # broadcast to both pools because the routing decision happens at
-    # ingest time, not at sidecar-upload time.
-    if _is_gateway(request):
-        from nemo_retriever.service.services.proxy import get_proxy
-
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        # Pick the realtime backend for the canonical response, then
-        # mirror the upload to the batch backend so either worker pool
-        # can resolve the id. If the mirror fails we still return 201
-        # because the realtime store has the entry and most workloads
-        # land there.
-        realtime_resp = await proxy.forward(request, PoolType.REALTIME)
-        try:
-            await proxy.forward(request, PoolType.BATCH)
-        except Exception as exc:
-            logger.warning(
-                "Sidecar mirror to batch backend failed (id from realtime still valid): %s",
-                exc,
-            )
-        return realtime_resp
+    config = request.app.state.config
+    if _is_gateway(request) and not config.sidecar_store.backend == "redis":
+        raise HTTPException(
+            status_code=503,
+            detail="Split sidecar operations require serviceConfig.sidecarStore.backend=redis.",
+        )
 
     store = get_sidecar_store()
     if store is None:
@@ -1518,9 +1512,8 @@ async def ingest_sidecar(
     if not payload:
         raise HTTPException(status_code=400, detail="Sidecar upload is empty")
 
-    # Owner-token scoping: use the bearer token when auth is enabled.
-    auth_header = request.headers.get("Authorization", "")
-    owner_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
+    # Redis sidecars use a gateway-derived HMAC fingerprint, never the public bearer.
+    owner_token = _sidecar_owner_fingerprint(request)
 
     try:
         entry = store.put(
@@ -1533,6 +1526,8 @@ async def ingest_sidecar(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
     expires_iso = datetime.fromtimestamp(entry.expires_at, tz=timezone.utc).isoformat()
     return SidecarUploadResponse(
@@ -1553,24 +1548,18 @@ async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     """Explicit deletion lets callers free server memory before the TTL elapses."""
     from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
-    if _is_gateway(request):
-        from nemo_retriever.service.services.proxy import get_proxy
-
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        # Mirror delete to both pools. We don't care which one had it.
-        for pool in (PoolType.REALTIME, PoolType.BATCH):
-            try:
-                await proxy.forward(request, pool)
-            except Exception as exc:
-                logger.debug("Sidecar delete forward to %s failed: %s", pool.value, exc)
-        return Response(status_code=204)
+    config = request.app.state.config
+    if _is_gateway(request) and not config.sidecar_store.backend == "redis":
+        raise HTTPException(
+            status_code=503,
+            detail="Split sidecar operations require serviceConfig.sidecarStore.backend=redis.",
+        )
 
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
-    store.delete(sidecar_id)
+    if not store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request)):
+        raise HTTPException(status_code=404, detail="Sidecar id not found")
     return Response(status_code=204)
 
 
