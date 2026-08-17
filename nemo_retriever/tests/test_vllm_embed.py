@@ -284,7 +284,13 @@ class TestVllmStartupDefaults:
 
 
 class TestNvlinkDetection:
-    def _install_fake_pynvml(self, monkeypatch, *, devices_link_states):
+    def _install_fake_pynvml(self, monkeypatch, *, devices_link_states, link_peers=None, support_remote_pci=True):
+        """Install a fake ``pynvml``.
+
+        ``link_peers`` maps a device index to the peer of each of its links:
+        another device index, or ``"switch"`` for an NVSwitch endpoint.
+        """
+
         class FakeNVMLError(Exception):
             pass
 
@@ -295,6 +301,7 @@ class TestNvlinkDetection:
         fake.nvmlShutdown = lambda: None
         fake.nvmlDeviceGetCount = lambda: len(devices_link_states)
         fake.nvmlDeviceGetHandleByIndex = lambda index: index
+        fake.nvmlDeviceGetPciInfo = lambda handle: SimpleNamespace(busId=f"0000:0{int(handle)}:00.0".encode())
 
         def get_nvlink_state(handle, link):
             try:
@@ -305,15 +312,62 @@ class TestNvlinkDetection:
                 raise FakeNVMLError("not supported")
             return state
 
+        def get_remote_pci_info(handle, link):
+            peers = (link_peers or {}).get(int(handle), [])
+            peer = peers[link] if link < len(peers) else None
+            if peer is None:
+                raise FakeNVMLError("remote pci info unavailable")
+            if peer == "switch":
+                return SimpleNamespace(busId=b"0000:ff:00.0")
+            return SimpleNamespace(busId=f"0000:0{int(peer)}:00.0".encode())
+
         fake.nvmlDeviceGetNvLinkState = get_nvlink_state
+        if support_remote_pci:
+            fake.nvmlDeviceGetNvLinkRemotePciInfo = get_remote_pci_info
         monkeypatch.setitem(sys.modules, "pynvml", fake)
         return fake
 
     def test_active_link_reports_available(self, monkeypatch):
         monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
-        self._install_fake_pynvml(monkeypatch, devices_link_states=[[0, 1], [0, 1]])
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[0, 1], [0, 1]],
+            link_peers={0: [None, 1], 1: [None, 0]},
+        )
 
         assert vllm_inference.nvlink_is_available() is True
+
+    def test_active_link_to_gpu_outside_tp_group_reports_unavailable(self, monkeypatch):
+        # Separately bridged pairs 0-1 and 2-3: a TP group of 0 and 2 has active
+        # links on both devices, but neither reaches the other TP member.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,2")
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[1], [1], [1], [1]],
+            link_peers={0: [1], 1: [0], 2: [3], 3: [2]},
+        )
+
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is False
+
+    def test_nvswitch_peer_reports_available(self, monkeypatch):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[1], [1]],
+            link_peers={0: ["switch"], 1: ["switch"]},
+        )
+
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is True
+
+    def test_unreportable_peer_trusts_active_link(self, monkeypatch):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        self._install_fake_pynvml(
+            monkeypatch,
+            devices_link_states=[[1], [1]],
+            support_remote_pci=False,
+        )
+
+        assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is True
 
     def test_no_link_support_reports_unavailable(self, monkeypatch):
         monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
@@ -342,6 +396,7 @@ class TestNvlinkDetection:
         self._install_fake_pynvml(
             monkeypatch,
             devices_link_states=[[1], [1], [0], [0]],
+            link_peers={0: [1], 1: [0]},
         )
 
         assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is True
@@ -353,6 +408,7 @@ class TestNvlinkDetection:
         self._install_fake_pynvml(
             monkeypatch,
             devices_link_states=[[0], [0], [1], [1]],
+            link_peers={2: [3], 3: [2]},
         )
 
         assert vllm_inference.nvlink_is_available(tensor_parallel_size=2) is False

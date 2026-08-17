@@ -85,7 +85,9 @@ def nvlink_is_available(*, tensor_parallel_size: int | None = None) -> bool:
 
     When ``tensor_parallel_size`` is set, only the first N CUDA-visible devices
     are checked — matching vLLM's default rank→device mapping — so extra visible
-    GPUs outside the TP group cannot mask a PCIe-only shard.
+    GPUs outside the TP group cannot mask a PCIe-only shard. An active link only
+    counts when it reaches another GPU in that group (or an NVSwitch): hosts with
+    separately bridged pairs give every device a link that leads elsewhere.
 
     Unknown counts as available so an NVML gap never silently downgrades
     collectives on a host that does have NVLink among the selected devices.
@@ -103,7 +105,8 @@ def nvlink_is_available(*, tensor_parallel_size: int | None = None) -> bool:
         return True
 
     try:
-        device_indices = _visible_nvml_device_indices(int(pynvml.nvmlDeviceGetCount()))
+        device_count = int(pynvml.nvmlDeviceGetCount())
+        device_indices = _visible_nvml_device_indices(device_count)
         if device_indices is None:
             logger.debug(
                 "Could not resolve CUDA_VISIBLE_DEVICES=%r to NVML indices; assuming NVLink is present",
@@ -117,17 +120,32 @@ def nvlink_is_available(*, tensor_parallel_size: int | None = None) -> bool:
                 return True
             device_indices = device_indices[:tp]
 
+        handles = {index: pynvml.nvmlDeviceGetHandleByIndex(index) for index in range(device_count)}
+        bus_ids = {
+            index: str(pynvml.nvmlDeviceGetPciInfo(handle).busId).strip().lower() for index, handle in handles.items()
+        }
+        tp_bus_ids = {bus_ids[index] for index in device_indices}
+        host_bus_ids = set(bus_ids.values())
         max_links = int(getattr(pynvml, "NVML_NVLINK_MAX_LINKS", 18))
         for device_index in device_indices:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+            handle = handles[device_index]
             for link in range(max_links):
                 try:
-                    if pynvml.nvmlDeviceGetNvLinkState(handle, link) == 1:
-                        return True
+                    active = pynvml.nvmlDeviceGetNvLinkState(handle, link) == 1
                 except pynvml.NVMLError:
                     # Not supported on this device, or the link index is beyond
                     # what it exposes; keep probing the remaining TP devices.
                     break
+                if not active:
+                    continue
+                try:
+                    remote = str(pynvml.nvmlDeviceGetNvLinkRemotePciInfo(handle, link).busId).strip().lower()
+                except (pynvml.NVMLError, AttributeError):
+                    return True  # Cannot see the peer, so trust the active link.
+                # A peer that is not one of this host's GPUs is an NVSwitch, which
+                # still connects the whole tensor-parallel group.
+                if remote in tp_bus_ids or remote not in host_bus_ids:
+                    return True
         return False
     except pynvml.NVMLError:
         logger.debug("NVML NVLink query failed; assuming NVLink is present", exc_info=True)
