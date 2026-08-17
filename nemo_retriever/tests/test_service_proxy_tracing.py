@@ -258,6 +258,8 @@ def _make_proxy(
         realtime_url="http://realtime.test",
         batch_url="http://batch.test",
     )
+    proxy._internal_api_token = "internal-secret"  # noqa: SLF001
+    proxy._public_auth_header = "authorization"  # noqa: SLF001
     proxy._realtime = realtime or _RecordingClient()  # noqa: SLF001
     proxy._batch = batch or _RecordingClient()  # noqa: SLF001
     return proxy
@@ -285,3 +287,31 @@ def _make_request(
         "client": ("testclient", 123),
     }
     return Request(scope, _receive)
+
+
+def test_forward_replaces_public_auth_with_gateway_context() -> None:
+    backend = _RecordingClient()
+    proxy = _make_proxy(batch=backend)
+    request = _make_request(
+        method="POST",
+        path="/v1/ingest/sidecar",
+        headers={
+            "Authorization": "Bearer public-token",
+            "X-NRL-Scope": "forged",
+            "X-NRL-Internal-Token": "forged",
+            "X-NRL-Gateway-Handoff": "forged",
+        },
+        body=b"payload",
+    )
+    request.state.authorized_scope = "approved"
+    request.state.caller_fingerprint = "fingerprint"
+
+    response = asyncio.run(proxy.forward(request, PoolType.BATCH))
+
+    assert response.status_code == 202
+    headers = backend.calls[0]["headers"]
+    assert "authorization" not in {key.lower() for key in headers}
+    assert headers["X-NRL-Internal-Token"] == "internal-secret"
+    assert headers["X-NRL-Gateway-Handoff"] == "v1"
+    assert headers["X-NRL-Authorized-Scope"] == "approved"
+    assert headers["X-NRL-Caller-Fingerprint"] == "fingerprint"

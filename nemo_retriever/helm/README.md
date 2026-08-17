@@ -889,7 +889,7 @@ custom service configuration files.
 | `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret`. |
 | `ngcApiSecret.password`           | `""`           | NGC API key (populates `NGC_API_KEY` + `NGC_CLI_API_KEY`). |
 | `imagePullSecrets`                | `[]`           | Extra pre-existing pull secrets appended to every Pod. |
-| `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable dedicated Secret-backed Retriever-to-VectorDB authentication. |
+| `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable the Secret-backed credential for VectorDB traffic and restricted gateway-to-worker handoffs. |
 | `serviceConfig.vectordb.internalAuth.existingSecret.name` | `""` | Existing Secret shared by Retriever and VectorDB pods. |
 | `serviceConfig.auth.scopeTokenSecret.name` | `""` | Existing Secret containing the public scope-token JSON file. |
 | `serviceConfig.auth.enabled` | `false` | Require bearer authentication for the public gateway. |
@@ -930,7 +930,7 @@ The chart will skip Secret creation. Make sure `my-org-ngc-pull` exists
 as `kubernetes.io/dockerconfigjson` and `my-org-ngc-api` as `Opaque` with
 an `NGC_API_KEY` key, in the release namespace.
 
-Protect the public gateway and its dedicated VectorDB hop with two separate
+Protect the public gateway and internal service calls with separate
 pre-existing Secrets:
 
 ```yaml
@@ -951,10 +951,13 @@ serviceConfig:
 `nrl-public-auth` must contain a JSON document such as
 `{"tokens":[{"token":"<secret>","scopes":["workspace-123"]}]}` under the
 configured key. `nrl-internal-vdb-auth` must contain a distinct, high-entropy
-credential. Internal authentication is opt-in for local compatibility; enable
-it for production deployments. When enabled, a missing Secret or key prevents
-the pods from starting instead of falling back to unauthenticated VectorDB
-access. Inline `serviceConfig.auth.apiToken` is rejected unless
+credential. In split topology, the public token file mounts only on the
+gateway. The gateway authenticates public requests, then uses the internal
+credential for restricted worker handoffs. Workers do not receive or validate
+the public bearer token. Internal authentication is opt-in for local
+compatibility; enable it for production deployments. When enabled, a missing
+Secret or key prevents the pods from starting instead of falling back to
+unauthenticated VectorDB access. Inline `serviceConfig.auth.apiToken` is rejected unless
 `allowInsecureInlineApiToken=true`, and must never be used for production.
 
 ### Disable one NIM and supply an external URL for it
