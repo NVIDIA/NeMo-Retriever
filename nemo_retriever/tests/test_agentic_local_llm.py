@@ -14,7 +14,7 @@ def test_resolve_agent_llm_profile_aliases() -> None:
     from nemo_retriever.models.local.agent_llm import resolve_agent_llm_model_name
 
     assert resolve_agent_llm_model_name("nemotron-8b") == "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
-    assert resolve_agent_llm_model_name("nemotron-super-49b") == "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+    assert resolve_agent_llm_model_name("nemotron-super-49b") == "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"
 
 
 def test_local_agent_llm_config_carries_vllm_resource_options() -> None:

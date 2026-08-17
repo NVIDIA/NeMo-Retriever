@@ -1315,7 +1315,7 @@ async def test_parse_model(req: ParseTestRequest):
 
         from PIL import Image
 
-        from nemo_retriever.models.local.nemotron_parse_v1_2 import NemotronParseV12
+        from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
 
         img_data = req.image_b64
         if "," in img_data:
@@ -1325,7 +1325,8 @@ async def test_parse_model(req: ParseTestRequest):
         pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
         t0 = _time.perf_counter()
-        model = NemotronParseV12()
+        model_cls = NemotronParse20 if req.model_id == "nvidia/NVIDIA-Nemotron-Parse-2.0" else NemotronParseV12
+        model = model_cls(model_path=req.model_id)
         load_time = _time.perf_counter() - t0
 
         t1 = _time.perf_counter()

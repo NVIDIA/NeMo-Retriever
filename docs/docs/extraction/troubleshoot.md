@@ -264,9 +264,9 @@ When you run PDF extraction with `method="nemotron_parse"`, a mismatched model a
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-This can occur when you send a tagged or versioned `v1.2` model (for example `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+This can occur when you send a tagged, versioned model such as `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send versioned `v1.2` models only to a compatible self-hosted chat endpoint. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send versioned Parse models only to compatible self-hosted chat endpoints. For more information, refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 

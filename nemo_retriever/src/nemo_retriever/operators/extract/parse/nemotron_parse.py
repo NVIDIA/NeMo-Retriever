@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Nemotron Parse v1.2 pipeline stage.
+Nemotron Parse pipeline stage.
 
 Runs the Nemotron Parse model on full page images to extract structured
 document content (text, tables, charts, infographics) in a single pass,
@@ -154,7 +154,7 @@ def _route_parsed_elements(
 class _NemotronParseContractProfile(str, Enum):
     HOSTED_TOOL_CALL = "hosted_tool_call"
     LEGACY_TOOL_CALL = "legacy_tool_call"
-    V1_2_TAGGED = "v1_2_tagged"
+    TAGGED = "tagged"
 
 
 @dataclass(frozen=True)
@@ -207,7 +207,7 @@ def _resolve_nemotron_parse_contract(
     elif _is_legacy_nemotron_parse_model(normalized_model):
         profile = _NemotronParseContractProfile.LEGACY_TOOL_CALL
     else:
-        profile = _NemotronParseContractProfile.V1_2_TAGGED
+        profile = _NemotronParseContractProfile.TAGGED
 
     return _ResolvedNemotronParseContract(
         model=resolved_model,
@@ -309,7 +309,7 @@ def nemotron_parse_pages(
     nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Run Nemotron Parse v1.2 on full page images.
+    """Run Nemotron Parse on full page images.
 
     Each page is parsed in a single model call.  The structured output is
     split by element class (Text, Table, Chart, Picture, …) and routed to
@@ -419,7 +419,7 @@ def nemotron_parse_pages(
                         )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
-                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
+                # Local vLLM model: uses task_prompt and returns tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
@@ -430,7 +430,7 @@ def nemotron_parse_pages(
                 contract is not None
                 and nemotron_parse_model
                 and contract.has_build_endpoint
-                and contract.profile == _NemotronParseContractProfile.V1_2_TAGGED
+                and contract.profile == _NemotronParseContractProfile.TAGGED
                 and "text input" in str(e).lower()
             ):
                 hint = ValueError(
@@ -507,7 +507,7 @@ def nemotron_parse_pages(
 
 
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initialises Nemotron Parse once per actor."""
 
     def __init__(
         self,
@@ -554,9 +554,15 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            model_path = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+            if model_path == NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL:
+                from nemo_retriever.models.local import NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+                self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            else:
+                from nemo_retriever.models.local import NemotronParse20
+
+                self._model = NemotronParse20(model_path=model_path, task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()

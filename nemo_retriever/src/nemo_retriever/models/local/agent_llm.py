@@ -30,7 +30,7 @@ def _normalize_name(name: str) -> str:
 
 
 _NANO_8B_MODEL_ID = "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
-_SUPER_49B_MODEL_ID = "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+_SUPER_49B_MODEL_ID = "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"
 _NANO_8B_ALIASES = (
     "llama-3.1-nemotron-nano-8b-v1",
     "nemotron-nano-8b",
@@ -38,10 +38,15 @@ _NANO_8B_ALIASES = (
     "nvidia/llama-3.1-nemotron-nano-8b-v1",
 )
 _SUPER_49B_ALIASES = (
+    "llama-3.3-nemotron-super-49b-v1.5",
+    "llama-3.3-nemotron-super-49b-v1_5",
     "llama-3.3-nemotron-super-49b-v1",
     "nemotron-super-49b",
     "super-49b",
+    "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "nvidia/llama-3.3-nemotron-super-49b-v1_5",
     "nvidia/llama-3.3-nemotron-super-49b-v1",
+    "nvidia/llama-3_3-nemotron-super-49b-v1_5",
     "nvidia/llama-3_3-nemotron-super-49b-v1",
 )
 

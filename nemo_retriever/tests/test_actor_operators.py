@@ -545,7 +545,7 @@ class TestNemotronParseActor:
         ("endpoint", "model", "expected_model", "expected_profile"),
         [
             ("https://integrate.api.nvidia.com/v1/chat/completions", None, "nvidia/nemotron-parse", "hosted_tool_call"),
-            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "tagged"),
             (
                 "http://parse:8000/v1/chat/completions",
                 "nvidia/nemotron-parse",
@@ -568,15 +568,21 @@ class TestNemotronParseActor:
                 "http://parse:8000/v1/chat/completions",
                 "nvidia/nemotron-parse-v1.2",
                 "nvidia/nemotron-parse-v1.2",
-                "v1_2_tagged",
+                "tagged",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v2.0",
+                "nvidia/nemotron-parse-v2.0",
+                "tagged",
             ),
             (
                 "http://parse:8000/v1/chat/completions",
                 "nvidia/nemotron-parse-v1.10",
                 "nvidia/nemotron-parse-v1.10",
-                "v1_2_tagged",
+                "tagged",
             ),
-            ("http://parse:8000/v1/chat/completions", "custom/parse", "custom/parse", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", "custom/parse", "custom/parse", "tagged"),
         ],
     )
     def test_contract_resolution(self, endpoint, model, expected_model, expected_profile):
@@ -595,7 +601,7 @@ class TestNemotronParseActor:
             _resolve_nemotron_parse_contract(endpoints, None)
 
         contract = _resolve_nemotron_parse_contract(endpoints, "nvidia/nemotron-parse-v1.2")
-        assert contract.profile.value == "v1_2_tagged"
+        assert contract.profile.value == "tagged"
 
     def test_forced_v1_2_build_text_rejection_reports_contract_mismatch(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages

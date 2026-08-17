@@ -15,6 +15,7 @@ def test_extraction_hf_repos_have_pinned_revisions():
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v1"] == "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v2"] == "86cacb0467fa4f7ce54342fdb250825e0d928ae7"
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-page-elements-v3"] == "df62dbb631502575ac4d43b44d700b1674ab1d56"
+    assert registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Parse-2.0"] == "635b84d9b09bb9526b9a684d0b2c953d3cc3df05"
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"] == "9350162faa1110320af62699105780b0c87b73ad"
     )
@@ -51,6 +52,10 @@ def test_local_hf_nemotron_models_use_transformers_5_compatible_revisions() -> N
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-rerank-vl-1b-v2"]
         == "9c20c4aedf9ec87b6b7346c3bc4754ea030dab35"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"]
+        == "420ba7d28211abf116b8b103ab700d92619daf98"
     )
 
 

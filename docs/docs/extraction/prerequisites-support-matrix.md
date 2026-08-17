@@ -149,7 +149,7 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
 | llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
-| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted `nemotron-parse-v1.2` use different request contracts; the library selects the matching contract automatically. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
+| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and versioned self-hosted models such as `nemotron-parse-v1.2` and `nemotron-parse-v2.0` use different request contracts; the library selects the matching contract automatically. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
 | llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
@@ -161,7 +161,11 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
     Hosted NVIDIA Build and self-hosted Nemotron Parse use **different request contracts**. The library selects the matching contract from the endpoint and model:
 
     - **Hosted Build** (`https://integrate.api.nvidia.com/v1/chat/completions`) resolves to model ID `nvidia/nemotron-parse` and uses an image-only tool-call contract.
-    - **Self-hosted chat endpoints** default to model ID `nvidia/nemotron-parse-v1.2` and use the tagged text-prompt contract.
+    - **Self-hosted chat endpoints** default to model ID `nvidia/nemotron-parse-v1.2` and use the tagged task-prompt contract. Set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` to use Parse 2.0 with a compatible endpoint. Its `<class_Chart>` output is routed to chart modality rows.
+
+    Local Hugging Face inference defaults to `nvidia/NVIDIA-Nemotron-Parse-v1.2`. Set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0"` to use Parse 2.0 locally.
+
+    For Helm, keep the default v1.2 image unless you opt in to Parse 2.0. To opt in, set `nimOperator.nemotron_parse.image.repository=nvcr.io/nim/nvidia/nemotron-parse-v2.0`, `nimOperator.nemotron_parse.image.tag=2.0.8-variant`, and `serviceConfig.nimEndpoints.nemotronParseModel=nvidia/nemotron-parse-v2.0`.
 
     To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL (and set `method="nemotron_parse"`). You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract. Mixed Build and self-hosted endpoint lists require an explicit model.
 
