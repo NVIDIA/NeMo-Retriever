@@ -34,6 +34,8 @@ from nemo_retriever.service import tracing as tracing_module
 
 logger = logging.getLogger(__name__)
 
+_HEALTH_CHECK_TIMEOUT_SECONDS = 3.0
+
 
 def _inject_trace_context(headers: dict[str, str]) -> None:
     try:
@@ -210,8 +212,10 @@ class GatewayProxy:
         """Quick health probe against a backend."""
         client = self._client_for(pool_type)
         try:
-            resp = await client.get("/v1/health", timeout=5.0)
-            return {"status": "ok", "code": resp.status_code}
+            resp = await client.get("/v1/health", timeout=_HEALTH_CHECK_TIMEOUT_SECONDS)
+            if 200 <= resp.status_code < 300:
+                return {"status": "ok", "code": resp.status_code}
+            return {"status": "unhealthy", "code": resp.status_code}
         except httpx.HTTPError as exc:
             return {"status": "unreachable", "error": str(exc)}
 

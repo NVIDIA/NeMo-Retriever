@@ -91,7 +91,7 @@ local_models:
   # when using a remote/NIM reranker configured under ``nim_endpoints``.
   rerank:
     enabled: false
-    model_name: nvidia/llama-nemotron-rerank-1b-v2
+    model_name: nvidia/llama-nemotron-rerank-vl-1b-v2
     backend: vllm
     gpu_memory_utilization: 0.5
     max_length: 512
@@ -187,6 +187,7 @@ auth:
   api_token: null
   header_name: "Authorization"
   bypass_paths:
+    - "/v1/live"
     - "/v1/health"
     - "/docs"
     - "/openapi.json"

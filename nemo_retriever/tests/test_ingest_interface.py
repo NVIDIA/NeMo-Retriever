@@ -68,6 +68,8 @@ def _effective_graph_node_names(ingestor: GraphIngestor) -> list[str]:
 
 
 def _run_graph_ingest_with_result(ingestor: GraphIngestor, result, monkeypatch, **ingest_kwargs):
+    if not ingestor._documents and not ingestor._buffers and not ingestor._inline_texts:
+        ingestor.files(["document.pdf"])
     monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
     monkeypatch.setattr(
         ingestor,
@@ -123,6 +125,46 @@ def test_create_ingestor_rejects_unknown_kwargs() -> None:
 def test_create_ingestor_rejects_unknown_run_modes() -> None:
     with pytest.raises(ValueError, match="supports run modes"):
         create_ingestor(run_mode="parallel")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch", "service"])
+@pytest.mark.parametrize("input_method", [None, "files", "texts", "buffers"])
+def test_ingest_requires_input_sources(
+    run_mode: str,
+    input_method: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_kwargs = {"run_mode": run_mode}
+    if run_mode == "service":
+        create_kwargs["base_url"] = "http://retriever.example"
+    ingestor = create_ingestor(**create_kwargs)
+    if input_method is not None:
+        getattr(ingestor, input_method)([])
+
+    if run_mode == "batch":
+        monkeypatch.setattr(
+            ingestor,
+            "_ensure_batch_runtime",
+            lambda: pytest.fail("input validation must run before starting Ray"),
+        )
+    elif run_mode == "service":
+        monkeypatch.setattr(
+            ingestor,
+            "ingest_stream",
+            lambda **kwargs: pytest.fail("input validation must run before contacting the service"),
+        )
+    else:
+        monkeypatch.setattr(
+            ingestor,
+            "_execute_single_graph",
+            lambda *args, **kwargs: pytest.fail("input validation must run before executing the graph"),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=r"No input sources configured\. Call files\(\), texts\(\), or buffers\(\) with at least one source",
+    ):
+        ingestor.extract(params=ExtractParams(extract_text=True)).ingest()
 
 
 def test_texts_accepts_scalar(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -977,3 +1019,41 @@ def test_batch_ingest_finalization_handles_ray_pickled_object_arrays(
         assert records[0]["source_identifier"] == "second.pdf"
         assert records[0]["column"] == "page_elements_v3"
         assert records[0]["path"] == "error"
+
+
+def test_batch_ingest_finalization_skips_unrelated_arrow_extension_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table = pa.Table.from_arrays(
+        [
+            pa.array(["first.pdf"]),
+            pa.array([{"timing": None, "error": None}]),
+            pa.array([[{"stored_image_uri": "file:///tmp/stored-images/first.png"}]]),
+        ],
+        names=["path", "page_elements_v3", "images"],
+    )
+    batch_df = table.to_pandas(types_mapper=pd.ArrowDtype)
+    assert pa.types.is_list(batch_df["images"].dtype.pyarrow_dtype)
+
+    original_iter = pd.arrays.ArrowExtensionArray.__iter__
+
+    def fail_for_arrow_list_column(values):
+        # Reproduce the RC3 failure without requiring the customer NIM output:
+        # only whole-column iteration of the stored image payload is invalid.
+        if pa.types.is_list(values.dtype.pyarrow_dtype):
+            raise pa.ArrowIndexError("index with value of 1 is out-of-bounds for array of length 1")
+        return original_iter(values)
+
+    monkeypatch.setattr(pd.arrays.ArrowExtensionArray, "__iter__", fail_for_arrow_list_column)
+    ingestor = GraphIngestor(run_mode="batch").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    result = _run_graph_ingest_with_result(ingestor, batch_df, monkeypatch)
+
+    assert result is batch_df

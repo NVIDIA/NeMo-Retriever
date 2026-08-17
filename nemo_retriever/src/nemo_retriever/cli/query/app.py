@@ -182,7 +182,7 @@ def _local_command(
     reranker_api_key_env: opts.RerankerApiKeyEnvOption = None,
     reranker_model_name: opts.RerankerModelNameOption = None,
     reranker_backend: opts.RerankerBackendOption = None,
-    rerank: opts.RerankOption = False,
+    rerank: opts.RerankOption = None,
     retrieval_mode: opts.RetrievalModeOption = "auto",
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
@@ -193,12 +193,14 @@ def _local_command(
     agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
     agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
     agentic_temperature: opts.AgenticTemperatureOption = None,
+    agentic_local_tensor_parallel_size: opts.AgenticLocalTensorParallelSizeOption = 1,
     agentic_llm_client: opts.AgenticLlmClientOption = None,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
+    if rerank is None:
+        rerank = bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
     if agentic:
         # Relaxed model gating: an explicit model is required only for the remote
@@ -276,6 +278,7 @@ def _local_command(
                     react_max_steps=agentic_react_max_steps,
                     text_truncation=agentic_text_truncation,
                     temperature=agentic_temperature,
+                    local_tensor_parallel_size=agentic_local_tensor_parallel_size,
                     llm_client=agentic_llm_client,
                 ),
             )

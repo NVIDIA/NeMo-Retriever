@@ -148,12 +148,12 @@ service:
     count: 0
     productClass: ""
 
-  # Liveness, readiness, and startup probes.  All use the dedicated
-  # GET /v1/health endpoint which returns {"status":"ok"} with no auth.
+  # Startup and liveness use the shallow, unauthenticated GET /v1/live
+  # endpoint. Readiness uses the deep, unauthenticated GET /v1/health endpoint.
   livenessProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 30
     periodSeconds: 30
@@ -173,7 +173,7 @@ service:
   startupProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -187,7 +187,7 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
-  # OpenTelemetry env defaults for the retriever service container.
+  # OpenTelemetry defaults for the retriever service container. The chart exports metrics every 5 seconds by default; override through service.otel.env.
   otel:
     enabled: true
     serviceName: nemo-retriever-service
@@ -209,6 +209,7 @@ service:
 # =============================================================================
 networkService:
   type: NodePort
+  # Kubernetes Service port, including chart-generated Service-DNS URLs.
   port: 7670
   # Optional: override the targetPort name. Should match container port name.
   targetPort: http
@@ -531,6 +532,7 @@ topology:
 serviceConfig:
   server:
     host: "0.0.0.0"
+    # Retriever process listener and named container port.
     port: 7670
 
   logging:
@@ -554,6 +556,13 @@ serviceConfig:
     # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
     nemotronParseModel: ""
     embedInvokeUrl: ""
+    # Optional remote reranking endpoint used by POST /v1/query with
+    # rerank=true. The optional rerankqa NIM is not auto-wired; set this
+    # explicitly to its in-cluster Service URL or another compatible endpoint.
+    rerankInvokeUrl: ""
+    # Server-owned model identifier sent to rerankInvokeUrl. Use the VL
+    # reranker ID for the chart's optional rerankqa NIM.
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
@@ -720,6 +729,7 @@ serviceConfig:
       key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
+      - "/v1/live"
       - "/v1/health"
       - "/docs"
       - "/openapi.json"
@@ -1003,8 +1013,9 @@ nimOperator:
     env:
       NIM_ENABLE_OTEL: "true"
       NIM_OTEL_TRACES_EXPORTER: "otlp"
-      NIM_OTEL_METRICS_EXPORTER: "console"
+      NIM_OTEL_METRICS_EXPORTER: "otlp"
       TRITON_OTEL_RATE: "1"
+      OTEL_METRIC_EXPORT_INTERVAL: "5000"
 
   # ---------------------------------------------------------------------------
   # Per-NIM defaults

@@ -75,6 +75,7 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
+from nemo_retriever.service.metrics_otel import record_ingest_accepted
 from nemo_retriever.service.services.worker_result_store import (
     ResultStoreTemporarilyUnavailable,
     get_result_data,
@@ -232,6 +233,7 @@ def _record_prometheus(
         INGEST_PAGES_TOTAL.labels(role=role).inc()
     else:
         INGEST_DOCUMENTS_TOTAL.labels(role=role).inc()
+    record_ingest_accepted(role=role, endpoint=endpoint, file_size=file_size, is_page=is_page)
 
 
 def _register_document_under_job(
@@ -1229,25 +1231,26 @@ async def submit_page_to_job(
                     filename=file.filename,
                 )
 
-            _record_prometheus(
-                request,
-                "/v1/ingest/job/page",
-                "2xx",
-                file_size=file_size,
-                is_page=True,
-            )
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/job/page")
-                m.record_page_accepted(
-                    page_id=page_id,
-                    document_id=document_id,
-                    job_id=job_id,
-                    endpoint="/v1/ingest/job/page",
-                    page_number=page_number,
-                    file_size_bytes=file_size,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
+            if not dry_run:
+                _record_prometheus(
+                    request,
+                    "/v1/ingest/job/page",
+                    "2xx",
+                    file_size=file_size,
+                    is_page=True,
                 )
+                if (m := get_metrics()) is not None:
+                    m.record_request("/v1/ingest/job/page")
+                    m.record_page_accepted(
+                        page_id=page_id,
+                        document_id=document_id,
+                        job_id=job_id,
+                        endpoint="/v1/ingest/job/page",
+                        page_number=page_number,
+                        file_size_bytes=file_size,
+                        file_category=classification.category.value,
+                        content_type=classification.content_type,
+                    )
 
             return PageIngestAccepted(
                 page_id=page_id,
@@ -1287,26 +1290,27 @@ async def submit_page_to_job(
                 ),
             )
 
-        _record_prometheus(
-            request,
-            "/v1/ingest/job/page",
-            "2xx",
-            file_size=len(file_bytes),
-            is_page=True,
-        )
-
-        if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/job/page")
-            m.record_page_accepted(
-                page_id=page_id,
-                document_id=document_id,
-                job_id=job_id,
-                endpoint="/v1/ingest/job/page",
-                page_number=page_number,
-                file_size_bytes=len(file_bytes),
-                file_category=classification.category.value,
-                content_type=classification.content_type,
+        if not dry_run:
+            _record_prometheus(
+                request,
+                "/v1/ingest/job/page",
+                "2xx",
+                file_size=len(file_bytes),
+                is_page=True,
             )
+
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/page")
+                m.record_page_accepted(
+                    page_id=page_id,
+                    document_id=document_id,
+                    job_id=job_id,
+                    endpoint="/v1/ingest/job/page",
+                    page_number=page_number,
+                    file_size_bytes=len(file_bytes),
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                )
 
         return PageIngestAccepted(
             page_id=page_id,
@@ -1354,7 +1358,8 @@ async def submit_whole_document_to_job(
         )
         now = datetime.now(timezone.utc).isoformat()
 
-        if not _is_dry_run(request):
+        dry_run = _is_dry_run(request)
+        if not dry_run:
             record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
             if record is not None:
                 return DocumentIngestAccepted(
@@ -1368,19 +1373,19 @@ async def submit_whole_document_to_job(
                 )
 
         file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
-        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
-        if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/job/whole")
-            m.record_document_accepted(
-                document_id=item.id,
-                job_id=item.job_id,
-                filename=classification.filename,
-                file_category=classification.category.value,
-                content_type=classification.content_type,
-                file_size_bytes=file_size,
-                endpoint="/v1/ingest/job/whole",
-            )
-
+        if not dry_run:
+            _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/whole")
+                m.record_document_accepted(
+                    document_id=item.id,
+                    job_id=item.job_id,
+                    filename=classification.filename,
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                    file_size_bytes=file_size,
+                    endpoint="/v1/ingest/job/whole",
+                )
         return DocumentIngestAccepted(
             document_id=item.write.storage_document_id,
             attempt_id=item.id,
@@ -1948,7 +1953,7 @@ async def query(request: Request) -> Response:
             if use_remote_reranker:
                 rerank_kwargs.update(
                     rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
-                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-1b-v2",
+                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-vl-1b-v2",
                     api_key=config.nim_endpoints.api_key or "",
                 )
             else:
