@@ -517,7 +517,7 @@ class GatewayWorkClient:
             return False
         return True
 
-    async def release(self, claim: Mapping[str, Any], *, reason: str = "release") -> None:
+    async def release(self, claim: Mapping[str, Any], *, reason: str = "release") -> bool:
         import httpx
 
         client = await self._http()
@@ -533,6 +533,8 @@ class GatewayWorkClient:
             response.raise_for_status()
         except httpx.HTTPError:
             logger.warning("Release request failed for work %s", claim["work_id"], exc_info=True)
+            return False
+        return True
 
 
 _instance: WorkBroker | None = None

@@ -622,15 +622,19 @@ class _Pool:
 
                     if isinstance(exc, SidecarStoreUnavailable) and item.callback_url and self._pull_client is not None:
                         outcome = "retrying"
-                        await asyncio.sleep(_SIDECAR_STORE_RETRY_DELAY_S)
-                        await self._pull_client.release(
-                            {
-                                "work_id": item.id,
-                                "lease_id": item.lease_id,
-                                "lease_generation": item.lease_generation,
-                            },
-                            reason="sidecar_store_unavailable",
-                        )
+                        claim = {
+                            "work_id": item.id,
+                            "lease_id": item.lease_id,
+                            "lease_generation": item.lease_generation,
+                        }
+                        while not await self._pull_client.release(claim, reason="sidecar_store_unavailable"):
+                            logger.warning(
+                                "Pool '%s' worker %d retrying release for item %s after a gateway failure",
+                                self._name,
+                                worker_id,
+                                item.id,
+                            )
+                            await asyncio.sleep(_SIDECAR_STORE_RETRY_DELAY_S)
                         logger.warning(
                             "Pool '%s' worker %d released item %s after a temporary sidecar-store failure",
                             self._name,

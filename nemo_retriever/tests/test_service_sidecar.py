@@ -388,6 +388,31 @@ def app_with_sidecars(monkeypatch: pytest.MonkeyPatch, captured_items: list[Work
         yield client
 
 
+def test_authenticated_sidecars_use_caller_fingerprint() -> None:
+    import hashlib
+
+    cfg = ServiceConfig(
+        mode="standalone",
+        auth=AuthConfig(enabled=True, api_token="alice-token"),
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        pipeline_overrides=PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"])),
+    )
+    with TestClient(create_app(cfg)) as client:
+        response = client.post(
+            "/v1/ingest/sidecar",
+            headers={"Authorization": "Bearer alice-token"},
+            files={"file": ("meta.csv", _csv_bytes(), "text/csv")},
+        )
+        assert response.status_code == 201
+        from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+        store = get_sidecar_store()
+        assert store is not None
+        owner = hashlib.sha256(b"alice-token").hexdigest()
+        assert store.get(response.json()["sidecar_id"], owner_token=owner) is not None
+        assert store.get(response.json()["sidecar_id"], owner_token="other") is None
+
+
 def test_post_sidecar_returns_id(app_with_sidecars: TestClient) -> None:
     resp = app_with_sidecars.post(
         "/v1/ingest/sidecar",

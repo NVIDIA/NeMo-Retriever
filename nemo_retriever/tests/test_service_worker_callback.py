@@ -774,9 +774,12 @@ def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable(
         async def heartbeat(self, _item: WorkItem) -> bool:
             return True
 
-        async def release(self, claim: dict[str, object], *, reason: str) -> None:
+        async def release(self, claim: dict[str, object], *, reason: str) -> bool:
             released.append((claim, reason))
-            release_complete.set()
+            if len(released) == 2:
+                release_complete.set()
+                return True
+            return False
 
     def unavailable(_item: WorkItem) -> None:
         raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable")
@@ -795,7 +798,11 @@ def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable(
         (
             {"work_id": "sidecar-doc", "lease_id": "lease-id", "lease_generation": 1},
             "sidecar_store_unavailable",
-        )
+        ),
+        (
+            {"work_id": "sidecar-doc", "lease_id": "lease-id", "lease_generation": 1},
+            "sidecar_store_unavailable",
+        ),
     ]
 
 

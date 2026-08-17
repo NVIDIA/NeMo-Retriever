@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -154,4 +155,8 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             )
 
         request.state.authorized_scope = scope
+        if provided_token:
+            # Persist only a non-reversible caller identity; sidecar ownership
+            # must never retain or expose the bearer token itself.
+            request.state.caller_fingerprint = hashlib.sha256(provided_token.encode()).hexdigest()
         return await call_next(request)
