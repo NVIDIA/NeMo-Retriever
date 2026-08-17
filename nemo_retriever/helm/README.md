@@ -181,8 +181,8 @@ Choose one of the following before you install:
   core topology. Each optional NIM adds its per-NIM GPU request.
   Most optional keys use `nimServiceGpuLimit` (one GPU). The default
   `answer_llm` Super-49B resources request two GPUs.
-- Configure GPU sharing so one physical GPU advertises at least four
-  `nvidia.com/gpu` replicas. Time-slicing works on GPUs that do not
+- Configure GPU sharing so the cluster advertises at least four
+  `nvidia.com/gpu` slots. Time-slicing works on GPUs that do not
   support MIG (including A10G). MIG is an alternative on GPUs that
   support it.
 
@@ -202,10 +202,12 @@ Inspect `Allocatable` for `nvidia.com/gpu`. A default core install
 needs a value of `4` or greater unless sharing is already configured.
 
 The following GPU Operator time-slicing ConfigMap advertises four
-replicas per physical GPU, which matches the four default
-NIMServices. The NVIDIA GPU Operator must already be installed.
-Apply the ConfigMap in the GPU Operator namespace (commonly
-`gpu-operator`) before `helm install`:
+replicas per physical GPU. On a node with one physical GPU, that
+creates four logical slots, which is enough for the four default
+NIMServices. A node with two physical GPUs advertises eight slots.
+The NVIDIA GPU Operator must already be installed. Apply the
+ConfigMap in the GPU Operator namespace (commonly `gpu-operator`)
+before `helm install`:
 
 ```yaml
 apiVersion: v1
@@ -229,6 +231,49 @@ kubectl create -n gpu-operator -f time-slicing-config-all.yaml
 kubectl patch clusterpolicies.nvidia.com/cluster-policy \
     -n gpu-operator --type merge \
     -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all", "default": "any"}}}}'
+```
+
+That ClusterPolicy patch is a cluster-administrator change.
+`default: "any"` applies the four-replica configuration to all
+eligible GPU Operator nodes. It can oversubscribe unrelated GPU
+workloads that share those nodes.
+
+Time-slicing oversubscribes allocatable slots. It does not place
+the four NIM pods on one physical GPU. The scheduler can spread
+them across GPUs or nodes. All four default NIMs share one
+physical GPU when the target node has one physical GPU and
+advertises at least four replicas.
+
+On a multi-GPU or multi-node cluster, pin the four core
+NIMServices to a single-GPU node. Set
+`nimOperator.<key>.nodeSelector` on `page_elements`,
+`table_structure`, `ocr`, and `vlm_embed`. This chart does not
+render pod affinity or topology spread constraints:
+
+```yaml
+nimOperator:
+  page_elements:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  table_structure:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  ocr:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  vlm_embed:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+```
+
+On a mixed cluster, omit `devicePlugin.config.default` and label
+only the target node so other GPU nodes keep exclusive access:
+
+```bash
+kubectl patch clusterpolicies.nvidia.com/cluster-policy \
+    -n gpu-operator --type merge \
+    -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all"}}}}'
+kubectl label node <gpu-node> nvidia.com/device-plugin.config=any
 ```
 
 Increase `replicas` if you also enable optional NIMs on the same

@@ -68,7 +68,7 @@ Consider self-hosting when:
 - You run at large scale where dedicated capacity can cost less than hosted API usage.
 - You must meet latency or locality requirements that hosted regions cannot satisfy.
 
-**GPU sharing.** Combined core NIM VRAM fits on one A10G or better GPU, but the default Helm chart still requests four exclusive GPU slots. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+**GPU sharing.** Combined core NIM VRAM fits on one A10G or better GPU, but the default Helm chart still requests four exclusive GPU slots. Time-slicing creates logical slots. It does not pin the four NIM pods onto one physical GPU. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Air-gapped and disconnected deployment { #air-gapped-deployment }
 
