@@ -187,16 +187,13 @@ def _bind_sidecar_for_admission(
     sidecar_id = vdb.get("meta_dataframe_id")
     if not sidecar_id:
         return None, None, pipeline_spec
-    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable, get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
     from nemo_retriever.service.services.work_queue import SidecarAttachment
 
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
-    try:
-        entry = store.consume(str(sidecar_id), owner_token=_sidecar_owner_fingerprint(request))
-    except SidecarStoreUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": _RETRY_AFTER_SECONDS}) from exc
+    entry = store.consume(str(sidecar_id), owner_token=_sidecar_owner_fingerprint(request))
     if entry is None:
         raise HTTPException(status_code=404, detail="Sidecar was not found, expired, or is not owned by this caller")
     attachment = SidecarAttachment(payload=entry.payload, filename=entry.filename, content_type=entry.content_type)
@@ -1529,7 +1526,7 @@ async def ingest_sidecar(
 ) -> SidecarUploadResponse | Response:
     """Store one opaque sidecar ID at the gateway admission boundary."""
     from datetime import datetime, timezone
-    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable, get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
     _check_upload_size(file, request)
     config = request.app.state.config
@@ -1537,8 +1534,6 @@ async def ingest_sidecar(
         raise HTTPException(
             status_code=404, detail="Sidecar operations are available only on the gateway or standalone service"
         )
-    if _is_gateway(request) and config.sidecar_store.backend != "redis":
-        raise HTTPException(status_code=503, detail="Split sidecar operations require sidecar_store.backend=redis")
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
@@ -1562,8 +1557,6 @@ async def ingest_sidecar(
             ttl_s=ttl_s,
             consume_on_read=consume_on_read,
         )
-    except SidecarStoreUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": _RETRY_AFTER_SECONDS}) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ValueError as exc:
@@ -1584,7 +1577,7 @@ async def ingest_sidecar(
 )
 async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     """Delete an owner-authorized sidecar before it is bound to work."""
-    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable, get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
     if request.app.state.config.mode in ("realtime", "batch"):
         raise HTTPException(
@@ -1593,10 +1586,7 @@ async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
-    try:
-        deleted = store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request))
-    except SidecarStoreUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": _RETRY_AFTER_SECONDS}) from exc
+    deleted = store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request))
     if not deleted:
         raise HTTPException(status_code=404, detail="Sidecar was not found or is not owned by this caller")
     return Response(status_code=204)

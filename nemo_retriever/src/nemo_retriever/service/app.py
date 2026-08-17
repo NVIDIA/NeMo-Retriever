@@ -164,10 +164,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
     app.state.sidecar_store = (
-        init_sidecar_store(
-            redis_url=config.sidecar_store.redis_url if mode == "gateway" else None,
-            max_payload_bytes=config.sidecar_store.max_payload_bytes,
-        )
+        init_sidecar_store(max_payload_bytes=config.sidecar_store.max_payload_bytes)
         if mode in ("gateway", "standalone")
         else None
     )

@@ -30,6 +30,7 @@ from nemo_retriever.service.config import (
     PipelinePoolConfig,
     ServiceConfig,
     SinksConfig,
+    WorkQueueConfig,
 )
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
@@ -47,6 +48,20 @@ from nemo_retriever.service.services.sidecar_store import (
 # ----------------------------------------------------------------------
 # SidecarStore unit behaviour
 # ----------------------------------------------------------------------
+
+
+def test_memory_sidecar_store_does_not_survive_restart() -> None:
+    store = init_sidecar_store()
+    try:
+        entry = store.put(filename="meta.csv", content_type="text/csv", payload=_csv_bytes())
+    finally:
+        shutdown_sidecar_store()
+
+    restarted = init_sidecar_store()
+    try:
+        assert restarted.get(entry.sidecar_id) is None
+    finally:
+        shutdown_sidecar_store()
 
 
 def test_store_put_get_consume_roundtrip() -> None:
@@ -349,6 +364,63 @@ def test_ingest_with_meta_dataframe_id_propagates_through_router(
     assert item.pipeline_spec is not None
     assert "meta_dataframe_id" not in item.pipeline_spec["vdb_upload_params"]
     assert item.pipeline_spec["vdb_upload_params"]["_meta_dataframe_bytes"] == _csv_bytes()
+
+
+def test_split_gateway_memory_sidecar_is_bound_to_claimed_work(tmp_path: Path) -> None:
+    """A split gateway binds its local sidecar before any worker claim."""
+    from .conftest import create_test_job
+
+    config = ServiceConfig(
+        mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
+        pipeline=PipelinePoolConfig(realtime_queue_size=1, batch_queue_size=1),
+        pipeline_overrides=PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"])),
+        work_queue=WorkQueueConfig(spool_directory=str(tmp_path / "spool")),
+    )
+    with TestClient(create_app(config)) as client:
+        upload = client.post(
+            "/v1/ingest/sidecar",
+            files={"file": ("meta.csv", _csv_bytes(), "text/csv")},
+        )
+        assert upload.status_code == 201, upload.text
+        job_id = create_test_job(client)
+        accepted = client.post(
+            f"/v1/ingest/job/{job_id}/whole",
+            files={"file": ("doc.pdf", b"%PDF-1.4\n", "application/pdf")},
+            data={
+                "metadata": json.dumps(
+                    {
+                        "pipeline": {
+                            "vdb_upload_params": {
+                                "vdb_op": "lancedb",
+                                "vdb_kwargs": {"lancedb_uri": "s3://corpus/lancedb"},
+                                "meta_dataframe_id": upload.json()["sidecar_id"],
+                                "meta_source_field": "source",
+                                "meta_fields": ["title"],
+                            }
+                        }
+                    }
+                )
+            },
+        )
+        assert accepted.status_code == 202, accepted.text
+
+        claim_response = client.post(
+            "/v1/internal/work/claim",
+            json={"pool": "batch", "worker_uid": "memory-sidecar-worker"},
+        )
+        assert claim_response.status_code == 200, claim_response.text
+        claim = claim_response.json()
+        assert claim["sidecar"]["filename"] == "meta.csv"
+        sidecar = client.get(
+            claim["sidecar"]["url"],
+            headers={
+                "X-Work-Lease-Id": claim["lease_id"],
+                "X-Work-Lease-Generation": str(claim["lease_generation"]),
+            },
+        )
+        assert sidecar.status_code == 200
+        assert sidecar.content == _csv_bytes()
 
 
 def test_ingest_rejects_raw_meta_dataframe_through_router(

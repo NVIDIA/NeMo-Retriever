@@ -306,18 +306,10 @@ class ResourceLimitsConfig(RichModel):
 
 
 class SidecarStoreConfig(RichModel):
-    """Gateway-owned store for sidecars referenced by split-mode work."""
+    """Gateway-owned in-memory store for sidecars before work admission."""
 
     model_config = ConfigDict(extra="forbid")
 
-    backend: Literal["memory", "redis"] = Field(
-        default="memory",
-        description="Sidecar storage backend; split topology uses Redis on the gateway.",
-    )
-    redis_url: str | None = Field(
-        default=None,
-        description="Redis connection URL for a Redis-backed gateway sidecar store.",
-    )
     max_payload_bytes: int = Field(
         default=33_554_432,
         ge=1,
@@ -605,12 +597,6 @@ class ServiceConfig(RichModel):
     def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
         if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
             raise ValueError("sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes")
-        if (
-            self.mode == "gateway"
-            and self.sidecar_store.backend == "redis"
-            and not (self.sidecar_store.redis_url or "").strip()
-        ):
-            raise ValueError("sidecar_store.redis_url must be set for a Redis-backed gateway")
         return self
 
     @model_validator(mode="after")
@@ -701,12 +687,9 @@ def load_config(
         internal_token = internal_token.strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
-    if redis_url := os.environ.get("NRL_SIDECAR_REDIS_URL"):
-        raw.setdefault("sidecar_store", {})["redis_url"] = redis_url
-
     config = ServiceConfig(**raw)
 
-    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "redis_url", "password", "secret"})
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
 
     from rich.console import Console
     from rich.tree import Tree

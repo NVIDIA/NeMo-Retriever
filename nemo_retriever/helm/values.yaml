@@ -697,12 +697,7 @@ serviceConfig:
     maxUploadBytes: 500000000
 
   sidecarStore:
-    backend: memory
     maxPayloadBytes: 33554432
-    redis:
-      existingSecret:
-        name: ""
-        key: url
 
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
