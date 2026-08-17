@@ -26,13 +26,12 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
-        invoke_url = str(
-            self.detect_kwargs.get("page_elements_invoke_url")
-            or self.detect_kwargs.get("invoke_url")
+        invoke_url = (
+            str(self.detect_kwargs.get("page_elements_invoke_url") or "").strip()
+            or str(self.detect_kwargs.get("invoke_url") or "").strip()
             or self.DEFAULT_INVOKE_URL
-        ).strip()
-        if "invoke_url" not in self.detect_kwargs:
-            self.detect_kwargs["invoke_url"] = invoke_url
+        )
+        self.detect_kwargs["invoke_url"] = invoke_url
         self._model = None
         self._nim_client = NIMClient(
             max_pool_workers=int(self.detect_kwargs.get("remote_max_pool_workers", 24)),

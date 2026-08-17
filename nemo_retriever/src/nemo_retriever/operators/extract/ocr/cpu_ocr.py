@@ -27,11 +27,12 @@ class OCRCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
         self.ocr_kwargs = dict(ocr_kwargs)
-        invoke_url = str(
-            self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL
-        ).strip()
-        if "invoke_url" not in self.ocr_kwargs:
-            self.ocr_kwargs["invoke_url"] = invoke_url
+        invoke_url = (
+            str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
+            or str(self.ocr_kwargs.get("invoke_url") or "").strip()
+            or self.DEFAULT_INVOKE_URL
+        )
+        self.ocr_kwargs["invoke_url"] = invoke_url
 
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
         self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))

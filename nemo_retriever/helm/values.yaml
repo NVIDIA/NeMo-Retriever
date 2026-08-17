@@ -711,9 +711,10 @@ serviceConfig:
     indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
-    # Optional dedicated gateway/worker-to-VectorDB authentication. When
-    # enabled, all Retriever and VectorDB pods read the same existing Secret
-    # key and VectorDB rejects missing or invalid internal credentials.
+    # Optional service-internal authentication. When enabled, Retriever and
+    # VectorDB pods read the same existing Secret key. In split topology, the
+    # gateway also uses this credential for restricted gateway-to-worker
+    # handoffs. Public bearer credentials are never forwarded to workers.
     internalAuth:
       enabled: false
       existingSecret:
@@ -722,7 +723,8 @@ serviceConfig:
 
   # Public bearer-token authentication. Production deployments should mount
   # a Secret-backed scope-token JSON file. It is disabled by default so a
-  # standalone deployment accepts gateway requests without a bearer token.
+  # standalone deployment accepts gateway requests without a bearer token. In
+  # split topology, the public token file mounts only on the gateway.
   # Inline apiToken is retained only as an explicitly enabled insecure
   # development fallback.
   auth:

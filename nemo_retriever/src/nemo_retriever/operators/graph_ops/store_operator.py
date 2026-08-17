@@ -18,6 +18,7 @@ import fsspec
 import numpy as np
 import pandas as pd
 
+from nemo_retriever.common.modality.ocr.shared import _crop_b64_image_by_norm_bbox
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 
@@ -157,6 +158,21 @@ def _store_nested_image_payloads(
     return out
 
 
+def _structured_page_crop_b64(row: pd.Series, page_image_b64: Any) -> str | None:
+    content_type = row.get("_content_type")
+    if not isinstance(content_type, str) or not content_type.strip() or content_type == "text":
+        return None
+
+    bbox = row.get("_bbox_xyxy_norm")
+    if hasattr(bbox, "tolist"):
+        bbox = bbox.tolist()
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+
+    cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_image_b64, bbox_xyxy_norm=bbox)
+    return cropped_b64
+
+
 def _row_image_b64_with_source(row: pd.Series) -> tuple[Any, str | None]:
     value = row.get("_image_b64")
     if isinstance(value, str) and value.strip():
@@ -168,7 +184,11 @@ def _row_image_b64_with_source(row: pd.Series) -> tuple[Any, str | None]:
 
     page_image = row.get("page_image")
     if isinstance(page_image, dict):
-        return page_image.get("image_b64"), "page_image"
+        page_image_b64 = page_image.get("image_b64")
+        cropped_b64 = _structured_page_crop_b64(row, page_image_b64)
+        if cropped_b64:
+            return cropped_b64, "page_image_crop"
+        return page_image_b64, "page_image"
 
     return None, None
 

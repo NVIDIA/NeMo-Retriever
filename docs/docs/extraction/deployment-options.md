@@ -18,7 +18,7 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling).
+2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling). When you change a NIM image repository or tag on an existing release, delete the `NIMCache` before you upgrade. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
@@ -27,6 +27,12 @@ The Helm chart uses `GET /v1/live` for startup and liveness probes and
 topology, `/v1/health` returns HTTP `503` when the required realtime or batch
 worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
 Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
+In split topology, the gateway authenticates public requests. When internal
+service authentication is configured, the gateway uses it for restricted worker
+handoffs instead of forwarding public credentials. Without internal service
+authentication, the gateway forwards the configured public authentication header
+to workers, which must share the same public-authentication configuration.
+
 If you use `ServiceIngestor.vdb_upload()` sidecar metadata in split topology,
 upload and reference the metadata while the singleton gateway remains running.
 At ingest admission, the gateway binds the metadata to the work item. Workers

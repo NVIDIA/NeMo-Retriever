@@ -77,6 +77,12 @@ The support matrix **Total GPUs: 1** row is combined VRAM co-residency for the f
 
 On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending` with `Insufficient nvidia.com/gpu`. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
 
+## Why does Helm upgrade fail after I change a NIM image repository or tag? { #helm-nim-image-tag-upgrade }
+
+The chart keeps the same `NIMCache` name when you change a NIM image repository or tag. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
+
+Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image repository or tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
 ### Self-Hosted Deployments { #self-hosted-deployments }
