@@ -150,6 +150,73 @@ def test_redis_store_translates_transient_command_error(monkeypatch: pytest.Monk
         store.get("sidecar-id")
 
 
+def test_redis_store_enforces_owner_and_single_use_consumption(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakePipeline:
+        def __init__(self, client: "FakeRedis") -> None:
+            self._client = client
+
+        def hset(self, key: str, mapping: dict[str, str | bytes]) -> None:
+            self._client._entries[key] = {
+                field.encode(): value if isinstance(value, bytes) else value.encode()
+                for field, value in mapping.items()
+            }
+
+        def pexpire(self, _key: str, _ttl_ms: int) -> None:
+            return None
+
+        def execute(self) -> None:
+            return None
+
+    class FakeRedis:
+        def __init__(self) -> None:
+            self._entries: dict[str, dict[bytes, bytes]] = {}
+
+        def pipeline(self) -> FakePipeline:
+            return FakePipeline(self)
+
+        def hgetall(self, key: str) -> dict[bytes, bytes]:
+            return self._entries.get(key, {}).copy()
+
+        def eval(self, script: str, _keys: int, key: str, owner: str):
+            entry = self._entries.get(key)
+            if not entry or entry[b"owner_token"] != owner.encode():
+                return None if "HGETALL" in script else 0
+            if "HGETALL" in script:
+                data = [item for pair in entry.items() for item in pair]
+                if entry[b"consume_on_read"] == b"1":
+                    del self._entries[key]
+                return data
+            del self._entries[key]
+            return 1
+
+    fake_redis = FakeRedis()
+    monkeypatch.setattr("redis.Redis.from_url", lambda *_args, **_kwargs: fake_redis)
+    store = RedisSidecarStore("redis://sidecars")
+
+    single_use = store.put(
+        filename="meta.csv",
+        content_type="text/csv",
+        payload=b"id,title\n1,foo\n",
+        owner_token="alice",
+    )
+    assert store.get(single_use.sidecar_id, owner_token="eve") is None
+    assert store.consume(single_use.sidecar_id, owner_token="eve") is None
+    assert store.consume(single_use.sidecar_id, owner_token="alice") is not None
+    assert store.get(single_use.sidecar_id, owner_token="alice") is None
+
+    reusable = store.put(
+        filename="meta.csv",
+        content_type="text/csv",
+        payload=b"id,title\n2,bar\n",
+        owner_token="alice",
+        consume_on_read=False,
+    )
+    assert store.consume(reusable.sidecar_id, owner_token="alice") is not None
+    assert store.get(reusable.sidecar_id, owner_token="alice") is not None
+    assert not store.delete(reusable.sidecar_id, owner_token="eve")
+    assert store.delete(reusable.sidecar_id, owner_token="alice")
+
+
 # ----------------------------------------------------------------------
 # Worker-side materialisation
 # ----------------------------------------------------------------------
