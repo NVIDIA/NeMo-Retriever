@@ -494,3 +494,53 @@ def test_pdf_extraction_sets_needs_ocr_for_scanned_default_method() -> None:
     row = result.iloc[0]
     assert row["text"] == ""
     assert row["metadata"]["needs_ocr_for_text"] is True
+
+
+def test_full_page_text_fallback_when_no_detections() -> None:
+    """When no element detections exist but needs_ocr_for_text is True, OCR must still produce text.
+
+    Regression test for https://github.com/NVIDIA/NeMo-Retriever/issues/2443
+    (Greptile review: 'fast-text OCR still produces empty text').
+
+    fast-text profile sets use_page_elements=False, so PageElementDetectionActor
+    is absent. Without a full-page fallback, _crop_all_from_page returns []
+    and scanned PDF text remains empty even though OCR is scheduled.
+    """
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from nemo_retriever.common.modality.ocr.shared import (
+        _PreparedOCRRow,
+        _collect_local_crop_jobs,
+    )
+
+    img = Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8), "RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    page_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    class _FakeRow:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    prepared = _PreparedOCRRow(
+        row_index=0,
+        row=_FakeRow(metadata={"needs_ocr_for_text": True}),
+        page_image_b64=page_b64,
+        detections=[],
+        wanted_labels={"text", "title", "header_footer"},
+    )
+
+    from nemo_retriever.common.modality.ocr.shared import _OCRRowResult
+
+    row_results = [_OCRRowResult()]
+    jobs = _collect_local_crop_jobs([prepared], row_results)
+
+    all_jobs = jobs["word"] + jobs["paragraph"]
+    assert len(all_jobs) == 1
+    assert all_jobs[0].label_name == "full_page"
+    assert all_jobs[0].bbox == [0.0, 0.0, 1.0, 1.0]
