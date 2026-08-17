@@ -268,7 +268,10 @@ class TestReActAgentOperator:
         with patch.object(ReActAgentOperator, "_ensure_agent", return_value=mock_agent):
             with pytest.raises(
                 RuntimeError,
-                match=rf"Agentic retrieval failed \({error_category}\).*retrieve.*127\.0\.0\.1:9",
+                match=(
+                    rf"Agentic retrieval failed \({error_category}\).*retrieve.*127\.0\.0\.1:9.*"
+                    r"Check the configured agent LLM, embedding, vector database, and reranker settings"
+                ),
             ):
                 op.run(self._input())
 
@@ -307,6 +310,27 @@ class TestReActAgentOperator:
         # Deterministic input order regardless of thread completion order.
         assert result["query_id"].tolist() == ["qA", "qB", "qC"]
         assert result["doc_id"].tolist() == ["qAd", "qBd", "qCd"]
+
+    def test_fatal_agent_error_aborts_multiple_queries(self):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_agent = MagicMock()
+
+        def run_sync(query, *, query_id=None, raw_log_dir=None):
+            if query_id == "qB":
+                return _agent_result(
+                    error_category="tool_failed",
+                    error_message="Tool 'retrieve' failed at http://127.0.0.1:9/v1/ranking",
+                )
+            return _agent_result(retrieval_log=[_step([(f"{query_id}d", 1.0, "x")])])
+
+        mock_agent.run_sync.side_effect = run_sync
+        op = self._op(num_concurrent=2)
+        data = pd.DataFrame({"query_id": ["qA", "qB"], "query_text": ["a", "b"]})
+
+        with patch.object(ReActAgentOperator, "_ensure_agent", return_value=mock_agent):
+            with pytest.raises(RuntimeError, match=r"Agentic retrieval failed \(tool_failed\).*retrieve"):
+                op.run(data)
 
 
 # ---------------------------------------------------------------------------

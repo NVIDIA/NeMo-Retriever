@@ -38,6 +38,11 @@ _LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
 _FATAL_AGENT_ERROR_CATEGORIES = frozenset({ERROR_LLM_CALL_FAILED, ERROR_TOOL_FAILED, ERROR_UNEXPECTED})
 
+
+class _FatalAgentError(RuntimeError):
+    """Fatal recorded agent error that must abort single-query and batch execution."""
+
+
 #: Output DataFrame columns emitted by :func:`_build_output_rows` / this operator.
 _OUTPUT_COLUMNS = [
     "query_id",
@@ -291,6 +296,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     qid = futures[future]
                     try:
                         results_by_qid[qid] = future.result()
+                    except _FatalAgentError:
+                        raise
                     except Exception as exc:  # production: one bad query must not kill the batch
                         logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
             for qid, _qtxt in query_rows:
@@ -321,7 +328,10 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
 
         if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
-            raise RuntimeError(f"Agentic retrieval failed ({result.error.category}): {result.error.message}")
+            raise _FatalAgentError(
+                f"Agentic retrieval failed ({result.error.category}): {result.error.message} "
+                "Check the configured agent LLM, embedding, vector database, and reranker settings and connectivity."
+            )
 
         # Private agent retrieval_log entries are {"input", "tool_name",
         # "query_type", "output": [ {id, score, text|note, ...} ]}. The exploded
