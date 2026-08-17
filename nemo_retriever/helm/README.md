@@ -180,7 +180,7 @@ Choose one of the following before you install:
 - Provide four allocatable `nvidia.com/gpu` slots for the default
   core topology. Each optional NIM adds its per-NIM GPU request.
   Most optional keys use `nimServiceGpuLimit` (one GPU). The default
-  `answer_llm` Super-49B resources request two GPUs.
+  `answer_llm` Super-49B resources request two physical GPUs.
 - Configure GPU sharing so the cluster advertises at least four
   `nvidia.com/gpu` slots. Time-slicing works on GPUs that do not
   support MIG (including A10G). MIG is an alternative on GPUs that
@@ -244,6 +244,15 @@ them across GPUs or nodes. All four default NIMs share one
 physical GPU when the target node has one physical GPU and
 advertises at least four replicas.
 
+The default `answer_llm` Super-49B NIMService is outside that
+one-physical-GPU recipe. It requests two GPUs (`nvidia.com/gpu: 2`
+and `NIM_TENSOR_PARALLEL_SIZE=2`). A time-sliced request for more
+than one GPU does not provide two physical GPUs or proportional
+compute, so extra time-slice replicas cannot satisfy that
+tensor-parallel requirement. Keep Super-49B on two physical GPUs
+unless you override the slot with a separately validated model and
+profile. Refer to [Answer generation](#answer-generation-llm).
+
 On a multi-GPU or multi-node cluster, pin the four core
 NIMServices to a single-GPU node. Set
 `nimOperator.<key>.nodeSelector` on `page_elements`,
@@ -276,10 +285,10 @@ kubectl patch clusterpolicies.nvidia.com/cluster-policy \
 kubectl label node <gpu-node> nvidia.com/device-plugin.config=any
 ```
 
-Increase `replicas` if you also enable optional NIMs on the same
-shared GPU and combined VRAM still fits. Count each NIM's Helm GPU
-request. The default `answer_llm` Super-49B profile requests two
-GPUs for tensor parallel and is not a small core NIM. For the full
+Increase `replicas` if you also enable optional NIMs that request
+one GPU each on the same shared GPU and combined VRAM still fits.
+Count each of those Helm GPU requests. Do not increase time-slice
+replicas to satisfy tensor-parallel GPU counts. For the full
 procedure, node labels, and limitations, refer to
 [Time-Slicing GPUs in Kubernetes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
 For MIG on supported GPUs, refer to
@@ -678,8 +687,9 @@ provider-specific `chat_template_kwargs` to external OpenAI-compatible
 endpoints. Set `serviceConfig.llm.reasoningEnabled=false` for Nemotron
 endpoints that should skip reasoning; the service then adds both `/no_think`
 and `chat_template_kwargs.enable_thinking=false`. The default Super-49B NIMService
-resources request two GPUs (`nvidia.com/gpu: 2`) to match the bundled
-tensor-parallel NIM profile. Override `resources`, `modelProfile`, or
+resources request two physical GPUs (`nvidia.com/gpu: 2`) to match the bundled
+tensor-parallel NIM profile. Do not satisfy that count with GPU Operator
+time-slice replicas. Override `resources`, `modelProfile`, or
 `env` for deployments that use a different profile or hardware topology.
 When `answer_llm` is enabled and no explicit `serviceConfig.llm.apiKeySecret`
 is set, the service also mounts `nimOperator.answer_llm.authSecret` as
