@@ -18,7 +18,7 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — sources in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub. Before you install, confirm a working persistent-volume binding strategy. The default chart creates seven PersistentVolumeClaims. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements).
+2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling).
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
@@ -68,7 +68,7 @@ Consider self-hosting when:
 - You run at large scale where dedicated capacity can cost less than hosted API usage.
 - You must meet latency or locality requirements that hosted regions cannot satisfy.
 
-**GPU sharing.** The NIM Operator supports time-slicing and MIG so multiple NIM workloads can share GPUs. A NIM used with NeMo Retriever Library does not always need a full dedicated GPU when the operator and GPU profile are set correctly. For scheduling and GPU partitioning, refer to the [NIM Operator documentation](https://docs.nvidia.com/nim-operator/latest/index.html).
+**GPU sharing.** Combined core NIM VRAM fits on one A10G or better GPU, but the default Helm chart still requests four exclusive GPU slots. Time-slicing creates logical slots. It does not pin the four NIM pods onto one physical GPU. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Air-gapped and disconnected deployment { #air-gapped-deployment }
 
