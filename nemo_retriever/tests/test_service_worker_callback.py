@@ -806,6 +806,77 @@ def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable(
     ]
 
 
+def test_sidecar_release_retries_do_not_block_the_pool_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.services import pipeline_pool
+    from nemo_retriever.service.services.pipeline_pool import WorkItem, _Pool
+    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable
+
+    monkeypatch.setattr(pipeline_pool, "_SIDECAR_STORE_RETRY_DELAY_S", 0.0)
+
+    release_started = asyncio.Event()
+    second_processed = asyncio.Event()
+
+    class PullClient:
+        config = SimpleNamespace(heartbeat_interval_s=60.0)
+
+        def __init__(self) -> None:
+            self._items = iter(
+                [
+                    WorkItem(
+                        id="sidecar-doc",
+                        callback_url="http://gateway/v1/internal/job-callback",
+                        lease_id="lease-id",
+                        lease_generation=1,
+                    ),
+                    WorkItem(
+                        id="next-doc",
+                        callback_url="http://gateway/v1/internal/job-callback",
+                        lease_id="next-lease-id",
+                        lease_generation=1,
+                    ),
+                ]
+            )
+
+        async def claim(self) -> WorkItem | None:
+            try:
+                return next(self._items)
+            except StopIteration:
+                await asyncio.Event().wait()
+                return None
+
+        async def heartbeat(self, _item: WorkItem) -> bool:
+            return True
+
+        async def release(self, _claim: dict[str, object], *, reason: str) -> bool:
+            assert reason == "sidecar_store_unavailable"
+            release_started.set()
+            return False
+
+    def work(item: WorkItem) -> None:
+        if item.id == "sidecar-doc":
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable")
+        second_processed.set()
+
+    async def run() -> None:
+        pool = _Pool(
+            "sidecar-background-release", num_workers=1, max_queue_size=1, work_fn=work, pull_client=PullClient()
+        )
+        pool._running = True
+        task = asyncio.create_task(pool._worker_loop(0))
+        await asyncio.wait_for(second_processed.wait(), timeout=1.0)
+        await asyncio.wait_for(release_started.wait(), timeout=1.0)
+        assert "sidecar-doc" in pool._sidecar_release_tasks
+        pool._running = False
+        task.cancel()
+        for release_task in pool._sidecar_release_tasks.values():
+            release_task.cancel()
+        await asyncio.gather(task, *pool._sidecar_release_tasks.values(), return_exceptions=True)
+
+    asyncio.run(run())
+
+
 def test_fire_gateway_callback_sends_internal_auth_headers() -> None:
     client_kwargs: dict[str, Any] = {}
 

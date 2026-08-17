@@ -260,6 +260,7 @@ class _Pool:
         self._workers: list[asyncio.Task[None]] = []
         self._reporter_task: asyncio.Task[None] | None = None
         self._handoff_tasks: dict[str, asyncio.Task[None]] = {}
+        self._sidecar_release_tasks: dict[str, asyncio.Task[None]] = {}
         self._handoff_slots: asyncio.BoundedSemaphore | None = None
         self._running = False
         self._processed: int = 0
@@ -359,6 +360,48 @@ class _Pool:
                 await asyncio.sleep(_QUEUE_DEPTH_REPORT_INTERVAL_S)
         except asyncio.CancelledError:
             pass
+
+    def _schedule_sidecar_release_retry(self, *, item: WorkItem, worker_id: int) -> None:
+        """Release a sidecar-unavailable claim without holding a pool worker."""
+        if not self._running or item.id in self._sidecar_release_tasks or self._pull_client is None:
+            return
+
+        claim = {
+            "work_id": item.id,
+            "lease_id": item.lease_id,
+            "lease_generation": item.lease_generation,
+        }
+
+        async def _retry_release() -> None:
+            while self._running and not await self._pull_client.release(claim, reason="sidecar_store_unavailable"):
+                logger.warning(
+                    "Pool '%s' worker %d retrying release for item %s after a gateway failure",
+                    self._name,
+                    worker_id,
+                    item.id,
+                )
+                await asyncio.sleep(_SIDECAR_STORE_RETRY_DELAY_S)
+            if self._running:
+                logger.warning(
+                    "Pool '%s' worker %d released item %s after a temporary sidecar-store failure",
+                    self._name,
+                    worker_id,
+                    item.id,
+                )
+
+        task = asyncio.create_task(_retry_release())
+        self._sidecar_release_tasks[item.id] = task
+
+        def _remove_finished(finished: asyncio.Task[None]) -> None:
+            if self._sidecar_release_tasks.get(item.id) is finished:
+                self._sidecar_release_tasks.pop(item.id, None)
+            if not finished.cancelled():
+                try:
+                    finished.result()
+                except Exception:
+                    logger.exception("Deferred sidecar release task failed for item %s", item.id)
+
+        task.add_done_callback(_remove_finished)
 
     async def _schedule_gateway_callback_retry(
         self,
@@ -622,25 +665,7 @@ class _Pool:
 
                     if isinstance(exc, SidecarStoreUnavailable) and item.callback_url and self._pull_client is not None:
                         outcome = "retrying"
-                        claim = {
-                            "work_id": item.id,
-                            "lease_id": item.lease_id,
-                            "lease_generation": item.lease_generation,
-                        }
-                        while not await self._pull_client.release(claim, reason="sidecar_store_unavailable"):
-                            logger.warning(
-                                "Pool '%s' worker %d retrying release for item %s after a gateway failure",
-                                self._name,
-                                worker_id,
-                                item.id,
-                            )
-                            await asyncio.sleep(_SIDECAR_STORE_RETRY_DELAY_S)
-                        logger.warning(
-                            "Pool '%s' worker %d released item %s after a temporary sidecar-store failure",
-                            self._name,
-                            worker_id,
-                            item.id,
-                        )
+                        self._schedule_sidecar_release_retry(item=item, worker_id=worker_id)
                     else:
                         outcome = "failed"
                         if item.callback_url:
@@ -726,6 +751,12 @@ class _Pool:
         if self._handoff_tasks:
             await asyncio.gather(*self._handoff_tasks.values(), return_exceptions=True)
         self._handoff_tasks.clear()
+
+        for task in self._sidecar_release_tasks.values():
+            task.cancel()
+        if self._sidecar_release_tasks:
+            await asyncio.gather(*self._sidecar_release_tasks.values(), return_exceptions=True)
+        self._sidecar_release_tasks.clear()
 
         # Cancel all worker tasks immediately — don't bother draining
         # the queue with sentinels since active workers may be blocked
