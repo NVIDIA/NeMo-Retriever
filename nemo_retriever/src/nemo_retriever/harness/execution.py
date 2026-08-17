@@ -443,7 +443,10 @@ def run_prepared_benchmark(
                     writer.path("run.log"), label="service_ingest" if service_mode else "ingest"
                 ):
                     if service_mode:
-                        ingest_summary = execute_service_ingest_request(ingest_request).to_summary_dict()
+                        ingest_summary = execute_service_ingest_request(
+                            ingest_request,
+                            return_results=False,
+                        ).to_summary_dict()
                     else:
                         ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
             except Exception as exc:

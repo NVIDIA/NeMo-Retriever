@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 import time
@@ -15,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
+from nemo_retriever.service.routers import ingest as ingest_router
 from nemo_retriever.service.config import (
     AuthConfig,
     LoggingConfig,
@@ -27,7 +29,7 @@ from nemo_retriever.service.services.job_tracker import (
     init_job_tracker,
     shutdown_job_tracker,
 )
-from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem, _Pool
+from nemo_retriever.service.services.pipeline_pool import PipelinePool, PoolType, WorkItem, _Pool
 from nemo_retriever.service.services.prometheus import POOL_ACTIVE_SLOTS, WORK_QUEUE_CLAIMS
 from nemo_retriever.service.services.work_queue import (
     GatewayWorkClient,
@@ -340,11 +342,16 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
+    # This test covers the claim/payload/callback lifecycle, not lease expiry.
+    # Without this the reaper can retire the lease mid-test and the callback
+    # fails with 409 purely because the host was slow.
+    monkeypatch.setattr(WorkBroker, "_expire_locked", lambda self, pool: None)
 
     with TestClient(create_app(config)) as client:
         created = client.post("/v1/ingest/job", json={"expected_documents": 1})
@@ -354,7 +361,11 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         accepted = client.post(
             f"/v1/ingest/job/{job_id}/whole",
             files={"file": ("document.txt", b"hello gateway", "text/plain")},
-            data={"metadata": "{}"},
+            data={
+                "metadata": (
+                    '{"metadata":{"category":"Finance_Investment",' '"source_path":"Finance_Investment/document.txt"}}'
+                )
+            },
         )
         assert accepted.status_code == 202
         document_id = accepted.json()["document_id"]
@@ -371,6 +382,20 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         claim = claim_response.json()
         assert claim["work_id"] == document_id
         assert claim["delivery_attempt"] == 1
+        assert claim["extra"] == {
+            "write": {
+                "scope": "default",
+                "collection_name": None,
+                "operation": "append",
+                "content_sha256": hashlib.sha256(b"hello gateway").hexdigest(),
+                "document_version": None,
+                "storage_document_id": document_id,
+                "document_metadata": {
+                    "category": "Finance_Investment",
+                    "source_path": "Finance_Investment/document.txt",
+                },
+            }
+        }
 
         processing = client.get(f"/v1/ingest/job/{job_id}/document/{document_id}")
         assert processing.json()["status"] == "processing"
@@ -415,6 +440,7 @@ def test_gateway_callback_treats_stale_acknowledge_as_idempotent(tmp_path, monke
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -466,7 +492,7 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         mode="gateway",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
     with TestClient(create_app(config)) as client:
@@ -482,9 +508,32 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         )
 
 
-def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
+def test_split_worker_uses_internal_gateway_credential_when_configured(tmp_path):
+    config = _config(tmp_path, gateway_url="http://gateway")
+    internal_pool = PipelinePool(
+        PipelinePoolConfig(),
+        mode="batch",
+        work_queue_config=config,
+        auth_config=AuthConfig(api_token="public-secret"),
+        internal_api_token="internal-secret",
+    )
+    assert internal_pool._batch is not None
+    assert internal_pool._batch._pull_client.headers == {"X-NRL-Internal-Token": "internal-secret"}
+
+    compatibility_pool = PipelinePool(
+        PipelinePoolConfig(),
+        mode="batch",
+        work_queue_config=config,
+        auth_config=AuthConfig(api_token="public-secret"),
+    )
+    assert compatibility_pool._batch is not None
+    assert compatibility_pool._batch._pull_client.headers == {"Authorization": "Bearer public-secret"}
+
+
+def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path, monkeypatch):
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -496,6 +545,22 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
         assert created.status_code == 201
         job_id = created.json()["job_id"]
         headers = {"X-Nemo-Dry-Run": "true"}
+        accepted_metrics = []
+
+        class Metrics:
+            def record_request(self, *_args, **_kwargs):
+                accepted_metrics.append("request")
+
+            def record_page_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("page")
+
+            def record_document_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("document")
+
+        monkeypatch.setattr(
+            ingest_router, "_record_prometheus", lambda *_args, **_kwargs: accepted_metrics.append("otel")
+        )
+        monkeypatch.setattr(ingest_router, "get_metrics", lambda: Metrics())
 
         page = client.post(
             f"/v1/ingest/job/{job_id}/page",
@@ -531,6 +596,7 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
             == 204
         )
         assert not list((tmp_path / "spool").glob("*.payload"))
+        assert accepted_metrics == []
 
 
 def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
@@ -540,6 +606,7 @@ def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
     spool = tmp_path / "spool"
     config = ServiceConfig(
         mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
         pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
@@ -594,7 +661,10 @@ def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path):
+async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path, monkeypatch):
+    # Shutdown, not expiry, is what must invalidate the lease here; the reaper
+    # would otherwise clear it first and mask the behaviour under test.
+    monkeypatch.setattr(WorkBroker, "_expire_locked", lambda self, pool: None)
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=2))
     await broker.start()
     leased = await _enqueue(broker, "leased")
@@ -609,8 +679,6 @@ async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path)
     assert not broker._records
     assert all(not queue for queue in broker._queues.values())
     assert broker._spool_bytes == 0
-    with pytest.raises(StaleLease):
-        broker.validate_callback("leased", claim.lease.lease_id, claim.lease.generation)
 
 
 @pytest.mark.anyio

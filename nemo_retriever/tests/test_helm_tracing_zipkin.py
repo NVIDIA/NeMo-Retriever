@@ -28,10 +28,10 @@ NIMSERVICE_NAMES = {
     "llama-nemotron-embed-vl-1b-v2",
     "llama-nemotron-rerank-vl-1b-v2",
     "nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nemotron-ocr-v2",
     "nemotron-page-elements-v3",
-    "nemotron-parse",
     "nemotron-table-structure-v1",
+    "nemotron-ocr-v2",
+    "nemotron-parse",
 }
 
 
@@ -234,9 +234,9 @@ def test_null_otel_env_maps_render_as_empty_maps() -> None:
     service_env = _env_values(_deployment_env(_find(docs, "Deployment", FULLNAME)))
     assert service_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4317"
 
-    page_env = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
-    assert page_env["NIM_ENABLE_OTEL"] == "true"
-    assert page_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+    page_elements_env = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
+    assert page_elements_env["NIM_ENABLE_OTEL"] == "true"
+    assert page_elements_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
 
     rerank_env = _env_values(_nim_env(_find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")))
     assert rerank_env["NIM_ENABLE_OTEL"] == "true"
@@ -256,6 +256,67 @@ def test_default_renders_zipkin_deployment_and_service() -> None:
     assert service["spec"]["ports"] == [{"name": "http", "protocol": "TCP", "port": 9411, "targetPort": "http"}]
 
 
+def test_otel_prometheus_exporter_matches_advertised_port() -> None:
+    docs = _helm_template()
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    otel_deployment = _find(docs, "Deployment", OTEL_NAME)
+    otel_service = _find(docs, "Service", OTEL_NAME)
+
+    assert config["exporters"]["prometheus"]["endpoint"] == "0.0.0.0:8889"
+    assert config["service"]["pipelines"]["metrics"]["exporters"].count("prometheus") == 1
+    assert {
+        port["name"]: port["containerPort"]
+        for port in otel_deployment["spec"]["template"]["spec"]["containers"][0]["ports"]
+    }["prometheus"] == 8889
+    assert {port["name"]: port["port"] for port in otel_service["spec"]["ports"]}["prometheus"] == 8889
+
+
+def test_otel_prometheus_exporter_follows_custom_port_and_preserves_settings() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set",
+            "topology.otel.ports.prometheus=9999",
+            "--set-string",
+            "topology.otel.config.exporters.prometheus.endpoint=0.0.0.0:8889",
+            "--set-string",
+            "topology.otel.config.exporters.prometheus.namespace=nrl",
+            "--set-json",
+            'topology.otel.config.service.pipelines.metrics.exporters=["debug","prometheus"]',
+        ]
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    otel_deployment = _find(docs, "Deployment", OTEL_NAME)
+    otel_service = _find(docs, "Service", OTEL_NAME)
+
+    assert config["exporters"]["prometheus"] == {"endpoint": "0.0.0.0:9999", "namespace": "nrl"}
+    assert config["service"]["pipelines"]["metrics"]["exporters"].count("prometheus") == 1
+    assert {
+        port["name"]: port["containerPort"]
+        for port in otel_deployment["spec"]["template"]["spec"]["containers"][0]["ports"]
+    }["prometheus"] == 9999
+    assert {port["name"]: port["port"] for port in otel_service["spec"]["ports"]}["prometheus"] == 9999
+
+
+def test_otel_prometheus_exporter_requires_metrics_pipeline() -> None:
+    proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.service.pipelines.metrics=null"])
+
+    assert proc.returncode != 0
+    assert (
+        "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics" in proc.stderr
+    )
+
+
+def test_otel_prometheus_exporter_requires_metric_exporter_list() -> None:
+    proc = _helm_template_process(
+        extra_args=["--set-string", "topology.otel.config.service.pipelines.metrics.exporters=debug"]
+    )
+
+    assert proc.returncode != 0
+    assert (
+        "topology.otel.config.service.pipelines.metrics.exporters must be a list " "when topology.otel.enabled=true"
+    ) in proc.stderr
+
+
 def test_default_injects_managed_service_and_nim_otel_env() -> None:
     docs = _helm_template()
     service_env = _deployment_env(_find(docs, "Deployment", FULLNAME))
@@ -266,6 +327,7 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
     assert service_values["OTEL_SERVICE_NAME"] == "nemo-retriever-service"
     assert service_values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert service_values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert service_values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert service_values["OTEL_LOGS_EXPORTER"] == "none"
     assert service_values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert service_values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -282,8 +344,9 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 
@@ -634,6 +697,7 @@ def test_standalone_service_gets_otel_env_without_duplicate_user_overrides() -> 
     assert values["OTEL_SERVICE_NAME"] == "user-service-name"
     assert values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert values["OTEL_LOGS_EXPORTER"] == "none"
     assert values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -667,8 +731,9 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 
@@ -709,8 +774,8 @@ def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
         _assert_unique_env_names(env)
         assert chart_managed_names.isdisjoint(values)
 
-    table_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-table-structure-v1")))
-    assert table_values["NIM_TRITON_CUDA_MEMORY_POOL_MB"] == "2048"
+    page_elements_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
+    assert page_elements_values["NIM_PIPELINE_MAX_BATCH_SIZE"] == "1"
 
 
 def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
@@ -723,9 +788,9 @@ def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
     )
 
     page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://chart-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://chart-otel:4318/v1/traces"
+    page_elements_values = _env_values(_nim_env(page_elements))
+    assert page_elements_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://chart-otel:4318"
+    assert page_elements_values["TRITON_OTEL_URL"] == "http://chart-otel:4318/v1/traces"
 
     rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
     rerank_values = _env_values(_nim_env(rerank))
@@ -739,10 +804,10 @@ def test_chart_nim_otel_env_endpoint_drives_triton_url() -> None:
     )
 
     page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
+    page_elements_values = _env_values(_nim_env(page_elements))
 
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://env-otel:4318/v1/traces"
+    assert page_elements_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
+    assert page_elements_values["TRITON_OTEL_URL"] == "http://env-otel:4318/v1/traces"
 
 
 def test_per_nim_otel_env_endpoint_drives_triton_url() -> None:
@@ -767,10 +832,10 @@ def test_nim_otel_env_triton_url_override_is_preserved() -> None:
     )
 
     page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
+    page_elements_values = _env_values(_nim_env(page_elements))
 
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
+    assert page_elements_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
+    assert page_elements_values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
 
 
 def test_existing_nim_env_endpoint_drives_triton_url_without_duplicate_endpoint() -> None:

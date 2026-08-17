@@ -29,7 +29,7 @@ metadata:
 spec:
   image:
     repository: {{ .Values.nimOperator.table_structure.image.repository }}
-    tag: {{ .Values.nimOperator.table_structure.image.tag }}
+    tag: {{ .Values.nimOperator.table_structure.image.tag | toString | quote }}
     pullPolicy: {{ .Values.nimOperator.table_structure.image.pullPolicy }}
     pullSecrets:
 {{ toYaml .Values.nimOperator.table_structure.image.pullSecrets | indent 6 }}

@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 from urllib.parse import urlparse
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -68,6 +69,57 @@ class TestStoreOperatorInGraph:
         stored_uri = result.iloc[0]["_stored_image_uri"]
         assert stored_uri.startswith("file://")
         assert Path(urlparse(stored_uri).path).exists()
+
+    @pytest.mark.parametrize("metadata_key", ["image_metadata", "table_metadata", "chart_metadata"])
+    def test_store_operator_exposes_uploaded_image_uri_in_structured_metadata(self, tmp_path: Path, metadata_key: str):
+        b64 = _make_tiny_png_b64()
+        df = _make_embedded_df(b64)
+        df.at[0, "_content_type"] = metadata_key.removesuffix("_metadata")
+        df["metadata"] = [
+            {
+                "content_metadata": {"type": "structured"},
+                metadata_key: {"table_format": "image", "uploaded_image_uri": ""},
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        stored_uri = result.iloc[0]["_stored_image_uri"]
+        assert result.iloc[0]["metadata"]["content_metadata"]["uploaded_image_uri"] == stored_uri
+        assert result.iloc[0]["metadata"][metadata_key]["uploaded_image_uri"] == stored_uri
+
+    def test_store_operator_synchronizes_existing_stored_uri_into_public_metadata(self, tmp_path: Path):
+        df = _make_embedded_df(None)
+        df["_stored_image_uri"] = ["file:///stored/table.png"]
+        df["metadata"] = [
+            {
+                "table_metadata": {"table_format": "image", "uploaded_image_uri": ""},
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        assert result.iloc[0]["metadata"]["table_metadata"]["uploaded_image_uri"] == "file:///stored/table.png"
+
+    def test_store_operator_does_not_publish_inherited_page_uri_as_table_asset(self, tmp_path: Path):
+        df = _make_embedded_df(None)
+        df["_content_type"] = ["table"]
+        df["_stored_image_uri"] = ["file:///stored/page.png"]
+        df["page_image"] = [{"image_b64": None, "stored_image_uri": "file:///stored/page.png"}]
+        df["metadata"] = [
+            {
+                "content_metadata": {"type": "structured", "uploaded_image_uri": ""},
+                "table_metadata": {
+                    "table_format": "image",
+                    "uploaded_image_uri": "file:///stored/table.png",
+                },
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        assert result.iloc[0]["metadata"]["content_metadata"]["uploaded_image_uri"] == ""
+        assert result.iloc[0]["metadata"]["table_metadata"]["uploaded_image_uri"] == "file:///stored/table.png"
 
     def test_store_operator_clears_row_and_page_payloads_after_write(self, tmp_path: Path):
         b64 = _make_tiny_png_b64()
@@ -165,6 +217,87 @@ class TestStoreOperatorInGraph:
         assert files[0].read_bytes() == base64.b64decode(b64)
         assert result.iloc[0]["_stored_image_uri"].startswith("file://")
         assert result.iloc[0]["image_b64"] is None
+
+    def test_store_operator_writes_uri_into_null_typed_arrow_column(self, tmp_path: Path):
+        pa = pytest.importorskip("pyarrow")
+
+        b64 = _make_tiny_png_b64()
+        arrow_table = pa.table(
+            {
+                "page_image": pa.array([{"image_b64": b64}], type=pa.struct([("image_b64", pa.string())])),
+                "_content_type": pa.array(["text"], type=pa.string()),
+                # Upstream content transforms emit an all-None column, which Arrow types as null.
+                "_stored_image_uri": pa.array([None], type=pa.null()),
+            }
+        )
+        df = arrow_table.to_pandas(types_mapper=pd.ArrowDtype)
+        assert isinstance(df["_stored_image_uri"].dtype, pd.ArrowDtype)
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        stored_uri = result.iloc[0]["_stored_image_uri"]
+        assert isinstance(stored_uri, str)
+        assert stored_uri.startswith("file://")
+        assert Path(urlparse(stored_uri).path).read_bytes() == base64.b64decode(b64)
+        assert result.iloc[0]["page_image"]["stored_image_uri"] == stored_uri
+        list(result.iterrows())
+        pa.Table.from_pandas(result)
+
+    def test_store_operator_stores_numpy_backed_element_images(self, tmp_path: Path):
+        pa = pytest.importorskip("pyarrow")
+
+        element_b64 = _make_tiny_png_b64(color=(0, 0, 255))
+        arrow_table = pa.table(
+            {
+                "images": pa.array(
+                    [[{"text": "fig", "image_b64": element_b64}]],
+                    type=pa.list_(pa.struct([("text", pa.string()), ("image_b64", pa.string())])),
+                ),
+                "_content_type": pa.array(["images"], type=pa.string()),
+            }
+        )
+        # Ray Data hands batches over with list columns converted to NumPy arrays.
+        df = arrow_table.to_pandas()
+        assert isinstance(df.iloc[0]["images"], np.ndarray)
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        element = result.iloc[0]["images"][0]
+        assert element["image_b64"] is None
+        assert Path(urlparse(element["stored_image_uri"]).path).read_bytes() == base64.b64decode(element_b64)
+        list(result.iterrows())
+        pa.Table.from_pandas(result)
+
+    def test_store_operator_updates_arrow_backed_page_image_struct(self, tmp_path: Path):
+        pa = pytest.importorskip("pyarrow")
+
+        b64 = _make_tiny_png_b64()
+        struct_type = pa.struct(
+            [
+                ("image_b64", pa.string()),
+                ("encoding", pa.string()),
+                ("orig_shape_hw", pa.list_(pa.int64())),
+            ]
+        )
+        page_image = {"image_b64": b64, "encoding": "png", "orig_shape_hw": [4, 4]}
+        arr = pa.array([page_image], type=struct_type)
+        df = pd.DataFrame(
+            {
+                "page_image": pd.arrays.ArrowExtensionArray(arr),
+                "_content_type": ["text"],
+            }
+        )
+
+        result = StoreOperator(
+            params=StoreParams(storage_uri=str(tmp_path), strip_base64=True, storage_options={"auto_mkdir": True})
+        ).process(df)
+
+        files = list(tmp_path.rglob("*.png"))
+        assert len(files) == 1
+        assert files[0].read_bytes() == base64.b64decode(b64)
+        assert result.iloc[0]["page_image"]["image_b64"] is None
+        assert result.iloc[0]["page_image"]["stored_image_uri"] == result.iloc[0]["_stored_image_uri"]
+        assert result.iloc[0]["page_image"]["encoding"] == "png"
 
     def test_store_operator_does_not_rewrite_page_image_when_strip_false(self, monkeypatch):
         b64 = _make_tiny_png_b64()

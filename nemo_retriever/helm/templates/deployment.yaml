@@ -18,6 +18,9 @@
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
+{{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
+{{- $scopeTokenSecret := .Values.serviceConfig.auth.scopeTokenSecret -}}
+{{- $scopeTokenMountPath := "/var/run/secrets/nemo-retriever/auth" -}}
 {{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
 {{- fail "split mode requires topology.gateway.replicas=1 (process-local scheduler)" -}}
 {{- end -}}
@@ -107,6 +110,18 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if $scopeTokenSecret.name }}
+            - name: NRL_SCOPE_TOKEN_FILE
+              value: {{ printf "%s/scope-tokens.json" $scopeTokenMountPath | quote }}
+            {{- end }}
             {{- if .Values.retrieverResults.enabled }}
             - name: NEMO_RETRIEVER_RESULTS_DIR
               value: {{ .Values.retrieverResults.mountPath | quote }}
@@ -164,6 +179,11 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- if $scopeTokenSecret.name }}
+            - name: scope-token
+              mountPath: {{ $scopeTokenMountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- with $svc.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -185,6 +205,15 @@ spec:
             name: {{ include "nemo-retriever.configMapName" . }}
         - name: tmp
           emptyDir: {}
+        {{- if $scopeTokenSecret.name }}
+        - name: scope-token
+          secret:
+            secretName: {{ $scopeTokenSecret.name | quote }}
+            defaultMode: 288
+            items:
+              - key: {{ $scopeTokenSecret.key | quote }}
+                path: scope-tokens.json
+        {{- end }}
         {{- if .Values.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
@@ -258,11 +287,11 @@ spec:
               GATEWAY="{{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}"
               PORT="{{ $.Values.networkService.port }}"
               echo "Waiting for gateway at ${GATEWAY}:${PORT} ..."
-              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/health" >/dev/null 2>&1; do
-                echo "  gateway not ready — retrying in 3s"
+              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/live" >/dev/null 2>&1; do
+                echo "  gateway not live — retrying in 3s"
                 sleep 3
               done
-              echo "Gateway is healthy — starting worker"
+              echo "Gateway is live — starting worker"
       {{- end }}
       containers:
         - name: nemo-retriever
@@ -281,6 +310,18 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+            - name: NRL_SCOPE_TOKEN_FILE
+              value: {{ printf "%s/scope-tokens.json" $scopeTokenMountPath | quote }}
+            {{- end }}
             {{- if $.Values.retrieverResults.enabled }}
             - name: NEMO_RETRIEVER_RESULTS_TTL_SECONDS
               value: {{ $.Values.retrieverResults.ttlSeconds | quote }}
@@ -347,6 +388,11 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+            - name: scope-token
+              mountPath: {{ $scopeTokenMountPath | quote }}
+              readOnly: true
+            {{- end }}
           {{- if $svc.startupProbe.enabled }}
           startupProbe:
             {{- omit $svc.startupProbe "enabled" | toYaml | nindent 12 }}
@@ -368,6 +414,15 @@ spec:
             {{- if eq $role "gateway" }}
             sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
             {{- end }}
+        {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+        - name: scope-token
+          secret:
+            secretName: {{ $scopeTokenSecret.name | quote }}
+            defaultMode: 288
+            items:
+              - key: {{ $scopeTokenSecret.key | quote }}
+                path: scope-tokens.json
+        {{- end }}
         {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
         - name: data
           persistentVolumeClaim:

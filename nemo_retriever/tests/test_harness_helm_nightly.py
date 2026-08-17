@@ -134,10 +134,12 @@ def test_service_dry_run_writes_plans_without_network(service_execution, monkeyp
 
 
 def test_service_ingest_and_beir_use_shared_results(service_execution, monkeypatch, tmp_path: Path) -> None:
+    ingest_calls = []
     monkeypatch.setattr(
         service_execution,
         "execute_service_ingest_request",
-        lambda _request: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 12}),
+        lambda _request, **kwargs: ingest_calls.append(kwargs)
+        or SimpleNamespace(to_summary_dict=lambda: {"n_rows": 12}),
     )
     monkeypatch.setattr(
         service_execution,
@@ -151,6 +153,7 @@ def test_service_ingest_and_beir_use_shared_results(service_execution, monkeypat
     )
 
     assert outcome.exit_code == 0
+    assert ingest_calls == [{"return_results": False}]
     assert outcome.results["summary_metrics"]["rows_processed"] == 12
     assert outcome.results["summary_metrics"]["query_count"] == 1
     assert outcome.results["summary_metrics"]["recall_5"] == 0.9
@@ -199,7 +202,7 @@ def test_service_metric_gate_failure_uses_standard_exit_code(service_execution, 
     monkeypatch.setattr(
         service_execution,
         "execute_service_ingest_request",
-        lambda _request: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 1}),
+        lambda _request, **_kwargs: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 1}),
     )
     outcome = run_prepared_benchmark(
         _prepared(tmp_path, requirements=("files==2",)),
@@ -211,7 +214,7 @@ def test_service_metric_gate_failure_uses_standard_exit_code(service_execution, 
 
 
 def test_service_ingest_failure_is_concise(service_execution, monkeypatch, tmp_path: Path) -> None:
-    def fail(_request):
+    def fail(_request, **_kwargs):
         raise RuntimeError("service unavailable\ntraceback details")
 
     monkeypatch.setattr(service_execution, "execute_service_ingest_request", fail)

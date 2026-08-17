@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import fsspec
+import numpy as np
 import pandas as pd
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -106,6 +107,11 @@ def _store_nested_image_payloads(
     strip_base64: bool,
 ) -> Any:
     """Persist nested ``image_b64`` values and replace them with URIs."""
+    if isinstance(value, np.ndarray) and value.ndim == 1:
+        # Batch element cells arrive as NumPy arrays; ``DataFrame.at`` collapses
+        # those to a 0-d array, which breaks Arrow conversion of the result.
+        value = value.tolist()
+
     if isinstance(value, list):
         return [
             _store_nested_image_payloads(
@@ -177,6 +183,58 @@ def _row_image_represents_page(row: pd.Series, *, image_source: str | None) -> b
     return content_type == "text"
 
 
+def _ensure_object_column(df: pd.DataFrame, column: str) -> None:
+    """Convert Arrow-backed columns so Python payloads can be assigned.
+
+    Pandas ArrowExtensionArray rejects ``DataFrame.at`` assignment of updated
+    Python dicts into struct/list columns, and of a URI string into a
+    null-typed column that upstream stages left empty. Object dtype accepts
+    both.
+    """
+    if column not in df.columns:
+        return
+    dtype = df[column].dtype
+    if isinstance(dtype, pd.ArrowDtype):
+        df[column] = df[column].astype(object)
+
+
+def _with_uploaded_image_uri(metadata: Any, stored_uri: str) -> Any:
+    """Return metadata with the public structured-image URI synchronized."""
+    if not isinstance(metadata, dict):
+        return metadata
+
+    out = dict(metadata)
+    for key in ("content_metadata", "image_metadata", "table_metadata", "chart_metadata"):
+        structured_metadata = out.get(key)
+        if isinstance(structured_metadata, dict):
+            updated = dict(structured_metadata)
+            updated["uploaded_image_uri"] = stored_uri
+            out[key] = updated
+    return out
+
+
+def _is_inherited_page_uri(row: pd.Series, stored_uri: Any, *, image_source: str | None, raw: bytes | None) -> bool:
+    """Return whether a structured row only carries its page image URI."""
+    content_type = row.get("_content_type")
+    if not isinstance(content_type, str) or not content_type.strip() or content_type == "text":
+        return False
+
+    # A valid row-level payload will be stored as the structured asset below,
+    # even when the row initially inherited the page URI during explosion.
+    if raw is not None and image_source in {"_image_b64", "image_b64"}:
+        return False
+
+    page_image = row.get("page_image")
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+    return (
+        isinstance(stored_uri, str)
+        and stored_uri.strip()
+        and isinstance(page_uri, str)
+        and page_uri.strip()
+        and stored_uri == page_uri
+    )
+
+
 def _store_row_images(
     df: pd.DataFrame,
     *,
@@ -195,12 +253,16 @@ def _store_row_images(
         return df
 
     out = df.copy()
+    for column in (*image_columns, *row_image_columns, "_stored_image_uri", "metadata"):
+        _ensure_object_column(out, column)
     fallback_format = _normalize_image_format(image_format)
     fsspec_options = dict(storage_options or {})
 
     for idx, row in out.iterrows():
         image_b64, image_source = _row_image_b64_with_source(row)
+        stored_uri = row.get("_stored_image_uri")
         raw = _decode_image_b64(image_b64)
+        inherited_page_uri = _is_inherited_page_uri(row, stored_uri, image_source=image_source, raw=raw)
         if raw is not None:
             stored_uri = _write_image_b64(
                 image_b64,
@@ -222,6 +284,9 @@ def _store_row_images(
                 if strip_base64:
                     if image_source in row_image_columns and image_source in out.columns:
                         out.at[idx, image_source] = None
+
+        if isinstance(stored_uri, str) and stored_uri.strip() and not inherited_page_uri and "metadata" in out.columns:
+            out.at[idx, "metadata"] = _with_uploaded_image_uri(row.get("metadata"), stored_uri)
 
         for column in image_columns:
             if column not in out.columns:
