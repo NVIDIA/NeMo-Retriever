@@ -39,11 +39,12 @@ from nemo_retriever.service.services.pipeline_executor import (
 )
 from nemo_retriever.service.services.pipeline_pool import WorkItem
 from nemo_retriever.service.services.sidecar_store import (
+    RedisSidecarStore,
     SidecarStore,
+    SidecarStoreUnavailable,
     init_sidecar_store,
     shutdown_sidecar_store,
 )
-
 
 # ----------------------------------------------------------------------
 # SidecarStore unit behaviour
@@ -103,6 +104,36 @@ def test_store_max_entries_guard() -> None:
     store.put(filename="b", content_type="text/csv", payload=b"b")
     with pytest.raises(RuntimeError, match="full"):
         store.put(filename="c", content_type="text/csv", payload=b"c")
+
+
+def test_store_rejects_payload_over_memory_limit() -> None:
+    store = SidecarStore(max_payload_bytes=3)
+    with pytest.raises(ValueError, match="memory limit"):
+        store.put(filename="m.csv", content_type="text/csv", payload=b"four")
+
+
+def test_redis_store_uses_bounded_operations_and_translates_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    class UnavailableClient:
+        def hgetall(self, _key: str) -> dict[bytes, bytes]:
+            raise RedisConnectionError("unavailable")
+
+    captured: dict[str, object] = {}
+
+    def fake_from_url(_url: str, **kwargs: object) -> UnavailableClient:
+        captured.update(kwargs)
+        return UnavailableClient()
+
+    monkeypatch.setattr("redis.Redis.from_url", fake_from_url)
+    store = RedisSidecarStore("redis://sidecars")
+
+    assert captured["socket_connect_timeout"] == 5.0
+    assert captured["socket_timeout"] == 5.0
+    with pytest.raises(SidecarStoreUnavailable, match="temporarily unavailable"):
+        store.get("sidecar-id")
 
 
 # ----------------------------------------------------------------------

@@ -1124,7 +1124,7 @@ def _make_work_fn(
         loop = asyncio.get_running_loop()
 
         resolved_spec = _resolve_sidecar_in_spec(
-            item.pipeline_spec, sidecar_owner_fingerprint=item.sidecar_owner_fingerprint
+            item.pipeline_spec, sidecar_owner_fingerprint=getattr(item, "sidecar_owner_fingerprint", None)
         )
         write_context = item.write.resolved(fallback_document_id=item.id)
 

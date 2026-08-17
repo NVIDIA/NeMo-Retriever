@@ -514,7 +514,8 @@ async def _gateway_enqueue(
             extra={
                 **({"write": write.model_dump(mode="json")} if write is not None else {}),
                 **({"sidecar_owner_fingerprint": sidecar_owner_fingerprint} if sidecar_owner_fingerprint else {}),
-            } or None,
+            }
+            or None,
         )
     except WorkQueueFull as exc:
         tracker = get_job_tracker()
@@ -1493,7 +1494,7 @@ async def ingest_sidecar(
     enabled) and auto-evicted after ``ttl_s`` seconds.
     """
     from datetime import datetime, timezone
-    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable, get_sidecar_store
 
     _check_upload_size(file, request)
 
@@ -1524,6 +1525,12 @@ async def ingest_sidecar(
             ttl_s=ttl_s,
             consume_on_read=consume_on_read,
         )
+    except SidecarStoreUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": _RETRY_AFTER_SECONDS},
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ValueError as exc:
@@ -1546,7 +1553,7 @@ async def ingest_sidecar(
 )
 async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     """Explicit deletion lets callers free server memory before the TTL elapses."""
-    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable, get_sidecar_store
 
     config = request.app.state.config
     if _is_gateway(request) and not config.sidecar_store.backend == "redis":
@@ -1558,7 +1565,15 @@ async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
-    if not store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request)):
+    try:
+        deleted = store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request))
+    except SidecarStoreUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": _RETRY_AFTER_SECONDS},
+        ) from exc
+    if not deleted:
         raise HTTPException(status_code=404, detail="Sidecar id not found")
     return Response(status_code=204)
 
