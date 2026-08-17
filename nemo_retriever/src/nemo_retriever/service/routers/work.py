@@ -61,6 +61,7 @@ def _lease_from_headers(request: Request) -> tuple[str, int]:
 
 @router.get("/internal/work/{work_id}/sidecar")
 async def work_sidecar(request: Request, work_id: str) -> FileResponse:
+    """Return a lease-owned sidecar attachment or HTTP 409 for a stale lease."""
     broker = _gateway_broker(request)
     lease_id, generation = _lease_from_headers(request)
     try:
@@ -83,6 +84,7 @@ async def work_payload(request: Request, work_id: str) -> FileResponse:
 
 @router.post("/internal/work/{work_id}/activate")
 async def activate_work(request: Request, work_id: str, body: LeaseRequest) -> JSONResponse:
+    """Activate a verified lease, returning its delivery attempt or HTTP 409 if stale."""
     broker = _gateway_broker(request)
     try:
         delivery_attempt = await broker.activate(work_id, body.lease_id, body.lease_generation)

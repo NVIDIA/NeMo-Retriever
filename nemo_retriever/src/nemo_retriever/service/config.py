@@ -310,9 +310,19 @@ class SidecarStoreConfig(RichModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    backend: Literal["memory", "redis"] = "memory"
-    redis_url: str | None = None
-    max_payload_bytes: int = Field(default=33_554_432, ge=1)
+    backend: Literal["memory", "redis"] = Field(
+        default="memory",
+        description="Sidecar storage backend; split topology uses Redis on the gateway.",
+    )
+    redis_url: str | None = Field(
+        default=None,
+        description="Redis connection URL for a Redis-backed gateway sidecar store.",
+    )
+    max_payload_bytes: int = Field(
+        default=33_554_432,
+        ge=1,
+        description="Maximum accepted sidecar payload size in bytes.",
+    )
 
 
 class AuthConfig(RichModel):
