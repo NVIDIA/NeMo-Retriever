@@ -396,7 +396,12 @@ class _Pool:
             while True:
                 await asyncio.sleep(self._pull_client.config.heartbeat_interval_s)
                 if not await self._pull_client.heartbeat(item):
-                    return
+                    logger.warning(
+                        "Pool '%s' worker %d retrying heartbeat for deferred sidecar release of item %s",
+                        self._name,
+                        worker_id,
+                        item.id,
+                    )
 
         lease_heartbeat_task = asyncio.create_task(_keep_deferred_lease())
 

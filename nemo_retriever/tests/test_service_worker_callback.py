@@ -880,14 +880,20 @@ def test_sidecar_release_retries_do_not_block_the_pool_worker(
 def test_deferred_sidecar_release_keeps_lease_heartbeat_alive() -> None:
     from nemo_retriever.service.services.pipeline_pool import WorkItem, _Pool
 
-    heartbeat_sent = asyncio.Event()
+    heartbeat_recovered = asyncio.Event()
     allow_release = asyncio.Event()
 
     class PullClient:
         config = SimpleNamespace(heartbeat_interval_s=0.0)
 
+        def __init__(self) -> None:
+            self.heartbeat_calls = 0
+
         async def heartbeat(self, _item: WorkItem) -> bool:
-            heartbeat_sent.set()
+            self.heartbeat_calls += 1
+            if self.heartbeat_calls == 1:
+                return False
+            heartbeat_recovered.set()
             return True
 
         async def release(self, _claim: dict[str, object], *, reason: str) -> bool:
@@ -896,12 +902,14 @@ def test_deferred_sidecar_release_keeps_lease_heartbeat_alive() -> None:
             return True
 
     async def run() -> None:
-        pool = _Pool("sidecar-release-heartbeat", num_workers=1, max_queue_size=1, pull_client=PullClient())
+        pull_client = PullClient()
+        pool = _Pool("sidecar-release-heartbeat", num_workers=1, max_queue_size=1, pull_client=pull_client)
         pool._running = True
         item = WorkItem(id="sidecar-doc", lease_id="lease-id", lease_generation=1)
         pool._schedule_sidecar_release_retry(item=item, worker_id=0)
         release_task = pool._sidecar_release_tasks[item.id]
-        await asyncio.wait_for(heartbeat_sent.wait(), timeout=1.0)
+        await asyncio.wait_for(heartbeat_recovered.wait(), timeout=1.0)
+        assert pull_client.heartbeat_calls >= 2
         allow_release.set()
         await asyncio.wait_for(release_task, timeout=1.0)
         await asyncio.sleep(0)
