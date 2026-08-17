@@ -68,6 +68,8 @@ def _effective_graph_node_names(ingestor: GraphIngestor) -> list[str]:
 
 
 def _run_graph_ingest_with_result(ingestor: GraphIngestor, result, monkeypatch, **ingest_kwargs):
+    if not ingestor._documents and not ingestor._buffers and not ingestor._inline_texts:
+        ingestor.files(["document.pdf"])
     monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
     monkeypatch.setattr(
         ingestor,
@@ -123,6 +125,46 @@ def test_create_ingestor_rejects_unknown_kwargs() -> None:
 def test_create_ingestor_rejects_unknown_run_modes() -> None:
     with pytest.raises(ValueError, match="supports run modes"):
         create_ingestor(run_mode="parallel")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch", "service"])
+@pytest.mark.parametrize("input_method", [None, "files", "texts", "buffers"])
+def test_ingest_requires_input_sources(
+    run_mode: str,
+    input_method: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_kwargs = {"run_mode": run_mode}
+    if run_mode == "service":
+        create_kwargs["base_url"] = "http://retriever.example"
+    ingestor = create_ingestor(**create_kwargs)
+    if input_method is not None:
+        getattr(ingestor, input_method)([])
+
+    if run_mode == "batch":
+        monkeypatch.setattr(
+            ingestor,
+            "_ensure_batch_runtime",
+            lambda: pytest.fail("input validation must run before starting Ray"),
+        )
+    elif run_mode == "service":
+        monkeypatch.setattr(
+            ingestor,
+            "ingest_stream",
+            lambda **kwargs: pytest.fail("input validation must run before contacting the service"),
+        )
+    else:
+        monkeypatch.setattr(
+            ingestor,
+            "_execute_single_graph",
+            lambda *args, **kwargs: pytest.fail("input validation must run before executing the graph"),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=r"No input sources configured\. Call files\(\), texts\(\), or buffers\(\) with at least one source",
+    ):
+        ingestor.extract(params=ExtractParams(extract_text=True)).ingest()
 
 
 def test_texts_accepts_scalar(monkeypatch: pytest.MonkeyPatch) -> None:

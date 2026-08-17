@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
+from nemo_retriever.service.routers import ingest as ingest_router
 from nemo_retriever.service.config import (
     AuthConfig,
     LoggingConfig,
@@ -529,7 +530,7 @@ def test_split_worker_uses_internal_gateway_credential_when_configured(tmp_path)
     assert compatibility_pool._batch._pull_client.headers == {"Authorization": "Bearer public-secret"}
 
 
-def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
+def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path, monkeypatch):
     config = ServiceConfig(
         mode="gateway",
         auth=AuthConfig(allow_unscoped_dev=True),
@@ -544,6 +545,22 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
         assert created.status_code == 201
         job_id = created.json()["job_id"]
         headers = {"X-Nemo-Dry-Run": "true"}
+        accepted_metrics = []
+
+        class Metrics:
+            def record_request(self, *_args, **_kwargs):
+                accepted_metrics.append("request")
+
+            def record_page_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("page")
+
+            def record_document_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("document")
+
+        monkeypatch.setattr(
+            ingest_router, "_record_prometheus", lambda *_args, **_kwargs: accepted_metrics.append("otel")
+        )
+        monkeypatch.setattr(ingest_router, "get_metrics", lambda: Metrics())
 
         page = client.post(
             f"/v1/ingest/job/{job_id}/page",
@@ -579,6 +596,7 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
             == 204
         )
         assert not list((tmp_path / "spool").glob("*.payload"))
+        assert accepted_metrics == []
 
 
 def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):

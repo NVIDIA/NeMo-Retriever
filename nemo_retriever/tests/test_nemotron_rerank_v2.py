@@ -565,7 +565,7 @@ class TestRerankViaEndpoint:
 class TestNemotronRerankActor:
     """Test the Ray Data-compatible actor."""
 
-    def test_cpu_actor_defaults_to_hosted_text_endpoint(self, monkeypatch):
+    def test_cpu_actor_defaults_to_hosted_vl_endpoint(self, monkeypatch):
         from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
@@ -576,10 +576,10 @@ class TestNemotronRerankActor:
         assert actor._model is None
         assert actor._kwargs["api_key"] == "nvapi-test"
         assert actor._kwargs["rerank_invoke_url"] == (
-            "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+            "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
         )
 
-    def test_cpu_actor_defaults_to_hosted_vl_endpoint(self, monkeypatch):
+    def test_cpu_actor_uses_hosted_vl_endpoint_for_explicit_vl_model(self, monkeypatch):
         from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")

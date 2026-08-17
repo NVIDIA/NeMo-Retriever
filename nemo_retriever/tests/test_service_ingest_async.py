@@ -81,7 +81,7 @@ def _fake_materialize_completed_document(
 @pytest.fixture
 def stub_ingestor() -> Iterator[ServiceIngestor]:
     """A ``ServiceIngestor`` whose stream yields a fixed event sequence."""
-    ing = ServiceIngestor(base_url="http://example:7670")
+    ing = ServiceIngestor(base_url="http://example:7670").files(["a.pdf", "b.pdf"])
     events = _stub_event_sequence()
     stream_calls: list[dict[str, Any]] = []
     setattr(ing, "_stream_calls", stream_calls)

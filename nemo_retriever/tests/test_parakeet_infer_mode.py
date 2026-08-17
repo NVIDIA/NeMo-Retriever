@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 import base64
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nemo_retriever.models.nim.primitives.model_interface.parakeet import (
     ParakeetClient,
+    process_transcription_response,
     resolve_audio_infer_mode,
 )
 from nemo_retriever.common.params import ASRParams
@@ -95,6 +97,19 @@ def test_parakeet_client_transcribe_uses_streaming_for_nvcf(mock_riva) -> None:
 
     mock_stream.assert_called_once()
     mock_asr.offline_recognize.assert_not_called()
+
+
+def test_process_transcription_response_normalizes_milliseconds_consistently() -> None:
+    words = [
+        SimpleNamespace(word="Boundary", start_time=-80, end_time=1200),
+        SimpleNamespace(word="sentence.", start_time=1200, end_time=4000),
+    ]
+    response = SimpleNamespace(results=[SimpleNamespace(alternatives=[SimpleNamespace(words=words)])])
+
+    segments, transcript = process_transcription_response(response)
+
+    assert transcript == "Boundary sentence."
+    assert segments == [{"start": -0.08, "end": 4.0, "text": "Boundary sentence."}]
 
 
 def test_asr_params_default_infer_mode_is_auto() -> None:

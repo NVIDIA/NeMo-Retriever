@@ -16,6 +16,7 @@ Covers three layers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -166,7 +167,6 @@ def test_service_empty_inline_list_preserves_explicit_extraction_mode(
     assert ingestor._pipeline_payload()["extraction_mode"] == expected_mode
 
 
-@pytest.mark.parametrize("values", [[], ["", "  \n"]])
 @pytest.mark.parametrize(
     ("result_schema", "expected_columns"),
     [
@@ -174,13 +174,12 @@ def test_service_empty_inline_list_preserves_explicit_extraction_mode(
         ("compact", ["text", "source_id", "element_type", "page_number"]),
     ],
 )
-def test_service_inline_empty_corpus_short_circuits_with_schema(
-    values: list[str],
+def test_service_blank_inline_corpus_short_circuits_with_schema(
     result_schema: str,
     expected_columns: list[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ingestor = ServiceIngestor(base_url="http://retriever.example").texts(values).embed()
+    ingestor = ServiceIngestor(base_url="http://retriever.example").texts(["", "  \n"]).embed()
     monkeypatch.setattr(
         ingestor,
         "ingest_stream",
@@ -194,6 +193,22 @@ def test_service_inline_empty_corpus_short_circuits_with_schema(
     assert result.dataframe.empty
     assert result.dataframe.columns.tolist() == expected_columns
     assert ingestor._collect_inputs() == []
+
+
+@pytest.mark.parametrize("input_method", [None, "files", "texts", "buffers"])
+def test_service_streaming_ingest_requires_input_sources(input_method: str | None) -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example")
+    if input_method is not None:
+        getattr(ingestor, input_method)([])
+
+    with pytest.raises(ValueError, match="No input sources configured"):
+        ingestor.ingest_stream()
+
+    async def consume_async_stream() -> list[dict]:
+        return [event async for event in ingestor.aingest_stream()]
+
+    with pytest.raises(ValueError, match="No input sources configured"):
+        asyncio.run(consume_async_stream())
 
 
 def test_legacy_pipeline_payload_disables_bulk_result_payloads() -> None:
@@ -920,6 +935,7 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
         "type": "table",
         "fidelity": "ocr",
         "stored_image_uri": "s3://artifacts/table.png",
+        "uploaded_image_uri": "s3://artifacts/table.png",
         "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
         "category": "Finance_Investment",
         "source_path": "Finance_Investment/report.pdf",

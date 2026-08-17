@@ -12,7 +12,6 @@ and the LanceDB row builder (text, path, page_number, metadata).
 from __future__ import annotations
 
 import io
-import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -81,7 +80,7 @@ def html_to_markdown(html_content: Union[str, bytes, Path]) -> str:
     str
         Markdown text.
     """
-    from markitdown import MarkItDown
+    from markitdown import MarkItDown, StreamInfo
 
     md = MarkItDown()
     if isinstance(html_content, Path):
@@ -92,7 +91,14 @@ def html_to_markdown(html_content: Union[str, bytes, Path]) -> str:
             result = md.convert(html_content)
             fallback_text = _read_html_file(html_content)
         else:
-            result = md.convert_stream(io.BytesIO(html_content.encode("utf-8", errors="replace")))
+            result = md.convert_stream(
+                io.BytesIO(html_content.encode("utf-8", errors="replace")),
+                stream_info=StreamInfo(
+                    mimetype="text/html",
+                    extension=".html",
+                    charset="utf-8",
+                ),
+            )
             fallback_text = html_content
     elif isinstance(html_content, bytes):
         result = md.convert_stream(io.BytesIO(html_content))
@@ -113,6 +119,7 @@ def html_file_to_chunks_df(
     overlap_tokens = chunk_params.overlap_tokens
     tokenizer_model_id = chunk_params.tokenizer_model_id
     tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
+    encoding = chunk_params.encoding
 
     """
     Read an .html file, convert to markdown via markitdown, chunk by tokens.
@@ -141,13 +148,8 @@ def html_file_to_chunks_df(
         Columns: text, path, page_number, metadata.
     """
     path = str(Path(path).resolve())
-    from markitdown import MarkItDown
-
-    md = MarkItDown()
-    result = md.convert(path)
-    markdown_text = result.text_content or ""
-    if not markdown_text.strip():
-        markdown_text = _html_plain_text_fallback(_read_html_file(path))
+    html_text = Path(path).read_text(encoding=encoding, errors="replace")
+    markdown_text = html_to_markdown(html_text)
     return _markdown_to_chunks_df(
         markdown_text,
         path,
@@ -168,6 +170,7 @@ def html_bytes_to_chunks_df(
     overlap_tokens = chunk_params.overlap_tokens
     tokenizer_model_id = chunk_params.tokenizer_model_id
     tokenizer_cache_dir = chunk_params.tokenizer_cache_dir
+    encoding = chunk_params.encoding
 
     """
     Convert HTML bytes to markdown and return a DataFrame of chunks (same shape as html_file_to_chunks_df).
@@ -175,20 +178,8 @@ def html_bytes_to_chunks_df(
     Used by batch HtmlSplitActor when input is bytes + path from read_binary_files.
     """
     path = str(Path(path).resolve())
-    # Use temp file so markitdown can detect HTML by extension
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
-        f.write(content_bytes)
-        tmp_path = f.name
-    try:
-        from markitdown import MarkItDown
-
-        md = MarkItDown()
-        result = md.convert(tmp_path)
-        markdown_text = result.text_content or ""
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
-    if not markdown_text.strip():
-        markdown_text = _html_plain_text_fallback(content_bytes.decode("utf-8", errors="replace"))
+    html_text = content_bytes.decode(encoding, errors="replace")
+    markdown_text = html_to_markdown(html_text)
     return _markdown_to_chunks_df(
         markdown_text,
         path,
