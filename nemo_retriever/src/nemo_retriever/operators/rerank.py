@@ -219,6 +219,7 @@ def _rerank_via_endpoint(
         Documents not returned by ``top_n`` truncation receive ``-inf``.
     """
     import requests
+    from nemo_retriever.common.inference_capture import record_json_request
 
     url = _normalize_rerank_endpoint(endpoint)
     use_v1_rerank_schema = _uses_v1_rerank_schema(url)
@@ -229,6 +230,7 @@ def _rerank_via_endpoint(
         payload = _v1_rerank_payload(query, documents, model_name, images_b64)
     else:
         payload = _nim_ranking_payload(query, documents, model_name, images_b64)
+    record_json_request(stage="rerank", endpoint=url, payload=payload, model=model_name)
     response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()
     data = response.json()

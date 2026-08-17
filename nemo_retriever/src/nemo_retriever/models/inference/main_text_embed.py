@@ -15,6 +15,7 @@ Usage:
 
 ```python
 import pandas as pd
+
 from nemo_retriever.models.inference.main_text_embed import create_text_embeddings_for_df
 
 # df must have a `text` column (recommended) and may have `metadata` dicts.
@@ -36,12 +37,16 @@ out_df, _info = create_text_embeddings_for_df(
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
+
+from nemo_retriever.common.inference_capture import record_json_request
 from nemo_retriever.common.api.util.string_processing import (
     ensure_openai_embeddings_http_url,
     prepend_model_provider_prefix,
@@ -86,6 +91,32 @@ class TextEmbeddingConfig:
     embed_modality: str = "text"
     # Parallel OpenAI-compatible embedding HTTP calls per Ray batch (NIM / vLLM).
     nim_http_max_concurrent: int = 32
+
+
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-compatible copy for capture sidecars."""
+    return json.loads(json.dumps(value, default=str))
+
+
+def _embedding_replay_records(rows: list[pd.Series], inputs: list[str]) -> list[dict[str, Any]]:
+    """Return source rows aligned with a final outbound embedding payload."""
+    records: list[dict[str, Any]] = []
+    for index, (row, input_value) in enumerate(zip(rows, inputs)):
+        record = row.to_dict()
+        metadata = record.get("metadata")
+        if isinstance(metadata, dict):
+            metadata = dict(metadata)
+            metadata.pop("embedding", None)
+            record["metadata"] = metadata
+        record.pop("_content", None)
+        records.append(
+            {
+                "input_index": index,
+                "input_sha256": hashlib.sha256(input_value.encode("utf-8")).hexdigest(),
+                "record": _json_safe(record),
+            }
+        )
+    return records
 
 
 # ------------------------------------------------------------------------------
@@ -293,6 +324,8 @@ def _http_embed_openai_compat(
     model_provider_prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
+    replay_records: Optional[List[dict[str, Any]]] = None,
+    capture_operation: Optional[str] = None,
 ) -> List[Optional[List[float]]]:
     """
     Best-effort HTTP embeddings call using an OpenAI-compatible schema.
@@ -324,6 +357,10 @@ def _http_embed_openai_compat(
     if dimensions is not None:
         payload["dimensions"] = int(dimensions)
 
+    record_json_request(
+        stage="embed", endpoint=url, payload=payload, model=model_name, operation=capture_operation,
+        metadata={"replay": {"replay_version": 1, "records": replay_records or []}},
+    )
     with httpx.Client(timeout=float(timeout_s)) as client:
         resp = client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
@@ -360,6 +397,8 @@ def _make_async_request(
     modalities: Optional[List[str]] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
+    replay_records: Optional[List[dict[str, Any]]] = None,
+    capture_operation: Optional[str] = None,
 ) -> dict:
     """
     Send an HTTP OpenAI-compatible embedding request.
@@ -383,6 +422,8 @@ def _make_async_request(
             truncate=str(truncate),
             dimensions=dimensions,
             timeout_s=timeout_s,
+            replay_records=replay_records,
+            capture_operation=capture_operation,
         )
         response["embedding"] = vecs
         response["info_msg"] = None
@@ -409,9 +450,14 @@ def _async_request_handler(
     dimensions: Optional[int] = None,
     max_concurrent: Optional[int] = None,
     timeout_s: float = 600.0,
+    replay_records: Optional[List[List[dict[str, Any]]]] = None,
+    capture_operation: Optional[str] = None,
 ) -> List[dict]:
     if modalities is None:
         modalities = [None] * len(prompts)  # type: ignore[assignment]
+
+    if replay_records is None:
+        replay_records = [None] * len(prompts)  # type: ignore[assignment]
 
     pool_size = max_concurrent if max_concurrent and max_concurrent > 0 else None
     with ThreadPoolExecutor(max_workers=pool_size) as executor:
@@ -430,8 +476,10 @@ def _async_request_handler(
                 modalities=modality_batch,  # type: ignore[arg-type]
                 dimensions=dimensions,
                 timeout_s=timeout_s,
+                replay_records=replay_batch,
+                capture_operation=capture_operation,
             )
-            for prompt_batch, modality_batch in zip(prompts, modalities)
+            for prompt_batch, modality_batch, replay_batch in zip(prompts, modalities, replay_records)
         ]
         results = [future.result() for future in futures]
 
@@ -452,6 +500,8 @@ def _async_runner(
     dimensions: Optional[int] = None,
     max_concurrent: Optional[int] = None,
     timeout_s: float = 600.0,
+    replay_records: Optional[List[List[dict[str, Any]]]] = None,
+    capture_operation: Optional[str] = None,
 ) -> dict:
     results = _async_request_handler(
         prompts,
@@ -467,6 +517,8 @@ def _async_runner(
         dimensions=dimensions,
         max_concurrent=max_concurrent,
         timeout_s=timeout_s,
+        replay_records=replay_records,
+        capture_operation=capture_operation,
     )
 
     flat_results = {"embeddings": [], "info_msgs": []}
@@ -611,6 +663,9 @@ def create_text_embeddings_for_df(
     if timeout_raw is None:
         timeout_raw = getattr(transform_config, "request_timeout_s", 600.0)
     request_timeout_s = float(timeout_raw)
+    capture_operation = str(task_config.get("inference_capture_operation") or (
+        "query" if str(transform_config.input_type).strip().lower() == "query" else "ingest"
+    ))
 
     if df_transform_ledger.empty:
         return df_transform_ledger, {"trace_info": execution_trace_log}
@@ -643,6 +698,13 @@ def create_text_embeddings_for_df(
     df_content["_content"] = extracted_content
 
     valid_content_mask = df_content["_content"].notna()
+    valid_rows = [row for _, row in df_content.loc[valid_content_mask].iterrows()]
+
+    def _capture_batches(inputs: list[str]) -> list[list[dict[str, Any]]]:
+        return _generate_batches(
+            _embedding_replay_records(valid_rows, inputs), batch_size=int(transform_config.batch_size)
+        )
+
     if valid_content_mask.any():
         if embed_modality in IMAGE_MODALITIES and multimodal_embedder is not None:
             # Local multimodal path: use _multimodal_callable_runner
@@ -676,6 +738,7 @@ def create_text_embeddings_for_df(
             filtered_content_batches = _generate_batches(
                 filtered_content_list, batch_size=int(transform_config.batch_size)
             )
+            capture_batches = _capture_batches(filtered_content_list)
             content_embeddings = _async_runner(
                 filtered_content_batches,
                 api_key,
@@ -690,6 +753,8 @@ def create_text_embeddings_for_df(
                 dimensions=dimensions,
                 max_concurrent=nim_http_max_concurrent,
                 timeout_s=request_timeout_s,
+                replay_records=capture_batches,
+                capture_operation=capture_operation,
             )
         else:
             # Text-only path (default)
@@ -697,6 +762,7 @@ def create_text_embeddings_for_df(
             filtered_content_batches = _generate_batches(
                 filtered_content_list, batch_size=int(transform_config.batch_size)
             )
+            capture_batches = _capture_batches(filtered_content_list)
 
             if endpoint_url:
                 content_embeddings = _async_runner(
@@ -713,6 +779,8 @@ def create_text_embeddings_for_df(
                     dimensions=dimensions,
                     max_concurrent=nim_http_max_concurrent,
                     timeout_s=request_timeout_s,
+                    replay_records=capture_batches,
+                    capture_operation=capture_operation,
                 )
             elif callable(embedder):
                 content_embeddings = _callable_runner(

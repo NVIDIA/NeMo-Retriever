@@ -316,6 +316,7 @@ class IngestorCreateParams(_ParamsModel):
     node_overrides: Optional[dict[str, dict[str, Any]]] = None
     api_key: Optional[str] = None
     error_policy: Literal["raise", "collect"] = "raise"
+    inference_capture: Any = None
     # service run mode: maximum number of concurrent page uploads.  Lower
     # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
     # kube-proxy paths that otherwise reset connections under heavy load.

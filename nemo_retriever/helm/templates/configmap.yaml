@@ -96,6 +96,13 @@ logging:
   file: {{ .Values.serviceConfig.logging.file | quote }}
   format: {{ .Values.serviceConfig.logging.format | quote }}
 
+inference_capture:
+  enabled: {{ .Values.serviceConfig.inferenceCapture.enabled }}
+  storage_uri: {{ if .Values.serviceConfig.inferenceCapture.storageUri }}{{ .Values.serviceConfig.inferenceCapture.storageUri | quote }}{{ else }}null{{ end }}
+  failure_mode: {{ .Values.serviceConfig.inferenceCapture.failureMode | quote }}
+  operations: {{ .Values.serviceConfig.inferenceCapture.operations | toJson }}
+  stages: {{ .Values.serviceConfig.inferenceCapture.stages | toJson }}
+
 nim_endpoints:
   page_elements_invoke_url: {{ .pageElementsURL | quote }}
   table_structure_invoke_url: {{ .tableStructureURL | quote }}

@@ -546,6 +546,34 @@ class PipelineOverridesConfig(RichModel):
         )
 
 
+class InferenceCaptureServiceConfig(RichModel):
+    """Administrator-owned remote inference request capture settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    storage_uri: str | None = None
+    failure_mode: Literal["best_effort", "required"] = "best_effort"
+    operations: list[str] = Field(default_factory=list)
+    stages: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_storage_uri(self) -> "InferenceCaptureServiceConfig":
+        if self.enabled and not (self.storage_uri or "").strip():
+            raise ValueError("inference_capture.storage_uri is required when inference_capture.enabled is true")
+        return self
+
+    def to_capture_config(self) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        return {
+            "storage_uri": str(self.storage_uri),
+            "failure_mode": self.failure_mode,
+            "operations": tuple(self.operations),
+            "stages": tuple(self.stages),
+        }
+
+
 class ServiceConfig(RichModel):
     """Top-level configuration for the retriever service mode.
 
@@ -577,6 +605,7 @@ class ServiceConfig(RichModel):
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+    inference_capture: InferenceCaptureServiceConfig = Field(default_factory=InferenceCaptureServiceConfig)
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":

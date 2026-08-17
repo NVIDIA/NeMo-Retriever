@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
+from nemo_retriever.common.inference_capture import record_json_request, stage_from_endpoint
+
 logger = logging.getLogger(__name__)
 
 
@@ -170,6 +172,9 @@ def _post_with_retries(
                     except Exception as exc:
                         logger.warning("OpenTelemetry trace propagation failed for NIM request: %s", exc)
                 try:
+                    record_json_request(
+                        stage=stage_from_endpoint(invoke_url), endpoint=invoke_url, payload=payload, attempt=attempt
+                    )
                     response = requests.post(
                         invoke_url, headers=request_headers, json=payload, timeout=float(timeout_s)
                     )

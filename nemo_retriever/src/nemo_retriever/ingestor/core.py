@@ -81,6 +81,7 @@ def create_ingestor(
         allow_no_gpu=parsed.allow_no_gpu,
         node_overrides=parsed.node_overrides,
         error_policy=parsed.error_policy,
+        inference_capture=parsed.inference_capture,
     )
 
 

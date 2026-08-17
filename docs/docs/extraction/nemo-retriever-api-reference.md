@@ -155,6 +155,79 @@ For a support-oriented mapping of extraction paths, error signals, corrective
 actions, and escalation criteria, refer to
 [Python API error triage](troubleshoot.md#python-api-error-triage).
 
+## Capture remote NIM requests { #capture-remote-nim-requests }
+
+Use `InferenceCaptureConfig` to persist the final outbound request payload for
+remote inference. This is useful when you want to replay representative
+extraction or retrieval requests against a compatible self-hosted NIM.
+
+The feature is disabled by default. It captures supported HTTP JSON NIM requests
+from the generic NIM client, embedding, and reranking paths, plus Triton gRPC
+requests. It works with self-hosted and NVIDIA-hosted endpoints. It does not
+capture inputs sent to local Transformers or vLLM models because those execution
+modes do not make a NIM network request.
+
+The following example enables capture for an in-process ingestion pipeline.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.inference_capture import InferenceCaptureConfig
+
+capture = InferenceCaptureConfig(
+    storage_uri="/var/lib/nemo-retriever/nim-captures",
+    failure_mode="required",
+    operations=("ingest",),
+)
+
+pipeline = create_ingestor(
+    run_mode="inprocess",
+    inference_capture=capture,
+)
+```
+
+Pass the same configuration to `GraphIngestor` or `Retriever` when you create
+those objects directly. Use `operations=("query",)` to capture query embedding
+and reranking requests, or omit `operations` to capture both ingestion and
+query requests. Use `stages` to restrict capture to named inference stages.
+
+Each captured attempt has its own directory. HTTP JSON captures contain
+`manifest.json` and `request.json`. Triton gRPC captures contain `manifest.json`
+and `request.bin`, a NumPy `savez_compressed` archive of the input tensors. Its
+manifest has `protocol: "grpc"` and records the input names, data types, requested
+output names, and inference parameters. All manifests record the operation,
+stage, sanitized endpoint, model when available, timestamp, and retry attempt.
+Request inputs are persisted for replay. Embedding HTTP captures also add an
+optional replay-metadata sidecar in `manifest.json` at `metadata.replay`. It does
+not change `request.json`, so the captured request remains the exact payload
+sent to the NIM.
+
+`metadata.replay.replay_version` is `1`. Its `records` list is aligned with the
+request `input` positions. Each item includes `input_index`, an `input_sha256`,
+and the source `record`. The source record preserves available row identity and
+context, including VectorDB fields or application query-identifying fields when
+they are present. It omits `_content` and any `metadata.embedding` value. Do not
+assume a normalized VectorDB identity or a dedicated query-ID field.
+
+The manifest `operation` labels ingestion as `ingest` and retrieval embedding as
+`query`. Use the operation, input position, and replay record together to map a
+captured embedding request back to its source row. The replay record can contain
+document metadata, retrieved content, and query identifiers. Treat it as
+sensitive data. The recorder does not persist authorization headers, API keys,
+or endpoint query strings.
+
+By default, `failure_mode="best_effort"` logs a capture write failure and still
+sends the inference request. Set `failure_mode="required"` when you generate
+replay fixtures and want a capture write failure to stop the request before it
+is sent. `storage_uri` accepts a local directory or an
+[fsspec-compatible](https://filesystem-spec.readthedocs.io/) URI.
+
+!!! warning "Treat capture artifacts as sensitive data"
+
+    Request payloads can contain document text, user queries, and base64-encoded
+    page images. Store captures only in an approved location. Configure access
+    controls, encryption, and retention policies before enabling capture in a
+    production environment.
+
 !!! note "Version-specific behavior"
 
     This reference describes the current NeMo Retriever Library. Older

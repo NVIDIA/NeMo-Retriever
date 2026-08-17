@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -196,6 +198,7 @@ def test_internal_nim_client_http_injects_trace_context_and_emits_infer_span(
 def test_internal_nim_client_grpc_passes_trace_context_headers_when_supported(
     monkeypatch: pytest.MonkeyPatch,
     exported_spans: list[Any],
+    tmp_path: Path,
 ) -> None:
     captured_headers: list[dict[str, str]] = []
 
@@ -259,13 +262,23 @@ def test_internal_nim_client_grpc_passes_trace_context_headers_when_supported(
         max_429_retries=1,
     )
 
-    with tracing.start_span("test.parent"):
-        parent_trace_id = tracing.current_trace_id_hex()
-        parsed_output, batch_data = client._process_batch(
-            np.array([[1.0]], dtype=np.float32),
-            batch_data={"batch": 2},
-            model_name="detector-grpc",
-        )
+    from nemo_retriever.common.inference_capture import InferenceCaptureConfig, activate_inference_capture
+
+    with activate_inference_capture(InferenceCaptureConfig(str(tmp_path), failure_mode="required"), operation="ingest"):
+        with tracing.start_span("test.parent"):
+            parent_trace_id = tracing.current_trace_id_hex()
+            parsed_output, batch_data = client._process_batch(
+                np.array([[1.0]], dtype=np.float32),
+                batch_data={"batch": 2},
+                model_name="detector-grpc",
+            )
+
+    capture_dir = next(tmp_path.iterdir())
+    manifest = json.loads((capture_dir / "manifest.json").read_text())
+    assert manifest["protocol"] == "grpc"
+    assert manifest["model"] == "detector-grpc"
+    with np.load(capture_dir / "request.bin") as captured_inputs:
+        assert np.array_equal(captured_inputs["input"], np.array([[1.0]], dtype=np.float32))
 
     assert isinstance(parsed_output, np.ndarray)
     assert batch_data == {"batch": 2}
