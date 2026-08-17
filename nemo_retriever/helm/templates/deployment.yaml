@@ -414,7 +414,7 @@ spec:
             {{- if eq $role "gateway" }}
             sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
             {{- end }}
-        {{- if and (eq $role "gateway") $scopeTokenSecret.name }}
+        {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
         - name: scope-token
           secret:
             secretName: {{ $scopeTokenSecret.name | quote }}

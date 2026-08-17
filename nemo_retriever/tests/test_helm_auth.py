@@ -130,7 +130,12 @@ def test_split_without_internal_auth_mounts_public_secret_on_workers() -> None:
     )
 
     for component in ("gateway", "realtime", "batch"):
-        assert "NRL_SCOPE_TOKEN_FILE" in _container_env(deployments[component])
+        deployment = deployments[component]
+        assert "NRL_SCOPE_TOKEN_FILE" in _container_env(deployment)
+        scope_token_volume = next(
+            volume for volume in deployment["spec"]["template"]["spec"]["volumes"] if volume["name"] == "scope-token"
+        )
+        assert scope_token_volume["secret"]["secretName"] == "nrl-public-auth"
 
 
 def test_internal_auth_requires_existing_secret_name() -> None:
