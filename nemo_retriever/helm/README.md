@@ -654,6 +654,10 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
+| `serviceConfig.sidecarStore.backend`              | `memory` | Sidecar metadata backend. Set to `redis` for split topology; gateway mode requires Redis. |
+| `serviceConfig.sidecarStore.redis.existingSecret.name` | `""` | Existing Secret containing the Redis URL. When `backend=redis`, the chart exposes its configured key only to the gateway as `NRL_SIDECAR_REDIS_URL`. |
+| `serviceConfig.sidecarStore.redis.existingSecret.key` | `url` | Key in the configured Redis Secret that contains the Redis URL. |
+| `serviceConfig.sidecarStore.maxPayloadBytes`      | `33554432` | Maximum sidecar metadata upload size in bytes. The service rejects a larger upload with HTTP `413` before buffering the complete payload. This value cannot exceed `serviceConfig.resources.maxUploadBytes`. |
 | `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. Available knobs: `pageElementsInvokeUrl`, `tableStructureInvokeUrl`, `ocrInvokeUrl`, `embedInvokeUrl`, and `captionInvokeUrl` (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b)). |
 | `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
 | `serviceConfig.nimEndpoints.rerankInvokeUrl`      | `""`    | Ranking API URL used by `POST /v1/query` when `rerank=true`. The optional `rerankqa` NIM is not auto-wired; configure this URL explicitly. |
@@ -675,6 +679,37 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.indexMode`                | `hybrid` | Create LanceDB dense-vector and full-text-search indexes. Set to `dense` to create only the dense-vector index. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
+
+### Sidecar metadata in split topology
+
+`ServiceIngestor.vdb_upload()` uploads sidecar metadata to
+`POST /v1/ingest/sidecar` and uses the returned opaque ID in the subsequent
+ingest request. The public API retains its time-to-live and
+`consume_on_read` reuse behavior.
+
+In `topology.mode: split`, configure Redis only for the gateway:
+
+```yaml
+serviceConfig:
+  sidecarStore:
+    backend: redis
+    maxPayloadBytes: 33554432
+    redis:
+      existingSecret:
+        name: retriever-sidecar-redis
+        key: url
+```
+
+Create the referenced Secret with a Redis URL in the configured key. The chart
+exposes that value as `NRL_SIDECAR_REDIS_URL` only to the gateway. Do not expose
+that environment variable or Redis credentials to realtime or batch worker
+pods.
+
+At ingest admission, the gateway authorizes and binds the sidecar to the
+durable work attachment before it leases work to a worker. Workers receive the
+bound attachment with their work and do not resolve sidecar IDs or access
+Redis. This supports independent realtime and batch pools, worker replicas,
+and routing decisions without requiring sidecar replication between workers.
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
 

@@ -229,3 +229,35 @@ def test_split_rejects_multiple_gateway_replicas(persistence_enabled: bool) -> N
 def test_split_service_monitor_is_disabled_by_default() -> None:
     documents = _render("--set", "topology.mode=split")
     assert all(document.get("kind") != "ServiceMonitor" for document in documents)
+
+
+def test_split_sidecar_redis_credential_is_mounted_only_on_gateway() -> None:
+    documents = _render(
+        "--set",
+        "topology.mode=split",
+        "--set",
+        "serviceConfig.sidecarStore.backend=redis",
+        "--set",
+        "serviceConfig.sidecarStore.redis.existingSecret.name=sidecar-redis",
+    )
+    for deployment in _service_deployments(documents):
+        component = deployment["metadata"]["labels"]["app.kubernetes.io/component"]
+        container = next(
+            item for item in deployment["spec"]["template"]["spec"]["containers"] if item["name"] == "nemo-retriever"
+        )
+        env = {item["name"]: item for item in container["env"]}
+        if component == "gateway":
+            secret_ref = env["NRL_SIDECAR_REDIS_URL"]["valueFrom"]["secretKeyRef"]
+            assert secret_ref == {"name": "sidecar-redis", "key": "url", "optional": False}
+        else:
+            assert "NRL_SIDECAR_REDIS_URL" not in env
+
+
+def test_sidecar_redis_requires_split_topology() -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        _render(
+            "--set",
+            "serviceConfig.sidecarStore.backend=redis",
+            "--set",
+            "serviceConfig.sidecarStore.redis.existingSecret.name=sidecar-redis",
+        )

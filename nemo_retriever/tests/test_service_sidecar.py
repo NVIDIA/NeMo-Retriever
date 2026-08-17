@@ -44,7 +44,6 @@ from nemo_retriever.service.services.sidecar_store import (
     shutdown_sidecar_store,
 )
 
-
 # ----------------------------------------------------------------------
 # SidecarStore unit behaviour
 # ----------------------------------------------------------------------
@@ -346,11 +345,10 @@ def test_ingest_with_meta_dataframe_id_propagates_through_router(
         time.sleep(0.05)
     assert len(captured_items) == 1
     item = captured_items[0]
-    # The pipeline_spec received by the worker still carries the id —
-    # the bytes-resolution happens later in _work() right before
-    # ProcessPoolExecutor.submit().
+    # Admission resolves the opaque id before the item reaches a worker.
     assert item.pipeline_spec is not None
-    assert item.pipeline_spec["vdb_upload_params"]["meta_dataframe_id"] == sidecar_id
+    assert "meta_dataframe_id" not in item.pipeline_spec["vdb_upload_params"]
+    assert item.pipeline_spec["vdb_upload_params"]["_meta_dataframe_bytes"] == _csv_bytes()
 
 
 def test_ingest_rejects_raw_meta_dataframe_through_router(

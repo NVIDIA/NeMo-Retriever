@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -154,4 +155,9 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             )
 
         request.state.authorized_scope = scope
+        request.state.caller_fingerprint = (
+            hmac.new(self._internal_api_token.encode(), provided_token.encode(), hashlib.sha256).hexdigest()
+            if self._internal_api_token and provided_token
+            else hashlib.sha256(provided_token.encode()).hexdigest() if provided_token else None
+        )
         return await call_next(request)

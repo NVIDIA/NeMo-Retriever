@@ -25,6 +25,7 @@ Trust boundary highlights:
 
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 import threading
@@ -32,7 +33,25 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from redis.exceptions import (
+    BusyLoadingError,
+    ClusterDownError,
+    ConnectionError as RedisConnectionError,
+    MasterDownError,
+    OutOfMemoryError,
+    ReadOnlyError,
+    TimeoutError as RedisTimeoutError,
+    TryAgainError,
+)
+
 logger = logging.getLogger(__name__)
+
+_REDIS_PREFIX = "nrl:sidecar:"
+_REDIS_OPERATION_TIMEOUT_S = 5.0
+
+
+class SidecarStoreUnavailable(RuntimeError):
+    """Raised when the shared Redis sidecar store cannot serve a request."""
 
 
 @dataclass(slots=True)
@@ -55,6 +74,213 @@ class SidecarEntry:
     metadata: dict[str, str] = field(default_factory=dict)
 
 
+class RedisSidecarStore:
+    """Redis-backed sidecars shared by every split worker replica."""
+
+    _CONSUME_SCRIPT = """
+local data = redis.call("HGETALL", KEYS[1])
+if #data == 0 then return nil end
+local owner = ""
+local consume = "0"
+for index = 1, #data, 2 do
+  if data[index] == "owner_token" then owner = data[index + 1] end
+  if data[index] == "consume_on_read" then consume = data[index + 1] end
+end
+if owner ~= ARGV[1] then return nil end
+if consume == "1" then redis.call("DEL", KEYS[1]) end
+return data
+"""
+    _DELETE_SCRIPT = """
+local owner = redis.call("HGET", KEYS[1], "owner_token")
+if not owner or owner ~= ARGV[1] then return 0 end
+return redis.call("DEL", KEYS[1])
+"""
+
+    def __init__(self, url: str, *, default_ttl_s: float = 3600.0, max_payload_bytes: int = 33_554_432) -> None:
+        from redis import Redis
+
+        self._client = Redis.from_url(
+            url,
+            decode_responses=False,
+            socket_connect_timeout=_REDIS_OPERATION_TIMEOUT_S,
+            socket_timeout=_REDIS_OPERATION_TIMEOUT_S,
+        )
+        self._default_ttl_s = default_ttl_s
+        self._max_payload_bytes = max_payload_bytes
+
+    @staticmethod
+    def _key(sidecar_id: str) -> str:
+        return f"{_REDIS_PREFIX}{sidecar_id}"
+
+    @staticmethod
+    def _entry_from_data(sidecar_id: str, data: dict[bytes, bytes]) -> SidecarEntry:
+        def text(key: str) -> str:
+            return data[key.encode()].decode()
+
+        owner_token = text("owner_token") or None
+        return SidecarEntry(
+            sidecar_id=sidecar_id,
+            filename=text("filename"),
+            content_type=text("content_type"),
+            payload=data[b"payload"],
+            created_at=float(text("created_at")),
+            expires_at=float(text("expires_at")),
+            owner_token=owner_token,
+            consume_on_read=text("consume_on_read") == "1",
+        )
+
+    def put(
+        self,
+        *,
+        filename: str,
+        content_type: str,
+        payload: bytes,
+        owner_token: Optional[str] = None,
+        ttl_s: Optional[float] = None,
+        consume_on_read: bool = True,
+    ) -> SidecarEntry:
+        """Store a sidecar and return it, or raise when Redis is unavailable."""
+        if len(payload) > self._max_payload_bytes:
+            raise ValueError(f"Sidecar payload exceeds Redis limit of {self._max_payload_bytes:,} bytes.")
+        sidecar_id = secrets.token_urlsafe(16)
+        now = time.time()
+        ttl = float(ttl_s) if ttl_s is not None else self._default_ttl_s
+        entry = SidecarEntry(
+            sidecar_id=sidecar_id,
+            filename=filename,
+            content_type=content_type,
+            payload=payload,
+            created_at=now,
+            expires_at=now + ttl,
+            owner_token=owner_token,
+            consume_on_read=consume_on_read,
+        )
+        key = self._key(sidecar_id)
+        pipe = self._client.pipeline()
+        pipe.hset(
+            key,
+            mapping={
+                "filename": filename,
+                "content_type": content_type,
+                "payload": payload,
+                "created_at": repr(now),
+                "expires_at": repr(entry.expires_at),
+                "owner_token": owner_token or "",
+                "consume_on_read": "1" if consume_on_read else "0",
+            },
+        )
+        pipe.pexpire(key, max(1, int(ttl * 1000)))
+        try:
+            pipe.execute()
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
+        return entry
+
+    def get(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> Optional[SidecarEntry]:
+        """Return an owner-matching sidecar without consuming it, if present."""
+        try:
+            data = self._client.hgetall(self._key(sidecar_id))
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
+        if not data:
+            return None
+        stored_owner = data.get(b"owner_token", b"").decode()
+        if not hmac.compare_digest(stored_owner, owner_token or ""):
+            return None
+        return self._entry_from_data(sidecar_id, data)
+
+    def consume(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> Optional[SidecarEntry]:
+        """Atomically return and optionally delete an owner-matching sidecar."""
+        try:
+            raw_data = self._client.eval(self._CONSUME_SCRIPT, 1, self._key(sidecar_id), owner_token or "")
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
+        if not raw_data:
+            return None
+        data = dict(zip(raw_data[::2], raw_data[1::2]))
+        return self._entry_from_data(sidecar_id, data)
+
+    def delete(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> bool:
+        """Atomically delete an owner-matching sidecar and report success."""
+        try:
+            return bool(self._client.eval(self._DELETE_SCRIPT, 1, self._key(sidecar_id), owner_token or ""))
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
+
+    def restore(self, entry: SidecarEntry) -> None:
+        """Restore a just-consumed entry after gateway admission rolls back."""
+        remaining_s = entry.expires_at - time.time()
+        if remaining_s <= 0:
+            return
+        key = self._key(entry.sidecar_id)
+        try:
+            pipe = self._client.pipeline()
+            pipe.hset(
+                key,
+                mapping={
+                    "filename": entry.filename,
+                    "content_type": entry.content_type,
+                    "payload": entry.payload,
+                    "created_at": repr(entry.created_at),
+                    "expires_at": repr(entry.expires_at),
+                    "owner_token": entry.owner_token or "",
+                    "consume_on_read": "1" if entry.consume_on_read else "0",
+                },
+            )
+            pipe.pexpire(key, max(1, int(remaining_s * 1000)))
+            pipe.execute()
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            BusyLoadingError,
+            OutOfMemoryError,
+            ReadOnlyError,
+            ClusterDownError,
+            MasterDownError,
+            TryAgainError,
+        ) as exc:
+            raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable") from exc
+
+    def stats(self) -> dict[str, int | float]:
+        return {"entries": 0, "total_bytes": 0, "max_entries": 0, "default_ttl_s": self._default_ttl_s}
+
+
 class SidecarStore:
     """Thread-safe in-memory keyed-by-id store with TTL eviction.
 
@@ -65,15 +291,20 @@ class SidecarStore:
     can plug in via the same interface.
     """
 
-    def __init__(self, *, default_ttl_s: float = 3600.0, max_entries: int = 1024) -> None:
+    def __init__(
+        self, *, default_ttl_s: float = 3600.0, max_entries: int = 1024, max_payload_bytes: int = 33_554_432
+    ) -> None:
         if default_ttl_s <= 0:
             raise ValueError("default_ttl_s must be positive")
         if max_entries <= 0:
             raise ValueError("max_entries must be positive")
+        if max_payload_bytes <= 0:
+            raise ValueError("max_payload_bytes must be positive")
         self._entries: dict[str, SidecarEntry] = {}
         self._lock = threading.Lock()
         self._default_ttl_s = default_ttl_s
         self._max_entries = max_entries
+        self._max_payload_bytes = max_payload_bytes
 
     # ── public API ─────────────────────────────────────────────────
 
@@ -92,6 +323,8 @@ class SidecarStore:
         ``sidecar_id`` is a URL-safe 128-bit token (32 hex chars). The
         chance of collision is negligible for any realistic workload.
         """
+        if len(payload) > self._max_payload_bytes:
+            raise ValueError(f"Sidecar payload exceeds memory limit of {self._max_payload_bytes:,} bytes.")
         sidecar_id = secrets.token_urlsafe(16)
         now = time.time()
         ttl = float(ttl_s) if ttl_s is not None else self._default_ttl_s
@@ -179,9 +412,20 @@ class SidecarStore:
                 logger.debug("SidecarStore: sidecar_id=%s consumed and removed", sidecar_id)
         return entry
 
-    def delete(self, sidecar_id: str) -> bool:
+    def delete(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> bool:
         with self._lock:
-            return self._entries.pop(sidecar_id, None) is not None
+            entry = self._entries.get(sidecar_id)
+            if entry is None or (entry.owner_token is not None and owner_token != entry.owner_token):
+                return False
+            self._entries.pop(sidecar_id, None)
+            return True
+
+    def restore(self, entry: SidecarEntry) -> None:
+        """Restore a just-consumed entry after standalone admission rolls back."""
+        if entry.expires_at <= time.time():
+            return
+        with self._lock:
+            self._entries[entry.sidecar_id] = entry
 
     def stats(self) -> dict[str, int | float]:
         now = time.time()
@@ -211,17 +455,31 @@ class SidecarStore:
 
 # ── module-level singleton, mirroring the pattern used elsewhere ────
 
-_instance: SidecarStore | None = None
+_instance: SidecarStore | RedisSidecarStore | None = None
 
 
-def init_sidecar_store(*, default_ttl_s: float = 3600.0, max_entries: int = 1024) -> SidecarStore:
+def init_sidecar_store(
+    *,
+    default_ttl_s: float = 3600.0,
+    max_entries: int = 1024,
+    redis_url: str | None = None,
+    max_payload_bytes: int = 33_554_432,
+) -> SidecarStore | RedisSidecarStore:
     global _instance
-    _instance = SidecarStore(default_ttl_s=default_ttl_s, max_entries=max_entries)
+    _instance = (
+        RedisSidecarStore(redis_url, default_ttl_s=default_ttl_s, max_payload_bytes=max_payload_bytes)
+        if redis_url
+        else SidecarStore(
+            default_ttl_s=default_ttl_s,
+            max_entries=max_entries,
+            max_payload_bytes=max_payload_bytes,
+        )
+    )
     logger.info("SidecarStore initialised (ttl=%.0fs max_entries=%d)", default_ttl_s, max_entries)
     return _instance
 
 
-def get_sidecar_store() -> SidecarStore | None:
+def get_sidecar_store() -> SidecarStore | RedisSidecarStore | None:
     return _instance
 
 
