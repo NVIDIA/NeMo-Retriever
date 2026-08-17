@@ -182,9 +182,9 @@ Choose one of the following before you install:
   Most optional keys use `nimServiceGpuLimit` (one GPU). The default
   `answer_llm` Super-49B resources request two physical GPUs.
 - Configure GPU sharing so the cluster advertises at least four
-  `nvidia.com/gpu` slots. Time-slicing works on GPUs that do not
-  support MIG (including A10G). MIG is an alternative on GPUs that
-  support it.
+  `nvidia.com/gpu` slots. Time-slicing is the documented sharing
+  path. It works on GPUs that do not support Multi-Instance GPU
+  (MIG), including A10G.
 
 This chart does not pack the four NIMs onto a single `nvidia.com/gpu`
 request. Sharing is cluster configuration through the
@@ -291,7 +291,12 @@ Count each of those Helm GPU requests. Do not increase time-slice
 replicas to satisfy tensor-parallel GPU counts. For the full
 procedure, node labels, and limitations, refer to
 [Time-Slicing GPUs in Kubernetes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
-For MIG on supported GPUs, refer to
+MIG is an advanced GPU Operator configuration outside this chart.
+The chart does not set a MIG strategy, MIG profile, or MIG
+resource requests. Default NIMServices request `nvidia.com/gpu`.
+A working MIG deployment is GPU-specific and profile-specific and
+can require per-NIM `resources` overrides. For GPU Operator MIG,
+refer to
 [GPU Operator with MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html).
 The NIM Operator also documents DRA-based sharing. This chart does
 not render `draResources`; refer to
