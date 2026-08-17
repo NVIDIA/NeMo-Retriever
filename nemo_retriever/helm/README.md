@@ -982,11 +982,14 @@ The affected NIM is unavailable while the operator re-caches weights.
 
 4. If the operator-created PVC remains, delete it so the new image
    re-pulls weights. List operator PVCs, then delete the claim for
-   that cache. The claim name often matches the cache name:
+   that cache. Default claim names use a `-pvc` suffix, for example
+   `nemotron-page-elements-v3-pvc`. Confirm the name from the list
+   before you delete it. Refer to
+   [Persistent storage prerequisite](#persistent-storage-prerequisite).
 
    ```bash
    kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
-   kubectl delete pvc "${CACHE}" -n "${NS}"
+   kubectl delete pvc "${CACHE}-pvc" -n "${NS}"
    ```
 
 5. Run `helm upgrade` with the new `image.repository` or `image.tag`.

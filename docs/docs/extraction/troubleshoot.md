@@ -470,7 +470,7 @@ Do not retry `helm upgrade` until you delete the existing `NIMCache`. Complete t
 1. Drain ingest traffic that depends on the affected NIM.
 2. Run `kubectl get nimcache <name> --namespace <namespace>` and confirm the live `modelPuller` value differs from the new `repository:tag`.
 3. Delete the `NIMCache`. Helm `keep` annotations do not block `kubectl delete`.
-4. If the operator-created PVC remains, delete it so the new image re-pulls weights.
+4. If the operator-created PVC remains, delete it so the new image re-pulls weights. Default claim names use a `-pvc` suffix, for example `nemotron-page-elements-v3-pvc`.
 5. Re-run `helm upgrade` with the new repository or tag. Helm creates a new `NIMCache`.
 6. Wait until the new cache is ready before you send traffic.
 
