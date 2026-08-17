@@ -333,3 +333,123 @@ def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
     table_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "TableStructureActor")
     assert table_kwargs.get("ocr_version") == "v2"
     assert table_kwargs.get("ocr_lang") == "english"
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for Issue #2443 — default pipeline skips OCR extract_text
+# ---------------------------------------------------------------------------
+
+
+def test_default_pdfium_method_includes_ocr_when_extract_text_true() -> None:
+    """Default method='pdfium' must still include OCRActor when extract_text=True.
+
+    Regression test for https://github.com/NVIDIA/NeMo-Retriever/issues/2443.
+    Previously the OCR stage was only appended when method was 'pdfium_hybrid'
+    or 'ocr', causing the default pipeline to skip text extraction for scanned
+    images and PDFs.
+    """
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="pdfium",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        ),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+        ),
+    )
+
+    nodes = _linear_nodes(graph)
+    classes = [node.operator_class for node in nodes]
+    assert OCRActor in classes
+    ocr_node = next(node for node in nodes if node.operator_class is OCRActor)
+    assert ocr_node.operator_kwargs.get("extract_text") is True
+
+
+def test_default_pdfium_method_excludes_ocr_when_extract_text_false() -> None:
+    """method='pdfium' with extract_text=False must not include OCRActor."""
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="pdfium",
+            extract_text=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        ),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+        ),
+    )
+
+    nodes = _linear_nodes(graph)
+    classes = [node.operator_class for node in nodes]
+    assert OCRActor not in classes
+
+
+def test_ocr_stage_needed_true_for_default_method_extract_text() -> None:
+    """_ocr_stage_needed must return True when extract_text=True regardless of method."""
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import _ocr_stage_needed
+
+    params = ExtractParams(method="pdfium", extract_text=True)
+    assert _ocr_stage_needed(params) is True
+
+
+def test_ocr_stage_needed_false_when_extract_text_disabled() -> None:
+    """_ocr_stage_needed must return False when extract_text=False and no other OCR flags."""
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import _ocr_stage_needed
+
+    params = ExtractParams(
+        method="pdfium",
+        extract_text=False,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+    assert _ocr_stage_needed(params) is False
+
+
+def test_detection_pipeline_includes_ocr_for_default_method(monkeypatch):
+    """In-process detection pipeline must include OCR when method='pdfium' and extract_text=True."""
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+    from nemo_retriever.common.ray_resource_hueristics import Resources
+    import pandas as pd
+
+    calls = []
+
+    class _IdentityStage:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def run(self, data):
+            return data
+
+    def _fake_resolve(operator_class, resources, operator_kwargs=None):
+        calls.append(operator_class.__name__)
+        return _IdentityStage
+
+    monkeypatch.setattr(
+        "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class",
+        _fake_resolve,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
+        lambda: Resources(cpu_count=8, gpu_count=1),
+    )
+
+    op = MultiTypeExtractCPUActor(
+        extraction_mode="image",
+        extract_params=ExtractParams(
+            method="pdfium",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        ),
+    )
+
+    op._run_detection_pipeline(pd.DataFrame({"page_image": ["x"]}))
+    assert "OCRActor" in calls
