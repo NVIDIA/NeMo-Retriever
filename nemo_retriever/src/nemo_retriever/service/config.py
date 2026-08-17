@@ -165,7 +165,8 @@ class NimEndpointsConfig(RichModel):
         description=(
             "Model identifier passed to the remote Nemotron Parse endpoint. "
             "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
-            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "nvidia/nemotron-parse-v1.2 for the default self-hosted NIM, or "
+            "nvidia/nemotron-parse-v2.0 for an explicitly selected Parse 2.0 NIM. "
             "Server-owned — clients cannot override the deployed Parse SKU."
         ),
     )
@@ -427,6 +428,7 @@ class VectorDbConfig(RichModel):
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
+    index_mode: Literal["dense", "hybrid"] = "hybrid"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
