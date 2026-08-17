@@ -201,9 +201,7 @@ class TestHelmNimGlobalSecretNames(TestCase):
         )
         self.assertNotIn("ngc-secret", proc.stdout)
         # Default auth secret name must not remain on NIM CRs.
-        for doc in _iter_nim_docs(proc.stdout, "NIMCache") + _iter_nim_docs(
-            proc.stdout, "NIMService"
-        ):
+        for doc in _iter_nim_docs(proc.stdout, "NIMCache") + _iter_nim_docs(proc.stdout, "NIMService"):
             text = yaml.safe_dump(doc)
             self.assertNotIn("ngc-api", text)
             self.assertNotIn("ngc-secret", text)
