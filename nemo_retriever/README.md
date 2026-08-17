@@ -722,31 +722,73 @@ Then run your pipeline as before with `--ray-address auto` so it connects to thi
 
 ### Resource heuristics (batch mode)
 
-By default, batch mode computes resources using this order:
+In batch mode, NeMo Retriever Library sizes unspecified Ray actor pools from the CPU and GPU resources that Ray reports as available immediately before the pipeline is submitted.
 
-1. Auto-detected resources (Ray cluster if connected, otherwise local machine)
-2. Environment variables
-3. Explicit function arguments (highest precedence)
+The default sizing order is:
 
-This means defaults are deterministic but easy to override when you need fixed behavior.
+1. Detect CPU and GPU counts from the Ray cluster after the batch runtime starts (`cluster_resources` / `available_resources`).
+2. Scale unspecified worker pools from the available GPU count using built-in per-stage heuristic constants.
+3. Apply explicit `BatchTuningParams` values and `node_overrides`. These take precedence over the heuristic defaults.
 
-### Default behavior
+Environment variables do not override CPU or GPU counts or per-stage worker pools. To limit how many GPUs Ray can use, start a Ray cluster with a restricted GPU set as shown in the previous section.
 
-- `cpu_count` / `gpu_count` are detected from Ray (`cluster_resources`) or local host.
-- Worker heuristics:
-  - `page_elements_workers = gpu_count * page_elements_per_gpu`
-  - `detect_workers = gpu_count * ocr_per_gpu`
-  - `embed_workers = gpu_count * embed_per_gpu`
-  - minimum of `1` per stage
-- Stage GPU defaults:
-  - If `gpu_count >= 2` and `concurrent_gpu_stage_count == 3`, uses high-overlap values for page-elements/OCR/embed.
-  - Otherwise uses `min(max_gpu_per_stage, gpu_count / concurrent_gpu_stage_count)`.
+### Override worker counts and GPU reservations
 
-### Override variables
+Set explicit worker counts when you need a fixed allocation. Unspecified fields still use the heuristic defaults.
 
-| Variable | Where to set | Meaning |
+The following table lists the primary batch-mode worker controls.
+
+| CLI flag | `BatchTuningParams` field | Meaning |
 |---|---|---|
-| `override_cpu_count`, `override_gpu_count` | function args | Highest-priority CPU/GPU override |
+| `--pdf-extract-workers` | `pdf_extract_workers` | Maximum Ray tasks for PDF extraction |
+| `--page-elements-workers` | `page_elements_workers` | Ray actors for page-element detection |
+| `--ocr-workers` | `ocr_workers` | Ray actors for OCR inference |
+| `--embed-workers` | `embed_workers` | Ray actors for embedding |
+
+Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](docs/cli/README.md).
+
+For the CLI, pass the batch-mode flags on `retriever ingest batch`:
+
+```bash
+retriever ingest batch ./data/pdf_corpus \
+  --pdf-extract-workers 4 \
+  --page-elements-workers 3 \
+  --ocr-workers 3 \
+  --embed-workers 2
+```
+
+For the Python API, pass `BatchTuningParams` on `.extract()` and `.embed()`:
+
+```python
+from pathlib import Path
+
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+documents = [str(Path("../data/multimodal_test.pdf"))]
+
+chunks = (
+  create_ingestor(run_mode="batch")
+  .files(documents)
+  .extract(
+    batch_tuning=BatchTuningParams(
+      pdf_extract_workers=4,
+      page_elements_workers=3,
+      ocr_workers=3,
+    )
+  )
+  .embed(
+    batch_tuning=BatchTuningParams(
+      embed_workers=2,
+    )
+  )
+  .ingest()
+)
+```
+
+If explicit worker counts or `node_overrides` exceed the available Ray CPU or GPU budget, the library raises an error before it submits work. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity.
+
+For source-task CPU reservations and custom Ray Data graphs, refer to the [performance guide](https://docs.nvidia.com/nemo/retriever/latest/extraction/performance_guide/).
 
 ## NIM containers
 

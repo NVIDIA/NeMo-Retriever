@@ -20,6 +20,51 @@ For filesystem inputs, the library reserves CPU capacity for each Ray Data `Read
 
 If you set `BatchTuningParams` worker counts or direct `node_overrides`, those requests and required source-task reservations must fit the available Ray CPU and GPU budget. The library validates the final plan before submitting work and raises an error when it is infeasible. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity before retrying.
 
+Environment variables do not override CPU or GPU counts or per-stage worker pools. To limit how many GPUs Ray can use, start a Ray cluster with a restricted GPU set, for example `CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1`.
+
+Set explicit worker counts with batch-mode CLI flags or with `BatchTuningParams` on `.extract()` and `.embed()`.
+
+The following CLI example sets worker counts for a batch ingest:
+
+```bash
+retriever ingest batch ./data/pdf_corpus \
+  --pdf-extract-workers 4 \
+  --page-elements-workers 3 \
+  --ocr-workers 3 \
+  --embed-workers 2
+```
+
+The following Python example passes the same worker counts through `BatchTuningParams`:
+
+```python
+from pathlib import Path
+
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+documents = [str(Path("data/multimodal_test.pdf"))]
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(documents)
+    .extract(
+        batch_tuning=BatchTuningParams(
+            pdf_extract_workers=4,
+            page_elements_workers=3,
+            ocr_workers=3,
+        )
+    )
+    .embed(
+        batch_tuning=BatchTuningParams(
+            embed_workers=2,
+        )
+    )
+    .ingest()
+)
+```
+
+Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md).
+
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
 
 ## Shared preflight for custom Ray Data graphs
