@@ -598,9 +598,7 @@ class ServiceConfig(RichModel):
     @model_validator(mode="after")
     def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
         if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
-            raise ValueError(
-                "sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes"
-            )
+            raise ValueError("sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes")
         return self
 
     @model_validator(mode="after")
