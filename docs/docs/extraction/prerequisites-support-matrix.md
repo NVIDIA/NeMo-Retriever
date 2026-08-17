@@ -49,7 +49,7 @@ If the cluster has no StorageClass and no compatible `Available` persistent volu
 
 For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
 
-## Kubernetes Helm GPU Scheduling { #kubernetes-helm-gpu-scheduling }
+## Kubernetes Helm GPU scheduling { #kubernetes-helm-gpu-scheduling }
 
 The [model hardware requirements](#model-hardware-requirements) **Total GPUs** row for Core Features is combined GPU memory co-residency. The four default NIMs together use about 4.8 GiB and can co-reside on one A10G or better GPU.
 

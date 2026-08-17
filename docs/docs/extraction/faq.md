@@ -75,9 +75,7 @@ A common claim event is `no persistent volumes available for this claim and no s
 
 The support matrix **Total GPUs: 1** row is combined VRAM co-residency for the four core models. The default Helm chart still creates four NIMService workloads. Each requests `nvidia.com/gpu: 1`.
 
-On a conventional cluster without MIG or time-slicing, the scheduler needs four allocatable GPU slots. A one-GPU node runs only one NIM pod. The others stay `Pending` with `Insufficient nvidia.com/gpu`.
-
-Provide four GPU slots, or configure GPU Operator time-slicing with at least four replicas so one physical GPU can host all four core NIMs. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
+On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending` with `Insufficient nvidia.com/gpu`. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
 
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
