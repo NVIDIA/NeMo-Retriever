@@ -559,6 +559,7 @@ def _build_graph_ingestor_from_spec(
     spec: dict[str, Any] | None,
     base_caption: dict[str, Any] | None = None,
     base_asr: dict[str, Any] | None = None,
+    inference_capture: dict[str, Any] | None = None,
 ) -> "tuple[Any, str, bool]":
     """Construct a :class:`GraphIngestor` reflecting the per-request *spec*.
 
@@ -611,7 +612,7 @@ def _build_graph_ingestor_from_spec(
 
     asr_params = ASRParams(**base_asr) if base_asr else None
 
-    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
+    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False, inference_capture=inference_capture)
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
     if extraction_mode == "video":
@@ -741,6 +742,7 @@ def _run_pipeline_in_process(
     write_context: DocumentWriteContext | None = None,
     job_id: str | None = None,
     internal_api_token: str | None = None,
+    inference_capture: dict[str, Any] | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -780,6 +782,7 @@ def _run_pipeline_in_process(
                 pipeline_spec,
                 caption_params_dict,
                 asr_params_dict,
+                inference_capture,
             )
 
             result_df = ingestor.ingest()
@@ -1140,6 +1143,7 @@ def _make_work_fn(
                 write_context,
                 item.job_id,
                 config.vectordb.internal_api_token,
+                getattr(getattr(config, "inference_capture", None), "to_capture_config", lambda: None)(),
             )
         except BrokenProcessPool:
             logger.error(

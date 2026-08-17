@@ -91,6 +91,7 @@ class Retriever:
     embed_kwargs: dict[str, Any] = field(default_factory=dict)
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     rerank_kwargs: dict[str, Any] = field(default_factory=dict)
+    inference_capture: Any = None
 
     _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
     _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
@@ -480,13 +481,15 @@ class Retriever:
         if self.graph is None:
             embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs, index_revision)
 
-        raw_hits = self._execute_queries_graph(
-            query_texts,
-            effective_top_k=candidate_top_k,
-            retrieval_top_k=retrieval_top_k,
-            vdb_call_kwargs=vdb_call_kwargs,
-            embed_extra=embed_kwargs,
-        )
+        from nemo_retriever.common.inference_capture import activate_inference_capture
+        with activate_inference_capture(self.inference_capture, operation="query"):
+            raw_hits = self._execute_queries_graph(
+                query_texts,
+                effective_top_k=candidate_top_k,
+                retrieval_top_k=retrieval_top_k,
+                vdb_call_kwargs=vdb_call_kwargs,
+                embed_extra=embed_kwargs,
+            )
         return [
             shape_query_hits(
                 hits,

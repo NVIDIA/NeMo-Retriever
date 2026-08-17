@@ -15,6 +15,7 @@ Usage:
 
 ```python
 import pandas as pd
+
 from nemo_retriever.models.inference.main_text_embed import create_text_embeddings_for_df
 
 # df must have a `text` column (recommended) and may have `metadata` dicts.
@@ -42,6 +43,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
+
+from nemo_retriever.common.inference_capture import record_json_request
 from nemo_retriever.common.api.util.string_processing import (
     ensure_openai_embeddings_http_url,
     prepend_model_provider_prefix,
@@ -324,6 +327,7 @@ def _http_embed_openai_compat(
     if dimensions is not None:
         payload["dimensions"] = int(dimensions)
 
+    record_json_request(stage="embed", endpoint=url, payload=payload, model=model_name)
     with httpx.Client(timeout=float(timeout_s)) as client:
         resp = client.post(url, headers=headers, json=payload)
         resp.raise_for_status()

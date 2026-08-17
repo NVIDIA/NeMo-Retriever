@@ -137,6 +137,14 @@ spec:
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
+            {{- if .Values.serviceConfig.inferenceCapture.enabled }}
+            - name: NEMO_RETRIEVER_INFERENCE_CAPTURE_URI
+              value: {{ .Values.serviceConfig.inferenceCapture.storageUri | quote }}
+            - name: NEMO_RETRIEVER_INFERENCE_CAPTURE_FAILURE_MODE
+              value: {{ .Values.serviceConfig.inferenceCapture.failureMode | quote }}
+            - name: NEMO_RETRIEVER_INFERENCE_CAPTURE_OPERATION
+              value: query
+            {{- end }}
             {{- if $internalAuth.enabled }}
             - name: NRL_INTERNAL_VDB_TOKEN
               valueFrom:

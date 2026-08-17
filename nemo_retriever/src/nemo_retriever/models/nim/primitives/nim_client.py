@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import inspect
 import json
 import logging
@@ -21,6 +22,8 @@ from typing import Tuple, Union
 
 import numpy as np
 import requests
+
+from nemo_retriever.common.inference_capture import record_binary_request, record_json_request
 
 from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
 from nemo_retriever.common.api.util.string_processing import generate_url
@@ -462,6 +465,17 @@ class NimClient:
 
         while attempt < self.max_retries:
             try:
+                capture_buffer = io.BytesIO()
+                np.savez_compressed(capture_buffer, **{str(name): value for name, value in zip(input_names, formatted_input)})
+                record_binary_request(
+                    stage=str(self.model_interface.name()).replace("-", "_"),
+                    endpoint=self._grpc_endpoint,
+                    payload=capture_buffer.getvalue(),
+                    protocol="grpc",
+                    model=model_name,
+                    attempt=attempt,
+                    metadata={"input_names": list(input_names), "dtypes": list(dtypes), "output_names": list(output_names), "parameters": parameters},
+                )
                 response = _call_infer_with_optional_headers(
                     self.client,
                     headers=_inject_trace_headers(),
@@ -600,6 +614,13 @@ class NimClient:
                     except Exception as exc:
                         logger.warning("OpenTelemetry trace propagation failed for NimClient HTTP request: %s", exc)
 
+                record_json_request(
+                    stage=str(self.model_interface.name()).replace("-", "_"),
+                    endpoint=self.endpoint_url,
+                    payload=formatted_input,
+                    model=str(self.model_interface.name()),
+                    attempt=attempt,
+                )
                 response = requests.post(
                     self.endpoint_url, json=formatted_input, headers=request_headers, timeout=self.timeout
                 )

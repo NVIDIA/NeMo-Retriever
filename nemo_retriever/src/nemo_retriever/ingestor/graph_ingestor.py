@@ -471,6 +471,7 @@ class GraphIngestor(ingestor):
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         show_progress: bool = True,
         error_policy: str = "raise",
+        inference_capture: Any = None,
     ) -> None:
         super().__init__(documents=documents)
         if run_mode not in {"batch", "inprocess"}:
@@ -488,6 +489,7 @@ class GraphIngestor(ingestor):
         self._node_overrides: Dict[str, Dict[str, Any]] = node_overrides or {}
         self._show_progress = show_progress
         self._error_policy = error_policy
+        self._inference_capture = inference_capture
         self._rd_dataset: Any = None
         self._buffers: list[tuple[str, BytesIO]] = []
         self._inline_texts: list[str] | None = None
@@ -916,13 +918,19 @@ class GraphIngestor(ingestor):
         executor = InprocessExecutor(graph, show_progress=self._show_progress)
         self._rd_dataset = None
         if self._inline_texts:
-            return executor.ingest(self._inline_text_dataframe())
+            from nemo_retriever.common.inference_capture import activate_inference_capture
+            with activate_inference_capture(self._inference_capture, operation="ingest"):
+                return executor.ingest(self._inline_text_dataframe())
         if self._buffers:
             import pandas as pd
 
             df = pd.DataFrame([{"bytes": buf.getvalue(), "path": name} for name, buf in self._buffers])
-            return executor.ingest(df)
-        return executor.ingest(self._documents)
+            from nemo_retriever.common.inference_capture import activate_inference_capture
+            with activate_inference_capture(self._inference_capture, operation="ingest"):
+                return executor.ingest(df)
+        from nemo_retriever.common.inference_capture import activate_inference_capture
+        with activate_inference_capture(self._inference_capture, operation="ingest"):
+            return executor.ingest(self._documents)
 
     def _execute_extraction_branches(
         self,

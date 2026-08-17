@@ -182,6 +182,44 @@ helm install retriever ./nemo_retriever/helm \
 via `optional: true` `secretKeyRef`, so the install still succeeds when
 the secret is absent (useful for fully local NIM endpoints).
 
+### Capture outbound NIM requests
+
+The retriever service can persist final outbound request payloads for supported
+remote HTTP JSON and Triton gRPC NIM calls during service ingestion, plus
+VectorDB query embedding calls. This is useful when you want to collect replay
+fixtures for a compatible self-hosted NIM. It does not capture other query-phase
+traffic.
+
+The capture location is administrator-owned service configuration. It is not a
+field that an ingest request can override. Mount or otherwise make an approved
+location writable by both the retriever service and VectorDB query deployment,
+then configure the chart:
+
+```yaml
+serviceConfig:
+  inferenceCapture:
+    enabled: true
+    storageUri: /var/lib/nemo-retriever/nim-captures
+    failureMode: best_effort
+    # Optional filters. Empty lists capture all supported service-ingestion stages.
+    operations: []
+    stages: []
+```
+
+`storageUri` is required when capture is enabled. Use `failureMode: required`
+when every request must be captured before the service sends it to the NIM. The
+default, `best_effort`, logs capture write failures and continues ingestion.
+Each HTTP JSON attempt writes `manifest.json` and `request.json` in its own
+capture directory. A Triton gRPC attempt writes `manifest.json` and `request.bin`,
+a NumPy `savez_compressed` archive of input tensors; its manifest records the
+input/output names, data types, and inference parameters. The recorder does not
+persist authorization headers, API keys, or endpoint query strings.
+
+Capture artifacts can include document text and base64-encoded page images. Use
+an approved destination with suitable access controls, encryption, and retention
+policies. This feature is separate from pipeline `.store()`, which persists
+ingest output artifacts rather than outbound NIM requests.
+
 ### 3. Install with the NIM Operator (in-cluster NIMs)
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
@@ -324,6 +362,11 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
+| `serviceConfig.inferenceCapture.enabled`          | `false` | Enables administrator-owned capture for supported outbound remote-NIM requests during ingestion and VectorDB query embedding. |
+| `serviceConfig.inferenceCapture.storageUri`       | `""` | Local directory or fsspec-compatible URI. Required when capture is enabled. |
+| `serviceConfig.inferenceCapture.failureMode`      | `best_effort` | Use `required` to fail before a request is sent when it cannot be captured. |
+| `serviceConfig.inferenceCapture.operations`       | `[]` | Optional operation filter. |
+| `serviceConfig.inferenceCapture.stages`           | `[]` | Optional inference-stage filter. |
 | `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. Available knobs: `pageElementsInvokeUrl`, `tableStructureInvokeUrl`, `ocrInvokeUrl`, `embedInvokeUrl`, and `captionInvokeUrl` (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b)). |
 | `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
 | `serviceConfig.llm.enabled`                         | `false` | Enables `POST /v1/answer`. Auto-flips to true when `nimOperator.answer_llm` is enabled and the operator URL resolves. |

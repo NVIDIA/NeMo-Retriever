@@ -538,6 +538,15 @@ serviceConfig:
     file: "/var/lib/nemo-retriever/retriever-service.log"
     format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
+  # Administrator-owned persistence of outbound remote-NIM request bodies.
+  # Artifacts can contain document content; use an approved, writable location.
+  inferenceCapture:
+    enabled: false
+    storageUri: ""
+    failureMode: best_effort
+    operations: []
+    stages: []
+
   # External NIM endpoints. Used as-is when the operator NIM is disabled
   # or when the NIM Operator CRDs are absent. When the corresponding
   # `nimOperator.<key>.enabled` is true (and the CRDs exist), the
