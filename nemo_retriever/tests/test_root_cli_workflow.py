@@ -1220,6 +1220,42 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["extract"]["extract_tables"] is False
 
 
+def test_root_ingest_dry_run_routes_avi_to_video(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "sample.avi"
+    document.write_bytes(b"AVI")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == [str(document)]
+    assert payload["branch_summary"] == "video:1"
+
+
+def test_root_ingest_dry_run_discovers_avi_in_mixed_directory(monkeypatch, tmp_path) -> None:
+    avi_document = tmp_path / "sample.avi"
+    avi_document.write_bytes(b"AVI")
+    pdf_document = tmp_path / "sample.pdf"
+    pdf_document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == sorted((str(avi_document), str(pdf_document)))
+    assert payload["branch_summary"] == "pdf:1, video:1"
+
+
 def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
     payload = {
         "api_key": "nvapi-test",
