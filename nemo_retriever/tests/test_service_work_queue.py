@@ -400,6 +400,51 @@ async def test_execution_slots_make_at_most_one_claim_each():
     assert POOL_ACTIVE_SLOTS.labels(pool="batch")._value.get() == 0
 
 
+def test_gateway_temporary_sidecar_release_requeues_without_spending_attempt(tmp_path, monkeypatch):
+    config = ServiceConfig(
+        mode="gateway",
+        auth=AuthConfig(allow_unscoped_dev=True),
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        mcp=MCPConfig(enabled=False),
+        pipeline=PipelinePoolConfig(realtime_queue_size=1, batch_queue_size=1),
+        work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
+    )
+    monkeypatch.setattr(WorkBroker, "_expire_locked", lambda self, pool: None)
+
+    with TestClient(create_app(config)) as client:
+        created = client.post("/v1/ingest/job", json={"expected_documents": 1})
+        job_id = created.json()["job_id"]
+        accepted = client.post(
+            f"/v1/ingest/job/{job_id}/whole",
+            files={"file": ("document.txt", b"sidecar retry", "text/plain")},
+            data={"metadata": "{}"},
+        )
+        document_id = accepted.json()["document_id"]
+        claim = client.post(
+            "/v1/internal/work/claim",
+            json={"pool": "batch", "worker_uid": "pod-a"},
+        ).json()
+        assert claim["delivery_attempt"] == 1
+
+        release = client.post(
+            f"/v1/internal/work/{document_id}/release",
+            json={
+                "lease_id": claim["lease_id"],
+                "lease_generation": claim["lease_generation"],
+                "reason": "sidecar_store_unavailable",
+            },
+        )
+        assert release.status_code == 200
+
+        retry = client.post(
+            "/v1/internal/work/claim",
+            json={"pool": "batch", "worker_uid": "pod-b"},
+        )
+        assert retry.status_code == 200
+        assert retry.json()["work_id"] == document_id
+        assert retry.json()["delivery_attempt"] == 1
+
+
 def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypatch):
     results_dir = tmp_path / "results"
     results_dir.mkdir()
