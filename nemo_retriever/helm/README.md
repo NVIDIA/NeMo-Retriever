@@ -158,6 +158,93 @@ not have an `existingClaim` path.
 If `helm install` already succeeded and claims stay `Pending`, refer
 to [Helm install succeeds but PersistentVolumeClaims stay Pending](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-pvcs).
 
+### GPU scheduling prerequisite { #gpu-scheduling-prerequisite }
+
+The [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
+table lists **Total GPUs: 1** for Core Features because the four
+default NIMs together use about 4.8 GiB of GPU memory and can
+co-reside on one A10G or better GPU. That figure is VRAM capacity.
+It is not the number of exclusive Kubernetes GPU requests this chart
+makes.
+
+A default install creates four `NIMService` resources
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Each
+renders `spec.resources.limits.nvidia.com/gpu: 1` from
+`nimOperator.nimServiceGpuLimit` (default `1`). On a conventional
+cluster without MIG, time-slicing, or another sharing mechanism, the
+scheduler consumes **four allocatable GPU slots**. A one-GPU node
+schedules only one NIM pod. The other three stay `Pending`.
+
+Choose one of the following before you install:
+
+- Provide four allocatable `nvidia.com/gpu` slots for the default
+  core topology. Each optional NIM you enable adds another exclusive
+  request.
+- Configure GPU sharing so one physical GPU advertises at least four
+  `nvidia.com/gpu` replicas. Time-slicing works on GPUs that do not
+  support MIG (including A10G). MIG is an alternative on GPUs that
+  support it.
+
+This chart does not pack the four NIMs onto a single `nvidia.com/gpu`
+request. Sharing is cluster configuration through the
+[NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
+Time-slicing does not isolate GPU memory. Combined VRAM of the
+scheduled NIMs must still fit on the physical GPU.
+
+Confirm allocatable GPU slots:
+
+```bash
+kubectl describe node <gpu-node>
+```
+
+Inspect `Allocatable` for `nvidia.com/gpu`. A default core install
+needs a value of `4` or greater unless sharing is already configured.
+
+The following GPU Operator time-slicing ConfigMap advertises four
+replicas per physical GPU, which matches the four default
+NIMServices. The NVIDIA GPU Operator must already be installed.
+Apply the ConfigMap in the GPU Operator namespace (commonly
+`gpu-operator`) before `helm install`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-slicing-config-all
+data:
+  any: |-
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+        - name: nvidia.com/gpu
+          replicas: 4
+```
+
+```bash
+kubectl create -n gpu-operator -f time-slicing-config-all.yaml
+kubectl patch clusterpolicies.nvidia.com/cluster-policy \
+    -n gpu-operator --type merge \
+    -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all", "default": "any"}}}}'
+```
+
+Increase `replicas` if you also enable optional NIMs on the same
+shared GPU and combined VRAM still fits. For the full procedure,
+node labels, and limitations, refer to
+[Time-Slicing GPUs in Kubernetes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
+For MIG on supported GPUs, refer to
+[GPU Operator with MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html).
+The NIM Operator also documents DRA-based sharing. This chart does
+not render `draResources`; refer to
+[NIM Operator DRA](https://docs.nvidia.com/nim-operator/latest/dra.html)
+if you manage ResourceClaims outside the chart.
+
+If `helm install` already succeeded and NIM pods stay `Pending` on
+`nvidia.com/gpu`, refer to
+[Core NIM pods stay Pending for GPU](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-gpus).
+
 ### 1. Service image { #1-service-image }
 
 The chart defaults to the image published to NGC:
@@ -266,7 +353,9 @@ the secret is absent (useful for fully local NIM endpoints).
 ### 3. Install with the NIM Operator (in-cluster NIMs)
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
-before you install. The default path creates all seven claims.
+and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
+before you install. The default path creates all seven claims and four
+exclusive `nvidia.com/gpu: 1` NIMService requests.
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
@@ -290,6 +379,7 @@ helm install retriever ./nemo_retriever/helm \
 ### Recommended minimal install (26.08) { #recommended-minimal-install-2608 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
 before you install.
 
 Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
@@ -623,7 +713,7 @@ gated on three conditions ALL holding:
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.storage.pvc.storageClass` | `""` | Per-NIM NIMCache StorageClass. An empty value renders an empty class on the NIMCache CR, so the operator-created claim uses the cluster default when one exists. Set this path for each enabled NIM. `nimOperator.nimCache.pvc.storageClass` is not applied to per-NIM caches. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
-| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
+| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Four core NIMs therefore request four GPU slots unless the cluster shares GPUs. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade) and [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)). |
 | `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
 | `nimOperator.modelProfile`             | `{}`    | Chart-wide NIMCache GPU/profile filter. Applied to every NIMCache that does not have its own override. Refer to [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.modelProfile`       | `{}`    | Per-NIM NIMCache GPU/profile filter. Non-empty values REPLACE the chart-wide default (no merge). Refer to [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
@@ -779,11 +869,18 @@ different VLM SKU.
 
 The chart defaults to **`nimOperator.nimServiceGpuLimit: 1`**, which
 renders `spec.resources.limits.nvidia.com/gpu: 1` on every NIMService
-unless a per-NIM `resources` map overrides it. This is required on
-NIM Operator **v3.1.2** (and other versions tested on A100/H100): when
-the chart omits the `resources` block entirely, the operator often
-**does not** populate GPU limits from the model profile, and NIM pods
-start without GPU access (`The NVIDIA Driver was not detected`).
+unless a per-NIM `resources` map overrides it. A default core install
+therefore requests **four GPU slots** (one per enabled NIMService).
+Setting that per-NIM limit is required on NIM Operator **v3.1.2**
+(and other versions tested on A100/H100): when the chart omits the
+`resources` block entirely, the operator often **does not** populate
+GPU limits from the model profile, and NIM pods start without GPU
+access (`The NVIDIA Driver was not detected`).
+
+This per-NIM `1` request is not the support-matrix VRAM figure of
+one A10G for all four core models combined. On a conventional
+cluster, plan for four allocatable GPUs or configure sharing.
+Refer to [GPU scheduling prerequisite](#gpu-scheduling-prerequisite).
 
 **Trade-off:** Helm and the NIM Operator may both server-side-apply
 `spec.resources.limits.nvidia.com/gpu`. A later `helm upgrade --install`

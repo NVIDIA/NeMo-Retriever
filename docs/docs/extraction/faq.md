@@ -71,6 +71,14 @@ The default chart creates seven PersistentVolumeClaims. If the cluster has no de
 
 A common claim event is `no persistent volumes available for this claim and no storage class is set`. Confirm storage before you install, or set the documented `storageClass` values. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
 
+## Why do core NIM pods stay Pending on a one-GPU Helm cluster? { #helm-pending-gpus }
+
+The support matrix **Total GPUs: 1** row is combined VRAM co-residency for the four core models. The default Helm chart still creates four NIMService workloads. Each requests `nvidia.com/gpu: 1`.
+
+On a conventional cluster without MIG or time-slicing, the scheduler needs four allocatable GPU slots. A one-GPU node runs only one NIM pod. The others stay `Pending` with `Insufficient nvidia.com/gpu`.
+
+Provide four GPU slots, or configure GPU Operator time-slicing with at least four replicas so one physical GPU can host all four core NIMs. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
+
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
 ### Self-Hosted Deployments { #self-hosted-deployments }
