@@ -33,6 +33,10 @@ Providing `--agentic-invoke-url` routes the agent to that remote endpoint; the L
 client defaults to `callable`, which calls the endpoint over the shared
 chat-completions HTTP client and needs no LLM SDK installed.
 
+Operational failures from the agent LLM or retrieval tool, including embedding,
+vector database, and reranker endpoint failures, terminate the query with an
+error instead of returning a successful empty result.
+
 ## MCP access for agents
 
 `retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default.

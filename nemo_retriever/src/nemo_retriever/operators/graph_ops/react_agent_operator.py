@@ -20,7 +20,14 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever._agentic.nemo_agent import Agent, AgentConfig, create_retrieve_tool
+from nemo_retriever._agentic.nemo_agent import (
+    ERROR_LLM_CALL_FAILED,
+    ERROR_TOOL_FAILED,
+    ERROR_UNEXPECTED,
+    Agent,
+    AgentConfig,
+    create_retrieve_tool,
+)
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -29,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 _LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
+_FATAL_AGENT_ERROR_CATEGORIES = frozenset({ERROR_LLM_CALL_FAILED, ERROR_TOOL_FAILED, ERROR_UNEXPECTED})
 
 #: Output DataFrame columns emitted by :func:`_build_output_rows` / this operator.
 _OUTPUT_COLUMNS = [
@@ -301,7 +309,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     # ------------------------------------------------------------------
 
     def _run_single_query(self, query_id: str, query_text: str) -> List[Dict[str, Any]]:
-        """Run the agent for one query and translate its result into output rows."""
+        """Run one query, raising fatal agent errors while preserving recoverable fallback rows."""
         agent = self._ensure_agent()
         logger.info(
             "ReActAgentOperator: query=%s start max_steps=%d target_top_k=%d query=%r",
@@ -311,6 +319,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             _preview_text(query_text),
         )
         result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
+
+        if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
+            raise RuntimeError(f"Agentic retrieval failed ({result.error.category}): {result.error.message}")
 
         # Private agent retrieval_log entries are {"input", "tool_name",
         # "query_type", "output": [ {id, score, text|note, ...} ]}. The exploded

@@ -27,11 +27,11 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def _agent_result(*, final_doc_ids=None, retrieval_log=None, error_category=None):
+def _agent_result(*, final_doc_ids=None, retrieval_log=None, error_category=None, error_message="stub"):
     """Build a canned ``AgentRunResult`` like ``Agent.run``/``SelectionAgent.select``."""
     from nemo_retriever._agentic.nemo_agent.results import AgentError, AgentRunResult
 
-    error = AgentError(category=error_category, message="stub") if error_category else None
+    error = AgentError(category=error_category, message=error_message) if error_category else None
     return AgentRunResult(
         final_doc_ids=list(final_doc_ids or []),
         retrieval_log=list(retrieval_log or []),
@@ -253,6 +253,24 @@ class TestReActAgentOperator:
         assert not result["has_valid_final_results"].any()
         assert not result["is_final_result"].any()
         assert result["doc_id"].tolist() == ["d1"]  # retrieval log preserved on failure
+
+    @pytest.mark.parametrize("error_category", ["tool_failed", "llm_call_failed", "unexpected"])
+    def test_fatal_agent_error_raises(self, error_category):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_agent = MagicMock()
+        mock_agent.run_sync.return_value = _agent_result(
+            error_category=error_category,
+            error_message="Tool 'retrieve' failed at http://127.0.0.1:9/v1/ranking",
+        )
+        op = self._op()
+
+        with patch.object(ReActAgentOperator, "_ensure_agent", return_value=mock_agent):
+            with pytest.raises(
+                RuntimeError,
+                match=rf"Agentic retrieval failed \({error_category}\).*retrieve.*127\.0\.0\.1:9",
+            ):
+                op.run(self._input())
 
     def test_empty_input_returns_full_schema(self):
         op = self._op()
