@@ -718,11 +718,9 @@ CUDA_VISIBLE_DEVICES=0 ray start --head --num-gpus=1
 ```
 Then run your pipeline as before with `--ray-address auto` so it connects to this single‑GPU Ray cluster. [NeMo Ray run guide](https://docs.nvidia.com/nemo/run/latest/guides/ray.html)
 
-## Multi-GPU resource heuristics (library batch mode)
+## Multi-GPU resource heuristics for library batch mode
 
-### Resource heuristics (batch mode)
-
-In batch mode, NeMo Retriever Library sizes unspecified Ray actor pools from the CPU and GPU resources that Ray reports as available immediately before the pipeline is submitted.
+In batch mode, NeMo Retriever Library sizes unspecified Ray actor pools from Ray CPU and GPU resources. The library uses the resources that Ray reports as available immediately before it submits the pipeline.
 
 The default sizing order is:
 
@@ -730,15 +728,15 @@ The default sizing order is:
 2. Scale unspecified worker pools from the available GPU count using built-in per-stage heuristic constants.
 3. Apply explicit `BatchTuningParams` values and `node_overrides`. These take precedence over the heuristic defaults.
 
-Environment variables do not override CPU or GPU counts or per-stage worker pools. To limit how many GPUs Ray can use, start a Ray cluster with a restricted GPU set as shown in the previous section.
+The library does not read environment variables to set worker counts or CPU and GPU totals. `CUDA_VISIBLE_DEVICES` still controls which GPUs Ray can see. To limit GPU count, start a Ray cluster with a restricted GPU set as shown in the previous section.
 
-### Override worker counts and GPU reservations
+### Override worker counts
 
 Set explicit worker counts when you need a fixed allocation. Unspecified fields still use the heuristic defaults.
 
-The following table lists the primary batch-mode worker controls.
+The following table lists the primary batch-mode worker controls:
 
-| CLI flag | `BatchTuningParams` field | Meaning |
+| CLI Flag | BatchTuningParams Field | Meaning |
 |---|---|---|
 | `--pdf-extract-workers` | `pdf_extract_workers` | Maximum Ray tasks for PDF extraction |
 | `--page-elements-workers` | `page_elements_workers` | Ray actors for page-element detection |
