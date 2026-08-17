@@ -291,6 +291,7 @@ def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_ke
     vectordb_module.main()
 
     assert create_app.call_args.kwargs["embed_api_key"] == expected_key
+    assert create_app.call_args.kwargs["index_mode"] == "hybrid"
 
 
 def test_fake_vdb_completes_collection_http_flow_without_backend_details() -> None:
@@ -405,7 +406,7 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
     assert backend.legacy_retrieval_calls == 0
 
 
-def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
+def test_production_vdb_dense_mode_preserves_legacy_service_write_without_index_rebuild(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -413,6 +414,7 @@ def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
         lancedb_uri=str(tmp_path),
         table_name="legacy",
         expiration_cleanup_enabled=True,
+        index_mode="dense",
     )
     assert isinstance(backend, LanceDB)
     assert backend.build_index is False
@@ -433,12 +435,11 @@ def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
     assert index_writes == []
 
 
-def test_production_vdb_hybrid_mode_enables_hybrid_index(tmp_path) -> None:
+def test_production_vdb_defaults_to_hybrid_index(tmp_path) -> None:
     backend = vectordb_module._production_vdb(
         lancedb_uri=str(tmp_path),
         table_name="hybrid",
         expiration_cleanup_enabled=True,
-        index_mode="hybrid",
     )
 
     assert isinstance(backend, LanceDB)

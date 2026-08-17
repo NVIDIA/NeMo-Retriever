@@ -215,7 +215,7 @@ def _production_vdb(
     lancedb_uri: str,
     table_name: str,
     expiration_cleanup_enabled: bool,
-    index_mode: str = "dense",
+    index_mode: str = "hybrid",
 ) -> VDB:
     """Construct the sole production VDB implementation for this service."""
     vdb_cls = get_vdb_op_cls("lancedb")
@@ -255,7 +255,7 @@ def _legacy_strategies(health: dict[str, Any]) -> list[str]:
 def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
-    index_mode: str = "dense",
+    index_mode: str = "hybrid",
     embed_endpoint: str = "",
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_model_provider_prefix: str | None = None,
@@ -805,7 +805,7 @@ def main() -> None:
     parser.add_argument(
         "--index-mode",
         choices=("dense", "hybrid"),
-        default="dense",
+        default="hybrid",
         help="LanceDB index mode for the managed table.",
     )
     parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
