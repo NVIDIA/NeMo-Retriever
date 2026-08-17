@@ -530,6 +530,13 @@ class GatewayWorkClient:
                     "reason": reason,
                 },
             )
+            if 400 <= response.status_code < 500:
+                logger.warning(
+                    "Release request for work %s is no longer retryable (HTTP %d)",
+                    claim["work_id"],
+                    response.status_code,
+                )
+                return True
             response.raise_for_status()
         except httpx.HTTPError:
             logger.warning("Release request failed for work %s", claim["work_id"], exc_info=True)

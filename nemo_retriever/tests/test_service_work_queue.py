@@ -352,6 +352,8 @@ async def test_gateway_work_client_release_reports_network_failure(tmp_path, cap
 
 
 class _RejectedReleaseResponse:
+    status_code = 422
+
     def raise_for_status(self) -> None:
         request = httpx.Request("POST", "http://gateway/v1/internal/work/work/release")
         response = httpx.Response(422, request=request)
@@ -363,6 +365,27 @@ class _RejectedReleaseClient:
         return _RejectedReleaseResponse()
 
 
+class _StaleReleaseResponse:
+    status_code = 409
+
+
+class _StaleReleaseClient:
+    async def post(self, *_args, **_kwargs):
+        return _StaleReleaseResponse()
+
+
+@pytest.mark.anyio
+async def test_gateway_work_client_does_not_retry_stale_release(tmp_path, caplog):
+    client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
+    client._client = _StaleReleaseClient()
+    claim = {"work_id": "work", "lease_id": "lease", "lease_generation": 1}
+
+    with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
+        assert await client.release(claim, reason="sidecar_store_unavailable")
+
+    assert "no longer retryable (HTTP 409)" in caplog.text
+
+
 @pytest.mark.anyio
 async def test_gateway_work_client_release_reports_rejected_response(tmp_path, caplog):
     client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
@@ -372,7 +395,7 @@ async def test_gateway_work_client_release_reports_rejected_response(tmp_path, c
     with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
         await client.release(claim, reason="sidecar_store_unavailable")
 
-    assert "Release request failed for work work" in caplog.text
+    assert "no longer retryable (HTTP 422)" in caplog.text
 
 
 @pytest.mark.anyio

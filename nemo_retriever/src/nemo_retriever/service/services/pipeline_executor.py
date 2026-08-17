@@ -437,17 +437,14 @@ def _resolve_sidecar_in_spec(
     if not sidecar_id:
         return spec
 
-    from nemo_retriever.service.services.sidecar_store import RedisSidecarStore, get_sidecar_store
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
     store = get_sidecar_store()
     if store is None:
         raise RuntimeError(
             "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
         )
-    entry = store.consume(
-        sidecar_id,
-        owner_token=sidecar_owner_fingerprint if isinstance(store, RedisSidecarStore) else None,
-    )
+    entry = store.consume(sidecar_id, owner_token=sidecar_owner_fingerprint)
     if entry is None:
         raise RuntimeError(
             f"Sidecar id {sidecar_id!r} not found. The sidecar may have "

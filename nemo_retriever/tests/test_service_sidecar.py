@@ -296,6 +296,25 @@ def test_resolve_sidecar_consumes_store_entry() -> None:
         shutdown_sidecar_store()
 
 
+def test_resolve_sidecar_consumes_authenticated_memory_entry() -> None:
+    store = init_sidecar_store()
+    try:
+        entry = store.put(
+            filename="meta.csv",
+            content_type="text/csv",
+            payload=_csv_bytes(),
+            owner_token="caller-fingerprint",
+        )
+        spec = {"vdb_upload_params": {"meta_dataframe_id": entry.sidecar_id}}
+
+        resolved = _resolve_sidecar_in_spec(spec, sidecar_owner_fingerprint="caller-fingerprint")
+
+        assert resolved is not None
+        assert resolved["vdb_upload_params"]["_meta_dataframe_bytes"] == _csv_bytes()
+    finally:
+        shutdown_sidecar_store()
+
+
 def test_resolve_sidecar_missing_id_raises() -> None:
     init_sidecar_store()
     try:
