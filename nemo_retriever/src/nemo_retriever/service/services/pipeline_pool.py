@@ -392,7 +392,16 @@ class _Pool:
         task = asyncio.create_task(_retry_release())
         self._sidecar_release_tasks[item.id] = task
 
+        async def _keep_deferred_lease() -> None:
+            while True:
+                await asyncio.sleep(self._pull_client.config.heartbeat_interval_s)
+                if not await self._pull_client.heartbeat(item):
+                    return
+
+        lease_heartbeat_task = asyncio.create_task(_keep_deferred_lease())
+
         def _remove_finished(finished: asyncio.Task[None]) -> None:
+            lease_heartbeat_task.cancel()
             if self._sidecar_release_tasks.get(item.id) is finished:
                 self._sidecar_release_tasks.pop(item.id, None)
             if not finished.cancelled():

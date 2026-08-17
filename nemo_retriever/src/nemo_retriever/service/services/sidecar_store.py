@@ -380,7 +380,11 @@ class SidecarStore:
 
     def delete(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> bool:
         with self._lock:
-            return self._entries.pop(sidecar_id, None) is not None
+            entry = self._entries.get(sidecar_id)
+            if entry is None or (entry.owner_token is not None and owner_token != entry.owner_token):
+                return False
+            self._entries.pop(sidecar_id, None)
+            return True
 
     def stats(self) -> dict[str, int | float]:
         now = time.time()

@@ -98,6 +98,21 @@ def test_store_owner_token_scoping() -> None:
     assert store.get(entry.sidecar_id, owner_token=None) is None
 
 
+def test_memory_sidecar_delete_enforces_owner() -> None:
+    store = SidecarStore()
+    entry = store.put(
+        filename="meta.csv",
+        content_type="text/csv",
+        payload=b"id,title\n1,foo\n",
+        owner_token="alice",
+        consume_on_read=False,
+    )
+
+    assert not store.delete(entry.sidecar_id, owner_token="eve")
+    assert store.get(entry.sidecar_id, owner_token="alice") is not None
+    assert store.delete(entry.sidecar_id, owner_token="alice")
+
+
 def test_store_max_entries_guard() -> None:
     store = SidecarStore(max_entries=2)
     store.put(filename="a", content_type="text/csv", payload=b"a")
