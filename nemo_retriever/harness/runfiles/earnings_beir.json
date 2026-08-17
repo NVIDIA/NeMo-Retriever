@@ -8,5 +8,8 @@
     "pages==12988",
     "query_count==628"
   ],
-  "set": {}
+  "set": {
+    "ingest.embed.embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+    "query.embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2"
+  }
 }
