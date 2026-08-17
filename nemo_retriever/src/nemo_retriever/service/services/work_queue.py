@@ -522,7 +522,7 @@ class GatewayWorkClient:
 
         client = await self._http()
         try:
-            await client.post(
+            response = await client.post(
                 f"/v1/internal/work/{quote(str(claim['work_id']), safe='')}/release",
                 json={
                     "lease_id": claim["lease_id"],
@@ -530,6 +530,7 @@ class GatewayWorkClient:
                     "reason": reason,
                 },
             )
+            response.raise_for_status()
         except httpx.HTTPError:
             logger.warning("Release request failed for work %s", claim["work_id"], exc_info=True)
 

@@ -26,7 +26,7 @@ class ClaimRequest(BaseModel):
 class LeaseRequest(BaseModel):
     lease_id: str = Field(min_length=1)
     lease_generation: int = Field(ge=1)
-    reason: Literal["release", "payload_fetch", "hash_mismatch"] = "release"
+    reason: Literal["release", "payload_fetch", "hash_mismatch", "sidecar_store_unavailable"] = "release"
 
 
 def _gateway_broker(request: Request):

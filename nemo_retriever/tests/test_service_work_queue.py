@@ -327,6 +327,18 @@ async def test_gateway_work_client_heartbeat_reports_network_failure(tmp_path, c
     assert "Heartbeat request failed for work work" in caplog.text
 
 
+def test_lease_request_accepts_temporary_sidecar_store_release() -> None:
+    from nemo_retriever.service.routers.work import LeaseRequest
+
+    request = LeaseRequest(
+        lease_id="lease",
+        lease_generation=1,
+        reason="sidecar_store_unavailable",
+    )
+
+    assert request.reason == "sidecar_store_unavailable"
+
+
 @pytest.mark.anyio
 async def test_gateway_work_client_release_reports_network_failure(tmp_path, caplog):
     client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
@@ -335,6 +347,30 @@ async def test_gateway_work_client_release_reports_network_failure(tmp_path, cap
 
     with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
         await client.release(claim, reason="payload_fetch")
+
+    assert "Release request failed for work work" in caplog.text
+
+
+class _RejectedReleaseResponse:
+    def raise_for_status(self) -> None:
+        request = httpx.Request("POST", "http://gateway/v1/internal/work/work/release")
+        response = httpx.Response(422, request=request)
+        raise httpx.HTTPStatusError("unprocessable release", request=request, response=response)
+
+
+class _RejectedReleaseClient:
+    async def post(self, *_args, **_kwargs):
+        return _RejectedReleaseResponse()
+
+
+@pytest.mark.anyio
+async def test_gateway_work_client_release_reports_rejected_response(tmp_path, caplog):
+    client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
+    client._client = _RejectedReleaseClient()
+    claim = {"work_id": "work", "lease_id": "lease", "lease_generation": 1}
+
+    with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
+        await client.release(claim, reason="sidecar_store_unavailable")
 
     assert "Release request failed for work work" in caplog.text
 
