@@ -466,7 +466,9 @@ class NimClient:
         while attempt < self.max_retries:
             try:
                 capture_buffer = io.BytesIO()
-                np.savez_compressed(capture_buffer, **{str(name): value for name, value in zip(input_names, formatted_input)})
+                np.savez_compressed(
+                    capture_buffer, **{str(name): value for name, value in zip(input_names, formatted_input)}
+                )
                 record_binary_request(
                     stage=str(self.model_interface.name()).replace("-", "_"),
                     endpoint=self._grpc_endpoint,
@@ -474,7 +476,12 @@ class NimClient:
                     protocol="grpc",
                     model=model_name,
                     attempt=attempt,
-                    metadata={"input_names": list(input_names), "dtypes": list(dtypes), "output_names": list(output_names), "parameters": parameters},
+                    metadata={
+                        "input_names": list(input_names),
+                        "dtypes": list(dtypes),
+                        "output_names": list(output_names),
+                        "parameters": parameters,
+                    },
                 )
                 response = _call_infer_with_optional_headers(
                     self.client,

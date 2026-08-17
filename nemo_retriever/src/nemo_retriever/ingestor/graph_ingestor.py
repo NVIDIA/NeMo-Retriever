@@ -919,6 +919,7 @@ class GraphIngestor(ingestor):
         self._rd_dataset = None
         if self._inline_texts:
             from nemo_retriever.common.inference_capture import activate_inference_capture
+
             with activate_inference_capture(self._inference_capture, operation="ingest"):
                 return executor.ingest(self._inline_text_dataframe())
         if self._buffers:
@@ -926,9 +927,11 @@ class GraphIngestor(ingestor):
 
             df = pd.DataFrame([{"bytes": buf.getvalue(), "path": name} for name, buf in self._buffers])
             from nemo_retriever.common.inference_capture import activate_inference_capture
+
             with activate_inference_capture(self._inference_capture, operation="ingest"):
                 return executor.ingest(df)
         from nemo_retriever.common.inference_capture import activate_inference_capture
+
         with activate_inference_capture(self._inference_capture, operation="ingest"):
             return executor.ingest(self._documents)
 

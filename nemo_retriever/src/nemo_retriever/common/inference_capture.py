@@ -140,7 +140,9 @@ def _write_local(directory: Path, manifest: dict[str, Any], body: bytes, suffix:
         raise
 
 
-def _write_capture(config: InferenceCaptureConfig, capture_id: str, manifest: dict[str, Any], body: bytes, suffix: str) -> None:
+def _write_capture(
+    config: InferenceCaptureConfig, capture_id: str, manifest: dict[str, Any], body: bytes, suffix: str
+) -> None:
     uri = str(config.storage_uri)
     if "://" not in uri:
         _write_local(Path(uri).expanduser().resolve() / capture_id, manifest, body, suffix)
@@ -168,7 +170,12 @@ def record_binary_request(
 ) -> None:
     """Persist one opaque transport payload, for example Triton gRPC tensors."""
     config = _capture_config.get() or _active_config or _environment_capture_config()
-    selected_operation = operation or _capture_operation.get() or _active_operation or os.environ.get("NEMO_RETRIEVER_INFERENCE_CAPTURE_OPERATION")
+    selected_operation = (
+        operation
+        or _capture_operation.get()
+        or _active_operation
+        or os.environ.get("NEMO_RETRIEVER_INFERENCE_CAPTURE_OPERATION")
+    )
     if config is None or not _matches(config, selected_operation, stage):
         return
     try:
@@ -210,7 +217,12 @@ def record_json_request(
     """
 
     config = _capture_config.get() or _active_config or _environment_capture_config()
-    selected_operation = operation or _capture_operation.get() or _active_operation or os.environ.get("NEMO_RETRIEVER_INFERENCE_CAPTURE_OPERATION")
+    selected_operation = (
+        operation
+        or _capture_operation.get()
+        or _active_operation
+        or os.environ.get("NEMO_RETRIEVER_INFERENCE_CAPTURE_OPERATION")
+    )
     if config is None or not _matches(config, selected_operation, stage):
         return
 

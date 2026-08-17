@@ -50,8 +50,12 @@ def test_required_capture_failure_raises(tmp_path: Path) -> None:
 def test_records_binary_transport_artifact(tmp_path: Path) -> None:
     with activate_inference_capture(InferenceCaptureConfig(str(tmp_path), failure_mode="required"), operation="ingest"):
         record_binary_request(
-            stage="asr", endpoint="asr.example:50051", payload=b"grpc-input", protocol="grpc",
-            model="asr-model", metadata={"input_names": ["audio"]},
+            stage="asr",
+            endpoint="asr.example:50051",
+            payload=b"grpc-input",
+            protocol="grpc",
+            model="asr-model",
+            metadata={"input_names": ["audio"]},
         )
     capture_dir = next(tmp_path.iterdir())
     manifest = json.loads((capture_dir / "manifest.json").read_text())

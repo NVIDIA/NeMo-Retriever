@@ -482,6 +482,7 @@ class Retriever:
             embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs, index_revision)
 
         from nemo_retriever.common.inference_capture import activate_inference_capture
+
         with activate_inference_capture(self.inference_capture, operation="query"):
             raw_hits = self._execute_queries_graph(
                 query_texts,
