@@ -433,10 +433,31 @@ Complete the following checks:
 
 For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
+## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
+
+`helm install` can report `STATUS: deployed` while one or more core NIM pods stay `Pending`. The default chart creates four NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional cluster without MIG or time-slicing, the scheduler needs four allocatable GPU slots across eligible nodes.
+
+A representative pod event looks like the following:
+
+```text
+Warning  FailedScheduling  default-scheduler  0/1 nodes are available:
+  1 Insufficient nvidia.com/gpu.
+```
+
+Complete the following checks:
+
+1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
+2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
+3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
+
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+
 ## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
+- [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

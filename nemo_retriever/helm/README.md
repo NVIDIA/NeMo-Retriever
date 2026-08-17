@@ -158,6 +158,167 @@ not have an `existingClaim` path.
 If `helm install` already succeeded and claims stay `Pending`, refer
 to [Helm install succeeds but PersistentVolumeClaims stay Pending](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-pvcs).
 
+### GPU scheduling prerequisite { #gpu-scheduling-prerequisite }
+
+The [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
+table lists **Total GPUs: 1** for Core Features because the four
+default NIMs together use about 4.8 GiB of GPU memory and can
+co-reside on one A10G or better GPU. That figure is VRAM capacity.
+It is not the number of exclusive Kubernetes GPU requests this chart
+makes.
+
+A default install creates four `NIMService` resources
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Each
+renders `spec.resources.limits.nvidia.com/gpu: 1` from
+`nimOperator.nimServiceGpuLimit` (default `1`). On a conventional
+cluster without MIG, time-slicing, or another sharing mechanism, the
+scheduler consumes **four allocatable GPU slots across eligible
+nodes**. Four one-GPU nodes satisfy that topology. A cluster that
+has only one allocatable GPU schedules only one NIM pod. The other
+three stay `Pending`.
+
+Choose one of the following before you install:
+
+- Provide four allocatable `nvidia.com/gpu` slots across eligible
+  nodes for the default core topology. Each optional NIM adds its
+  per-NIM GPU request. Most optional keys use `nimServiceGpuLimit`
+  (one GPU). The default `answer_llm` Super-49B resources request
+  two physical GPUs.
+- Configure GPU sharing so the cluster advertises at least four
+  `nvidia.com/gpu` slots. Time-slicing is the documented sharing
+  path. It works on GPUs that do not support Multi-Instance GPU
+  (MIG), including A10G.
+
+This chart does not pack the four NIMs onto a single `nvidia.com/gpu`
+request. Sharing is cluster configuration through the
+[NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
+Time-slicing does not isolate GPU memory. Combined VRAM of the
+scheduled NIMs must still fit on the physical GPU.
+
+Confirm allocatable GPU slots across the cluster:
+
+```bash
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu
+```
+
+Sum `GPU` across eligible nodes. A default core install needs four
+slots across the cluster. Four nodes that each report `1` are
+enough. A single node needs a value of `4` or greater only when you
+pack all four core NIMs onto one physical GPU with sharing and
+placement constraints.
+
+The following GPU Operator time-slicing ConfigMap advertises four
+replicas per physical GPU. On a node with one physical GPU, that
+creates four logical slots, which is enough for the four default
+NIMServices. A node with two physical GPUs advertises eight slots.
+The NVIDIA GPU Operator must already be installed. Apply the
+ConfigMap in the GPU Operator namespace (commonly `gpu-operator`)
+before `helm install`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: time-slicing-config-all
+data:
+  any: |-
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+        - name: nvidia.com/gpu
+          replicas: 4
+```
+
+```bash
+kubectl create -n gpu-operator -f time-slicing-config-all.yaml
+kubectl patch clusterpolicies.nvidia.com/cluster-policy \
+    -n gpu-operator --type merge \
+    -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all", "default": "any"}}}}'
+```
+
+That ClusterPolicy patch is a cluster-administrator change.
+`default: "any"` applies the four-replica configuration to all
+eligible GPU Operator nodes. It can oversubscribe unrelated GPU
+workloads that share those nodes.
+
+Time-slicing oversubscribes allocatable slots. It does not place
+the four NIM pods on one physical GPU. The scheduler can spread
+them across GPUs or nodes. The one-physical-GPU recipe requires
+both of the following: the target node has one physical GPU and
+advertises at least four replicas, and all four NIMServices are
+pinned to that node. Confirm that node's `Allocatable`
+`nvidia.com/gpu` is `4` or greater, and pin the four core
+NIMServices as shown below.
+
+The default `answer_llm` Super-49B NIMService is outside that
+one-physical-GPU recipe. It requests two GPUs (`nvidia.com/gpu: 2`
+and `NIM_TENSOR_PARALLEL_SIZE=2`). A time-sliced request for more
+than one GPU does not provide two physical GPUs or proportional
+compute, so extra time-slice replicas cannot satisfy that
+tensor-parallel requirement. Keep Super-49B on two physical GPUs
+unless you override the slot with a separately validated model and
+profile. Refer to [Answer generation](#answer-generation-llm).
+
+On a multi-GPU or multi-node cluster, pin the four core
+NIMServices to a single-GPU node. Set
+`nimOperator.<key>.nodeSelector` on `page_elements`,
+`table_structure`, `ocr`, and `vlm_embed`. `nodeSelector`
+constrains node placement. On a multi-GPU node, it does not
+ensure all four pods receive logical replicas from the same
+physical GPU. This chart does not render pod affinity or
+topology spread constraints:
+
+```yaml
+nimOperator:
+  page_elements:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  table_structure:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  ocr:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+  vlm_embed:
+    nodeSelector:
+      kubernetes.io/hostname: <gpu-node>
+```
+
+On a mixed cluster, omit `devicePlugin.config.default` and label
+only the target node so other GPU nodes keep exclusive access:
+
+```bash
+kubectl patch clusterpolicies.nvidia.com/cluster-policy \
+    -n gpu-operator --type merge \
+    -p '{"spec": {"devicePlugin": {"config": {"name": "time-slicing-config-all"}}}}'
+kubectl label node <gpu-node> nvidia.com/device-plugin.config=any
+```
+
+Increase `replicas` if you also enable optional NIMs that request
+one GPU each on the same shared GPU and combined VRAM still fits.
+Count each of those Helm GPU requests. Do not increase time-slice
+replicas to satisfy tensor-parallel GPU counts. For the full
+procedure, node labels, and limitations, refer to
+[Time-Slicing GPUs in Kubernetes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html).
+MIG is an advanced GPU Operator configuration outside this chart.
+The chart does not set a MIG strategy, MIG profile, or MIG
+resource requests. Default NIMServices request `nvidia.com/gpu`.
+A working MIG deployment is GPU-specific and profile-specific and
+can require per-NIM `resources` overrides. For GPU Operator MIG,
+refer to
+[GPU Operator with MIG](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html).
+The NIM Operator also documents DRA-based sharing. This chart does
+not render `draResources`; refer to
+[NIM Operator DRA](https://docs.nvidia.com/nim-operator/latest/dra.html)
+if you manage ResourceClaims outside the chart.
+
+If `helm install` already succeeded and NIM pods stay `Pending` on
+`nvidia.com/gpu`, refer to
+[Core NIM pods stay Pending for GPU](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-gpus).
+
 ### 1. Service image { #1-service-image }
 
 The chart defaults to the image published to NGC:
@@ -266,7 +427,9 @@ the secret is absent (useful for fully local NIM endpoints).
 ### 3. Install with the NIM Operator (in-cluster NIMs)
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
-before you install. The default path creates all seven claims.
+and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
+before you install. The default path creates all seven claims and four
+exclusive `nvidia.com/gpu: 1` NIMService requests.
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
@@ -290,6 +453,7 @@ helm install retriever ./nemo_retriever/helm \
 ### Recommended minimal install (26.08) { #recommended-minimal-install-2608 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
+and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
 before you install.
 
 Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
@@ -433,6 +597,33 @@ that path — use a prebuilt service image instead; refer to [Audio and video on
 For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
+
+Parakeet ASR is disabled by default. The chart default is `nimOperator.audio.enabled=false`. The chart does not auto-wire the in-cluster ASR endpoint when you enable the audio NIM.
+
+To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md), set both of the following values:
+
+```yaml
+nimOperator:
+  audio:
+    enabled: true
+
+serviceConfig:
+  nimEndpoints:
+    audioGrpcEndpoint: audio:50051
+```
+
+Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
+
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
+
+After you set those values, complete the following steps:
+
+1. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
+2. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
+3. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
+
+The in-cluster gRPC Service name is `audio` on port `50051`. Graph ingest does not read this Helm value. Pass the same endpoint through `ASRParams.audio_endpoints` in Python. Refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
+
 ### Health probes
 
 The service exposes unauthenticated health endpoints for Kubernetes probes:
@@ -443,17 +634,6 @@ The service exposes unauthenticated health endpoints for Kubernetes probes:
 | `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe. |
 
 When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from the Service endpoints until its required workers are ready. The response includes backend health details to help diagnose the unavailable dependency.
-
-
-
-To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
-
-1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install](#recommended-minimal-install-2608)).
-2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
-3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
-4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
-
-The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
 
 ### Service networking
 
@@ -478,6 +658,7 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
 | `serviceConfig.nimEndpoints.rerankInvokeUrl`      | `""`    | Ranking API URL used by `POST /v1/query` when `rerank=true`. The optional `rerankqa` NIM is not auto-wired; configure this URL explicitly. |
 | `serviceConfig.nimEndpoints.rerankModelName`      | `""`    | Model ID sent to the ranking API. Defaults to `nvidia/llama-nemotron-rerank-vl-1b-v2` when a rerank URL is configured; set it explicitly for a different compatible reranker. |
+| `serviceConfig.nimEndpoints.audioGrpcEndpoint`    | `""`    | gRPC endpoint for Parakeet ASR. Not auto-wired from `nimOperator.audio`. Set `audio:50051` when you enable the audio NIM. |
 | `serviceConfig.llm.enabled`                         | `false` | Enables `POST /v1/answer`. Auto-flips to true when `nimOperator.answer_llm` is enabled and the operator URL resolves. |
 | `serviceConfig.llm.apiBase`                         | `""`    | OpenAI-compatible LLM base URL. Explicit value wins; otherwise `answer_llm` opt-in resolves to `http://answer-llm:8000/v1` by default. |
 | `serviceConfig.llm.apiKeySecret.name`                | `""`    | Optional Secret name for external LLM credentials. Explicit values win; otherwise operator-managed `answer_llm` mounts its `authSecret` as `NEMO_RETRIEVER_LLM_API_KEY` so LiteLLM/OpenAI has a credential value without writing it to the ConfigMap. |
@@ -492,6 +673,7 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
+| `serviceConfig.vectordb.indexMode`                | `hybrid` | Create LanceDB dense-vector and full-text-search indexes. Set to `dense` to create only the dense-vector index. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
@@ -563,8 +745,9 @@ provider-specific `chat_template_kwargs` to external OpenAI-compatible
 endpoints. Set `serviceConfig.llm.reasoningEnabled=false` for Nemotron
 endpoints that should skip reasoning; the service then adds both `/no_think`
 and `chat_template_kwargs.enable_thinking=false`. The default Super-49B NIMService
-resources request two GPUs (`nvidia.com/gpu: 2`) to match the bundled
-tensor-parallel NIM profile. Override `resources`, `modelProfile`, or
+resources request two physical GPUs (`nvidia.com/gpu: 2`) to match the bundled
+tensor-parallel NIM profile. Do not satisfy that count with GPU Operator
+time-slice replicas. Override `resources`, `modelProfile`, or
 `env` for deployments that use a different profile or hardware topology.
 When `answer_llm` is enabled and no explicit `serviceConfig.llm.apiKeySecret`
 is set, the service also mounts `nimOperator.answer_llm.authSecret` as
@@ -646,7 +829,7 @@ gated on three conditions ALL holding:
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.storage.pvc.storageClass` | `""` | Per-NIM NIMCache StorageClass. An empty value renders an empty class on the NIMCache CR, so the operator-created claim uses the cluster default when one exists. Set this path for each enabled NIM. `nimOperator.nimCache.pvc.storageClass` is not applied to per-NIM caches. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
-| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
+| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Four core NIMs therefore request four GPU slots unless the cluster shares GPUs. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions). Refer to [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade) and [GPU scheduling prerequisite](#gpu-scheduling-prerequisite). |
 | `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
 | `nimOperator.modelProfile`             | `{}`    | Chart-wide NIMCache GPU/profile filter. Applied to every NIMCache that does not have its own override. Refer to [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.modelProfile`       | `{}`    | Per-NIM NIMCache GPU/profile filter. Non-empty values REPLACE the chart-wide default (no merge). Refer to [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
@@ -802,11 +985,19 @@ different VLM SKU.
 
 The chart defaults to **`nimOperator.nimServiceGpuLimit: 1`**, which
 renders `spec.resources.limits.nvidia.com/gpu: 1` on every NIMService
-unless a per-NIM `resources` map overrides it. This is required on
-NIM Operator **v3.1.2** (and other versions tested on A100/H100): when
-the chart omits the `resources` block entirely, the operator often
-**does not** populate GPU limits from the model profile, and NIM pods
-start without GPU access (`The NVIDIA Driver was not detected`).
+unless a per-NIM `resources` map overrides it. A default core install
+therefore requests **four GPU slots** (one per enabled NIMService).
+Setting that per-NIM limit is required on NIM Operator **v3.1.2**
+(and other versions tested on A100/H100): when the chart omits the
+`resources` block entirely, the operator often **does not** populate
+GPU limits from the model profile, and NIM pods start without GPU
+access (`The NVIDIA Driver was not detected`).
+
+This per-NIM `1` request is not the support-matrix VRAM figure of
+one A10G for all four core models combined. On a conventional
+cluster, plan for four allocatable GPUs across eligible nodes or
+configure sharing.
+Refer to [GPU scheduling prerequisite](#gpu-scheduling-prerequisite).
 
 **Trade-off:** Helm and the NIM Operator may both server-side-apply
 `spec.resources.limits.nvidia.com/gpu`. A later `helm upgrade --install`

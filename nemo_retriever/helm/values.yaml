@@ -703,6 +703,9 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
+    # Create a hybrid vector and FTS index by default. Set to "dense" for a
+    # vector-only index.
+    indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
     # Optional dedicated gateway/worker-to-VectorDB authentication. When
