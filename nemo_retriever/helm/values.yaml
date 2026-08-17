@@ -552,8 +552,9 @@ serviceConfig:
     # operator-managed Parse NIM is enabled, its in-cluster URL is used
     # unless this explicit endpoint is set.
     nemotronParseInvokeUrl: ""
-    # Optional model override. Leave empty to infer the hosted
-    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    # Optional model override. Leave empty to infer the operator-managed
+    # Parse v1.2 or v2.0 model from its image repository. For external
+    # endpoints, set the matching model explicitly.
     nemotronParseModel: ""
     embedInvokeUrl: ""
     # Optional remote reranking endpoint used by POST /v1/query with
@@ -702,6 +703,9 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
+    # Create a hybrid vector and FTS index by default. Set to "dense" for a
+    # vector-only index.
+    indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
     # Optional dedicated gateway/worker-to-VectorDB authentication. When
@@ -1033,7 +1037,7 @@ nimOperator:
   #   Optional (enabled: false by default, NOT auto-wired):
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #     - nemotron_parse                           (Parse v1.2 by default, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
   #     - answer_llm                               (OpenAI-compatible answer LLM,
