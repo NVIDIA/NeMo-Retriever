@@ -575,8 +575,9 @@ serviceConfig:
     # the operator-managed Omni NIM is enabled. Override to point at a
     # different VLM SKU.
     captionModelName: ""
-    # gRPC endpoint for the Parakeet ASR NIM (e.g. "parakeet-nim:50051").
+    # gRPC endpoint for the Parakeet ASR NIM (e.g. "audio:50051").
     # Required for audio/video ingestion in service mode (without torch).
+    # Not auto-wired when nimOperator.audio is enabled; set explicitly.
     audioGrpcEndpoint: ""
 
   # In-pod Hugging Face models (alternative to nimEndpoints above).
