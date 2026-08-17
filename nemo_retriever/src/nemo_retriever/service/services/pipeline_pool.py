@@ -617,37 +617,56 @@ class _Pool:
                         )
                     self._processed += 1
                 except Exception as exc:
-                    outcome = "failed"
-                    if item.callback_url:
-                        error = f"{type(exc).__name__}: {exc}"
-                        callback_outcome = await _fire_gateway_callback(
-                            item.callback_url,
-                            item.id,
-                            "failed",
-                            error=error,
-                            callback_headers=item.callback_headers,
-                            lease_id=item.lease_id,
-                            lease_generation=item.lease_generation,
+                    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable
+
+                    if isinstance(exc, SidecarStoreUnavailable) and item.callback_url and self._pull_client is not None:
+                        outcome = "retrying"
+                        await self._pull_client.release(
+                            {
+                                "work_id": item.id,
+                                "lease_id": item.lease_id,
+                                "lease_generation": item.lease_generation,
+                            },
+                            reason="sidecar_store_unavailable",
                         )
-                        if callback_outcome == _CallbackDeliveryOutcome.RETRYABLE:
-                            await self._schedule_gateway_callback_retry(
-                                callback_url=item.callback_url,
-                                item_id=item.id,
-                                status="failed",
+                        logger.warning(
+                            "Pool '%s' worker %d released item %s after a temporary sidecar-store failure",
+                            self._name,
+                            worker_id,
+                            item.id,
+                        )
+                    else:
+                        outcome = "failed"
+                        if item.callback_url:
+                            error = f"{type(exc).__name__}: {exc}"
+                            callback_outcome = await _fire_gateway_callback(
+                                item.callback_url,
+                                item.id,
+                                "failed",
                                 error=error,
                                 callback_headers=item.callback_headers,
-                                work_item=item,
+                                lease_id=item.lease_id,
+                                lease_generation=item.lease_generation,
                             )
-                    else:
-                        tracker = get_job_tracker()
-                        if tracker is not None:
-                            tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
-                    logger.exception(
-                        "Pool '%s' worker %d failed on item %s",
-                        self._name,
-                        worker_id,
-                        item.id,
-                    )
+                            if callback_outcome == _CallbackDeliveryOutcome.RETRYABLE:
+                                await self._schedule_gateway_callback_retry(
+                                    callback_url=item.callback_url,
+                                    item_id=item.id,
+                                    status="failed",
+                                    error=error,
+                                    callback_headers=item.callback_headers,
+                                    work_item=item,
+                                )
+                        else:
+                            tracker = get_job_tracker()
+                            if tracker is not None:
+                                tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
+                        logger.exception(
+                            "Pool '%s' worker %d failed on item %s",
+                            self._name,
+                            worker_id,
+                            item.id,
+                        )
                 finally:
                     # Always observe; cheaper to keep latency series complete
                     # than to gate on outcome. Bucketed histogram, so even

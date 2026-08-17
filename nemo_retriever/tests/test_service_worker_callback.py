@@ -12,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -745,6 +746,52 @@ def test_service_auth_headers_preserve_worker_pull_credentials() -> None:
     assert auth_headers(AuthConfig()) == {}
     assert auth_headers(AuthConfig(api_token="secret")) == {"Authorization": "Bearer secret"}
     assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
+
+
+def test_worker_releases_claim_when_sidecar_store_is_temporarily_unavailable() -> None:
+    from nemo_retriever.service.services.pipeline_pool import WorkItem, _Pool
+    from nemo_retriever.service.services.sidecar_store import SidecarStoreUnavailable
+
+    released: list[tuple[dict[str, object], str]] = []
+    release_complete = asyncio.Event()
+
+    class PullClient:
+        config = SimpleNamespace(heartbeat_interval_s=60.0)
+
+        async def claim(self) -> WorkItem | None:
+            return WorkItem(
+                id="sidecar-doc",
+                callback_url="http://gateway/v1/internal/job-callback",
+                lease_id="lease-id",
+                lease_generation=1,
+            )
+
+        async def heartbeat(self, _item: WorkItem) -> bool:
+            return True
+
+        async def release(self, claim: dict[str, object], *, reason: str) -> None:
+            released.append((claim, reason))
+            release_complete.set()
+
+    def unavailable(_item: WorkItem) -> None:
+        raise SidecarStoreUnavailable("Redis sidecar store is temporarily unavailable")
+
+    async def run() -> None:
+        pool = _Pool("sidecar-retry", num_workers=1, max_queue_size=1, work_fn=unavailable, pull_client=PullClient())
+        pool._running = True
+        task = asyncio.create_task(pool._worker_loop(0))
+        await asyncio.wait_for(release_complete.wait(), timeout=1.0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(run())
+
+    assert released == [
+        (
+            {"work_id": "sidecar-doc", "lease_id": "lease-id", "lease_generation": 1},
+            "sidecar_store_unavailable",
+        )
+    ]
 
 
 def test_fire_gateway_callback_sends_internal_auth_headers() -> None:
