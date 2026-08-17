@@ -74,6 +74,7 @@ Set the chart values in the [Secrets](https://github.com/NVIDIA/NeMo-Retriever/b
 
 - `ngcImagePullSecret.create` and `ngcImagePullSecret.password` create the `ngc-secret` dockerconfigjson Secret for pulls from `nvcr.io`.
 - `ngcApiSecret.create` and `ngcApiSecret.password` create the `ngc-api` Secret with `NGC_API_KEY` and `NGC_CLI_API_KEY`. The service container maps `NGC_API_KEY` and `NVIDIA_API_KEY` from the Secret `NGC_API_KEY` key when the Secret exists.
+- Overriding `ngcImagePullSecret.name` or `ngcApiSecret.name` also updates every rendered NIMCache and NIMService unless you set a non-empty per-NIM `image.pullSecrets` or `authSecret` override.
 
 ```bash
 helm install retriever ./nemo_retriever/helm \

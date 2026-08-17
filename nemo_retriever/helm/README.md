@@ -618,8 +618,8 @@ gated on three conditions ALL holding:
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
 | `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
-| `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
-| `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
+| `nimOperator.<key>.image.pullSecrets`  | `[]` | Per-NIM pull Secret name list. Empty inherits `ngcImagePullSecret.name` (default `ngc-secret`) on every NIMCache / NIMService. Non-empty replaces the chart-wide name for that NIM only. |
+| `nimOperator.<key>.authSecret`         | `""` | Per-NIM auth Secret name. Empty inherits `ngcApiSecret.name` (default `ngc-api`). Non-empty replaces the chart-wide name for that NIM only. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.storage.pvc.storageClass` | `""` | Per-NIM NIMCache StorageClass. An empty value renders an empty class on the NIMCache CR, so the operator-created claim uses the cluster default when one exists. Set this path for each enabled NIM. `nimOperator.nimCache.pvc.storageClass` is not applied to per-NIM caches. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
@@ -883,10 +883,10 @@ custom service configuration files.
 | Path                              | Default        | Notes |
 |-----------------------------------|----------------|-------|
 | `ngcImagePullSecret.create`       | `false`        | Chart-managed dockerconfigjson Secret. |
-| `ngcImagePullSecret.name`         | `ngc-secret`   | Name referenced by every Pod and every NIMService. |
+| `ngcImagePullSecret.name`         | `ngc-secret`   | Name referenced by every Pod and, when per-NIM `image.pullSecrets` is empty, by every NIMCache / NIMService. |
 | `ngcImagePullSecret.password`     | `""`           | NGC API key. |
 | `ngcApiSecret.create`             | `false`        | Chart-managed Opaque Secret. |
-| `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret`. |
+| `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret` when per-NIM `authSecret` is empty. |
 | `ngcApiSecret.password`           | `""`           | NGC API key (populates `NGC_API_KEY` + `NGC_CLI_API_KEY`). |
 | `imagePullSecrets`                | `[]`           | Extra pre-existing pull secrets appended to every Pod. |
 | `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable dedicated Secret-backed Retriever-to-VectorDB authentication. |
@@ -928,7 +928,9 @@ ngcApiSecret:
 
 The chart will skip Secret creation. Make sure `my-org-ngc-pull` exists
 as `kubernetes.io/dockerconfigjson` and `my-org-ngc-api` as `Opaque` with
-an `NGC_API_KEY` key, in the release namespace.
+an `NGC_API_KEY` key, in the release namespace. Retriever Pods and every
+rendered NIMCache / NIMService inherit those names unless you set a
+non-empty per-NIM `image.pullSecrets` or `authSecret` override.
 
 Protect the public gateway and its dedicated VectorDB hop with two separate
 pre-existing Secrets:
@@ -1457,7 +1459,9 @@ nimOperator:
 ```
 
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
-  (for example `my-private-registry`; chart default is `ngc-secret`).
+  (for example `my-private-registry`) when it differs from
+  `ngcImagePullSecret.name`. Empty per-NIM `pullSecrets` inherit the
+  chart-wide name.
 - Leave `serviceConfig.nimEndpoints.*` empty when operator-managed NIMs
   are in-cluster; set explicit URLs only for external or mirrored services
   outside the chart.

@@ -1,4 +1,5 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.nemotron_parse.enabled true) -}}
+{{- $nimSecrets := dict "context" $ "key" "nemotron_parse" "cfg" .Values.nimOperator.nemotron_parse -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -8,8 +9,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ .Values.nimOperator.nemotron_parse.image.repository }}:{{ .Values.nimOperator.nemotron_parse.image.tag }}"
-      pullSecret: "{{ index .Values.nimOperator.nemotron_parse.image.pullSecrets 0 }}"
-      authSecret: {{ .Values.nimOperator.nemotron_parse.authSecret }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "nemotron_parse") | nindent 6 }}
   storage:
     pvc:
@@ -32,8 +33,8 @@ spec:
     tag: {{ .Values.nimOperator.nemotron_parse.image.tag }}
     pullPolicy: {{ .Values.nimOperator.nemotron_parse.image.pullPolicy }}
     pullSecrets:
-{{ toYaml .Values.nimOperator.nemotron_parse.image.pullSecrets | indent 6 }}
-  authSecret: {{ .Values.nimOperator.nemotron_parse.authSecret }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: nemotron-parse

@@ -20,23 +20,21 @@ fullnameOverride: ""
 
 # -----------------------------------------------------------------------------
 # NGC pull + API secrets (consumed by the service Deployment AND every
-# operator-managed NIMService).
+# operator-managed NIMCache / NIMService).
 # -----------------------------------------------------------------------------
 # The NIM Operator references its image pull secret and NGC auth secret by
-# **name only** — those names are hard-coded into each NIMCache/NIMService
-# template (`ngc-secret` and `ngc-api` by default, matching upstream NIM
-# Operator examples). Set `create: true` to have this chart provision the
-# secrets, or `create: false` + an externally managed Secret with the same
-# name.
+# **name only**. These chart-wide names are the defaults for every rendered
+# NIMCache / NIMService unless a per-NIM override is set (see
+# `nimOperator.<key>.image.pullSecrets` / `nimOperator.<key>.authSecret`).
+# Set `create: true` to have this chart provision the secrets, or
+# `create: false` + an externally managed Secret with the same name.
 #
 # Additional pre-existing pull secrets can be listed under `imagePullSecrets`
-# at the bottom of this section.
+# at the bottom of this section (Pods only — not NIM CRs).
 ngcImagePullSecret:
   create: false
-  # Name used by every Pod's `imagePullSecrets` and by each NIMService's
-  # `image.pullSecrets`. Keep at "ngc-secret" unless you have a strong
-  # reason to rename — every per-model template references this name by
-  # default.
+  # Name used by every Pod's `imagePullSecrets` and, when per-NIM
+  # `image.pullSecrets` is empty, by each NIMCache / NIMService pull secret.
   name: "ngc-secret"
   registry: "nvcr.io"
   username: "$oauthtoken"
@@ -49,8 +47,9 @@ ngcImagePullSecret:
 
 ngcApiSecret:
   create: false
-  # Name used as the NIMCache/NIMService `authSecret` and as the source for
-  # the service container's NGC_API_KEY / NVIDIA_API_KEY env vars.
+  # Name used as the NIMCache/NIMService `authSecret` (when per-NIM
+  # `authSecret` is empty) and as the source for the service container's
+  # NGC_API_KEY / NVIDIA_API_KEY env vars.
   name: "ngc-api"
   # NGC API key. Both `NGC_API_KEY` and `NGC_CLI_API_KEY` keys are
   # populated with this value so NIM containers and ad-hoc CLI users
@@ -1064,9 +1063,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
       tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1120,9 +1122,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-object-detection
       tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1177,9 +1182,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
       tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1237,9 +1245,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
       tag: "2.3.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1305,9 +1316,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
       tag: "2.0.5"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     # Cache only the default BF16 2-GPU profile used by the Super-49B
@@ -1373,9 +1387,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
       tag: "2.3.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1430,9 +1447,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
       tag: "1.7.0-variant"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1493,9 +1513,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
       tag: "1.7.0-variant"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1534,9 +1557,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us
       tag: "1.5.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
