@@ -453,7 +453,7 @@ Complete the following checks:
 
 For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
-## Helm upgrade fails when changing a NIM image tag { #helm-nimcache-modelpuller-immutable }
+## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
 
 `helm upgrade` can fail when you change `nimOperator.<key>.image.repository` or `nimOperator.<key>.image.tag` on an existing release. The chart reuses the `NIMCache` name, for example `nemotron-page-elements-v3`, while `spec.source.ngc.modelPuller` changes to the new `repository:tag` value.
 
@@ -468,7 +468,7 @@ Helm can apply other release resources before that rejection. The `NIMCache` the
 Do not retry `helm upgrade` until you delete the existing `NIMCache`. Complete the following steps:
 
 1. Drain ingest traffic that depends on the affected NIM.
-2. Run `kubectl get nimcache <name> --namespace <namespace>` and confirm `metadata.name` is unchanged while `spec.source.ngc.modelPuller` would change.
+2. Run `kubectl get nimcache <name> --namespace <namespace>` and confirm the live `modelPuller` value differs from the new `repository:tag`.
 3. Delete the `NIMCache`. Helm `keep` annotations do not block `kubectl delete`.
 4. If the operator-created PVC remains, delete it so the new image re-pulls weights.
 5. Re-run `helm upgrade` with the new repository or tag. Helm creates a new `NIMCache`.
