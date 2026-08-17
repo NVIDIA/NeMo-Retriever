@@ -270,7 +270,7 @@ To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
-[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) accept only **inline** PNG or JPEG payloads. The same `/v1/infer` request shape applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs.
+[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` accept only **inline** PNG or JPEG payloads. The matching build.nvidia.com model experience uses the same contract. The same `/v1/infer` request shape applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs.
 
 The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) documents image URLs as `data:image/<format>;base64,<data>`. Hosted Page Elements inference does not accept NVCF Asset API identifiers in that `url` field.
 
@@ -281,7 +281,7 @@ The following table summarizes inline payload limits by deployment:
 | Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Resize or re-encode the image so the inline payload fits. Self-host the NIM if you need larger images. Do not use the NVCF Asset API as a hosted fallback. |
 | Self-hosted NIM container | Higher; the NeMo Retriever client downscales HTTP payloads above **512,000 characters** before calling the NIM | Resize or re-encode the source image, or rely on the client downscaling |
 
-The Object Detection NIM API reference states only that “very large images may cause processing issues.” For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+That API reference states only that "very large images may cause processing issues." For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
 
 !!! important
 
@@ -300,9 +300,9 @@ When you route extraction to hosted Page Elements NIM URLs (for example `page_el
 
 If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams` and keep `render_mode="fit_to_model"`. For very large standalone image inputs, preprocess the files before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
-### Direct Page Elements NIM API calls (build.nvidia.com or custom clients)
+### Direct Page Elements NIM API calls
 
-When you call Page Elements NIM **directly**, send only inline base64. Direct calls include the build playground, curl, and custom integrations that do not go through the NeMo Retriever pipeline.
+When you call Page Elements NIM **directly**, send only inline base64. Direct calls include the build playground, curl, and custom integrations that do not go through the NeMo Retriever pipeline. The following example shows the required `input` payload:
 
 ```json
 {
@@ -315,7 +315,7 @@ When you call Page Elements NIM **directly**, send only inline base64. Direct ca
 }
 ```
 
-Use this form only when `len(base64_image) < 180_000`. If the encoded image is larger, resize or re-encode it to PNG or JPEG until the base64 string is under 180,000 characters. Alternatively, self-host Page Elements NIM.
+Use this form only when `len(base64_image) < 180_000`. If the encoded image is larger, resize or re-encode it to PNG or JPEG until the base64 string is under 180,000 characters. You can also self-host Page Elements NIM.
 
 Do not send `"url": "data:image/png;asset_id,<assetId>"`. Hosted Page Elements rejects that encoding with HTTP 422.
 
