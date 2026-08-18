@@ -597,6 +597,17 @@ short list of knobs you'll touch first.
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
+| `service.podLabels` / `service.podAnnotations` | `{}` / `{}` | Add labels or annotations to every retriever service Pod. |
+| `service.priorityClassName` / `service.topologySpreadConstraints` | `""` / `[]` | Apply common scheduling policy to every retriever service Pod. |
+| `service.terminationGracePeriodSeconds` | `60` | Set the shutdown grace period for every retriever service Pod. |
+| `service.securityContext` | `{}` | Apply a container security context to every retriever service container. |
+| `service.envFrom` | `[]` | Import environment variables from Secrets or ConfigMaps into every retriever service container. |
+| `service.extraVolumes` / `service.extraVolumeMounts` | `[]` / `[]` | Add common volumes and mounts to every retriever service Pod and container. |
+
+In `topology.mode: split`, these common `service.*` settings apply to the
+gateway, realtime, and batch Deployments. `service.securityContext` also
+applies to the `wait-for-gateway` init containers in the realtime and batch
+Deployments. Do not use `service.podLabels` to replace chart selector labels.
 
 For audio and video extraction, set `service.installFfmpeg=true` when your
 cluster allows runtime package installation. **OpenShift restricted-v2** blocks

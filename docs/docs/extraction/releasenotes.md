@@ -33,6 +33,7 @@ Highlights for the 26.08 release include:
 ### Retriever Service and deployment { #retriever-service-and-deployment }
 
 - Retriever Service v2 adds a scalable multi-pod architecture with gateway, process isolation, and VectorDB integration  
+- Fixed split-topology Helm rendering so common `service.*` Pod, container, environment, volume, scheduling, and shutdown settings apply to the gateway, realtime, and batch workloads. `service.securityContext` also applies to worker `wait-for-gateway` init containers.
 - OpenTelemetry basic support for pipeline and service observability  
 - Expanded air-gapped deployment guidance in [deployment options](deployment-options.md) and the Helm chart README  
 - Helm maps `serviceConfig.nimEndpoints.rerankInvokeUrl` / `rerankModelName` into `nim_endpoints.rerank_invoke_url` / `rerank_model_name`, and auto-wires those fields when `nimOperator.rerankqa.enabled=true`, so `/v1/query` with `rerank=true` works in split topology
