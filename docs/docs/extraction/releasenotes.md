@@ -70,7 +70,7 @@ Highlights for the 26.08 release include:
 
 ### Helm chart { #helm-chart }
 
-- Helm chart refresh under `nemo_retriever/helm/` with VL embedder defaults and optional Nemotron Parse and Omni caption NIMs  
+- Helm chart refresh under `nemo_retriever/helm/` with VL embedder defaults and optional Nemotron Parse (`nemotron-parse-v2.0:2.0.8-variant`) and Omni caption NIMs
 
 ### Documentation { #documentation }
 

@@ -327,6 +327,13 @@ The chart defaults to the image published to NGC:
 nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
 ```
 
+The example above reflects the Git source defaults on the current branch.
+When you install a chart version published to NGC, release packaging sets
+`Chart.yaml` `version`, `Chart.yaml` `appVersion`, and the default
+`service.image.tag` to that release version (for example, NGC chart `26.8.0`
+defaults to `nrl-service:26.8.0`). When you install from a Git checkout,
+pin `service.image.tag` to the matching release if the branch defaults differ.
+
 Pulling from `nvcr.io` requires an NGC pull secret — either set
 `ngcImagePullSecret.create=true` (see below) or pre-create one in the
 namespace named `ngc-secret`.
@@ -467,6 +474,11 @@ helm install retriever ./nemo_retriever/helm \
   --set service.image.tag=26.8.0
 ```
 
+The explicit `service.image.tag` above pins the 26.08 service image when you
+install from a Git checkout whose `values.yaml` default points at a different
+release. Chart versions published to NGC already default `service.image.tag`
+to the chart release version, so you can omit that flag for those installs.
+
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
 >
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true`
@@ -588,7 +600,7 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           |       |
+| `service.image.tag`           | Git source default (for example `26.5.0` on `main`) | NGC-published charts default this to the chart release version. Override for custom or mirrored images. |
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
@@ -942,7 +954,7 @@ Every NIM in this chart pins an exact NGC image tag in `values.yaml`
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
 | Plain semver | `nemotron-object-detection:2.0.1` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
-| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
+| `<semver>-variant` | `nemotron-parse-v2.0:2.0.8-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart; Omni matches footnote ³ of the support matrix. |
 
 For air-gapped mirror pipelines: mirror the *exact* tag — both the
 plain semver and the `-variant` form — and do not substitute `:latest`.
@@ -1756,7 +1768,9 @@ Refer to [Deployment options — Air-gapped and disconnected deployment](https:/
 
 Verify tags on the Git branch or tag you ship (for example `main` or
 your release tag). Defaults below match
-[`values.yaml`](./values.yaml) on the current chart.
+[`values.yaml`](./values.yaml) on the current chart. NGC-published chart
+archives set `service.image.tag` to the release version during packaging;
+Git checkout defaults may differ until you override or republish.
 
 | Role | `nimOperator` key | Default image (`repository:tag`) |
 |------|-------------------|----------------------------------|
@@ -1766,8 +1780,8 @@ your release tag). Defaults below match
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
-| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
-| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
+| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant` |
+| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |
 | Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
 

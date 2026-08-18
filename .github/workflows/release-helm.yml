@@ -67,6 +67,7 @@ jobs:
             --name "${{ inputs.chart-name }}" \
             --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ inputs.version }}" \
+            --image-inventory helm-image-inventory.md \
             $DRY_RUN_FLAG
 
       - name: Upload packaged chart artifact
@@ -87,3 +88,7 @@ jobs:
           echo "| Version | \`${{ inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| NGC | \`${{ inputs.chart-name }}:${{ inputs.version }}\` (org/team from repository secrets) |" >> $GITHUB_STEP_SUMMARY
           echo "| Dry Run | \`${{ inputs.dry-run }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [ -f helm-image-inventory.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat helm-image-inventory.md >> $GITHUB_STEP_SUMMARY
+          fi

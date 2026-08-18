@@ -212,7 +212,15 @@ jobs:
             --name "${HELM_CHART_NAME}" \
             --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}" \
+            --image-inventory helm-image-inventory.md \
             --dry-run
+
+      - name: Report packaged artifact inventory
+        if: always()
+        run: |
+          if [ -f helm-image-inventory.md ]; then
+            cat helm-image-inventory.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload Helm chart artifact
         uses: actions/upload-artifact@v5
@@ -320,7 +328,15 @@ jobs:
             --team "${{ secrets.NGC_TEAM }}" \
             --name "${HELM_CHART_NAME}" \
             --chart-dir "${HELM_CHART_DIR}" \
-            --version "${{ needs.determine-version.outputs.version }}"
+            --version "${{ needs.determine-version.outputs.version }}" \
+            --image-inventory helm-image-inventory.md
+
+      - name: Report published artifact inventory
+        if: always()
+        run: |
+          if [ -f helm-image-inventory.md ]; then
+            cat helm-image-inventory.md >> $GITHUB_STEP_SUMMARY
+          fi
 
   pypi-publish:
     name: Publish Python Wheels (last — PyPI versions are immutable)
