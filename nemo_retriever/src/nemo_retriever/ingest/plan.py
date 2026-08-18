@@ -604,15 +604,6 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     _validate_profile_manifest(validated_profile, branches)
 
     extract_kwargs = profile_extract_defaults(validated_profile)
-    if (
-        validated_profile == "auto"
-        and extract.method is None
-        and (extract.ocr_version is not None or extract.ocr_lang is not None)
-    ):
-        # An explicit OCR selector is an opt-in to scanned-page OCR. The
-        # default pdfium method only reads a native text layer, so select the
-        # hybrid method unless the caller chose a method explicitly.
-        extract_kwargs["method"] = "pdfium_hybrid"
     extract_kwargs.update(
         {
             key: value

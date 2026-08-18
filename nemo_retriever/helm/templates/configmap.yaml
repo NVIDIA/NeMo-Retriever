@@ -13,6 +13,7 @@ inherits the NIMService resource name, so the mapping is fixed:
   ocr                                    -> nemotron-ocr-v2                          /v1/ocr
   nemotron_parse                         -> nemotron-parse                           /v1/chat/completions
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 */}}
@@ -41,12 +42,49 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- if and $internalAuth.enabled (not $internalAuth.existingSecret.key) -}}
 {{- fail "serviceConfig.vectordb.internalAuth.enabled=true requires serviceConfig.vectordb.internalAuth.existingSecret.key." -}}
 {{- end -}}
+{{- /*
+  Split pull workers mount only the dedicated internal credential. Public
+  scope-token Secrets stay on the gateway, and auth_headers() only knows
+  api_token. Without internalAuth, workers claim /v1/internal/work/claim with
+  empty headers while the gateway still requires a public bearer token.
+*/ -}}
+{{- if and (eq $ctx.Values.topology.mode "split") $auth.enabled $scopeTokenSecret.name (not $internalAuth.enabled) -}}
+{{- fail "topology.mode=split with serviceConfig.auth.scopeTokenSecret.name requires serviceConfig.vectordb.internalAuth.enabled=true so pull workers can authenticate to /v1/internal/work/claim." -}}
+{{- end -}}
 {{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/page-elements") -}}
 {{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/table-structure") -}}
 {{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" $ctx.Values.nimOperator.ocr.nimServiceName "configKey" "ocrInvokeUrl" "invokePath" "/v1/ocr") -}}
 {{- $nemotronParseURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "nemotron_parse" "serviceName" "nemotron-parse" "configKey" "nemotronParseInvokeUrl" "invokePath" "/v1/chat/completions") -}}
 {{- $nemotronParseModel := $ctx.Values.serviceConfig.nimEndpoints.nemotronParseModel | default "" -}}
+{{- /*
+  When the chart auto-wires the operator-managed Parse NIM, derive the
+  matching model id from its SKU. Explicit endpoint/model settings keep
+  their existing precedence, and unknown image names retain the previous
+  URL-only behavior for custom deployments.
+*/}}
+{{- if and (not $nemotronParseModel) (not $ctx.Values.serviceConfig.nimEndpoints.nemotronParseInvokeUrl) $nemotronParseURL -}}
+{{- $parseRepository := $ctx.Values.nimOperator.nemotron_parse.image.repository | default "" -}}
+{{- if regexMatch "(^|/)nemotron-parse-v1\\.2$" $parseRepository -}}
+{{- $nemotronParseModel = "nvidia/nemotron-parse-v1.2" -}}
+{{- else if regexMatch "(^|/)nemotron-parse-v2\\.0$" $parseRepository -}}
+{{- $nemotronParseModel = "nvidia/nemotron-parse-v2.0" -}}
+{{- end -}}
+{{- end -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "vlm_embed" "serviceName" $ctx.Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- $rerankURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "rerankqa" "serviceName" "llama-nemotron-rerank-vl-1b-v2" "configKey" "rerankInvokeUrl" "invokePath" "/v1/ranking") -}}
+{{- /*
+  Model name resolution for the remote rerank endpoint:
+    1. Explicit `serviceConfig.nimEndpoints.rerankModelName` always wins.
+    2. Else, when a rerank URL was resolved (explicit or operator),
+       fall back to the canonical VL reranker model id so /v1/query
+       with rerank=true does not inherit the service's text-only default.
+    3. Else, empty string — leaves `rerank_model_name: null` in the
+       generated service config.
+*/}}
+{{- $rerankModelName := $ctx.Values.serviceConfig.nimEndpoints.rerankModelName | default "" -}}
+{{- if and (not $rerankModelName) $rerankURL -}}
+{{- $rerankModelName = "nvidia/llama-nemotron-rerank-vl-1b-v2" -}}
+{{- end -}}
 {{- $captionURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "nemotron_3_nano_omni_30b_a3b_reasoning" "serviceName" "nemotron-3-nano-omni-30b-a3b-reasoning" "configKey" "captionInvokeUrl" "invokePath" "/v1/chat/completions") -}}
 {{- /*
   Model name resolution for the remote caption endpoint:
@@ -87,6 +125,17 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- if or (not (regexMatch "^[1-9][0-9]*$" $maxUploadBytes)) (and (kindIs "float64" $rawMaxUploadBytes) (ne $rawMaxUploadBytes (float64 $maxUploadBytes))) -}}
 {{- fail "serviceConfig.resources.maxUploadBytes must be a positive integer" -}}
 {{- end -}}
+{{- $rawSidecarMaxPayloadBytes := .Values.serviceConfig.sidecarStore.maxPayloadBytes -}}
+{{- $sidecarMaxPayloadBytes := toString $rawSidecarMaxPayloadBytes -}}
+{{- if kindIs "float64" $rawSidecarMaxPayloadBytes -}}
+{{- $sidecarMaxPayloadBytes = printf "%.0f" $rawSidecarMaxPayloadBytes -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]*$" $sidecarMaxPayloadBytes)) (and (kindIs "float64" $rawSidecarMaxPayloadBytes) (ne $rawSidecarMaxPayloadBytes (float64 $sidecarMaxPayloadBytes))) -}}
+{{- fail "serviceConfig.sidecarStore.maxPayloadBytes must be a positive integer" -}}
+{{- end -}}
+{{- if gt (int $sidecarMaxPayloadBytes) (int $maxUploadBytes) -}}
+{{- fail "serviceConfig.sidecarStore.maxPayloadBytes must not exceed serviceConfig.resources.maxUploadBytes" -}}
+{{- end -}}
 server:
   host: {{ .Values.serviceConfig.server.host | quote }}
   port: {{ .Values.serviceConfig.server.port }}
@@ -109,8 +158,8 @@ nim_endpoints:
 {{- else }}
   embed_model_provider_prefix: null
 {{- end }}
-  rerank_invoke_url: {{ if .Values.serviceConfig.nimEndpoints.rerankInvokeUrl }}{{ .Values.serviceConfig.nimEndpoints.rerankInvokeUrl | quote }}{{ else }}null{{ end }}
-  rerank_model_name: {{ if .Values.serviceConfig.nimEndpoints.rerankModelName }}{{ .Values.serviceConfig.nimEndpoints.rerankModelName | quote }}{{ else }}null{{ end }}
+  rerank_invoke_url: {{ if .rerankURL }}{{ .rerankURL | quote }}{{ else }}null{{ end }}
+  rerank_model_name: {{ if .rerankModelName }}{{ .rerankModelName | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
@@ -196,6 +245,9 @@ resources:
   gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
   max_upload_bytes: {{ $maxUploadBytes }}
 
+sidecar_store:
+  max_payload_bytes: {{ $sidecarMaxPayloadBytes }}
+
 auth:
   enabled: {{ .Values.serviceConfig.auth.enabled }}
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
@@ -209,6 +261,7 @@ vectordb:
   enabled: true
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
+  index_mode: {{ .Values.serviceConfig.vectordb.indexMode | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
 {{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
   embed_model_provider_prefix: {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
@@ -238,7 +291,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "rerankURL" $rerankURL "rerankModelName" $rerankModelName "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -267,6 +320,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "rerankURL" $rerankURL "rerankModelName" $rerankModelName "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

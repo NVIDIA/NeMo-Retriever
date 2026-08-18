@@ -171,6 +171,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
+        "candidate_k": request.retrieval.candidate_k,
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,

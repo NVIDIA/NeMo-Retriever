@@ -229,3 +229,21 @@ def test_split_rejects_multiple_gateway_replicas(persistence_enabled: bool) -> N
 def test_split_service_monitor_is_disabled_by_default() -> None:
     documents = _render("--set", "topology.mode=split")
     assert all(document.get("kind") != "ServiceMonitor" for document in documents)
+
+
+def test_split_sidecar_store_uses_gateway_memory_without_redis_credentials() -> None:
+    documents = _render("--set", "topology.mode=split")
+    for deployment in _service_deployments(documents):
+        container = next(
+            item for item in deployment["spec"]["template"]["spec"]["containers"] if item["name"] == "nemo-retriever"
+        )
+        env = {item["name"]: item for item in container["env"]}
+        assert "NRL_SIDECAR_REDIS_URL" not in env
+
+    service_configs = [
+        item["data"]["retriever-service.yaml"]
+        for item in documents
+        if item.get("kind") == "ConfigMap" and "retriever-service.yaml" in item.get("data", {})
+    ]
+    assert len(service_configs) == 3
+    assert all("sidecar_store:\n  max_payload_bytes: 33554432" in config for config in service_configs)

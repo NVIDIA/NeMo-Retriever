@@ -53,6 +53,20 @@ def _batch_tuning(params: Any) -> Any:
     return getattr(params, "batch_tuning", None)
 
 
+def _local_embed_requested(params: Any) -> bool:
+    """Return whether embedding configuration explicitly requires a local actor."""
+    if params is None:
+        return False
+    endpoint = getattr(params, "embed_invoke_url", None) or getattr(params, "embedding_endpoint", None)
+    if str(endpoint or "").strip():
+        return False
+    fields_set = getattr(params, "model_fields_set", set())
+    if "local_ingest_embed_backend" in fields_set:
+        return True
+    gpu_embed = getattr(_batch_tuning(params), "gpu_embed", None)
+    return gpu_embed is not None and float(gpu_embed) > 0
+
+
 def default_concurrency_node_names(
     extract_params: Any | None,
     embed_params: Any | None,
@@ -571,7 +585,10 @@ def _append_ordered_transform_stages(
                         name="ExplodeContentToRows",
                         preserve_pandas_output=True,
                     )
-            graph = graph >> _BatchEmbedActor(params=embed_params)
+            graph = graph >> _BatchEmbedActor(
+                params=embed_params,
+                force_local=_local_embed_requested(embed_params),
+            )
 
     if vdb_upload_params is not None:
         graph = graph >> IngestVdbOperator(
