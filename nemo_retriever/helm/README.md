@@ -339,6 +339,8 @@ then override `service.image.repository` / `service.image.tag`:
 docker build \
     --target service \
     --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
+    --build-arg RETRIEVER_VERSION=<TAG> \
+    --build-arg RETRIEVER_RELEASE_TYPE=release \
     -t <YOUR_REGISTRY>/nemo-retriever-service:<TAG> .
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
 ```
@@ -588,7 +590,8 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           |       |
+| `service.image.tag`           | `26.5.0`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
+
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
@@ -856,8 +859,8 @@ gated on three conditions ALL holding:
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
 | `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
-| `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
-| `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
+| `nimOperator.<key>.image.pullSecrets`  | `[]` | Per-NIM pull Secret name list. Empty inherits `ngcImagePullSecret.name` (default `ngc-secret`) on every NIMCache / NIMService. Non-empty replaces the chart-wide name for that NIM only. |
+| `nimOperator.<key>.authSecret`         | `""` | Per-NIM auth Secret name. Empty inherits `ngcApiSecret.name` (default `ngc-api`). Non-empty replaces the chart-wide name for that NIM only. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.storage.pvc.storageClass` | `""` | Per-NIM NIMCache StorageClass. An empty value renders an empty class on the NIMCache CR, so the operator-created claim uses the cluster default when one exists. Set this path for each enabled NIM. `nimOperator.nimCache.pvc.storageClass` is not applied to per-NIM caches. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
@@ -1282,10 +1285,10 @@ custom service configuration files.
 | Path                              | Default        | Notes |
 |-----------------------------------|----------------|-------|
 | `ngcImagePullSecret.create`       | `false`        | Chart-managed dockerconfigjson Secret. |
-| `ngcImagePullSecret.name`         | `ngc-secret`   | Name referenced by every Pod and every NIMService. |
+| `ngcImagePullSecret.name`         | `ngc-secret`   | Name referenced by every Pod and, when per-NIM `image.pullSecrets` is empty, by every NIMCache / NIMService. |
 | `ngcImagePullSecret.password`     | `""`           | NGC API key. |
 | `ngcApiSecret.create`             | `false`        | Chart-managed Opaque Secret. |
-| `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret`. |
+| `ngcApiSecret.name`               | `ngc-api`      | Name referenced by NIMCache/NIMService `authSecret` when per-NIM `authSecret` is empty. |
 | `ngcApiSecret.password`           | `""`           | NGC API key (populates `NGC_API_KEY` + `NGC_CLI_API_KEY`). |
 | `imagePullSecrets`                | `[]`           | Extra pre-existing pull secrets appended to every Pod. |
 | `serviceConfig.vectordb.internalAuth.enabled` | `false` | Enable the Secret-backed credential for VectorDB traffic and restricted gateway-to-worker handoffs. |
@@ -1327,7 +1330,9 @@ ngcApiSecret:
 
 The chart will skip Secret creation. Make sure `my-org-ngc-pull` exists
 as `kubernetes.io/dockerconfigjson` and `my-org-ngc-api` as `Opaque` with
-an `NGC_API_KEY` key, in the release namespace.
+an `NGC_API_KEY` key, in the release namespace. Retriever Pods and every
+rendered NIMCache / NIMService inherit those names unless you set a
+non-empty per-NIM `image.pullSecrets` or `authSecret` override.
 
 Protect the public gateway and internal service calls with separate
 pre-existing Secrets:
@@ -1352,11 +1357,14 @@ serviceConfig:
 configured key. `nrl-internal-vdb-auth` must contain a distinct, high-entropy
 credential. In split topology, the public token file mounts only on the
 gateway. The gateway authenticates public requests, then uses the internal
-credential for restricted worker handoffs. Workers do not receive or validate
-the public bearer token. Internal authentication is opt-in for local
-compatibility; enable it for production deployments. When enabled, a missing
-Secret or key prevents the pods from starting instead of falling back to
-unauthenticated VectorDB access. Inline `serviceConfig.auth.apiToken` is rejected unless
+credential for restricted worker handoffs and pull-worker claims of
+`/v1/internal/work/claim`. Workers do not receive or validate the public
+bearer token, so `serviceConfig.auth.scopeTokenSecret.name` also requires
+`serviceConfig.vectordb.internalAuth.enabled=true`. Internal authentication
+is opt-in for local compatibility; enable it for production deployments. When
+enabled, a missing Secret or key prevents the pods from starting instead of
+falling back to unauthenticated VectorDB access. Inline
+`serviceConfig.auth.apiToken` is rejected unless
 `allowInsecureInlineApiToken=true`, and must never be used for production.
 
 ### Disable one NIM and supply an external URL for it
@@ -1859,7 +1867,9 @@ nimOperator:
 ```
 
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
-  (for example `my-private-registry`; chart default is `ngc-secret`).
+  (for example `my-private-registry`) when it differs from
+  `ngcImagePullSecret.name`. Empty per-NIM `pullSecrets` inherit the
+  chart-wide name.
 - Leave `serviceConfig.nimEndpoints.*` empty when operator-managed NIMs
   are in-cluster; set explicit URLs only for external or mirrored services
   outside the chart.

@@ -155,6 +155,78 @@ nemo-retriever.ngcImagePullSecret
 
 {{/*
 =============================================================================
+NIM Operator secret helpers
+=============================================================================
+
+Resolve the image pull Secret name list and auth Secret name for one
+operator-managed NIM. Per-NIM overrides win when non-empty; otherwise the
+chart-wide ``ngcImagePullSecret.name`` / ``ngcApiSecret.name`` values
+propagate into every NIMCache and NIMService (matching the documented
+Secrets contract).
+
+Usage inside ``templates/nims/<file>.yaml``:
+
+  {{- $nimSecrets := dict "context" $ "key" "page_elements" "cfg" .Values.nimOperator.page_elements -}}
+  pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
+  ...
+  pullSecrets:
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+*/}}
+{{- define "nemo-retriever.nimEffectivePullSecrets" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $secrets := list -}}
+{{- if and $cfg $cfg.image $cfg.image.pullSecrets -}}
+{{- $secrets = $cfg.image.pullSecrets -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- $globalName := ($ctx.Values.ngcImagePullSecret.name | default "") -}}
+{{- if $globalName -}}
+{{- $secrets = list $globalName -}}
+{{- end -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- fail (printf "nimOperator.%s.image.pullSecrets is empty and ngcImagePullSecret.name is unset; set one of them so NIMCache/NIMService can pull images" $key) -}}
+{{- end -}}
+{{- /* Emit one Secret name per line so callers can split without JSON. */ -}}
+{{- range $secrets }}
+{{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecrets" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- range (splitList "\n" $raw) }}
+- {{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecret" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- index (splitList "\n" $raw) 0 -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimAuthSecret" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $auth := "" -}}
+{{- if and $cfg $cfg.authSecret -}}
+{{- $auth = $cfg.authSecret -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- $auth = ($ctx.Values.ngcApiSecret.name | default "") -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- fail (printf "nimOperator.%s.authSecret is empty and ngcApiSecret.name is unset; set one of them so NIMCache/NIMService can authenticate to NGC" $key) -}}
+{{- end -}}
+{{- $auth -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Split-topology helpers (gateway / realtime / batch)
 =============================================================================
 */}}
