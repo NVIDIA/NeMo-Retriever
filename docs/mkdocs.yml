@@ -76,6 +76,7 @@ nav:
   - "1. Introduction":
       - "NeMo Retriever Library Overview": extraction/overview.md
       - Key concepts: extraction/concepts.md
+      - "Agentic retrieval (concept)": extraction/agentic-retrieval-concept.md
       - Release notes: extraction/releasenotes.md
   - "2. Get started":
       - About this section: extraction/getting-started-about.md
@@ -90,6 +91,7 @@ nav:
   - "4. Core workflows":
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/workflow-document-ingestion.md
       - "Workflow: Audio & video ingestion": extraction/audio-video.md
+      - "Workflow: Agentic retrieval": extraction/workflow-agentic-retrieval.md
   - "5. Multimodal extraction": extraction/multimodal-extraction.md
   - "6. Embedding, indexing & storage":
       - "Multimodal embeddings (VLM)": extraction/embedding.md
@@ -175,8 +177,6 @@ plugins:
         extraction/throughput-is-dataset-dependent.md: extraction/multimodal-extraction.md#extraction-limitations-and-quality
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
-        extraction/workflow-agentic-retrieval.md: extraction/overview.md
-        extraction/agentic-retrieval-concept.md: extraction/overview.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
         extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-and-hybrid-retrieval
@@ -227,8 +227,6 @@ exclude_docs: |
   extraction/hosted-nims-when-to-use.md
   extraction/workflow-e2e-blueprints.md
   extraction/releasenotes-nv-ingest.md
-  extraction/workflow-agentic-retrieval.md
-  extraction/agentic-retrieval-concept.md
   extraction/workflow-build-searchable-collection.md
   extraction/vector-db-partners.md
 
