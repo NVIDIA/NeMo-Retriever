@@ -149,7 +149,8 @@ Operational failures from the agent LLM or retrieval tool, including embedding, 
 
 On the service:
 
-- HTTP `400` when `agentic.enabled` is false, the query exceeds 4,096 characters, `format` is not `hits`, or `rerank` is combined with `agentic`.
+- HTTP `400` when `agentic.enabled` is false.
+- HTTP `422` when the query exceeds 4,096 characters, `format` is not `hits`, or `rerank` is combined with `agentic`.
 - HTTP `501` when agentic service queries have no remote embedding endpoint.
 - HTTP `503` with a `Retry-After: 30` header when every dedicated agentic worker is busy. The service sheds load instead of queueing behind a multi-minute run.
 - HTTP `502` when the gateway cannot reach the VectorDB process.
