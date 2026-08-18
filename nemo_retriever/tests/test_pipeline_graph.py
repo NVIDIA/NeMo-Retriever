@@ -1379,11 +1379,12 @@ class TestRayDataExecutor:
         pdf_path.write_bytes(b"pdf")
 
         class _FakeDataset:
-            def materialize(self):
-                return self
+            def iter_batches(self, *, batch_format):
+                assert batch_format == "pyarrow"
+                return iter([])
 
-            def to_pandas(self):
-                return pd.DataFrame()
+            def schema(self):
+                return SimpleNamespace(names=[])
 
         captured: dict[str, object] = {}
 

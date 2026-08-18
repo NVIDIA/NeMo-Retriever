@@ -11,10 +11,18 @@ from unittest.mock import MagicMock
 
 
 def test_resolve_agent_llm_profile_aliases() -> None:
-    from nemo_retriever.models.local.agent_llm import resolve_agent_llm_model_name
+    from nemo_retriever.models.hf_model_registry import get_hf_revision
+    from nemo_retriever.models.local.agent_llm import is_supported_agent_llm_model, resolve_agent_llm_model_name
 
     assert resolve_agent_llm_model_name("nemotron-8b") == "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
-    assert resolve_agent_llm_model_name("nemotron-super-49b") == "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+    resolved_super = resolve_agent_llm_model_name("nemotron-super-49b")
+    assert resolved_super == "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"
+    assert get_hf_revision(resolved_super) == "420ba7d28211abf116b8b103ab700d92619daf98"
+    assert is_supported_agent_llm_model("nvidia/Llama-3_3-Nemotron-Super-49B-v1_5")
+    assert (
+        resolve_agent_llm_model_name("nvidia/Llama-3_3-Nemotron-Super-49B-v1")
+        == "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+    )
 
 
 def test_local_agent_llm_config_carries_vllm_resource_options() -> None:

@@ -35,7 +35,9 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._invoke_url = (
+            str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
+        )
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
