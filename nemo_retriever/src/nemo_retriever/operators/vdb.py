@@ -10,11 +10,15 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.common.vdb.records import normalize_retrieval_results, to_client_vdb_records
+from nemo_retriever.common.vdb.records import (
+    normalize_retrieval_results,
+    to_client_vdb_records,
+    validate_collection_retrieval_results,
+)
 from nemo_retriever.common.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     build_sidecar_lookup,
@@ -113,7 +117,7 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
         self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
         self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
@@ -140,6 +144,13 @@ class IngestVdbOperator(AbstractOperator):
                 meta_fields=self._sidecar_spec["meta_fields"],
                 join_key=self._sidecar_spec["meta_join_key"],
             )
+        collection_context = kwargs.get("collection_context")
+        if collection_context is not None:
+            if not isinstance(collection_context, CollectionWriteContext):
+                raise TypeError("collection_context must be a CollectionWriteContext")
+            if not records or not any(records):
+                raise ValueError("Collection writes require at least one canonical VDB record")
+            return self._vdb.write_collection(records, context=collection_context)
         if records and any(batch for batch in records):
             self._vdb.run(records)
         return data
@@ -216,7 +227,12 @@ class RetrieveVdbOperator(AbstractOperator):
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
         clean_kwargs.pop("query_texts", None)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs, explode_for_rerank=explode_for_rerank)
+        super().__init__(
+            vdb=vdb,
+            vdb_op=vdb_op,
+            vdb_kwargs=clean_kwargs,
+            explode_for_rerank=explode_for_rerank,
+        )
         self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
@@ -231,14 +247,38 @@ class RetrieveVdbOperator(AbstractOperator):
             return query_vectors_from_embedded_dataframe(data)
         return data
 
-    def process(self, data: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
+    def process(
+        self, data: Any, **kwargs: Any
+    ) -> list[list[dict[str, Any]]] | tuple[list[list[dict[str, Any]]], list[str]]:
         from nemo_retriever.graph.retriever_utils import filter_retrieval_kwargs
 
-        retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
+        runtime_kwargs = dict(kwargs)
+        scope = runtime_kwargs.pop("scope", None)
+        collection_name = runtime_kwargs.pop("collection_name", None)
+        if (scope is None) != (collection_name is None):
+            raise ValueError("Collection retrieval requires both scope and collection_name")
+
+        retrieval_kwargs = {
+            **self._retrieval_vdb_kwargs,
+            **filter_retrieval_kwargs(runtime_kwargs),
+        }
         if "hybrid" in retrieval_kwargs:
             effective_hybrid = bool(retrieval_kwargs["hybrid"])
         else:
             effective_hybrid = bool(getattr(self._vdb, "hybrid", False))
+        if collection_name is not None:
+            retrieval_kwargs.pop("collection_name", None)
+            top_k = int(retrieval_kwargs.pop("top_k", 10))
+            result = self._vdb.retrieve_collection(
+                data,
+                scope=str(scope),
+                collection_name=str(collection_name),
+                query_texts=list(kwargs.get("query_texts") or []),
+                top_k=top_k,
+                **retrieval_kwargs,
+            )
+            return validate_collection_retrieval_results(result, expected_queries=len(data))
+
         if effective_hybrid and "query_texts" in kwargs:
             retrieval_kwargs["query_texts"] = kwargs["query_texts"]
         return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))

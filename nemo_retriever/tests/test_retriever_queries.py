@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.query.shaping import shape_query_hits
 
 
@@ -37,6 +38,9 @@ def _make_retriever(**overrides: Any) -> Retriever:
         "embed_kwargs": {"model_name": "embedder", "embed_model_name": "embedder"},
     }
     defaults.update(overrides)
+    embed_kwargs = dict(defaults["embed_kwargs"])
+    embed_kwargs.setdefault("local_ingest_embed_backend", "hf")
+    defaults["embed_kwargs"] = embed_kwargs
     return Retriever(**defaults)
 
 
@@ -98,14 +102,111 @@ class TestQueriesGraphExecution:
         assert params.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
         assert params.embed_model_provider_prefix == "nvidia"
 
-    def test_local_query_embedding_defaults_to_hf(self) -> None:
-        p = _make_retriever()._merge_embed_params()
-        assert p.local_ingest_embed_backend == "hf"
+    def test_index_model_revision_is_forwarded_to_query_embedder(self) -> None:
+        retriever = _make_retriever(embed_kwargs={})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/fine-tuned-nemotron",
+            None,
+            "a" * 40,
+        )
+
+        assert resolved["embed_model_name"] == "acme/fine-tuned-nemotron"
+        assert resolved["embed_model_revision"] == "a" * 40
+
+    def test_explicit_model_override_does_not_reuse_index_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/override"})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/index-model",
+            None,
+            "a" * 40,
+        )
+
+        assert resolved["embed_model_name"] == "acme/override"
+        assert "embed_model_revision" not in resolved
+
+    def test_runtime_model_change_clears_configured_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/model-a", "embed_model_revision": "a" * 40})
+
+        resolved = retriever._resolve_embed_kwargs(None, {"embed_model_name": "acme/model-b"})
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_name == "acme/model-b"
+        assert params.embed_model_revision is None
+
+    def test_runtime_same_model_keeps_configured_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={"embed_model_name": "acme/model-a", "embed_model_revision": "a" * 40})
+
+        resolved = retriever._resolve_embed_kwargs(None, {"embed_model_name": "acme/model-a"})
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_revision == "a" * 40
+
+    def test_explicit_runtime_revision_overrides_index_revision(self) -> None:
+        retriever = _make_retriever(embed_kwargs={})
+
+        resolved = retriever._resolve_embed_kwargs(
+            "acme/index-model",
+            {"embed_model_revision": "b" * 40},
+            "a" * 40,
+        )
+        params = retriever._merge_embed_params(resolved)
+
+        assert params.embed_model_name == "acme/index-model"
+        assert params.embed_model_revision == "b" * 40
+
+    @pytest.mark.parametrize(("requires_vllm", "expected_backend"), [(False, "hf"), (True, "vllm")])
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_local_query_embedding_selects_compatible_backend(
+        self, resolve_spec: MagicMock, requires_vllm: bool, expected_backend: str
+    ) -> None:
+        resolve_spec.return_value = MagicMock(requires_vllm=requires_vllm, revision="a" * 40)
+        retriever = _make_retriever(
+            embed_kwargs={
+                "model_name": "embedder",
+                "embed_model_name": "embedder",
+                "local_ingest_embed_backend": None,
+            }
+        )
+
+        p = retriever._merge_embed_params()
+
+        assert p.local_ingest_embed_backend == expected_backend
+        assert p.embed_model_revision == "a" * 40
+        resolve_spec.assert_called_once_with("embedder", revision=None)
+
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_index_model_revision_drives_automatic_backend(self, resolve_spec: MagicMock) -> None:
+        revision = "b" * 40
+        resolve_spec.return_value = MagicMock(requires_vllm=True, revision=revision)
+        retriever = _make_retriever(embed_kwargs={"local_ingest_embed_backend": None})
+        resolved = retriever._resolve_embed_kwargs("acme/index-model", None, revision)
+
+        p = retriever._merge_embed_params(resolved)
+
+        assert p.embed_model_name == "acme/index-model"
+        assert p.embed_model_revision == revision
+        assert p.local_ingest_embed_backend == "vllm"
+        resolve_spec.assert_called_once_with("acme/index-model", revision=revision)
 
     def test_local_query_embedding_backend_can_be_overridden(self) -> None:
         r = _make_retriever(embed_kwargs={"local_ingest_embed_backend": "vllm"})
         p = r._merge_embed_params()
         assert p.local_ingest_embed_backend == "vllm"
+
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_remote_embedding_skips_local_model_resolution(self, resolve_spec: MagicMock) -> None:
+        retriever = _make_retriever(
+            embed_kwargs={
+                "embed_invoke_url": "https://embed.example.com/v1/embeddings",
+                "local_ingest_embed_backend": None,
+            }
+        )
+
+        retriever._merge_embed_params()
+
+        resolve_spec.assert_not_called()
 
     def test_rerank_inflates_retrieval_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
         graph = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
@@ -226,6 +327,72 @@ class TestQueriesGraphExecution:
     def test_candidate_k_must_cover_top_k(self) -> None:
         with pytest.raises(ValueError, match=r"candidate_k \(2\).*top_k \(5\)"):
             _make_retriever(top_k=5).queries(["q"], candidate_k=2)
+
+
+class TestRerankEndpointWiring:
+    """A reranker endpoint set through ``rerank_kwargs`` must be the one that serves the request.
+
+    ``NemotronRerankActor`` dispatches on ``rerank_invoke_url``; an endpoint
+    stored under any other key leaves the remote variant unselected and loads a
+    local reranker instead.
+    """
+
+    @staticmethod
+    def _build_graph(monkeypatch: pytest.MonkeyPatch, rerank_kwargs: dict[str, Any]) -> Any:
+        """Build the default graph with only the rerank stage kept real."""
+
+        class _PassthroughOperator(AbstractOperator):
+            def preprocess(self, data: Any, **kwargs: Any) -> Any:
+                return data
+
+            def process(self, data: Any, **kwargs: Any) -> Any:
+                return data
+
+            def postprocess(self, data: Any, **kwargs: Any) -> Any:
+                return data
+
+        monkeypatch.setattr(
+            "nemo_retriever.operators.embed.operators._BatchEmbedActor",
+            _PassthroughOperator,
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.graph.retriever.RetrieveVdbOperator",
+            _PassthroughOperator,
+        )
+        retriever = _make_retriever(rerank=True, rerank_kwargs=rerank_kwargs)
+        return retriever._build_default_graph()
+
+    @staticmethod
+    def _rerank_node(graph: Any) -> Any:
+        node = graph.roots[0]
+        while node.children:
+            node = node.children[0]
+        return node
+
+    @pytest.mark.parametrize("endpoint_key", ["rerank_invoke_url", "invoke_url"])
+    def test_configured_endpoint_selects_remote_reranker(
+        self, monkeypatch: pytest.MonkeyPatch, endpoint_key: str
+    ) -> None:
+        from nemo_retriever.operators.rerank import NemotronRerankActor, NemotronRerankCPUActor
+
+        graph = self._build_graph(monkeypatch, {endpoint_key: "http://localhost:8015", "refine_factor": 4})
+        node = self._rerank_node(graph)
+
+        assert isinstance(node.operator, NemotronRerankActor)
+        assert NemotronRerankActor.prefers_cpu_variant(node.operator_kwargs) is True
+
+        delegate = node.operator._resolve_delegate()
+        assert isinstance(delegate, NemotronRerankCPUActor)
+        assert delegate._kwargs["rerank_invoke_url"] == "http://localhost:8015"
+
+    def test_absent_endpoint_still_reranks_locally(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from nemo_retriever.operators.rerank import NemotronRerankActor
+
+        graph = self._build_graph(monkeypatch, {"local_reranker_backend": "hf"})
+        node = self._rerank_node(graph)
+
+        assert node.operator_kwargs.get("rerank_invoke_url") is None
+        assert NemotronRerankActor.prefers_cpu_variant(node.operator_kwargs) is False
 
 
 class TestRetrieverDefaults:

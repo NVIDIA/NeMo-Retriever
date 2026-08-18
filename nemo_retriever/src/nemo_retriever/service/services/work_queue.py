@@ -56,6 +56,15 @@ class WorkLease:
     expires_at: float
 
 
+@dataclass(frozen=True)
+class SidecarAttachment:
+    """Gateway-resolved metadata stored with a brokered work record."""
+
+    payload: bytes
+    filename: str
+    content_type: str
+
+
 @dataclass
 class WorkRecord:
     work_id: str
@@ -69,8 +78,14 @@ class WorkRecord:
     pipeline_spec: dict[str, Any] | None
     trace_context: dict[str, str]
     enqueued_at: float
+    sidecar_path: Path | None = None
+    sidecar_size: int = 0
+    sidecar_sha256: str | None = None
+    sidecar_filename: str | None = None
+    sidecar_content_type: str | None = None
     delivery_attempt: int = 0
     generation: int = 0
+    activated_generation: int | None = None
     lease: WorkLease | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -103,7 +118,7 @@ class WorkBroker:
 
     async def start(self) -> None:
         self._spool.mkdir(parents=True, exist_ok=True)
-        for pattern in ("*.payload", ".*.payload.*.tmp"):
+        for pattern in ("*.payload", "*.sidecar", ".*.payload.*.tmp", ".*.sidecar.*.tmp"):
             for orphan in self._spool.glob(pattern):
                 try:
                     await asyncio.to_thread(orphan.unlink)
@@ -127,7 +142,7 @@ class WorkBroker:
             await asyncio.gather(*tuple(self._unlink_tasks))
 
         records = list(self._records.values())
-        await asyncio.gather(*(asyncio.to_thread(self._unlink_payload, record.spool_path) for record in records))
+        await asyncio.gather(*(asyncio.to_thread(self._unlink_record_payloads, record) for record in records))
         self._records.clear()
         for queue in self._queues.values():
             queue.clear()
@@ -140,6 +155,16 @@ class WorkBroker:
             path.unlink()
         except FileNotFoundError:
             pass
+
+    @classmethod
+    def _unlink_record_payloads(cls, record: WorkRecord) -> None:
+        cls._unlink_payload(record.spool_path)
+        if record.sidecar_path is not None:
+            cls._unlink_payload(record.sidecar_path)
+
+    @staticmethod
+    def _record_bytes(record: WorkRecord) -> int:
+        return record.payload_size + record.sidecar_size
 
     def _schedule_unlink(self, path: Path) -> None:
         task = asyncio.create_task(asyncio.to_thread(self._unlink_payload, path), name=f"unlink-{path.name}")
@@ -165,7 +190,7 @@ class WorkBroker:
             WORK_QUEUE_ITEMS.labels(pool=pool.value).set(queued)
             WORK_QUEUE_BYTES.labels(pool=pool.value).set(
                 sum(
-                    record.payload_size
+                    self._record_bytes(record)
                     for record in self._records.values()
                     if record.pool is pool and record.lease is None
                 )
@@ -206,6 +231,7 @@ class WorkBroker:
         pipeline_spec: dict[str, Any] | None,
         trace_context: Mapping[str, str] | None,
         extra: Mapping[str, Any] | None = None,
+        sidecar: SidecarAttachment | None = None,
     ) -> WorkRecord:
         """Atomically spool the payload before reporting admission."""
         condition = self._conditions[pool]
@@ -217,12 +243,18 @@ class WorkBroker:
                     raise ValueError(f"Duplicate work id {work_id!r}")
                 if len(self._queues[pool]) >= self._limits[pool]:
                     raise WorkQueueFull(f"{pool.value} work queue is at capacity")
-                if self._spool_bytes + len(payload) > self.config.spool_limit_bytes:
+                if (
+                    self._spool_bytes + len(payload) + (len(sidecar.payload) if sidecar is not None else 0)
+                    > self.config.spool_limit_bytes
+                ):
                     raise WorkQueueFull("gateway work spool byte limit exceeded")
 
                 spool_path = self._spool / f"{work_id}.payload"
+                sidecar_path = self._spool / f"{work_id}.sidecar" if sidecar is not None else None
                 try:
                     await asyncio.to_thread(self._write_spool, spool_path, payload)
+                    if sidecar_path is not None:
+                        await asyncio.to_thread(self._write_spool, sidecar_path, sidecar.payload)
                     record = WorkRecord(
                         work_id=work_id,
                         job_id=job_id,
@@ -231,6 +263,11 @@ class WorkBroker:
                         spool_path=spool_path,
                         payload_size=len(payload),
                         payload_sha256=hashlib.sha256(payload).hexdigest(),
+                        sidecar_path=sidecar_path,
+                        sidecar_size=len(sidecar.payload) if sidecar is not None else 0,
+                        sidecar_sha256=hashlib.sha256(sidecar.payload).hexdigest() if sidecar is not None else None,
+                        sidecar_filename=sidecar.filename if sidecar is not None else None,
+                        sidecar_content_type=sidecar.content_type if sidecar is not None else None,
                         retain_results=retain_results,
                         pipeline_spec=pipeline_spec,
                         trace_context=dict(trace_context or {}),
@@ -243,10 +280,9 @@ class WorkBroker:
                         work_id,
                         job_id,
                     )
-                    try:
-                        await asyncio.to_thread(spool_path.unlink)
-                    except FileNotFoundError:
-                        pass
+                    await asyncio.to_thread(self._unlink_payload, spool_path)
+                    if sidecar_path is not None:
+                        await asyncio.to_thread(self._unlink_payload, sidecar_path)
                     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
                     tracker = get_job_tracker()
@@ -255,7 +291,7 @@ class WorkBroker:
                     raise
                 self._records[work_id] = record
                 self._queues[pool].append(work_id)
-                self._spool_bytes += len(payload)
+                self._spool_bytes += self._record_bytes(record)
             self._publish_metrics()
             condition.notify(1)
             return record
@@ -272,8 +308,8 @@ class WorkBroker:
                         record = self._records.get(work_id)
                         if record is None or record.lease is not None:
                             continue
-                        record.delivery_attempt += 1
                         record.generation += 1
+                        record.activated_generation = None
                         record.lease = WorkLease(
                             lease_id=uuid.uuid4().hex,
                             generation=record.generation,
@@ -283,11 +319,6 @@ class WorkBroker:
                         )
                         WORK_QUEUE_CLAIMS.labels(pool=pool.value).inc()
                         WORK_QUEUE_WAIT.labels(pool=pool.value).observe(max(0.0, time.time() - record.enqueued_at))
-                        from nemo_retriever.service.services.job_tracker import get_job_tracker
-
-                        tracker = get_job_tracker()
-                        if tracker is not None:
-                            tracker.mark_processing(record.work_id)
                         self._publish_metrics()
                         return record
                 remaining = deadline - time.monotonic()
@@ -312,6 +343,30 @@ class WorkBroker:
             raise StaleLease(f"Lease for work {work_id!r} has no active lease to heartbeat")
         record.lease.expires_at = time.monotonic() + self.config.lease_ttl_s
 
+    async def activate(self, work_id: str, lease_id: str, generation: int) -> int:
+        """Mark a lease as executing after the worker verifies every input."""
+        record = self._current(work_id, lease_id, generation)
+        condition = self._conditions[record.pool]
+        async with condition:
+            record = self._current(work_id, lease_id, generation)
+            if record.activated_generation == generation:
+                return record.delivery_attempt
+            record.delivery_attempt += 1
+            record.activated_generation = generation
+            from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+            tracker = get_job_tracker()
+            if tracker is not None:
+                tracker.mark_processing(record.work_id)
+            self._publish_metrics()
+            return record.delivery_attempt
+
+    async def sidecar_path(self, work_id: str, lease_id: str, generation: int) -> Path:
+        record = self._current(work_id, lease_id, generation)
+        if record.sidecar_path is None or not record.sidecar_path.is_file():
+            raise StaleLease(f"Sidecar attachment for work {work_id!r} is unavailable")
+        return record.sidecar_path
+
     async def payload_path(self, work_id: str, lease_id: str, generation: int) -> Path:
         record = self._current(work_id, lease_id, generation)
         if not record.spool_path.is_file():
@@ -334,7 +389,10 @@ class WorkBroker:
 
     def validate_callback(self, work_id: str, lease_id: str, generation: int) -> WorkRecord:
         try:
-            return self._current(work_id, lease_id, generation)
+            record = self._current(work_id, lease_id, generation)
+            if record.activated_generation != generation:
+                raise StaleLease(f"Lease for work {work_id!r} has not been activated")
+            return record
         except StaleLease:
             record = self._records.get(work_id)
             WORK_QUEUE_STALE_CALLBACKS.labels(pool=record.pool.value if record else "unknown").inc()
@@ -349,11 +407,8 @@ class WorkBroker:
         async with condition:
             record = self._current(work_id, lease_id, generation)
             self._records.pop(work_id, None)
-            self._spool_bytes -= record.payload_size
-            try:
-                await asyncio.to_thread(record.spool_path.unlink)
-            except FileNotFoundError:
-                pass
+            self._spool_bytes -= self._record_bytes(record)
+            await asyncio.to_thread(self._unlink_record_payloads, record)
             self._publish_metrics()
             condition.notify_all()
 
@@ -364,8 +419,10 @@ class WorkBroker:
         if tracker is not None:
             tracker.mark_failed(record.work_id, "Work delivery attempts exhausted")
         self._records.pop(record.work_id, None)
-        self._spool_bytes -= record.payload_size
+        self._spool_bytes -= self._record_bytes(record)
         self._schedule_unlink(record.spool_path)
+        if record.sidecar_path is not None:
+            self._schedule_unlink(record.sidecar_path)
         WORK_QUEUE_EXHAUSTED.labels(pool=record.pool.value).inc()
 
     def _requeue_or_exhaust_locked(self, record: WorkRecord, reason: str, *, front: bool = True) -> bool:
@@ -421,9 +478,21 @@ class WorkBroker:
             "payload_url": f"{base_url.rstrip('/')}/v1/internal/work/{quote(record.work_id, safe='')}/payload",
             "payload_size": record.payload_size,
             "payload_sha256": record.payload_sha256,
+            "sidecar": (
+                {
+                    "url": f"{base_url.rstrip('/')}/v1/internal/work/{quote(record.work_id, safe='')}/sidecar",
+                    "size": record.sidecar_size,
+                    "sha256": record.sidecar_sha256,
+                    "filename": record.sidecar_filename,
+                    "content_type": record.sidecar_content_type,
+                }
+                if record.sidecar_path is not None
+                else None
+            ),
             "retain_results": record.retain_results,
             "pipeline_spec": record.pipeline_spec,
             "trace_context": record.trace_context,
+            "extra": record.extra,
         }
 
 
@@ -477,6 +546,33 @@ class GatewayWorkClient:
         if len(payload) != claim["payload_size"] or hashlib.sha256(payload).hexdigest() != claim["payload_sha256"]:
             await self.release(claim, reason="hash_mismatch")
             raise RuntimeError(f"Gateway payload integrity check failed for {claim['work_id']}")
+        pipeline_spec = claim.get("pipeline_spec")
+        if sidecar := claim.get("sidecar"):
+            sidecar_response = await client.get(sidecar["url"], headers=lease_headers)
+            if sidecar_response.status_code != 200:
+                await self.release(claim, reason="payload_fetch")
+                sidecar_response.raise_for_status()
+            sidecar_payload = sidecar_response.content
+            if (
+                len(sidecar_payload) != sidecar["size"]
+                or hashlib.sha256(sidecar_payload).hexdigest() != sidecar["sha256"]
+            ):
+                await self.release(claim, reason="hash_mismatch")
+                raise RuntimeError(f"Gateway sidecar integrity check failed for {claim['work_id']}")
+            from nemo_retriever.service.services.pipeline_executor import inject_sidecar_attachment
+
+            pipeline_spec = inject_sidecar_attachment(
+                pipeline_spec,
+                payload=sidecar_payload,
+                content_type=sidecar["content_type"],
+                filename=sidecar["filename"],
+            )
+        activation = await client.post(
+            f"/v1/internal/work/{quote(str(claim['work_id']), safe='')}/activate",
+            json={"lease_id": claim["lease_id"], "lease_generation": claim["lease_generation"]},
+        )
+        activation.raise_for_status()
+        delivery_attempt = activation.json()["delivery_attempt"]
         return WorkItem(
             id=claim["work_id"],
             payload=payload,
@@ -485,11 +581,12 @@ class GatewayWorkClient:
             callback_headers=self.headers,
             job_id=claim.get("job_id"),
             retain_results=bool(claim.get("retain_results")),
-            pipeline_spec=claim.get("pipeline_spec"),
+            pipeline_spec=pipeline_spec,
             trace_context=claim.get("trace_context") or {},
+            **(claim.get("extra") or {}),
             lease_id=claim["lease_id"],
             lease_generation=claim["lease_generation"],
-            delivery_attempt=claim["delivery_attempt"],
+            delivery_attempt=delivery_attempt,
             worker_uid=self.worker_uid,
         )
 

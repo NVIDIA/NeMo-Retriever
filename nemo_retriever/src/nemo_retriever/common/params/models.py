@@ -516,7 +516,13 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options
-    method: str = "pdfium"
+    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
+        default="pdfium",
+        description=(
+            "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
+            "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
+        ),
+    )
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
     # OCR. Safe to disable for text-only ingests.
     use_page_elements: bool = True
@@ -592,6 +598,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_revision: Optional[str] = None
     embed_model_provider_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
@@ -988,7 +995,12 @@ class CaptionParams(LLMInferenceParams):
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.5
+    gpu_memory_utilization: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Fraction of GPU memory reserved for local vLLM captioning; defaults to the model profile.",
+    )
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
 

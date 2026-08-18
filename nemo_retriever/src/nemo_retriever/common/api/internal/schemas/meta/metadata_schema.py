@@ -189,6 +189,9 @@ class ImageMetadataSchema(BaseModelNoExt):
     uploaded_image_url: str = ""
     """A mirror of source_metadata.source_location."""
 
+    uploaded_image_uri: str = ""
+    """The URI of the stored image asset, when image storage is configured."""
+
     width: int = 0
     """The width of the image."""
 

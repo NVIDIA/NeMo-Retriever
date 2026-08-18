@@ -21,6 +21,7 @@ from nemo_retriever.common.params import (
     VideoFrameTextDedupParams,
 )
 from nemo_retriever.common.input_files import _is_explicit_glob_path, input_type_for_path
+from nemo_retriever.common.inline_text import is_inline_text_source
 
 
 _AUDIO_SPLIT_INTERVAL = 500000
@@ -118,7 +119,7 @@ def build_input_manifest(input_paths: Iterable[str]) -> InputManifest:
     unsupported: list[str] = []
     for path in input_paths:
         is_glob = _is_explicit_glob_path(path)
-        input_type = None if is_glob else input_type_for_path(path)
+        input_type = None if is_glob else ("txt" if is_inline_text_source(path) else input_type_for_path(path))
         entries.append(ManifestEntry(path=path, input_type=input_type, is_explicit_glob=is_glob))
         if input_type is None and not is_glob:
             unsupported.append(path)

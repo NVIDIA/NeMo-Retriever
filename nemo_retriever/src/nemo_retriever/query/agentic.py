@@ -23,7 +23,8 @@ from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
-    agentic_backend_top_k_error,
+    AGENTIC_DEFAULT_CLIENT,
+    agentic_llm_client_error,
     agentic_float_range_value,
     agentic_int_min_error,
     agentic_int_value,
@@ -49,14 +50,12 @@ logger = logging.getLogger(__name__)
 
 AGENTIC_RETRIEVER_TOP_K = 10
 AGENTIC_TARGET_TOP_K = 10
-AGENTIC_BACKEND_TOP_K = 20  # backend retrieve-pool depth. show-count stays AGENTIC_TARGET_TOP_K=10
-AGENTIC_SELECTION_TOP_K = 10
 AGENTIC_NUM_CONCURRENT = 1
 AGENTIC_TEXT_TRUNCATION = 0
-AGENTIC_PARALLEL_TOOL_CALLS = False
+AGENTIC_PARALLEL_TOOL_CALLS = None
 AGENTIC_RRF_K = 60
 AGENTIC_REACT_MAX_STEPS = 50
-AGENTIC_TEMPERATURE = 0.0  # agent LLM sampling temperature (0.0 = greedy)
+AGENTIC_TEMPERATURE = None  # agent LLM sampling temperature; None leaves it unset
 AGENTIC_MAX_TOKENS: Optional[int] = None
 AGENTIC_LLM_BACKEND = "in_process"
 AGENTIC_LLM_BACKENDS = frozenset({"openai_compatible", "in_process"})
@@ -139,7 +138,7 @@ class AgenticRetrievalConfig:
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
     local_hf_batch_size: int = 32
-    local_query_embed_backend: str = "hf"
+    local_query_embed_backend: Optional[str] = None
     reranker: Optional[str] = None
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
@@ -161,16 +160,24 @@ class AgenticRetrievalConfig:
     # Forwarded verbatim as the OpenAI `reasoning_effort` field on every LLM
     # call when explicitly configured.
     reasoning_effort: Optional[str] = None
-    # Backend retrieve-pool depth, distinct from the final selected top_k.
-    backend_top_k: int = AGENTIC_BACKEND_TOP_K
-    # Sampling temperature sent on every agent LLM call (0.0 = greedy).
-    temperature: float = AGENTIC_TEMPERATURE
+    # Sampling temperature sent on every agent LLM call. ``None`` leaves it unset
+    # so the endpoint/model default applies.
+    temperature: Optional[float] = AGENTIC_TEMPERATURE
+    # LLM client used to build the ReAct and selection agent LLMs. Optional:
+    # when unset it defaults to ``"callable"`` for both in-process (local vLLM)
+    # runs and remote (openai_compatible) runs -- the difference is which
+    # completion callable the operator injects. A remote-only client (anything
+    # other than ``"callable"``) may be named explicitly to override the default;
+    # the valid set is the ``nemo_agent`` LLM backend registry.
+    llm_client: Optional[str] = None
     # Optional upper bound on tokens in each agent LLM response.
     max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
+    # Wider pre-filter and pre-rerank candidate pool for each retrieval hop.
+    candidate_k: Optional[int] = None
 
     def __post_init__(self) -> None:
         invoke_url = _none_if_empty(self.invoke_url)
@@ -191,6 +198,28 @@ class AgenticRetrievalConfig:
                 "llm_backend='openai_compatible' requires invoke_url. Omit llm_backend to use in-process local LLMs."
             )
         object.__setattr__(self, "llm_backend", llm_backend)
+
+        # Two independent axes: ``llm_backend`` is WHERE compute runs (in-process
+        # vs a remote endpoint); ``llm_client`` is WHICH nemo_agent adapter drives
+        # it. ``callable`` spans both, because it wraps a completion callable that
+        # may be either an in-process engine or the shared HTTP client.
+        # Validity of an explicit name is delegated to the nemo_agent registry
+        # via ``agentic_llm_client_error``.
+        explicit_client = str(self.llm_client or "").strip().lower() or None
+        if explicit_client is not None:
+            client_error = agentic_llm_client_error(explicit_client, field_name="llm_client")
+            if client_error:
+                raise ValueError(client_error)
+        if llm_backend == "in_process":
+            if explicit_client is not None and explicit_client != "callable":
+                raise ValueError(
+                    "in-process agentic runs use the 'callable' LLM client; "
+                    "provide invoke_url to use a remote client."
+                )
+            llm_client = "callable"
+        else:
+            llm_client = explicit_client or AGENTIC_DEFAULT_CLIENT
+        object.__setattr__(self, "llm_client", llm_client)
 
         local_llm_backend = _normalize_agentic_choice(
             self.local_llm_backend,
@@ -230,14 +259,14 @@ class AgenticRetrievalConfig:
                 raise ValueError(integer_error)
             object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
 
-        backend_error = agentic_backend_top_k_error(
-            self.backend_top_k,
-            target_top_k=int(self.top_k),
-            field_name="backend_top_k",
-        )
-        if backend_error:
-            raise ValueError(backend_error)
-        object.__setattr__(self, "backend_top_k", agentic_int_value(self.backend_top_k, field_name="backend_top_k"))
+        if self.candidate_k is not None:
+            candidate_error = agentic_int_min_error(self.candidate_k, field_name="candidate_k", min_value=1)
+            if candidate_error:
+                raise ValueError(candidate_error)
+            candidate_k = agentic_int_value(self.candidate_k, field_name="candidate_k")
+            if candidate_k < int(self.top_k):
+                raise ValueError(f"candidate_k ({candidate_k}) must be greater than or equal to top_k ({self.top_k}).")
+            object.__setattr__(self, "candidate_k", candidate_k)
 
         local_tp_error = agentic_int_min_error(
             self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1
@@ -268,15 +297,21 @@ class AgenticRetrievalConfig:
         )
         object.__setattr__(self, "local_gpu_memory_utilization", local_gpu_memory_utilization)
 
-        temperature_invoke_url = self.invoke_url if self.llm_backend == "openai_compatible" else "local://in-process"
-        temperature_error = agentic_temperature_error(
-            self.temperature,
-            invoke_url=temperature_invoke_url,
-            field_name="temperature",
-        )
-        if temperature_error:
-            raise ValueError(temperature_error)
-        object.__setattr__(self, "temperature", float(self.temperature))
+        # Temperature: ``None`` stays unset (endpoint/model default). The range
+        # check uses a local sentinel so in-process runs (invoke_url=None) get the
+        # in-process bound instead of the hosted-endpoint bound.
+        if self.temperature is not None:
+            temperature_invoke_url = (
+                self.invoke_url if self.llm_backend == "openai_compatible" else "local://in-process"
+            )
+            temperature_error = agentic_temperature_error(
+                self.temperature,
+                invoke_url=temperature_invoke_url,
+                field_name="temperature",
+            )
+            if temperature_error:
+                raise ValueError(temperature_error)
+            object.__setattr__(self, "temperature", float(self.temperature))
 
 
 def _normalize_agentic_choice(value: object, valid: frozenset[str], *, field_name: str, default: str) -> str:
@@ -324,10 +359,11 @@ class AgenticRetriever:
         embed_kwargs = build_embed_option_kwargs(
             cfg.embedding_endpoint,
             cfg.query_embedder,
-            local_ingest_embed_backend=str(cfg.local_query_embed_backend),
             embed_api_key=cfg.embedding_api_key,
             embed_model_provider_prefix=cfg.query_embedder_provider_prefix,
         )
+        if cfg.local_query_embed_backend is not None:
+            embed_kwargs["local_ingest_embed_backend"] = str(cfg.local_query_embed_backend)
         embed_kwargs.update(
             {
                 "input_type": "query",
@@ -346,7 +382,9 @@ class AgenticRetriever:
             rerank=bool(cfg.reranker),
             rerank_kwargs={
                 "model_name": cfg.reranker or VL_RERANK_MODEL,
-                "invoke_url": cfg.reranker_endpoint,
+                # NemotronRerankActor selects its remote CPU variant on
+                # ``rerank_invoke_url``; any other key silently loads a local model.
+                "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
                 "api_key": cfg.reranker_api_key,
                 "local_reranker_backend": str(cfg.local_reranker_backend),
                 "modality": str(cfg.embed_modality),
@@ -412,15 +450,13 @@ class AgenticRetriever:
                 retriever_fn=self._retrieve_for_agent,
                 retriever_top_k=per_hop_top_k,
                 target_top_k=target_top_k,
-                user_msg_type="with_results",
                 max_steps=int(self._cfg.react_max_steps),
-                extended_relevance=True,
                 api_key=_none_if_empty(self._cfg.api_key),
                 parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
                 num_concurrent=int(self._cfg.num_concurrent),
                 reasoning_effort=self._cfg.reasoning_effort,
-                backend_top_k=self._cfg.backend_top_k,
-                temperature=float(self._cfg.temperature),
+                temperature=self._cfg.temperature,
+                backend=self._cfg.llm_client,
                 max_tokens=self._cfg.max_tokens,
                 chat_completion_fn=chat_completion_fn,
             )
@@ -431,10 +467,10 @@ class AgenticRetriever:
                 top_k=target_top_k,
                 api_key=_none_if_empty(self._cfg.api_key),
                 parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                extended_relevance=True,  # match Path A
                 text_truncation=int(self._cfg.text_truncation),
                 reasoning_effort=self._cfg.reasoning_effort,
-                temperature=float(self._cfg.temperature),
+                temperature=self._cfg.temperature,
+                backend=self._cfg.llm_client,
                 max_tokens=self._cfg.max_tokens,
                 chat_completion_fn=chat_completion_fn,
             )
@@ -461,8 +497,9 @@ class AgenticRetriever:
         which still run concurrently under ``num_concurrent > 1``.
         """
 
+        candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k is not None else None
         with self._lock:
-            hits = self._retriever.query(str(query_text), top_k=int(top_k))
+            hits = self._retriever.query(str(query_text), top_k=int(top_k), candidate_k=candidate_k)
 
         docs: list[dict[str, Any]] = []
         doc_id_field = getattr(self, "_doc_id_field", None)

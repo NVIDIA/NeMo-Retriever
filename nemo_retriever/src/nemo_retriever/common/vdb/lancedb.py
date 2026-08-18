@@ -5,18 +5,40 @@
 import json
 import logging
 import os
+import threading
 import time
 
 from collections.abc import Iterable, Sequence
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any, Final, FrozenSet
 
 import lancedb
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from nemo_retriever.common.vdb.adt_vdb import VDB
-
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionDeleteResult,
+    CollectionInfo,
+    CollectionPage,
+    CollectionUpdateRequest,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
+)
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    CollectionWriteResult,
+    VDB,
+)
+from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table_object
+from nemo_retriever.common.vdb.lancedb_schema import (
+    build_lancedb_row,
+    infer_vector_dim,
+    lancedb_schema,
+    normalize_content_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +48,7 @@ _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null"
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 _EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
+_EMBEDDING_MODEL_REVISION_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_revision"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -120,6 +143,7 @@ def _with_retrieval_mode_metadata(
     schema: pa.Schema,
     retrieval_mode: str | None,
     embedding_model_name: str | None = None,
+    embedding_model_revision: str | None = None,
 ) -> pa.Schema:
     if retrieval_mode is None:
         return schema
@@ -129,6 +153,8 @@ def _with_retrieval_mode_metadata(
     metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
     if embedding_model_name:
         metadata[_EMBEDDING_MODEL_METADATA_KEY] = embedding_model_name.encode("utf-8")
+    if embedding_model_revision:
+        metadata[_EMBEDDING_MODEL_REVISION_METADATA_KEY] = embedding_model_revision.encode("utf-8")
     return schema.with_metadata(metadata)
 
 
@@ -137,6 +163,7 @@ def _lancedb_arrow_schema(
     *,
     retrieval_mode: str | None = None,
     embedding_model_name: str | None = None,
+    embedding_model_revision: str | None = None,
 ) -> pa.Schema:
     schema = pa.schema(
         [
@@ -147,7 +174,12 @@ def _lancedb_arrow_schema(
             pa.field("id", pa.string()),
         ]
     )
-    return _with_retrieval_mode_metadata(schema, retrieval_mode, embedding_model_name)
+    return _with_retrieval_mode_metadata(
+        schema,
+        retrieval_mode,
+        embedding_model_name,
+        embedding_model_revision,
+    )
 
 
 def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
@@ -165,6 +197,17 @@ def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa
 def _table_schema(table: Any) -> pa.Schema:
     schema = table.schema
     return schema() if callable(schema) else schema
+
+
+def _schema_vector_dim(schema: pa.Schema) -> int | None:
+    """Return a fixed vector width from a LanceDB table schema when present."""
+    try:
+        vector_type = schema.field("vector").type
+    except KeyError:
+        return None
+    if pa.types.is_fixed_size_list(vector_type):
+        return int(vector_type.list_size)
+    return None
 
 
 def lancedb_row_count(uri: str, table_name: str) -> int:
@@ -196,6 +239,7 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
 def _validate_append_embedding_model(
     table: Any,
     embedding_model_name: str | None,
+    embedding_model_revision: str | None,
     *,
     table_name: str,
     uri: str,
@@ -214,6 +258,22 @@ def _validate_append_embedding_model(
         raise ValueError(
             f"LanceDB table {table_name!r} at {uri!r} uses embedding model {stored_model!r}; "
             f"cannot append vectors from {embedding_model_name!r}. Use the table model or overwrite the table."
+        )
+
+    stored_revision_value = metadata.get(_EMBEDDING_MODEL_REVISION_METADATA_KEY)
+    if stored_revision_value is None:
+        return
+    stored_revision = stored_revision_value.decode("utf-8", errors="replace").strip()
+    if stored_revision and not embedding_model_revision:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model revision {stored_revision!r}; "
+            "cannot append vectors without a known revision. Use the table revision or overwrite the table."
+        )
+    if stored_revision and stored_revision != embedding_model_revision:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model revision {stored_revision!r}; "
+            f"cannot append vectors from revision {embedding_model_revision!r}. "
+            "Use the table revision or overwrite the table."
         )
 
 
@@ -391,6 +451,56 @@ def _create_lancedb_results(
     return lancedb_rows, counts
 
 
+def _to_service_lancedb_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Adapt canonical dense rows to the established service table schema."""
+    wide_rows: list[dict[str, Any]] = []
+    for row in rows:
+        content_metadata = _maybe_parse_json(row.get("metadata"))
+        if not isinstance(content_metadata, dict):
+            content_metadata = {}
+        source_metadata = _maybe_parse_json(row.get("source"))
+        if not isinstance(source_metadata, dict):
+            source_metadata = {}
+        source_id = next(
+            (
+                str(value).strip()
+                for value in (
+                    source_metadata.get("source_id"),
+                    source_metadata.get("source_name"),
+                )
+                if isinstance(value, str) and value.strip()
+            ),
+            "",
+        )
+        content_type = normalize_content_type(content_metadata.get("type") or content_metadata.get("_content_type"))
+        if content_type:
+            content_metadata = dict(content_metadata)
+            content_metadata["type"] = content_type
+            content_metadata["_content_type"] = content_type
+        wide_row = build_lancedb_row(
+            SimpleNamespace(
+                metadata={
+                    "embedding": row.get("vector"),
+                    "source_path": source_id,
+                    "content_metadata": content_metadata,
+                },
+                path=source_id,
+                page_number=content_metadata.get("page_number"),
+                text=row.get("text") or "",
+                _stored_image_uri=content_metadata.get("stored_image_uri"),
+                _content_type=content_type,
+                _bbox_xyxy_norm=content_metadata.get("bbox_xyxy_norm"),
+            )
+        )
+        if wide_row is None:
+            continue
+        wide_row["metadata"] = _json_str(content_metadata)
+        wide_row["source"] = _json_str(source_metadata)
+        wide_row["content_type"] = content_type or ""
+        wide_rows.append(wide_row)
+    return wide_rows
+
+
 def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
     """Transform NRL records into LanceDB rows for FTS-only sparse retrieval."""
     lancedb_rows: list = []
@@ -430,7 +540,11 @@ def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
         "dropped_no_text": dropped_no_text,
     }
     if dropped_no_text:
-        logger.warning("_create_sparse_lancedb_results: accepted=%d dropped_no_text=%d", accepted, dropped_no_text)
+        logger.warning(
+            "_create_sparse_lancedb_results: accepted=%d dropped_no_text=%d",
+            accepted,
+            dropped_no_text,
+        )
     return lancedb_rows, counts
 
 
@@ -450,20 +564,23 @@ class LanceDB(VDB):
         sparse: bool = False,
         fts_language: str = "English",
         embedding_model_name: str | None = None,
-        vector_dim: int = _DEFAULT_VECTOR_DIM,
+        vector_dim: int | None = _DEFAULT_VECTOR_DIM,
         on_bad_vectors: str = "drop",
         fill_value: float = 0.0,
         validate_vector_length: bool = True,
         build_index: bool | None = None,
+        expiration_cleanup_enabled: bool = True,
+        embedding_model_revision: str | None = None,
         **kwargs,
     ):
         create_index = kwargs.pop("create_index", None)
+        service_table_schema = bool(kwargs.pop("_service_table_schema", False))
         if build_index is None:
             build_index = True if create_index is None else bool(create_index)
         elif create_index is not None and bool(create_index) != bool(build_index):
             raise ValueError("Pass only one index toggle: build_index or create_index.")
 
-        if int(vector_dim) <= 0:
+        if vector_dim is not None and int(vector_dim) <= 0:
             raise ValueError(f"vector_dim must be positive; got {vector_dim}")
         if sparse and hybrid:
             raise ValueError("LanceDB sparse ingest cannot also be hybrid; pass only one retrieval mode.")
@@ -479,11 +596,236 @@ class LanceDB(VDB):
         self.sparse = bool(sparse)
         self.fts_language = fts_language
         self.embedding_model_name = embedding_model_name
-        self.vector_dim = int(vector_dim)
+        self.embedding_model_revision = embedding_model_revision
+        self.vector_dim = int(vector_dim) if vector_dim is not None else None
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
         self.fill_value = float(fill_value)
         self.validate_vector_length = bool(validate_vector_length)
+        self.expiration_cleanup_enabled = bool(expiration_cleanup_enabled)
+        self._service_table_schema = service_table_schema
+        self._collection_store: Any | None = None
+        self._collection_store_init_failed = False
+        self._collection_store_lock = threading.Lock()
         super().__init__(**kwargs)
+
+    def _get_collection_store(self) -> Any:
+        """Lazily initialize collection catalogs only when a collection API is used."""
+
+        store = self._collection_store
+        if store is None:
+            with self._collection_store_lock:
+                store = self._collection_store
+                if store is None:
+                    from nemo_retriever.common.vdb.lancedb_collections import (
+                        LanceDBCollectionStore,
+                    )
+
+                    try:
+                        store = LanceDBCollectionStore(
+                            self,
+                            expiration_cleanup_enabled=self.expiration_cleanup_enabled,
+                        )
+                    except Exception:
+                        self._collection_store_init_failed = True
+                        raise
+                    self._collection_store_init_failed = False
+                    self._collection_store = store
+        return store
+
+    def create_collection(
+        self,
+        *,
+        scope: str,
+        request: CollectionCreateRequest,
+    ) -> CollectionInfo:
+        """Create a logical collection through the LanceDB collection store."""
+
+        return self._get_collection_store().create_collection(scope, request)
+
+    def get_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+    ) -> CollectionInfo:
+        """Return a logical collection from the LanceDB collection store."""
+
+        return self._get_collection_store().get_collection(scope, collection_name)
+
+    def list_collections(
+        self,
+        *,
+        scope: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> CollectionPage:
+        """List logical collections through the LanceDB collection store."""
+
+        return self._get_collection_store().list_collections(
+            scope,
+            limit,
+            continuation_token,
+        )
+
+    def update_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        request: CollectionUpdateRequest,
+    ) -> CollectionInfo:
+        """Update a logical collection through the LanceDB collection store."""
+
+        return self._get_collection_store().update_collection(
+            scope,
+            collection_name,
+            request,
+        )
+
+    def delete_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        if_exists: bool,
+    ) -> CollectionDeleteResult:
+        """Delete a logical collection through the LanceDB collection store."""
+
+        return self._get_collection_store().delete_collection(
+            scope,
+            collection_name,
+            if_exists,
+        )
+
+    def get_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+    ) -> DocumentInfo:
+        """Return one collection document through the LanceDB collection store."""
+
+        return self._get_collection_store().get_document(
+            scope,
+            collection_name,
+            document_id,
+        )
+
+    def list_documents(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> DocumentPage:
+        """List collection documents through the LanceDB collection store."""
+
+        return self._get_collection_store().list_documents(
+            scope,
+            collection_name,
+            limit,
+            continuation_token,
+        )
+
+    def delete_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+        if_exists: bool,
+    ) -> DocumentDeleteResult:
+        """Delete one collection document through the LanceDB collection store."""
+
+        return self._get_collection_store().delete_document(
+            scope,
+            collection_name,
+            document_id,
+            if_exists,
+        )
+
+    def write_collection(
+        self,
+        records: list,
+        *,
+        context: CollectionWriteContext,
+    ) -> CollectionWriteResult:
+        """Write canonical records using the collection lifecycle contract."""
+
+        return self._get_collection_store().write_collection(records, context=context)
+
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Retrieve scoped collection hits using LanceDB's collection contract."""
+
+        return self._get_collection_store().retrieve_collection(
+            vectors,
+            scope=scope,
+            collection_name=collection_name,
+            query_texts=query_texts,
+            top_k=top_k,
+            **kwargs,
+        )
+
+    def reconcile_collections(self) -> dict[str, int]:
+        """Resume interrupted collection and document lifecycle operations."""
+
+        return self._get_collection_store().reconcile_collections()
+
+    def health(self) -> dict[str, Any]:
+        """Return legacy table and optional collection-store health."""
+
+        from nemo_retriever.common.vdb.lancedb_collections import LanceDBCollectionStore
+
+        db = lancedb.connect(uri=self.uri)
+        table_exists = self.table_name in db.list_tables().tables
+        total_rows = 0
+        effective_mode: str | None = None
+        retrieval_strategies: list[str] = []
+        if table_exists:
+            try:
+                total_rows = int(db.open_table(self.table_name).count_rows())
+            except Exception:
+                logger.warning(
+                    "Failed to count rows in the default LanceDB table",
+                    exc_info=True,
+                )
+            try:
+                capabilities = inspect_lancedb_table_object(db.open_table(self.table_name))
+                mode = capabilities.retrieval_mode
+                if mode in {"dense", "hybrid"}:
+                    effective_mode = str(mode)
+                    retrieval_strategies = [str(mode)]
+                else:
+                    effective_mode = "unknown"
+            except Exception:
+                effective_mode = "unknown"
+                logger.warning(
+                    "Failed to resolve the default LanceDB retrieval mode",
+                    exc_info=True,
+                )
+
+        if self._collection_store_init_failed:
+            raise RuntimeError("Collection catalog initialization failed")
+        store = self._collection_store
+        collection_health = store.health() if store is not None else LanceDBCollectionStore.empty_health()
+        return {
+            **collection_health,
+            "total_rows": total_rows,
+            "table_exists": table_exists,
+            "effective_retrieval_mode": effective_mode,
+            "retrieval_strategies": retrieval_strategies,
+        }
 
     def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
         """Read one NeMo Retriever metadata value from the selected table."""
@@ -513,23 +855,51 @@ class LanceDB(VDB):
         connect_start = time.perf_counter()
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
+        record_batches = list(records or [])
 
         if self.sparse:
-            results, counts = _create_sparse_lancedb_results(records or [])
+            results, counts = _create_sparse_lancedb_results(record_batches)
             schema = _sparse_lancedb_arrow_schema()
             write_kwargs: dict[str, Any] = {}
         else:
-            if self.validate_vector_length and self.on_bad_vectors != "error":
-                expected_dim: int | None = self.vector_dim
-            else:
-                expected_dim = None
+            enforce_dim = self.validate_vector_length and self.on_bad_vectors != "error"
+            vector_dim = self.vector_dim
+            if vector_dim is None and not self.overwrite:
+                try:
+                    existing_table = db.open_table(self.table_name)
+                except ValueError as exc:
+                    if not _is_missing_lancedb_table_error(exc):
+                        raise
+                else:
+                    vector_dim = _schema_vector_dim(_table_schema(existing_table))
 
-            results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-            schema = _lancedb_arrow_schema(
-                self.vector_dim,
-                retrieval_mode="hybrid" if self.hybrid else "dense",
-                embedding_model_name=self.embedding_model_name,
-            )
+            if vector_dim is None:
+                results, counts = _create_lancedb_results(record_batches, expected_dim=None)
+                vector_dim = infer_vector_dim(results)
+                if vector_dim <= 0:
+                    raise ValueError("Cannot infer LanceDB vector_dim because no non-empty embedding was produced.")
+                if enforce_dim:
+                    results, counts = _create_lancedb_results(record_batches, expected_dim=vector_dim)
+            else:
+                results, counts = _create_lancedb_results(
+                    record_batches, expected_dim=vector_dim if enforce_dim else None
+                )
+
+            if self._service_table_schema:
+                results = _to_service_lancedb_rows(results)
+                schema = _with_retrieval_mode_metadata(
+                    lancedb_schema(vector_dim),
+                    "hybrid" if self.hybrid else "dense",
+                    embedding_model_name=self.embedding_model_name,
+                    embedding_model_revision=self.embedding_model_revision,
+                )
+            else:
+                schema = _lancedb_arrow_schema(
+                    vector_dim,
+                    retrieval_mode="hybrid" if self.hybrid else "dense",
+                    embedding_model_name=self.embedding_model_name,
+                    embedding_model_revision=self.embedding_model_revision,
+                )
 
             write_kwargs = {
                 "on_bad_vectors": self.on_bad_vectors,
@@ -571,6 +941,7 @@ class LanceDB(VDB):
                     _validate_append_embedding_model(
                         table,
                         self.embedding_model_name,
+                        self.embedding_model_revision,
                         table_name=table_name,
                         uri=self.uri,
                     )
@@ -699,7 +1070,10 @@ class LanceDB(VDB):
                 fts_language=self.fts_language,
             )
         else:
-            logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
+            logger.info(
+                "Skipping LanceDB index creation for table %r because build_index=False.",
+                self.table_name,
+            )
         return records
 
     def put(

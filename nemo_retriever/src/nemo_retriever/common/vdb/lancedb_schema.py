@@ -10,18 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-_CONTENT_TYPE_ALIASES: dict[str, str] = {
-    "chart": "chart",
-    "chart_caption": "chart",
-    "image": "image",
-    "image_caption": "image",
-    "images": "image",
-    "infographic": "infographic",
-    "infographic_caption": "infographic",
-    "table": "table",
-    "table_caption": "table",
-    "text": "text",
-}
+from nemo_retriever.common.vdb.records import normalize_content_type
 
 
 def extract_embedding_from_row(
@@ -132,13 +121,6 @@ def _build_detection_metadata(row: Any) -> Dict[str, Any]:
     return out
 
 
-def normalize_content_type(value: Any) -> str | None:
-    normalized = str(value or "").strip().lower()
-    if not normalized:
-        return None
-    return _CONTENT_TYPE_ALIASES.get(normalized, normalized)
-
-
 def update_metadata_with_content_type(metadata_obj: Dict[str, Any], *, content_type: Any) -> None:
     normalized = normalize_content_type(content_type)
     if normalized is None:
@@ -242,27 +224,36 @@ def build_lancedb_rows(
     return rows
 
 
-def lancedb_schema(vector_dim: int = 2048) -> Any:
+def lancedb_schema(vector_dim: int = 2048, *, collection_managed: bool = False) -> Any:
     """Return a PyArrow schema for the standard LanceDB table layout."""
     import pyarrow as pa  # type: ignore
 
-    return pa.schema(
-        [
-            pa.field("vector", pa.list_(pa.float32(), vector_dim)),
-            pa.field("pdf_page", pa.string()),
-            pa.field("filename", pa.string()),
-            pa.field("pdf_basename", pa.string()),
-            pa.field("page_number", pa.int32()),
-            pa.field("source", pa.string()),
-            pa.field("source_id", pa.string()),
-            pa.field("path", pa.string()),
-            pa.field("text", pa.string()),
-            pa.field("metadata", pa.string()),
-            pa.field("stored_image_uri", pa.string()),
-            pa.field("content_type", pa.string()),
-            pa.field("bbox_xyxy_norm", pa.string()),
-        ]
-    )
+    fields = [
+        pa.field("vector", pa.list_(pa.float32(), vector_dim)),
+        pa.field("pdf_page", pa.string()),
+        pa.field("filename", pa.string()),
+        pa.field("pdf_basename", pa.string()),
+        pa.field("page_number", pa.int32()),
+        pa.field("source", pa.string()),
+        pa.field("source_id", pa.string()),
+        pa.field("path", pa.string()),
+        pa.field("text", pa.string()),
+        pa.field("metadata", pa.string()),
+        pa.field("stored_image_uri", pa.string()),
+        pa.field("content_type", pa.string()),
+        pa.field("bbox_xyxy_norm", pa.string()),
+    ]
+    if collection_managed:
+        fields.extend(
+            [
+                pa.field("chunk_id", pa.string()),
+                pa.field("document_id", pa.string()),
+                pa.field("document_version", pa.string()),
+                pa.field("content_sha256", pa.string()),
+                pa.field("created_at", pa.string()),
+            ]
+        )
+    return pa.schema(fields)
 
 
 def infer_vector_dim(rows: List[Dict[str, Any]]) -> int:

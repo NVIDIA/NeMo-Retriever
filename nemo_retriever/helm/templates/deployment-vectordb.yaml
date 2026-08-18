@@ -6,6 +6,8 @@
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 {{- $localEmbed := include "nemo-retriever.localEmbed.enabled" . | eq "true" -}}
 {{- $localModels := .Values.serviceConfig.localModels -}}
+{{- $agentic := .Values.serviceConfig.agentic -}}
+{{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
 {{- /*
   Fail-fast guard: rendering a vectordb Deployment without any query-time
   embedding backend produces a "healthy" Pod whose first /v1/query request
@@ -75,6 +77,8 @@ spec:
             - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
             - --table-name
             - {{ .Values.serviceConfig.vectordb.tableName | quote }}
+            - --index-mode
+            - {{ .Values.serviceConfig.vectordb.indexMode | quote }}
             {{- if $embedURL }}
             - --embed-endpoint
             - {{ $embedURL | quote }}
@@ -99,6 +103,31 @@ spec:
             - --embed-model-provider-prefix
             - {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
             {{- end }}
+            {{- if $agentic.enabled }}
+            - --agentic
+            {{- if $agentic.llmModel }}
+            - --agentic-llm-model
+            - {{ $agentic.llmModel | quote }}
+            {{- end }}
+            {{- if $agentic.invokeUrl }}
+            - --agentic-invoke-url
+            - {{ $agentic.invokeUrl | quote }}
+            {{- end }}
+            {{- if $agentic.reasoningEffort }}
+            - --agentic-reasoning-effort
+            - {{ $agentic.reasoningEffort | quote }}
+            {{- end }}
+            - --agentic-backend-top-k
+            - {{ $agentic.backendTopK | quote }}
+            - --agentic-react-max-steps
+            - {{ $agentic.reactMaxSteps | quote }}
+            - --agentic-text-truncation
+            - {{ $agentic.textTruncation | quote }}
+            - --agentic-temperature
+            - {{ $agentic.temperature | quote }}
+            - --agentic-request-timeout
+            - {{ $agentic.requestTimeoutS | quote }}
+            {{- end }}
             - --port
             - {{ $vdb.port | quote }}
             {{- if $embedURL }}
@@ -110,7 +139,15 @@ spec:
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
-            {{- if $embedURL }}
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if or $embedURL (and $agentic.enabled $agentic.invokeUrl) }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:
