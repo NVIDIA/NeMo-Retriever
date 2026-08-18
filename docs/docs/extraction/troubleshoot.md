@@ -266,20 +266,28 @@ HTTP 400: Content cannot be a plain string. The model does not support text inpu
 
 This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly.
+
+Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
-[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
+[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` accept only **inline** PNG or JPEG payloads. The matching build.nvidia.com model experience uses the same contract. The same `/v1/infer` request shape applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs.
+
+The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) documents image URLs as `data:image/<format>;base64,<data>`. Hosted Page Elements inference does not accept NVCF Asset API identifiers in that `url` field.
 
 The following table summarizes inline payload limits by deployment:
 
-| Deployment | Inline base64 limit | Oversized images |
-|------------|---------------------|------------------|
-| Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Upload with the [NVCF Asset API](https://docs.api.nvidia.com/cloud-functions/reference/createasset), then reference `data:image/<format>;asset_id,<asset_id>` in the `url` field |
+| Deployment | Inline base64 limit | If the image exceeds the limit |
+|------------|---------------------|--------------------------------|
+| Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Resize or re-encode the image so the inline payload fits. Self-host the NIM if you need larger images. Do not use the NVCF Asset API as a hosted fallback. |
 | Self-hosted NIM container | Higher; the NeMo Retriever client downscales HTTP payloads above **512,000 characters** before calling the NIM | Resize or re-encode the source image, or rely on the client downscaling |
 
-The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) states only that “very large images may cause processing issues.” For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+That API reference states only that "very large images may cause processing issues." For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+
+!!! important
+
+    The build.nvidia.com playground can tell you to use the NVCF Asset API when an image exceeds the inline cap. Creating and uploading an asset can succeed. Hosted Page Elements inference still rejects `data:image/<format>;asset_id,<asset-id>` with HTTP 422. That rejection occurs with or without the `NVCF-INPUT-ASSET-REFERENCES` header. There is no Asset API recovery path for this hosted endpoint.
 
 ### NeMo Retriever Library pipeline users
 
@@ -292,75 +300,30 @@ When you route extraction to hosted Page Elements NIM URLs (for example `page_el
 
     The library downscales payloads to **512,000** characters before HTTP calls to object-detection NIMs. Hosted endpoints still reject inline base64 above **180,000** characters. Treat the lower hosted cap as the effective limit when `page_elements_invoke_url` points at `ai.api.nvidia.com`.
 
-If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams`, keep `render_mode="fit_to_model"`, or preprocess very large standalone image inputs before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams` and keep `render_mode="fit_to_model"`. For very large standalone image inputs, preprocess the files before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
-### Direct Page Elements NIM API calls (build.nvidia.com or custom clients)
+### Direct Page Elements NIM API calls
 
-When you call Page Elements NIM **directly** (build playground, curl, or a custom integration—not through the NeMo Retriever pipeline), use inline base64 only when `len(base64_image) < 180_000`. For larger PNG or JPEG inputs, upload once with the NVCF Asset API and pass an asset reference in the inference payload.
+When you call Page Elements NIM **directly**, send only inline base64. Direct calls include the build playground, curl, and custom integrations that do not go through the NeMo Retriever pipeline. The following example shows the required `input` payload:
 
-1. **Create an asset** — `POST https://api.nvcf.nvidia.com/v2/nvcf/assets` with `Authorization: Bearer $NVIDIA_API_KEY`, plus JSON `contentType` (for example `image/png`) and `description`.
-2. **Upload the file** — `PUT` the image bytes to the `uploadUrl` from step 1. Set `Content-Type` to match `contentType`, and set `x-amz-meta-nvcf-asset-description` to the same description string.
-3. **Infer** — `POST` to your Page Elements invoke URL with `"url": "data:image/png;asset_id,<assetId>"` inside each `input[]` item (same `type: image_url` schema as inline base64).
-
-For the full asset workflow (including reuse across requests), refer to [NVCF assets](https://docs.nvidia.com/cloud-functions/user-guide/latest/cloud-function/assets.html) in the Cloud Functions user guide and the [Create Asset](https://docs.api.nvidia.com/cloud-functions/reference/createasset) API reference. Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints.
-
-For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
-
-??? example "Create an NVCF asset, upload a PNG, and call Page Elements"
-
-    ```python
-    import os
-    import requests
-
-    API_KEY = os.environ["NVIDIA_API_KEY"]
-    PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
-    IMAGE_PATH = "large_page.png"
-
-    create = requests.post(
-        "https://api.nvcf.nvidia.com/v2/nvcf/assets",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        json={"contentType": "image/png", "description": "page-elements-large-input"},
-        timeout=60,
-    )
-    create.raise_for_status()
-    asset = create.json()
-
-    with open(IMAGE_PATH, "rb") as image_file:
-        upload = requests.put(
-            asset["uploadUrl"],
-            headers={
-                "Content-Type": "image/png",
-                "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
-            },
-            data=image_file,
-            timeout=120,
-        )
-    upload.raise_for_status()
-
-    payload = {
-        "input": [{
-            "type": "image_url",
-            "url": f"data:image/png;asset_id,{asset['assetId']}",
-        }]
+```json
+{
+  "input": [
+    {
+      "type": "image_url",
+      "url": "data:image/png;base64,<BASE64_ENCODED_IMAGE>"
     }
-    response = requests.post(
-        PAGE_ELEMENTS_URL,
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=120,
-    )
-    response.raise_for_status()
-    ```
+  ]
+}
+```
 
-Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
+Use this form only when `len(base64_image) < 180_000`. If the encoded image is larger, resize or re-encode it to PNG or JPEG until the base64 string is under 180,000 characters. You can also self-host Page Elements NIM.
+
+Do not send `"url": "data:image/png;asset_id,<assetId>"`. Hosted Page Elements rejects that encoding with HTTP 422.
+
+Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
+
+Supported formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
 ## Too many open files error { #too-many-open-files-error }
 
@@ -480,6 +443,21 @@ Changing `service.image.repository` or `service.image.tag` does not use `NIMCach
 
 For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
+## NIMCache or NIMService still uses ngc-secret after a global Secret rename { #helm-nim-secret-names }
+
+Retriever Pods inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Empty per-NIM `image.pullSecrets` and `authSecret` inherit the same names.
+
+If NIMCache or NIMService still shows `ngc-secret` or `ngc-api` after a rename, you still have a non-empty per-NIM override. The retriever Deployment can become Ready while NIM model-download Jobs and NIM Pods fail because they reference Secrets that do not exist.
+
+Complete the following checks:
+
+1. Render the chart with the NIM Operator CRDs enabled. Inspect `pullSecret` on every `NIMCache` and `pullSecrets` on every `NIMService`, plus `authSecret` on both.
+2. Confirm those fields match Secrets that exist in the release namespace.
+3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the global Secret names, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
+4. Top-level `imagePullSecrets` applies only to Retriever Pods. It does not update NIM Operator custom resources.
+
+For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
+
 ## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
@@ -488,4 +466,5 @@ For default cache names, PVC cleanup, and the full upgrade sequence, refer to [C
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
+- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

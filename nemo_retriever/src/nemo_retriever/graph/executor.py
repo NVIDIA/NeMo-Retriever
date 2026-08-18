@@ -89,20 +89,38 @@ def _materialize_row_unsafe_columns(table: Any, frame: pd.DataFrame) -> pd.DataF
     return frame
 
 
+def _normalize_object_tensor_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Convert object-backed Ray tensor columns to ordinary pandas objects."""
+    from ray.data.extensions import TensorDtype
+
+    columns = [
+        name for name, dtype in frame.dtypes.items() if isinstance(dtype, TensorDtype) and dtype.element_dtype.hasobject
+    ]
+    if not columns:
+        return frame
+
+    normalized = frame.copy(deep=False)
+    for name in columns:
+        normalized[name] = frame[name].astype(object)
+    return normalized
+
+
 def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
     """Convert a Ray Arrow batch to a row-safe pandas DataFrame.
 
     Ray 2.56+ preserves Arrow-backed pandas dtypes, so columns pandas cannot
-    index through their Arrow arrays are materialized as ordinary object
-    columns. Every other column keeps its Arrow-backed dtype.
+    index through their Arrow arrays (nested null children, Ray pickled-object
+    extensions) are materialized as ordinary object columns. Native pandas
+    blocks with object-backed Ray tensor columns are normalized the same way.
+    Every other column keeps its Arrow-backed dtype.
     """
     if isinstance(table, pd.DataFrame):
-        return table
+        return _normalize_object_tensor_columns(table)
 
     from ray.data.block import BlockAccessor
 
     frame = BlockAccessor.for_block(table).to_pandas()
-    return _materialize_row_unsafe_columns(table, frame)
+    return _normalize_object_tensor_columns(_materialize_row_unsafe_columns(table, frame))
 
 
 def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
@@ -110,21 +128,23 @@ def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
 
     Ray 2.56+ enables Arrow-backed pandas conversion by default. Calling
     ``Dataset.to_pandas()`` directly can therefore expose nested Arrow columns
-    that pandas cannot index by row. Convert each Arrow block through
+    that pandas cannot index by row. Forcing a pandas block to Arrow can also
+    fail for object-backed tensor columns. Read each block in its native format
+    and convert it through
     :func:`arrow_table_to_pandas` before concatenating so the public SDK result
     is safe to consume with standard pandas APIs.
 
     Parameters
     ----------
     dataset
-        Ray dataset to materialize as Arrow batches.
+        Ray dataset to materialize in its native block formats.
 
     Returns
     -------
     pandas.DataFrame
         Row-safe DataFrame containing all rows from ``dataset``.
     """
-    frames = [arrow_table_to_pandas(batch) for batch in dataset.iter_batches(batch_format="pyarrow")]
+    frames = [arrow_table_to_pandas(block) for block in dataset.iter_batches(batch_format=None, batch_size=None)]
     if frames:
         return pd.concat(frames, ignore_index=True)
 

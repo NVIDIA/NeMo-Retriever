@@ -65,7 +65,13 @@ For documents where the entire page layout is important (such as infographics, c
 you can configure NeMo Retriever Library to treat every page as a single image.
 The following example extracts and embeds each page as an image.
 
-- The `embed` method processes the page images.
+- Set `embed_modality="image"` to use the rendered page image as the embedding input.
+- Set `embed_granularity="page"` to create one result row for each PDF page.
+
+These arguments work together. When you set both arguments, the pipeline
+enables page-image rendering during extraction, creates one row for each page,
+and embeds the full rendered page image. Either argument alone does not enable
+the complete page-as-image workflow.
 
 For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 

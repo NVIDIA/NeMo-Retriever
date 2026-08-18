@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 from ray.data.block import BlockAccessor
 from ray.data import DataContext
 from ray.data.extensions import TensorArray
@@ -117,8 +118,9 @@ def test_dataset_materialization_returns_row_safe_pandas_dataframe() -> None:
     )
 
     class _Dataset:
-        def iter_batches(self, *, batch_format: str):
-            assert batch_format == "pyarrow"
+        def iter_batches(self, *, batch_format, batch_size):
+            assert batch_format is None
+            assert batch_size is None
             yield table.slice(1, 1)
 
         def schema(self):
@@ -134,8 +136,9 @@ def test_dataset_materialization_concatenates_stored_image_batches() -> None:
     table = _stored_image_table(2)
 
     class _Dataset:
-        def iter_batches(self, *, batch_format: str):
-            assert batch_format == "pyarrow"
+        def iter_batches(self, *, batch_format, batch_size):
+            assert batch_format is None
+            assert batch_size is None
             yield table.slice(0, 1)
             yield table.slice(1, 1)
 
@@ -152,6 +155,46 @@ def test_dataset_materialization_concatenates_stored_image_batches() -> None:
     ]
     assert all(record["page_image"]["image_b64"] is None for record in records)
     assert [row.text for row in result.itertuples(index=False)] == ["page 0", "page 1"]
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        pytest.param(
+            [
+                np.array([{"text": "first table"}], dtype=object),
+                np.array([{"text": "second table"}], dtype=object),
+            ],
+            [[{"text": "first table"}], [{"text": "second table"}]],
+            id="fixed-shape",
+        ),
+        pytest.param(
+            [
+                np.array([{"text": "table text"}], dtype=object),
+                np.array([], dtype=object),
+            ],
+            [[{"text": "table text"}], []],
+            id="ragged",
+        ),
+    ],
+)
+def test_dataset_materialization_normalizes_object_tensor_pandas_blocks(values, expected) -> None:
+    frame = pd.DataFrame({"table": pd.Series(TensorArray(values))})
+
+    class _Dataset:
+        def iter_batches(self, *, batch_format, batch_size):
+            assert batch_format is None
+            assert batch_size is None
+            yield frame
+
+        def schema(self):
+            return pa.schema([pa.field("table", pa.list_(pa.struct([pa.field("text", pa.string())])))])
+
+    result = ray_dataset_to_pandas(_Dataset())
+
+    assert result["table"].dtype == object
+    assert all(isinstance(value, np.ndarray) for value in result["table"])
+    assert [value.tolist() for value in result["table"]] == expected
 
 
 def test_adapter_preserves_ray_pandas_conversion_policy() -> None:

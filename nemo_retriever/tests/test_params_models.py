@@ -54,6 +54,20 @@ class TestExtractParams:
         )
         assert params.method == "nemotron_parse"
 
+    @pytest.mark.parametrize(
+        "model",
+        [None, "nvidia/nemotron-parse", "nvidia/nemotron-parse-v1.2"],
+    )
+    def test_mixed_build_and_self_hosted_parse_endpoints_are_rejected(self, model: str | None) -> None:
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://127.0.0.1:8018/v1/chat/completions"
+
+        with pytest.raises(ValidationError, match="cannot mix NVIDIA Build and self-hosted"):
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_invoke_url=endpoints,
+                nemotron_parse_model=model,
+            )
+
     def test_graphic_elements_controls_are_removed(self) -> None:
         assert "use_graphic_elements" not in ExtractParams.model_fields
         assert "graphic_elements_invoke_url" not in ExtractParams.model_fields

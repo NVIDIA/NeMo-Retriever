@@ -118,6 +118,7 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 - [Metadata and filtering](#metadata-and-filtering) for custom metadata at ingest and filtered retrieval
 - [Concepts](concepts.md) for broader pipeline and search patterns
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md) for `Retriever.query` and `LanceDB.retrieval` parameters
+- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for the LLM-driven ReAct query path over the same LanceDB table
 
 **Evaluation** — For evaluation and metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
 
@@ -187,6 +188,7 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 ## Related Topics { #related-topics }
 
 - [Metadata and filtering](#metadata-and-filtering)
+- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Customize & extend](customize-extend.md)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
