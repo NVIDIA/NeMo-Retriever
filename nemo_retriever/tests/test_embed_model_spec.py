@@ -1,0 +1,262 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import huggingface_hub
+import pytest
+
+from nemo_retriever.models.embed_model_spec import (
+    resolve_embed_model_revision,
+    resolve_embed_model_spec,
+)
+from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
+
+
+def _write_config(tmp_path, config):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return path
+
+
+def _write_prompt_config(tmp_path, prompts):
+    path = tmp_path / "config_sentence_transformers.json"
+    path.write_text(json.dumps({"prompts": prompts}), encoding="utf-8")
+    return path
+
+
+def _text_config(**overrides):
+    config = {
+        "model_type": "llama_bidirec",
+        "architectures": ["LlamaBidirectionalModel"],
+        "hidden_size": 2048,
+        "pooling": "avg",
+    }
+    config.update(overrides)
+    return config
+
+
+def _vl_config(**overrides):
+    config = {
+        "model_type": "llama_nemotron_vl",
+        "architectures": ["LlamaNemotronVLModel"],
+        "llm_config": {"hidden_size": 2048},
+        "pooling": "avg",
+    }
+    config.update(overrides)
+    return config
+
+
+def test_local_text_checkpoint_is_resolved_from_model_type(tmp_path):
+    _write_config(tmp_path, _text_config())
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.family == "text"
+    assert spec.output_dimension == 2048
+    assert spec.revision is None
+    assert spec.requires_vllm is False
+
+
+@pytest.mark.parametrize(
+    ("config", "family", "quantization"),
+    [
+        pytest.param(
+            _vl_config(quantization_config={"quant_method": "modelopt", "quant_algo": "FP8"}),
+            "vl",
+            "FP8",
+            id="vl-fp8",
+        ),
+        pytest.param(
+            _text_config(quantization_config={"quant_method": "modelopt", "quant_algo": "NVFP4"}),
+            "text",
+            "NVFP4",
+            id="text-nvfp4",
+        ),
+    ],
+)
+def test_local_modelopt_checkpoint_requires_vllm(tmp_path, config, family, quantization):
+    _write_config(tmp_path, config)
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.family == family
+    assert spec.quantization == quantization
+    assert spec.requires_vllm is True
+
+
+def test_local_checkpoint_rejects_unsupported_architecture(tmp_path):
+    _write_config(tmp_path, {"model_type": "bert"})
+
+    with pytest.raises(ValueError, match="supported Nemotron embed model types"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_text_reranker_architecture_is_rejected(tmp_path):
+    config = _text_config(architectures=["LlamaBidirectionalForSequenceClassification"])
+    _write_config(tmp_path, config)
+
+    with pytest.raises(ValueError, match="unsupported architectures"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("config", "family"),
+    [
+        pytest.param(_text_config(hidden_size=4096), "text", id="text"),
+        pytest.param(_vl_config(llm_config={"hidden_size": 4096}), "vl", id="vl"),
+    ],
+)
+def test_4096_wide_embedder_is_supported(tmp_path, config, family):
+    _write_config(tmp_path, config)
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.family == family
+    assert spec.output_dimension == 4096
+
+
+def test_invalid_embedding_dimension_is_rejected(tmp_path):
+    _write_config(tmp_path, _text_config(hidden_size=0))
+
+    with pytest.raises(ValueError, match="invalid embedding dimension 0"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_ministral_checkpoint_is_rejected(tmp_path):
+    _write_config(
+        tmp_path,
+        {
+            "model_type": "ministral3",
+            "architectures": ["Ministral3Model"],
+            "hidden_size": 2048,
+            "is_causal": False,
+            "pooling": "avg",
+        },
+    )
+
+    with pytest.raises(ValueError, match="unsupported model_type 'ministral3'"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_checkpoint_prompt_metadata_is_resolved(tmp_path):
+    _write_config(tmp_path, _text_config(hidden_size=4096))
+    _write_prompt_config(
+        tmp_path,
+        {
+            "query": "Instruct: Retrieve relevant passages\nQuery: ",
+            "document": "",
+        },
+    )
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.query_prefix == "Instruct: Retrieve relevant passages\nQuery: "
+    assert spec.document_prefix == ""
+
+
+def test_non_average_pooling_is_rejected(tmp_path):
+    _write_config(tmp_path, _text_config(pooling="last"))
+
+    with pytest.raises(ValueError, match="unsupported pooling 'last'"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_local_directory_requires_config_json(tmp_path):
+    with pytest.raises(ValueError, match="does not contain config.json"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("model_id", "config", "family", "dimension", "requires_vllm"),
+    [
+        ("nvidia/llama-3.2-nv-embedqa-1b-v2", _text_config(), "text", 2048, False),
+        ("nvidia/llama-nemotron-embed-1b-v2", _text_config(), "text", 2048, False),
+        ("nvidia/llama-nemotron-embed-vl-1b-v2", _vl_config(), "vl", 2048, False),
+        (
+            "nvidia/llama-nemotron-embed-vl-1b-v2-fp8",
+            _vl_config(quantization_config={"quant_method": "modelopt", "quant_algo": "FP8"}),
+            "vl",
+            2048,
+            True,
+        ),
+        ("nvidia/llama-embed-nemotron-8b", _text_config(hidden_size=4096), "text", 4096, False),
+        ("nvidia/llama-nv-embed-reasoning-3b", _text_config(hidden_size=3072), "text", 3072, False),
+    ],
+)
+def test_supported_hub_models_resolve_immutable_revisions(
+    monkeypatch,
+    tmp_path,
+    model_id,
+    config,
+    family,
+    dimension,
+    requires_vllm,
+):
+    _write_config(tmp_path, config)
+    resolved_sha = "c" * 40
+    model_info_calls = []
+
+    def model_info(_self, requested_model_id, revision=None):
+        model_info_calls.append((requested_model_id, revision))
+        return SimpleNamespace(sha=resolved_sha)
+
+    monkeypatch.setattr(huggingface_hub.HfApi, "model_info", model_info)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda **kwargs: str(tmp_path / "config.json"))
+
+    spec = resolve_embed_model_spec(model_id)
+
+    assert spec.family == family
+    assert spec.output_dimension == dimension
+    assert spec.requires_vllm is requires_vllm
+    if model_id in HF_MODEL_REVISIONS:
+        assert spec.revision == HF_MODEL_REVISIONS[model_id]
+        assert model_info_calls == []
+    else:
+        assert spec.revision == resolved_sha
+        assert model_info_calls == [(model_id, None)]
+
+
+def test_compatible_custom_hub_model_is_pinned_before_config_load(monkeypatch, tmp_path):
+    _write_config(tmp_path, _vl_config())
+    resolved_sha = "c" * 40
+    calls = {"downloads": []}
+
+    def model_info(_self, model_id, revision=None):
+        calls["model_info"] = (model_id, revision)
+        return SimpleNamespace(sha=resolved_sha)
+
+    def download(**kwargs):
+        calls["downloads"].append(kwargs)
+        return str(tmp_path / "config.json")
+
+    monkeypatch.setattr(huggingface_hub.HfApi, "model_info", model_info)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+
+    cache_dir = str(tmp_path / "hub-cache")
+    spec = resolve_embed_model_spec("acme/fine-tuned-nemotron", hf_cache_dir=cache_dir)
+
+    assert spec.family == "vl"
+    assert spec.revision == resolved_sha
+    assert calls["model_info"] == ("acme/fine-tuned-nemotron", None)
+    assert {call["filename"] for call in calls["downloads"]} == {
+        "config.json",
+        "config_sentence_transformers.json",
+    }
+    assert all(call["revision"] == resolved_sha for call in calls["downloads"])
+    assert all(call["cache_dir"] == cache_dir for call in calls["downloads"])
+
+
+def test_revision_only_resolution_avoids_config_download_for_registered_model(monkeypatch):
+    model_id = "nvidia/llama-nemotron-embed-vl-1b-v2"
+
+    def fail_download(*args, **kwargs):
+        raise AssertionError("revision-only resolution must not download config.json")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fail_download)
+
+    assert resolve_embed_model_revision(model_id, None) == HF_MODEL_REVISIONS[model_id]

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Reranking stage using nvidia/llama-nemotron-rerank-1b-v2.
+Reranking stage using nvidia/llama-nemotron-rerank-vl-1b-v2.
 
 Provides:
   - ``rerank_hits``         – rerank a list of LanceDB hits for a single query
@@ -12,13 +12,14 @@ Provides:
 Remote endpoint
 ---------------
 When ``rerank_invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes a ranking REST API. The helper accepts fully qualified
+server that exposes a ranking REST API. ``invoke_url`` is accepted as a
+compatibility alias (same pattern as OCR). The helper accepts fully qualified
 ``.../reranking``, ``.../v1/ranking``, or ``.../v1/rerank`` URLs. Other base
 URLs append ``/v1/ranking`` automatically::
 
     POST /v1/ranking
     {
-      "model": "nvidia/llama-nemotron-rerank-1b-v2",
+      "model": "nvidia/llama-nemotron-rerank-vl-1b-v2",
       "query": {"text": "..."},
       "passages": [{"text": "..."}, {"text": "..."}],
       "truncate": "END"
@@ -39,7 +40,7 @@ Ray Data actor usage::
         num_gpus=1,
         compute=ray.data.ActorPoolStrategy(size=4),
         fn_constructor_kwargs={
-            "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+            "model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2",
             "query_column": "query",
             "text_column": "text",
             "score_column": "rerank_score",
@@ -70,7 +71,7 @@ from nemo_retriever.common.remote_auth import resolve_remote_api_key
 logger = logging.getLogger(__name__)
 
 _render_warned = False
-_DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
+_DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 _DEFAULT_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
 _DEFAULT_VL_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 _DEFAULT_MAX_LENGTH = 512
@@ -82,6 +83,16 @@ def _default_rerank_invoke_url(model_name: str | None) -> str:
     if is_vl_rerank_model(model_name):
         return _DEFAULT_VL_RERANK_INVOKE_URL
     return _DEFAULT_RERANK_INVOKE_URL
+
+
+def _configured_rerank_invoke_url(kwargs: dict[str, Any] | None) -> str:
+    """Return the configured endpoint, preferring ``rerank_invoke_url`` over its ``invoke_url`` alias.
+
+    Each candidate is stripped before the choice so a blank canonical value does
+    not shadow a usable alias.
+    """
+    candidates = kwargs or {}
+    return str(candidates.get("rerank_invoke_url") or "").strip() or str(candidates.get("invoke_url") or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +219,7 @@ def _rerank_via_endpoint(
         already end with ``/reranking``, ``/ranking``, or ``/rerank``.
     model_name:
         Model identifier sent to the remote endpoint (default
-        ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint (if required).
 
@@ -278,7 +289,7 @@ def rerank_hits(
         already end with ``/reranking``.
     model_name:
         Model identifier sent to the remote endpoint (default
-        ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint.
     max_length:
@@ -404,7 +415,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
-    Initialises ``nvidia/llama-nemotron-rerank-1b-v2`` **once** per actor
+    Initialises ``nvidia/llama-nemotron-rerank-vl-1b-v2`` **once** per actor
     instance and reuses it across batches, avoiding repeated model loads.
 
     Each row in the input DataFrame is expected to have a *query* column and a
@@ -421,7 +432,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             num_gpus=1,
             compute=ray.data.ActorPoolStrategy(size=4),
             fn_constructor_kwargs={
-                "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                "model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2",
                 "query_column": "query",
                 "text_column": "text",
                 "score_column": "rerank_score",
@@ -433,7 +444,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     Parameters
     ----------
     model_name:
-        HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-1b-v2"``).
+        HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint.
     device:
@@ -458,7 +469,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
 
-        if str(self._kwargs.get("rerank_invoke_url") or "").strip():
+        if _configured_rerank_invoke_url(self._kwargs):
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
@@ -500,7 +511,7 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        configured_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
+        configured_url = _configured_rerank_invoke_url(self._kwargs)
         rerank_invoke_url = configured_url or _default_rerank_invoke_url(
             str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
         )
@@ -543,8 +554,7 @@ class NemotronRerankActor(ArchetypeOperator):
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("rerank_invoke_url") or "").strip())
+        return bool(_configured_rerank_invoke_url(operator_kwargs))
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

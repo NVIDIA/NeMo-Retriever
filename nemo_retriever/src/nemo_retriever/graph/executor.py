@@ -7,12 +7,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+import math
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 import pandas as pd
+
+if TYPE_CHECKING:
+    import ray.data
 
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
     expand_input_file_patterns,
@@ -34,6 +39,229 @@ logger = logging.getLogger(__name__)
 # Heuristic GPU fraction for GPUOperator nodes that load a local model.
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
+
+
+def _contains_null_arrow_child(data_type: Any) -> bool:
+    """Return whether a nested Arrow type contains an inferred null child."""
+    import pyarrow as pa
+
+    if pa.types.is_null(data_type):
+        return True
+    if pa.types.is_struct(data_type):
+        return any(_contains_null_arrow_child(field.type) for field in data_type)
+    if pa.types.is_list(data_type) or pa.types.is_large_list(data_type) or pa.types.is_fixed_size_list(data_type):
+        return _contains_null_arrow_child(data_type.value_type)
+    if pa.types.is_map(data_type):
+        return _contains_null_arrow_child(data_type.key_type) or _contains_null_arrow_child(data_type.item_type)
+    return False
+
+
+def _compact_vulnerable_arrow_columns(table: Any) -> Any:
+    """Reset offsets before Ray converts nested null children to pandas."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    if not isinstance(table, pa.Table) or table.num_rows == 0:
+        return table
+
+    indices = None
+    compacted = table
+    for index, field in enumerate(table.schema):
+        column = table.column(index)
+        if not _contains_null_arrow_child(field.type) or not any(chunk.offset for chunk in column.chunks):
+            continue
+        if indices is None:
+            indices = pa.array(range(table.num_rows), type=pa.int64())
+        compacted = compacted.set_column(index, field, pc.take(column, indices))
+    return compacted
+
+
+def _normalize_pickled_object_columns(table: Any, frame: pd.DataFrame) -> pd.DataFrame:
+    """Convert Ray's pickled-object extension columns to plain pandas objects."""
+    import pyarrow as pa
+
+    if not isinstance(table, pa.Table):
+        return frame
+
+    for index, field in enumerate(table.schema):
+        if getattr(field.type, "extension_name", None) != "ray.data.arrow_pickled_object":
+            continue
+        frame[field.name] = pd.Series(table.column(index).to_pylist(), index=frame.index, dtype=object)
+    return frame
+
+
+def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
+    """Convert a Ray Arrow batch to a row-safe pandas DataFrame.
+
+    Ray 2.56+ preserves Arrow-backed pandas dtypes. Before conversion, sliced
+    nested columns with inferred null children must be compacted. Ray's
+    pickled-object extension columns also need to be materialized as ordinary
+    object columns so pandas row operations do not interpret their payloads as
+    malformed extension arrays.
+    """
+    if isinstance(table, pd.DataFrame):
+        return table
+
+    from ray.data.block import BlockAccessor
+
+    table = _compact_vulnerable_arrow_columns(table)
+    frame = BlockAccessor.for_block(table).to_pandas()
+    return _normalize_pickled_object_columns(table, frame)
+
+
+def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
+    """Materialize a Ray Dataset without returning malformed Arrow arrays.
+
+    Ray 2.56+ enables Arrow-backed pandas conversion by default. Calling
+    ``Dataset.to_pandas()`` directly can therefore expose sliced nested Arrow
+    columns whose child offsets are invalid for pandas row access. Convert
+    each Arrow block through :func:`arrow_table_to_pandas` before concatenating
+    so the public SDK result is safe to consume with standard pandas APIs.
+
+    Parameters
+    ----------
+    dataset
+        Ray dataset to materialize as Arrow batches.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Row-safe DataFrame containing all rows from ``dataset``.
+    """
+    frames = [arrow_table_to_pandas(batch) for batch in dataset.iter_batches(batch_format="pyarrow")]
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+
+    schema = dataset.schema()
+    names = getattr(schema, "names", None)
+    return pd.DataFrame(columns=list(names) if names is not None else None)
+
+
+def call_pandas_function_on_arrow(
+    table: Any,
+    *,
+    fn: Any,
+    fn_kwargs: dict[str, Any] | None = None,
+) -> Any:
+    """Invoke a pandas batch function through the safe Arrow boundary."""
+    return fn(arrow_table_to_pandas(table), **(fn_kwargs or {}))
+
+
+class _ArrowPandasOperatorAdapter:
+    """Convert valid Arrow batches to pandas before invoking an NRL operator."""
+
+    def __init__(self, operator_class: type, operator_kwargs: dict[str, Any]) -> None:
+        self._operator = operator_class(**operator_kwargs)
+
+    def __call__(self, table: Any) -> Any:
+        return self._operator(arrow_table_to_pandas(table))
+
+
+def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
+    """Keep the wrapped operator recognizable in Ray plans and worker logs."""
+    adapter_name = f"{operator_class.__name__}ArrowPandasAdapter"
+    return type(adapter_name, (_ArrowPandasOperatorAdapter,), {})
+
+
+def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, Any]) -> bool:
+    """Return whether an operator's heterogeneous rows should stay in pandas."""
+    return bool(
+        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False) or operator_kwargs.get("preserve_pandas_output", False)
+    )
+
+
+def _requires_stable_pandas_blocks(nodes: list[Node]) -> bool:
+    """Return whether repartitions must not promote object columns to tensors."""
+    return any(_preserves_pandas_output(node.operator_class, node.operator_kwargs) for node in nodes)
+
+
+def _concurrency_target(concurrency: Any) -> int:
+    """Return the largest actor-pool size that resource planning can permit."""
+    if isinstance(concurrency, tuple):
+        return int(concurrency[1] if len(concurrency) == 3 else concurrency[0])
+    return int(concurrency)
+
+
+def _concurrency_initial(concurrency: Any) -> int:
+    """Return the number of actors Ray creates when the pool starts."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        return int(concurrency[2])
+    return 1
+
+
+def _planned_concurrency(concurrency: Any, planned: int) -> Any:
+    """Preserve Ray's actor-pool tuple while capping its maximum size."""
+    if isinstance(concurrency, tuple) and len(concurrency) == 3:
+        minimum, _maximum, initial = (int(value) for value in concurrency)
+        return (minimum, max(minimum, initial, planned), initial)
+    return planned
+
+
+def preflight_executors(executors: list[Any], cluster_resources: ClusterResources) -> None:
+    """Plan all lazy executor pools against one shared Ray resource snapshot."""
+    entries = []
+    available_cpus = cluster_resources.available_cpu_count()
+    available_gpus = cluster_resources.available_gpu_count()
+    for executor in executors:
+        for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
+            override = executor._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            entries.append(
+                (
+                    executor,
+                    node.name,
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
+                    float(override.get("num_cpus", executor._default_num_cpus)),
+                    executor._scheduled_num_gpus(node, override, available_gpus),
+                    node.name in executor._auto_concurrency_nodes,
+                )
+            )
+    fixed = [item for item in entries if not item[7]]
+    auto = [item for item in entries if item[7]]
+    fixed_cpu = sum(item[3] * item[5] for item in fixed)
+    source_cpu_reservation = sum(executor._source_cpu_reservation for executor in executors)
+    fixed_gpu = sum(item[3] * item[6] for item in fixed)
+    min_cpu = sum(item[4] * item[5] for item in auto)
+    min_gpu = sum(item[4] * item[6] for item in auto)
+    requested_cpu = source_cpu_reservation + fixed_cpu + min_cpu
+    if requested_cpu > available_cpus or fixed_gpu + min_gpu > available_gpus:
+        raise ValueError(
+            "Infeasible Ray CPU/GPU plan: requested at least "
+            f"{requested_cpu:g} CPUs (including {source_cpu_reservation:g} for source reads) "
+            f"and {fixed_gpu + min_gpu:g} GPUs, but Ray reports "
+            f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+            "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+        )
+    used_cpu, used_gpu = source_cpu_reservation + fixed_cpu + min_cpu, fixed_gpu + min_gpu
+    planned = {(id(item[0]), item[1]): item[4] for item in auto}
+    while True:
+        candidates = sorted(
+            (item for item in auto if planned[(id(item[0]), item[1])] < item[3]),
+            key=lambda item: planned[(id(item[0]), item[1])] / item[3],
+        )
+        selected = next(
+            (
+                item
+                for item in candidates
+                if used_cpu + item[5] <= available_cpus and used_gpu + item[6] <= available_gpus
+            ),
+            None,
+        )
+        if selected is None:
+            break
+        planned[(id(selected[0]), selected[1])] += 1
+        used_cpu += selected[5]
+        used_gpu += selected[6]
+    for executor, name, concurrency, _target, _initial, _cpu, _gpu, _auto in auto:
+        executor._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(
+            concurrency, planned[(id(executor), name)]
+        )
+    for executor in executors:
+        executor._resources_preflight_complete = True
+        executor._preflight_source_cpu_reservation = executor._source_cpu_reservation
+        executor._preflight_cluster_resources = cluster_resources
 
 
 class AbstractExecutor(ABC):
@@ -181,14 +409,114 @@ class RayDataExecutor(AbstractExecutor):
         num_cpus: float = 1,
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
+        auto_concurrency_nodes: Optional[Set[str]] = None,
+        source_cpu_reservation: float = 0,
     ) -> None:
         super().__init__(graph)
+        source_cpu_reservation = float(source_cpu_reservation)
+        if not math.isfinite(source_cpu_reservation) or source_cpu_reservation < 0:
+            raise ValueError("source_cpu_reservation must be a finite, non-negative CPU value.")
+        self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
+        self._source_cpu_reservation = source_cpu_reservation
+        # ``preflight_executors`` records the source reservation it budgeted.
+        # A filesystem input supplied later must not silently increase that
+        # shared plan: re-planning this executor alone would ignore its peers.
+        self._preflight_source_cpu_reservation: float | None = None
         self._default_batch_size = batch_size
         self._default_batch_format = batch_format
         self._default_num_cpus = num_cpus
         self._default_num_gpus = num_gpus
         self._node_overrides = node_overrides or {}
+        self._auto_concurrency_nodes = auto_concurrency_nodes or set()
+        self._resources_preflight_complete = False
+
+    def _has_remote_endpoint(self, node: Node) -> bool:
+        """Return whether a node delegates inference to a remote endpoint."""
+        if any("invoke_url" in key and bool(value) for key, value in node.operator_kwargs.items()):
+            return True
+        return any(
+            hasattr(value, "model_dump")
+            and any("invoke_url" in key and bool(item) for key, item in value.model_dump(exclude_none=True).items())
+            for value in node.operator_kwargs.values()
+        )
+
+    def _scheduled_num_gpus(self, node: Node, overrides: Dict[str, Any], available_gpus: int) -> float:
+        """Resolve the GPU reservation passed to Ray for a graph node."""
+        if "num_gpus" in overrides:
+            return float(overrides["num_gpus"])
+        if not issubclass(node.operator_class, GPUOperator) or self._has_remote_endpoint(node):
+            return float(self._default_num_gpus)
+        if available_gpus > 0:
+            from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
+
+            if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
+                return max(float(self._default_num_gpus), VLLM_GPUS_PER_ACTOR)
+            return max(float(self._default_num_gpus), _DEFAULT_GPU_OPERATOR_NUM_GPUS)
+        logger.warning(
+            "Node %r is a GPUOperator with no remote endpoint but the Ray cluster reports 0 available GPUs. "
+            "The actor will be scheduled with num_gpus=0 and will likely fail to load its model. "
+            "Pass --ocr-invoke-url / --page-elements-invoke-url / --embed-invoke-url to use remote endpoints, "
+            "or ensure GPUs are visible to Ray.",
+            node.name,
+        )
+        return float(self._default_num_gpus)
+
+    def _preflight_resources(self, nodes: List[Node], available_cpus: int, available_gpus: int) -> None:
+        """Reduce unspecified pools and reject infeasible explicit plans."""
+        entries = []
+        for node in nodes:
+            override = self._node_overrides.get(node.name, {})
+            concurrency = override.get("concurrency", 1)
+            entries.append(
+                (
+                    node.name,
+                    concurrency,
+                    _concurrency_target(concurrency),
+                    _concurrency_initial(concurrency),
+                    float(override.get("num_cpus", self._default_num_cpus)),
+                    self._scheduled_num_gpus(node, override, available_gpus),
+                )
+            )
+        fixed = [item for item in entries if item[0] not in self._auto_concurrency_nodes]
+        auto = [item for item in entries if item[0] in self._auto_concurrency_nodes]
+        fixed_cpu = sum(count * cpu for _name, _concurrency, count, _initial, cpu, _gpu in fixed)
+        fixed_gpu = sum(count * gpu for _name, _concurrency, count, _initial, _cpu, gpu in fixed)
+        minimum_cpu = sum(initial * cpu for _name, _concurrency, _count, initial, cpu, _gpu in auto)
+        requested_cpu = self._source_cpu_reservation + fixed_cpu + minimum_cpu
+        minimum_gpu = sum(initial * gpu for _name, _concurrency, _count, initial, _cpu, gpu in auto)
+        if requested_cpu > available_cpus or fixed_gpu + minimum_gpu > available_gpus:
+            raise ValueError(
+                "Infeasible Ray CPU/GPU plan: requested at least "
+                f"{requested_cpu:g} CPUs (including {self._source_cpu_reservation:g} for source reads) "
+                f"and {fixed_gpu + minimum_gpu:g} GPUs, but Ray reports "
+                f"{available_cpus} CPUs and {available_gpus} GPUs available. "
+                "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
+            )
+        used_cpu, used_gpu = self._source_cpu_reservation + fixed_cpu + minimum_cpu, fixed_gpu + minimum_gpu
+        planned = {name: initial for name, _concurrency, _count, initial, _cpu, _gpu in auto}
+        while True:
+            candidates = sorted(
+                (item for item in auto if planned[item[0]] < item[2]),
+                key=lambda item: planned[item[0]] / item[2],
+            )
+            selected = next(
+                (
+                    item
+                    for item in candidates
+                    if used_cpu + item[4] <= available_cpus and used_gpu + item[5] <= available_gpus
+                ),
+                None,
+            )
+            if selected is None:
+                break
+            name, _concurrency, _count, _initial, cpu, gpu = selected
+            planned[name] += 1
+            used_cpu += cpu
+            used_gpu += gpu
+        for name, concurrency, _count, _initial, _cpu, _gpu in auto:
+            self._node_overrides.setdefault(name, {})["concurrency"] = _planned_concurrency(concurrency, planned[name])
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
@@ -212,7 +540,7 @@ class RayDataExecutor(AbstractExecutor):
     def ingest(self, data: Any, **kwargs: Any) -> Any:
         """Build, execute, and materialize a Ray Data pipeline from the graph."""
 
-        return self.build_dataset(data, **kwargs).to_pandas()
+        return ray_dataset_to_pandas(self.build_dataset(data, **kwargs))
 
     def build_dataset(self, data: Any, **kwargs: Any) -> Any:
         """Build a lazy Ray Data pipeline from the graph.
@@ -243,19 +571,58 @@ class RayDataExecutor(AbstractExecutor):
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
         ctx.use_ray_tqdm = False
+        is_filesystem_source = not isinstance(data, rd.Dataset)
+        if is_filesystem_source:
+            required_source_cpu_reservation = 1
+            if self._resources_preflight_complete:
+                planned_source_cpu_reservation = self._preflight_source_cpu_reservation
+                if (
+                    planned_source_cpu_reservation is None
+                    or planned_source_cpu_reservation < required_source_cpu_reservation
+                ):
+                    raise ValueError(
+                        "Filesystem inputs require 1 CPU for Ray Data source reads, but shared Ray resource "
+                        "preflight completed without that reservation. Construct RayDataExecutor with "
+                        "source_cpu_reservation=1 before calling preflight_executors."
+                    )
+            else:
+                self._source_cpu_reservation = required_source_cpu_reservation
 
-        cluster = gather_cluster_resources(ray)
+        cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
+        nodes = self._linearize(resolved_graph)
+        requires_stable_pandas_blocks = _requires_stable_pandas_blocks(nodes)
 
         if isinstance(data, rd.Dataset):
-            ds = data
+            ds = rd.Dataset.copy(data, _deep_copy=True) if requires_stable_pandas_blocks else data
+            if requires_stable_pandas_blocks:
+                # Ray copies this context into repartition workers. Disabling
+                # Arrow output and tensor promotion only on an operator actor is
+                # too late because Ray converts its result after the call.
+                ds.context.batch_to_block_arrow_format = False
+                ds.context.enable_tensor_extension_casting = False
         else:
             try:
-                ds = rd.read_binary_files(input_paths, include_paths=True)
+                if requires_stable_pandas_blocks:
+                    # read_binary_files snapshots the current context onto the
+                    # new Dataset; restore the process default immediately so
+                    # unrelated pipelines retain Ray's standard behavior.
+                    original_arrow_format = ctx.batch_to_block_arrow_format
+                    original_tensor_extension_casting = ctx.enable_tensor_extension_casting
+                    ctx.batch_to_block_arrow_format = False
+                    ctx.enable_tensor_extension_casting = False
+                try:
+                    ds = rd.read_binary_files(input_paths, include_paths=True)
+                finally:
+                    if requires_stable_pandas_blocks:
+                        ctx.batch_to_block_arrow_format = original_arrow_format
+                        ctx.enable_tensor_extension_casting = original_tensor_extension_casting
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
-        nodes = self._linearize(resolved_graph)
+        if nodes and not self._resources_preflight_complete:
+            self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
+        preserve_pandas_output = False
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
@@ -285,57 +652,8 @@ class RayDataExecutor(AbstractExecutor):
                 batch_size = None
                 target_num_rows_per_block = None
 
-            # When no explicit num_gpus override is given, auto-detect from the
-            # GPUOperator mixin using actual cluster GPU availability.
-            if "num_gpus" in overrides:
-                num_gpus = overrides.pop("num_gpus")
-            elif issubclass(node.operator_class, GPUOperator):
-                has_remote_endpoint = any("invoke_url" in k and bool(v) for k, v in node.operator_kwargs.items())
-                # For composite operators (e.g. MultiTypeExtractOperator) the
-                # invoke URLs live inside a nested ExtractParams object rather
-                # than as top-level kwargs.  Check those too.
-                if not has_remote_endpoint:
-                    for v in node.operator_kwargs.values():
-                        if hasattr(v, "model_dump"):
-                            has_remote_endpoint = any(
-                                "invoke_url" in k and bool(val) for k, val in v.model_dump(exclude_none=True).items()
-                            )
-                            if has_remote_endpoint:
-                                break
-                if has_remote_endpoint:
-                    # Remote endpoint handles the model — no local GPU needed.
-                    num_gpus = self._default_num_gpus
-                elif available_gpus > 0:
-                    # Local model, GPUs present: assign the heuristic fraction so
-                    # Ray can co-schedule multiple actors per GPU.
-                    # Exception: actors backed by vLLM (NemotronParse, Caption)
-                    # manage their own KV-cache and require exclusive GPU access.
-                    from nemo_retriever.operators.extract.parse.nemotron_parse import (
-                        NemotronParseActor,
-                        NemotronParseGPUActor,
-                    )
-                    from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
-
-                    if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
-                        num_gpus = max(self._default_num_gpus, VLLM_GPUS_PER_ACTOR)
-                    else:
-                        num_gpus = max(self._default_num_gpus, _DEFAULT_GPU_OPERATOR_NUM_GPUS)
-                else:
-                    # No GPUs in the cluster — operator will likely fail to load
-                    # its CUDA model.  Warn loudly rather than silently requesting
-                    # a fraction that would stall the pipeline indefinitely.
-                    logger.warning(
-                        "Node %r is a GPUOperator with no remote endpoint but "
-                        "the Ray cluster reports 0 available GPUs. "
-                        "The actor will be scheduled with num_gpus=0 and will "
-                        "likely fail to load its model. Pass --ocr-invoke-url / "
-                        "--page-elements-invoke-url / --embed-invoke-url to use "
-                        "remote endpoints, or ensure GPUs are visible to Ray.",
-                        node.name,
-                    )
-                    num_gpus = self._default_num_gpus
-            else:
-                num_gpus = self._default_num_gpus
+            num_gpus = self._scheduled_num_gpus(node, overrides, available_gpus)
+            overrides.pop("num_gpus", None)
 
             if requires_global_batch:
                 # ``num_blocks=1`` is exact; ``target_num_rows_per_block`` is a
@@ -352,17 +670,39 @@ class RayDataExecutor(AbstractExecutor):
             elif target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0:
                 ds = ds.repartition(target_num_rows_per_block=int(target_num_rows_per_block))
 
-            # Pass the operator class directly to map_batches with
-            # fn_constructor_kwargs for deferred construction on workers.
-            # AbstractOperator.__call__ delegates to run(), so each stage
-            # executes the full preprocess -> process -> postprocess chain.
+            map_operator_class = node.operator_class
+            map_batch_format = batch_format
+            constructor_kwargs = node.operator_kwargs
+            if batch_format == "pandas":
+                # Ray's Arrow-backed pandas conversion can preserve unsafe
+                # offsets for sliced structs with inferred null children.
+                # Compact the valid Arrow batch before that conversion.
+                map_operator_class = _make_arrow_pandas_operator_adapter(node.operator_class)
+                stable_pandas_input = preserve_pandas_output
+                # Once an operator reshapes the dataset into heterogeneous
+                # object rows, keep those rows in pandas through every
+                # downstream map stage. Re-enabling Arrow at embedding would
+                # otherwise split optional bbox values into object and tensor
+                # schemas that Ray cannot concatenate.
+                preserve_pandas_output = preserve_pandas_output or _preserves_pandas_output(
+                    node.operator_class, node.operator_kwargs
+                )
+                # The opting-in stage still needs the compacting Arrow adapter
+                # on its input. Its downstream consumers must not ask Ray to
+                # turn the intentionally preserved pandas block back into Arrow.
+                map_batch_format = "pandas" if stable_pandas_input else "pyarrow"
+                constructor_kwargs = {
+                    "operator_class": node.operator_class,
+                    "operator_kwargs": node.operator_kwargs,
+                }
+
             ds = ds.map_batches(
-                node.operator_class,
+                map_operator_class,
                 batch_size=batch_size,
-                batch_format=batch_format,
+                batch_format=map_batch_format,
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
-                fn_constructor_kwargs=node.operator_kwargs,
+                fn_constructor_kwargs=constructor_kwargs,
                 **overrides,
             )
 

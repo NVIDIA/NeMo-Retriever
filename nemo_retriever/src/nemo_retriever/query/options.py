@@ -26,6 +26,7 @@ class QueryEmbedOptions:
     embed_invoke_url: str | None = None
     embed_model_name: str | None = None
     embed_model_provider_prefix: str | None = None
+    embed_api_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,13 +56,25 @@ class QueryAgenticOptions:
 
     enabled: bool = False
     llm_model: str | None = None
+    llm_backend: str | None = None
     invoke_url: str | None = None
+    local_llm_backend: str = "vllm"
+    local_hf_cache_dir: str | None = None
+    local_gpu_memory_utilization: float = 0.8
+    local_tensor_parallel_size: int = 1
+    local_max_model_len: int | None = None
+    local_max_num_seqs: int | None = None
     reasoning_effort: str | None = None
-    backend_top_k: int = 20
     react_max_steps: int = 50
     text_truncation: int = 0
     num_concurrent: int = 1
-    temperature: float = 0.0
+    temperature: float | None = None
+    # LLM client (see AgenticRetrievalConfig.llm_client). Optional: defaults to
+    # ``callable`` for both in-process and remote runs when unset.
+    llm_client: str | None = None
+    # Accepted for service-layer compatibility only. The agent derives its own
+    # per-hop retrieval depth from ``top_k``, so this value is never read.
+    backend_top_k: int | None = None
 
 
 @dataclass(frozen=True)

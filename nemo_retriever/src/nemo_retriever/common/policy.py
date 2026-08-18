@@ -58,6 +58,7 @@ _DENYLIST_KEY_SUBSTRINGS: tuple[str, ...] = (
     "ocr_invoke_url",
     "table_structure_invoke_url",
     "nemotron_parse_invoke_url",
+    "nemotron_parse_model",
     "profile_name",
 )
 

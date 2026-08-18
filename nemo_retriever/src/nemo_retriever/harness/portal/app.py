@@ -834,7 +834,7 @@ async def get_run_lancedb_info(run_id: int):
     if not uri:
         return {"available": False, "uri": None, "row_count": 0}
     try:
-        from nemo_retriever.common.vdb.lancedb_read import lancedb_row_count
+        from nemo_retriever.common.vdb.lancedb import lancedb_row_count
 
         count = int(lancedb_row_count(uri, LANCEDB_TABLE))
         return {"available": True, "uri": uri, "row_count": count, "table": LANCEDB_TABLE}

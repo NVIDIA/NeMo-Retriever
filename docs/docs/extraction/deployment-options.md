@@ -18,17 +18,33 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — sources in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub
+2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling). When you change a NIM image repository or tag on an existing release, delete the `NIMCache` before you upgrade. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
-**Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+The Helm chart uses `GET /v1/live` for startup and liveness probes and
+`GET /v1/health` for readiness. Both endpoints are unauthenticated. In split
+topology, `/v1/health` returns HTTP `503` when the required realtime or batch
+worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
+Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
+In split topology, the gateway authenticates public requests. When internal
+service authentication is configured, the gateway uses it for restricted worker
+handoffs instead of forwarding public credentials. Without internal service
+authentication, the gateway forwards the configured public authentication header
+to workers, which must share the same public-authentication configuration.
 
-For audio and video extraction in Kubernetes, set `service.installFfmpeg=true` so the service container installs `ffmpeg` and `ffprobe` at startup. This runtime install requires package-repository network egress, a writable root filesystem, and security policy that allows the image's scoped sudo use. If your cluster blocks startup package installation, use a custom service image that already contains `ffmpeg` and `ffprobe`, then set `service.image.repository` and `service.image.tag`. For Parakeet ASR chart values, OpenShift-specific Helm configuration, and air-gapped alternatives, refer to [Audio and video (Parakeet ASR)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet) and [OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/openshift.md) in the Helm chart directory.
+If you use `ServiceIngestor.vdb_upload()` sidecar metadata in split topology,
+upload and reference the metadata while the singleton gateway remains running.
+At ingest admission, the gateway binds the metadata to the work item. Workers
+receive the bound attachment and do not resolve sidecar IDs.
+Refer to [Sidecar metadata in split topology](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#sidecar-metadata-in-split-topology).
+**Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:2.3.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+
+For audio and video extraction in Kubernetes, refer to [Audio and video](audio-video.md).
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](starter-kits.md)
+1. [Jupyter Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md)
 
 ### I need API details and keys
 
@@ -63,7 +79,7 @@ Consider self-hosting when:
 - You run at large scale where dedicated capacity can cost less than hosted API usage.
 - You must meet latency or locality requirements that hosted regions cannot satisfy.
 
-**GPU sharing.** The NIM Operator supports time-slicing and MIG so multiple NIM workloads can share GPUs. A NIM used with NeMo Retriever Library does not always need a full dedicated GPU when the operator and GPU profile are set correctly. For scheduling and GPU partitioning, refer to the [NIM Operator documentation](https://docs.nvidia.com/nim-operator/latest/index.html).
+**GPU sharing.** Combined core NIM VRAM fits on one A10G or better GPU, but the default Helm chart still requests four exclusive GPU slots. Time-slicing creates logical slots. It does not pin the four NIM pods onto one physical GPU. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Air-gapped and disconnected deployment { #air-gapped-deployment }
 
@@ -73,7 +89,7 @@ On a staging host with internet access, pull from NGC, retag to your private reg
 
 !!! warning "Audio and video extraction"
 
-    [Audio and video](audio-video.md) need **`ffmpeg` and `ffprobe` on `PATH`**. The bundled image omits them. Do **not** use `service.installFfmpeg=true` in an air gap (startup install needs package-repo egress). Build a custom service image on a connected staging host, mirror it, and set `service.image.repository` / `service.image.tag`. Skip this step if you do not use audio/video.
+    Audio and video workflows require `ffmpeg` and `ffprobe` on `PATH`; runtime package installation is not suitable for air-gapped clusters. Refer to [Audio and video](audio-video.md) and the Helm chart [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment) guide. Skip this if you do not use audio or video.
 
 For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prerequisites-support-matrix.md#image-captioning) NIM and point your pipeline caption endpoint at the in-cluster HTTP URL instead of `integrate.api.nvidia.com` or other hosted APIs.
 

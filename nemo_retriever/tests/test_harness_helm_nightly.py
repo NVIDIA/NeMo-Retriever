@@ -134,10 +134,12 @@ def test_service_dry_run_writes_plans_without_network(service_execution, monkeyp
 
 
 def test_service_ingest_and_beir_use_shared_results(service_execution, monkeypatch, tmp_path: Path) -> None:
+    ingest_calls = []
     monkeypatch.setattr(
         service_execution,
         "execute_service_ingest_request",
-        lambda _request: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 12}),
+        lambda _request, **kwargs: ingest_calls.append(kwargs)
+        or SimpleNamespace(to_summary_dict=lambda: {"n_rows": 12}),
     )
     monkeypatch.setattr(
         service_execution,
@@ -151,6 +153,7 @@ def test_service_ingest_and_beir_use_shared_results(service_execution, monkeypat
     )
 
     assert outcome.exit_code == 0
+    assert ingest_calls == [{"return_results": False}]
     assert outcome.results["summary_metrics"]["rows_processed"] == 12
     assert outcome.results["summary_metrics"]["query_count"] == 1
     assert outcome.results["summary_metrics"]["recall_5"] == 0.9
@@ -199,7 +202,7 @@ def test_service_metric_gate_failure_uses_standard_exit_code(service_execution, 
     monkeypatch.setattr(
         service_execution,
         "execute_service_ingest_request",
-        lambda _request: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 1}),
+        lambda _request, **_kwargs: SimpleNamespace(to_summary_dict=lambda: {"n_rows": 1}),
     )
     outcome = run_prepared_benchmark(
         _prepared(tmp_path, requirements=("files==2",)),
@@ -211,7 +214,7 @@ def test_service_metric_gate_failure_uses_standard_exit_code(service_execution, 
 
 
 def test_service_ingest_failure_is_concise(service_execution, monkeypatch, tmp_path: Path) -> None:
-    def fail(_request):
+    def fail(_request, **_kwargs):
         raise RuntimeError("service unavailable\ntraceback details")
 
     monkeypatch.setattr(service_execution, "execute_service_ingest_request", fail)
@@ -343,7 +346,6 @@ def test_port_forward_permission_error_retains_process_for_retry(monkeypatch) ->
     manager.port_forward_processes = [proc]
     output = io.BytesIO()
     manager._port_forward_logs = {123: output}
-    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
     monkeypatch.setattr(
         "nemo_retriever.harness.helm_manager.os.killpg",
         lambda *_args: (_ for _ in ()).throw(PermissionError("denied")),
@@ -352,6 +354,50 @@ def test_port_forward_permission_error_retains_process_for_retry(monkeypatch) ->
     manager.stop_port_forwards()
     assert manager.port_forward_processes == [proc]
     assert not output.closed
+
+
+def test_port_forward_permission_error_uses_sudo_for_sudo_kubectl(monkeypatch) -> None:
+    manager = object.__new__(HelmServiceManager)
+    manager.config = SimpleNamespace(kubectl_sudo=True)
+
+    class SudoProcess:
+        pid = 123
+
+        def wait(_self, *, timeout):
+            assert timeout == 5
+
+    manager.port_forward_processes = [SudoProcess()]
+    output = io.BytesIO()
+    manager._port_forward_logs = {123: output}
+    group_alive = True
+
+    def fake_killpg(_pgid, sent_signal):
+        if sent_signal == 0:
+            if group_alive:
+                raise PermissionError("alive but root-owned")
+            raise ProcessLookupError
+        raise PermissionError("denied")
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.killpg", fake_killpg)
+    commands = []
+
+    def fake_run(command, **kwargs):
+        nonlocal group_alive
+        commands.append((command, kwargs))
+        if command[2] == "-KILL":
+            group_alive = False
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.subprocess.run", fake_run)
+
+    manager.stop_port_forwards()
+
+    assert commands == [
+        (["sudo", "kill", "-TERM", "--", "-123"], {"capture_output": True, "text": True}),
+        (["sudo", "kill", "-KILL", "--", "-123"], {"capture_output": True, "text": True}),
+    ]
+    assert manager.port_forward_processes == []
+    assert output.closed
 
 
 def test_port_forward_waits_after_sigkill(monkeypatch) -> None:
@@ -370,11 +416,15 @@ def test_port_forward_waits_after_sigkill(monkeypatch) -> None:
     output = io.BytesIO()
     manager._port_forward_logs = {123: output}
     signals = []
-    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
-    monkeypatch.setattr(
-        "nemo_retriever.harness.helm_manager.os.killpg",
-        lambda _pgid, sent_signal: signals.append(sent_signal),
-    )
+
+    def fake_killpg(_pgid, sent_signal):
+        if sent_signal == 0:
+            if signal.SIGKILL in signals:
+                raise ProcessLookupError
+            return
+        signals.append(sent_signal)
+
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.killpg", fake_killpg)
 
     manager.stop_port_forwards()
 

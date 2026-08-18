@@ -5,19 +5,276 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, PropertyMock, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 import nemo_retriever.service.vectordb_app as vectordb_module
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionDeleteResult,
+    CollectionInfo,
+    CollectionPage,
+    CollectionUpdateRequest,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
+)
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    CollectionWriteResult,
+    UnsupportedVDBOperation,
+    VDB,
+    VDBInvalidRequest,
+    VDBResourceConflict,
+    VDBResourceNotFound,
+)
+from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.records import RetrievalContractError
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
-    _strategies_for_retrieval_mode,
     _tensor_to_embedding_rows,
     create_vectordb_app,
 )
+
+_NOW = "2026-07-27T00:00:00+00:00"
+
+
+class FakeVDB(VDB):
+    """Backend-neutral in-memory fake for HTTP contract tests."""
+
+    def __init__(self, *, table_exists: bool = False) -> None:
+        self.collections: dict[tuple[str, str], CollectionInfo] = {}
+        self.documents: dict[tuple[str, str, str], DocumentInfo] = {}
+        self.table_exists = table_exists
+        self.legacy_rows = 1 if table_exists else 0
+        self.last_write_context: CollectionWriteContext | None = None
+        self.last_retrieval: dict[str, Any] | None = None
+        self.health_calls = 0
+
+    def create_index(self, **kwargs):
+        return None
+
+    def write_to_index(self, records: list, **kwargs):
+        self.legacy_rows += sum(len(batch) for batch in records)
+        self.table_exists = self.legacy_rows > 0
+
+    def retrieval(self, queries: list, **kwargs):
+        return [
+            [
+                {
+                    "text": "legacy hit",
+                    "source": "legacy.pdf",
+                    "metadata": {},
+                    "_distance": 0.2,
+                }
+            ]
+            for _ in queries
+        ]
+
+    def run(self, records):
+        self.write_to_index(records)
+
+    def create_collection(self, *, scope: str, request: CollectionCreateRequest) -> CollectionInfo:
+        key = (scope, request.name)
+        if key in self.collections:
+            raise VDBResourceConflict("Collection already exists")
+        info = CollectionInfo(
+            name=request.name,
+            scope=scope,
+            description=request.description,
+            metadata=request.metadata,
+            created_at=_NOW,
+            updated_at=_NOW,
+            expires_at=request.expires_at,
+        )
+        self.collections[key] = info
+        return info
+
+    def get_collection(self, *, scope: str, collection_name: str) -> CollectionInfo:
+        try:
+            return self.collections[(scope, collection_name)]
+        except KeyError as exc:
+            raise VDBResourceNotFound("Collection not found") from exc
+
+    def list_collections(self, *, scope: str, limit: int, continuation_token: str | None) -> CollectionPage:
+        if continuation_token == "invalid":
+            raise VDBInvalidRequest("Invalid continuation token")
+        items = [item for (item_scope, _), item in self.collections.items() if item_scope == scope]
+        return CollectionPage(items=items[:limit])
+
+    def update_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        request: CollectionUpdateRequest,
+    ) -> CollectionInfo:
+        current = self.get_collection(scope=scope, collection_name=collection_name)
+        updated = current.model_copy(
+            update={
+                "description": request.description,
+                "metadata": (request.metadata if request.metadata is not None else current.metadata),
+                "expires_at": request.expires_at,
+                "updated_at": _NOW,
+            }
+        )
+        self.collections[(scope, collection_name)] = updated
+        return updated
+
+    def delete_collection(self, *, scope: str, collection_name: str, if_exists: bool) -> CollectionDeleteResult:
+        existed = self.collections.pop((scope, collection_name), None) is not None
+        if not existed and not if_exists:
+            raise VDBResourceNotFound("Collection not found")
+        return CollectionDeleteResult(
+            name=collection_name,
+            scope=scope,
+            existed=existed,
+            deleted=True,
+            status="deleted",
+        )
+
+    def get_document(self, *, scope: str, collection_name: str, document_id: str) -> DocumentInfo:
+        try:
+            return self.documents[(scope, collection_name, document_id)]
+        except KeyError as exc:
+            raise VDBResourceNotFound("Document not found") from exc
+
+    def list_documents(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> DocumentPage:
+        self.get_collection(scope=scope, collection_name=collection_name)
+        items = [
+            item
+            for (item_scope, item_collection, _), item in self.documents.items()
+            if (item_scope, item_collection) == (scope, collection_name)
+        ]
+        return DocumentPage(items=items[:limit])
+
+    def delete_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+        if_exists: bool,
+    ) -> DocumentDeleteResult:
+        existed = self.documents.pop((scope, collection_name, document_id), None) is not None
+        if not existed and not if_exists:
+            raise VDBResourceNotFound("Document not found")
+        return DocumentDeleteResult(
+            document_id=document_id,
+            collection_name=collection_name,
+            scope=scope,
+            existed=existed,
+            deleted=True,
+            status="deleted",
+        )
+
+    def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
+        self.get_collection(scope=context.scope, collection_name=context.collection_name)
+        self.last_write_context = context
+        written = sum(len(batch) for batch in records)
+        self.documents[(context.scope, context.collection_name, context.document_id)] = DocumentInfo(
+            document_id=context.document_id,
+            collection_name=context.collection_name,
+            scope=context.scope,
+            filename=context.filename,
+            content_sha256=context.content_sha256,
+            document_version=context.document_version,
+            status="completed",
+            chunk_count=written,
+            job_id=context.job_id,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        return CollectionWriteResult(written=written, total_rows=written)
+
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        self.get_collection(scope=scope, collection_name=collection_name)
+        self.last_retrieval = {
+            "scope": scope,
+            "collection_name": collection_name,
+            "query_texts": query_texts,
+            "top_k": top_k,
+        }
+        hit = {
+            "chunk_id": "chunk-1",
+            "document_id": "document-1",
+            "text": "collection hit",
+            "distance": 0.2,
+            "filename": "report.pdf",
+            "page_number": 1,
+            "content_type": "text",
+            "source": "report.pdf",
+            "source_id": "report.pdf",
+            "metadata": {},
+            "physical_table": "private-table",
+            "_distance": 0.2,
+        }
+        return ([[hit] for _ in vectors], ["dense"])
+
+    def health(self) -> dict[str, Any]:
+        self.health_calls += 1
+        return {
+            "total_rows": self.legacy_rows,
+            "table_exists": self.table_exists,
+            "effective_retrieval_mode": "dense" if self.table_exists else None,
+            "retrieval_strategies": ["dense"] if self.table_exists else [],
+            "collections": {
+                "active": len(self.collections),
+                "deleting": 0,
+                "expired": 0,
+            },
+            "cleanup": {"pending": 0, "oldest_age_seconds": 0},
+            "reconciliation": {"successes": 0, "failures": 0},
+            "open_table_cache_count": 0,
+        }
+
+
+class ContractFailureVDB(FakeVDB):
+    def retrieve_collection(self, *args: Any, **kwargs: Any):
+        raise RetrievalContractError("physical table secret must not be returned")
+
+
+class ValueFailureVDB(FakeVDB):
+    def retrieve_collection(self, *args: Any, **kwargs: Any):
+        raise ValueError("backend parsing failed")
+
+
+class HealthFailureVDB(FakeVDB):
+    def health(self) -> dict[str, Any]:
+        raise RuntimeError("backend unavailable")
+
+
+class DefaultHealthVDB(FakeVDB):
+    health = VDB.health
+
+
+def _app(vdb: VDB, **kwargs: Any):
+    return create_vectordb_app(
+        vdb=vdb,
+        embed_endpoint="http://embed.example/v1/embeddings",
+        reconciliation_interval_seconds=0,
+        **kwargs,
+    )
 
 
 @pytest.mark.parametrize(
@@ -34,113 +291,339 @@ def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_ke
     vectordb_module.main()
 
     assert create_app.call_args.kwargs["embed_api_key"] == expected_key
+    assert create_app.call_args.kwargs["index_mode"] == "hybrid"
 
 
-def test_query_empty_index_returns_422(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        table_name="test_table",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-    )
-    with TestClient(app) as client:
-        resp = client.post("/v1/query", json={"query": "hello", "top_k": 3})
-
-    assert resp.status_code == 422
-    assert "No data has been ingested yet" in resp.json()["detail"]
-
-
-def test_query_without_embed_backend_returns_501(tmp_path) -> None:
-    app = create_vectordb_app(lancedb_uri=str(tmp_path))
-    with TestClient(app) as client:
-        resp = client.post("/v1/query", json={"query": "hello", "top_k": 3})
-
-    assert resp.status_code == 501
-    assert "No embedding backend configured" in resp.json()["detail"]
-
-
-def test_health_reports_embed_mode(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        local_embed=True,
-        embed_model="nvidia/llama-nemotron-embed-1b-v2",
-    )
-    with TestClient(app) as client:
-        resp = client.get("/v1/health")
-
-    assert resp.status_code == 200
-    assert resp.json()["embed_mode"] == "local"
-
-
-def test_health_reports_effective_retrieval_mode_none_without_table(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        embed_endpoint="http://embed.example/v1/embeddings",
-    )
-    with TestClient(app) as client:
-        resp = client.get("/v1/health")
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "retrieval_mode" not in body
-    assert body["effective_retrieval_mode"] is None
-
-
-def test_health_stays_ok_when_mode_resolution_errors(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        embed_endpoint="http://embed.example/v1/embeddings",
-    )
-    with TestClient(app) as client:
-        with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
-            VectorDBState,
-            "resolve_effective_retrieval_mode",
-            side_effect=OSError("transient I/O error"),
-        ):
-            resp = client.get("/v1/health")
-
-    # Health backs k8s probes; a mode-resolution failure must not 500.
-    assert resp.status_code == 200
-    assert resp.json()["effective_retrieval_mode"] == "unknown"
-
-
-def test_strategies_for_retrieval_mode() -> None:
-    assert _strategies_for_retrieval_mode("dense") == ["dense"]
-    assert _strategies_for_retrieval_mode("hybrid") == ["hybrid"]
-
-
-def test_write_rows_creates_then_appends_table(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-    )
-    assert state.table_exists is False
-
-    row = {
-        "vector": [1.0, 0.0, 0.0, 0.0],
-        "text": "seed",
-        "pdf_page": "p1",
-        "filename": "f.pdf",
-        "pdf_basename": "f.pdf",
-        "page_number": 1,
-        "source": "f.pdf",
-        "source_id": "f.pdf",
-        "path": "/f.pdf",
-        "metadata": "{}",
-        "stored_image_uri": "",
-        "content_type": "text",
-        "bbox_xyxy_norm": "",
+def test_fake_vdb_completes_collection_http_flow_without_backend_details() -> None:
+    backend = FakeVDB()
+    app = _app(backend)
+    record = {
+        "document_type": "text",
+        "metadata": {
+            "embedding": [1.0, 0.0],
+            "content": "hello",
+            "content_metadata": {"page_number": 1},
+            "source_metadata": {"source_id": "report.pdf"},
+        },
     }
-    assert state.write_rows([row]) == 1
-    assert state.table_exists is True
-    assert state.total_rows() == 1
 
-    # A second write appends rather than overwriting the existing table.
-    assert state.write_rows([dict(row, text="second")]) == 1
-    assert state.total_rows() == 2
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
+        with TestClient(app) as client:
+            created = client.post(
+                "/v1/collections",
+                headers={"X-NRL-Scope": "tenant-a"},
+                json={"name": "research", "description": "docs"},
+            )
+            listed = client.get("/v1/collections", headers={"X-NRL-Scope": "tenant-a"})
+            updated = client.patch(
+                "/v1/collections/research",
+                headers={"X-NRL-Scope": "tenant-a"},
+                json={"description": "updated"},
+            )
+            written = client.post(
+                "/internal/vectordb/write",
+                json={
+                    "records": [[record]],
+                    "scope": "tenant-a",
+                    "collection_name": "research",
+                    "document_id": "document-1",
+                    "job_id": "job-1",
+                    "filename": "report.pdf",
+                    "content_sha256": "sha256",
+                    "document_version": "v1",
+                },
+            )
+            documents = client.get(
+                "/v1/collections/research/documents",
+                headers={"X-NRL-Scope": "tenant-a"},
+            )
+            queried = client.post(
+                "/v1/query",
+                headers={"X-NRL-Scope": "tenant-a"},
+                json={"query": "hello", "collection_name": "research"},
+            )
+            deleted_document = client.delete(
+                "/v1/collections/research/documents/document-1",
+                headers={"X-NRL-Scope": "tenant-a"},
+            )
+            deleted_collection = client.delete(
+                "/v1/collections/research",
+                headers={"X-NRL-Scope": "tenant-a"},
+            )
+
+    assert created.status_code == 201
+    assert listed.json()["items"][0]["name"] == "research"
+    assert updated.json()["description"] == "updated"
+    assert written.json() == {"written": 1, "total_rows": 1}
+    assert documents.json()["items"][0]["document_id"] == "document-1"
+    assert queried.status_code == 200
+    hit = queried.json()["results"][0]["hits"][0]
+    assert backend.health_calls == 0
+    assert hit["text"] == "collection hit"
+    assert "physical_table" not in hit
+    assert "_distance" not in hit
+    assert backend.last_write_context is not None
+    assert backend.last_write_context.scope == "tenant-a"
+    assert backend.last_retrieval == {
+        "scope": "tenant-a",
+        "collection_name": "research",
+        "query_texts": ["hello"],
+        "top_k": 10,
+    }
+    assert deleted_document.status_code == 200
+    assert deleted_collection.status_code == 200
+
+
+def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() -> None:
+    class UnsupportedCollectionRetrievalVDB(FakeVDB):
+        def __init__(self) -> None:
+            super().__init__()
+            self.legacy_retrieval_calls = 0
+
+        def retrieval(self, queries: list, **kwargs):
+            self.legacy_retrieval_calls += 1
+            return super().retrieval(queries, **kwargs)
+
+        def retrieve_collection(self, *args: Any, **kwargs: Any):
+            raise UnsupportedVDBOperation("Collection retrieval mode is unsupported")
+
+    backend = UnsupportedCollectionRetrievalVDB()
+    backend.create_collection(
+        scope="tenant-a",
+        request=CollectionCreateRequest(name="research"),
+    )
+
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
+        with TestClient(_app(backend)) as client:
+            response = client.post(
+                "/v1/query",
+                headers={"X-NRL-Scope": "tenant-a"},
+                json={"query": "hello", "collection_name": "research"},
+            )
+
+    assert response.status_code == 501
+    assert response.json()["detail"] == ("The configured VectorDB backend does not support this operation.")
+    assert backend.legacy_retrieval_calls == 0
+
+
+def test_production_vdb_dense_mode_preserves_legacy_service_write_without_index_rebuild(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="legacy",
+        expiration_cleanup_enabled=True,
+        index_mode="dense",
+    )
+    assert isinstance(backend, LanceDB)
+    assert backend.build_index is False
+
+    index_writes = []
+    monkeypatch.setattr(
+        backend,
+        "create_index",
+        lambda records, table_name: object(),
+    )
+    monkeypatch.setattr(
+        backend,
+        "write_to_index",
+        lambda *args, **kwargs: index_writes.append((args, kwargs)),
+    )
+
+    assert backend.run([]) == []
+    assert index_writes == []
+
+
+def test_production_vdb_defaults_to_hybrid_index(tmp_path) -> None:
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="hybrid",
+        expiration_cleanup_enabled=True,
+    )
+
+    assert isinstance(backend, LanceDB)
+    assert backend.hybrid is True
+    assert backend.build_index is True
+
+
+def test_legacy_write_and_query_keep_existing_vdb_path() -> None:
+    backend = FakeVDB()
+    app = _app(backend)
+    record = {
+        "document_type": "text",
+        "metadata": {
+            "embedding": [1.0, 0.0],
+            "content": "legacy",
+            "content_metadata": {},
+            "source_metadata": {},
+        },
+    }
+
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
+        with TestClient(app) as client:
+            written = client.post(
+                "/internal/vectordb/write",
+                json={
+                    "records": [[record]],
+                    "scope": "default",
+                    "filename": "legacy.pdf",
+                    "document_version": "1",
+                },
+            )
+            queried = client.post("/v1/query", json={"query": "legacy"})
+
+    assert written.json() == {"written": 1, "total_rows": 1}
+    hit = queried.json()["results"][0]["hits"][0]
+    assert hit["text"] == "legacy hit"
+    assert hit["_distance"] == 0.2
+
+
+def test_service_managed_lancedb_preserves_multimodal_fields(tmp_path) -> None:
+    backend = LanceDB(
+        uri=str(tmp_path),
+        table_name="legacy",
+        vector_dim=None,
+        overwrite=False,
+        build_index=False,
+        _service_table_schema=True,
+    )
+    app = _app(backend)
+    record = {
+        "document_type": "text",
+        "metadata": {
+            "embedding": [1.0, 0.0, 0.0, 0.0],
+            "content": "table content",
+            "content_metadata": {
+                "page_number": 7,
+                "type": "table_caption",
+                "stored_image_uri": "s3://artifacts/table.png",
+                "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+            },
+            "source_metadata": {
+                "source_id": "/documents/report.pdf",
+                "source_name": "report.pdf",
+            },
+        },
+    }
+
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
+        with TestClient(app) as client:
+            written = client.post(
+                "/internal/vectordb/write",
+                json={
+                    "records": [[record]],
+                    "filename": "report.pdf",
+                    "document_version": "1",
+                },
+            )
+            queried = client.post("/v1/query", json={"query": "table", "top_k": 1})
+
+    assert written.status_code == 200
+    assert queried.status_code == 200
+    hit = queried.json()["results"][0]["hits"][0]
+    assert hit["content_type"] == "table"
+    assert hit["stored_image_uri"] == "s3://artifacts/table.png"
+    assert hit["bbox_xyxy_norm"] == "[0.1, 0.2, 0.8, 0.9]"
+    assert hit["page_number"] == 7
+    assert hit["source_id"] == "/documents/report.pdf"
+
+
+def test_typed_collection_errors_map_to_http_contract() -> None:
+    backend = FakeVDB()
+    with TestClient(_app(backend)) as client:
+        missing = client.get("/v1/collections/missing")
+        assert missing.status_code == 404
+
+        assert client.post("/v1/collections", json={"name": "duplicate"}).status_code == 201
+        conflict = client.post("/v1/collections", json={"name": "duplicate"})
+        invalid = client.get("/v1/collections?continuation_token=invalid")
+
+    assert conflict.status_code == 409
+    assert invalid.status_code == 422
+
+
+@pytest.mark.parametrize("backend_cls", [ContractFailureVDB, ValueFailureVDB])
+def test_backend_query_failures_return_safe_500(backend_cls) -> None:
+    backend = backend_cls()
+    backend.create_collection(scope="default", request=CollectionCreateRequest(name="research"))
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
+        with TestClient(_app(backend), raise_server_exceptions=False) as client:
+            response = client.post(
+                "/v1/query",
+                json={"query": "hello", "collection_name": "research"},
+            )
+
+    assert response.status_code == 500
+    assert "physical table secret" not in response.text
+    if backend_cls is ContractFailureVDB:
+        assert response.json()["detail"] == "VectorDB retrieval contract violation."
+    else:
+        assert response.json()["detail"] == "VectorDB backend operation failed."
+
+
+def test_query_empty_legacy_index_returns_422() -> None:
+    with TestClient(_app(FakeVDB())) as client:
+        response = client.post("/v1/query", json={"query": "hello", "top_k": 3})
+
+    assert response.status_code == 422
+    assert "No data has been ingested yet" in response.json()["detail"]
+
+
+def test_legacy_query_allows_backend_with_default_empty_health() -> None:
+    app = _app(DefaultHealthVDB())
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
+        with TestClient(app) as client:
+            response = client.post("/v1/query", json={"query": "hello", "top_k": 3})
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["hits"][0]["text"] == "legacy hit"
+
+
+def test_query_without_embed_backend_returns_501() -> None:
+    app = create_vectordb_app(vdb=FakeVDB(), reconciliation_interval_seconds=0)
+    with TestClient(app) as client:
+        response = client.post("/v1/query", json={"query": "hello", "top_k": 3})
+
+    assert response.status_code == 501
+    assert "No embedding backend configured" in response.json()["detail"]
+
+
+def test_internal_auth_is_optional_and_can_be_enabled() -> None:
+    app = _app(FakeVDB(), internal_api_token="internal-secret")
+    with TestClient(app) as client:
+        assert client.get("/v1/health").status_code == 200
+        assert client.get("/v1/collections").status_code == 401
+        assert (
+            client.get(
+                "/v1/collections",
+                headers={"X-NRL-Internal-Token": "internal-secret"},
+            ).status_code
+            == 200
+        )
+
+
+def test_health_and_metrics_use_backend_neutral_health() -> None:
+    backend = FakeVDB(table_exists=True)
+    app = _app(backend)
+    with TestClient(app) as client:
+        health = client.get("/v1/health")
+        metrics = client.get("/metrics")
+
+    assert health.status_code == 200
+    assert health.json()["table_exists"] is True
+    assert health.json()["effective_retrieval_mode"] == "dense"
+    assert metrics.status_code == 200
+    assert "nrl_vectordb_collections" in metrics.text
+
+
+def test_health_returns_503_when_backend_is_unavailable() -> None:
+    app = _app(HealthFailureVDB())
+    with TestClient(app) as client:
+        health = client.get("/v1/health")
+
+    assert health.status_code == 503
+    assert health.json() == {"detail": "VectorDB backend is unavailable"}
 
 
 def test_tensor_to_embedding_rows_handles_batch() -> None:
@@ -158,10 +641,8 @@ def test_vector_db_state_local_embed_queries() -> None:
     tensor.cpu.return_value = tensor
     tensor.tolist.return_value = [[1.0, 2.0]]
     mock_embedder.embed_queries.return_value = tensor
-
     state = VectorDBState(
-        lancedb_uri="/tmp/unused",
-        table_name="t",
+        vdb=FakeVDB(),
         embed_endpoint="",
         embed_model="nvidia/llama-nemotron-embed-1b-v2",
         embed_api_key="",
@@ -185,7 +666,6 @@ def test_remote_embed_queries_delegates_model_prefix(monkeypatch) -> None:
         return [[0.1, 0.2]]
 
     monkeypatch.setattr("nemo_retriever.models.nim.util.infer_microservice", fake_infer_microservice)
-
     vectors = _embed_queries_remote(
         ["hello"],
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
@@ -199,120 +679,3 @@ def test_remote_embed_queries_delegates_model_prefix(monkeypatch) -> None:
     assert calls["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert calls["model_provider_prefix"] == "nvidia"
     assert calls["embedding_endpoint"] == "https://litellm.example.com/v1/embeddings"
-
-
-_CANNED_HITS = [
-    {
-        "text": "Revenue grew 12% year over year.",
-        "pdf_basename": "10k_2023.pdf",
-        "page_number": 12,
-        "content_type": "text",
-        "_score": 0.91,
-        "metadata": {},
-    }
-]
-
-
-def _query_app(tmp_path):
-    return create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        table_name="t",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-    )
-
-
-def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
-    app = _query_app(tmp_path)
-    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
-        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["dense"])):
-        with TestClient(app) as client:
-            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert list(body) == ["results"]
-    assert len(body["results"]) == 1
-    item = body["results"][0]
-    assert set(item) == {"evidence", "coverage"}
-
-    ev = item["evidence"][0]
-    assert ev["source"] == "10k_2023"
-    assert ev["citation"] == "10k_2023 p.12"
-    assert ev["locator"] == {"kind": "page", "value": 12}
-    assert ev["modality"] == "text"
-    assert ev["fidelity"] == "verbatim"
-    assert ev["score"] == 0.91
-
-    coverage = item["coverage"]
-    assert coverage["strategies_used"] == ["dense"]
-    assert coverage["n_docs_seen"] == 1
-    assert coverage["thin_spots"] == ["single source"]
-
-
-def test_query_hybrid_evidence_reports_hybrid_strategy(tmp_path) -> None:
-    # A table whose capabilities resolve to hybrid (vector + FTS) reports hybrid.
-    app = _query_app(tmp_path)
-    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
-        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["hybrid"])):
-        with TestClient(app) as client:
-            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
-
-    assert resp.status_code == 200
-    assert resp.json()["results"][0]["coverage"]["strategies_used"] == ["hybrid"]
-
-
-def test_query_unqueryable_table_returns_422(tmp_path) -> None:
-    # An unqueryable table (e.g. FTS-only / no vector column) surfaces as 422.
-    app = _query_app(tmp_path)
-    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
-        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(
-        VectorDBState,
-        "search",
-        side_effect=ValueError(
-            "LanceDB table 't' at '" + str(tmp_path) + "' has an FTS index but no vector "
-            "column; sparse-only retrieval is not supported by the VectorDB service."
-        ),
-    ):
-        with TestClient(app) as client:
-            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5})
-
-    assert resp.status_code == 422
-    assert "sparse-only retrieval is not supported" in resp.json()["detail"]
-
-
-def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="docs",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-    )
-    state._table_exists = True
-
-    mock_caps = MagicMock()
-    mock_caps.has_vector = True
-    mock_caps.has_fts = True
-    mock_caps.retrieval_mode = "hybrid"
-    mock_caps.vector_column = "vector"
-
-    mock_vdb = MagicMock()
-    mock_vdb.retrieval.return_value = [[{"text": "hit", "_score": 0.5}]]
-
-    with patch.object(state, "_table_capabilities", return_value=mock_caps), patch(
-        "nemo_retriever.common.vdb.lancedb.LanceDB",
-        return_value=mock_vdb,
-    ):
-        hits, strategies = state.search([[0.1, 0.2]], ["revenue"], top_k=3)
-
-    assert strategies == ["hybrid"]
-    assert hits[0][0]["text"] == "hit"
-    mock_vdb.retrieval.assert_called_once()
-    call_kwargs = mock_vdb.retrieval.call_args.kwargs
-    assert call_kwargs["top_k"] == 3
-    assert call_kwargs["hybrid"] is True
-    assert call_kwargs["query_texts"] == ["revenue"]

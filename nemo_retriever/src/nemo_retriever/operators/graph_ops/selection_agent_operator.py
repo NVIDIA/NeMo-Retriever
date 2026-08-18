@@ -2,27 +2,35 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Operator that re-ranks retrieved documents using an LLM-based selection agent."""
+"""Operator that re-ranks retrieved documents using an LLM-based selection agent.
+
+The selection logic lives in the private
+:class:`~nemo_retriever._agentic.nemo_agent.SelectionAgent`. This operator adapts the
+RRF-stage DataFrame into that library's inputs and applies a three-tier gate per
+query: pass through the ReAct agent's ``final_results`` when present, otherwise
+run the selection agent, otherwise fall back to the RRF ranking.
+"""
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-
-import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
+from nemo_retriever._agentic.nemo_agent import SelectionAgent, SelectionAgentConfig
+from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
+from nemo_retriever._agentic.nemo_agent.results import AgentRunResult
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
-from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
 
 logger = logging.getLogger(__name__)
 
 _LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
+
+#: Max LLM steps for the selection sub-agent (mirrors the reference workflow).
+_SELECTION_MAX_STEPS = 10
 
 
 def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
@@ -32,155 +40,84 @@ def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
     return text[:limit].rstrip() + "..."
 
 
-# ---------------------------------------------------------------------------
-# Prompt rendering  (verbatim content of 01_v0.j2, rendered via Python)
-# ---------------------------------------------------------------------------
-
-_ROLE = """\
-You are a document re-ranker agent, which is the final stage in an information retrieval pipeline.
-
-<ROLE>
-You are given a search query and a list of retrieved candidate documents that are potentially relevant to \
-the given query. Your goal is to help the users identify the most relevant documents to the given query \
-from the list of candidate documents.
-</ROLE>"""
-
-_RELEVANCE_DEFINITION = """\
-
-<RELEVANCE_DEFINITION>
-- You should be careful, in the context of this task, what it means to be a "query", "document", and \
-"relevant" can sometimes be very complex and might not follow the traditional definition of these terms \
-in standard re-ranking and retrieval.
-- In standard re-ranking/retrieval, a query is usually a user question (like a web search query), the \
-document is some sort of content that provides information (e.g., a web page), and these two are considered \
-relevant if the document provides information that answers the user's query.
-- However, in our setting, this could be different. Here are some examples:
-    * the query is a programming problem and documents are programming language syntax references. A document \
-is relevant if it contains the reference for the programming syntax used for solving the problem.
-    * both query and documents are descriptions programming problems and a query and document are relevant if \
-the same approach is used to solve them.
-    * the query is a math problem and documents are theorems. Relevant documents (theorems) are the ones \
-that are useful for solving the math problem.
-    * the query and document are both math problems. A query and a document are relevant if the same theorem \
-is used for solving them.
-    * the query is a task description (e.g., for an API programmer) and documents are descriptions of \
-available APIs. Relevant documents (e.g., APIs) are the ones needed for completing the task.
-- This is not an exhaustive list. These are just some examples to show you the complexity of queries, \
-documents, and the concept of relevance in this task.
-- Note that even here, the relevant documents are still the ones that are useful for a user who is \
-searching for the given query. But the relation is more nuanced.
-- You should analyze the query and the available documents. And then reason about what could be a meaningful \
-definition of relevance in this case, and what the user could be looking for.
-- Moreover, sometimes, the query could be even a prompt that is given to a Large Language Model (LLM) and \
-the user wants to find the useful documents for the LLM that help answering/solving this prompt.
-</RELEVANCE_DEFINITION>"""
-
-_WORKFLOW_TEMPLATE = """\
-
-<WORKFLOW>
-* You are given a search query and a list of candidate documents. You have access to the ID and content of \
-each candidate document.
-* You should read the query carefully and understand it.
-{extended_relevance_line}\
-* Then you should compare the query with each one of the candidate documents. In this comparison, you want \
-to identify if the document is relevant/useful for the given query and to what extent.
-* Select the {top_k} most relevant candidate documents for the given query.
-* Note that just selecting the most relevant documents is not enough. You should identify the relative level \
-of relevance between the query and selected documents. This helps you sort the selected documents later \
-based on how relevant they are to the query.
-* Once you have this information, you should call the "log_selected_documents" function to report the final \
-results and signal the completion of the task.
-* Note that the selected document IDs must be reported in the decreasing level of relevance. I.e., The \
-first document in the list is the most relevant, the second is the second most relevant, and so on. This \
-is similar to what a search engine (e.g., Google Search) does (it shows you the relevant results in a \
-sorted order, where the most relevant results appear on top of the list).
-</WORKFLOW>"""
-
-_THINKING_TIPS = """
-
-<THINKING TIPS>
-* you have access to a "think" tool that you can use for complex thinking and analysis. Here are examples \
-of cases where the think tool might be useful:
-    - complex analysis and thinking to understand the meaning and intent of the query. E.g., what is the \
-user trying to find with this query? what kind of information is helpful for the user?
-    - extended thinking to analyze how each candidate document could or could not be relevant to the given query.
-    - reasoning to identify the relative level of relevance between the query and selected documents. It \
-helps you sort the documents correctly when reporting the final answer.
-</THINKING TIPS>"""
-
-
-def _render_selection_prompt(top_k: int, *, extended_relevance: bool = False) -> str:
-    """Render the selection agent system prompt (verbatim 01_v0.j2 logic)."""
-    parts = [_ROLE]
-    if extended_relevance:
-        parts.append(_RELEVANCE_DEFINITION)
-    ext_line = (
-        "* As explained above, reason and figure out what the meaning of relevance is in this case, "
-        "and what could be relevant and useful information for the given query.\n"
-        if extended_relevance
-        else ""
-    )
-    parts.append(_WORKFLOW_TEMPLATE.format(top_k=top_k, extended_relevance_line=ext_line))
-    parts.append(_THINKING_TIPS)
-    return "".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Operator
-# ---------------------------------------------------------------------------
-
-
 class SelectionAgentOperator(AbstractOperator, CPUOperator):
-    """Re-rank a set of retrieved documents using an LLM-based selection agent.
+    """Re-rank retrieved documents using an LLM-based selection agent.
 
-    For each ``query_id`` group in the input DataFrame, the operator runs an
-    agentic LLM loop that reads the query and all candidate documents, then
-    calls a ``log_selected_documents`` tool to report the final ranked list.
-    The loop also has access to a ``think`` tool for extended reasoning.
+    For each ``query_id`` group produced by :class:`RRFAggregatorOperator`, the
+    operator applies a three-tier gate:
 
-    The system prompt matches the retrieval-bench ``01_v0.j2`` template verbatim,
-    with an optional ``extended_relevance`` mode for complex retrieval tasks.
+    1. **final_results** — if the ReAct agent produced a non-empty final list
+       (recovered from ``react_final_rank``), pass those doc ids through.
+    2. **selection_agent** — otherwise run
+       :class:`~nemo_retriever._agentic.nemo_agent.SelectionAgent` over the RRF-ranked
+       candidates (with the RRF scores arming its context-overflow shrink retry).
+    3. **rrf** — if selection produced nothing (failure / empty), fall back to
+       the top RRF-ranked candidates.
 
     Input DataFrame schema
     ----------------------
     query_id   : str  — unique query identifier
     query_text : str  — original query text shown to the LLM
-    doc_id     : str  — unique document identifier
+    doc_id     : str  — candidate document identifier
     text       : str  — document text content shown to the LLM
+    rrf_score        : float, optional — used to order candidates and as the
+                       selection shrink-retry priority / RRF fallback
+    react_final_rank : int, optional — ReAct final ordering (drives tier 1)
     (any additional columns are ignored)
 
     Output DataFrame schema
     -----------------------
-    query_id : str  — same ``query_id`` as the input
-    doc_id   : str  — selected document ID
-    rank     : int  — 1-indexed rank (1 = most relevant)
-    message  : str  — LLM explanation of the selection
+    query_id      : str  — same ``query_id`` as the input
+    doc_id        : str  — selected document ID
+    rank          : int  — 1-indexed rank (1 = most relevant)
+    message       : str  — always empty (retained for schema compatibility)
+    result_source : str  — one of ``{"final_results", "selection_agent", "rrf"}``
 
     Parameters
     ----------
     llm_model : str
-        Model identifier forwarded to the endpoint.
+        Model identifier forwarded verbatim to the backend.
     invoke_url : str
-        Full ``/v1/chat/completions`` endpoint URL.
+        LLM endpoint. Forwarded as the LLM config's ``base_url``.
     top_k : int
-        Number of documents to select per query.  Defaults to ``5``.
+        Number of documents to select per query. Defaults to ``10``.
     api_key : str, optional
         Literal API key **or** an ``"os.environ/VAR_NAME"`` reference.
     max_tokens : int, optional
-        Upper bound on tokens in each LLM response.
+        Per-request completion budget (the LLM config's ``max_completion_tokens``).
     max_steps : int
-        Maximum agentic loop iterations per query.  Defaults to ``10``.
-    extended_relevance : bool
-        When ``True``, include the ``<RELEVANCE_DEFINITION>`` block in the
-        system prompt for tasks with non-standard relevance definitions.
-        Defaults to ``False``.
+        Maximum selection-agent LLM steps per query. Defaults to ``10``.
     system_prompt_override : str, optional
-        Fully custom system prompt.  Use ``{top_k}`` as a placeholder.
+        Forwarded as the selection agent's ``system_prompt`` (``None`` selects
+        the packaged default selection prompt).
     text_truncation : int
-        Maximum characters of each document's text shown to the LLM.
-        Defaults to ``2000``.
+        Maximum characters of each document's text passed to the agent.
+        ``0`` disables truncation. Defaults to ``0``.
+    parallel_tool_calls : bool, optional
+        Forwarded as the LLM config's ``parallel_tool_calls`` (sent to the
+        provider only when set).
     base_url : str, optional
-        Deprecated alias for ``invoke_url``.  Prefer ``invoke_url``.
+        Deprecated alias for ``invoke_url``.
+    reasoning_effort : str, optional
+        Forwarded as the LLM config's ``reasoning_effort``.
+    temperature : float, optional
+        Forwarded as the LLM config's ``temperature`` (sent to the provider
+        only when set).
+    backend : {"callable", "litellm"}
+        LLM backend to build. ``"callable"`` (default) drives an OpenAI-compatible
+        completion callable: ``chat_completion_fn`` when supplied (the in-process
+        vLLM adapter), otherwise the shared ``invoke_chat_completion_step`` HTTP
+        client against ``invoke_url``.
+    chat_completion_fn : callable, optional
+        OpenAI-compatible completion callable (e.g. the local in-process vLLM
+        adapter). When set, forwarded to the ``"callable"`` LLM backend.
+
+    Notes
+    -----
+    The :class:`~nemo_retriever._agentic.nemo_agent.SelectionAgent` and LLM backend are
+    built lazily on first ``process`` call so the operator stays reconstructable
+    via ``get_constructor_kwargs``. ``select_sync`` performs one ``asyncio.run``
+    per query and must not be called from inside a running event loop.
     """
 
     _NVIDIA_BUILD_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -190,30 +127,34 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         *,
         llm_model: str,
         invoke_url: Optional[str] = None,
-        top_k: int = 5,
+        top_k: int = 10,
         api_key: Optional[str] = None,
         max_tokens: Optional[int] = None,
-        max_steps: int = 10,
-        extended_relevance: bool = False,
+        max_steps: int = _SELECTION_MAX_STEPS,
         system_prompt_override: Optional[str] = None,
-        text_truncation: int = 2000,
-        parallel_tool_calls: bool = True,
+        text_truncation: int = 0,
+        parallel_tool_calls: Optional[bool] = None,
         base_url: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: Optional[float] = None,
+        backend: str = "callable",
+        chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
-        self._reasoning_effort = reasoning_effort
-        self._temperature = temperature
         self._llm_model = llm_model
         self._top_k = top_k
         self._api_key = api_key
         self._max_tokens = max_tokens
         self._max_steps = max_steps
-        self._extended_relevance = extended_relevance
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
+        self._backend = backend
+        # When set, an OpenAI-compatible completion callable (e.g. the in-process
+        # local vLLM adapter). Forwarded to the "callable" LLM backend by _build_llm.
+        self._chat_completion_fn = chat_completion_fn
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -228,6 +169,52 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             self._invoke_url = base_url.rstrip("/") + "/v1/chat/completions"
         else:
             self._invoke_url = self._NVIDIA_BUILD_ENDPOINT
+
+        # Built lazily on first process(); never part of the picklable ctor state.
+        self._sel: Optional[SelectionAgent] = None
+
+    # ------------------------------------------------------------------
+    # private agent construction (lazy, memoized)
+    # ------------------------------------------------------------------
+
+    def _build_llm(self) -> Any:
+        config = create_llm_config(
+            self._backend,
+            model=str(self._llm_model),
+            base_url=self._invoke_url,
+            api_key=self._api_key,
+            reasoning_effort=self._reasoning_effort or None,
+            temperature=self._temperature,
+            parallel_tool_calls=self._parallel_tool_calls,
+            max_completion_tokens=self._max_tokens,
+        )
+        completion_fn = self._chat_completion_fn
+        if self._backend == "callable" and completion_fn is None:
+            # Remote run on the default backend: supply the shared chat-completions
+            # client. Imported HERE and injected, never imported by the agent
+            # library, which must not depend on the rest of nemo_retriever.
+            from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
+
+            completion_fn = invoke_chat_completion_step
+        kwargs = {"completion_fn": completion_fn} if completion_fn is not None else {}
+        return create_llm(config, **kwargs)
+
+    def _ensure_agent(self) -> SelectionAgent:
+        if self._sel is None:
+            self._sel = SelectionAgent(
+                config=SelectionAgentConfig(
+                    target_top_k=int(self._top_k),
+                    extended_relevance=True,
+                    enable_think=False,
+                    end_tool_with_msg=False,
+                    shrink_attempts=2,
+                    max_steps=int(self._max_steps),
+                    on_error="never_raise",
+                    system_prompt=self._system_prompt_override,
+                ),
+                llm=self._build_llm(),
+            )
+        return self._sel
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -246,70 +233,70 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         return data.copy()
 
     def process(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
-        """Run the selection agent loop for each query group."""
+        """Apply the three-tier selection gate for each query group."""
+        self._ensure_agent()
         rows: List[Dict[str, Any]] = []
 
         for query_id, group in data.groupby("query_id", sort=False):
-            query_text = str(group["query_text"].iloc[0])
-            ordered_group = group
-            if "rrf_score" in group.columns:
-                ordered_group = group.sort_values("rrf_score", ascending=False)
-            docs = [
-                {
-                    "id": str(row["doc_id"]),
-                    "text": str(row["text"]),
-                }
-                for _, row in ordered_group.iterrows()
-            ]
+            query_text = str(group["query_text"].iloc[0]) if "query_text" in group.columns else ""
+            ordered = group.sort_values("rrf_score", ascending=False) if "rrf_score" in group.columns else group
+
+            # Candidate documents in RRF-descending order, deduplicated (first wins),
+            # plus the {doc_id: rrf_score} priority side-table (covers every candidate).
+            documents: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for _, row in ordered.iterrows():
+                doc_id = str(row["doc_id"])
+                if doc_id in seen:
+                    continue
+                seen.add(doc_id)
+                text = str(row["text"])
+                if self._text_truncation and int(self._text_truncation) > 0:
+                    text = text[: int(self._text_truncation)]
+                documents.append({"id": doc_id, "text": text})
+            scores: Optional[Dict[str, float]] = None
+            if "rrf_score" in ordered.columns:
+                scores = {str(row["doc_id"]): float(row["rrf_score"]) for _, row in ordered.iterrows()}
+
             logger.info(
-                "SelectionAgentOperator: query=%s start candidates=%d unique_candidates=%d query=%r",
+                "SelectionAgentOperator: query=%s candidates=%d query=%r",
                 query_id,
-                len(docs),
-                len({doc["id"] for doc in docs}),
+                len(documents),
                 _preview_text(query_text),
             )
-            preferred_doc_ids, message, result_source = self._preferred_doc_ids(ordered_group)
-            if preferred_doc_ids is None:
-                result = self._select_documents(query_text, docs)
-                message = result.get("message", "")
-                doc_ids = list(result.get("doc_ids", []))
-                result_source = "selection_agent"
+
+            # Tier 1: ReAct produced a final list (success or salvage) -> pass through.
+            react_final = self._react_final_doc_ids(ordered)
+            if react_final:
+                doc_ids = list(react_final)
+                result_source = "final_results"
             else:
-                doc_ids = preferred_doc_ids
-            if not doc_ids:
-                if preferred_doc_ids is None:
-                    doc_ids = ordered_group["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
-                    message = (
-                        f"{message} Falling back to top {len(doc_ids)} RRF-ranked candidates."
-                        if message
-                        else f"Falling back to top {len(doc_ids)} RRF-ranked candidates."
-                    )
-                    result_source = "candidate_ranking"
-                    logger.warning(
-                        "SelectionAgentOperator: query=%s selection failed; "
-                        "falling back to candidate ranking doc_ids=%s",
-                        query_id,
-                        doc_ids[:_LOG_DOC_ID_LIMIT],
-                    )
+                doc_ids = []
+                result_source = ""
+                # Tier 2: run the selection agent over the RRF candidates.
+                if documents:
+                    result = self._run_selection(query_text, documents, scores, str(query_id))
+                    if result is not None and result.succeeded and result.final_doc_ids:
+                        doc_ids = [str(d) for d in result.final_doc_ids][: int(self._top_k)]
+                        result_source = "selection_agent"
+                # Tier 3: fall back to the RRF ranking.
+                if not doc_ids:
+                    doc_ids = ordered["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
+                    result_source = "rrf"
+
             logger.info(
                 "SelectionAgentOperator: query=%s result_source=%s selected=%s",
                 query_id,
                 result_source,
                 doc_ids[:_LOG_DOC_ID_LIMIT],
             )
-            # Message can quote document text/PII; keep content at DEBUG.
-            logger.debug(
-                "SelectionAgentOperator: query=%s message=%r",
-                query_id,
-                _preview_text(message),
-            )
             for rank, doc_id in enumerate(doc_ids, 1):
                 rows.append(
                     {
                         "query_id": query_id,
-                        "doc_id": doc_id,
+                        "doc_id": str(doc_id),
                         "rank": rank,
-                        "message": message,
+                        "message": "",
                         "result_source": result_source,
                     }
                 )
@@ -326,102 +313,19 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _resolve_api_key(self) -> Optional[str]:
-        api_key = self._api_key
-        if api_key is not None and api_key.strip().startswith("os.environ/"):
-            var = api_key.strip().removeprefix("os.environ/")
-            value = os.environ.get(var)
-            if value is None:
-                raise ValueError(
-                    f"Environment variable '{var}' is not set. " f"Set it with: export {var}=<your-api-key>"
-                )
-            return value
-        return api_key
+    def _react_final_doc_ids(self, ordered_group: pd.DataFrame) -> List[str]:
+        """Recover the ReAct agent's final ranked doc ids from ``react_final_rank``.
 
-    def _build_system_prompt(self, top_k: int) -> str:
-        if self._system_prompt_override:
-            return self._system_prompt_override.format(top_k=top_k)
-        return _render_selection_prompt(top_k, extended_relevance=self._extended_relevance)
-
-    def _build_tools(self, top_k: int, valid_doc_ids: List[str]) -> List[Dict[str, Any]]:
-        """Return the two tool specs for the selection agent loop."""
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "think",
-                    "description": (
-                        "Use this tool to think through complex analysis before making a decision. "
-                        "It logs your reasoning without making any changes. Use it to compare "
-                        "documents against the query or to reason about relevance."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "thought": {
-                                "type": "string",
-                                "description": "Your reasoning or analysis.",
-                            }
-                        },
-                        "required": ["thought"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "log_selected_documents",
-                    "description": (
-                        f"Records the {top_k} most relevant documents and ends the task. "
-                        f"Call this when you have finished evaluating all candidate documents. "
-                        f"The doc_ids list must be sorted from most to least relevant. "
-                        f"Valid document IDs are: {valid_doc_ids}."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "required": ["doc_ids", "message"],
-                        "properties": {
-                            "doc_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": (
-                                    f"The IDs of the {top_k} most relevant documents, sorted from "
-                                    "most to least relevant. Must be valid document IDs from the candidates."
-                                ),
-                            },
-                            "message": {
-                                "type": "string",
-                                "description": "A brief explanation of your selection and the relevance ordering.",
-                            },
-                        },
-                    },
-                },
-            },
-        ]
-
-    def _preferred_doc_ids(self, ordered_group: pd.DataFrame) -> tuple[List[str] | None, str, str]:
-        """Apply retrieval-bench-style source priority before invoking selection."""
-        doc_ids = self._react_final_doc_ids(ordered_group)
-        if doc_ids is not None:
-            return doc_ids, "Using ReAct final_results.", "final_results"
-
-        if "rrf_score" in ordered_group.columns:
-            doc_ids = ordered_group["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
-            if doc_ids:
-                return doc_ids, "Using RRF ranking.", "rrf"
-
-        return None, "", ""
-
-    def _react_final_doc_ids(self, ordered_group: pd.DataFrame) -> List[str] | None:
-        if "has_valid_final_results" in ordered_group.columns and not bool(
-            ordered_group["has_valid_final_results"].astype(bool).any()
-        ):
-            return None
+        Returns an empty list when the ReAct agent produced no final results — the
+        gate branches on non-emptiness, so the None-vs-empty distinction that the
+        old code relied on is irrelevant here.
+        """
         if "react_final_rank" not in ordered_group.columns:
-            return None
-        final_rows = ordered_group[ordered_group["react_final_rank"].notna()].copy()
+            return []
+        final_rows = ordered_group[ordered_group["react_final_rank"].notna()]
         if final_rows.empty:
-            return [] if "has_valid_final_results" in ordered_group.columns else None
+            return []
+        final_rows = final_rows.copy()
         final_rows["react_final_rank"] = final_rows["react_final_rank"].astype(int)
         doc_ids: List[str] = []
         for doc_id in final_rows.sort_values("react_final_rank")["doc_id"].astype(str):
@@ -431,229 +335,22 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 break
         return doc_ids
 
-    def _build_user_message(self, query_text: str, docs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Format query + candidate documents as a multi-part user message."""
-        content: List[Dict[str, Any]] = [
-            {"type": "text", "text": f"Query:\n{query_text}"},
-            {"type": "text", "text": "Candidate Documents:"},
-        ]
-        seen: set[str] = set()
-        for doc in docs:
-            doc_id = doc["id"]
-            if doc_id in seen:
-                continue
-            seen.add(doc_id)
-            content.append({"type": "text", "text": f"Doc ID: {doc_id}"})
-            text = doc.get("text", "").strip()
-            if text:
-                if self._text_truncation > 0:
-                    truncated = text[: self._text_truncation]
-                else:
-                    truncated = text
-                if self._text_truncation > 0 and len(text) > self._text_truncation:
-                    truncated += "..."
-                content.append({"type": "text", "text": f"Doc Text: {truncated}"})
-        return {"role": "user", "content": content}
-
-    def _select_documents(
+    def _run_selection(
         self,
         query_text: str,
-        docs: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Run the agentic selection loop for a single query."""
-        valid_ids = list(dict.fromkeys(d["id"] for d in docs))
-        feasible_k = min(self._top_k, len(valid_ids))
-        logger.info(
-            "SelectionAgentOperator: selecting top_k=%d feasible_k=%d valid_doc_ids=%s",
-            self._top_k,
-            feasible_k,
-            valid_ids[:_LOG_DOC_ID_LIMIT],
-        )
-
-        system_prompt = self._build_system_prompt(feasible_k)
-        tools = self._build_tools(feasible_k, valid_ids)
-        valid_id_set = set(valid_ids)
-        api_key = self._resolve_api_key()
-
-        messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            self._build_user_message(query_text, docs),
-        ]
-
-        extra_body: Dict[str, Any] = {}
-        if not self._parallel_tool_calls:
-            extra_body["parallel_tool_calls"] = False
-        if self._reasoning_effort:
-            extra_body["reasoning_effort"] = self._reasoning_effort
-
-        for _step in range(self._max_steps):
-            logger.info(
-                "SelectionAgentOperator: step=%d begin candidates=%d feasible_k=%d",
-                _step,
-                len(valid_ids),
-                feasible_k,
+        documents: List[Dict[str, Any]],
+        scores: Optional[Dict[str, float]],
+        query_id: str,
+    ) -> Optional[AgentRunResult]:
+        """Run the selection agent, returning None on an unexpected failure."""
+        try:
+            return self._ensure_agent().select_sync(
+                query_text,
+                documents,
+                scores=scores,
+                query_id=query_id,
+                raw_log_dir=None,
             )
-            try:
-                response = invoke_chat_completion_step(
-                    invoke_url=self._invoke_url,
-                    messages=messages,
-                    model=self._llm_model,
-                    api_key=api_key,
-                    tools=tools,
-                    tool_choice="auto",
-                    temperature=self._temperature,
-                    max_tokens=self._max_tokens,
-                    extra_body=extra_body or None,
-                )
-            except TimeoutError as exc:
-                logger.warning(
-                    "SelectionAgentOperator: LLM call timed out on step %d for query %r: %s",
-                    _step,
-                    query_text,
-                    exc,
-                    exc_info=True,
-                )
-                break
-            except RuntimeError as exc:
-                logger.warning(
-                    "SelectionAgentOperator: LLM retries exhausted on step %d for query %r: %s",
-                    _step,
-                    query_text,
-                    exc,
-                    exc_info=True,
-                )
-                break
-            except requests.RequestException as exc:
-                logger.warning(
-                    "SelectionAgentOperator: LLM HTTP error on step %d for query %r: %s",
-                    _step,
-                    query_text,
-                    exc,
-                    exc_info=True,
-                )
-                break
-            except json.JSONDecodeError as exc:
-                logger.warning(
-                    "SelectionAgentOperator: LLM returned invalid JSON on step %d for query %r: %s",
-                    _step,
-                    query_text,
-                    exc,
-                    exc_info=True,
-                )
-                break
-
-            if not response.get("choices"):
-                logger.warning("SelectionAgentOperator: empty choices in API response on step %d", _step)
-                break
-            choice = response["choices"][0]
-            msg = choice["message"]
-            finish_reason = choice.get("finish_reason")
-
-            # Append the assistant turn to history
-            assistant_turn: Dict[str, Any] = {"role": "assistant"}
-            if msg.get("content"):
-                assistant_turn["content"] = msg["content"]
-                # Agent reasoning can quote document text/PII; keep content at DEBUG.
-                logger.debug(
-                    "SelectionAgentOperator: step=%d assistant content=%r",
-                    _step,
-                    _preview_text(msg.get("content")),
-                )
-            tool_calls = msg.get("tool_calls") or []
-            logger.info(
-                "SelectionAgentOperator: step=%d finish_reason=%s tool_calls=%s",
-                _step,
-                finish_reason,
-                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
-            )
-            if tool_calls:
-                assistant_turn["tool_calls"] = tool_calls
-            messages.append(assistant_turn)
-
-            if finish_reason == "stop" or not tool_calls:
-                logger.info("SelectionAgentOperator: step=%d no tool call; asking for final selection", _step)
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "Please call log_selected_documents to report your final selection.",
-                    }
-                )
-                continue
-
-            tool_messages: List[Dict[str, Any]] = []
-            should_end = False
-            end_kwargs: Dict[str, Any] = {}
-
-            for tc in tool_calls:
-                tc_id = tc.get("id", "")
-                fn = tc.get("function", {})
-                try:
-                    fn_args = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    tool_messages.append(
-                        {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
-                    )
-                    continue
-
-                if fn.get("name") == "think":
-                    # Agent thoughts can quote document text/PII; keep content at DEBUG
-                    # (matches ReActAgentOperator's think logging).
-                    logger.debug(
-                        "SelectionAgentOperator: step=%d think=%r",
-                        _step,
-                        _preview_text(fn_args.get("thought")),
-                    )
-                    tool_messages.append(
-                        {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
-                    )
-
-                elif fn.get("name") == "log_selected_documents":
-                    raw_doc_ids = fn_args.get("doc_ids", [])
-                    if isinstance(raw_doc_ids, str):
-                        try:
-                            raw_doc_ids = json.loads(raw_doc_ids)
-                        except json.JSONDecodeError:
-                            raw_doc_ids = []
-                    doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
-                    logger.info(
-                        "SelectionAgentOperator: step=%d log_selected_documents raw=%s accepted=%s",
-                        _step,
-                        raw_doc_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_doc_ids, list) else raw_doc_ids,
-                        doc_ids[:_LOG_DOC_ID_LIMIT],
-                    )
-                    # Message can quote document text/PII; keep content at DEBUG.
-                    logger.debug(
-                        "SelectionAgentOperator: step=%d log_selected_documents message=%r",
-                        _step,
-                        _preview_text(fn_args.get("message")),
-                    )
-                    if not doc_ids and raw_doc_ids:
-                        logger.warning(
-                            "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
-                            "but none matched the candidate set — possible hallucination. "
-                            "Returned IDs: %s",
-                            len(raw_doc_ids),
-                            query_text,
-                            raw_doc_ids[:10],
-                        )
-                    end_kwargs = {"doc_ids": doc_ids, "message": fn_args.get("message", "")}
-                    should_end = True
-
-                else:
-                    tool_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc_id,
-                            "content": f"Error: unknown tool '{fn.get('name')}'.",
-                        }
-                    )
-
-            if should_end:
-                return end_kwargs
-
-            messages.extend(tool_messages)
-
-        return {
-            "doc_ids": [],
-            "message": "Selection agent reached max steps without completing.",
-        }
+        except Exception as exc:  # production: fall back to RRF rather than crash
+            logger.warning("SelectionAgentOperator: selection failed for query %r: %s", query_id, exc, exc_info=True)
+            return None

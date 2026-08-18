@@ -93,15 +93,9 @@ def test_root_help_lists_only_product_workflows() -> None:
         assert f"│ {developer_command} " not in result.output
 
 
-def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
-    result = RUNNER.invoke(cli_main.app, ["pipeline", "--help"])
-
-    assert result.exit_code == 0
-
-
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
@@ -167,6 +161,8 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -207,6 +203,8 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "uri": "/tmp/default-lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -246,6 +244,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
             return self
 
         def ingest(self, *args: Any, **kwargs: Any):
+            captured["ingest_kwargs"] = kwargs
             return self
 
     monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
@@ -293,6 +292,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
+    assert captured["ingest_kwargs"] == {"return_results": True}
     assert "through retriever service http://retriever-service:7670" in result.output
 
 
@@ -400,6 +400,8 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "uri": "/tmp/lancedb",
         "table_name": "docs",
         "overwrite": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -418,6 +420,8 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -515,8 +519,13 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.embed_invoke_url == "http://embed:8000/v1/embeddings"
     assert embed_params.embedding_endpoint == "http://embed:8000/v1/embeddings"
-    assert embed_params.model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
-    assert embed_params.embed_model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_provider_prefix == "nvidia"
+    vdb_kwargs = fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs
+    assert vdb_kwargs["embedding_model_name"] == "nvidia/llama-nemotron-embed-1b-v2"
+    assert vdb_kwargs["vector_dim"] is None
+    assert "embedding_model_revision" not in vdb_kwargs
 
 
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
@@ -646,6 +655,7 @@ def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "pdfium"
     assert extract_params.ocr_version == "v2"
     assert extract_params.ocr_lang == "english"
 
@@ -1210,6 +1220,42 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["extract"]["extract_tables"] is False
 
 
+def test_root_ingest_dry_run_routes_avi_to_video(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "sample.avi"
+    document.write_bytes(b"AVI")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == [str(document)]
+    assert payload["branch_summary"] == "video:1"
+
+
+def test_root_ingest_dry_run_discovers_avi_in_mixed_directory(monkeypatch, tmp_path) -> None:
+    avi_document = tmp_path / "sample.avi"
+    avi_document.write_bytes(b"AVI")
+    pdf_document = tmp_path / "sample.pdf"
+    pdf_document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == sorted((str(avi_document), str(pdf_document)))
+    assert payload["branch_summary"] == "pdf:1, video:1"
+
+
 def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
     payload = {
         "api_key": "nvapi-test",
@@ -1318,6 +1364,8 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
             "http://vlm:8000/v1/chat/completions",
             "--caption-model-name",
             "nvidia/test-vlm",
+            "--caption-gpu-memory-utilization",
+            "0.8",
             "--caption-context-text-max-chars",
             "512",
             "--caption-infographics",
@@ -1337,6 +1385,7 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     assert isinstance(caption_params, CaptionParams)
     assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
     assert caption_params.model_name == "nvidia/test-vlm"
+    assert caption_params.gpu_memory_utilization == 0.8
     assert caption_params.context_text_max_chars == 512
     assert caption_params.caption_infographics is True
 
@@ -1355,6 +1404,8 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
             str(document),
             "--caption-invoke-url",
             "http://vlm:8000/v1/chat/completions",
+            "--caption-gpu-memory-utilization",
+            "0.8",
         ],
     )
 
@@ -1700,6 +1751,8 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -1762,5 +1815,7 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     table = lancedb.connect(str(tmp_path / "db")).open_table("sparse_docs")
     assert "vector" not in table.schema.names
     assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
+    assert table.schema.metadata[b"nemo_retriever.retrieval_mode"] == b"sparse"
+    assert b"nemo_retriever.embedding_model_name" not in table.schema.metadata
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)

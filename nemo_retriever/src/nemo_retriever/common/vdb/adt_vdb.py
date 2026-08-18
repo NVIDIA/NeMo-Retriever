@@ -24,7 +24,67 @@ metadata-filtering section and its reference notebook.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
+
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionDeleteResult,
+    CollectionInfo,
+    CollectionPage,
+    CollectionUpdateRequest,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
+    IngestOperation,
+)
+
+
+class UnsupportedVDBOperation(NotImplementedError):
+    """The selected VDB backend does not implement an optional operation."""
+
+
+class VDBResourceNotFound(LookupError):
+    """A logical resource does not exist in the selected VDB backend."""
+
+
+class VDBResourceConflict(RuntimeError):
+    """A VDB operation conflicts with the resource's current state."""
+
+
+class VDBInvalidRequest(ValueError):
+    """A request cannot be applied by the VDB backend."""
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionWriteContext:
+    """Logical identity and operation metadata for one collection write."""
+
+    scope: str
+    collection_name: str
+    document_id: str
+    document_version: str
+    content_sha256: str
+    filename: str
+    job_id: str | None = None
+    operation: IngestOperation = IngestOperation.APPEND
+
+    def __post_init__(self) -> None:
+        """Coerce a wire-level operation string into its enum member.
+
+        Callers outside the service layer construct this directly with a
+        plain string, so normalise here to keep identity comparisons sound.
+        """
+        if not isinstance(self.operation, IngestOperation):
+            object.__setattr__(self, "operation", IngestOperation(self.operation))
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionWriteResult:
+    """Backend-neutral counts returned after a collection write."""
+
+    written: int
+    total_rows: int
 
 
 class VDB(ABC):
@@ -148,6 +208,10 @@ class VDB(ABC):
         """
         pass
 
+    def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Return one metadata value for the selected index, if available."""
+        return None
+
     def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
         """Replace a batch of existing rows in the target table/index.
 
@@ -230,6 +294,134 @@ class VDB(ABC):
             f"{type(self).__name__} does not implement put(); "
             "in-place stable-key puts are not supported by this VDB backend."
         )
+
+    @abstractmethod
+    def create_collection(
+        self,
+        *,
+        scope: str,
+        request: CollectionCreateRequest,
+    ) -> CollectionInfo:
+        """Create a logical collection.
+
+        Backends must isolate the logical collection by both ``scope`` and
+        ``request.name``.
+        """
+        pass
+
+    @abstractmethod
+    def get_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+    ) -> CollectionInfo:
+        """Return one logical collection visible within ``scope``."""
+        pass
+
+    @abstractmethod
+    def list_collections(
+        self,
+        *,
+        scope: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> CollectionPage:
+        """List logical collections visible within ``scope``."""
+        pass
+
+    @abstractmethod
+    def update_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        request: CollectionUpdateRequest,
+    ) -> CollectionInfo:
+        """Update one logical collection visible within ``scope``."""
+        pass
+
+    @abstractmethod
+    def delete_collection(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        if_exists: bool,
+    ) -> CollectionDeleteResult:
+        """Delete one logical collection and its backend-owned vector data."""
+        pass
+
+    @abstractmethod
+    def get_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+    ) -> DocumentInfo:
+        """Return one document from a logical collection."""
+        pass
+
+    @abstractmethod
+    def list_documents(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        limit: int,
+        continuation_token: str | None,
+    ) -> DocumentPage:
+        """List documents from a logical collection."""
+        pass
+
+    @abstractmethod
+    def delete_document(
+        self,
+        *,
+        scope: str,
+        collection_name: str,
+        document_id: str,
+        if_exists: bool,
+    ) -> DocumentDeleteResult:
+        """Delete one document and its backend-owned vector data."""
+        pass
+
+    @abstractmethod
+    def write_collection(
+        self,
+        records: list,
+        *,
+        context: CollectionWriteContext,
+    ) -> CollectionWriteResult:
+        """Write canonical NRL records to an explicitly scoped collection."""
+        pass
+
+    @abstractmethod
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Retrieve canonical hits and strategy names from one collection."""
+        pass
+
+    def reconcile_collections(self) -> dict[str, int]:
+        """Resume optional collection lifecycle work.
+
+        Backends without durable collection lifecycle state have nothing to
+        reconcile and therefore return zero work rather than failing.
+        """
+        return {"successes": 0, "failures": 0}
+
+    def health(self) -> dict[str, Any]:
+        """Return optional backend-specific operational health details."""
+        return {}
 
     @abstractmethod
     def run(self, records):

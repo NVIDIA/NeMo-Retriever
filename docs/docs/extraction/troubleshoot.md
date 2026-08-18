@@ -2,13 +2,137 @@
 
 Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](overview.md).
 
-## Can't process long, non-language text strings
+## Python API error triage { #python-api-error-triage }
+
+NeMo Retriever Library does not assign product-specific numeric error codes to
+each extraction method. The Python API surfaces Python exception types,
+row-level failure records, and HTTP or gRPC statuses from the service or
+upstream NIM. Treat the exception type, failing stage, upstream status, and
+response detail together as the error identifier.
+
+The current graph API enriches `GraphIngestionError` for explicitly configured
+Page Elements, OCR, Table Structure, Nemotron Parse, and embedding endpoints.
+When the upstream payload contains an HTTP status, the message includes the
+stage, configured URL, and status. For example:
+
+```text
+Graph ingestion detected row-level errors from an explicitly configured
+remote NIM endpoint. row 0, column ocr
+[stage=OCR NIM url=https://example.invalid/v1/infer http=503], path error: ...
+Troubleshooting: OCR NIM ... returned a 5xx server error ...
+```
+
+This enrichment is not a new error-code namespace. The `503` in this example
+is the upstream HTTP status. Exception wording and upstream response bodies are
+not stable API fields and should not be parsed programmatically.
+
+In many row-level payloads, the HTTP status appears only inside
+`error.message` (for example `HTTP 503 from ...`), not as a separate
+`status_code` field. Inspect `exc.records` or the failing DataFrame column
+when troubleshooting. The `error` value can be a nested object or a string.
+
+### Coverage limits of the raise error policy
+
+`error_policy="raise"` scans only remote NIM stages with an explicitly
+configured invoke URL: Page Elements, OCR, Table Structure, Nemotron Parse,
+and embedding. It does not automatically raise for:
+
+- Local-only pipelines (`pdfium` without remote URLs), even when rows contain
+  `metadata.error` or column-level error payloads.
+- Caption or remote VLM stages. Missing credentials fail at actor setup;
+  inference failures can abort the entire ingest.
+- Audio or video ASR over gRPC or HTTP. Failures can drop individual rows and
+  log warnings instead of raising `GraphIngestionError`.
+
+For those paths, use `error_policy="collect"`, pass `return_failures=True`, or
+inspect row columns and service logs directly.
+
+### Error signals and first response
+
+| Signal | Typical meaning | L1/L2 response |
+| --- | --- | --- |
+| `ValueError` or Pydantic validation error before execution | An unsupported run mode, parameter value, protocol, or parameter combination | Compare the call with the current [Python API reference](nemo-retriever-api-reference.md). Remove unknown parameters and reproduce with the smallest valid pipeline. |
+| `ImportError`, `ModuleNotFoundError`, or a missing-dependency `RuntimeError` | The selected local extraction path requires a package or executable that is not installed | Install the documented package extra or system dependency. Confirm that the Python environment running the worker, not only the client shell, contains it. |
+| `GraphIngestionError` with no HTTP status | The named remote stage returned a row-level error, its error payload omitted a status, or the endpoint was unreachable | Check DNS, routing, TLS, the endpoint URL, and the NIM readiness endpoint from the worker or service pod. Inspect `exc.records` after removing secrets and document content. |
+| HTTP `401` or `403` from a NIM | Missing, expired, or unauthorized credentials | Verify `NVIDIA_API_KEY`, `NGC_API_KEY`, or the stage-specific credential in the environment that makes the request. Do not attach API keys to a support case. |
+| HTTP `403` from the Retriever service | Authentication failure or a deployment policy that disallows the requested endpoint, stage, sink, or override | Read the response `detail`. Verify the service token and compare the requested pipeline with `/v1/ingest/pipeline-config`. |
+| HTTP `404` or `410` while opening a service ingest job | The Python SDK and Retriever service can be on incompatible API versions | A current client raises `RetrieverServiceCompatibilityError`. Align the Python package, service image, and Helm chart versions. |
+| Other HTTP `4xx` | The upstream service rejected the request | Check file type, rendered page or image size, model name, endpoint path, and request schema. For `413` or `422`, reduce the payload or image size and verify the endpoint's input limits. |
+| HTTP `429` | The remote service is rate-limiting requests | Reduce concurrency or batch size and retry with backoff. Escalate only if throttling persists within the service quota. |
+| HTTP `5xx`, including `503` | The upstream NIM is unavailable, overloaded, not ready, or failed during inference | Check readiness, pod restarts, GPU memory, server logs, and request volume. Retry a minimal input after the NIM is healthy. |
+| Timeout, connection reset, DNS, TLS, or gRPC transport error | The client could not complete transport to the service or NIM | Test connectivity from the process or pod that runs the stage. Verify protocol, port, certificate trust, proxy, and network policy. Preserve the gRPC status and details when present. |
+| A per-document entry in `ServiceIngestResult.failures` | Upload or pipeline processing failed after a service job was created | Correlate the document ID with the job ID and service logs. Other documents in the same result can still have succeeded. |
+| Successful ingest with fewer rows than inputs (caption or ASR enabled) | Caption inference failed before row collection, or ASR dropped failed rows and logged warnings | Re-run with logging enabled. For caption, verify endpoint credentials and payload limits. For ASR, verify gRPC endpoint, `function_id`, and `NVIDIA_API_KEY`. |
+| OOM, worker exit, or pod restart | Host or GPU resources were exhausted, or an orchestrator terminated the worker | Reduce batch size or concurrency, use smaller document groups, and inspect host, Ray, Kubernetes, and NIM resource telemetry. |
+| `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides, including required Ray Data source capacity for filesystem inputs, exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](performance_guide.md). |
+
+The service can retry some transient transport, `429`, and `5xx` failures.
+Report the final status returned after retries, not an intermediate warning.
+
+### Representative extraction paths
+
+Use the failing stage—not only the top-level `method` value—to select the
+troubleshooting path. A single document can pass through several stages.
+
+| API path | Components that can fail | Representative signals |
+| --- | --- | --- |
+| `ExtractParams(method="pdfium")` | File loading, PDF splitting, PDFium parsing, page rendering; optionally Page Elements and Table Structure when enabled | Malformed or encrypted input, `pypdfium2` import failure, local Python exception, or remote-stage `GraphIngestionError` when an invoke URL is explicitly configured |
+| `ExtractParams(method="pdfium_hybrid")` | PDFium plus Page Elements, OCR, and optionally Table Structure | The local PDF signals above, or a row-level/HTTP failure attributed to Page Elements, OCR, or Table Structure |
+| `ExtractParams(method="ocr")` | Page rendering, Page Elements, and the local or remote OCR backend | Missing local model dependencies, invalid image payload, authentication/transport status, or OCR row-level failure |
+| `ExtractParams(method="nemotron_parse")` | PDF rendering and local Nemotron Parse model or configured Nemotron Parse NIM | Missing `open_clip`, missing local model configuration, unsupported image input, or Nemotron Parse row-level/HTTP failure |
+| `.caption(...)` | Local caption model or remote VLM endpoint | `ValueError` at setup when credentials or endpoint/protocol are invalid; remote inference failures can abort the whole ingest rather than populate a row error column |
+| `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured |
+| Audio or video extraction | `ffmpeg`/`ffprobe`, media decoding, frame/chunk creation, and local or remote ASR | Missing executable, malformed media, codec failure, gRPC status, or credential error; ASR failures may omit rows and log warnings instead of raising, so verify logs when output is unexpectedly empty |
+
+`pdfium` itself is primarily a local parser, so a Page Elements, Table
+Structure, OCR, caption, or embedding HTTP status comes from an enabled
+downstream stage rather than from PDFium.
+
+### Collect diagnostics safely
+
+Before escalating, collect the following:
+
+1. Package, image or Helm versions, and `run_mode`.
+2. Exception class and sanitized message. For `GraphIngestionError`, include
+   sanitized `exc.records`. For row-level failures, include `stage`, `type`,
+   and `message` when present.
+3. Extraction method, enabled stages, and endpoint hostnames with credentials
+   and signed query parameters removed.
+4. HTTP or gRPC status, response detail, job ID, document ID, trace ID, and
+   timestamp when available.
+5. Whether the endpoint readiness check succeeds from the worker or service
+   pod.
+6. A minimal non-confidential reproducing input, or characteristics such as
+   format, page count, dimensions, and size.
+7. Relevant client, service, Ray, NIM, and Kubernetes logs for the same
+   timestamp.
+
+Never include API keys, bearer tokens, document contents, or unredacted signed
+URLs in logs or support cases.
+
+Escalate to NVIDIA L3 when the failure is reproducible on a supported,
+version-aligned configuration after L1 and L2 support has verified input
+validity, credentials, endpoint readiness, connectivity, and resource
+availability. Escalate immediately for repeatable crashes, incorrect
+successful output, or a `5xx` from a healthy NVIDIA-owned NIM with a minimal
+valid input. Keep configuration, dependency, customer network, quota, and
+malformed-input issues with L1 and L2 support unless the documented behavior
+is incorrect.
+
+!!! note "Older NV-Ingest releases"
+
+    Error text and result shapes differ by release. NV-Ingest `25.4.2`
+    predates some current enriched diagnostics. Do not assume that a field
+    shown in current NeMo Retriever Library output exists in `25.4.2`; include
+    the exact old exception and logs when escalating.
+
+## Can't process long, non-language text strings { #cant-process-long-non-language-text-strings }
 
 NeMo Retriever Library is designed to process language and language-length strings.
 If you submit a document that contains extremely long, or non-language text strings,
 such as a DNA sequence, errors or unexpected results occur.
 
-## Can't process malformed input files
+## Can't process malformed input files { #cant-process-malformed-input-files }
 
 When you run a job you might see errors similar to the following:
 
@@ -58,7 +182,7 @@ service:
 
 This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
-## Can't start new thread error
+## Can't start new thread error { #cant-start-new-thread-error }
 
 In rare cases, when you run a job you might an see an error similar to `can't start new thread`.
 This error occurs when the maximum number of processes available to a single user is too low.
@@ -74,7 +198,7 @@ ulimit -u 10000
 
 
 
-## Out-of-Memory (OOM) Error when Processing Large Datasets
+## Out-of-Memory (OOM) Error when Processing Large Datasets { #out-of-memory-oom-error-when-processing-large-datasets }
 
 When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error.
 This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs.
@@ -89,7 +213,7 @@ To reduce memory pressure, try one or more of the following:
 
 
 
-## Embedding service fails to start with an unsupported batch size error
+## Embedding service fails to start with an unsupported batch size error { #embedding-service-fails-unsupported-batch-size }
 
 On certain hardware, for example RTX 6000,
 the embedding service might fail to start and you might see an error similar to the following.
@@ -99,14 +223,13 @@ ValueError: Configured max_batch_size (30) is larger than the model''s supported
 ```
 
 If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
-You can set the variable in your .env file or directly in your environment.
+you must set `EMBEDDER_BATCH_SIZE=3` in the process environment. For example, run `export EMBEDDER_BATCH_SIZE=3`. The SDK and CLI do not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
 
 
 
 ## ModuleNotFoundError: No module named open_clip when using nemotron_parse { #modulenotfounderror-no-module-named-open-clip-when-using-nemotron-parse }
 
-When you run PDF extraction with `extract_method="nemotron_parse"`, you might see an error similar to the following:
+When you run PDF extraction with `method="nemotron_parse"`, you might see an error similar to the following:
 
 ```text
 ModuleNotFoundError: No module named 'open_clip'
@@ -126,12 +249,24 @@ For local GPU inference with Nemotron Parse, combine extras:
 pip install "nemo-retriever[local,nemotron-parse]"
 ```
 
-Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
+Also refer to [NeMo Retriever Library Overview](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
-## Extract method nemotron-parse doesn't support image files
+## Extract method nemotron-parse doesn't support image files { #extract-method-nemotron-parse-doesnt-support-image-files }
 
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
-To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
+To work around this issue, convert image files to PDFs before you use `method="nemotron_parse"`.
+
+## Nemotron Parse model and endpoint mismatch { #nemotron-parse-model-endpoint-mismatch }
+
+When you run PDF extraction with `method="nemotron_parse"`, a mismatched model and endpoint can fail with an error similar to the following:
+
+```text
+HTTP 400: Content cannot be a plain string. The model does not support text input.
+```
+
+This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
@@ -227,7 +362,7 @@ For the request schema, refer to the [Object Detection NIM API reference](https:
 
 Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
-## Too many open files error
+## Too many open files error { #too-many-open-files-error }
 
 In rare cases, when you run a job you might an see an error similar to `too many open files` or `max open file descriptor`.
 This error occurs when the open file descriptor limit for your service user account is too low.
@@ -243,7 +378,7 @@ ulimit -n 10000
 
 
 
-## Triton server INFO messages incorrectly logged as errors
+## Triton server INFO messages incorrectly logged as errors { #triton-server-info-messages-incorrectly-logged-as-errors }
 
 Sometimes messages are incorrectly logged as errors, when they are information.
 When this happens, you can ignore the errors, and treat the messages as information.
@@ -276,9 +411,81 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 
 
 
-## Related Topics
+## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
+
+`helm install` can report `STATUS: deployed` while every default PersistentVolumeClaim stays `Pending`. That status means Helm rendered the release. It does not mean the retriever service, VectorDB, or core NIM workloads can schedule.
+
+A representative claim event looks like the following:
+
+```text
+Type    Reason         From                          Message
+Normal  FailedBinding  persistentvolume-controller   no persistent volumes available for this claim and no storage class is set
+```
+
+This event means the claim omitted `storageClassName` and the cluster has neither a default StorageClass nor a compatible classless persistent volume.
+
+Complete the following checks:
+
+1. Run `kubectl get storageclass` and `kubectl get pv`. Confirm a default StorageClass, a named class you set on every default claim, or compatible `Available` persistent volumes.
+2. Run `kubectl get pvc --namespace <namespace>`. A default install creates seven claims. All seven must reach `Bound` before the functional workloads can start.
+3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
+4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
+
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+
+## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
+
+`helm install` can report `STATUS: deployed` while one or more core NIM pods stay `Pending`. The default chart creates four NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional cluster without MIG or time-slicing, the scheduler needs four allocatable GPU slots across eligible nodes.
+
+A representative pod event looks like the following:
+
+```text
+Warning  FailedScheduling  default-scheduler  0/1 nodes are available:
+  1 Insufficient nvidia.com/gpu.
+```
+
+Complete the following checks:
+
+1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
+2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
+3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
+
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+
+## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
+
+`helm upgrade` can fail when you change `nimOperator.<key>.image.repository` or `nimOperator.<key>.image.tag` on an existing release. The chart reuses the `NIMCache` name, for example `nemotron-page-elements-v3`, while `spec.source.ngc.modelPuller` changes to the new `repository:tag` value.
+
+The NIM Operator `NIMCache` CRD marks `modelPuller` immutable. Kubernetes rejects the update with a message similar to the following:
+
+```text
+modelPuller is an immutable field. Please create a new NIMCache resource instead when you want to change this container.
+```
+
+Helm can apply other release resources before that rejection. The `NIMCache` then remains on the old image while the rest of the release has moved.
+
+Do not retry `helm upgrade` until you delete the existing `NIMCache`. Complete the following steps:
+
+1. Drain ingest traffic that depends on the affected NIM.
+2. Run `kubectl get nimcache <name> --namespace <namespace>` and confirm the live `modelPuller` value differs from the new `repository:tag`.
+3. Delete the `NIMCache`. Helm `keep` annotations do not block `kubectl delete`.
+4. If the operator-created PVC remains, delete it so the new image re-pulls weights. Default claim names use a `-pvc` suffix, for example `nemotron-page-elements-v3-pvc`.
+5. Re-run `helm upgrade` with the new repository or tag. Helm creates a new `NIMCache`.
+6. Wait until the new cache is ready before you send traffic.
+
+The affected NIM is unavailable during re-cache. Repeat the sequence for every NIM whose image changes.
+
+Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
+
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+
+## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
+- [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
+- [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

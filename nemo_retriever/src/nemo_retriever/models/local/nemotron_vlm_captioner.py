@@ -80,13 +80,18 @@ class NemotronVLMCaptioner(BaseModel):
         hf_cache_dir: Optional[str] = None,
         max_new_tokens: int = 1024,
         tensor_parallel_size: int = 1,
-        gpu_memory_utilization: float = 0.5,
+        gpu_memory_utilization: float | None = None,
     ) -> None:
         super().__init__()
 
         profile = get_caption_model_profile(model_path, target="local")
         model_path = profile.local_model_id
+        if gpu_memory_utilization is None:
+            gpu_memory_utilization = profile.local_gpu_memory_utilization
 
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+
+        apply_vllm_startup_defaults()
         try:
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
@@ -120,7 +125,7 @@ class NemotronVLMCaptioner(BaseModel):
             revision=revision,
             trust_remote_code=True,
             tensor_parallel_size=tensor_parallel_size,
-            gpu_memory_utilization=gpu_memory_utilization,
+            gpu_memory_utilization=float(gpu_memory_utilization),
             **engine_kwargs,
         )
 

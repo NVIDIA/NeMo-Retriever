@@ -163,7 +163,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     """
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    api_key = resolve_remote_api_key()
+    api_key = resolve_remote_api_key(request.embed.embed_api_key)
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
@@ -171,18 +171,27 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
+        "candidate_k": request.retrieval.candidate_k,
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
         "invoke_url": request.agentic.invoke_url,
+        "local_llm_backend": request.agentic.local_llm_backend,
+        "local_hf_cache_dir": request.agentic.local_hf_cache_dir,
+        "local_gpu_memory_utilization": request.agentic.local_gpu_memory_utilization,
+        "local_tensor_parallel_size": request.agentic.local_tensor_parallel_size,
+        "local_max_model_len": request.agentic.local_max_model_len,
+        "local_max_num_seqs": request.agentic.local_max_num_seqs,
         "api_key": api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
-        "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
-        "temperature": float(request.agentic.temperature),
+        "temperature": request.agentic.temperature,
+        "llm_client": request.agentic.llm_client,
     }
+    if request.agentic.llm_backend:
+        cfg_kwargs["llm_backend"] = request.agentic.llm_backend
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
     if request.embed.embed_model_provider_prefix:
@@ -219,18 +228,27 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
     tool. Reranking therefore applies per agent retrieval hop.
     """
-    result = build_agentic_retriever(request).retrieve(["0"], [str(request.query)])
-    if "rank" in result.columns:
-        result = result.sort_values("rank")
-    ranked: list[dict[str, Any]] = []
-    for _, row in result.iterrows():
-        ranked.append(
-            {
-                "rank": int(row.get("rank", len(ranked) + 1)),
-                "doc_id": str(row.get("doc_id", "")),
-                "result_source": str(row.get("result_source", "")),
-            }
-        )
-        if len(ranked) >= request.retrieval.top_k:
-            break
-    return ranked
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.retrieve(["0"], [str(request.query)])
+        if "rank" in result.columns:
+            result = result.sort_values("rank")
+        ranked: list[dict[str, Any]] = []
+        for _, row in result.iterrows():
+            doc_id = str(row.get("doc_id", "")).strip()
+            if not doc_id:
+                continue
+            ranked.append(
+                {
+                    "rank": int(row.get("rank", len(ranked) + 1)),
+                    "doc_id": doc_id,
+                    "result_source": str(row.get("result_source", "")),
+                }
+            )
+            if len(ranked) >= request.retrieval.top_k:
+                break
+        return ranked
+    finally:
+        # One-shot CLI/Python entry: tear down cached local vLLM EngineCore so the
+        # process can exit instead of hanging on a live child worker.
+        retriever.unload()

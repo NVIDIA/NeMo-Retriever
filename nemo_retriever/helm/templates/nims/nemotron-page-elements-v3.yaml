@@ -18,6 +18,10 @@ spec:
       size: {{ .Values.nimOperator.page_elements.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.page_elements.storage.pvc.volumeAccessMode }}
   resources: {}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -26,7 +30,7 @@ metadata:
 spec:
   image:
     repository: {{ .Values.nimOperator.page_elements.image.repository }}
-    tag: {{ .Values.nimOperator.page_elements.image.tag }}
+    tag: {{ .Values.nimOperator.page_elements.image.tag | toString | quote }}
     pullPolicy: {{ .Values.nimOperator.page_elements.image.pullPolicy }}
     pullSecrets:
 {{ toYaml .Values.nimOperator.page_elements.image.pullSecrets | indent 6 }}

@@ -6,20 +6,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nemo_retriever.models.embed_model_spec import (
+    EmbedModelSpec,
+    resolve_embed_model_spec,
+    validate_embed_model_backend,
+)
+
 if TYPE_CHECKING:
     from nemo_retriever.models.model import BaseModel
 
 VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
-
-_VL_EMBED_MODEL_IDS = frozenset(
-    {
-        VL_EMBED_MODEL,
-        "llama-nemotron-embed-vl-1b-v2",
-        "llama-3.2-nemoretriever-1b-vlm-embed-v1",
-        "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
-    }
-)
 
 _VL_RERANK_MODEL_IDS = frozenset(
     {
@@ -50,8 +47,8 @@ def resolve_embed_model(model_name: str | None) -> str:
 
 
 def is_vl_embed_model(model_name: str | None) -> bool:
-    """Return True if *model_name* refers to the VL embedding model."""
-    return resolve_embed_model(model_name) in _VL_EMBED_MODEL_IDS
+    """Return True when a legacy model ID or alias names the default VL embedder."""
+    return resolve_embed_model(model_name) == VL_EMBED_MODEL
 
 
 def is_vl_rerank_model(model_name: str | None) -> bool:
@@ -71,6 +68,7 @@ def create_local_embedder(
     normalize: bool = True,
     max_length: int = 8192,
     query_max_length: int = 128,
+    revision: str | None = None,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
@@ -92,13 +90,21 @@ def create_local_embedder(
 
     Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
     ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
+
+    Local checkpoints and compatible Hub fine-tunes are routed from their
+    immutable config. Compatibility requires a supported dense Nemotron
+    embedding architecture and average pooling. Output dimensions and text
+    prefixes are derived from checkpoint metadata.
     """
     b = (backend or "vllm").strip().lower()
     if b not in ("vllm", "hf"):
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
-    model_id = resolve_embed_model(model_name)
 
-    if is_vl_embed_model(model_name):
+    model_id = resolve_embed_model(model_name)
+    spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=hf_cache_dir)
+    validate_embed_model_backend(spec, b)
+
+    if spec.family == "vl":
         if b == "hf":
             from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
                 LlamaNemotronEmbedVL1BV2Embedder,
@@ -108,6 +114,8 @@ def create_local_embedder(
                 device=device,
                 hf_cache_dir=hf_cache_dir,
                 model_id=model_id,
+                revision=spec.revision,
+                output_dimension=spec.output_dimension,
             )
 
         from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
@@ -118,8 +126,13 @@ def create_local_embedder(
             model_id=model_id,
             device=device,
             hf_cache_dir=hf_cache_dir,
+            revision=spec.revision,
             gpu_memory_utilization=gpu_memory_utilization,
             enforce_eager=enforce_eager,
+            normalize=normalize,
+            output_dimension=spec.output_dimension,
+            query_prefix=spec.query_prefix,
+            document_prefix=spec.document_prefix,
         )
 
     if b == "hf":
@@ -134,6 +147,9 @@ def create_local_embedder(
             max_length=int(max_length),
             query_max_length=int(query_max_length),
             model_id=model_id,
+            revision=spec.revision,
+            query_prefix=spec.query_prefix,
+            document_prefix=spec.document_prefix,
         )
 
     from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import (
@@ -149,6 +165,9 @@ def create_local_embedder(
         dimensions=dimensions,
         normalize=normalize,
         max_length=int(max_length),
+        revision=spec.revision,
+        query_prefix=spec.query_prefix,
+        document_prefix=spec.document_prefix,
     )
 
 
@@ -181,6 +200,7 @@ def create_local_query_embedder(
     normalize: bool = True,
     max_length: int = 8192,
     query_max_length: int = 128,
+    revision: str | None = None,
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
@@ -188,6 +208,9 @@ def create_local_query_embedder(
 
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
+
+    Model architecture and quantization requirements are resolved from the
+    checkpoint config; see :func:`create_local_embedder`.
     """
     b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
 
@@ -202,6 +225,7 @@ def create_local_query_embedder(
         normalize=normalize,
         max_length=int(max_length),
         query_max_length=int(query_max_length),
+        revision=revision,
     )
 
 
@@ -258,3 +282,44 @@ def create_local_reranker(
         device=device,
         hf_cache_dir=hf_cache_dir,
     )
+
+
+_LOCAL_AGENT_LLM_BACKENDS = frozenset({"vllm"})
+
+
+def create_local_agent_llm(
+    model_name: str,
+    *,
+    backend: str = "vllm",
+    hf_cache_dir: str | None = None,
+    gpu_memory_utilization: float = 0.8,
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = None,
+    max_num_seqs: int | None = None,
+) -> Any:
+    """Create a local agent LLM chat-completion callable owned by the caller.
+
+    The callable mirrors ``invoke_chat_completion_step`` and returns an
+    OpenAI-compatible chat-completions response dict. V1 supports the in-process
+    vLLM backend and uses process-level vLLM placement (for example,
+    ``CUDA_VISIBLE_DEVICES`` plus ``tensor_parallel_size``). Callers (typically
+    ``AgenticRetriever``) should reuse one instance for a harness/CLI job and
+    call ``unload()`` when the job finishes.
+    """
+
+    b = normalize_backend(backend, _LOCAL_AGENT_LLM_BACKENDS, field_name="backend", default="vllm")
+    if b == "vllm":
+        from nemo_retriever.models.local.agent_llm import LocalAgentLLMConfig, create_vllm_agent_chat_llm
+
+        return create_vllm_agent_chat_llm(
+            LocalAgentLLMConfig(
+                model_path=model_name,
+                hf_cache_dir=hf_cache_dir,
+                gpu_memory_utilization=gpu_memory_utilization,
+                tensor_parallel_size=tensor_parallel_size,
+                max_model_len=max_model_len,
+                max_num_seqs=max_num_seqs,
+            )
+        )
+
+    raise ValueError(f"Unsupported local agent LLM backend {backend!r}")
