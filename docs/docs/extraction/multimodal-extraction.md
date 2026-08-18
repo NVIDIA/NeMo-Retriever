@@ -49,16 +49,16 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-!!! important "Chart modality requires the default layout path"
-    [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
+!!! important "Chart modality and Nemotron Parse"
+    Local Hugging Face inference still uses [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2). That model does not emit `Chart` or `Infographic` semantic classes. It labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
 
-    When you set `method="nemotron_parse"`:
+    The optional Helm self-hosted Parse NIM defaults to [Nemotron Parse v2.0](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-2.0), which adds chart-aware `<class_Chart>` output. Even with v2.0, prefer the default **pdfium** layout path (page-elements detection and OCR) when you need reliable chart and infographic modality rows for filtered retrieval.
+
+    When you set `method="nemotron_parse"` on the local v1.2 path:
 
     - The pipeline does not produce `chart` or `infographic` modality rows, even when `extract_charts=True` or `extract_infographics=True`.
     - Chart- and infographic-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
     - Chart-heavy and infographic-heavy pages are typically emitted as `Picture` or other non-chart modalities.
-
-    For chart and infographic detection and modality-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `method="nemotron_parse"`.
 
 Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](#image-captioning).
 

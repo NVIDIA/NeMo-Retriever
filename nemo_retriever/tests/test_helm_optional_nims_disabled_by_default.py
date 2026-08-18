@@ -28,9 +28,9 @@ These tests pin the chart-side fix:
   auto-wiring).
 * Explicit opt-in still reconciles them, so the documented
   ``--set nimOperator.<key>.enabled=true`` workflow keeps working.
-* The README and ``values.yaml`` document the ``1.7.0-variant`` tag
+* The README and ``values.yaml`` document the ``*-variant`` tags
   used by Parse + Omni so air-gapped mirror pipelines and
-  reproducibility audits can map it to the 26.05 release.
+  reproducibility audits can map them to the 26.08 release.
 
 The integration tests shell out to ``helm template`` when ``helm`` is
 on ``$PATH``; otherwise they skip cleanly.
@@ -68,10 +68,12 @@ _RERANK_TEXT_SERVICE_NAME = "name: llama-nemotron-rerank-1b-v2"
 _PARSE_SERVICE_NAME = "name: nemotron-parse"
 _OMNI_SERVICE_NAME = "name: nemotron-3-nano-omni-30b-a3b-reasoning"
 
-# Image tag the chart pins for both NIMs in 26.05. Documenting it on
-# both ends (values.yaml comments + README) keeps air-gapped mirror
-# pipelines pointed at the right NGC tag.
-_VARIANT_TAG = "1.7.0-variant"
+# Image tags the chart pins for Parse and Omni in 26.08. Documenting
+# them on both ends (values.yaml comments + README) keeps air-gapped
+# mirror pipelines pointed at the right NGC tags.
+_PARSE_VARIANT_TAG = "2.0.8-variant"
+_OMNI_VARIANT_TAG = "2.0.4-variant"
+_PARSE_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-parse-v2.0"
 
 # Repositories the rerank NIM may be pinned to. The chart MUST point at
 # the VL SKU — the text-only SKU silently degrades multimodal
@@ -239,22 +241,30 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
 
     def test_values_document_the_variant_tag(self) -> None:
-        """The ``1.7.0-variant`` tag must be explained in ``values.yaml``.
+        """The Parse and Omni ``*-variant`` tags must be explained in ``values.yaml``.
 
-        Customer-facing pain (3) from the bug report: ``1.7.0-variant``
-        is unsearchable on NGC and has no docs entry, so air-gapped
-        mirror pipelines and reproducibility audits cannot map the tag
-        to a known release. An inline comment in ``values.yaml`` is the
-        minimum bar — the README's "Image tag conventions" subsection
-        covers it in more depth.
+        Customer-facing pain (3) from the bug report: ``*-variant``
+        tags are unsearchable on NGC and have no docs entry, so
+        air-gapped mirror pipelines and reproducibility audits cannot
+        map the tag to a known release. An inline comment in
+        ``values.yaml`` is the minimum bar — the README's "Image tag
+        conventions" subsection covers it in more depth.
         """
         values = _read_required_file(_VALUES_YAML)
         self.assertEqual(
-            values.count(f'tag: "{_VARIANT_TAG}"'),
-            2,
-            "Expected exactly two NIM image tags to be pinned to "
-            f"{_VARIANT_TAG!r} (Parse + Omni). If you bumped one tag, "
-            "bump the other together or split this test.",
+            values.count(f'tag: "{_PARSE_VARIANT_TAG}"'),
+            1,
+            f"Expected exactly one NIM image tag pinned to {_PARSE_VARIANT_TAG!r} (Parse).",
+        )
+        self.assertEqual(
+            values.count(f'tag: "{_OMNI_VARIANT_TAG}"'),
+            1,
+            f"Expected exactly one NIM image tag pinned to {_OMNI_VARIANT_TAG!r} (Omni).",
+        )
+        self.assertIn(
+            f"repository: {_PARSE_REPOSITORY}",
+            values,
+            f"values.yaml must pin Parse to `{_PARSE_REPOSITORY}` per the 26.08 Test Plan.",
         )
         # The comment must explain what `-variant` means, not just
         # mention the literal string.
@@ -317,10 +327,10 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
 
     def test_readme_documents_image_tag_conventions(self) -> None:
-        """A dedicated subsection must explain the ``1.7.0-variant`` tag.
+        """A dedicated subsection must explain the Parse and Omni ``*-variant`` tags.
 
-        Without this, the customer-facing complaint that ``1.7.0-variant``
-        is undocumented stays valid even after the defaults flip.
+        Without this, the customer-facing complaint that ``*-variant``
+        tags are undocumented stays valid even after the defaults flip.
         """
         readme = _read_required_file(_README_MD)
         self.assertIn(
@@ -330,9 +340,16 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "values.yaml entries and per-NIM table can link to it.",
         )
         self.assertIn(
-            _VARIANT_TAG,
+            _PARSE_VARIANT_TAG,
             readme,
-            f"README must mention the {_VARIANT_TAG!r} tag verbatim so a "
+            f"README must mention the {_PARSE_VARIANT_TAG!r} tag verbatim so a "
+            "`grep` for the tag inside the chart docs returns the "
+            "explanation.",
+        )
+        self.assertIn(
+            _OMNI_VARIANT_TAG,
+            readme,
+            f"README must mention the {_OMNI_VARIANT_TAG!r} tag verbatim so a "
             "`grep` for the tag inside the chart docs returns the "
             "explanation.",
         )
@@ -471,9 +488,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
         # The pinned tag must travel with the opt-in.
         self.assertIn(
-            f"tag: {_VARIANT_TAG}",
+            f"tag: {_PARSE_VARIANT_TAG}",
             proc.stdout,
-            f"Parse opt-in must render with the pinned {_VARIANT_TAG!r} tag.",
+            f"Parse opt-in must render with the pinned {_PARSE_VARIANT_TAG!r} tag.",
         )
 
     def test_helm_template_omni_opt_in_renders_nimservice_and_caption(self) -> None:
@@ -538,7 +555,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
 
     def test_helm_template_omni_image_tag_pins_to_variant(self) -> None:
-        """Opt-in Omni must render with the pinned ``1.7.0-variant`` tag, not ``:latest``.
+        """Opt-in Omni must render with the pinned ``2.0.4-variant`` tag, not ``:latest``.
 
         The bug report's reproducibility concern: substituting
         ``:latest`` would silently move to a different NIM build.
@@ -551,9 +568,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
         _assert_helm_ok(self, proc)
         self.assertIn(
-            f"tag: {_VARIANT_TAG}",
+            f"tag: {_OMNI_VARIANT_TAG}",
             proc.stdout,
-            f"Omni opt-in must render with the pinned {_VARIANT_TAG!r} tag.",
+            f"Omni opt-in must render with the pinned {_OMNI_VARIANT_TAG!r} tag.",
         )
         # And there is no stray `:latest` reference in the rendered
         # NIMCache/NIMService manifests for either heavy-weight NIM.

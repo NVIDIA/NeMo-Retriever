@@ -321,10 +321,10 @@ If `helm install` already succeeded and NIM pods stay `Pending` on
 
 ### 1. Service image { #1-service-image }
 
-The chart defaults to the image published to NGC:
+The chart defaults to the 26.08-RC1 image published for release qualification:
 
 ```
-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
+nvcr.io/nvstaging/nim/nrl-service:26.08-RC1
 ```
 
 Pulling from `nvcr.io` requires an NGC pull secret — either set
@@ -463,8 +463,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.create=true \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
-  --set ngcApiSecret.password=$NGC_API_KEY \
-  --set service.image.tag=26.8.0
+  --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
@@ -480,24 +479,24 @@ helm install retriever ./nemo_retriever/helm \
 ### Nemotron Parse (optional)
 
 Enable `nimOperator.nemotron_parse` to use `method="nemotron_parse"`. The
-default self-hosted image is `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant`.
-The chart wires its matching `nvidia/nemotron-parse-v1.2` model into the
+default self-hosted image is `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant`.
+The chart wires its matching `nvidia/nemotron-parse-v2.0` model into the
 retriever service.
 
-To deploy the optional Parse v2.0 NIM instead, override both image fields:
+To deploy the optional Parse v1.2 NIM instead, override both image fields:
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
   --set nimOperator.nemotron_parse.enabled=true \
-  --set nimOperator.nemotron_parse.image.repository=nvcr.io/nim/nvidia/nemotron-parse-v2.0 \
-  --set nimOperator.nemotron_parse.image.tag=2.0.8-variant
+  --set nimOperator.nemotron_parse.image.repository=nvcr.io/nim/nvidia/nemotron-parse-v1.2 \
+  --set nimOperator.nemotron_parse.image.tag=1.7.0-variant
 ```
 
-With this override, the chart wires `nvidia/nemotron-parse-v2.0` into the
+With this override, the chart wires `nvidia/nemotron-parse-v1.2` into the
 retriever service. Do not set `serviceConfig.nimEndpoints.nemotronParseModel`
 unless you need a custom model value; an explicit service value takes precedence
-over the image-selected model. For direct external Parse v2.0 endpoints, set
-`nemotron_parse_model="nvidia/nemotron-parse-v2.0"` in the SDK extraction
+over the image-selected model. For direct external Parse endpoints, set
+`nemotron_parse_model` to the matching model ID in the SDK extraction
 configuration.
 
 The chart auto-wires the operator-managed in-cluster URLs of the three
@@ -587,8 +586,8 @@ short list of knobs you'll touch first.
 
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
-| `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           |       |
+| `service.image.repository`    | `nvcr.io/nvstaging/nim/nrl-service` | NGC staging image for 26.08-RC1; override to pin a different build or use a local registry. |
+| `service.image.tag`           | `26.08-RC1`                         |       |
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
@@ -760,7 +759,7 @@ NIMCache/NIMService by default and writes this block into
 ```yaml
 llm:
   enabled: true
-  model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1"
   api_base: "http://answer-llm:8000/v1"
   rag_system_prompt_prefix: null
   reasoning_enabled: true
@@ -851,7 +850,7 @@ gated on three conditions ALL holding:
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). The default image is Parse v1.2; you can select Parse v2.0 with its documented image override. Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
-| `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
+| `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
 | `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
@@ -942,7 +941,7 @@ Every NIM in this chart pins an exact NGC image tag in `values.yaml`
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
 | Plain semver | `nemotron-object-detection:2.0.1` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
-| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
+| `<semver>-variant` | `nemotron-parse-v2.0:2.0.8-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
 
 For air-gapped mirror pipelines: mirror the *exact* tag — both the
 plain semver and the `-variant` form — and do not substitute `:latest`.
@@ -1766,9 +1765,9 @@ your release tag). Defaults below match
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
-| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
-| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
-| Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` |
+| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant` |
+| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |
+| Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.10.1` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
 
 GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).

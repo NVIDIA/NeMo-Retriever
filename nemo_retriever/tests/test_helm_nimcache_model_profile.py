@@ -18,10 +18,9 @@ These tests pin the chart-side fix:
 
 * ``values.yaml`` carries a chart-wide ``nimOperator.modelProfile``
   default plus a per-NIM ``nimOperator.<key>.modelProfile`` override
-  for every NIMCache the chart provisions. Existing extraction NIMs
-  default their per-NIM override to ``{}``; ``answer_llm`` is the
-  intentional exception because its Super-49B default pins the bundled
-  two-GPU profile by default.
+  for every NIMCache the chart provisions. Every NIM, including
+  ``answer_llm``, defaults its per-NIM override to ``{}`` so the NIM
+  Operator can select a compatible profile unless an operator opts in.
 * A ``helm template`` with **no overrides** renders no ``model:``
   block on default-empty-profile NIMCaches (preserves operator default).
 * ``--set nimOperator.modelProfile.gpus[0]...`` renders an identical
@@ -57,9 +56,10 @@ _README_MD = _REPO_ROOT / "nemo_retriever/helm/README.md"
 _CHART_DIR = _REPO_ROOT / "nemo_retriever/helm"
 
 # Per-NIM keys whose NIMCache modelProfile values intentionally default
-# to ``{}``, preserving pre-fix operator behaviour unless an operator
-# opts into GPU/profile filtering. answer_llm is tracked separately because
-# its Super-49B default ships with a pinned profile for the bundled two-GPU NIM.
+# Every chart NIM defaults ``modelProfile`` to ``{}`` so the NIM Operator
+# can select a compatible profile unless an operator opts into filtering.
+# answer_llm is listed separately from the helm-template opted-in set
+# because it stays disabled unless explicitly enabled.
 _EMPTY_MODEL_PROFILE_NIM_KEYS: tuple[str, ...] = (
     "page_elements",
     "table_structure",
@@ -71,7 +71,6 @@ _EMPTY_MODEL_PROFILE_NIM_KEYS: tuple[str, ...] = (
     "audio",
 )
 _ANSWER_LLM_NIM_KEY = "answer_llm"
-_SUPER49B_DEFAULT_PROFILE = "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
 _ALL_NIM_KEYS: tuple[str, ...] = _EMPTY_MODEL_PROFILE_NIM_KEYS + (_ANSWER_LLM_NIM_KEY,)
 
 
@@ -186,13 +185,13 @@ class NimCacheModelProfileTests(TestCase):
                         "operator opts in.",
                     )
 
-    def test_answer_llm_exposes_intentional_default_super49b_model_profile(self) -> None:
-        """Super-49B pins its bundled two-GPU NIM profile by default."""
+    def test_answer_llm_defaults_to_empty_model_profile(self) -> None:
+        """Super-49B v1 lets the NIM Operator select a compatible profile."""
         values = _read_required_file(_VALUES_YAML)
         loaded = yaml.safe_load(values)
         self.assertEqual(
             loaded["nimOperator"][_ANSWER_LLM_NIM_KEY]["modelProfile"],
-            {"profiles": [_SUPER49B_DEFAULT_PROFILE]},
+            {},
         )
 
     # ------------------------------------------------------------------
@@ -294,8 +293,7 @@ class NimCacheModelProfileTests(TestCase):
 
         This is the exact customer ask for the existing extraction NIMs:
         one --set flag makes each rendered cache download only the H100
-        profile. Super-49B is covered separately because it intentionally
-        pins its bundled default profile.
+        profile.
         """
         proc = _helm_template(
             extra_args=(

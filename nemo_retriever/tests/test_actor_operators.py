@@ -417,7 +417,38 @@ class TestNemotronParseActor:
     def test_remote_chat_completions_uses_v1_2_protocol(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import (
             NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+            nemotron_parse_pages,
+        )
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                return ["<x_0><y_0>Hello world<x_1><y_1><class_Text>"]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="http://nemotron-parse:8000/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+            extract_text=True,
+            nim_client=client,
+        )
+
+        assert result["text"].tolist() == ["Hello world"]
+        assert client.kwargs["model"] == "nvidia/nemotron-parse-v1.2"
+        assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+        assert client.kwargs["repetition_penalty"] == 1.1
+
+    def test_remote_chat_completions_defaults_to_v2_protocol(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import (
             NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
+            NEMOTRON_PARSE_V2_MODEL,
             nemotron_parse_pages,
         )
 
@@ -440,10 +471,13 @@ class TestNemotronParseActor:
         )
 
         assert result["text"].tolist() == ["Hello world"]
-        assert client.kwargs["model"] == NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
-        assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
-        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
-        assert client.kwargs["repetition_penalty"] == 1.1
+        assert NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL == NEMOTRON_PARSE_V2_MODEL
+        assert client.kwargs["model"] == NEMOTRON_PARSE_V2_MODEL
+        assert client.kwargs["extra_body"] == {
+            "max_tokens": 9000,
+            "top_k": 1,
+            "skip_special_tokens": False,
+        }
 
     def test_remote_chat_completions_uses_v2_protocol(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import (
@@ -549,7 +583,7 @@ class TestNemotronParseActor:
         ("endpoint", "model", "expected_model", "expected_profile"),
         [
             ("https://integrate.api.nvidia.com/v1/chat/completions", None, "nvidia/nemotron-parse", "hosted_tool_call"),
-            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
+            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v2.0", "v2_0_tagged"),
             (
                 "http://parse:8000/v1/chat/completions",
                 "nvidia/nemotron-parse",

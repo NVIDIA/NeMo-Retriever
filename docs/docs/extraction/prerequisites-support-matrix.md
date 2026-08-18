@@ -124,6 +124,8 @@ Optional advanced features (audio and video transcription, Nemotron Parse, Omni 
 
 The production Helm chart reconciles NIM microservices through `nimOperator.<key>.enabled`. Four core NIMs are **enabled by default** and auto-wired into the retriever service; optional NIMs reconcile only when you opt in. For chart keys, image overrides, and enablement, refer to the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608).
 
+The chart service image defaults to `nvcr.io/nvstaging/nim/nrl-service:26.08-RC1` for this release candidate. Override `service.image.repository` and `service.image.tag` only when you pin a different build.
+
 | Helm flag | NIM | Default image (`repository:tag`) | Role | Enabled by default |
 |-----------|-----|----------------------------------|------|--------------------|
 | `page_elements` | [nemotron-page-elements-v3](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` | Page layout and element detection | Yes |
@@ -131,10 +133,10 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `ocr` | [nemotron-ocr-v2](https://build.nvidia.com/nvidia/nemotron-ocr-v2) | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` | Image OCR | Yes |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` | Multimodal (VL) embedding | Yes |
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-rerank-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Reranking for improved retrieval accuracy | No |
-| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"` (default PDF extraction uses **pdfium**). You can select Parse v2.0 with an image override. | No |
-| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | Image captioning when you enable the caption stage | No |
+| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant` | Optional PDF `method="nemotron_parse"` (default PDF extraction uses **pdfium**). You can select Parse v1.2 with an image override. | No |
+| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | Image captioning when you enable the caption stage | No |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](audio-video.md) transcription | No |
-| `answer_llm` | [llama-3.3-nemotron-super-49b-v1.5](https://build.nvidia.com/nvidia/llama-3.3-nemotron-super-49b-v1.5) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` | Optional `/v1/answer` generation LLM (not part of the default extraction pipeline) | No |
+| `answer_llm` | [llama-3.3-nemotron-super-49b-v1](https://build.nvidia.com/nvidia/llama-3_3-nemotron-super-49b-v1) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.10.1` | Optional `/v1/answer` generation LLM (not part of the default extraction pipeline) | No |
 
 The `page_elements` and `table_structure` services share the combined `nemotron-object-detection:2.0.1` image and select distinct models. For air-gapped, mirrored, or allowlisted deployments, pull that image once. Do not treat the older standalone `nemotron-page-elements-v3` or `nemotron-table-structure-v1` container images as the current Helm defaults.
 
@@ -170,9 +172,9 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
 | llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
-| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build, self-hosted Parse v1.2, and self-hosted Parse v2.0 use different request contracts. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
+| nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build, self-hosted Parse v2.0, and self-hosted Parse v1.2 use different request contracts. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning |
-| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
+| llama-3.3-nemotron-super-49b-v1 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1` | Optional `/v1/answer` (Helm `answer_llm`) and OpenAI-compatible agentic RAG endpoint mode; not part of the default extraction pipeline. Agentic query/harness runs default to local in-process vLLM instead. Helm auto-wires to the in-cluster NIM when `nimOperator.answer_llm` is enabled |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
 
 <a id="nemotron-parse-hosted-vs-self-hosted"></a>
@@ -182,12 +184,12 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
     NVIDIA Build and self-hosted Nemotron Parse use distinct request contracts:
 
     - **Hosted Build** (`https://integrate.api.nvidia.com/v1/chat/completions`) resolves to model ID `nvidia/nemotron-parse` and uses an image-only tool-call contract.
-    - **Self-hosted Parse v1.2** uses `nvidia/nemotron-parse-v1.2` and the tagged text-prompt contract. The Helm chart defaults to `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant`.
-    - **Self-hosted Parse v2.0** uses `nvidia/nemotron-parse-v2.0` and its v2.0 contract. It is an optional Helm image override, not the chart default.
+    - **Self-hosted Parse v2.0** uses `nvidia/nemotron-parse-v2.0` and its v2.0 contract. The Helm chart defaults to `nvcr.io/nim/nvidia/nemotron-parse-v2.0:2.0.8-variant`.
+    - **Self-hosted Parse v1.2** uses `nvidia/nemotron-parse-v1.2` and the tagged text-prompt contract. It is an optional Helm image override.
 
     To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL and set `method="nemotron_parse"`. You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract. Mixed Build and self-hosted endpoint lists require an explicit model.
 
-    When the chart manages the Parse NIM, it wires the model that matches the selected v1.2 or v2.0 image. To select Parse v2.0, enable Parse and set `nimOperator.nemotron_parse.image.repository=nvcr.io/nim/nvidia/nemotron-parse-v2.0` and `nimOperator.nemotron_parse.image.tag=2.0.8-variant`. For a direct external v2.0 endpoint, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly with its invoke URL.
+    When the chart manages the Parse NIM, it wires the model that matches the selected v2.0 or v1.2 image. To select Parse v1.2, enable Parse and set `nimOperator.nemotron_parse.image.repository=nvcr.io/nim/nvidia/nemotron-parse-v1.2` and `nimOperator.nemotron_parse.image.tag=1.7.0-variant`. For a direct external Parse endpoint, set `nemotron_parse_model` explicitly with its invoke URL.
 
     For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
@@ -237,7 +239,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ⁴ Self-hosted [audio/video extraction](audio-video.md) through Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
-³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory for this NIM deployment; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`). BF16 requires at least 80 GB total GPU memory for this NIM deployment; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 ⁵ **Total GPUs** is combined VRAM co-residency for the four core models. The default Helm chart still requests `nvidia.com/gpu: 1` per NIMService. Without GPU sharing, plan for four allocatable GPU slots across eligible nodes. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 

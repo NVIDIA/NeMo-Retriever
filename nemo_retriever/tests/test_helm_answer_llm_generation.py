@@ -19,10 +19,9 @@ _CHART_DIR = _REPO_ROOT / "nemo_retriever/helm"
 
 _ANSWER_LLM_KEY = "  answer_llm:"
 _ANSWER_LLM_SERVICE = "answer-llm"
-_SUPER49B_REPOSITORY = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-_SUPER49B_TAG = "2.0.5"
-_SUPER49B_MODEL = "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-_SUPER49B_PROFILE = "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+_SUPER49B_REPOSITORY = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1"
+_SUPER49B_TAG = "1.10.1"
+_SUPER49B_MODEL = "openai/nvidia/llama-3.3-nemotron-super-49b-v1"
 _NANO_SERVICE = "nemotron-3-nano"
 _NANO_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-3-nano"
 _NANO_TAG = "1.7.0-variant"
@@ -78,7 +77,7 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn(f'model: "{_SUPER49B_MODEL}"', block)
         self.assertIn("nvidia.com/gpu: 2", block)
         self.assertIn('size: "250Gi"', block)
-        self.assertIn(_SUPER49B_PROFILE, block)
+        self.assertIn("modelProfile: {}", block)
         self.assertIn("reasoningEnabled: true", values)
         self.assertIn('ragSystemPromptPrefix: ""', block)
 
@@ -100,8 +99,6 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn(f"repository: {_SUPER49B_REPOSITORY}", proc.stdout)
         self.assertIn(f"tag: {_SUPER49B_TAG}", proc.stdout)
         self.assertIn("nvidia.com/gpu: 2", proc.stdout)
-        self.assertIn("profiles:", proc.stdout)
-        self.assertIn(_SUPER49B_PROFILE, proc.stdout)
         self.assertIn("NIM_PASSTHROUGH_ARGS", proc.stdout)
         self.assertIn("--disable-custom-all-reduce", proc.stdout)
         self.assertIn("NCCL_IB_DISABLE", proc.stdout)
@@ -172,7 +169,6 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn("NIM_TENSOR_PARALLEL_SIZE", proc.stdout)
         self.assertIn(_NANO_A100_PROFILE, proc.stdout)
         self.assertIn("nvidia.com/gpu: 1", proc.stdout)
-        self.assertNotIn(_SUPER49B_PROFILE, proc.stdout)
         self.assertIn(f'api_base: "http://{_NANO_SERVICE}:8000/v1"', proc.stdout)
         self.assertIn(f'model: "{_NANO_MODEL}"', proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)

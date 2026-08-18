@@ -67,12 +67,13 @@ imagePullSecrets: []
 # =============================================================================
 service:
   image:
-    # Default points at the GA image published to NGC. Override
-    # `repository` / `tag` to pin a different build, e.g. one produced by:
+    # Default pins the 26.08-RC1 service image from the release Test Plan.
+    # Override `repository` / `tag` to pin a different build, e.g. one
+    # produced by:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
-    repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.5.0"
+    repository: nvcr.io/nvstaging/nim/nrl-service
+    tag: "26.08-RC1"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -553,7 +554,7 @@ serviceConfig:
     # unless this explicit endpoint is set.
     nemotronParseInvokeUrl: ""
     # Optional model override. Leave empty to infer the operator-managed
-    # Parse v1.2 or v2.0 model from its image repository. For external
+    # Parse v2.0 or v1.2 model from its image repository. For external
     # endpoints, set the matching model explicitly.
     nemotronParseModel: ""
     embedInvokeUrl: ""
@@ -1042,7 +1043,7 @@ nimOperator:
   #   Optional (enabled: false by default, NOT auto-wired):
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2 by default, ≈ 3.5 GiB GPU)
+  #     - nemotron_parse                           (Parse v2.0 by default, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
   #     - answer_llm                               (OpenAI-compatible answer LLM,
@@ -1059,9 +1060,9 @@ nimOperator:
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.05)" for the
+  # See helm/README.md "Recommended minimal install (26.08)" for the
   # opt-in flags and "Image tag conventions" for what the
-  # ``1.7.0-variant`` Parse / Omni tags mean.
+  # ``*-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
   # Page-element detector. Uses the combined nemotron-object-detection NIM image
@@ -1304,27 +1305,25 @@ nimOperator:
     # LiteLLM/OpenAI model id rendered into retriever-service.yaml when
     # this operator-managed LLM is enabled and serviceConfig.llm.model is
     # left empty.
-    model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1"
     # Optional prompt prefix to apply when this operator-managed LLM
     # auto-wires /v1/answer. Leave empty to keep the LLM deployment and
     # prompt defaults model-neutral; use serviceConfig.llm.reasoningEnabled
     # for the portable request-level reasoning toggle.
     ragSystemPromptPrefix: ""
     image:
-      repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-      tag: "2.0.5"
+      repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1
+      tag: "1.10.1"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
-    # Cache only the default BF16 2-GPU profile used by the Super-49B
-    # default resources. Override this when deploying a different model,
-    # profile, or GPU topology.
-    modelProfile:
-      profiles:
-        - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+    # Empty lets the NIM Operator select a compatible Super-49B v1
+    # profile for the two-GPU resources below. Override when pinning a
+    # specific profile or GPU topology.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -1416,7 +1415,7 @@ nimOperator:
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"
 
-  # Nemotron Parse v1.2. Optional structured document parser.
+  # Nemotron Parse v2.0. Optional structured document parser.
   #
   # Disabled by default per the 26.05 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). Opt in only when
@@ -1424,20 +1423,17 @@ nimOperator:
   # NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
   # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
   #
-  # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
-  # NIM SKU shipped alongside the 26.05 release; the `-variant` suffix
-  # marks it as the build that ships with the per-GPU TensorRT engine
-  # variants required by NIM Operator profile reconciliation, matching
-  # `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` and the row
-  # for Nemotron Parse in
-  # docs/extraction/prerequisites-support-matrix.md "Model hardware
-  # requirements". Override to a different NGC tag only when validated
-  # against the matching service/Helm release.
+  # The default image tag (`2.0.8-variant`) is the Nemotron Parse v2.0
+  # NIM SKU from the 26.08 Test Plan; the `-variant` suffix marks it as
+  # the build that ships with the per-GPU TensorRT engine variants
+  # required by NIM Operator profile reconciliation. Override to a
+  # different NGC tag only when validated against the matching
+  # service/Helm release.
   nemotron_parse:
     enabled: false
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
-      tag: "1.7.0-variant"
+      repository: nvcr.io/nim/nvidia/nemotron-parse-v2.0
+      tag: "2.0.8-variant"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1488,19 +1484,19 @@ nimOperator:
   # Operator from the model profile (override with `kubectl edit
   # nimservice` if necessary).
   #
-  # The default image tag (`1.7.0-variant`) is the Omni NIM SKU shipped
-  # alongside the 26.05 release; the `-variant` suffix marks it as the
-  # build that ships with the per-GPU TensorRT engine variants required
-  # by NIM Operator profile reconciliation, matching the row for the
-  # Omni caption NIM in
-  # docs/extraction/prerequisites-support-matrix.md "Model hardware
-  # requirements" (footnote ³). Override to a different NGC tag only
-  # when validated against the matching service/Helm release.
+  # The default image tag (`2.0.4-variant`) is the Omni NIM SKU from the
+  # 26.08 Test Plan; the `-variant` suffix marks it as the build that
+  # ships with the per-GPU TensorRT engine variants required by NIM
+  # Operator profile reconciliation, matching the row for the Omni
+  # caption NIM in docs/extraction/prerequisites-support-matrix.md
+  # "Model hardware requirements" (footnote ³). Override to a different
+  # NGC tag only when validated against the matching service/Helm
+  # release.
   nemotron_3_nano_omni_30b_a3b_reasoning:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-      tag: "1.7.0-variant"
+      tag: "2.0.4-variant"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret

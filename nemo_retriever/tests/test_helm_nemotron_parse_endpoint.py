@@ -82,23 +82,23 @@ def test_helm_template_autowires_operator_parse_endpoint() -> None:
         api_versions=("apps.nvidia.com/v1alpha1",),
     )
     assert f'nemotron_parse_invoke_url: "http://{PARSE_SERVICE}:8000{PARSE_PATH}"' in rendered
-    assert 'nemotron_parse_model: "nvidia/nemotron-parse-v1.2"' in rendered
+    assert 'nemotron_parse_model: "nvidia/nemotron-parse-v2.0"' in rendered
 
 
-def test_helm_template_autowires_v2_model_from_parse_image_repository() -> None:
+def test_helm_template_autowires_v1_2_model_from_parse_image_repository() -> None:
     rendered = _helm_template(
         (
             "--set",
             "nimOperator.nemotron_parse.enabled=true",
             "--set",
-            "nimOperator.nemotron_parse.image.repository=registry.example/nemotron-parse-v2.0",
+            "nimOperator.nemotron_parse.image.repository=registry.example/nemotron-parse-v1.2",
             "--set",
-            "nimOperator.nemotron_parse.image.tag=2.0.8-variant",
+            "nimOperator.nemotron_parse.image.tag=1.7.0-variant",
         ),
         api_versions=("apps.nvidia.com/v1alpha1",),
     )
     assert f'nemotron_parse_invoke_url: "http://{PARSE_SERVICE}:8000{PARSE_PATH}"' in rendered
-    assert 'nemotron_parse_model: "nvidia/nemotron-parse-v2.0"' in rendered
+    assert 'nemotron_parse_model: "nvidia/nemotron-parse-v1.2"' in rendered
 
 
 def test_helm_template_explicit_hosted_endpoint_and_model_win() -> None:

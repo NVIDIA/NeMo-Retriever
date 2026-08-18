@@ -48,7 +48,7 @@ except Exception:  # pragma: no cover
 # Constants
 # ---------------------------------------------------------------------------
 
-NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
+NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v2.0"
 NEMOTRON_PARSE_V2_MODEL = "nvidia/nemotron-parse-v2.0"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"

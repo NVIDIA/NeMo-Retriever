@@ -264,9 +264,9 @@ When you run PDF extraction with `method="nemotron_parse"`, a mismatched model a
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v2.0` or `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v2.0` or `nvidia/nemotron-parse-v1.2` only to its matching self-hosted chat endpoint. The library and Helm chart default self-hosted chat endpoints to `nvidia/nemotron-parse-v2.0`. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
