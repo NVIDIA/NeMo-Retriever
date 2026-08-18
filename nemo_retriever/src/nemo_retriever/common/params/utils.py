@@ -7,9 +7,27 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
+
+
+def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
+    """Normalize Parse endpoints and reject mixed NVIDIA Build/self-hosted lists."""
+    invoke_urls = tuple(part.strip() for part in str(invoke_url or "").split(",") if part.strip())
+    build_endpoints = tuple(
+        (urlsplit(endpoint).hostname or "").lower() == "integrate.api.nvidia.com" for endpoint in invoke_urls
+    )
+    if any(build_endpoints) and not all(build_endpoints):
+        raise ValueError(
+            "Nemotron Parse endpoint lists cannot mix NVIDIA Build and self-hosted endpoints. "
+            "One `nemotron_parse_model` and request contract apply to the entire endpoint list, but NVIDIA Build "
+            "requires `nvidia/nemotron-parse` with the hosted tool-call contract and self-hosted Parse requires a "
+            "versioned model with a tagged contract. Configure a homogeneous endpoint list or use separate "
+            "ingestors for NVIDIA Build and self-hosted Parse."
+        )
+    return invoke_urls
 
 
 def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any]) -> T:
