@@ -56,35 +56,34 @@ def _contains_null_arrow_child(data_type: Any) -> bool:
     return False
 
 
-def _compact_vulnerable_arrow_columns(table: Any) -> Any:
-    """Reset offsets before Ray converts nested null children to pandas."""
+def _is_row_unsafe_arrow_column(field: Any) -> bool:
+    """Return whether pandas must not back a column with its Arrow array.
+
+    Two column shapes leave pandas unable to read rows once Arrow-backed dtypes
+    are preserved:
+
+    * Nested types carrying an inferred ``null`` child, such as a ``page_image``
+      struct whose ``image_b64`` was stripped. pandas indexes the null child at
+      the parent's row offset, but pyarrow sizes null children independently of
+      their parent, so row access raises ``ArrowIndexError`` and an Arrow
+      roundtrip reports a child shorter than its parent.
+    * Ray's pickled-object extension columns, whose payloads pandas would
+      otherwise interpret as malformed extension arrays.
+    """
+    if getattr(field.type, "extension_name", None) == "ray.data.arrow_pickled_object":
+        return True
+    return _contains_null_arrow_child(field.type)
+
+
+def _materialize_row_unsafe_columns(table: Any, frame: pd.DataFrame) -> pd.DataFrame:
+    """Rewrite Arrow columns pandas cannot index as plain object columns."""
     import pyarrow as pa
-    import pyarrow.compute as pc
 
-    if not isinstance(table, pa.Table) or table.num_rows == 0:
-        return table
-
-    indices = None
-    compacted = table
-    for index, field in enumerate(table.schema):
-        column = table.column(index)
-        if not _contains_null_arrow_child(field.type) or not any(chunk.offset for chunk in column.chunks):
-            continue
-        if indices is None:
-            indices = pa.array(range(table.num_rows), type=pa.int64())
-        compacted = compacted.set_column(index, field, pc.take(column, indices))
-    return compacted
-
-
-def _normalize_pickled_object_columns(table: Any, frame: pd.DataFrame) -> pd.DataFrame:
-    """Convert Ray's pickled-object extension columns to plain pandas objects."""
-    import pyarrow as pa
-
-    if not isinstance(table, pa.Table):
+    if not isinstance(table, (pa.Table, pa.RecordBatch)):
         return frame
 
     for index, field in enumerate(table.schema):
-        if getattr(field.type, "extension_name", None) != "ray.data.arrow_pickled_object":
+        if not _is_row_unsafe_arrow_column(field):
             continue
         frame[field.name] = pd.Series(table.column(index).to_pylist(), index=frame.index, dtype=object)
     return frame
@@ -93,30 +92,27 @@ def _normalize_pickled_object_columns(table: Any, frame: pd.DataFrame) -> pd.Dat
 def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
     """Convert a Ray Arrow batch to a row-safe pandas DataFrame.
 
-    Ray 2.56+ preserves Arrow-backed pandas dtypes. Before conversion, sliced
-    nested columns with inferred null children must be compacted. Ray's
-    pickled-object extension columns also need to be materialized as ordinary
-    object columns so pandas row operations do not interpret their payloads as
-    malformed extension arrays.
+    Ray 2.56+ preserves Arrow-backed pandas dtypes, so columns pandas cannot
+    index through their Arrow arrays are materialized as ordinary object
+    columns. Every other column keeps its Arrow-backed dtype.
     """
     if isinstance(table, pd.DataFrame):
         return table
 
     from ray.data.block import BlockAccessor
 
-    table = _compact_vulnerable_arrow_columns(table)
     frame = BlockAccessor.for_block(table).to_pandas()
-    return _normalize_pickled_object_columns(table, frame)
+    return _materialize_row_unsafe_columns(table, frame)
 
 
 def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
     """Materialize a Ray Dataset without returning malformed Arrow arrays.
 
     Ray 2.56+ enables Arrow-backed pandas conversion by default. Calling
-    ``Dataset.to_pandas()`` directly can therefore expose sliced nested Arrow
-    columns whose child offsets are invalid for pandas row access. Convert
-    each Arrow block through :func:`arrow_table_to_pandas` before concatenating
-    so the public SDK result is safe to consume with standard pandas APIs.
+    ``Dataset.to_pandas()`` directly can therefore expose nested Arrow columns
+    that pandas cannot index by row. Convert each Arrow block through
+    :func:`arrow_table_to_pandas` before concatenating so the public SDK result
+    is safe to consume with standard pandas APIs.
 
     Parameters
     ----------
