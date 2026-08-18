@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Nemotron Parse v1.2 pipeline stage.
+Nemotron Parse v1.2 and v2.0 pipeline stage.
 
 Runs the Nemotron Parse model on full page images to extract structured
 document content (text, tables, charts, infographics) in a single pass,
@@ -20,7 +20,6 @@ from urllib.parse import urlsplit
 import base64
 import io
 import json
-import re
 import time
 import traceback
 
@@ -50,6 +49,7 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
+NEMOTRON_PARSE_V2_MODEL = "nvidia/nemotron-parse-v2.0"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
@@ -153,8 +153,8 @@ def _route_parsed_elements(
 
 class _NemotronParseContractProfile(str, Enum):
     HOSTED_TOOL_CALL = "hosted_tool_call"
-    LEGACY_TOOL_CALL = "legacy_tool_call"
     V1_2_TAGGED = "v1_2_tagged"
+    V2_0_TAGGED = "v2_0_tagged"
 
 
 @dataclass(frozen=True)
@@ -165,15 +165,7 @@ class _ResolvedNemotronParseContract:
 
     @property
     def uses_tool_call_routing(self) -> bool:
-        return self.profile in {
-            _NemotronParseContractProfile.HOSTED_TOOL_CALL,
-            _NemotronParseContractProfile.LEGACY_TOOL_CALL,
-        }
-
-
-def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
-    normalized = model_name.lower()
-    return bool(re.search(r"v1[._][01](?!\d)", normalized))
+        return self.profile == _NemotronParseContractProfile.HOSTED_TOOL_CALL
 
 
 def _is_nvidia_build_endpoint(invoke_url: str) -> bool:
@@ -204,8 +196,8 @@ def _resolve_nemotron_parse_contract(
     normalized_model = resolved_model.lower()
     if normalized_model == NEMOTRON_PARSE_HOSTED_MODEL:
         profile = _NemotronParseContractProfile.HOSTED_TOOL_CALL
-    elif _is_legacy_nemotron_parse_model(normalized_model):
-        profile = _NemotronParseContractProfile.LEGACY_TOOL_CALL
+    elif normalized_model == NEMOTRON_PARSE_V2_MODEL:
+        profile = _NemotronParseContractProfile.V2_0_TAGGED
     else:
         profile = _NemotronParseContractProfile.V1_2_TAGGED
 
@@ -223,7 +215,7 @@ def _route_tool_call_elements(
     extract_charts: bool,
     extract_infographics: bool,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
-    """Route hosted or legacy tool-call JSON into pipeline content channels."""
+    """Route NVIDIA Build tool-call JSON into pipeline content channels."""
 
     try:
         parsed = json.loads(raw_json_text)
@@ -309,7 +301,7 @@ def nemotron_parse_pages(
     nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Run Nemotron Parse v1.2 on full page images.
+    """Run Nemotron Parse v1.2 or v2.0 on full page images.
 
     Each page is parsed in a single model call.  The structured output is
     split by element class (Text, Table, Chart, Picture, …) and routed to
@@ -326,7 +318,7 @@ def nemotron_parse_pages(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_pages currently only supports pandas.DataFrame input.")
 
-    invoke_url = (invoke_url or kwargs.get("nemotron_parse_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("nemotron_parse_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
@@ -377,8 +369,13 @@ def nemotron_parse_pages(
                     contract = _resolve_nemotron_parse_contract(invoke_url, nemotron_parse_model)
                     uses_tool_call_routing = contract.uses_tool_call_routing
                     extra_body: Dict[str, Any] = {"max_tokens": 8192}
-                    if contract.profile == _NemotronParseContractProfile.LEGACY_TOOL_CALL:
-                        extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
+                    if contract.profile == _NemotronParseContractProfile.V2_0_TAGGED:
+                        # Parse 2.0 NIMs require their documented decoding options.
+                        extra_body = {
+                            "max_tokens": 9000,
+                            "top_k": 1,
+                            "skip_special_tokens": False,
+                        }
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
@@ -419,7 +416,7 @@ def nemotron_parse_pages(
                         )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
-                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
+                # Local vLLM Parse model: uses task_prompt and returns tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
@@ -430,15 +427,19 @@ def nemotron_parse_pages(
                 contract is not None
                 and nemotron_parse_model
                 and contract.has_build_endpoint
-                and contract.profile == _NemotronParseContractProfile.V1_2_TAGGED
+                and contract.profile
+                in {
+                    _NemotronParseContractProfile.V1_2_TAGGED,
+                    _NemotronParseContractProfile.V2_0_TAGGED,
+                }
                 and "text input" in str(e).lower()
             ):
                 hint = ValueError(
                     "Nemotron Parse model/contract mismatch: NVIDIA Build model "
                     "`nvidia/nemotron-parse` uses an image-only tool-call contract, but "
-                    f"`{contract.model}` selected the v1.2 text-control-token contract. "
+                    f"`{contract.model}` selected a tagged text-control-token contract. "
                     "Use `nemotron_parse_model='nvidia/nemotron-parse'` with Build, or send "
-                    "the versioned v1.2 model to a compatible self-hosted endpoint."
+                    "the versioned Parse model to a compatible self-hosted endpoint."
                 )
                 hint.__cause__ = e
                 e = hint
@@ -528,7 +529,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -554,9 +555,15 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            if self._nemotron_parse_model and self._nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL:
+                self._model = NemotronParse20(
+                    model_path=self._nemotron_parse_model,
+                    task_prompt=self._task_prompt,
+                )
+            else:
+                self._model = NemotronParseV12(task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
@@ -627,7 +634,9 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._invoke_url = (
+            str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
+        )
         self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -696,7 +705,9 @@ class NemotronParseActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(
+            str(kwargs.get("nemotron_parse_invoke_url") or "").strip() or str(kwargs.get("invoke_url") or "").strip()
+        )
 
     def __init__(
         self,

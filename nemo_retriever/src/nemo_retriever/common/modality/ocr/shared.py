@@ -1055,7 +1055,7 @@ def ocr_page_elements(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("ocr_page_elements currently only supports pandas.DataFrame input.")
 
-    invoke_url = (invoke_url or kwargs.get("ocr_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("ocr_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
@@ -1184,7 +1184,7 @@ def nemotron_parse_page_elements(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_page_elements currently only supports pandas.DataFrame input.")
 
-    invoke_url = (invoke_url or kwargs.get("nemotron_parse_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("nemotron_parse_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")

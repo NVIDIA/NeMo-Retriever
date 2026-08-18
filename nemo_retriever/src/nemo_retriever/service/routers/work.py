@@ -59,6 +59,18 @@ def _lease_from_headers(request: Request) -> tuple[str, int]:
     return lease_id, generation
 
 
+@router.get("/internal/work/{work_id}/sidecar")
+async def work_sidecar(request: Request, work_id: str) -> FileResponse:
+    """Return a lease-owned sidecar attachment or HTTP 409 for a stale lease."""
+    broker = _gateway_broker(request)
+    lease_id, generation = _lease_from_headers(request)
+    try:
+        path = await broker.sidecar_path(work_id, lease_id, generation)
+    except StaleLease as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return FileResponse(path, media_type="application/octet-stream")
+
+
 @router.get("/internal/work/{work_id}/payload")
 async def work_payload(request: Request, work_id: str) -> FileResponse:
     broker = _gateway_broker(request)
@@ -68,6 +80,17 @@ async def work_payload(request: Request, work_id: str) -> FileResponse:
     except StaleLease as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return FileResponse(path, media_type="application/octet-stream")
+
+
+@router.post("/internal/work/{work_id}/activate")
+async def activate_work(request: Request, work_id: str, body: LeaseRequest) -> JSONResponse:
+    """Activate a verified lease, returning its delivery attempt or HTTP 409 if stale."""
+    broker = _gateway_broker(request)
+    try:
+        delivery_attempt = await broker.activate(work_id, body.lease_id, body.lease_generation)
+    except StaleLease as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return JSONResponse({"delivery_attempt": delivery_attempt})
 
 
 @router.post("/internal/work/{work_id}/heartbeat")

@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.service.auth import internal_auth_headers
+from nemo_retriever.service.auth import _is_gateway_proxy_path, internal_auth_headers
 from nemo_retriever.service.config import load_config
 from nemo_retriever.service.services.pipeline_executor import _post_records_to_vectordb
 from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
@@ -21,6 +21,12 @@ from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 def test_internal_auth_headers_strip_secret_whitespace() -> None:
     assert internal_auth_headers("  internal-secret\n") == {"X-NRL-Internal-Token": "internal-secret"}
     assert internal_auth_headers(" \n\t") == {}
+
+
+def test_gateway_handoff_includes_parameterized_sidecar_delete() -> None:
+    assert _is_gateway_proxy_path("/v1/ingest/sidecar")
+    assert _is_gateway_proxy_path("/v1/ingest/sidecar/sidecar-id")
+    assert not _is_gateway_proxy_path("/v1/ingest/sidecars")
 
 
 def test_load_config_strips_internal_token_environment(

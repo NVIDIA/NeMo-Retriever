@@ -218,15 +218,19 @@ def _production_vdb(
     lancedb_uri: str,
     table_name: str,
     expiration_cleanup_enabled: bool,
+    index_mode: str = "hybrid",
 ) -> VDB:
     """Construct the sole production VDB implementation for this service."""
     vdb_cls = get_vdb_op_cls("lancedb")
+    if index_mode not in {"dense", "hybrid"}:
+        raise ValueError("index_mode must be 'dense' or 'hybrid'")
     return vdb_cls(
         uri=lancedb_uri,
         table_name=table_name,
         vector_dim=None,
         overwrite=False,
-        build_index=False,
+        hybrid=index_mode == "hybrid",
+        build_index=index_mode == "hybrid",
         _service_table_schema=True,
         expiration_cleanup_enabled=expiration_cleanup_enabled,
     )
@@ -256,6 +260,7 @@ def _legacy_strategies(health: dict[str, Any]) -> list[str]:
 def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
+    index_mode: str = "hybrid",
     embed_endpoint: str = "",
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_model_provider_prefix: str | None = None,
@@ -279,6 +284,8 @@ def create_vectordb_app(
 
     if max_concurrent_queries <= 0:
         raise ValueError("max_concurrent_queries must be positive")
+    if index_mode not in {"dense", "hybrid"}:
+        raise ValueError("index_mode must be 'dense' or 'hybrid'")
     agentic_config = agentic_config or AgenticConfig()
     state: VectorDBState | None = None
     agentic_executor: ThreadPoolExecutor | None = None
@@ -291,6 +298,7 @@ def create_vectordb_app(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
             expiration_cleanup_enabled=expiration_cleanup_enabled,
+            index_mode=index_mode,
         )
         state = VectorDBState(
             vdb=backend,
@@ -849,14 +857,14 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
     parser.add_argument(
-        "--lancedb-uri", default="/data/vectordb", help="LanceDB directory"
+        "--index-mode",
+        choices=("dense", "hybrid"),
+        default="hybrid",
+        help="LanceDB index mode for the managed table.",
     )
-    parser.add_argument(
-        "--table-name", default="nemo_retriever", help="Vector table name"
-    )
-    parser.add_argument(
-        "--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL"
-    )
+    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
+    parser.add_argument("--table-name", default="nemo_retriever", help="Vector table name")
+    parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument(
         "--embed-model-provider-prefix",
@@ -956,6 +964,7 @@ def main() -> None:
         embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,
+        index_mode=args.index_mode,
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,

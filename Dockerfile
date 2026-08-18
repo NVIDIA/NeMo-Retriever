@@ -168,6 +168,16 @@ CMD ["/bin/bash"]
 # ---------------------------------------------------------------------------
 FROM install AS service
 
+# Optional release metadata for OpenAPI ``info.version`` and package version helpers.
+# Release builds should pass matching values, for example:
+#   --build-arg RETRIEVER_VERSION=26.08-RC4 --build-arg RETRIEVER_RELEASE_TYPE=release
+ARG RETRIEVER_VERSION=
+ARG RETRIEVER_RELEASE_TYPE=dev
+ENV RETRIEVER_VERSION=${RETRIEVER_VERSION}
+ENV RETRIEVER_RELEASE_TYPE=${RETRIEVER_RELEASE_TYPE}
+ENV RETRIEVER_BUILD_NUMBER=0
+ENV RETRIEVER_SERVICE_VERSION=${RETRIEVER_VERSION}
+
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 ENV HF_HUB_OFFLINE=1
 
@@ -211,6 +221,13 @@ CMD ["retriever", "service", "start", "--config", "/etc/nemo-retriever/retriever
 #     nemo-retriever-service-gpu
 # ---------------------------------------------------------------------------
 FROM install-service-gpu AS service-gpu
+
+ARG RETRIEVER_VERSION=
+ARG RETRIEVER_RELEASE_TYPE=dev
+ENV RETRIEVER_VERSION=${RETRIEVER_VERSION}
+ENV RETRIEVER_RELEASE_TYPE=${RETRIEVER_RELEASE_TYPE}
+ENV RETRIEVER_BUILD_NUMBER=0
+ENV RETRIEVER_SERVICE_VERSION=${RETRIEVER_VERSION}
 
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
 
