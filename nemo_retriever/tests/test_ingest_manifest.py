@@ -209,25 +209,26 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
         pytest.param(IngestExtractOptions(ocr_lang="english"), id="language"),
     ],
 )
-def test_ingest_plan_ocr_selector_enables_hybrid_pdf_extraction(tmp_path, extract) -> None:
+def test_ingest_plan_ocr_selector_preserves_default_pdfium_method(tmp_path, extract) -> None:
     pdf = tmp_path / "scanned.pdf"
     pdf.write_bytes(b"pdf")
 
     plan = _resolve_plan([str(pdf)], extract=extract)
 
-    assert plan.extract_params.method == "pdfium_hybrid"
+    assert plan.extract_params.method == "pdfium"
 
 
-def test_ingest_plan_explicit_pdf_method_wins_over_ocr_selector(tmp_path) -> None:
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid"])
+def test_ingest_plan_explicit_pdf_method_with_ocr_selector(tmp_path, method) -> None:
     pdf = tmp_path / "scanned.pdf"
     pdf.write_bytes(b"pdf")
 
     plan = _resolve_plan(
         [str(pdf)],
-        extract=IngestExtractOptions(method="pdfium", ocr_version="v2"),
+        extract=IngestExtractOptions(method=method, ocr_version="v2"),
     )
 
-    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.method == method
 
 
 def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:

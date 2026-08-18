@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import math
-from typing import Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 import pandas as pd
+
+if TYPE_CHECKING:
+    import ray.data
 
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
@@ -104,6 +107,34 @@ def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
     table = _compact_vulnerable_arrow_columns(table)
     frame = BlockAccessor.for_block(table).to_pandas()
     return _normalize_pickled_object_columns(table, frame)
+
+
+def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
+    """Materialize a Ray Dataset without returning malformed Arrow arrays.
+
+    Ray 2.56+ enables Arrow-backed pandas conversion by default. Calling
+    ``Dataset.to_pandas()`` directly can therefore expose sliced nested Arrow
+    columns whose child offsets are invalid for pandas row access. Convert
+    each Arrow block through :func:`arrow_table_to_pandas` before concatenating
+    so the public SDK result is safe to consume with standard pandas APIs.
+
+    Parameters
+    ----------
+    dataset
+        Ray dataset to materialize as Arrow batches.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Row-safe DataFrame containing all rows from ``dataset``.
+    """
+    frames = [arrow_table_to_pandas(batch) for batch in dataset.iter_batches(batch_format="pyarrow")]
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+
+    schema = dataset.schema()
+    names = getattr(schema, "names", None)
+    return pd.DataFrame(columns=list(names) if names is not None else None)
 
 
 def call_pandas_function_on_arrow(
@@ -509,7 +540,7 @@ class RayDataExecutor(AbstractExecutor):
     def ingest(self, data: Any, **kwargs: Any) -> Any:
         """Build, execute, and materialize a Ray Data pipeline from the graph."""
 
-        return self.build_dataset(data, **kwargs).to_pandas()
+        return ray_dataset_to_pandas(self.build_dataset(data, **kwargs))
 
     def build_dataset(self, data: Any, **kwargs: Any) -> Any:
         """Build a lazy Ray Data pipeline from the graph.

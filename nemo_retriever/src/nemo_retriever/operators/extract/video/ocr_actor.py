@@ -47,8 +47,8 @@ logger = logging.getLogger(__name__)
 
 
 def _ocr_invoke_url(ocr_kwargs: dict[str, Any]) -> str | None:
-    raw = ocr_kwargs.get("ocr_invoke_url") or ocr_kwargs.get("invoke_url")
-    return str(raw).strip() if raw else None
+    endpoint = str(ocr_kwargs.get("ocr_invoke_url") or "").strip() or str(ocr_kwargs.get("invoke_url") or "").strip()
+    return endpoint or None
 
 
 class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
