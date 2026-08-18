@@ -544,3 +544,55 @@ def test_full_page_text_fallback_when_no_detections() -> None:
     assert len(all_jobs) == 1
     assert all_jobs[0].label_name == "full_page"
     assert all_jobs[0].bbox == [0.0, 0.0, 1.0, 1.0]
+
+
+def test_full_page_text_fallback_when_only_structured_detections() -> None:
+    """When detections contain only structured elements (no text regions) but
+    needs_ocr_for_text is True, a full-page text OCR crop must still be added.
+
+    Regression test for https://github.com/NVIDIA/NeMo-Retriever/issues/2443
+    (Greptile review: 'structured crops suppress full-page text fallback').
+
+    Scenario: page-elements detection finds a table but no text regions.
+    The table crop goes to table_items, not text_blocks. Without a full-page
+    fallback, text_blocks stays empty despite needs_ocr_for_text=True.
+    """
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from nemo_retriever.common.modality.ocr.shared import (
+        _PreparedOCRRow,
+        _collect_local_crop_jobs,
+        _OCRRowResult,
+    )
+
+    img = Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8), "RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    page_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    class _FakeRow:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    # wanted_labels includes both structured and text labels (as _prepare_ocr_rows
+    # would set when extract_text=True + needs_ocr_for_text=True + extract_tables=True).
+    prepared = _PreparedOCRRow(
+        row_index=0,
+        row=_FakeRow(metadata={"needs_ocr_for_text": True}),
+        page_image_b64=page_b64,
+        detections=[{"label_name": "table", "bbox_xyxy_norm": [0.1, 0.1, 0.9, 0.9]}],
+        wanted_labels={"table", "text", "title", "header_footer"},
+    )
+
+    row_results = [_OCRRowResult()]
+    jobs = _collect_local_crop_jobs([prepared], row_results)
+
+    all_jobs = jobs["word"] + jobs["paragraph"]
+    label_names = [j.label_name for j in all_jobs]
+    assert "table" in label_names, "table crop must be present"
+    assert "full_page" in label_names, "full-page text crop must be added when needs_ocr_for_text=True"

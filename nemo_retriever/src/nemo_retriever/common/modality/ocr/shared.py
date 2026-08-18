@@ -820,11 +820,10 @@ def _run_remote_ocr(
                 prepared.wanted_labels,
                 as_b64=True,
             )
-            if not crops:
-                meta = getattr(prepared.row, "metadata", None) or {}
-                needs_text = meta.get("needs_ocr_for_text", False) if isinstance(meta, dict) else False
-                if needs_text:
-                    crops = [("full_page", [0.0, 0.0, 1.0, 1.0], prepared.page_image_b64)]
+            meta = getattr(prepared.row, "metadata", None) or {}
+            needs_text = meta.get("needs_ocr_for_text", False) if isinstance(meta, dict) else False
+            if needs_text and not any(label in _TEXT_LABELS for label, _bbox, _crop_b64 in crops):
+                crops.append(("full_page", [0.0, 0.0, 1.0, 1.0], prepared.page_image_b64))
             crop_b64s: List[str] = [crop_b64 for _label, _bbox, crop_b64 in crops]
             crop_metadata: List[Tuple[str, List[float]]] = [(label_name, bbox) for label_name, bbox, _crop_b64 in crops]
             if not crop_b64s:
@@ -879,16 +878,16 @@ def _collect_local_crop_jobs(
                 prepared.detections,
                 prepared.wanted_labels,
             )
-            if not crops:
-                meta = getattr(prepared.row, "metadata", None) or {}
-                needs_text = meta.get("needs_ocr_for_text", False) if isinstance(meta, dict) else False
-                if needs_text:
-                    try:
-                        raw = base64.b64decode(prepared.page_image_b64)
-                        with Image.open(io.BytesIO(raw)) as im0:
-                            full_crop = np.asarray(im0.convert("RGB"), dtype=np.uint8).copy()
-                        crops = [("full_page", [0.0, 0.0, 1.0, 1.0], full_crop)]
-                    except Exception:
+            meta = getattr(prepared.row, "metadata", None) or {}
+            needs_text = meta.get("needs_ocr_for_text", False) if isinstance(meta, dict) else False
+            if needs_text and not any(label in _TEXT_LABELS for label, _bbox, _crop_arr in crops):
+                try:
+                    raw = base64.b64decode(prepared.page_image_b64)
+                    with Image.open(io.BytesIO(raw)) as im0:
+                        full_crop = np.asarray(im0.convert("RGB"), dtype=np.uint8).copy()
+                    crops.append(("full_page", [0.0, 0.0, 1.0, 1.0], full_crop))
+                except Exception:
+                    if not crops:
                         crops = []
             for label_name, bbox, crop_array in crops:
                 merge_level = "word" if label_name == "table" else "paragraph"
