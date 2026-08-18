@@ -138,6 +138,13 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 
 The `page_elements` and `table_structure` services share the combined `nemotron-object-detection:2.0.1` image and select distinct models. For air-gapped, mirrored, or allowlisted deployments, pull that image once. Do not treat the older standalone `nemotron-page-elements-v3` or `nemotron-table-structure-v1` container images as the current Helm defaults.
 
+For self-hosted NIM GPU memory by SKU and precision, refer to the following product memory footprint tables.
+
+- [Object detection supported hardware and memory footprint](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#supported-hardware-and-memory-footprint) covers `page_elements` and `table_structure`.
+- [Image OCR supported hardware and memory footprint](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html#supported-hardware-and-memory-footprint) covers `ocr`.
+- [Embedding NIM memory footprint](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/support-matrix.html#memory-footprint) covers `vlm_embed` (`llama-nemotron-embed-vl-1b-v2`).
+- [Reranking NIM memory footprint](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/support-matrix.html#memory-footprint) covers `rerankqa` (`llama-nemotron-rerank-vl-1b-v2`).
+
 ### Configure query reranking with Helm { #configure-query-reranking-with-helm }
 
 The optional `nimOperator.rerankqa` NIM is not auto-wired into the retriever service. To use service query reranking, enable the NIM and configure its in-cluster ranking endpoint. You can also configure the model ID. Add the following values to your Helm values file:
@@ -250,6 +257,7 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 
 - **HF model weights** — approximate Hugging Face checkpoint footprint (files such as `model*.safetensors`, `weights.pth`, or other published weight bundles in the model repository). Values are rounded from the current public file listing and can change when the repository is updated.
 - **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, refer to the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). For the default Super-49B `answer_llm` NIM, the chart NIMCache PVC is 250Gi. Refer to the [NVIDIA NIM for Large Language Models support matrix](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html) for other Super-49B profiles.
+- **NIM GPU memory** — approximate self-hosted NIM GPU memory after startup. These values can differ from the Hugging Face weight sizes in the table and can increase with batch size, precision, and working buffers. Refer to the memory footprint tables after [Default NIMs](#default-helm-nims).
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
 
@@ -294,8 +302,10 @@ and run only the embedder, reranker, and your vector database.
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite)
 - [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite)
-- [NVIDIA NIM for Object Detection (support matrix)](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html)
-- [NVIDIA NIM for Image OCR (support matrix)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html)
+- [NVIDIA NIM for Object Detection (supported hardware and memory footprint)](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#supported-hardware-and-memory-footprint)
+- [NVIDIA NIM for Image OCR (supported hardware and memory footprint)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html#supported-hardware-and-memory-footprint)
+- [NVIDIA NeMo Retriever Embedding NIM (memory footprint)](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/support-matrix.html#memory-footprint)
+- [NVIDIA NeMo Retriever Reranking NIM (memory footprint)](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/support-matrix.html#memory-footprint)
 - [NVIDIA NIM for Vision Language Models (support matrix)](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
 - [NVIDIA NIM for Large Language Models (support matrix)](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html)
 - [NVIDIA Speech NIM Microservices (support matrix)](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)
