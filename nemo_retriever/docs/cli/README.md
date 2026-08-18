@@ -226,6 +226,16 @@ Agentic-only knobs (apply only with `--agentic`):
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
+- `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
+  `tensor_parallel_size` for the in-process agent LLM. Use `2+` with matching
+  `CUDA_VISIBLE_DEVICES` for multi-GPU local profiles (for example
+  `super-49b`). Ignored when `--agentic-invoke-url` is set. When the first
+  `tensor_parallel_size` CUDA-visible GPUs are not NVLink-connected (typical
+  dual-GPU PCIe workstations), tensor-parallel startup automatically sets
+  `NCCL_NVLS_ENABLE=0` and `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, because NVLink
+  multicast collectives abort vLLM startup there; set either variable yourself
+  to override. Detection is scoped to that TP device group, not the whole host
+  or extra visible GPUs outside the shard.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
   to run the in-process local model.
@@ -265,7 +275,8 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
 | `--caption` | off | Add a captioning stage. |
-| `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights and requires correspondingly larger GPU capacity; Nano models remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
+| `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights. On a dedicated 80 GB GPU, its local profile reserves `0.95` of GPU memory for vLLM model and KV-cache use. Nano models retain the `0.5` profile default and remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
+| `--caption-gpu-memory-utilization` | model profile | Fraction of a local caption GPU that vLLM can reserve. The Omni BF16 profile defaults to `0.95`; other local caption profiles default to `0.5`. Use this option only with `--caption` and local vLLM captioning. |
 | `--dedup` | off | Add image deduplication before captioning and embedding. |
 | `--text-chunk` | off | Enable token chunking during extraction. |
 | `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
@@ -378,10 +389,32 @@ Hugging Face remains the local query backend for non-ModelOpt checkpoints.
 Local directories must contain `config.json`, and their absolute path must be
 available to every Ray worker or service replica that loads the model.
 
-### OCR language mode
+### PDF extraction method
+
+Use `--method` to select how the CLI extracts text from PDF pages. The default
+method is `pdfium`.
+
+- `pdfium` extracts native PDF text. It does not use OCR as a fallback for
+  scanned-page text.
+- `pdfium_hybrid` extracts native PDF text and uses OCR as a fallback for
+  scanned pages.
+- `ocr` uses OCR for PDF page text.
+- `nemotron_parse` uses the Nemotron Parse extraction path.
+
+For example, select hybrid extraction for a PDF that contains scanned pages:
 
 ```bash
 retriever ingest ./data/scanned.pdf \
+  --method pdfium_hybrid
+```
+
+`--ocr-version` and `--ocr-lang` configure the local OCR engine when an enabled
+stage uses OCR. These options do not select a PDF extraction method.
+
+### OCR language mode
+
+```bash
+retriever ingest ./data/multimodal_test.pdf \
   --ocr-version v2 \
   --ocr-lang english
 ```
@@ -407,6 +440,19 @@ retriever ingest ./data/test.pdf \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images
 ```
+
+For local Hugging Face Omni BF16 captioning, use a dedicated GPU. The default
+profile reserves `0.95` of GPU memory so that vLLM can allocate both the model
+and its KV cache. Override that reservation when your deployment requires it:
+
+```bash
+retriever ingest ./data/test.png \
+  --caption \
+  --caption-gpu-memory-utilization 0.95
+```
+
+An 80 GB requirement for a self-hosted Omni NIM does not by itself establish
+that direct local Hugging Face vLLM inference has sufficient KV-cache capacity.
 
 ## Results and diagnostics
 

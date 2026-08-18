@@ -110,6 +110,49 @@ def test_reranked_query_uses_main_service_orchestration(monkeypatch, tmp_path) -
     }
 
 
+def test_reranked_query_defaults_remote_model_to_vl(monkeypatch, tmp_path) -> None:
+    _configure_noop_workers(monkeypatch)
+    seen: dict[str, object] = {}
+
+    class _Response:
+        status_code = 200
+        content = json.dumps({"results": [{"hits": [{"text": "first"}]}]}).encode()
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url, **kwargs):
+            return _Response()
+
+    def _rerank(query, hits, **kwargs):
+        seen["kwargs"] = kwargs
+        return hits
+
+    monkeypatch.setattr("httpx.AsyncClient", _Client)
+    monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _rerank)
+    config = ServiceConfig(
+        mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+        nim_endpoints=NimEndpointsConfig(rerank_invoke_url="http://reranker:8080"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        response = client.post("/v1/query", json={"query": "revenue", "top_k": 1, "rerank": True})
+
+    assert response.status_code == 200
+    assert seen["kwargs"]["model_name"] == "nvidia/llama-nemotron-rerank-vl-1b-v2"
+
+
 def test_reranked_query_requires_main_service_reranker(monkeypatch, tmp_path) -> None:
     _configure_noop_workers(monkeypatch)
     config = ServiceConfig(

@@ -68,6 +68,8 @@ jobs:
             --build-arg HF_ACCESS_TOKEN=${{ secrets.HF_ACCESS_TOKEN }} \
             --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
+            --build-arg RETRIEVER_VERSION=${{ needs.determine-version.outputs.version }} \
+            --build-arg RETRIEVER_RELEASE_TYPE=dev \
             -t ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ needs.determine-version.outputs.docker-tag }} \
             .
 

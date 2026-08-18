@@ -27,7 +27,7 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
 !!! note
-    `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse. This path does not produce chart modality rows; for chart detection, refer to [Charts and infographics](#charts-and-infographics).
+    `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse. Local inference defaults to `nvidia/NVIDIA-Nemotron-Parse-v1.2`, and self-hosted NIM inference defaults to `nvidia/nemotron-parse-v1.2`. To use Parse 2.0, set `nemotron_parse_model` to `nvidia/NVIDIA-Nemotron-Parse-2.0` for local inference or `nvidia/nemotron-parse-v2.0` for a compatible self-hosted endpoint.
 
 **Related**
 
@@ -49,16 +49,8 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-!!! important "Chart modality requires the default layout path"
-    [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
-
-    When you set `method="nemotron_parse"`:
-
-    - The pipeline does not produce `chart` or `infographic` modality rows, even when `extract_charts=True` or `extract_infographics=True`.
-    - Chart- and infographic-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
-    - Chart-heavy and infographic-heavy pages are typically emitted as `Picture` or other non-chart modalities.
-
-    For chart and infographic detection and modality-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `method="nemotron_parse"`.
+!!! note "Nemotron Parse chart routing"
+    [NVIDIA Nemotron Parse 2.0](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-2.0) emits the tagged `Chart` class. When you explicitly select that model with `method="nemotron_parse"`, NeMo Retriever Library routes `<class_Chart>` regions to `chart` modality rows. The default Parse v1.2 model does not produce chart modality rows.
 
 Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](#image-captioning).
 
@@ -88,7 +80,29 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
-Direct local captioning defaults to `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Its BF16 weights are approximately 62 GiB, so plan for a larger GPU footprint than the Nano caption profiles, which remain available through explicit model overrides. Hosted captioning defaults to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` at the NVIDIA API endpoint.
+Direct local Hugging Face captioning defaults to `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Its BF16 weights are approximately 62 GiB. For this local vLLM profile, NeMo Retriever Library reserves `0.95` of a dedicated GPU's memory for the model and KV cache. An NVIDIA H100 with 80 GB of memory meets this local profile's minimum capacity when it is dedicated to captioning. The Nano caption profiles retain their `0.5` memory-utilization default and remain available through explicit model overrides. Hosted captioning defaults to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` at the NVIDIA API endpoint.
+
+The 80 GB requirement for the self-hosted Omni NIM describes the NIM deployment. It does not by itself establish that local Hugging Face vLLM inference has enough memory for both weights and its KV cache. For local vLLM, use a dedicated GPU and retain the model-profile default unless you need to tune its memory reservation explicitly.
+
+For example, to override the local vLLM memory reservation from the SDK, pass `CaptionParams` to `caption`.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import CaptionParams, ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["multimodal_test.png"])
+    .extract(ExtractParams(extract_images=True))
+    .caption(
+        CaptionParams(
+            model_name="nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
+            gpu_memory_utilization=0.95,
+        )
+    )
+    .ingest()
+)
+```
 
 Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
 
@@ -104,7 +118,7 @@ Extracted objects follow the schema and field descriptions in the [Metadata refe
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 
-Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must use the NVCF Asset API for larger inputs. For limits, `dpi` and `render_mode` tuning, and a step-by-step asset upload example, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must keep inline payloads under that cap. Hosted Page Elements does not accept NVCF Asset API references. For limits, plus `dpi` and `render_mode` tuning, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 Image payload limits are separate from the throughput metrics in the rest of this section.
 

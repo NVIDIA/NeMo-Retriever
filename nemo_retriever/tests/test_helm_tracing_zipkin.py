@@ -256,6 +256,67 @@ def test_default_renders_zipkin_deployment_and_service() -> None:
     assert service["spec"]["ports"] == [{"name": "http", "protocol": "TCP", "port": 9411, "targetPort": "http"}]
 
 
+def test_otel_prometheus_exporter_matches_advertised_port() -> None:
+    docs = _helm_template()
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    otel_deployment = _find(docs, "Deployment", OTEL_NAME)
+    otel_service = _find(docs, "Service", OTEL_NAME)
+
+    assert config["exporters"]["prometheus"]["endpoint"] == "0.0.0.0:8889"
+    assert config["service"]["pipelines"]["metrics"]["exporters"].count("prometheus") == 1
+    assert {
+        port["name"]: port["containerPort"]
+        for port in otel_deployment["spec"]["template"]["spec"]["containers"][0]["ports"]
+    }["prometheus"] == 8889
+    assert {port["name"]: port["port"] for port in otel_service["spec"]["ports"]}["prometheus"] == 8889
+
+
+def test_otel_prometheus_exporter_follows_custom_port_and_preserves_settings() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set",
+            "topology.otel.ports.prometheus=9999",
+            "--set-string",
+            "topology.otel.config.exporters.prometheus.endpoint=0.0.0.0:8889",
+            "--set-string",
+            "topology.otel.config.exporters.prometheus.namespace=nrl",
+            "--set-json",
+            'topology.otel.config.service.pipelines.metrics.exporters=["debug","prometheus"]',
+        ]
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    otel_deployment = _find(docs, "Deployment", OTEL_NAME)
+    otel_service = _find(docs, "Service", OTEL_NAME)
+
+    assert config["exporters"]["prometheus"] == {"endpoint": "0.0.0.0:9999", "namespace": "nrl"}
+    assert config["service"]["pipelines"]["metrics"]["exporters"].count("prometheus") == 1
+    assert {
+        port["name"]: port["containerPort"]
+        for port in otel_deployment["spec"]["template"]["spec"]["containers"][0]["ports"]
+    }["prometheus"] == 9999
+    assert {port["name"]: port["port"] for port in otel_service["spec"]["ports"]}["prometheus"] == 9999
+
+
+def test_otel_prometheus_exporter_requires_metrics_pipeline() -> None:
+    proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.service.pipelines.metrics=null"])
+
+    assert proc.returncode != 0
+    assert (
+        "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics" in proc.stderr
+    )
+
+
+def test_otel_prometheus_exporter_requires_metric_exporter_list() -> None:
+    proc = _helm_template_process(
+        extra_args=["--set-string", "topology.otel.config.service.pipelines.metrics.exporters=debug"]
+    )
+
+    assert proc.returncode != 0
+    assert (
+        "topology.otel.config.service.pipelines.metrics.exporters must be a list " "when topology.otel.enabled=true"
+    ) in proc.stderr
+
+
 def test_default_injects_managed_service_and_nim_otel_env() -> None:
     docs = _helm_template()
     service_env = _deployment_env(_find(docs, "Deployment", FULLNAME))
@@ -266,6 +327,7 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
     assert service_values["OTEL_SERVICE_NAME"] == "nemo-retriever-service"
     assert service_values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert service_values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert service_values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert service_values["OTEL_LOGS_EXPORTER"] == "none"
     assert service_values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert service_values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -282,8 +344,9 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 
@@ -634,6 +697,7 @@ def test_standalone_service_gets_otel_env_without_duplicate_user_overrides() -> 
     assert values["OTEL_SERVICE_NAME"] == "user-service-name"
     assert values["OTEL_TRACES_EXPORTER"] == "otlp"
     assert values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
     assert values["OTEL_LOGS_EXPORTER"] == "none"
     assert values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
     assert values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
@@ -667,8 +731,9 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["NIM_ENABLE_OTEL"] == "true"
         assert values["NIM_OTEL_SERVICE_NAME"] == name
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
-        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
 

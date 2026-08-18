@@ -4,7 +4,9 @@
 
 """Unit tests for nemo_retriever.operators.dedup."""
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from nemo_retriever.common.api.internal.mutate.deduplicate import calculate_iou
 from nemo_retriever.operators.dedup import dedup_images
@@ -144,4 +146,60 @@ class TestEdgeCases:
     def test_empty_images_list(self):
         df = _make_df([{"images": []}])
         result = dedup_images(df)
+        assert len(result.iloc[0]["images"]) == 0
+
+
+# ── batch-mode cell representations ────────────────────────────────────────
+
+
+class TestListLikeImageCells:
+    """Batch mode delivers element cells as NumPy object arrays or Arrow lists."""
+
+    def test_content_hash_dedup_on_numpy_images_cell(self):
+        images = np.array([_make_image("AAA"), _make_image("AAA"), _make_image("BBB")], dtype=object)
+        df = pd.DataFrame({"images": [images], "table": [[]], "chart": [[]], "infographic": [[]]})
+
+        result = dedup_images(df, content_hash=True, bbox_iou=False)
+
+        assert len(result.iloc[0]["images"]) == 2
+
+    def test_bbox_iou_dedup_with_numpy_bbox_values(self):
+        images = np.array(
+            [_make_image("X", bbox=np.array([0.0, 0.0, 1.0, 1.0]))],
+            dtype=object,
+        )
+        tables = np.array([{"text": "t", "bbox_xyxy_norm": np.array([0.0, 0.0, 1.0, 1.0])}], dtype=object)
+        df = pd.DataFrame({"images": [images], "table": [tables], "chart": [[]], "infographic": [[]]})
+
+        result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
+
+        assert len(result.iloc[0]["images"]) == 0
+
+    def test_numpy_bbox_below_threshold_is_kept(self):
+        images = [_make_image("X", bbox=np.array([0.0, 0.0, 0.1, 0.1]))]
+        tables = [{"text": "t", "bbox_xyxy_norm": np.array([0.9, 0.9, 1.0, 1.0])}]
+        df = pd.DataFrame({"images": [images], "table": [tables], "chart": [[]], "infographic": [[]]})
+
+        result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
+
+        assert len(result.iloc[0]["images"]) == 1
+
+    def test_content_hash_dedup_on_arrow_backed_images_cell(self):
+        pa = pytest.importorskip("pyarrow")
+
+        element_struct = pa.struct([("image_b64", pa.string())])
+        arrow_table = pa.table(
+            {"images": pa.array([[{"image_b64": "AAA"}, {"image_b64": "AAA"}]], type=pa.list_(element_struct))}
+        )
+        df = arrow_table.to_pandas(types_mapper=pd.ArrowDtype)
+
+        result = dedup_images(df, content_hash=True, bbox_iou=False)
+
+        assert len(result.iloc[0]["images"]) == 1
+
+    def test_empty_numpy_images_cell_is_left_alone(self):
+        df = pd.DataFrame({"images": [np.array([], dtype=object)]})
+
+        result = dedup_images(df)
+
         assert len(result.iloc[0]["images"]) == 0

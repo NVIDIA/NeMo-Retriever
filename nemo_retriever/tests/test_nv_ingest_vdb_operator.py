@@ -15,7 +15,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteResult,
     VDB,
 )
-from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
@@ -220,6 +220,44 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
 
 
 @pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param({"text": "extracted chunk"}, id="text"),
+        pytest.param({"text": "", "_image_b64": "page-image"}, id="image"),
+    ],
+)
+def test_ingest_operator_rejects_uploadable_dataframe_without_embeddings(row: dict[str, Any]) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame([row])
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_rejects_unembedded_content_when_embedded_row_is_filtered() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {"text": "", "metadata": {"embedding": [0.1]}},
+            {"text": "extracted chunk"},
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+@pytest.mark.parametrize(
     "text",
     [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
 )
@@ -263,7 +301,7 @@ def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
         pytest.param(np.ones((2, 2), dtype=np.uint8), id="numpy"),
     ],
 )
-def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthiness(
+def test_ingest_operator_rejects_noncanonical_image_payload_without_truthiness(
     image_payload: Any,
 ) -> None:
     vdb = FakeVDB()
@@ -278,7 +316,11 @@ def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthin
         }
     ]
 
-    assert operator(data) is data
+    with pytest.raises(
+        VdbUploadError,
+        match=r"none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
     assert vdb.run_calls == []
 
 
@@ -305,39 +347,73 @@ def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
         "type": "image",
         "page_number": 7,
         "stored_image_uri": "file:///tmp/scanned-page-7.png",
+        "uploaded_image_uri": "file:///tmp/scanned-page-7.png",
     }
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        pytest.param(
-            {
-                "text": "",
-                "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
-                "source_id": "/tmp/empty.pdf",
-                "page_number": 1,
-            },
-            id="no-image-backing",
-        ),
-        pytest.param(
-            {
-                "text": "",
-                "text_embeddings_1b_v2": {"embedding": None},
-                "_image_b64": "page-image",
-                "source_id": "/tmp/scanned.pdf",
-                "page_number": 7,
-            },
-            id="no-embedding",
-        ),
-    ],
-)
-def test_ingest_operator_drops_ineligible_blank_row(row: dict[str, Any]) -> None:
+def test_ingest_operator_rejects_nonempty_batch_with_zero_uploadable_records() -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)
-    data = [row]
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "source_id": "/tmp/empty.pdf",
+            "page_number": 1,
+        }
+    ]
 
-    assert operator(data) is data
+    with pytest.raises(
+        VdbUploadError,
+        match=r"received 1 row\(s\), but none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_reports_upstream_error_counts_without_payloads() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {
+                "text": "",
+                "metadata": {
+                    "source_path": "/tmp/scanned.pdf",
+                    "error": {
+                        "stage": "ocr-nvapi-secret",
+                        "type": "CustomerDocumentText",
+                        "message": "private document content Authorization: Bearer token-secret",
+                    },
+                    "exception": "password=credential-secret",
+                    "traceback": "Traceback containing private customer text",
+                },
+            }
+        ]
+    )
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"reported 3 structured row error\(s\) \(error=1, exception=1, traceback=1\)",
+    ) as exc_info:
+        operator.process(data)
+    rendered = str(exc_info.value)
+    assert "payloads are omitted because they may contain sensitive data" in rendered
+    assert "nvapi-secret" not in rendered
+    assert "CustomerDocumentText" not in rendered
+    assert "private document content" not in rendered
+    assert "token-secret" not in rendered
+    assert "credential-secret" not in rendered
+    assert "private customer text" not in rendered
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_allows_genuinely_empty_dataframe() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame()
+
+    assert operator.process(data) is data
     assert vdb.run_calls == []
 
 
@@ -579,6 +655,24 @@ def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     # Sidecar column merged in alongside the per-row ``page_number``.
     assert merged_content_meta["category"] == "legal"
     assert merged_content_meta["page_number"] == 7
+
+
+def test_ingest_operator_preserves_sidecar_kwargs_for_graph_reconstruction() -> None:
+    meta_df = pd.DataFrame({"source_id": ["/tmp/doc-a.pdf"], "category": ["legal"]})
+    operator = IngestVdbOperator(
+        vdb=FakeVDB(),
+        vdb_kwargs={
+            "meta_dataframe": meta_df,
+            "meta_source_field": "source_id",
+            "meta_fields": ["category"],
+        },
+    )
+
+    reconstructed_kwargs = operator.get_constructor_kwargs()["vdb_kwargs"]
+
+    assert reconstructed_kwargs["meta_dataframe"] is meta_df
+    assert reconstructed_kwargs["meta_source_field"] == "source_id"
+    assert reconstructed_kwargs["meta_fields"] == ["category"]
 
 
 def test_ingest_operator_preserves_canonical_batches_for_collection_write() -> None:

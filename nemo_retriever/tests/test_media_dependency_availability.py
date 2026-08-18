@@ -129,6 +129,23 @@ class MediaDependencyAvailabilityTests(TestCase):
                 self.assertIn("FFmpeg operation 'split' requires media dependencies", message)
                 self.assertNotIn("split requires media dependencies", message)
 
+    def test_run_ffmpeg_disables_stdin(self) -> None:
+        media_interface = _load_media_interface()
+        fake_ffmpeg = SimpleNamespace(compile=lambda _stream: ["ffmpeg"])
+
+        with (
+            patch.object(media_interface, "ffmpeg", fake_ffmpeg),
+            patch.object(media_interface.shutil, "which", return_value="/usr/bin/ffmpeg"),
+            patch.object(
+                media_interface.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0),
+            ) as run_ffmpeg,
+        ):
+            media_interface._run_ffmpeg(object(), label="split", input_path="/tmp/input.wav")
+
+        self.assertIs(run_ffmpeg.call_args.kwargs["stdin"], media_interface.subprocess.DEVNULL)
+
     def test_get_audio_from_video_does_not_require_ffprobe(self) -> None:
         media_interface = _load_media_interface()
 

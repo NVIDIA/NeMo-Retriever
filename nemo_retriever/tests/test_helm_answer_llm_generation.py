@@ -119,17 +119,26 @@ class HelmAnswerLLMGenerationTests(TestCase):
         proc = _helm_template(
             extra_args=(
                 "--set",
+                "nimOperator.page_elements.enabled=false",
+                "--set",
+                "nimOperator.table_structure.enabled=false",
+                "--set",
+                "nimOperator.ocr.enabled=false",
+                "--set",
+                "nimOperator.vlm_embed.enabled=false",
+                "--set",
                 "nimOperator.answer_llm.enabled=true",
                 "--set-json",
                 "nimOperator.answer_llm.image.pullSecrets=[]",
+                "--set",
+                "ngcImagePullSecret.name=",
             )
         )
 
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn(
-            "nimOperator.answer_llm.image.pullSecrets must not be empty",
-            proc.stdout + proc.stderr,
-        )
+        combined = proc.stdout + proc.stderr
+        self.assertIn("nimOperator.answer_llm.image.pullSecrets is empty", combined)
+        self.assertIn("ngcImagePullSecret.name is unset", combined)
 
     def test_answer_llm_can_swap_to_nano_image_model_and_profile(self) -> None:
         proc = _helm_template(

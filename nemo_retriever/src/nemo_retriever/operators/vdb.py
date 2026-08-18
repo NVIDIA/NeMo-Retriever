@@ -117,7 +117,7 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
         self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
         self._sidecar_lookup: dict[str, dict[str, Any]] | None = None

@@ -16,7 +16,7 @@ from nemo_retriever.common.modality.ocr.shared import _error_payload, nemotron_p
 
 
 class NemotronParseActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initializes Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initializes Nemotron Parse once per actor."""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)

@@ -45,8 +45,10 @@ class TableStructureCPUActor(AbstractOperator, CPUOperator):
     ) -> None:
         super().__init__()
         self._table_structure_invoke_url = (
-            table_structure_invoke_url or invoke_url or self.DEFAULT_TABLE_STRUCTURE_INVOKE_URL
-        ).strip()
+            str(table_structure_invoke_url or "").strip()
+            or str(invoke_url or "").strip()
+            or self.DEFAULT_TABLE_STRUCTURE_INVOKE_URL
+        )
         self._ocr_invoke_url = str(ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)

@@ -72,7 +72,7 @@ class OCRActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("ocr_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(str(kwargs.get("ocr_invoke_url") or "").strip() or str(kwargs.get("invoke_url") or "").strip())
 
     @classmethod
     def cpu_variant_class(cls):
