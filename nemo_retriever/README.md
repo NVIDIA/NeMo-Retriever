@@ -380,6 +380,15 @@ CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal i
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
+
+When the first ``tensor_parallel_size`` CUDA-visible GPUs are not
+NVLink-connected (typical dual-GPU PCIe workstations), tensor-parallel
+startup automatically sets `NCCL_NVLS_ENABLE=0` and
+`TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, since NVLink multicast collectives abort
+vLLM startup with a NCCL CUDA error there. Set either variable yourself to
+override the fallback. Detection is scoped to that TP device group, not the
+whole host or extra visible GPUs outside the shard.
+
 **OpenAI-compatible agent endpoint.** Pass `--agentic-invoke-url` when you want a
 custom model or a separately hosted chat-completions server, such as vLLM server
 mode or a self-hosted NIM. When an invoke URL is provided, `--agentic-llm-model`

@@ -29,6 +29,7 @@ INPUT_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         "*.mp4",
         "*.mov",
         "*.mkv",
+        "*.avi",
     ),
     "pdf": ("*.pdf",),
     "txt": ("*.txt", "*.md", "*.json", "*.sh"),
@@ -36,7 +37,7 @@ INPUT_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
     "doc": ("*.docx", "*.pptx"),
     "image": ("*.jpg", "*.jpeg", "*.png", "*.tiff", "*.tif", "*.bmp", "*.svg"),
     "audio": ("*.mp3", "*.wav", "*.m4a"),
-    "video": ("*.mp4", "*.mov", "*.mkv"),
+    "video": ("*.mp4", "*.mov", "*.mkv", "*.avi"),
 }
 INPUT_TYPE_EXTENSIONS: dict[str, frozenset[str]] = {
     input_type: frozenset(pattern[1:].lower() for pattern in patterns if pattern.startswith("*."))

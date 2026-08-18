@@ -552,8 +552,9 @@ serviceConfig:
     # operator-managed Parse NIM is enabled, its in-cluster URL is used
     # unless this explicit endpoint is set.
     nemotronParseInvokeUrl: ""
-    # Optional model override. Leave empty to infer the hosted
-    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    # Optional model override. Leave empty to infer the operator-managed
+    # Parse v1.2 or v2.0 model from its image repository. For external
+    # endpoints, set the matching model explicitly.
     nemotronParseModel: ""
     embedInvokeUrl: ""
     # Optional remote reranking endpoint used by POST /v1/query with
@@ -696,6 +697,9 @@ serviceConfig:
     gpuDevices: []
     maxUploadBytes: 500000000
 
+  sidecarStore:
+    maxPayloadBytes: 33554432
+
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
   # /v1/query to it for retrieval.
@@ -703,11 +707,15 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
+    # Create a hybrid vector and FTS index by default. Set to "dense" for a
+    # vector-only index.
+    indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
-    # Optional dedicated gateway/worker-to-VectorDB authentication. When
-    # enabled, all Retriever and VectorDB pods read the same existing Secret
-    # key and VectorDB rejects missing or invalid internal credentials.
+    # Optional service-internal authentication. When enabled, Retriever and
+    # VectorDB pods read the same existing Secret key. In split topology, the
+    # gateway also uses this credential for restricted gateway-to-worker
+    # handoffs. Public bearer credentials are never forwarded to workers.
     internalAuth:
       enabled: false
       existingSecret:
@@ -716,7 +724,8 @@ serviceConfig:
 
   # Public bearer-token authentication. Production deployments should mount
   # a Secret-backed scope-token JSON file. It is disabled by default so a
-  # standalone deployment accepts gateway requests without a bearer token.
+  # standalone deployment accepts gateway requests without a bearer token. In
+  # split topology, the public token file mounts only on the gateway.
   # Inline apiToken is retained only as an explicitly enabled insecure
   # development fallback.
   auth:
@@ -1034,7 +1043,7 @@ nimOperator:
   #   Optional (enabled: false by default, NOT auto-wired):
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #     - nemotron_parse                           (Parse v1.2 by default, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
   #     - answer_llm                               (OpenAI-compatible answer LLM,

@@ -420,6 +420,8 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
             "--agentic",
             "--top-k",
             "2",
+            "--candidate-k",
+            "4",
             "--lancedb-uri",
             "/tmp/lancedb",
             "--table-name",
@@ -445,11 +447,70 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     # --top-k is honored end-to-end: plumbed into the agentic config (drives the
     # ReAct target / RRF / selection cut), not just applied as a post-filter.
     assert cfg["top_k"] == 2
+    assert cfg["candidate_k"] == 4
     # Sorted by rank and truncated to --top-k=2.
     assert json.loads(result.output) == [
         {"rank": 1, "doc_id": "a.pdf", "result_source": "final_results"},
         {"rank": 2, "doc_id": "b.pdf", "result_source": "rrf"},
     ]
+
+
+def test_root_query_agentic_rejects_candidate_k_below_top_k() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--top-k",
+            "10",
+            "--candidate-k",
+            "3",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "candidate_k (3) must be greater than or equal to top_k (10)" in result.output
+
+
+def test_root_query_agentic_unreachable_reranker_is_not_reported_as_empty_success(
+    monkeypatch,
+) -> None:
+    reranker_url = "http://127.0.0.1:9/v1/ranking"
+
+    def fail_agentic_query(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError(
+            "Agentic retrieval failed (tool_failed): Tool 'retrieve' failed. "
+            f"ConnectionError: HTTPConnectionPool {reranker_url}"
+        )
+
+    monkeypatch.setattr(query_cli_app, "query_agentic_documents", fail_agentic_query)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+            "--rerank",
+            "--reranker-invoke-url",
+            reranker_url,
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "[]" not in result.output
+    assert "Agentic retrieval failed (tool_failed)" in result.output
+    assert "retrieve" in result.output
+    assert reranker_url in result.output
 
 
 def test_root_query_agentic_local_tensor_parallel_size_plumbed_into_config(

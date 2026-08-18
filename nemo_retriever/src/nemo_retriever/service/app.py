@@ -163,10 +163,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         tracker.add_terminal_observer(app.state.metrics.record_terminal_transition)
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
-    app.state.sidecar_store = init_sidecar_store()
+    app.state.sidecar_store = (
+        init_sidecar_store(max_payload_bytes=config.sidecar_store.max_payload_bytes)
+        if mode in ("gateway", "standalone")
+        else None
+    )
 
     if mode == "gateway":
-        app.state.proxy = init_proxy(config.gateway)
+        app.state.proxy = init_proxy(
+            config.gateway,
+            internal_api_token=config.vectordb.internal_api_token,
+            public_auth_header=config.auth.header_name,
+        )
         app.state.work_broker = await init_work_broker(config.work_queue, config.pipeline)
         app.state.pipeline_pool = None
     else:
@@ -289,6 +297,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
         BearerAuthMiddleware,
         config=config.auth,
         internal_api_token=config.vectordb.internal_api_token,
+        service_mode=config.mode,
     )
     logger.info(
         "Scope authorization configured (enabled=%s, header=%s, secret_file=%s, allow_unscoped_dev=%s)",
