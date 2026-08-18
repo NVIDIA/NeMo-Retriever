@@ -484,13 +484,13 @@ For default cache names, PVC cleanup, and the full upgrade sequence, refer to [C
 
 Retriever Pods inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Empty per-NIM `image.pullSecrets` and `authSecret` inherit the same names.
 
-If NIMCache or NIMService still shows `ngc-secret` or `ngc-api` after a rename, a non-empty per-NIM override is still set. The retriever Deployment can become Ready while NIM model-download Jobs and NIM Pods fail because they reference Secrets that do not exist.
+If NIMCache or NIMService still shows `ngc-secret` or `ngc-api` after a rename, you still have a non-empty per-NIM override. The retriever Deployment can become Ready while NIM model-download Jobs and NIM Pods fail because they reference Secrets that do not exist.
 
 Complete the following checks:
 
 1. Render the chart with the NIM Operator CRDs enabled. Inspect `pullSecret` on every `NIMCache` and `pullSecrets` on every `NIMService`, plus `authSecret` on both.
 2. Confirm those fields match Secrets that exist in the release namespace.
-3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the globals, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
+3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the global Secret names, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
 4. Top-level `imagePullSecrets` applies only to Retriever Pods. It does not update NIM Operator custom resources.
 
 For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) in the Helm chart README.

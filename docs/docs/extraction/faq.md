@@ -85,9 +85,9 @@ Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable
 
 ## Why do NIMCache and NIMService still use ngc-secret after I rename ngcImagePullSecret.name? { #helm-nim-secret-rename }
 
-Empty `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret` inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Chart defaults leave those fields empty.
+Empty per-NIM `image.pullSecrets` and `authSecret` inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Chart defaults leave those fields empty.
 
-A non-empty per-NIM override takes precedence. If you previously set `pullSecrets` or `authSecret` to `ngc-secret` or `ngc-api`, those values remain after you rename the global Secrets. Clear the per-NIM fields, or set them to the new names.
+A non-empty per-NIM override takes precedence. If you previously set those fields to `ngc-secret` or `ngc-api`, those values remain after you rename the global Secrets. Clear the per-NIM fields, or set them to the new names.
 
 `imagePullSecrets` applies only to Retriever Pods. It does not appear on NIMCache or NIMService.
 
