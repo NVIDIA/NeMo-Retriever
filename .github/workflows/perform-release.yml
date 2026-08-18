@@ -375,6 +375,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate Slack announcement
+        id: generate-announcement
         env:
           VERSION: ${{ needs.determine-version.outputs.version }}
           DRY_RUN: ${{ inputs.dry-run }}
@@ -495,7 +496,22 @@ jobs:
           echo -e "$MSG"
           echo "========================================="
 
+          ANNOUNCEMENT_FILE="$RUNNER_TEMP/slack-announcement.txt"
+          printf '%b\n' "$MSG" > "$ANNOUNCEMENT_FILE"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
           echo "### :mega: Slack Announcement" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo -e "$MSG" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Publish announcement to Slack
+        if: ${{ steps.generate-announcement.outputs.created == 'true' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          payload="$(jq --raw-input --compact-output '{text: .}' "$RUNNER_TEMP/slack-announcement.txt")"
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --header 'Content-type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK"
