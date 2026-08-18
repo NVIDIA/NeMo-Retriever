@@ -349,23 +349,29 @@ Tested official checkpoints:
 - `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
 - `nvidia/llama-nv-embed-reasoning-3b`
 - `nvidia/llama-embed-nemotron-8b`
+- `nvidia/Nemotron-3-Embed-1B-BF16`
+- `nvidia/Nemotron-3-Embed-8B-BF16`
+- `nvidia/Nemotron-3-Embed-1B-NVFP4`
 
 Equivalent local checkpoints and weight-only fine-tunes are supported. A
-compatible checkpoint must be complete and loadable, use
-`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
-pooling with a positive output width. LanceDB infers the schema from the
-produced vectors; the tested official checkpoints use 2048, 3072, and 4096
-dimensions. Query and document prompts are read from
+compatible checkpoint must be complete and loadable, declare average pooling,
+and expose a positive output width. Supported architectures include
+`LlamaBidirectionalModel`, `LlamaNemotronVLModel`, and compatible Ministral 3
+dense encoders. A compatible Ministral 3 dense checkpoint must declare
+`model_type: "ministral3"`, `architectures: ["Ministral3Model"]`,
+`is_causal: false`, `pooling: "avg"`, and a positive `hidden_size`. LanceDB
+infers the schema from the produced vectors; the tested official checkpoints
+use 2048, 3072, and 4096 dimensions. Query and document prompts are read from
 `config_sentence_transformers.json` when the checkpoint supplies it.
 Fine-tunes that require prefixes other than `query: ` and `passage: ` must
 retain that prompt metadata.
 
-This does not add support for every model in the Nemotron RAG collection,
-including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
-parsing models. Nemotron 3 Embed is also excluded because its Ministral3
-architecture requires a newer Transformers stack than this project currently
-supports. Those models require different dependencies, outputs, modalities,
-or operator contracts.
+General Mistral 3 Base, Instruct, and vision-language model (VLM) generation
+checkpoints remain unsupported because they do not match the dense encoder
+contract. NeMo AutoModel `ministral3_bidirec` checkpoints also remain
+unsupported. Other unsupported Nemotron RAG models include rerankers, ColEmbed
+late-interaction models, Omni Embed, OCR, and parsing models. These models
+require different dependencies, outputs, modalities, or operator contracts.
 
 Unregistered Hub repositories are resolved to an immutable commit and loaded
 with `trust_remote_code=True`; only use repositories you trust. The resolved
