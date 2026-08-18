@@ -37,18 +37,21 @@ out_df, _info = create_text_embeddings_for_df(
 from __future__ import annotations
 
 import logging
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
+
 from nemo_retriever.common.api.util.string_processing import (
     ensure_openai_embeddings_http_url,
     prepend_model_provider_prefix,
 )
-
-from nemo_retriever.models import _DEFAULT_EMBED_MODEL
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,12 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
 
 EmbeddingCallable = Callable[[Sequence[str]], Sequence[Sequence[float]]]
+
+_RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_DEFAULT_HTTP_MAX_RETRIES = 5
+_DEFAULT_HTTP_MAX_429_RETRIES = 3
+_MAX_HTTP_RETRY_DELAY_S = 30.0
+_MAX_HTTP_ERROR_BODY_CHARS = 2_000
 
 
 @dataclass(slots=True)
@@ -290,9 +299,12 @@ def _http_embed_openai_compat(
     encoding_format: str,
     input_type: str,
     truncate: str,
+    modalities: Optional[List[str]] = None,
     model_provider_prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
+    max_retries: int = _DEFAULT_HTTP_MAX_RETRIES,
+    max_429_retries: int = _DEFAULT_HTTP_MAX_429_RETRIES,
 ) -> List[Optional[List[float]]]:
     """
     Best-effort HTTP embeddings call using an OpenAI-compatible schema.
@@ -323,11 +335,55 @@ def _http_embed_openai_compat(
     }
     if dimensions is not None:
         payload["dimensions"] = int(dimensions)
+    if modalities:
+        if len(modalities) != len(prompts):
+            raise ValueError("modalities must contain one value per embedding input")
+        normalized_modalities = [str(modality) for modality in modalities]
+        payload["modality"] = (
+            normalized_modalities[0] if len(set(normalized_modalities)) == 1 else normalized_modalities
+        )
 
     with httpx.Client(timeout=float(timeout_s)) as client:
-        resp = client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        for attempt in range(max(0, int(max_retries)) + 1):
+            try:
+                resp = client.post(url, headers=headers, json=payload)
+            except httpx.TransportError:
+                if attempt >= max(0, int(max_retries)):
+                    raise
+                delay_s = _http_retry_delay_s(attempt)
+                logger.warning(
+                    "Embedding request transport failure; retrying in %.1fs (attempt %d/%d)",
+                    delay_s,
+                    attempt + 1,
+                    max(0, int(max_retries)),
+                )
+                time.sleep(delay_s)
+                continue
+
+            status_code = int(resp.status_code)
+            retry_limit = max(0, int(max_429_retries if status_code == 429 else max_retries))
+            if status_code in _RETRYABLE_HTTP_STATUS_CODES and attempt < retry_limit:
+                delay_s = _http_retry_delay_s(attempt, retry_after=resp.headers.get("Retry-After"))
+                logger.warning(
+                    "Embedding endpoint returned HTTP %d; retrying in %.1fs (attempt %d/%d)",
+                    status_code,
+                    delay_s,
+                    attempt + 1,
+                    retry_limit,
+                )
+                time.sleep(delay_s)
+                continue
+
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body = resp.text.strip()
+                if len(body) > _MAX_HTTP_ERROR_BODY_CHARS:
+                    body = body[:_MAX_HTTP_ERROR_BODY_CHARS] + "... [truncated]"
+                detail = f"; response body: {body}" if body else ""
+                raise RuntimeError(f"Embedding endpoint returned HTTP {status_code}{detail}") from exc
+            data = resp.json()
+            break
 
     # Parse embeddings.
     items = data.get("data") if isinstance(data, dict) else None
@@ -345,6 +401,21 @@ def _http_embed_openai_compat(
 
     # Preserve input order; unknown entries become None.
     return [by_index.get(i) for i in range(len(prompts))]
+
+
+def _http_retry_delay_s(attempt: int, *, retry_after: Optional[str] = None) -> float:
+    """Return a bounded retry delay, honoring numeric or HTTP-date Retry-After values."""
+    if retry_after:
+        try:
+            return min(_MAX_HTTP_RETRY_DELAY_S, max(0.0, float(retry_after)))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(retry_after)
+                return min(_MAX_HTTP_RETRY_DELAY_S, max(0.0, retry_at.timestamp() - time.time()))
+            except (TypeError, ValueError, OverflowError):
+                pass
+    ceiling_s = min(_MAX_HTTP_RETRY_DELAY_S, float(2 ** max(0, int(attempt))))
+    return random.uniform(0.0, ceiling_s)
 
 
 def _make_async_request(
@@ -368,7 +439,7 @@ def _make_async_request(
     - `input_type` and `truncate` are sent as top-level JSON fields, matching the effective
       request body produced by the OpenAI Python client when using `extra_body={...}`.
     """
-    _ = (filter_errors, modalities)  # reserved for parity/future support
+    _ = filter_errors  # reserved for parity/future support
 
     response: Dict[str, Any] = {}
     try:
@@ -381,6 +452,7 @@ def _make_async_request(
             encoding_format=str(encoding_format),
             input_type=str(input_type),
             truncate=str(truncate),
+            modalities=modalities,
             dimensions=dimensions,
             timeout_s=timeout_s,
         )
@@ -660,22 +732,28 @@ def create_text_embeddings_for_df(
                     _format_image_input_string(img_b64)
                     for img_b64 in df_content.loc[valid_content_mask, "_content"].tolist()
                 ]
+                filtered_modalities = ["image"] * len(filtered_content_list)
             else:  # text_image
                 filtered_content_list = []
+                filtered_modalities = []
                 for _, r in df_content.loc[valid_content_mask].iterrows():
                     text = _text_from_row(r, text_column=str(transform_config.text_column)) or ""
                     image = _image_from_row(r) or ""
                     if image and text.strip():
                         filtered_content_list.append(_format_text_image_pair_input_string(text, image))
+                        filtered_modalities.append("text_image")
                     elif image:
                         # Image without text — send as image-only to avoid
                         # "Text part must be non-empty for text_image modality" errors.
                         filtered_content_list.append(_format_image_input_string(image))
+                        filtered_modalities.append("image")
                     else:
                         filtered_content_list.append(text)
+                        filtered_modalities.append("text")
             filtered_content_batches = _generate_batches(
                 filtered_content_list, batch_size=int(transform_config.batch_size)
             )
+            modality_batches = _generate_batches(filtered_modalities, batch_size=int(transform_config.batch_size))
             content_embeddings = _async_runner(
                 filtered_content_batches,
                 api_key,
@@ -686,7 +764,7 @@ def create_text_embeddings_for_df(
                 str(transform_config.input_type),
                 str(transform_config.truncate),
                 False,
-                modalities=None,
+                modalities=modality_batches,
                 dimensions=dimensions,
                 max_concurrent=nim_http_max_concurrent,
                 timeout_s=request_timeout_s,
@@ -709,7 +787,7 @@ def create_text_embeddings_for_df(
                     str(transform_config.input_type),
                     str(transform_config.truncate),
                     False,
-                    modalities=None,
+                    modalities=[["text"] * len(batch) for batch in filtered_content_batches],
                     dimensions=dimensions,
                     max_concurrent=nim_http_max_concurrent,
                     timeout_s=request_timeout_s,

@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 from ray.data.block import BlockAccessor
 from ray.data import DataContext
 from ray.data.extensions import TensorArray
@@ -18,6 +19,7 @@ from nemo_retriever.graph.executor import (
     _ArrowPandasOperatorAdapter,
     _preserves_pandas_output,
     _requires_stable_pandas_blocks,
+    ray_dataset_to_pandas,
 )
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows, explode_content_to_rows
@@ -57,6 +59,72 @@ def test_adapter_compacts_sliced_nested_arrow_columns() -> None:
 
     roundtripped.validate(full=True)
     assert isinstance(result.dtypes["text"], pd.ArrowDtype)
+
+
+def test_dataset_materialization_returns_row_safe_pandas_dataframe() -> None:
+    table = pa.Table.from_pylist(
+        [
+            {
+                "metadata": {"error": None, "timing": None},
+                "text": f"page {page_number}",
+            }
+            for page_number in range(3)
+        ]
+    )
+
+    class _Dataset:
+        def iter_batches(self, *, batch_format, batch_size):
+            assert batch_format is None
+            assert batch_size is None
+            yield table.slice(1, 1)
+
+        def schema(self):
+            return table.schema
+
+    result = ray_dataset_to_pandas(_Dataset())
+
+    assert [row.text for row in result.itertuples(index=False)] == ["page 1"]
+    assert result.to_dict("records") == [{"metadata": {"error": None, "timing": None}, "text": "page 1"}]
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        pytest.param(
+            [
+                np.array([{"text": "first table"}], dtype=object),
+                np.array([{"text": "second table"}], dtype=object),
+            ],
+            [[{"text": "first table"}], [{"text": "second table"}]],
+            id="fixed-shape",
+        ),
+        pytest.param(
+            [
+                np.array([{"text": "table text"}], dtype=object),
+                np.array([], dtype=object),
+            ],
+            [[{"text": "table text"}], []],
+            id="ragged",
+        ),
+    ],
+)
+def test_dataset_materialization_normalizes_object_tensor_pandas_blocks(values, expected) -> None:
+    frame = pd.DataFrame({"table": pd.Series(TensorArray(values))})
+
+    class _Dataset:
+        def iter_batches(self, *, batch_format, batch_size):
+            assert batch_format is None
+            assert batch_size is None
+            yield frame
+
+        def schema(self):
+            return pa.schema([pa.field("table", pa.list_(pa.struct([pa.field("text", pa.string())])))])
+
+    result = ray_dataset_to_pandas(_Dataset())
+
+    assert result["table"].dtype == object
+    assert all(isinstance(value, np.ndarray) for value in result["table"])
+    assert [value.tolist() for value in result["table"]] == expected
 
 
 def test_adapter_preserves_ray_pandas_conversion_policy() -> None:

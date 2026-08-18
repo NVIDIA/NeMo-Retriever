@@ -23,6 +23,21 @@ not parse them as stable codes. The stable text-generation codes documented in
 [One-shot text generation](#one-shot-text-generation) apply to generation
 operator output columns, not to document extraction.
 
+### Configure at least one input source
+
+Before you call `.ingest()`, `.ingest_stream()`, or `.aingest_stream()`,
+configure at least one input source by calling `.files()`, `.texts()`, or
+`.buffers()` with a nonempty value. Omitting input configuration or passing an
+empty collection raises `ValueError` before pipeline execution.
+
+A configured source can legitimately produce blank text or an empty result.
+For example, OCR can find no text on an image-only page. This outcome does not
+raise the missing-input error.
+
+A nonempty optional glob passed to `.files()` also counts as a configured
+source. If it matches no files, `.ingest()` can return an empty result, and the
+streaming methods can yield no results.
+
 ### Select a supported extraction method
 
 `ExtractParams` validates `method` when you construct the model. For PDF
@@ -153,7 +168,7 @@ actions, and escalation criteria, refer to
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
 
-To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Text chunking and PDF page batches](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli#text-chunking-and-pdf-page-batches) in the CLI reference.
+To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
 
 **Python client (`pdf_split_config`):** Only `create_ingestor(run_mode="service")` implements `.pdf_split_config(pages_per_chunk=...)`, which records page-chunking settings in the request pipeline spec for the remote gateway. Local graph ingest (`run_mode="inprocess"` or `"batch"`) raises `NotImplementedError` if you call this method; PDFs are split automatically on the default ingest path without client-side configuration.
 

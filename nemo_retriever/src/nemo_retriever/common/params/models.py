@@ -25,6 +25,7 @@ from pydantic import (
 )
 
 from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
+from nemo_retriever.common.params.utils import validate_nemotron_parse_endpoint_list
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
@@ -581,6 +582,8 @@ class ExtractParams(_ParamsModel):
                 "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
                 "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
             )
+        if self.method == "nemotron_parse":
+            validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
             enabled = [name for name, on in consumers if on]

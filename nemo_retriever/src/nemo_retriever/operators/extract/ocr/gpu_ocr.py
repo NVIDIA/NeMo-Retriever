@@ -27,8 +27,11 @@ class OCRActor(AbstractOperator, GPUOperator):
             warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
         self.ocr_kwargs = dict(ocr_kwargs)
-        invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self.ocr_kwargs:
+        invoke_url = (
+            str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
+            or str(self.ocr_kwargs.get("invoke_url") or "").strip()
+        )
+        if invoke_url:
             self.ocr_kwargs["invoke_url"] = invoke_url
 
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))

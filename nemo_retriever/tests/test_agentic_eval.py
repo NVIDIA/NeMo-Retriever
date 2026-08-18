@@ -36,8 +36,10 @@ class FakeRetriever:
         self.kwargs = kwargs
         self.graph = kwargs.get("graph")
         self.top_k = int(kwargs.get("top_k", 10))
+        self.query_calls = []
 
-    def query(self, query: str, *, top_k: int | None = None):
+    def query(self, query: str, *, top_k: int | None = None, candidate_k: int | None = None):
+        self.query_calls.append({"query": query, "top_k": top_k, "candidate_k": candidate_k})
         if self.graph is not None:
             return self.queries([query], top_k=top_k)[0]
         _ = query
@@ -151,6 +153,22 @@ def test_agentic_retriever_honors_top_k():
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_forwards_candidate_k_per_hop():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=10, candidate_k=20)
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+
+    retriever._retrieve_for_agent("first", 10)
+    retriever._retrieve_for_agent("later", 25)
+
+    assert retriever._retriever.query_calls == [
+        {"query": "first", "top_k": 10, "candidate_k": 20},
+        {"query": "later", "top_k": 25, "candidate_k": 25},
+    ]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_audio_recall_evaluation
 
@@ -186,6 +204,46 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
     assert gold == ["clip	0.000000	4.000000"]
     assert retrieved[0][0] == audio_doc_id
     assert metrics["recall@1"] == 1.0
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_forwards_reranker_endpoint_as_rerank_invoke_url():
+    """A configured reranker endpoint must reach the remote rerank variant.
+
+    ``NemotronRerankActor`` dispatches on ``rerank_invoke_url``; any other key
+    leaves the URL unused and loads the reranker locally instead.
+    """
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="http://localhost:8015",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] == "http://localhost:8015"
+    assert "invoke_url" not in rerank_kwargs
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is True
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_without_reranker_endpoint_uses_local_variant():
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="   ",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] is None
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is False
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
@@ -267,6 +325,16 @@ def test_agentic_config_rejects_noninteger_top_k():
 
     with pytest.raises(ValueError, match="top_k must be an integer"):
         AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=1.5)
+
+
+def test_agentic_config_rejects_candidate_k_below_top_k():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(
+        ValueError,
+        match=r"candidate_k \(3\) must be greater than or equal to top_k \(10\)",
+    ):
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=10, candidate_k=3)
 
 
 def test_agentic_config_normalizes_integer_like_values():
@@ -397,3 +465,31 @@ def test_agentic_config_validates_local_vllm_knobs():
     assert cfg.local_tensor_parallel_size == 2
     assert cfg.local_max_model_len == 8192
     assert cfg.local_max_num_seqs == 4
+
+
+def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
+    from nemo_retriever.query.agentic import (
+        AgenticRetrievalConfig,
+        _build_agent_chat_completion_fn,
+    )
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="super-49b",
+        local_tensor_parallel_size=2,
+    )
+
+    with patch(
+        "nemo_retriever.models.create_local_agent_llm",
+        return_value=object(),
+    ) as create_local_llm:
+        _build_agent_chat_completion_fn(cfg)
+
+    create_local_llm.assert_called_once_with(
+        "super-49b",
+        backend="vllm",
+        hf_cache_dir=None,
+        gpu_memory_utilization=0.8,
+        tensor_parallel_size=2,
+        max_model_len=None,
+        max_num_seqs=None,
+    )

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict
@@ -14,6 +15,7 @@ from typing import Any, TypedDict
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
+from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
     "chart_caption": "chart",
@@ -32,6 +34,10 @@ def normalize_content_type(value: Any) -> str | None:
 
 class RetrievalContractError(RuntimeError):
     """A backend retrieval result cannot satisfy the canonical hit contract."""
+
+
+class VdbUploadError(ValueError):
+    """A nonempty graph batch cannot produce any canonical VDB records."""
 
 
 def validate_collection_retrieval_results(
@@ -240,6 +246,16 @@ def _is_image_backed_row(row: dict[str, Any]) -> bool:
     )
 
 
+def _is_inherited_page_uri(row: dict[str, Any], stored_image_uri: str, content_type: str | None) -> bool:
+    """Return whether a structured row only carries its page image URI."""
+    if content_type not in {"table", "chart", "infographic"}:
+        return False
+
+    page_image = row.get("page_image")
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+    return bool(_first_str(page_uri) == stored_image_uri)
+
+
 def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metadata: dict[str, Any]) -> str | None:
     """Map a chunk's modality + real provenance signals to a trust tier.
 
@@ -290,6 +306,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     stored_image_uri = _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"))
     if stored_image_uri:
         content_metadata.setdefault("stored_image_uri", stored_image_uri)
+        if not _is_inherited_page_uri(row, stored_image_uri, content_type):
+            content_metadata.setdefault("uploaded_image_uri", stored_image_uri)
     bbox = _bbox_from_graph_row(row)
     if bbox is not None:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
@@ -329,29 +347,79 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     return {"document_type": str(document_type), "metadata": record_metadata}
 
 
+def _row_has_uploadable_content_without_embedding(row: dict[str, Any]) -> bool:
+    metadata = _dict_or_empty(row.get("metadata"))
+    if _embedding_from_graph_row(row, metadata) is not None:
+        return False
+    return bool(_text_from_graph_row(row, metadata)) or _is_image_backed_row(row)
+
+
+def _stage_error_field(path: Any) -> str:
+    text = str(path or "")
+    for field in ERROR_FIELD_KEYS:
+        if text == field or text.endswith(f".{field}"):
+            return field
+    return "error"
+
+
+def _raise_for_empty_vdb_conversion(graph_rows: list[dict[str, Any]]) -> None:
+    upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
+    if upstream_errors:
+        error_fields = Counter(_stage_error_field(error.get("path")) for error in upstream_errors)
+        summary = ", ".join(f"{field}={count}" for field, count in sorted(error_fields.items()))
+        raise VdbUploadError(
+            f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable because upstream stages "
+            f"reported {len(upstream_errors)} structured row error(s) ({summary}); "
+            "error payloads are omitted because they may contain sensitive data."
+        )
+
+    reasons = Counter(
+        (
+            "missing embedding"
+            if _row_has_uploadable_content_without_embedding(row)
+            else "missing searchable text or image backing"
+        )
+        for row in graph_rows
+    )
+    if "missing embedding" in reasons:
+        summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
+        raise VdbUploadError(
+            "vdb_upload requires embedded records, but no embeddings were found. "
+            f"Received {len(graph_rows)} nonempty row(s); rejection reasons: {summary}. "
+            "Add an embed stage or provide a supported embedding column."
+        )
+    summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
+    raise VdbUploadError(
+        f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable; rejection reasons: {summary}."
+    )
+
+
 def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     """Convert graph-ingest rows into the nested record shape expected by client VDBs.
 
     Dense rows require an embedding and either nonblank text or concrete image backing.
-    When no row survives conversion, returns ``[]`` — a falsy value so
-    ``if not records`` skips :meth:`~nemo_retriever.vdb.adt_vdb.VDB.run`.
+    Genuinely empty input returns ``[]`` so Ray can process empty partitions.
+    A nonempty graph batch that produces zero records raises
+    :class:`VdbUploadError` before a backend write is attempted.
     When at least one row converts, returns ``[batch]`` with a single non-empty inner list
     (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
+    Uploadable graph content without an embedding raises ``VdbUploadError`` when
+    no row survives conversion.
     """
     if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
-        return rows
+        nonempty_batches = [batch for batch in rows if batch]
+        return rows if len(nonempty_batches) == len(rows) else nonempty_batches
     if hasattr(rows, "to_pandas"):
         rows = rows.to_pandas()
     if hasattr(rows, "to_dict"):
         rows = rows.to_dict("records")
+    graph_rows = [row for row in rows or [] if isinstance(row, dict)]
     # Walrus: bind conversion once per row — a plain ``if f(row)`` + ``f(row)`` list comp
     # would call _client_record_from_graph_row twice per row on large datasets.
     # isinstance(row, dict): plain lists are not normalized like DataFrame rows; skip None/Series/etc.
-    inner = [
-        record
-        for row in rows or []
-        if isinstance(row, dict) and (record := _client_record_from_graph_row(row)) is not None
-    ]
+    inner = [record for row in graph_rows if (record := _client_record_from_graph_row(row)) is not None]
+    if not inner and graph_rows:
+        _raise_for_empty_vdb_conversion(graph_rows)
     # Preserve legacy contract: no uploadable rows → [], not [[]].
     return [inner] if inner else []
 

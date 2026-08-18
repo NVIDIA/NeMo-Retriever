@@ -102,6 +102,13 @@ class ingestor:
             f"{self.__class__.__name__}.{method_name}() is not implemented yet " f"(run_mode={self.RUN_MODE})."
         )
 
+    def _validate_input_sources(self, inline_texts: Sequence[str] | None) -> None:
+        if self._documents or self._buffers or inline_texts:
+            return
+        raise ValueError(
+            "No input sources configured. Call files(), texts(), or buffers() with at least one source before ingest()."
+        )
+
     def files(self, documents: Union[str, List[str]]) -> "ingestor":
         """Add document paths/URIs for processing."""
         self._not_implemented("files")

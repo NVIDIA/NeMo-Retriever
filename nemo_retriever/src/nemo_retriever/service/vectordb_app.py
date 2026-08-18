@@ -145,7 +145,10 @@ class VectorDBState:
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
+        max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     ) -> None:
+        if max_concurrent_queries <= 0:
+            raise ValueError("max_concurrent_queries must be positive")
         self.vdb = vdb
         self.ingest_operator = IngestVdbOperator(vdb=vdb)
         self.retrieve_operator = RetrieveVdbOperator(vdb=vdb)
@@ -158,7 +161,7 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
-        self.query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
+        self.query_semaphore = asyncio.Semaphore(max_concurrent_queries)
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
 
@@ -215,15 +218,19 @@ def _production_vdb(
     lancedb_uri: str,
     table_name: str,
     expiration_cleanup_enabled: bool,
+    index_mode: str = "hybrid",
 ) -> VDB:
     """Construct the sole production VDB implementation for this service."""
     vdb_cls = get_vdb_op_cls("lancedb")
+    if index_mode not in {"dense", "hybrid"}:
+        raise ValueError("index_mode must be 'dense' or 'hybrid'")
     return vdb_cls(
         uri=lancedb_uri,
         table_name=table_name,
         vector_dim=None,
         overwrite=False,
-        build_index=False,
+        hybrid=index_mode == "hybrid",
+        build_index=index_mode == "hybrid",
         _service_table_schema=True,
         expiration_cleanup_enabled=expiration_cleanup_enabled,
     )
@@ -251,6 +258,7 @@ def _legacy_strategies(health: dict[str, Any]) -> list[str]:
 def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
+    index_mode: str = "hybrid",
     embed_endpoint: str = "",
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_model_provider_prefix: str | None = None,
@@ -262,6 +270,7 @@ def create_vectordb_app(
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
     internal_api_token: str | None = None,
+    max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     reconciliation_interval_seconds: int = 60,
     expiration_cleanup_enabled: bool = True,
     vdb: VDB | None = None,
@@ -271,6 +280,10 @@ def create_vectordb_app(
     if reconciliation_interval_seconds < 0:
         raise ValueError("reconciliation_interval_seconds must be non-negative")
 
+    if max_concurrent_queries <= 0:
+        raise ValueError("max_concurrent_queries must be positive")
+    if index_mode not in {"dense", "hybrid"}:
+        raise ValueError("index_mode must be 'dense' or 'hybrid'")
     agentic_config = agentic_config or AgenticConfig()
     state: VectorDBState | None = None
     agentic_executor: ThreadPoolExecutor | None = None
@@ -283,6 +296,7 @@ def create_vectordb_app(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
             expiration_cleanup_enabled=expiration_cleanup_enabled,
+            index_mode=index_mode,
         )
         state = VectorDBState(
             vdb=backend,
@@ -295,6 +309,7 @@ def create_vectordb_app(
             hf_cache_dir=hf_cache_dir,
             device=device,
             gpu_memory_utilization=gpu_memory_utilization,
+            max_concurrent_queries=max_concurrent_queries,
         )
         app.state.vectordb_state = state
         if agentic_config.enabled:
@@ -307,7 +322,7 @@ def create_vectordb_app(
         logger.info(
             "VectorDB service started: embed_mode=%s max_concurrent_queries=%d",
             state.embed_mode,
-            MAX_CONCURRENT_QUERIES,
+            max_concurrent_queries,
         )
         if state.embed_mode == "none":
             logger.error(
@@ -794,6 +809,12 @@ def main() -> None:
         internal_token = Path(token_file).read_text(encoding="utf-8").strip()
 
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
+    parser.add_argument(
+        "--index-mode",
+        choices=("dense", "hybrid"),
+        default="hybrid",
+        help="LanceDB index mode for the managed table.",
+    )
     parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
     parser.add_argument("--table-name", default="nemo_retriever", help="Vector table name")
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
@@ -818,6 +839,12 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("NRL_RECONCILIATION_INTERVAL_SECONDS", "60")),
         help="Lifecycle reconciliation interval; zero disables the local loop.",
+    )
+    parser.add_argument(
+        "--max-concurrent-queries",
+        type=int,
+        default=MAX_CONCURRENT_QUERIES,
+        help="Maximum number of concurrent non-agentic queries.",
     )
     parser.add_argument(
         "--disable-expiration-cleanup",
@@ -886,12 +913,14 @@ def main() -> None:
         embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,
+        index_mode=args.index_mode,
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,
         internal_api_token=args.internal_api_token or None,
         reconciliation_interval_seconds=args.reconciliation_interval_seconds,
         expiration_cleanup_enabled=not args.disable_expiration_cleanup,
+        max_concurrent_queries=args.max_concurrent_queries,
         agentic_config=AgenticConfig(
             enabled=args.agentic,
             llm_model=args.agentic_llm_model or None,
