@@ -78,9 +78,7 @@ class FakeVDB(VDB):
     def run(self, records):
         self.write_to_index(records)
 
-    def create_collection(
-        self, *, scope: str, request: CollectionCreateRequest
-    ) -> CollectionInfo:
+    def create_collection(self, *, scope: str, request: CollectionCreateRequest) -> CollectionInfo:
         key = (scope, request.name)
         if key in self.collections:
             raise VDBResourceConflict("Collection already exists")
@@ -102,16 +100,10 @@ class FakeVDB(VDB):
         except KeyError as exc:
             raise VDBResourceNotFound("Collection not found") from exc
 
-    def list_collections(
-        self, *, scope: str, limit: int, continuation_token: str | None
-    ) -> CollectionPage:
+    def list_collections(self, *, scope: str, limit: int, continuation_token: str | None) -> CollectionPage:
         if continuation_token == "invalid":
             raise VDBInvalidRequest("Invalid continuation token")
-        items = [
-            item
-            for (item_scope, _), item in self.collections.items()
-            if item_scope == scope
-        ]
+        items = [item for (item_scope, _), item in self.collections.items() if item_scope == scope]
         return CollectionPage(items=items[:limit])
 
     def update_collection(
@@ -125,11 +117,7 @@ class FakeVDB(VDB):
         updated = current.model_copy(
             update={
                 "description": request.description,
-                "metadata": (
-                    request.metadata
-                    if request.metadata is not None
-                    else current.metadata
-                ),
+                "metadata": (request.metadata if request.metadata is not None else current.metadata),
                 "expires_at": request.expires_at,
                 "updated_at": _NOW,
             }
@@ -137,9 +125,7 @@ class FakeVDB(VDB):
         self.collections[(scope, collection_name)] = updated
         return updated
 
-    def delete_collection(
-        self, *, scope: str, collection_name: str, if_exists: bool
-    ) -> CollectionDeleteResult:
+    def delete_collection(self, *, scope: str, collection_name: str, if_exists: bool) -> CollectionDeleteResult:
         existed = self.collections.pop((scope, collection_name), None) is not None
         if not existed and not if_exists:
             raise VDBResourceNotFound("Collection not found")
@@ -151,9 +137,7 @@ class FakeVDB(VDB):
             status="deleted",
         )
 
-    def get_document(
-        self, *, scope: str, collection_name: str, document_id: str
-    ) -> DocumentInfo:
+    def get_document(self, *, scope: str, collection_name: str, document_id: str) -> DocumentInfo:
         try:
             return self.documents[(scope, collection_name, document_id)]
         except KeyError as exc:
@@ -183,9 +167,7 @@ class FakeVDB(VDB):
         document_id: str,
         if_exists: bool,
     ) -> DocumentDeleteResult:
-        existed = (
-            self.documents.pop((scope, collection_name, document_id), None) is not None
-        )
+        existed = self.documents.pop((scope, collection_name, document_id), None) is not None
         if not existed and not if_exists:
             raise VDBResourceNotFound("Document not found")
         return DocumentDeleteResult(
@@ -197,17 +179,11 @@ class FakeVDB(VDB):
             status="deleted",
         )
 
-    def write_collection(
-        self, records: list, *, context: CollectionWriteContext
-    ) -> CollectionWriteResult:
-        self.get_collection(
-            scope=context.scope, collection_name=context.collection_name
-        )
+    def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
+        self.get_collection(scope=context.scope, collection_name=context.collection_name)
         self.last_write_context = context
         written = sum(len(batch) for batch in records)
-        self.documents[
-            (context.scope, context.collection_name, context.document_id)
-        ] = DocumentInfo(
+        self.documents[(context.scope, context.collection_name, context.document_id)] = DocumentInfo(
             document_id=context.document_id,
             collection_name=context.collection_name,
             scope=context.scope,
@@ -305,9 +281,7 @@ def _app(vdb: VDB, **kwargs: Any):
     ("extra_args", "expected_key"),
     [([], "env-key"), (["--embed-api-key", "explicit-key"], "explicit-key")],
 )
-def test_main_resolves_remote_embed_api_key(
-    monkeypatch, extra_args, expected_key
-) -> None:
+def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_key) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
     monkeypatch.setattr(sys, "argv", ["vectordb_app", *extra_args])
     create_app = MagicMock(return_value=MagicMock())
@@ -463,9 +437,7 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
             )
 
     assert response.status_code == 501
-    assert response.json()["detail"] == (
-        "The configured VectorDB backend does not support this operation."
-    )
+    assert response.json()["detail"] == ("The configured VectorDB backend does not support this operation.")
     assert backend.legacy_retrieval_calls == 0
 
 
@@ -570,9 +542,7 @@ def test_service_managed_lancedb_preserves_multimodal_fields(tmp_path) -> None:
         },
     }
 
-    with patch.object(
-        VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]
-    ):
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
         with TestClient(app) as client:
             written = client.post(
                 "/internal/vectordb/write",
@@ -600,10 +570,7 @@ def test_typed_collection_errors_map_to_http_contract() -> None:
         missing = client.get("/v1/collections/missing")
         assert missing.status_code == 404
 
-        assert (
-            client.post("/v1/collections", json={"name": "duplicate"}).status_code
-            == 201
-        )
+        assert client.post("/v1/collections", json={"name": "duplicate"}).status_code == 201
         conflict = client.post("/v1/collections", json={"name": "duplicate"})
         invalid = client.get("/v1/collections?continuation_token=invalid")
 
@@ -614,9 +581,7 @@ def test_typed_collection_errors_map_to_http_contract() -> None:
 @pytest.mark.parametrize("backend_cls", [ContractFailureVDB, ValueFailureVDB])
 def test_backend_query_failures_return_safe_500(backend_cls) -> None:
     backend = backend_cls()
-    backend.create_collection(
-        scope="default", request=CollectionCreateRequest(name="research")
-    )
+    backend.create_collection(scope="default", request=CollectionCreateRequest(name="research"))
     with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0]]):
         with TestClient(_app(backend), raise_server_exceptions=False) as client:
             response = client.post(
@@ -720,9 +685,7 @@ def test_vector_db_state_local_embed_queries() -> None:
         local_embed_backend="hf",
     )
 
-    with patch(
-        "nemo_retriever.models.create_local_embedder", return_value=mock_embedder
-    ):
+    with patch("nemo_retriever.models.create_local_embedder", return_value=mock_embedder):
         vectors = state.embed_queries(["hello"])
 
     assert vectors == [[1.0, 2.0]]
@@ -737,9 +700,7 @@ def test_remote_embed_queries_delegates_model_prefix(monkeypatch) -> None:
         calls.update(kwargs)
         return [[0.1, 0.2]]
 
-    monkeypatch.setattr(
-        "nemo_retriever.models.nim.util.infer_microservice", fake_infer_microservice
-    )
+    monkeypatch.setattr("nemo_retriever.models.nim.util.infer_microservice", fake_infer_microservice)
     vectors = _embed_queries_remote(
         ["hello"],
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
