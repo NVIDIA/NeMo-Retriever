@@ -305,6 +305,18 @@ class ResourceLimitsConfig(RichModel):
     )
 
 
+class SidecarStoreConfig(RichModel):
+    """Gateway-owned in-memory store for sidecars before work admission."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_payload_bytes: int = Field(
+        default=33_554_432,
+        ge=1,
+        description="Maximum accepted sidecar payload size in bytes.",
+    )
+
+
 class AuthConfig(RichModel):
     """Bearer authentication and authorization for logical workspace scopes."""
 
@@ -573,12 +585,19 @@ class ServiceConfig(RichModel):
     agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    sidecar_store: SidecarStoreConfig = Field(default_factory=SidecarStoreConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+
+    @model_validator(mode="after")
+    def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
+        if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
+            raise ValueError("sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes")
+        return self
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -668,7 +687,6 @@ def load_config(
         internal_token = internal_token.strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
-
     config = ServiceConfig(**raw)
 
     _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})

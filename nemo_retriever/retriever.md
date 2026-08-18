@@ -12,7 +12,7 @@ The high-level **`Retriever`** runs **query → embed → vector search → opti
 | **`graph`** | Optional custom `Graph`. When set, **`embed_kwargs` / `vdb_kwargs` are not used to build the default graph**—you supply a fully wired pipeline. |
 | **`embed_kwargs`** | Passed to **`EmbedParams`** (merged over library defaults). Controls model, endpoints, `input_type` (default `"query"`), batch sizes, `runtime` (device, HF cache), etc. |
 | **`vdb_kwargs`** | Passed to **`RetrieveVdbOperator`**. Either nested `{"vdb_op": "lancedb", "vdb_kwargs": {"uri": "...", "table_name": "..."}}` or, for convenience, a **flat** Lance-only dict `{"uri": "...", "table_name": "..."}` is coerced to `vdb_op="lancedb"`. |
-| **`rerank_kwargs`** | Forwarded to **`NemotronRerankActor`** (merged over defaults). Common keys: `model_name`, `invoke_url`, `api_key`, `batch_size`, `max_length`, `score_column`, `local_reranker_backend`. **`refine_factor`** (default `4`) multiplies `top_k` for retrieval when **`rerank`** is true; it is **not** passed to the actor. |
+| **`rerank_kwargs`** | Forwarded to **`NemotronRerankActor`** (merged over defaults). Common keys: `model_name`, `rerank_invoke_url` (alias: `invoke_url`), `api_key`, `batch_size`, `max_length`, `score_column`, `local_reranker_backend`. Setting the endpoint selects the remote reranker; leaving it unset loads a local model through `local_reranker_backend`. **`refine_factor`** (default `4`) multiplies `top_k` for retrieval when **`rerank`** is true; it is **not** passed to the actor. |
 
 ### Default pipeline
 
@@ -88,7 +88,7 @@ r = Retriever(
     vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
     rerank=True,
     rerank_kwargs={
-        "invoke_url": "http://localhost:8015",
+        "rerank_invoke_url": "http://localhost:8015",
         "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
         "refine_factor": 4,
     },
@@ -97,6 +97,9 @@ r = Retriever(
 hits = r.query("detailed question")
 assert "_rerank_score" in hits[0]
 ```
+
+`invoke_url` is accepted as an alias for `rerank_invoke_url`. Omit both keys to
+rerank with a locally loaded model instead of a served endpoint.
 
 ### 5) Per-call overrides
 

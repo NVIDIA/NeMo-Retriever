@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/llama-3.2-nv-embedqa-1b-v2": "cefc2394cc541737b7867df197984cf23f05367f",
     "nvidia/llama-nemotron-embed-1b-v2": "113abe4acafa848e77ead9c0623205e511932348",
-    "nvidia/parakeet-ctc-1.1b": "a707e818195cb97c8f7da2fc36b221a29f69a5db",
+    "nvidia/parakeet-ctc-1.1b": "20e63a0fed6aedba145b74b826dbd41df0941730",
     "nvidia/NVIDIA-Nemotron-Parse-v1.2": "f42c8040b12ee64370922d108778ab655b722c5d",
     "nvidia/NVIDIA-Nemotron-Parse-2.0": "635b84d9b09bb9526b9a684d0b2c953d3cc3df05",
-    "nvidia/llama-nemotron-embed-vl-1b-v2": "171968f5db67b2d16aac89b820d53b4eb6a7ab44",
+    "nvidia/llama-nemotron-embed-vl-1b-v2": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     "meta-llama/Llama-3.2-1B": "4e20de362430cd3b72f300e6b0f18e50e7166e08",
     "intfloat/e5-large-unsupervised": "15af9288f69a6291f37bfb89b47e71abc747b206",
     "nvidia/llama-nemotron-rerank-1b-v2": "8fd3e5d962d44cfe65d4ba0784eebed44cf136b0",
@@ -44,7 +44,7 @@ HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/Llama-3_3-Nemotron-Super-49B-v1": "387156d8d6868c19f3472fa607aa9bfc4f662333",
     "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5": "420ba7d28211abf116b8b103ab700d92619daf98",
     "nvidia/nemotron-ocr-v1": "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb",
-    "nvidia/nemotron-ocr-v2": "86cacb0467fa4f7ce54342fdb250825e0d928ae7",
+    "nvidia/nemotron-ocr-v2": "0e83e83f17943524b90afa6c0fd82ac2bc1a40ca",
     "nvidia/nemotron-page-elements-v3": "df62dbb631502575ac4d43b44d700b1674ab1d56",
     "nvidia/nemotron-table-structure-v1": "9350162faa1110320af62699105780b0c87b73ad",
 }

@@ -453,6 +453,33 @@ Complete the following checks:
 
 For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
+## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
+
+`helm upgrade` can fail when you change `nimOperator.<key>.image.repository` or `nimOperator.<key>.image.tag` on an existing release. The chart reuses the `NIMCache` name, for example `nemotron-page-elements-v3`, while `spec.source.ngc.modelPuller` changes to the new `repository:tag` value.
+
+The NIM Operator `NIMCache` CRD marks `modelPuller` immutable. Kubernetes rejects the update with a message similar to the following:
+
+```text
+modelPuller is an immutable field. Please create a new NIMCache resource instead when you want to change this container.
+```
+
+Helm can apply other release resources before that rejection. The `NIMCache` then remains on the old image while the rest of the release has moved.
+
+Do not retry `helm upgrade` until you delete the existing `NIMCache`. Complete the following steps:
+
+1. Drain ingest traffic that depends on the affected NIM.
+2. Run `kubectl get nimcache <name> --namespace <namespace>` and confirm the live `modelPuller` value differs from the new `repository:tag`.
+3. Delete the `NIMCache`. Helm `keep` annotations do not block `kubectl delete`.
+4. If the operator-created PVC remains, delete it so the new image re-pulls weights. Default claim names use a `-pvc` suffix, for example `nemotron-page-elements-v3-pvc`.
+5. Re-run `helm upgrade` with the new repository or tag. Helm creates a new `NIMCache`.
+6. Wait until the new cache is ready before you send traffic.
+
+The affected NIM is unavailable during re-cache. Repeat the sequence for every NIM whose image changes.
+
+Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
+
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+
 ## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
@@ -460,4 +487,5 @@ For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch,
 - [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

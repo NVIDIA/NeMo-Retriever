@@ -22,6 +22,25 @@ class NemotronParse20(NemotronParseV12):
         max_num_seqs: int = 64,
         max_tokens: int = 9000,
     ) -> None:
+        """Initialize the local Nemotron Parse 2.0 model.
+
+        Parameters
+        ----------
+        model_path:
+            Hugging Face model identifier for the Parse 2.0 checkpoint.
+        device:
+            Optional device on which to run inference.
+        hf_cache_dir:
+            Optional directory for cached Hugging Face assets.
+        task_prompt:
+            Task-control prompt supplied to the model.
+        gpu_memory_utilization:
+            Fraction of GPU memory reserved by vLLM.
+        max_num_seqs:
+            Maximum number of sequences processed concurrently.
+        max_tokens:
+            Maximum number of generated tokens per request.
+        """
         super().__init__(
             model_path=model_path,
             device=device,

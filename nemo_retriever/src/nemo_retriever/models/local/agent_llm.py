@@ -31,6 +31,7 @@ def _normalize_name(name: str) -> str:
 
 _NANO_8B_MODEL_ID = "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
 _SUPER_49B_MODEL_ID = "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"
+_LEGACY_SUPER_49B_MODEL_ID = "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
 _NANO_8B_ALIASES = (
     "llama-3.1-nemotron-nano-8b-v1",
     "nemotron-nano-8b",
@@ -39,14 +40,13 @@ _NANO_8B_ALIASES = (
 )
 _SUPER_49B_ALIASES = (
     "llama-3.3-nemotron-super-49b-v1.5",
-    "llama-3.3-nemotron-super-49b-v1_5",
-    "llama-3.3-nemotron-super-49b-v1",
     "nemotron-super-49b",
     "super-49b",
     "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-    "nvidia/llama-3.3-nemotron-super-49b-v1_5",
+)
+_LEGACY_SUPER_49B_ALIASES = (
+    "llama-3.3-nemotron-super-49b-v1",
     "nvidia/llama-3.3-nemotron-super-49b-v1",
-    "nvidia/llama-3_3-nemotron-super-49b-v1_5",
     "nvidia/llama-3_3-nemotron-super-49b-v1",
 )
 
@@ -58,8 +58,23 @@ _AGENT_LLM_MODEL_ALIASES: dict[str, str] = {
 _AGENT_LLM_MODEL_ALIASES.update(
     {_normalize_name(name): _SUPER_49B_MODEL_ID for name in (_SUPER_49B_MODEL_ID, *_SUPER_49B_ALIASES)}
 )
+_AGENT_LLM_MODEL_ALIASES.update(
+    {
+        _normalize_name(name): _LEGACY_SUPER_49B_MODEL_ID
+        for name in (_LEGACY_SUPER_49B_MODEL_ID, *_LEGACY_SUPER_49B_ALIASES)
+    }
+)
 _SUPPORTED_AGENT_LLM_NAMES = tuple(
-    sorted((_NANO_8B_MODEL_ID, *_NANO_8B_ALIASES, _SUPER_49B_MODEL_ID, *_SUPER_49B_ALIASES))
+    sorted(
+        (
+            _NANO_8B_MODEL_ID,
+            *_NANO_8B_ALIASES,
+            _SUPER_49B_MODEL_ID,
+            *_SUPER_49B_ALIASES,
+            _LEGACY_SUPER_49B_MODEL_ID,
+            *_LEGACY_SUPER_49B_ALIASES,
+        )
+    )
 )
 _NEMOTRON_JSON_TOOL_PROMPT_EXTRAS = {"chat_template_kwargs": {"tools_in_user_message": True}}
 
@@ -125,7 +140,7 @@ class VLLMAgentChatLLM(BaseModel):
                 'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
             ) from e
 
-        apply_vllm_startup_defaults()
+        apply_vllm_startup_defaults(tensor_parallel_size=int(config.tensor_parallel_size))
         _raise_if_cuda_unavailable()
         self._model_path = model_path
         self._max_tokens = int(config.max_tokens)
