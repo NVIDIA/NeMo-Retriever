@@ -8,7 +8,6 @@ For product-facing examples, prefer these commands:
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
 - `retriever query` - query a local LanceDB table written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
-- `retriever harness run` - run a named, code-owned benchmark.
 - `retriever service` - operate a Retriever service deployment.
 
 Format names and internal stages are not root commands. Use `retriever ingest`
@@ -48,7 +47,6 @@ configuration, local embed backend selection, or local media controls.
 <!-- --8<-- [start:quickstart] -->
 
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
-> Use `retriever harness run` only for benchmark execution.
 
 ## Quick start
 

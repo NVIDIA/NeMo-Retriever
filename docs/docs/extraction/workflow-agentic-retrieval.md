@@ -10,7 +10,10 @@ Use this workflow after you have ingested documents into a LanceDB table. Agenti
 
 ### Local in-process vLLM { #local-in-process-vllm }
 
-The CLI and harness BEIR agentic paths default to an in-process local vLLM agent LLM. If you omit `--agentic-llm-model` and `--agentic-invoke-url`, the library loads `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host. This requires a Linux CUDA GPU and the `[local]` extra.
+The CLI and NRB agentic benchmark paths default to an in-process local vLLM agent
+LLM. If you omit `--agentic-llm-model` and `--agentic-invoke-url`, the library
+loads `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA
+host. This requires a Linux CUDA GPU and the `[local]` extra.
 
 GPU placement follows process-level vLLM behavior. Set `CUDA_VISIBLE_DEVICES` before you start the command.
 

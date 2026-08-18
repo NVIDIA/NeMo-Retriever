@@ -2,7 +2,7 @@
 
 This note explains the `retriever ingest` redesign for reviewers and future CLI
 maintainers. It is intentionally scoped to the root ingest CLI. It does not
-change `GraphIngestor`, `Retriever.query`, eval, harness logic, BEIR/QA/audio
+change `GraphIngestor`, `Retriever.query`, eval, benchmark logic, BEIR/QA/audio
 recall, or pipeline reporting.
 
 ## Summary
