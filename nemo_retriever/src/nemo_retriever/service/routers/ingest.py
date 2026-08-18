@@ -75,6 +75,7 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
+from nemo_retriever.service.metrics_otel import record_ingest_accepted
 from nemo_retriever.service.services.worker_result_store import (
     ResultStoreTemporarilyUnavailable,
     get_result_data,
@@ -172,6 +173,43 @@ def _internal_auth_headers(request: Request) -> dict[str, str]:
     return internal_auth_headers(request.app.state.config.vectordb.internal_api_token)
 
 
+def _sidecar_owner_fingerprint(request: Request) -> str | None:
+    value = getattr(request.state, "caller_fingerprint", None)
+    return str(value) if value else None
+
+
+def _bind_sidecar_for_admission(
+    request: Request, pipeline_spec: dict[str, Any] | None
+) -> tuple[Any | None, Any | None, dict[str, Any] | None]:
+    """Consume an owner-authorized sidecar before publishing work."""
+    if pipeline_spec is None or not (vdb := pipeline_spec.get("vdb_upload_params")):
+        return None, None, pipeline_spec
+    sidecar_id = vdb.get("meta_dataframe_id")
+    if not sidecar_id:
+        return None, None, pipeline_spec
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+    from nemo_retriever.service.services.work_queue import SidecarAttachment
+
+    store = get_sidecar_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Sidecar store not initialised")
+    entry = store.consume(str(sidecar_id), owner_token=_sidecar_owner_fingerprint(request))
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Sidecar was not found, expired, or is not owned by this caller")
+    attachment = SidecarAttachment(payload=entry.payload, filename=entry.filename, content_type=entry.content_type)
+    if _is_gateway(request):
+        return entry, attachment, pipeline_spec
+    from nemo_retriever.service.services.pipeline_executor import inject_sidecar_attachment
+
+    return (
+        entry,
+        None,
+        inject_sidecar_attachment(
+            pipeline_spec, payload=entry.payload, filename=entry.filename, content_type=entry.content_type
+        ),
+    )
+
+
 def _proxied_response(response: httpx.Response) -> Response:
     """Relay an upstream VectorDB response to the caller unchanged."""
     return Response(
@@ -232,6 +270,7 @@ def _record_prometheus(
         INGEST_PAGES_TOTAL.labels(role=role).inc()
     else:
         INGEST_DOCUMENTS_TOTAL.labels(role=role).inc()
+    record_ingest_accepted(role=role, endpoint=endpoint, file_size=file_size, is_page=is_page)
 
 
 def _register_document_under_job(
@@ -474,6 +513,7 @@ async def _gateway_enqueue(
     filename: str | None,
     pipeline_spec: dict[str, Any] | None = None,
     write: DocumentWriteContext | None = None,
+    sidecar: Any | None = None,
 ) -> None:
     """Admit split-mode work to the gateway broker after atomic spooling.
 
@@ -503,6 +543,7 @@ async def _gateway_enqueue(
             pipeline_spec=pipeline_spec,
             trace_context=_safe_inject_trace_context(),
             extra={"write": write.model_dump(mode="json")} if write is not None else None,
+            sidecar=sidecar,
         )
     except WorkQueueFull as exc:
         tracker = get_job_tracker()
@@ -656,13 +697,16 @@ async def _prepare_job_work_item(
         target_document_id=job.target_document_id,
     )
 
+    pipeline_spec = validated_spec.model_dump(mode="json") if validated_spec is not None else None
+    sidecar_entry, sidecar_attachment, pipeline_spec = _bind_sidecar_for_admission(request, pipeline_spec)
     item = WorkItem(
         id=attempt_id,
         payload=file_bytes,
         filename=file.filename,
         callback_headers=_internal_auth_headers(request),
         job_id=job_id,
-        pipeline_spec=validated_spec.model_dump(mode="json") if validated_spec is not None else None,
+        pipeline_spec=pipeline_spec,
+        sidecar_attachment=(sidecar_entry, sidecar_attachment) if sidecar_entry is not None else None,
         retain_results=_job_retain_results(job_id),
         write=DocumentWriteContext(
             scope=job.scope,
@@ -707,19 +751,37 @@ async def _submit_job_work_item(
         manifest_entry_id=manifest_entry_id,
     )
     if not created:
+        # Registration can reject an idempotent duplicate after sidecar admission.
+        # Put the consumed entry back so the duplicate has no side effect.
+        if item.sidecar_attachment is not None:
+            from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+            store = get_sidecar_store()
+            if store is not None:
+                store.restore(item.sidecar_attachment[0])
         return record
 
     if _is_gateway(request):
-        await _gateway_enqueue(
-            request,
-            pool_type,
-            work_id=item.id,
-            job_id=item.job_id,
-            payload=item.payload,
-            filename=item.filename,
-            pipeline_spec=item.pipeline_spec,
-            write=item.write,
-        )
+        try:
+            await _gateway_enqueue(
+                request,
+                pool_type,
+                work_id=item.id,
+                job_id=item.job_id,
+                payload=item.payload,
+                filename=item.filename,
+                pipeline_spec=item.pipeline_spec,
+                write=item.write,
+                sidecar=item.sidecar_attachment[1] if item.sidecar_attachment is not None else None,
+            )
+        except Exception:
+            if item.sidecar_attachment is not None:
+                from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+                store = get_sidecar_store()
+                if store is not None:
+                    store.restore(item.sidecar_attachment[0])
+            raise
     else:
         await _enqueue_or_reject(pool_type, item)
 
@@ -1229,25 +1291,26 @@ async def submit_page_to_job(
                     filename=file.filename,
                 )
 
-            _record_prometheus(
-                request,
-                "/v1/ingest/job/page",
-                "2xx",
-                file_size=file_size,
-                is_page=True,
-            )
-            if (m := get_metrics()) is not None:
-                m.record_request("/v1/ingest/job/page")
-                m.record_page_accepted(
-                    page_id=page_id,
-                    document_id=document_id,
-                    job_id=job_id,
-                    endpoint="/v1/ingest/job/page",
-                    page_number=page_number,
-                    file_size_bytes=file_size,
-                    file_category=classification.category.value,
-                    content_type=classification.content_type,
+            if not dry_run:
+                _record_prometheus(
+                    request,
+                    "/v1/ingest/job/page",
+                    "2xx",
+                    file_size=file_size,
+                    is_page=True,
                 )
+                if (m := get_metrics()) is not None:
+                    m.record_request("/v1/ingest/job/page")
+                    m.record_page_accepted(
+                        page_id=page_id,
+                        document_id=document_id,
+                        job_id=job_id,
+                        endpoint="/v1/ingest/job/page",
+                        page_number=page_number,
+                        file_size_bytes=file_size,
+                        file_category=classification.category.value,
+                        content_type=classification.content_type,
+                    )
 
             return PageIngestAccepted(
                 page_id=page_id,
@@ -1287,26 +1350,27 @@ async def submit_page_to_job(
                 ),
             )
 
-        _record_prometheus(
-            request,
-            "/v1/ingest/job/page",
-            "2xx",
-            file_size=len(file_bytes),
-            is_page=True,
-        )
-
-        if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/job/page")
-            m.record_page_accepted(
-                page_id=page_id,
-                document_id=document_id,
-                job_id=job_id,
-                endpoint="/v1/ingest/job/page",
-                page_number=page_number,
-                file_size_bytes=len(file_bytes),
-                file_category=classification.category.value,
-                content_type=classification.content_type,
+        if not dry_run:
+            _record_prometheus(
+                request,
+                "/v1/ingest/job/page",
+                "2xx",
+                file_size=len(file_bytes),
+                is_page=True,
             )
+
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/page")
+                m.record_page_accepted(
+                    page_id=page_id,
+                    document_id=document_id,
+                    job_id=job_id,
+                    endpoint="/v1/ingest/job/page",
+                    page_number=page_number,
+                    file_size_bytes=len(file_bytes),
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                )
 
         return PageIngestAccepted(
             page_id=page_id,
@@ -1354,7 +1418,8 @@ async def submit_whole_document_to_job(
         )
         now = datetime.now(timezone.utc).isoformat()
 
-        if not _is_dry_run(request):
+        dry_run = _is_dry_run(request)
+        if not dry_run:
             record = await _submit_job_work_item(request, route, item, manifest_entry_id=manifest_entry_id)
             if record is not None:
                 return DocumentIngestAccepted(
@@ -1368,19 +1433,19 @@ async def submit_whole_document_to_job(
                 )
 
         file_size = _file_size_from_upload(file) if _is_gateway(request) else len(item.payload)
-        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
-        if (m := get_metrics()) is not None:
-            m.record_request("/v1/ingest/job/whole")
-            m.record_document_accepted(
-                document_id=item.id,
-                job_id=item.job_id,
-                filename=classification.filename,
-                file_category=classification.category.value,
-                content_type=classification.content_type,
-                file_size_bytes=file_size,
-                endpoint="/v1/ingest/job/whole",
-            )
-
+        if not dry_run:
+            _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/whole")
+                m.record_document_accepted(
+                    document_id=item.id,
+                    job_id=item.job_id,
+                    filename=classification.filename,
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                    file_size_bytes=file_size,
+                    endpoint="/v1/ingest/job/whole",
+                )
         return DocumentIngestAccepted(
             document_id=item.write.storage_document_id,
             attempt_id=item.id,
@@ -1456,86 +1521,52 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
 async def ingest_sidecar(
     request: Request,
     file: UploadFile = File(..., description="Sidecar metadata payload (csv / json / parquet)."),
-    ttl_s: float = Form(
-        default=3600.0,
-        description="Time-to-live in seconds; the sidecar auto-evicts after this window.",
-    ),
-    consume_on_read: bool = Form(
-        default=True,
-        description=(
-            "When true (default) the worker removes the sidecar after its first read. "
-            "Set to false to reuse the same metadata across multiple ingest batches."
-        ),
-    ),
+    ttl_s: float = Form(default=3600.0, description="Time-to-live in seconds."),
+    consume_on_read: bool = Form(default=True, description="Remove after the first admitted ingest."),
 ) -> SidecarUploadResponse | Response:
-    """Stash sidecar metadata in the service's in-memory store.
-
-    Returns an opaque ``sidecar_id`` the caller passes through
-    ``vdb_upload_params.meta_dataframe_id`` on subsequent ingest
-    requests. Sidecars are scoped to the bearer token (when auth is
-    enabled) and auto-evicted after ``ttl_s`` seconds.
-    """
+    """Store one opaque sidecar ID at the gateway admission boundary."""
     from datetime import datetime, timezone
     from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
     _check_upload_size(file, request)
-
-    # Forward to the gateway's backend so the realtime worker pool has
-    # the sidecar available when the matching ingest call arrives. We
-    # broadcast to both pools because the routing decision happens at
-    # ingest time, not at sidecar-upload time.
-    if _is_gateway(request):
-        from nemo_retriever.service.services.proxy import get_proxy
-
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        # Pick the realtime backend for the canonical response, then
-        # mirror the upload to the batch backend so either worker pool
-        # can resolve the id. If the mirror fails we still return 201
-        # because the realtime store has the entry and most workloads
-        # land there.
-        realtime_resp = await proxy.forward(request, PoolType.REALTIME)
-        try:
-            await proxy.forward(request, PoolType.BATCH)
-        except Exception as exc:
-            logger.warning(
-                "Sidecar mirror to batch backend failed (id from realtime still valid): %s",
-                exc,
-            )
-        return realtime_resp
-
+    config = request.app.state.config
+    if config.mode in ("realtime", "batch"):
+        raise HTTPException(
+            status_code=404, detail="Sidecar operations are available only on the gateway or standalone service"
+        )
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
 
-    payload = await file.read()
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(min(64 * 1024, config.sidecar_store.max_payload_bytes - total + 1)):
+        total += len(chunk)
+        if total > config.sidecar_store.max_payload_bytes:
+            raise HTTPException(status_code=413, detail="Sidecar upload exceeds the configured payload limit")
+        chunks.append(chunk)
+    payload = b"".join(chunks)
     if not payload:
         raise HTTPException(status_code=400, detail="Sidecar upload is empty")
-
-    # Owner-token scoping: use the bearer token when auth is enabled.
-    auth_header = request.headers.get("Authorization", "")
-    owner_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
-
     try:
         entry = store.put(
             filename=file.filename or "sidecar",
             content_type=file.content_type or "application/octet-stream",
             payload=payload,
-            owner_token=owner_token,
+            owner_token=_sidecar_owner_fingerprint(request),
             ttl_s=ttl_s,
             consume_on_read=consume_on_read,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
-
-    expires_iso = datetime.fromtimestamp(entry.expires_at, tz=timezone.utc).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     return SidecarUploadResponse(
         sidecar_id=entry.sidecar_id,
         filename=entry.filename,
         content_type=entry.content_type,
         size_bytes=len(entry.payload),
-        expires_at=expires_iso,
+        expires_at=datetime.fromtimestamp(entry.expires_at, tz=timezone.utc).isoformat(),
     )
 
 
@@ -1545,27 +1576,19 @@ async def ingest_sidecar(
     summary="Delete a previously uploaded sidecar",
 )
 async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
-    """Explicit deletion lets callers free server memory before the TTL elapses."""
+    """Delete an owner-authorized sidecar before it is bound to work."""
     from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
-    if _is_gateway(request):
-        from nemo_retriever.service.services.proxy import get_proxy
-
-        proxy = get_proxy()
-        if proxy is None:
-            raise HTTPException(status_code=503, detail="Gateway proxy not initialised")
-        # Mirror delete to both pools. We don't care which one had it.
-        for pool in (PoolType.REALTIME, PoolType.BATCH):
-            try:
-                await proxy.forward(request, pool)
-            except Exception as exc:
-                logger.debug("Sidecar delete forward to %s failed: %s", pool.value, exc)
-        return Response(status_code=204)
-
+    if request.app.state.config.mode in ("realtime", "batch"):
+        raise HTTPException(
+            status_code=404, detail="Sidecar operations are available only on the gateway or standalone service"
+        )
     store = get_sidecar_store()
     if store is None:
         raise HTTPException(status_code=503, detail="Sidecar store not initialised")
-    store.delete(sidecar_id)
+    deleted = store.delete(sidecar_id, owner_token=_sidecar_owner_fingerprint(request))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Sidecar was not found or is not owned by this caller")
     return Response(status_code=204)
 
 
@@ -1948,7 +1971,7 @@ async def query(request: Request) -> Response:
             if use_remote_reranker:
                 rerank_kwargs.update(
                     rerank_invoke_url=config.nim_endpoints.rerank_invoke_url,
-                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-1b-v2",
+                    model_name=config.nim_endpoints.rerank_model_name or "nvidia/llama-nemotron-rerank-vl-1b-v2",
                     api_key=config.nim_endpoints.api_key or "",
                 )
             else:

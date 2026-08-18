@@ -176,6 +176,8 @@ class AgenticRetrievalConfig:
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
+    # Wider pre-filter and pre-rerank candidate pool for each retrieval hop.
+    candidate_k: Optional[int] = None
 
     def __post_init__(self) -> None:
         invoke_url = _none_if_empty(self.invoke_url)
@@ -256,6 +258,15 @@ class AgenticRetrievalConfig:
             if integer_error:
                 raise ValueError(integer_error)
             object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
+
+        if self.candidate_k is not None:
+            candidate_error = agentic_int_min_error(self.candidate_k, field_name="candidate_k", min_value=1)
+            if candidate_error:
+                raise ValueError(candidate_error)
+            candidate_k = agentic_int_value(self.candidate_k, field_name="candidate_k")
+            if candidate_k < int(self.top_k):
+                raise ValueError(f"candidate_k ({candidate_k}) must be greater than or equal to top_k ({self.top_k}).")
+            object.__setattr__(self, "candidate_k", candidate_k)
 
         local_tp_error = agentic_int_min_error(
             self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1
@@ -371,7 +382,9 @@ class AgenticRetriever:
             rerank=bool(cfg.reranker),
             rerank_kwargs={
                 "model_name": cfg.reranker or VL_RERANK_MODEL,
-                "invoke_url": cfg.reranker_endpoint,
+                # NemotronRerankActor selects its remote CPU variant on
+                # ``rerank_invoke_url``; any other key silently loads a local model.
+                "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
                 "api_key": cfg.reranker_api_key,
                 "local_reranker_backend": str(cfg.local_reranker_backend),
                 "modality": str(cfg.embed_modality),
@@ -484,8 +497,9 @@ class AgenticRetriever:
         which still run concurrently under ``num_concurrent > 1``.
         """
 
+        candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k is not None else None
         with self._lock:
-            hits = self._retriever.query(str(query_text), top_k=int(top_k))
+            hits = self._retriever.query(str(query_text), top_k=int(top_k), candidate_k=candidate_k)
 
         docs: list[dict[str, Any]] = []
         doc_id_field = getattr(self, "_doc_id_field", None)

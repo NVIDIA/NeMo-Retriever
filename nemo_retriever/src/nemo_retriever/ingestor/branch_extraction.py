@@ -118,6 +118,7 @@ class ExtractionBranchExecutor:
                     graph,
                     derived_overrides,
                     default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
+                    source_cpu_reservation=1 if isinstance(input_data, list) else 0,
                 )
                 branch_executors.append(executor)
                 branch_inputs.append((executor, input_data))
@@ -146,6 +147,7 @@ class ExtractionBranchExecutor:
             post_graph,
             post_overrides,
             default_concurrency_node_names(None, self.embed_params, self.store_params, self.caption_params),
+            source_cpu_reservation=0,
         )
         if hasattr(cluster_resources, "available_cpu_count"):
             preflight_executors([*branch_executors, post_executor], cluster_resources)
@@ -222,6 +224,7 @@ class ExtractionBranchExecutor:
         graph: Any,
         derived_overrides: dict[str, dict[str, Any]],
         auto_concurrency_nodes: set[str],
+        source_cpu_reservation: float,
     ) -> RayDataExecutor:
         return RayDataExecutor(
             graph,
@@ -231,6 +234,7 @@ class ExtractionBranchExecutor:
             num_gpus=self.num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self.node_overrides),
             auto_concurrency_nodes=auto_concurrency_nodes - set(self.node_overrides),
+            source_cpu_reservation=source_cpu_reservation,
         )
 
     def _inprocess_branch_input(self, branch: ExtractionBranchPlan) -> Any:

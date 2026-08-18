@@ -267,6 +267,51 @@ def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available(
 
 
 @pytest.mark.parametrize(
+    "embed_params",
+    [
+        pytest.param(
+            EmbedParams(
+                model_name="nvidia/llama-nemotron-embed-1b-v2",
+                local_ingest_embed_backend="hf",
+            ),
+            id="explicit-local-hf-backend",
+        ),
+        pytest.param(
+            EmbedParams(
+                model_name="nvidia/llama-nemotron-embed-1b-v2",
+                batch_tuning=BatchTuningParams(gpu_embed=1.0),
+            ),
+            id="explicit-gpu-reservation",
+        ),
+    ],
+)
+def test_build_graph_explicit_local_embedding_resolves_to_gpu_variant(embed_params: EmbedParams) -> None:
+    graph = build_graph(extraction_mode="text", embed_params=embed_params)
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=0))
+    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
+
+    assert issubclass(classes["_BatchEmbedActor"], GPUOperator)
+
+
+def test_build_graph_remote_endpoint_wins_over_explicit_local_embedding_backend() -> None:
+    graph = build_graph(
+        extraction_mode="text",
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+            local_ingest_embed_backend="hf",
+            batch_tuning=BatchTuningParams(gpu_embed=1.0),
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
+    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
+
+    assert issubclass(classes["_BatchEmbedActor"], CPUOperator)
+
+
+@pytest.mark.parametrize(
     "ocr_version, expected_actor_name",
     [
         ("v2", "OCRActor"),
@@ -333,34 +378,6 @@ def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> N
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
 
 
-def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_budget() -> None:
-    cluster = ClusterResources(
-        total_resources=Resources(cpu_count=224, gpu_count=8),
-        available_resources=Resources(cpu_count=224, gpu_count=8),
-    )
-
-    overrides = batch_tuning_to_node_overrides(
-        extract_params=ExtractParams(extract_tables=True, use_table_structure=True),
-        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
-        cluster_resources=cluster,
-    )
-
-    # The documented extract -> chunk -> dedup -> reshape -> embed pipeline
-    # has six additional one-CPU tasks alongside these persistent actor pools.
-    requested_cpu = 6 + sum(
-        overrides[actor]["concurrency"] * overrides[actor].get("num_cpus", 1)
-        for actor in (
-            "PDFExtractionActor",
-            "PageElementDetectionActor",
-            "TableStructureActor",
-            "OCRActor",
-            "_BatchEmbedActor",
-        )
-    )
-
-    assert requested_cpu <= cluster.total_cpu_count()
-
-
 def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
 
@@ -383,6 +400,7 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
         build_graph(extract_params=params, stage_order=()),
         node_overrides=derived,
         auto_concurrency_nodes={name for name, values in derived.items() if "concurrency" in values},
+        source_cpu_reservation=1,
     )
     executor._preflight_resources(executor._linearize(executor.graph), 16, 8)
 
@@ -397,6 +415,12 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
             "OCRActor",
         )
     )
+    actor_cpu = sum(
+        derived[name]["concurrency"] * derived[name].get("num_cpus", 1)
+        for name in ("PDFExtractionActor", "PageElementDetectionActor", "TableStructureActor", "OCRActor")
+    )
+    # DocToPdf and PDFSplit use one CPU each; ReadBinary needs the reserved CPU.
+    assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
@@ -420,6 +444,69 @@ def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     )
     with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
         executor._preflight_resources(executor._linearize(graph), 16, 8)
+
+
+def test_batch_preflight_reserves_cpu_for_file_sources() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph import UDFOperator
+
+    graph = Graph()
+    graph.add_root(UDFOperator(lambda data: data))
+    file_executor = RayDataExecutor(
+        graph,
+        node_overrides={"UDFOperator": {"concurrency": 16, "num_cpus": 1}},
+        source_cpu_reservation=1,
+    )
+    inline_executor = RayDataExecutor(
+        graph,
+        node_overrides={"UDFOperator": {"concurrency": 16, "num_cpus": 1}},
+    )
+
+    with pytest.raises(ValueError, match="including 1 for source reads"):
+        file_executor._preflight_resources(file_executor._linearize(graph), 16, 0)
+    inline_executor._preflight_resources(inline_executor._linearize(graph), 16, 0)
+
+
+@pytest.mark.parametrize("extraction_mode", ["image", "pdf"])
+def test_batch_preflight_remote_caption_materializes_missing_override(extraction_mode: str) -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+    from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
+    )
+    extract_params = ExtractParams(extract_images=True)
+    caption_params = CaptionParams(
+        endpoint_url="http://omni-nim.example/v1/chat/completions",
+        model_name="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    )
+    overrides = batch_tuning_to_node_overrides(
+        extract_params,
+        None,
+        cluster_resources=cluster,
+        caption_params=caption_params,
+    )
+    graph = build_graph(
+        extraction_mode=extraction_mode,
+        extract_params=extract_params,
+        caption_params=caption_params,
+        stage_order=(),
+    ).resolve(cluster.total_resources)
+    caption_node = next(node for node in _linear_nodes(graph) if node.name == "CaptionActor")
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=overrides,
+        auto_concurrency_nodes=default_concurrency_node_names(extract_params, None, None, caption_params),
+    )
+
+    assert "CaptionActor" not in overrides
+    assert caption_node.operator_class is CaptionCPUActor
+
+    executor._preflight_resources(executor._linearize(graph), available_cpus=224, available_gpus=8)
+
+    assert overrides["CaptionActor"]["concurrency"] == 1
 
 
 def test_batch_preflight_rejects_infeasible_direct_override() -> None:

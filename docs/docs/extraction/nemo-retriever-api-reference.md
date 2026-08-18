@@ -23,6 +23,32 @@ not parse them as stable codes. The stable text-generation codes documented in
 [One-shot text generation](#one-shot-text-generation) apply to generation
 operator output columns, not to document extraction.
 
+### Configure at least one input source
+
+Before you call `.ingest()`, `.ingest_stream()`, or `.aingest_stream()`,
+configure at least one input source by calling `.files()`, `.texts()`, or
+`.buffers()` with a nonempty value. Omitting input configuration or passing an
+empty collection raises `ValueError` before pipeline execution.
+
+A configured source can legitimately produce blank text or an empty result.
+For example, OCR can find no text on an image-only page. This outcome does not
+raise the missing-input error.
+
+A nonempty optional glob passed to `.files()` also counts as a configured
+source. If it matches no files, `.ingest()` can return an empty result, and the
+streaming methods can yield no results.
+
+### Select a supported extraction method
+
+`ExtractParams` validates `method` when you construct the model. For PDF
+extraction, use `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The
+`audio` value remains available for the legacy params-driven audio path. For
+new audio pipelines, use `GraphIngestor.extract_audio()` instead.
+
+Any other value raises a Pydantic `ValidationError` before pipeline setup. The
+error lists the supported values, so spelling and configuration errors do not
+silently select another extraction path.
+
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when

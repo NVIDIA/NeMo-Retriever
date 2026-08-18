@@ -300,6 +300,45 @@ Tracing helpers
 {{- fail "topology.otel.config must be a map when topology.otel.enabled=true" -}}
 {{- end -}}
 {{- $config := deepCopy $configValue -}}
+{{- $otelPorts := include "nemo-retriever.otel.ports" . | fromYaml -}}
+{{- $service := get $config "service" | default dict -}}
+{{- if not (kindIs "map" $service) -}}
+{{- fail "topology.otel.config.service must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $pipelines := get $service "pipelines" | default dict -}}
+{{- if not (kindIs "map" $pipelines) -}}
+{{- fail "topology.otel.config.service.pipelines must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $metrics := get $pipelines "metrics" -}}
+{{- if not (kindIs "map" $metrics) -}}
+{{- fail "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics; provide a metrics pipeline with non-empty receivers" -}}
+{{- end -}}
+{{- $metricReceivers := get $metrics "receivers" -}}
+{{- if not $metricReceivers -}}
+{{- fail "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics with non-empty receivers; provide a metrics pipeline with non-empty receivers" -}}
+{{- end -}}
+{{- $exporters := get $config "exporters" | default dict -}}
+{{- if not (kindIs "map" $exporters) -}}
+{{- fail "topology.otel.config.exporters must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $prometheusExporter := get $exporters "prometheus" | default dict -}}
+{{- if not (kindIs "map" $prometheusExporter) -}}
+{{- fail "topology.otel.config.exporters.prometheus must be a map; the chart-managed Prometheus exporter controls its endpoint" -}}
+{{- end -}}
+{{- $prometheusExporter = mergeOverwrite (deepCopy $prometheusExporter) (dict "endpoint" (printf "0.0.0.0:%v" (get $otelPorts "prometheus"))) -}}
+{{- $_ := set $exporters "prometheus" $prometheusExporter -}}
+{{- $_ := set $config "exporters" $exporters -}}
+{{- $metricExporters := get $metrics "exporters" | default list -}}
+{{- if not (kindIs "slice" $metricExporters) -}}
+{{- fail "topology.otel.config.service.pipelines.metrics.exporters must be a list when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- if not (has "prometheus" $metricExporters) -}}
+{{- $metricExporters = append $metricExporters "prometheus" -}}
+{{- end -}}
+{{- $_ := set $metrics "exporters" $metricExporters -}}
+{{- $_ := set $pipelines "metrics" $metrics -}}
+{{- $_ := set $service "pipelines" $pipelines -}}
+{{- $_ := set $config "service" $service -}}
 {{- $zipkin := .Values.topology.zipkin | default dict -}}
 {{- if not (kindIs "map" $zipkin) -}}
 {{- fail "topology.zipkin must be a map" -}}
@@ -386,6 +425,7 @@ Tracing helpers
   "OTEL_SERVICE_NAME" (default "nemo-retriever-service" (get $serviceOtel "serviceName"))
   "OTEL_TRACES_EXPORTER" "otlp"
   "OTEL_METRICS_EXPORTER" "otlp"
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "OTEL_LOGS_EXPORTER" "none"
   "OTEL_PROPAGATORS" "tracecontext,baggage"
   "OTEL_RESOURCE_ATTRIBUTES" (printf "service.namespace=nemo-retriever,service.role=%s" $role)
@@ -451,8 +491,9 @@ Tracing helpers
   "NIM_ENABLE_OTEL" "true"
   "NIM_OTEL_SERVICE_NAME" $serviceName
   "NIM_OTEL_TRACES_EXPORTER" "otlp"
-  "NIM_OTEL_METRICS_EXPORTER" "console"
+  "NIM_OTEL_METRICS_EXPORTER" "otlp"
   "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" $endpoint
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath)
   "TRITON_OTEL_RATE" "1"
 -}}

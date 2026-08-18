@@ -53,6 +53,20 @@ def _batch_tuning(params: Any) -> Any:
     return getattr(params, "batch_tuning", None)
 
 
+def _local_embed_requested(params: Any) -> bool:
+    """Return whether embedding configuration explicitly requires a local actor."""
+    if params is None:
+        return False
+    endpoint = getattr(params, "embed_invoke_url", None) or getattr(params, "embedding_endpoint", None)
+    if str(endpoint or "").strip():
+        return False
+    fields_set = getattr(params, "model_fields_set", set())
+    if "local_ingest_embed_backend" in fields_set:
+        return True
+    gpu_embed = getattr(_batch_tuning(params), "gpu_embed", None)
+    return gpu_embed is not None and float(gpu_embed) > 0
+
+
 def default_concurrency_node_names(
     extract_params: Any | None,
     embed_params: Any | None,
@@ -363,28 +377,6 @@ def batch_tuning_to_node_overrides(
             plan.pdf_extract_tasks if plan else None,
         )
 
-        # Cap PDF extract concurrency so persistent actors for page-elements,
-        # table structure, OCR, embed, and caption plus fixed pipeline tasks (DocToPdf,
-        # PDFSplit, UDFOperator(s), ReadBinary) cannot exhaust the cluster
-        # CPU budget.
-        if pdf_extract_tasks is not None and cluster_resources is not None:
-            # Conservative fixed overhead for the documented PDF flow:
-            # ReadBinary + DocToPdf + PDFSplit + TextChunk + DedupImages +
-            # the content-reshape UDF before embedding. Caption adds its actor
-            # and one additional UDF.
-            fixed_cpu_overhead = 6 + (2 if caption_params is not None else 0)
-            non_pdf_cpu_overhead = (
-                fixed_cpu_overhead
-                + page_elements_concurrency * page_elements_cpus
-                + ocr_concurrency * ocr_cpus
-                + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
-            )
-            pdf_extract_tasks = min(
-                pdf_extract_tasks,
-                max(1, int((cluster_resources.total_cpu_count() - non_pdf_cpu_overhead) // pdf_extract_cpus)),
-            )
-
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
@@ -578,6 +570,7 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="CollapseContentToPageRows",
+                        preserve_pandas_output=True,
                     )
                 else:
                     graph = graph >> UDFOperator(
@@ -590,8 +583,12 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="ExplodeContentToRows",
+                        preserve_pandas_output=True,
                     )
-            graph = graph >> _BatchEmbedActor(params=embed_params)
+            graph = graph >> _BatchEmbedActor(
+                params=embed_params,
+                force_local=_local_embed_requested(embed_params),
+            )
 
     if vdb_upload_params is not None:
         graph = graph >> IngestVdbOperator(

@@ -202,6 +202,35 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     assert plan.create_kwargs == {"run_mode": "inprocess"}
 
 
+@pytest.mark.parametrize(
+    "extract",
+    [
+        pytest.param(IngestExtractOptions(ocr_version="v2"), id="version"),
+        pytest.param(IngestExtractOptions(ocr_lang="english"), id="language"),
+    ],
+)
+def test_ingest_plan_ocr_selector_preserves_default_pdfium_method(tmp_path, extract) -> None:
+    pdf = tmp_path / "scanned.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = _resolve_plan([str(pdf)], extract=extract)
+
+    assert plan.extract_params.method == "pdfium"
+
+
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid"])
+def test_ingest_plan_explicit_pdf_method_with_ocr_selector(tmp_path, method) -> None:
+    pdf = tmp_path / "scanned.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = _resolve_plan(
+        [str(pdf)],
+        extract=IngestExtractOptions(method=method, ocr_version="v2"),
+    )
+
+    assert plan.extract_params.method == method
+
+
 def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     pdf.write_bytes(b"pdf")
@@ -569,7 +598,8 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
 
     class FakeExecutor:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            calls.append("construct")
+            calls.append(f"construct:{kwargs['source_cpu_reservation']}")
+            self._source_cpu_reservation = kwargs["source_cpu_reservation"]
 
         def build_dataset(self, data: Any, **kwargs: Any) -> Any:
             calls.append("build")
@@ -580,7 +610,7 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
             return pd.DataFrame({"done": [True]})
 
     def fake_preflight(executors: list[Any], resources: Any) -> None:
-        assert len(executors) == 3
+        assert [executor._source_cpu_reservation for executor in executors] == [1, 1, 0]
         assert resources.available_cpu_count() == 16
         calls.append("preflight")
 
@@ -592,7 +622,7 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
 
     GraphIngestor(run_mode="batch").files([str(pdf), str(image)]).extract().ingest()
 
-    assert calls == ["construct", "construct", "construct", "preflight", "build", "build", "ingest"]
+    assert calls == ["construct:1", "construct:1", "construct:0", "preflight", "build", "build", "ingest"]
 
 
 def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp_path) -> None:
@@ -616,7 +646,8 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
 
     class FakeExecutor:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            calls.append("construct")
+            self._source_cpu_reservation = kwargs["source_cpu_reservation"]
+            calls.append(f"construct:{kwargs['source_cpu_reservation']}")
 
         def build_dataset(self, data: Any, **kwargs: Any) -> Any:
             calls.append("build")
@@ -627,7 +658,7 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
             return pd.DataFrame({"done": [True]})
 
     def fake_preflight(executors: list[Any], resources: Any) -> None:
-        assert len(executors) == 3
+        assert [executor._source_cpu_reservation for executor in executors] == [1, 0, 0]
         calls.append("preflight")
 
     monkeypatch.setattr(
@@ -642,4 +673,4 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
 
     GraphIngestor(run_mode="batch").files([str(document)]).texts(["from inline"]).extract().ingest()
 
-    assert calls == ["construct", "construct", "construct", "preflight", "build", "build", "ingest"]
+    assert calls == ["construct:1", "construct:0", "construct:0", "preflight", "build", "build", "ingest"]

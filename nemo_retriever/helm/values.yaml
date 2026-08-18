@@ -148,12 +148,12 @@ service:
     count: 0
     productClass: ""
 
-  # Liveness, readiness, and startup probes.  All use the dedicated
-  # GET /v1/health endpoint which returns {"status":"ok"} with no auth.
+  # Startup and liveness use the shallow, unauthenticated GET /v1/live
+  # endpoint. Readiness uses the deep, unauthenticated GET /v1/health endpoint.
   livenessProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 30
     periodSeconds: 30
@@ -173,7 +173,7 @@ service:
   startupProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -187,7 +187,7 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
-  # OpenTelemetry env defaults for the retriever service container.
+  # OpenTelemetry defaults for the retriever service container. The chart exports metrics every 5 seconds by default; override through service.otel.env.
   otel:
     enabled: true
     serviceName: nemo-retriever-service
@@ -209,6 +209,7 @@ service:
 # =============================================================================
 networkService:
   type: NodePort
+  # Kubernetes Service port, including chart-generated Service-DNS URLs.
   port: 7670
   # Optional: override the targetPort name. Should match container port name.
   targetPort: http
@@ -405,7 +406,9 @@ topology:
   # ---------------------------------------------------------------------------
   # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
   # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
-  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  # gRPC (4317) and OTLP HTTP (4318) receivers, plus a Prometheus metrics
+  # endpoint (8889), by default. The chart-managed Prometheus exporter uses
+  # `ports.prometheus` and exports metrics received through the OTLP receiver.
   otel:
     enabled: true
     image:
@@ -529,6 +532,7 @@ topology:
 serviceConfig:
   server:
     host: "0.0.0.0"
+    # Retriever process listener and named container port.
     port: 7670
 
   logging:
@@ -548,10 +552,18 @@ serviceConfig:
     # operator-managed Parse NIM is enabled, its in-cluster URL is used
     # unless this explicit endpoint is set.
     nemotronParseInvokeUrl: ""
-    # Optional model override. Leave empty to infer the hosted
-    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    # Optional model override. Leave empty to infer the operator-managed
+    # Parse v1.2 or v2.0 model from its image repository. For external
+    # endpoints, set the matching model explicitly.
     nemotronParseModel: ""
     embedInvokeUrl: ""
+    # Optional remote reranking endpoint used by POST /v1/query with
+    # rerank=true. The optional rerankqa NIM is not auto-wired; set this
+    # explicitly to its in-cluster Service URL or another compatible endpoint.
+    rerankInvokeUrl: ""
+    # Server-owned model identifier sent to rerankInvokeUrl. Use the VL
+    # reranker ID for the chart's optional rerankqa NIM.
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
@@ -684,6 +696,9 @@ serviceConfig:
     gpuDevices: []
     maxUploadBytes: 500000000
 
+  sidecarStore:
+    maxPayloadBytes: 33554432
+
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
   # /v1/query to it for retrieval.
@@ -691,11 +706,15 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
+    # Create a hybrid vector and FTS index by default. Set to "dense" for a
+    # vector-only index.
+    indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
-    # Optional dedicated gateway/worker-to-VectorDB authentication. When
-    # enabled, all Retriever and VectorDB pods read the same existing Secret
-    # key and VectorDB rejects missing or invalid internal credentials.
+    # Optional service-internal authentication. When enabled, Retriever and
+    # VectorDB pods read the same existing Secret key. In split topology, the
+    # gateway also uses this credential for restricted gateway-to-worker
+    # handoffs. Public bearer credentials are never forwarded to workers.
     internalAuth:
       enabled: false
       existingSecret:
@@ -704,7 +723,8 @@ serviceConfig:
 
   # Public bearer-token authentication. Production deployments should mount
   # a Secret-backed scope-token JSON file. It is disabled by default so a
-  # standalone deployment accepts gateway requests without a bearer token.
+  # standalone deployment accepts gateway requests without a bearer token. In
+  # split topology, the public token file mounts only on the gateway.
   # Inline apiToken is retained only as an explicitly enabled insecure
   # development fallback.
   auth:
@@ -718,6 +738,7 @@ serviceConfig:
       key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
+      - "/v1/live"
       - "/v1/health"
       - "/docs"
       - "/openapi.json"
@@ -1001,8 +1022,9 @@ nimOperator:
     env:
       NIM_ENABLE_OTEL: "true"
       NIM_OTEL_TRACES_EXPORTER: "otlp"
-      NIM_OTEL_METRICS_EXPORTER: "console"
+      NIM_OTEL_METRICS_EXPORTER: "otlp"
       TRITON_OTEL_RATE: "1"
+      OTEL_METRIC_EXPORT_INTERVAL: "5000"
 
   # ---------------------------------------------------------------------------
   # Per-NIM defaults
@@ -1020,7 +1042,7 @@ nimOperator:
   #   Optional (enabled: false by default, NOT auto-wired):
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #     - nemotron_parse                           (Parse v1.2 by default, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
   #     - answer_llm                               (OpenAI-compatible answer LLM,

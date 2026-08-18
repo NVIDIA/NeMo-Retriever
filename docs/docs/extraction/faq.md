@@ -10,10 +10,33 @@ Some NIM microservices and models that the library calls may be individually cov
 
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? { #use-with-existing-retrieval-pipeline }
 
-You can use the CLI or Python APIs to perform extraction only, and then consume the results.
-Using the Python API, `results` is a list object with one entry.
-For code examples, refer to the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) 
-and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb).
+Yes. Use the Python API to extract content, then pass the extracted rows into your existing retrieval stack.
+
+Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. Typical columns include `text`, `content`, `path`, `page_number`, and `metadata`. For field-level metadata, refer to [Metadata reference](content-metadata.md). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
+The following example extracts Markdown without embedding or writing an index.
+
+```python
+from nemo_retriever import create_ingestor
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["document.md"])
+    .extract()
+    .ingest()
+)
+
+for record in result.to_dict(orient="records"):
+    text = record.get("text") or record.get("content")
+    source_path = record["path"]
+    metadata = record.get("metadata")
+```
+
+Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, and metadata to your retriever.
+
+The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+
+For Python ingest and indexing, refer to [Ingest documents into a searchable VDB collection](workflow-document-ingestion.md). After you have an index, the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb) show framework integration.
 
 ## Where does NeMo Retriever Library ingest to? { #where-does-nrl-ingest-to }
 
@@ -39,6 +62,26 @@ For scanned documents, or documents with complex layouts,
 you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `method="nemotron_parse"`.
 Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
+
+## Why does Helm report deployed while PersistentVolumeClaims stay Pending? { #helm-deployed-pending-pvcs }
+
+`STATUS: deployed` means Helm rendered the release. It does not mean PersistentVolumeClaims bound or that pods can schedule.
+
+The default chart creates seven PersistentVolumeClaims. If the cluster has no default StorageClass and no compatible static persistent volumes, those claims stay `Pending` and the retriever service, VectorDB, and core NIM workloads remain unschedulable.
+
+A common claim event is `no persistent volumes available for this claim and no storage class is set`. Confirm storage before you install, or set the documented `storageClass` values. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
+
+## Why do core NIM pods stay Pending on a one-GPU Helm cluster? { #helm-pending-gpus }
+
+The support matrix **Total GPUs: 1** row is combined VRAM co-residency for the four core models. The default Helm chart still creates four NIMService workloads. Each requests `nvidia.com/gpu: 1`.
+
+On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending` with `Insufficient nvidia.com/gpu`. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
+
+## Why does Helm upgrade fail after I change a NIM image repository or tag? { #helm-nim-image-tag-upgrade }
+
+The chart keeps the same `NIMCache` name when you change a NIM image repository or tag. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
+
+Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image repository or tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 

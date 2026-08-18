@@ -203,6 +203,43 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     assert json.loads(result.output) == []
 
 
+def test_root_query_no_rerank_overrides_reranker_options(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "http://rerank:8000/v1/ranking",
+            "--reranker-model-name",
+            "reranker-model",
+            "--reranker-backend",
+            "hf",
+            "--no-rerank",
+        ],
+        env={"NVIDIA_API_KEY": "", "NGC_API_KEY": ""},
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {
+            "top_k": 10,
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
+        }
+    ]
+
+
 def test_root_query_passes_reranker_api_key_env(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
@@ -383,6 +420,8 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
             "--agentic",
             "--top-k",
             "2",
+            "--candidate-k",
+            "4",
             "--lancedb-uri",
             "/tmp/lancedb",
             "--table-name",
@@ -408,11 +447,115 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     # --top-k is honored end-to-end: plumbed into the agentic config (drives the
     # ReAct target / RRF / selection cut), not just applied as a post-filter.
     assert cfg["top_k"] == 2
+    assert cfg["candidate_k"] == 4
     # Sorted by rank and truncated to --top-k=2.
     assert json.loads(result.output) == [
         {"rank": 1, "doc_id": "a.pdf", "result_source": "final_results"},
         {"rank": 2, "doc_id": "b.pdf", "result_source": "rrf"},
     ]
+
+
+def test_root_query_agentic_rejects_candidate_k_below_top_k() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--top-k",
+            "10",
+            "--candidate-k",
+            "3",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "candidate_k (3) must be greater than or equal to top_k (10)" in result.output
+
+
+def test_root_query_agentic_unreachable_reranker_is_not_reported_as_empty_success(
+    monkeypatch,
+) -> None:
+    reranker_url = "http://127.0.0.1:9/v1/ranking"
+
+    def fail_agentic_query(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError(
+            "Agentic retrieval failed (tool_failed): Tool 'retrieve' failed. "
+            f"ConnectionError: HTTPConnectionPool {reranker_url}"
+        )
+
+    monkeypatch.setattr(query_cli_app, "query_agentic_documents", fail_agentic_query)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "m",
+            "--agentic-invoke-url",
+            "http://localhost:8000/v1/chat/completions",
+            "--rerank",
+            "--reranker-invoke-url",
+            reranker_url,
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "[]" not in result.output
+    assert "Agentic retrieval failed (tool_failed)" in result.output
+    assert "retrieve" in result.output
+    assert reranker_url in result.output
+
+
+def test_root_query_agentic_local_tensor_parallel_size_plumbed_into_config(
+    monkeypatch,
+) -> None:
+    """The local tensor-parallel CLI option reaches agentic configuration."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+        def unload(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "q",
+            "--agentic",
+            "--agentic-llm-model",
+            "super-49b",
+            "--agentic-local-tensor-parallel-size",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert config_calls[-1]["llm_model"] == "super-49b"
+    assert config_calls[-1]["local_tensor_parallel_size"] == 2
 
 
 def test_root_query_agentic_rejects_custom_in_process_llm_model() -> None:

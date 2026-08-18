@@ -91,7 +91,7 @@ class LocalRerankConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
+    model_name: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
     backend: Literal["hf", "vllm"] = "vllm"
     gpu_memory_utilization: float = Field(default=0.5, gt=0, le=1)
     max_length: int = Field(default=512, ge=1, le=8192)
@@ -165,7 +165,8 @@ class NimEndpointsConfig(RichModel):
         description=(
             "Model identifier passed to the remote Nemotron Parse endpoint. "
             "Use nvidia/nemotron-parse for NVIDIA-hosted inference and "
-            "nvidia/nemotron-parse-v1.2 for a self-hosted NIM. "
+            "nvidia/nemotron-parse-v1.2 for the default self-hosted NIM, or "
+            "nvidia/nemotron-parse-v2.0 for an explicitly selected Parse 2.0 NIM. "
             "Server-owned — clients cannot override the deployed Parse SKU."
         ),
     )
@@ -195,7 +196,7 @@ class NimEndpointsConfig(RichModel):
     rerank_model_name: str | None = Field(
         default=None,
         description=(
-            "Model identifier passed to rerank_invoke_url. Defaults to the " "Nemotron text reranker when omitted."
+            "Model identifier passed to rerank_invoke_url. Defaults to the " "Nemotron VL reranker when omitted."
         ),
     )
     audio_grpc_endpoint: str | None = Field(
@@ -304,6 +305,18 @@ class ResourceLimitsConfig(RichModel):
     )
 
 
+class SidecarStoreConfig(RichModel):
+    """Gateway-owned in-memory store for sidecars before work admission."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_payload_bytes: int = Field(
+        default=33_554_432,
+        ge=1,
+        description="Maximum accepted sidecar payload size in bytes.",
+    )
+
+
 class AuthConfig(RichModel):
     """Bearer authentication and authorization for logical workspace scopes."""
 
@@ -315,7 +328,9 @@ class AuthConfig(RichModel):
     scope_token_file: str | None = None
     allow_unscoped_dev: bool = False
     header_name: str = "Authorization"
-    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
+    bypass_paths: list[str] = Field(
+        default_factory=lambda: ["/v1/live", "/v1/health", "/docs", "/openapi.json", "/redoc"]
+    )
 
 
 class MCPConfig(RichModel):
@@ -425,6 +440,7 @@ class VectorDbConfig(RichModel):
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
+    index_mode: Literal["dense", "hybrid"] = "hybrid"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
@@ -569,12 +585,19 @@ class ServiceConfig(RichModel):
     agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    sidecar_store: SidecarStoreConfig = Field(default_factory=SidecarStoreConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+
+    @model_validator(mode="after")
+    def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
+        if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
+            raise ValueError("sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes")
+        return self
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -664,7 +687,6 @@ def load_config(
         internal_token = internal_token.strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
-
     config = ServiceConfig(**raw)
 
     _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
