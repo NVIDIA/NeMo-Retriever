@@ -15,9 +15,12 @@ from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 import pytest
+from PIL import Image
 
 from nemo_retriever.graph import InprocessExecutor, StoreOperator, UDFOperator
+from nemo_retriever.common.modality.content_transforms import explode_content_to_rows
 from nemo_retriever.common.params import StoreParams
+from nemo_retriever.common.vdb.records import to_client_vdb_records
 
 
 def _make_tiny_png_b64(width: int = 4, height: int = 4, color=(255, 0, 0)) -> str:
@@ -69,6 +72,57 @@ class TestStoreOperatorInGraph:
         stored_uri = result.iloc[0]["_stored_image_uri"]
         assert stored_uri.startswith("file://")
         assert Path(urlparse(stored_uri).path).exists()
+
+    @pytest.mark.parametrize("metadata_key", ["image_metadata", "table_metadata", "chart_metadata"])
+    def test_store_operator_exposes_uploaded_image_uri_in_structured_metadata(self, tmp_path: Path, metadata_key: str):
+        b64 = _make_tiny_png_b64()
+        df = _make_embedded_df(b64)
+        df.at[0, "_content_type"] = metadata_key.removesuffix("_metadata")
+        df["metadata"] = [
+            {
+                "content_metadata": {"type": "structured"},
+                metadata_key: {"table_format": "image", "uploaded_image_uri": ""},
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        stored_uri = result.iloc[0]["_stored_image_uri"]
+        assert result.iloc[0]["metadata"]["content_metadata"]["uploaded_image_uri"] == stored_uri
+        assert result.iloc[0]["metadata"][metadata_key]["uploaded_image_uri"] == stored_uri
+
+    def test_store_operator_synchronizes_existing_stored_uri_into_public_metadata(self, tmp_path: Path):
+        df = _make_embedded_df(None)
+        df["_stored_image_uri"] = ["file:///stored/table.png"]
+        df["metadata"] = [
+            {
+                "table_metadata": {"table_format": "image", "uploaded_image_uri": ""},
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        assert result.iloc[0]["metadata"]["table_metadata"]["uploaded_image_uri"] == "file:///stored/table.png"
+
+    def test_store_operator_does_not_publish_inherited_page_uri_as_table_asset(self, tmp_path: Path):
+        df = _make_embedded_df(None)
+        df["_content_type"] = ["table"]
+        df["_stored_image_uri"] = ["file:///stored/page.png"]
+        df["page_image"] = [{"image_b64": None, "stored_image_uri": "file:///stored/page.png"}]
+        df["metadata"] = [
+            {
+                "content_metadata": {"type": "structured", "uploaded_image_uri": ""},
+                "table_metadata": {
+                    "table_format": "image",
+                    "uploaded_image_uri": "file:///stored/table.png",
+                },
+            }
+        ]
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        assert result.iloc[0]["metadata"]["content_metadata"]["uploaded_image_uri"] == ""
+        assert result.iloc[0]["metadata"]["table_metadata"]["uploaded_image_uri"] == "file:///stored/table.png"
 
     def test_store_operator_clears_row_and_page_payloads_after_write(self, tmp_path: Path):
         b64 = _make_tiny_png_b64()
@@ -125,6 +179,72 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["_image_b64"] is None
         assert result.iloc[0]["page_image"]["image_b64"] is None
         assert result.iloc[0]["page_image"]["stored_image_uri"] == "file:///old/page.png"
+
+    def test_store_operator_associates_text_mode_structured_row_with_page_crop(self, tmp_path: Path):
+        page_b64 = _make_tiny_png_b64(width=100, height=80)
+        source = pd.DataFrame(
+            [
+                {
+                    "path": "/docs/test.pdf",
+                    "page_number": 1,
+                    "text": "Page text",
+                    "page_image": {"image_b64": page_b64},
+                    "table": [
+                        {
+                            "text": "Table text",
+                            "bbox_xyxy_norm": [0.25, 0.25, 0.75, 0.75],
+                        }
+                    ],
+                    "metadata": {
+                        "content_metadata": {"uploaded_image_uri": ""},
+                        "table_metadata": {"uploaded_image_uri": ""},
+                    },
+                }
+            ]
+        )
+        exploded = explode_content_to_rows(source, modality="text")
+        assert "_image_b64" not in exploded.columns
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(exploded)
+
+        page_row = result.loc[result["_content_type"] == "text"].iloc[0]
+        table_row = result.loc[result["_content_type"] == "table"].iloc[0]
+        page_uri = page_row["_stored_image_uri"]
+        table_uri = table_row["_stored_image_uri"]
+
+        assert table_uri != page_uri
+        assert Image.open(Path(urlparse(page_uri).path)).size == (100, 80)
+        assert Image.open(Path(urlparse(table_uri).path)).size == (50, 40)
+        assert table_row["page_image"]["stored_image_uri"] == page_uri
+        assert table_row["metadata"]["content_metadata"]["uploaded_image_uri"] == table_uri
+        assert table_row["metadata"]["table_metadata"]["uploaded_image_uri"] == table_uri
+
+        result["metadata"] = result["metadata"].apply(lambda metadata: {**metadata, "embedding": [0.1, 0.2]})
+        records = to_client_vdb_records(result)[0]
+        table_record = next(
+            record for record in records if record["metadata"]["content_metadata"].get("type") == "table"
+        )
+        content_metadata = table_record["metadata"]["content_metadata"]
+        assert content_metadata["stored_image_uri"] == table_uri
+        assert content_metadata["uploaded_image_uri"] == table_uri
+        assert content_metadata["bbox_xyxy_norm"] == [0.25, 0.25, 0.75, 0.75]
+
+    def test_store_operator_crops_structured_row_with_numpy_bbox(self, tmp_path: Path):
+        page_b64 = _make_tiny_png_b64(width=100, height=80)
+        df = pd.DataFrame(
+            [
+                {
+                    "_content_type": "table",
+                    "_bbox_xyxy_norm": np.array([0.25, 0.25, 0.75, 0.75]),
+                    "page_image": {"image_b64": page_b64},
+                }
+            ]
+        )
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        stored_uri = result.iloc[0]["_stored_image_uri"]
+        assert Image.open(Path(urlparse(stored_uri).path)).size == (50, 40)
 
     def test_store_operator_skips_rows_without_image_b64(self, tmp_path: Path):
         df = _make_embedded_df(None)

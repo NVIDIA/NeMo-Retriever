@@ -14,6 +14,7 @@ import base64
 import sys
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from unittest.mock import create_autospec
 
 import pandas as pd
 
@@ -22,6 +23,7 @@ from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUN
 from nemo_retriever.operators.extract.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 from nemo_retriever.common.params import ASRParams
+from nemo_retriever.models.nim.primitives.model_interface.parakeet import ParakeetClient
 
 
 NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
@@ -160,6 +162,84 @@ def test_asr_actor_remote_segment_audio():
         assert out["metadata"].iloc[1]["segment_index"] == 1
         assert out["metadata"].iloc[1]["segment_start_seconds"] == 1.0
         assert out["metadata"].iloc[1]["segment_end_seconds"] == 2.5
+
+
+def test_asr_actor_clamps_negative_boundary_and_replaces_invalid_ranges():
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
+        mock_client = create_autospec(ParakeetClient, instance=True)
+        mock_client.infer.return_value = (
+            [
+                {"start": -0.08, "end": 4.0, "text": "Boundary sentence."},
+                {"start": float("nan"), "end": 5.0, "text": "Invalid sentence."},
+            ],
+            "Boundary sentence. Invalid sentence.",
+        )
+        mock_get.return_value = mock_client
+
+        actor = ASRActor(params=ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True))
+        out = actor(
+            pd.DataFrame(
+                [
+                    {
+                        "path": "/tmp/chunk.wav",
+                        "bytes": b"fake_audio",
+                        "source_path": "/tmp/source.wav",
+                        "duration": 10.0,
+                        "chunk_index": 0,
+                        "metadata": {"chunk_start_seconds": 0.0},
+                        "page_number": 0,
+                    }
+                ]
+            )
+        )
+
+        assert out["text"].tolist() == ["Boundary sentence.", "Invalid sentence."]
+        first_metadata = out["metadata"].iloc[0]
+        assert first_metadata["segment_start_seconds"] == 0.0
+        assert first_metadata["segment_end_seconds"] == 4.0
+        assert first_metadata["segment_count"] == 2
+        second_metadata = out["metadata"].iloc[1]
+        assert second_metadata["segment_start_seconds"] == 0.0
+        assert second_metadata["segment_end_seconds"] == 10.0
+        mock_client.infer.assert_called_once_with(
+            base64.b64encode(b"fake_audio").decode("ascii"), model_name="parakeet"
+        )
+
+
+def test_asr_actor_preserves_transcript_for_mixed_ranges_without_duration():
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
+        mock_client = create_autospec(ParakeetClient, instance=True)
+        mock_client.infer.return_value = (
+            [
+                {"start": 0.1, "end": 0.5, "text": "Valid sentence."},
+                {"start": float("nan"), "end": 0.8, "text": "Malformed sentence."},
+            ],
+            "Valid sentence. Malformed sentence.",
+        )
+        mock_get.return_value = mock_client
+
+        actor = ASRActor(params=ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True))
+        out = actor(
+            pd.DataFrame(
+                [
+                    {
+                        "path": "/tmp/chunk.wav",
+                        "bytes": b"fake_audio",
+                        "source_path": "/tmp/source.wav",
+                        "duration": None,
+                        "chunk_index": 0,
+                        "metadata": {"chunk_start_seconds": 2.0},
+                        "page_number": 0,
+                    }
+                ]
+            )
+        )
+
+        assert out["text"].tolist() == ["Valid sentence. Malformed sentence."]
+        metadata = out["metadata"].iloc[0]
+        assert "segment_start_seconds" not in metadata
+        assert "segment_end_seconds" not in metadata
+        assert "segment_count" not in metadata
 
 
 def test_apply_asr_to_df_segment_audio():

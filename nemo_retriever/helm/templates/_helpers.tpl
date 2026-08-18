@@ -425,6 +425,7 @@ Tracing helpers
   "OTEL_SERVICE_NAME" (default "nemo-retriever-service" (get $serviceOtel "serviceName"))
   "OTEL_TRACES_EXPORTER" "otlp"
   "OTEL_METRICS_EXPORTER" "otlp"
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "OTEL_LOGS_EXPORTER" "none"
   "OTEL_PROPAGATORS" "tracecontext,baggage"
   "OTEL_RESOURCE_ATTRIBUTES" (printf "service.namespace=nemo-retriever,service.role=%s" $role)
@@ -490,8 +491,9 @@ Tracing helpers
   "NIM_ENABLE_OTEL" "true"
   "NIM_OTEL_SERVICE_NAME" $serviceName
   "NIM_OTEL_TRACES_EXPORTER" "otlp"
-  "NIM_OTEL_METRICS_EXPORTER" "console"
+  "NIM_OTEL_METRICS_EXPORTER" "otlp"
   "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" $endpoint
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath)
   "TRITON_OTEL_RATE" "1"
 -}}

@@ -122,12 +122,12 @@ RerankerBackendOption = Annotated[
     ),
 ]
 RerankOption = Annotated[
-    bool,
+    bool | None,
     typer.Option(
         "--rerank/--no-rerank",
         help=(
-            "Enable reranking after vector retrieval. Default off. Implicitly enabled when "
-            "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
+            "Enable reranking after vector retrieval. Default off. When neither flag is passed, implicitly enabled "
+            "when any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
         ),
     ),
 ]
@@ -223,8 +223,8 @@ AgenticLocalTensorParallelSizeOption = Annotated[
         min=1,
         help=(
             "vLLM tensor_parallel_size for the in-process agent LLM. "
-            "Use 2 (with two visible GPUs) for local super-49b; ignored when "
-            "--agentic-invoke-url is set."
+            "Use 2+ with matching CUDA_VISIBLE_DEVICES for multi-GPU local "
+            "profiles (e.g. super-49b); ignored when --agentic-invoke-url is set."
         ),
     ),
 ]

@@ -231,7 +231,7 @@ def test_local_ocr_v2_wrapper_passes_package_lang_selector_with_model_dir(monkey
 @pytest.mark.parametrize(
     ("selector", "repo_id", "revision"),
     [
-        ("multi", "nvidia/nemotron-ocr-v2", "86cacb0467fa4f7ce54342fdb250825e0d928ae7"),
+        ("multi", "nvidia/nemotron-ocr-v2", "0e83e83f17943524b90afa6c0fd82ac2bc1a40ca"),
         ("legacy", "nvidia/nemotron-ocr-v1", "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"),
     ],
 )

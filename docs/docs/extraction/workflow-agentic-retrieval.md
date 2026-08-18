@@ -12,9 +12,13 @@ in-process local vLLM agent LLM. If no agent model is provided, the library load
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host.
 The larger `super-49b` profile is also supported. Pass
 `--agentic-local-tensor-parallel-size 2` with two visible GPUs for that
-profile. Other custom in-process LLMs
-are not supported yet because the agent loop depends on OpenAI-style tool-call
-messages; use an OpenAI-compatible endpoint for custom models.
+profile (and the same pattern for other multi-GPU local TP runs).
+Tensor-parallel startup automatically disables NVLink multicast collectives
+(`NCCL_NVLS_ENABLE=0`, `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`) when the TP
+device group has no NVLink — common on dual-GPU PCIe workstations — where
+those collectives abort vLLM startup. Other custom in-process LLMs are not supported yet because the agent
+loop depends on OpenAI-style tool-call messages; use an OpenAI-compatible
+endpoint for custom models.
 
 ```bash
 retriever query "find documents about parser behavior" --agentic
@@ -32,6 +36,10 @@ retriever query "find documents about parser behavior" \
 Providing `--agentic-invoke-url` routes the agent to that remote endpoint; the LLM
 client defaults to `callable`, which calls the endpoint over the shared
 chat-completions HTTP client and needs no LLM SDK installed.
+
+Operational failures from the agent LLM or retrieval tool, including embedding,
+vector database, and reranker endpoint failures, terminate the query with an
+error instead of returning a successful empty result.
 
 ## MCP access for agents
 
