@@ -283,16 +283,19 @@ class NemotronParseModelInterface(ModelInterface):
     _NEMOTRON_PARSE_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
     @property
-    def _is_v1_2(self) -> bool:
-        """Return True when the configured model name looks like v1.2+."""
-        return "v1.2" in self.model_name
+    def _uses_tagged_prompt_contract(self) -> bool:
+        """Return whether the configured model accepts Parse task-control tokens."""
+        normalized = self.model_name.lower().rstrip("/")
+        if normalized == "nvidia/nemotron-parse":
+            return False
+        return not bool(re.search(r"(?:^|[-_])v?1[._][01](?!\d)", normalized))
 
     def _prepare_nemotron_parse_payload(self, base64_list: List[str]) -> Dict[str, Any]:
         messages = []
 
         for b64_img in base64_list:
             content = []
-            if self._is_v1_2:
+            if self._uses_tagged_prompt_contract:
                 content.append({"type": "text", "text": self._NEMOTRON_PARSE_PROMPT})
             content.append(
                 {

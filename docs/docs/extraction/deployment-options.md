@@ -27,14 +27,18 @@ The Helm chart uses `GET /v1/live` for startup and liveness probes and
 topology, `/v1/health` returns HTTP `503` when the required realtime or batch
 worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
 Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
-
 In split topology, the gateway authenticates public requests. When internal
 service authentication is configured, the gateway uses it for restricted worker
 handoffs instead of forwarding public credentials. Without internal service
 authentication, the gateway forwards the configured public authentication header
 to workers, which must share the same public-authentication configuration.
 
-**Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:2.3.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+If you use `ServiceIngestor.vdb_upload()` sidecar metadata in split topology,
+upload and reference the metadata while the singleton gateway remains running.
+At ingest admission, the gateway binds the metadata to the work item. Workers
+receive the bound attachment and do not resolve sidecar IDs.
+Refer to [Sidecar metadata in split topology](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#sidecar-metadata-in-split-topology).
+**Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:2.3.0`). These four are enabled and auto-wired into the retriever service by default. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and disabled by default. When you opt in, Omni captioning and VL reranking auto-wire into `nim_endpoints`; Parakeet ASR still needs an explicit `audioGrpcEndpoint`. For a minimal GPU footprint, leave optional keys disabled (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2608)). Refer to [Pre-Requisites & Support Matrix — Default NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 
 For audio and video extraction in Kubernetes, refer to [Audio and video](audio-video.md).
 

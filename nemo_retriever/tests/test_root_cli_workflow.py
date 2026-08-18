@@ -655,7 +655,7 @@ def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
-    assert extract_params.method == "pdfium_hybrid"
+    assert extract_params.method == "pdfium"
     assert extract_params.ocr_version == "v2"
     assert extract_params.ocr_lang == "english"
 

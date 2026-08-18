@@ -163,7 +163,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         tracker.add_terminal_observer(app.state.metrics.record_terminal_transition)
     event_bus = init_event_bus()
     tracker.set_event_bus(event_bus)
-    app.state.sidecar_store = init_sidecar_store()
+    app.state.sidecar_store = (
+        init_sidecar_store(max_payload_bytes=config.sidecar_store.max_payload_bytes)
+        if mode in ("gateway", "standalone")
+        else None
+    )
 
     if mode == "gateway":
         app.state.proxy = init_proxy(
@@ -272,6 +276,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     from nemo_retriever.service.metrics_otel import configure_metrics, instrument_app as instrument_otel_metrics
     from nemo_retriever.service.tracing import configure_tracing
+    from nemo_retriever.version import get_service_api_version
 
     configure_metrics(service_role=config.mode)
     configure_tracing(service_role=config.mode)
@@ -279,7 +284,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
     app = FastAPI(
         title="Retriever Service",
         description="Low-latency document ingestion service powered by nemo-retriever",
-        version="26.5.0",
+        version=get_service_api_version(),
         docs_url="/docs",
         lifespan=lifespan,
     )

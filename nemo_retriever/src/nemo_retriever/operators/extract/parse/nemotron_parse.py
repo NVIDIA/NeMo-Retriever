@@ -318,7 +318,7 @@ def nemotron_parse_pages(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_pages currently only supports pandas.DataFrame input.")
 
-    invoke_url = (invoke_url or kwargs.get("nemotron_parse_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("nemotron_parse_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
@@ -529,7 +529,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -555,9 +555,15 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            if self._nemotron_parse_model and self._nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL:
+                self._model = NemotronParse20(
+                    model_path=self._nemotron_parse_model,
+                    task_prompt=self._task_prompt,
+                )
+            else:
+                self._model = NemotronParseV12(task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
@@ -628,7 +634,9 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._invoke_url = (
+            str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
+        )
         self._nemotron_parse_model = nemotron_parse_model
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -697,7 +705,9 @@ class NemotronParseActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(
+            str(kwargs.get("nemotron_parse_invoke_url") or "").strip() or str(kwargs.get("invoke_url") or "").strip()
+        )
 
     def __init__(
         self,

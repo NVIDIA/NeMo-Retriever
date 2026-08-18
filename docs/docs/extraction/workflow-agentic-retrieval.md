@@ -10,11 +10,16 @@ NeMo Retriever Library provides ingestion, embedding, storage, and retrieval bui
 The `retriever query --agentic` and harness BEIR agentic paths default to an
 in-process local vLLM agent LLM. If no agent model is provided, the library loads
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`) on the local CUDA host.
-The larger `super-49b` profile is also supported. Pass
+The larger `super-49b` profile loads
+`nvidia/Llama-3_3-Nemotron-Super-49B-v1_5`. Pass
 `--agentic-local-tensor-parallel-size 2` with two visible GPUs for that
-profile. Other custom in-process LLMs
-are not supported yet because the agent loop depends on OpenAI-style tool-call
-messages; use an OpenAI-compatible endpoint for custom models.
+profile (and the same pattern for other multi-GPU local TP runs).
+Tensor-parallel startup automatically disables NVLink multicast collectives
+(`NCCL_NVLS_ENABLE=0`, `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`) when the TP
+device group has no NVLink — common on dual-GPU PCIe workstations — where
+those collectives abort vLLM startup. Other custom in-process LLMs are not supported yet because the agent
+loop depends on OpenAI-style tool-call messages; use an OpenAI-compatible
+endpoint for custom models.
 
 ```bash
 retriever query "find documents about parser behavior" --agentic
@@ -74,6 +79,10 @@ Start it with matching `--agentic`, `--agentic-llm-model`, and
 from the service process environment. Service mode requires remote
 OpenAI-compatible LLM and embedding endpoints; local in-process models remain
 available through the one-shot CLI and harness paths.
+
+The VectorDB service runs up to four non-agentic queries concurrently by default.
+Set `--max-concurrent-queries` when starting `nemo_retriever.service.vectordb_app`
+to use a different positive limit.
 
 REST clients set the flag on `/v1/query`:
 

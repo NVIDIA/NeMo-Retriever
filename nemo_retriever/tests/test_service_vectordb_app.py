@@ -294,6 +294,41 @@ def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_ke
     assert create_app.call_args.kwargs["index_mode"] == "hybrid"
 
 
+def test_main_passes_max_concurrent_queries(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["vectordb_app", "--max-concurrent-queries", "7"])
+    create_app = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(vectordb_module, "create_vectordb_app", create_app)
+    monkeypatch.setattr(vectordb_module.uvicorn, "run", MagicMock())
+
+    vectordb_module.main()
+
+    assert create_app.call_args.kwargs["max_concurrent_queries"] == 7
+
+
+def test_create_vectordb_app_uses_default_query_concurrency() -> None:
+    app = _app(FakeVDB())
+
+    with TestClient(app):
+        semaphore = app.state.vectordb_state.query_semaphore
+        assert semaphore._value == vectordb_module.MAX_CONCURRENT_QUERIES
+
+
+def test_create_vectordb_app_uses_configured_query_concurrency() -> None:
+    app = _app(FakeVDB(), max_concurrent_queries=2)
+
+    with TestClient(app):
+        semaphore = app.state.vectordb_state.query_semaphore
+        assert semaphore._value == 2
+
+
+@pytest.mark.parametrize("max_concurrent_queries", [0, -1])
+def test_create_vectordb_app_rejects_non_positive_query_concurrency(
+    max_concurrent_queries: int,
+) -> None:
+    with pytest.raises(ValueError, match="max_concurrent_queries must be positive"):
+        _app(FakeVDB(), max_concurrent_queries=max_concurrent_queries)
+
+
 def test_fake_vdb_completes_collection_http_flow_without_backend_details() -> None:
     backend = FakeVDB()
     app = _app(backend)

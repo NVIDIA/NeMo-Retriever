@@ -140,7 +140,7 @@ class VLLMAgentChatLLM(BaseModel):
                 'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
             ) from e
 
-        apply_vllm_startup_defaults()
+        apply_vllm_startup_defaults(tensor_parallel_size=int(config.tensor_parallel_size))
         _raise_if_cuda_unavailable()
         self._model_path = model_path
         self._max_tokens = int(config.max_tokens)
