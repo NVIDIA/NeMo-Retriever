@@ -212,6 +212,27 @@ titles = GenericGenerationOperator(
 ).run(pd.DataFrame({"style": ["concise"], "document": ["Quarterly results"]}))
 ```
 
+To use a different OpenAI-compatible gateway, set `model` to an `openai/`-prefixed
+model ID and pass the gateway base URL as `api_base`. For example, route through
+[OrcaRouter](https://www.orcarouter.ai) with an `ORCAROUTER_API_KEY` (keys start
+with `sk-orca-`):
+
+```python
+orcarouter_params = TextGenerationParams.from_kwargs(
+    model="openai/orcarouter/auto",
+    api_base="https://api.orcarouter.ai/v1",
+    api_key="os.environ/ORCAROUTER_API_KEY",
+    temperature=0.0,
+    max_tokens=512,
+)
+summaries = SummarizationOperator(orcarouter_params).run(
+    pd.DataFrame({"text": ["A long document to summarize."]})
+)
+```
+
+Any OrcaRouter model ID works in the `openai/`-prefixed form, for example
+`openai/anthropic/claude-sonnet-4.6` or `openai/deepseek/deepseek-v4-pro`.
+
 `SummarizationOperator` defaults to `text`, `summary`, `summary_latency_s`, `summary_model`, and `summary_error`. `GenericGenerationOperator` maps each named prompt placeholder to a physical DataFrame column and derives the metadata column names from `output_column`. Prompt contracts are validated when the operator is constructed, before any provider request runs.
 
 To define another one-request/one-text-result task, subclass `TextGenerationTask`, declare `required_inputs`, and implement `build_request()`. Then construct it from a `TextGenerationOperator` subclass with explicit logical-input-to-DataFrame-column mappings. This abstraction is intentionally text-only; use a separate operator family for embeddings, captioning, tools, streaming, or structured domain results.

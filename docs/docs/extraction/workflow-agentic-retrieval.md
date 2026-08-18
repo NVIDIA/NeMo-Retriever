@@ -72,6 +72,26 @@ agentic:
   request_timeout_s: 1800
 ```
 
+For example, to route the agentic LLM through an OpenAI-compatible gateway such
+as [OrcaRouter](https://www.orcarouter.ai), set `llm_model` to a model on that
+gateway, point `invoke_url` at its chat-completions endpoint, and export the
+gateway key in the service process environment. OrcaRouter uses the
+`ORCAROUTER_API_KEY` environment variable, and its keys start with `sk-orca-`.
+
+```yaml
+agentic:
+  enabled: true
+  llm_model: orcarouter/auto
+  invoke_url: https://api.orcarouter.ai/v1/chat/completions
+  reasoning_effort: high
+  backend_top_k: 20
+  react_max_steps: 50
+  request_timeout_s: 1800
+```
+
+You can use any OrcaRouter model ID as `llm_model`, for example
+`anthropic/claude-sonnet-4.6` or `deepseek/deepseek-v4-pro`.
+
 The VectorDB process owns the LanceDB volume and executes the agentic workflow.
 Start it with matching `--agentic`, `--agentic-llm-model`, and
 `--agentic-invoke-url` options. The LLM and embedding credentials are resolved
