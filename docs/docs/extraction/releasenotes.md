@@ -28,11 +28,13 @@ Highlights for the 26.08 release include:
 ### CLI { #cli }
 
 - Root CLI adds first-class `retriever ingest` and `retriever query` commands with NIM URL flags, batch tuning, and LanceDB overwrite/append controls
+- `retriever query --agentic` runs an LLM-driven ReAct retrieval loop over the same LanceDB table as one-pass retrieval. Local CLI and harness runs default to in-process vLLM (`nemotron-8b`). Remote OpenAI-compatible NIM or NVIDIA-hosted endpoints use `--agentic-invoke-url`. Refer to [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - `retriever ingest` and `retriever query` replace the retired compatibility pipeline command. Other top-level subcommands—including `eval`, `benchmark`, `harness`, and `skill-eval`—are development and experimental
 
 ### Retriever Service and deployment { #retriever-service-and-deployment }
 
-- Retriever Service v2 adds a scalable multi-pod architecture with gateway, process isolation, and VectorDB integration  
+- Retriever Service v2 adds a scalable multi-pod architecture with gateway, process isolation, and VectorDB integration
+- Retriever Service exposes agentic retrieval on `POST /v1/query` with `agentic=true` and an `agentic_query` MCP tool when `agentic.enabled` is true. Service mode requires a remote OpenAI-compatible LLM endpoint. Refer to [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - OpenTelemetry basic support for pipeline and service observability  
 - Expanded air-gapped deployment guidance in [deployment options](deployment-options.md) and the Helm chart README  
 - Helm maps `serviceConfig.nimEndpoints.rerankInvokeUrl` / `rerankModelName` into `nim_endpoints.rerank_invoke_url` / `rerank_model_name`, and auto-wires those fields when `nimOperator.rerankqa.enabled=true`, so `/v1/query` with `rerank=true` works in split topology
@@ -53,7 +55,8 @@ Highlights for the 26.08 release include:
 
 ### Retrieval and RAG { #retrieval-and-rag }
 
-- Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)  
+- Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)
+- Agentic retrieval: an LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 
 ### Vector database { #vector-database }
 
@@ -78,6 +81,7 @@ Highlights for the 26.08 release include:
 ### Documentation { #documentation }
 
 - Documentation aligned to a Helm-first supported path for NIM and service deployment
+- Published [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage
 - Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 
 ## Release Notes for Previous Versions { #previous-versions }
