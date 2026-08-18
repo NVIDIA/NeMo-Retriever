@@ -28,11 +28,14 @@ import httpx
 from fastapi import Request
 from fastapi.responses import Response
 
+from nemo_retriever.service.auth import authorized_scope, caller_fingerprint, gateway_handoff_headers
 from nemo_retriever.service.config import GatewayConfig
 from nemo_retriever.service.services.pipeline_pool import PoolType
 from nemo_retriever.service import tracing as tracing_module
 
 logger = logging.getLogger(__name__)
+
+_HEALTH_CHECK_TIMEOUT_SECONDS = 3.0
 
 
 def _inject_trace_context(headers: dict[str, str]) -> None:
@@ -69,8 +72,16 @@ _PATH_TO_POOL: dict[str, PoolType] = {
 class GatewayProxy:
     """Forwards ingest requests to backend worker Services."""
 
-    def __init__(self, config: GatewayConfig) -> None:
+    def __init__(
+        self,
+        config: GatewayConfig,
+        *,
+        internal_api_token: str | None = None,
+        public_auth_header: str = "Authorization",
+    ) -> None:
         self._config = config
+        self._internal_api_token = (internal_api_token or "").strip()
+        self._public_auth_header = public_auth_header.lower()
         limits = httpx.Limits(
             max_connections=config.max_connections,
             max_keepalive_connections=config.max_connections,
@@ -98,6 +109,30 @@ class GatewayProxy:
             return self._realtime
         return self._batch
 
+    def _forward_headers(self, request: Request) -> dict[str, str]:
+        reserved = {
+            "host",
+            "transfer-encoding",
+            "x-nrl-scope",
+            "x-nrl-internal-token",
+            "x-nrl-gateway-handoff",
+            "x-nrl-authorized-scope",
+            "x-nrl-caller-fingerprint",
+        }
+        if self._internal_api_token:
+            reserved.add(self._public_auth_header)
+        headers = {key: value for key, value in request.headers.items() if key.lower() not in reserved}
+        if not self._internal_api_token:
+            headers["X-NRL-Scope"] = authorized_scope(request)
+        headers.update(
+            gateway_handoff_headers(
+                internal_api_token=self._internal_api_token,
+                scope=authorized_scope(request),
+                caller_fingerprint=caller_fingerprint(request),
+            )
+        )
+        return headers
+
     async def forward(
         self,
         request: Request,
@@ -124,7 +159,7 @@ class GatewayProxy:
                 target_path,
             )
 
-        fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "transfer-encoding")}
+        fwd_headers = self._forward_headers(request)
         if extra_headers:
             fwd_headers.update(extra_headers)
         _inject_trace_context(fwd_headers)
@@ -185,7 +220,7 @@ class GatewayProxy:
         """Forward a GET request to the backend for *pool_type*."""
         client = self._client_for(pool_type)
         backend_label = pool_type.value
-        fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host",)}
+        fwd_headers = self._forward_headers(request)
         _inject_trace_context(fwd_headers)
 
         try:
@@ -210,8 +245,10 @@ class GatewayProxy:
         """Quick health probe against a backend."""
         client = self._client_for(pool_type)
         try:
-            resp = await client.get("/v1/health", timeout=5.0)
-            return {"status": "ok", "code": resp.status_code}
+            resp = await client.get("/v1/health", timeout=_HEALTH_CHECK_TIMEOUT_SECONDS)
+            if 200 <= resp.status_code < 300:
+                return {"status": "ok", "code": resp.status_code}
+            return {"status": "unhealthy", "code": resp.status_code}
         except httpx.HTTPError as exc:
             return {"status": "unreachable", "error": str(exc)}
 
@@ -226,10 +263,19 @@ class GatewayProxy:
 _instance: GatewayProxy | None = None
 
 
-def init_proxy(config: GatewayConfig) -> GatewayProxy:
+def init_proxy(
+    config: GatewayConfig,
+    *,
+    internal_api_token: str | None = None,
+    public_auth_header: str = "Authorization",
+) -> GatewayProxy:
     """Create the global gateway proxy (call once at startup in gateway mode)."""
     global _instance
-    _instance = GatewayProxy(config)
+    _instance = GatewayProxy(
+        config,
+        internal_api_token=internal_api_token,
+        public_auth_header=public_auth_header,
+    )
     return _instance
 
 

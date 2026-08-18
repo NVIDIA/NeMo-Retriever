@@ -9,7 +9,7 @@ mode or profile.
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ \
-  --hybrid \
+  --index-mode hybrid \
   --extract-tables --table-output-format markdown \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
@@ -17,13 +17,14 @@ mode or profile.
 The command writes the default LanceDB table:
 `lancedb/nemo-retriever`. That is the table `retriever query` reads by default.
 Keep `--lancedb-uri` and `--table-name` aligned if you override either one.
-`--hybrid` builds a full-text BM25 index alongside vectors so
-`retriever query --hybrid` can fuse exact-term and vector retrieval.
-`--extract-tables --table-output-format markdown` runs the table-structure model
-so tables are indexed as **markdown with row/column headers**. Without it tables
-default to `pseudo_markdown` — cells flattened into space-separated text, where a
-figure can't be tied to its row+column label, so answers on financial tables pull
-the wrong cell. Always enable it for documents with tables.
+`--index-mode hybrid` builds a full-text BM25 index alongside vectors so
+`retriever query --retrieval-mode hybrid` can fuse exact-term and vector
+retrieval. `--extract-tables --table-output-format markdown` runs the
+table-structure model so tables are indexed as **markdown with row/column
+headers**. Without it tables default to `pseudo_markdown` — cells flattened into
+space-separated text, where a figure can't be tied to its row+column label, so
+answers on financial tables pull the wrong cell. Always enable it for documents
+with tables.
 
 `retriever ingest` is quiet by default. Quiet mode suppresses progress bars,
 HuggingFace download logs, vLLM init noise, Ray worker stdout, and INFO-level
@@ -44,8 +45,8 @@ warm up the index; the first query turn does that naturally.
 ## Other Input Shapes
 
 Use the same `retriever ingest` command. Root ingest auto-detects supported file
-families from extensions; do not pass `--input-type`. Add `--hybrid` when the
-target workflow uses `retriever query --hybrid`.
+families from extensions; do not pass `--input-type`. Add `--index-mode hybrid`
+when the target workflow uses `retriever query --retrieval-mode hybrid`.
 
 Install extras for non-PDF media live in `references/install.md` under
 "Optional extras".

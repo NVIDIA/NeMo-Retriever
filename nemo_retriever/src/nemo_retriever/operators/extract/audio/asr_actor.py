@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -35,27 +36,40 @@ from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.common.params import ASRParams
 
 
-def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Optional[float]:
-    """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
-
-    Local Parakeet returns seconds; the remote NIM client returns milliseconds.
-    A seconds-valued utterance can't exceed the chunk duration — so anything
-    past it must be ms. When the chunk duration is unknown (probe_media
-    couldn't resolve it for some segmented MP4s and chunk_actor.py substitutes
-    0.0), fall back to a value-range check: no legitimate audio segment lasts
-    more than an hour, so anything past 3600 must be ms.
-    """
+def _to_chunk_relative_seconds(value: Any) -> Optional[float]:
+    """Coerce a normalized per-utterance timestamp to seconds."""
     if value is None:
         return None
     try:
         v = float(value)
     except (TypeError, ValueError):
         return None
-    if chunk_duration_secs > 0 and v > chunk_duration_secs:
-        return v / 1000.0
-    if chunk_duration_secs <= 0 and v > 3600:
-        return v / 1000.0
     return v
+
+
+def _validated_chunk_relative_range(
+    start: Any,
+    end: Any,
+    chunk_duration_secs: float,
+) -> Optional[tuple[float, float]]:
+    """Normalize and validate a segment range before exposing it publicly."""
+    start_secs = _to_chunk_relative_seconds(start)
+    end_secs = _to_chunk_relative_seconds(end)
+    if start_secs is None or end_secs is None:
+        return None
+    if not math.isfinite(start_secs) or not math.isfinite(end_secs):
+        return None
+
+    # ASR models can emit a small negative offset for a word at the beginning
+    # of a chunk. Keep public citations inside the chunk/source range.
+    start_secs = max(0.0, start_secs)
+    end_secs = max(0.0, end_secs)
+    if chunk_duration_secs > 0 and math.isfinite(chunk_duration_secs):
+        start_secs = min(start_secs, chunk_duration_secs)
+        end_secs = min(end_secs, chunk_duration_secs)
+    if end_secs <= start_secs:
+        return None
+    return start_secs, end_secs
 
 
 def _use_remote(params: ASRParams) -> bool:
@@ -249,32 +263,59 @@ class _ASRActorBase:
             chunk_start = float(metadata.get("chunk_start_seconds") or 0.0)
         except (TypeError, ValueError):
             chunk_start = 0.0
+        if not math.isfinite(chunk_start) or chunk_start < 0:
+            chunk_start = 0.0
         try:
             chunk_dur = float(duration) if duration is not None else 0.0
         except (TypeError, ValueError):
             chunk_dur = 0.0
+        if not math.isfinite(chunk_dur) or chunk_dur < 0:
+            chunk_dur = 0.0
 
         if self._params.segment_audio and segments:
             out_rows: List[Dict[str, Any]] = []
-            segment_count = len(segments)
-            for segment_index, segment in enumerate(segments):
+            valid_segments: List[tuple[str, float, float]] = []
+            segment_texts: List[str] = []
+            use_unaligned_fallback = False
+            for segment in segments:
                 if not isinstance(segment, dict):
                     continue
                 segment_text = str(segment.get("text") or "").strip()
                 if not segment_text:
                     continue
+                segment_texts.append(segment_text)
+                segment_range = _validated_chunk_relative_range(segment.get("start"), segment.get("end"), chunk_dur)
+                if segment_range is None:
+                    if chunk_dur <= 0:
+                        logger.warning(
+                            "Falling back to an unaligned transcript because segment range "
+                            "start=%r end=%r is invalid and chunk duration is unavailable",
+                            segment.get("start"),
+                            segment.get("end"),
+                        )
+                        use_unaligned_fallback = True
+                        continue
+                    logger.warning(
+                        "Replacing invalid ASR segment range start=%r end=%r " "with chunk bounds",
+                        segment.get("start"),
+                        segment.get("end"),
+                    )
+                    segment_range = (0.0, chunk_dur)
+                valid_segments.append((segment_text, *segment_range))
+
+            if use_unaligned_fallback:
+                transcript = transcript.strip() or " ".join(segment_texts)
+                valid_segments = []
+
+            segment_count = len(valid_segments)
+            for segment_index, (segment_text, seg_s_secs, seg_e_secs) in enumerate(valid_segments):
                 segment_metadata = copy.deepcopy(metadata)
                 segment_metadata["segment_index"] = segment_index
                 segment_metadata["segment_count"] = segment_count
-                seg_s_secs = _to_chunk_relative_seconds(segment.get("start"), chunk_dur)
-                seg_e_secs = _to_chunk_relative_seconds(segment.get("end"), chunk_dur)
-                # Wall-clock span: chunk start + the chunk-relative times the ASR
-                # backend produced. Local Parakeet emits seconds; remote emits
-                # milliseconds — normalized above against the chunk duration.
-                if seg_s_secs is not None:
-                    segment_metadata["segment_start_seconds"] = seg_s_secs + chunk_start
-                if seg_e_secs is not None:
-                    segment_metadata["segment_end_seconds"] = seg_e_secs + chunk_start
+                # Wall-clock span: chunk start + the chunk-relative times the
+                # ASR backend produced. Both paths emit seconds at this point.
+                segment_metadata["segment_start_seconds"] = seg_s_secs + chunk_start
+                segment_metadata["segment_end_seconds"] = seg_e_secs + chunk_start
                 segment_metadata["_content_type"] = "audio"
                 segment_metadata.setdefault("modality", "audio_segment")
                 out_rows.append(
@@ -292,10 +333,14 @@ class _ASRActorBase:
             if out_rows:
                 return out_rows
 
-        # Per-chunk fallback: anchor the row's span to the chunk's wall-clock
-        # window so audio_segment recall still works without per-utterance data.
-        metadata.setdefault("segment_start_seconds", chunk_start)
-        metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        # Per-chunk fallback: publish a wall-clock span only when the chunk
+        # duration is known; otherwise keep the transcript explicitly unaligned.
+        if chunk_dur > 0:
+            metadata.setdefault("segment_start_seconds", chunk_start)
+            metadata.setdefault("segment_end_seconds", chunk_start + chunk_dur)
+        else:
+            metadata.pop("segment_start_seconds", None)
+            metadata.pop("segment_end_seconds", None)
         metadata["_content_type"] = "audio"
         metadata.setdefault("modality", "audio_segment")
         return [

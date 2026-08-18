@@ -41,8 +41,8 @@ on:
         required: false
         type: boolean
         default: false
-      download-llama-tokenizer:
-        description: 'Set Docker build arg DOWNLOAD_LLAMA_TOKENIZER'
+      download-default-tokenizer:
+        description: 'Set Docker build arg DOWNLOAD_DEFAULT_TOKENIZER'
         required: false
         type: boolean
         default: true
@@ -141,9 +141,9 @@ jobs:
             OUTPUT_FLAG="--push"
           fi
 
-          DOWNLOAD_LLAMA="True"
-          if [ "${{ inputs.download-llama-tokenizer }}" != "true" ]; then
-            DOWNLOAD_LLAMA="False"
+          DOWNLOAD_DEFAULT_TOKENIZER="True"
+          if [ "${{ inputs.download-default-tokenizer }}" != "true" ]; then
+            DOWNLOAD_DEFAULT_TOKENIZER="False"
           fi
 
           docker buildx build \
@@ -154,7 +154,7 @@ jobs:
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \
-            --build-arg DOWNLOAD_LLAMA_TOKENIZER=$DOWNLOAD_LLAMA \
+            --build-arg DOWNLOAD_DEFAULT_TOKENIZER=$DOWNLOAD_DEFAULT_TOKENIZER \
             $SECRET_ARG \
             $TAG_ARGS \
             .

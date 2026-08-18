@@ -18,38 +18,53 @@ Credentials
 Per-component API keys (``api_key``) and base URLs (``api_base``) are
 passed directly on ``LiteLLMClient.from_kwargs`` / ``LLMJudge.from_kwargs``
 or via ``Retriever(embed_kwargs={"api_key": ..., "embedding_endpoint": ...})``.  When
-``api_key`` is left ``None`` the shared ``_ParamsModel`` validator
-resolves ``NVIDIA_API_KEY`` / ``NGC_API_KEY`` from the environment.  This
-keeps the common single-provider path a one-liner while still allowing
-multiple independent endpoints to coexist -- each component takes its
-own ``(api_base, api_key, model)`` triple.
+``api_key`` is left ``None``, LiteLLM performs provider-native environment
+lookup. An explicit ``os.environ/VARIABLE_NAME`` value resolves that variable
+immediately before the provider call. Literal keys are supported for local,
+non-persisted execution but graph persistence rejects them.
 
 Public surface contract
 -----------------------
-The names in ``__all__`` below are the frozen public API of this
-module.  External callers should import from ``nemo_retriever.llm``
-rather than reaching into submodules (``llm.clients.litellm``,
-``llm.text_utils``) directly -- those submodule paths are implementation
-details and may be reorganised in future releases without notice.  The
-Protocols + result dataclasses + concrete clients + re-exported params
-models listed here are the supported integration points.
+The one-shot text generation names in ``__all__`` below are a provisional v1
+API. They support synchronous, single-turn text only; tools, streaming,
+multiple choices, and structured domain responses are not supported. Other
+established names retain their existing compatibility commitments. External
+callers should import from ``nemo_retriever.models.llm``
+rather than reaching into submodules (``models.llm.clients.litellm``,
+``models.llm.text_utils``) directly -- those submodule paths are implementation
+details and may be reorganised in future releases without notice.
 """
 
 from nemo_retriever.models.llm.types import (
     AnswerJudge,
     AnswerRequest,
     AnswerResult,
+    GeneratedTextResult,
+    GenerationRequest,
     GenerationResult,
     JudgeResult,
     LLMClient,
     RetrievalResult,
     RetrieverStrategy,
+    TextCompletionClient,
 )
-from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
+from nemo_retriever.common.params.models import (
+    LLMInferenceParams,
+    LLMRemoteClientParams,
+    LLMSamplingOverrides,
+    TextGenerationParams,
+)
+from nemo_retriever.models.llm.tasks import (
+    TextGenerationTask,
+    GenerationTaskError,
+    GenericPromptTask,
+    RagAnswerTask,
+    SummarizeTask,
+)
 
 _LAZY_IMPORTS = {
-    "LiteLLMClient": "nemo_retriever.llm.clients.litellm",
-    "LLMJudge": "nemo_retriever.llm.clients.judge",
+    "LiteLLMClient": "nemo_retriever.models.llm.clients.litellm",
+    "LLMJudge": "nemo_retriever.models.llm.clients.judge",
 }
 
 
@@ -65,18 +80,29 @@ def __getattr__(name: str):
 __all__ = [
     # Protocols
     "AnswerJudge",
+    "TextGenerationTask",
+    "GenerationTaskError",
     "LLMClient",
     "RetrieverStrategy",
+    "TextCompletionClient",
     # Request/result models
     "AnswerRequest",
     "AnswerResult",
+    "GeneratedTextResult",
+    "GenerationRequest",
     "GenerationResult",
     "JudgeResult",
     "RetrievalResult",
+    # Tasks
+    "GenericPromptTask",
+    "RagAnswerTask",
+    "SummarizeTask",
     # Concrete clients (lazy-loaded)
     "LLMJudge",
     "LiteLLMClient",
     # Transport / sampling params (re-exported for ergonomics)
     "LLMInferenceParams",
     "LLMRemoteClientParams",
+    "LLMSamplingOverrides",
+    "TextGenerationParams",
 ]

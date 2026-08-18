@@ -7,4 +7,4 @@ NeMo Retriever Library focuses on document ingestion, embeddings, vector stores,
 **Related**
 
 - [Semantic retrieval](vdbs.md#semantic-retrieval)
-- Framework examples: [Starter kits](starter-kits.md)
+- Framework examples: [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md)

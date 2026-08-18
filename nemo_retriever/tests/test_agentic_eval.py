@@ -36,8 +36,10 @@ class FakeRetriever:
         self.kwargs = kwargs
         self.graph = kwargs.get("graph")
         self.top_k = int(kwargs.get("top_k", 10))
+        self.query_calls = []
 
-    def query(self, query: str, *, top_k: int | None = None):
+    def query(self, query: str, *, top_k: int | None = None, candidate_k: int | None = None):
+        self.query_calls.append({"query": query, "top_k": top_k, "candidate_k": candidate_k})
         if self.graph is not None:
             return self.queries([query], top_k=top_k)[0]
         _ = query
@@ -88,58 +90,86 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
         build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1"]])
 
 
-@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+def _dispatch_chat_fn(react_response, selection_response):
+    """Fake in-process completion callable shared by both agents.
+
+    The ReAct and selection agents share one injected ``chat_completion_fn``, so
+    the fake returns the selection response whenever the selection tool is offered
+    and the ReAct response otherwise.
+    """
+
+    def fn(**kwargs):
+        tool_names = {(tool.get("function") or {}).get("name") for tool in (kwargs.get("tools") or [])}
+        if "log_selected_documents" in tool_names:
+            return selection_response
+        return react_response
+
+    return fn
+
+
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step):
+def test_agentic_retriever_runs_graph_with_wrapped_retriever():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
-    mock_react_step.return_value = _make_tool_call_response(
-        "final_results",
-        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
-    )
-    mock_selection_step.return_value = _make_tool_call_response(
-        "log_selected_documents",
-        {"doc_ids": ["doc_1"], "message": "doc_1 is best"},
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results", {"doc_ids": final_ids, "message": "done", "search_successful": "true"}
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "doc_1 is best"}),
     )
 
-    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
-    result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
+    # In-process path -> callable client backend; inject the fake completion fn.
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+        retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+        result = retriever.retrieve(["0"], ["find doc"])
 
+    assert "local_ingest_embed_backend" not in retriever._retriever.kwargs["embed_kwargs"]
     assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
     assert result["query_id"].tolist() == ["0"] * 10
     assert result["doc_id"].tolist()[0] == "doc_1"
     assert result["rank"].tolist() == list(range(1, 11))
 
 
-@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_honors_top_k(mock_react_step, mock_selection_step):
+def test_agentic_retriever_honors_top_k():
     """cfg.top_k drives the pipeline output count, not the hardcoded default of 10."""
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     final_ids = ["doc_1"] + [f"extra_{i}" for i in range(4)]  # exactly 5
-    mock_react_step.return_value = _make_tool_call_response(
-        "final_results",
-        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
-    )
-    mock_selection_step.return_value = _make_tool_call_response(
-        "log_selected_documents",
-        {"doc_ids": ["doc_1"], "message": "doc_1 is best"},
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results", {"doc_ids": final_ids, "message": "done", "search_successful": "true"}
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "doc_1 is best"}),
     )
 
-    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions", top_k=5)
-    result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", top_k=5)
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
     assert result["rank"].tolist() == list(range(1, 6))  # 5 rows, honoring top_k=5
 
 
-@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_run_agentic_audio_recall_evaluation_computes_metrics(mock_react_step, mock_selection_step, tmp_path):
+def test_agentic_retriever_forwards_candidate_k_per_hop():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=10, candidate_k=20)
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+
+    retriever._retrieve_for_agent("first", 10)
+    retriever._retrieve_for_agent("later", 25)
+
+    assert retriever._retriever.query_calls == [
+        {"query": "first", "top_k": 10, "candidate_k": 20},
+        {"query": "later", "top_k": 25, "candidate_k": 25},
+    ]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_audio_recall_evaluation
 
     query_csv = tmp_path / "queries.csv"
@@ -154,21 +184,20 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(mock_react_step, m
 
     audio_doc_id = "clip	1.000000	3.000000"
     final_ids = [audio_doc_id] + [f"extra_{i}" for i in range(9)]
-    mock_react_step.return_value = _make_tool_call_response(
-        "final_results",
-        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
-    )
-    mock_selection_step.return_value = _make_tool_call_response(
-        "log_selected_documents",
-        {"doc_ids": [audio_doc_id], "message": "clip is best"},
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results", {"doc_ids": final_ids, "message": "done", "search_successful": "true"}
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": [audio_doc_id], "message": "clip is best"}),
     )
 
-    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
-    df_query, result, gold, retrieved, metrics = run_agentic_audio_recall_evaluation(
-        query_csv=query_csv,
-        cfg=cfg,
-        ks=(1, 5, 10),
-    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+        df_query, result, gold, retrieved, metrics = run_agentic_audio_recall_evaluation(
+            query_csv=query_csv,
+            cfg=cfg,
+            ks=(1, 5, 10),
+        )
 
     assert df_query["golden_answer"].tolist() == ["clip	0.000000	4.000000"]
     assert result["doc_id"].tolist()[0] == audio_doc_id
@@ -177,21 +206,57 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(mock_react_step, m
     assert metrics["recall@1"] == 1.0
 
 
-@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_run_agentic_beir_evaluation_loads_queries_and_qrels(mock_react_step, mock_selection_step):
+def test_agentic_retriever_forwards_reranker_endpoint_as_rerank_invoke_url():
+    """A configured reranker endpoint must reach the remote rerank variant.
+
+    ``NemotronRerankActor`` dispatches on ``rerank_invoke_url``; any other key
+    leaves the URL unused and loads the reranker locally instead.
+    """
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="http://localhost:8015",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] == "http://localhost:8015"
+    assert "invoke_url" not in rerank_kwargs
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is True
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_without_reranker_endpoint_uses_local_variant():
+    from nemo_retriever.operators.rerank import NemotronRerankActor
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url=_REMOTE_URL,
+        reranker="nvidia/llama-nemotron-rerank-vl-1b-v2",
+        reranker_endpoint="   ",
+    )
+    rerank_kwargs = AgenticRetriever(cfg, match_mode="pdf_page")._retriever.kwargs["rerank_kwargs"]
+
+    assert rerank_kwargs["rerank_invoke_url"] is None
+    assert NemotronRerankActor.prefers_cpu_variant(rerank_kwargs) is False
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_run_agentic_beir_evaluation_loads_queries_and_qrels():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_beir_evaluation
     from nemo_retriever.tools.recall.beir import BeirDataset
 
     final_ids = ["doc"] + [f"extra_{i}" for i in range(9)]
-    mock_react_step.return_value = _make_tool_call_response(
-        "final_results",
-        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
-    )
-    mock_selection_step.return_value = _make_tool_call_response(
-        "log_selected_documents",
-        {"doc_ids": ["doc"], "message": "doc is best"},
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results", {"doc_ids": final_ids, "message": "done", "search_successful": "true"}
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc"], "message": "doc is best"}),
     )
 
     beir_dataset = BeirDataset(
@@ -200,9 +265,11 @@ def test_run_agentic_beir_evaluation_loads_queries_and_qrels(mock_react_step, mo
         queries=["find doc"],
         qrels={"q1": {"doc": 1}},
     )
-    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
 
-    with patch("nemo_retriever.query.agentic.load_beir_dataset", return_value=beir_dataset) as mock_loader:
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn), patch(
+        "nemo_retriever.query.agentic.load_beir_dataset", return_value=beir_dataset
+    ) as mock_loader:
         df_query, result, qrels, run, metrics = run_agentic_beir_evaluation(
             loader="vidore_hf",
             dataset_name="vidore_v3_finance_en",
@@ -219,28 +286,55 @@ def test_run_agentic_beir_evaluation_loads_queries_and_qrels(mock_react_step, mo
     assert metrics["recall@1"] == 1.0
 
 
-def test_agentic_config_requires_llm_model():
+_REMOTE_URL = "http://localhost/v1/chat/completions"
+
+
+def test_agentic_config_requires_llm_model_on_remote_path():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
+    # A model is required only on the remote (invoke_url) path; in-process runs
+    # default to the local model instead of raising.
     with pytest.raises(ValueError, match="llm_model"):
-        AgenticRetrievalConfig(llm_model="")
+        AgenticRetrievalConfig(llm_model="", invoke_url=_REMOTE_URL)
     # None must not slip through as the literal string "None".
     with pytest.raises(ValueError, match="llm_model"):
-        AgenticRetrievalConfig(llm_model=None)
+        AgenticRetrievalConfig(llm_model=None, invoke_url=_REMOTE_URL)
+
+
+def test_agentic_config_defaults_in_process_model_and_client():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # No invoke_url and no model -> local in-process default with the callable
+    # LLM client.
+    cfg = AgenticRetrievalConfig(llm_model="")
+
+    assert cfg.llm_backend == "in_process"
+    assert cfg.llm_model == "nemotron-8b"
+    assert cfg.llm_client == "callable"
 
 
 def test_agentic_config_rejects_nonpositive_top_k():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="top_k"):
-        AgenticRetrievalConfig(llm_model="m", top_k=0)
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=0)
 
 
 def test_agentic_config_rejects_noninteger_top_k():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="top_k must be an integer"):
-        AgenticRetrievalConfig(llm_model="m", top_k=1.5)
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=1.5)
+
+
+def test_agentic_config_rejects_candidate_k_below_top_k():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(
+        ValueError,
+        match=r"candidate_k \(3\) must be greater than or equal to top_k \(10\)",
+    ):
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=10, candidate_k=3)
 
 
 def test_agentic_config_normalizes_integer_like_values():
@@ -248,33 +342,154 @@ def test_agentic_config_normalizes_integer_like_values():
 
     cfg = AgenticRetrievalConfig(
         llm_model="m",
-        invoke_url="http://localhost/v1/chat/completions",
+        invoke_url=_REMOTE_URL,
         top_k="5.0",
-        backend_top_k="6.0",
         temperature="0.25",
     )
 
     assert cfg.top_k == 5
-    assert cfg.backend_top_k == 6
     assert cfg.temperature == 0.25
 
 
-def test_agentic_config_rejects_backend_top_k_below_target():
+def test_agentic_config_allows_none_temperature():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
-    with pytest.raises(ValueError, match="backend_top_k"):
-        AgenticRetrievalConfig(llm_model="m", backend_top_k=4, top_k=5)
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL)
+
+    assert cfg.temperature is None
 
 
 def test_agentic_config_rejects_nvidia_temperature_above_max():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="between 0.0 and 1.0"):
-        AgenticRetrievalConfig(llm_model="m", temperature=1.5)
+        AgenticRetrievalConfig(
+            llm_model="m",
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            temperature=1.5,
+        )
+
+
+def test_agentic_config_accepts_in_process_temperature_above_nvidia_limit():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # In-process uses the OpenAI-compatible bound (2.0), so a value above the
+    # hosted-NVIDIA 1.0 cap is accepted.
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", temperature=1.5)
+
+    assert cfg.llm_backend == "in_process"
+    assert cfg.temperature == pytest.approx(1.5)
 
 
 def test_agentic_config_rejects_nonfinite_temperature():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     with pytest.raises(ValueError, match="temperature must be finite"):
-        AgenticRetrievalConfig(llm_model="m", temperature=float("nan"))
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, temperature=float("nan"))
+
+
+def test_agentic_config_defaults_client_to_callable():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # Remote transport (invoke_url set), client unset -> callable default. The
+    # same client serves both transports; only the injected completion callable
+    # differs.
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL)
+
+    assert cfg.llm_backend == "openai_compatible"
+    assert cfg.llm_client == "callable"
+
+
+def test_agentic_config_accepts_and_normalizes_known_client():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, llm_client=" litellm ")
+
+    assert cfg.llm_client == "litellm"
+
+
+def test_agentic_config_defaults_callable_client_in_process():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # In-process transport, client unset or explicitly callable -> callable.
+    assert AgenticRetrievalConfig(llm_model="nemotron-8b").llm_client == "callable"
+    assert AgenticRetrievalConfig(llm_model="nemotron-8b", llm_client="callable").llm_client == "callable"
+
+
+def test_agentic_config_rejects_remote_client_without_invoke_url():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # A non-callable client is a remote client and needs invoke_url; no silent
+    # override to callable.
+    with pytest.raises(ValueError, match="in-process agentic runs use the 'callable' LLM client"):
+        AgenticRetrievalConfig(llm_model="nemotron-8b", llm_client="litellm")
+
+
+def test_agentic_config_accepts_callable_client_with_invoke_url():
+    # `callable` spans both transports: it wraps the in-process engine locally and
+    # the shared HTTP client remotely, so pairing it with an invoke_url is valid.
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, llm_client="callable")
+
+    assert cfg.llm_backend == "openai_compatible"
+    assert cfg.llm_client == "callable"
+
+
+def test_agentic_config_rejects_unknown_client():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="llm_client must be one of"):
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, llm_client="bogus")
+
+
+def test_agentic_config_rejects_invalid_local_llm_backend():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="local_llm_backend"):
+        AgenticRetrievalConfig(llm_model="nemotron-8b", local_llm_backend="hf")
+
+
+def test_agentic_config_validates_local_vllm_knobs():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="nemotron-8b",
+        local_gpu_memory_utilization="0.6",
+        local_tensor_parallel_size="2.0",
+        local_max_model_len="8192",
+        local_max_num_seqs="4.0",
+    )
+
+    assert cfg.local_gpu_memory_utilization == pytest.approx(0.6)
+    assert cfg.local_tensor_parallel_size == 2
+    assert cfg.local_max_model_len == 8192
+    assert cfg.local_max_num_seqs == 4
+
+
+def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
+    from nemo_retriever.query.agentic import (
+        AgenticRetrievalConfig,
+        _build_agent_chat_completion_fn,
+    )
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="super-49b",
+        local_tensor_parallel_size=2,
+    )
+
+    with patch(
+        "nemo_retriever.models.create_local_agent_llm",
+        return_value=object(),
+    ) as create_local_llm:
+        _build_agent_chat_completion_fn(cfg)
+
+    create_local_llm.assert_called_once_with(
+        "super-49b",
+        backend="vllm",
+        hf_cache_dir=None,
+        gpu_memory_utilization=0.8,
+        tensor_parallel_size=2,
+        max_model_len=None,
+        max_num_seqs=None,
+    )

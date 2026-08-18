@@ -189,6 +189,7 @@ tags
 /build*/
 dask-worker-space
 data/*
+!data/jp20_query_gt.csv
 docs/source/_lib
 docs/source/_modules
 mlruns/*
@@ -275,3 +276,7 @@ spool/
 
 # Local git worktrees
 .worktrees/
+
+# Local huggingface cache and build directories
+.work*/
+dist*

@@ -21,13 +21,29 @@ export NVIDIA_API_KEY="nvapi-..."
 
 On Windows PowerShell you can use `$env:NVIDIA_API_KEY = "nvapi-..."`.
 
-For a full list of related variables, see [Environment configuration variables](environment-config.md).
+The SDK and CLI do not load a `.env` file automatically. For a full list of related variables and how to source a `.env` file into the shell, refer to [Environment configuration variables](environment-config.md).
+
+When you call hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) with images larger than about 180,000 characters (roughly 180 KB) inline, you also use this key with the [NVCF Asset API](https://docs.api.nvidia.com/cloud-functions/reference/createasset) to upload inputs and reference them by `asset_id`. Refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits) for the workflow and example code.
 
 !!! note
 
     The `NVIDIA_API_KEY` from build.nvidia.com is not the same string as your NGC personal key used for Helm and `nvcr.io` access. Do not substitute one for the other unless your tooling explicitly documents that mapping.
 
-## NGC personal key (Helm and `nvcr.io`)
+## Credential references in persisted graphs { #credential-references-in-persisted-graphs }
+
+Persisted pipeline graphs never contain literal API keys. Configure a graph with an explicit worker-side environment reference such as:
+
+```python
+api_key="os.environ/NVIDIA_API_KEY"
+```
+
+Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` for an OpenAI model. The reference is stored in graph JSON and resolved only when the operator is constructed or invoked on the worker.
+
+Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
+
+For how persisted graphs store credential references, refer to [Persisted graphs are trusted configuration](nemo-retriever-api-reference.md#persisted-graphs-are-trusted-configuration) in the Python API guide.
+
+## NGC personal key (Helm and `nvcr.io`) { #ngc-personal-key }
 
 Many public assets on NGC can be used without authentication. For a Kubernetes deployment, the cluster must still pull NIM and microservice images from `nvcr.io` and may need NGC API access; the Helm chart expects credentials derived from an NGC personal key.
 
@@ -44,7 +60,29 @@ When you create an NGC key, select the following for **Services Included**.
 
 ![Generate Personal Key](images/generate_personal_key.png)
 
+After you copy the key, set it in your environment. The Helm example below reads `$NGC_API_KEY`. If that variable is empty, Helm fails because `ngcImagePullSecret.password` is required when `create=true`.
 
-## Using your NGC key with Helm
+```bash
+export NGC_API_KEY="<ngc-personal-key>"
+```
 
-Configure your key through the chart values described in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md): for example `imagePullSecret.create` / `imagePullSecret.password` for pulls from `nvcr.io`, `nimApiKey` (inline value or `existingSecret`) for the retriever service, and `nims.ngcApiKey` when `nims.enabled=true`. Exact paths are versioned—use the **Secrets** section in that README and [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml) as the source of truth.
+On Windows PowerShell you can use `$env:NGC_API_KEY = "<ngc-personal-key>"`.
+
+## Using your NGC key with Helm { #using-your-ngc-key-with-helm }
+
+Set the chart values in the [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) section of the Helm chart README so the chart renders `ngc-secret` and `ngc-api`:
+
+- `ngcImagePullSecret.create` and `ngcImagePullSecret.password` create the `ngc-secret` dockerconfigjson Secret for pulls from `nvcr.io`.
+- `ngcApiSecret.create` and `ngcApiSecret.password` create the `ngc-api` Secret with `NGC_API_KEY` and `NGC_CLI_API_KEY`. The service container maps `NGC_API_KEY` and `NVIDIA_API_KEY` from the Secret `NGC_API_KEY` key when the Secret exists.
+
+```bash
+helm install retriever ./nemo_retriever/helm \
+  --set ngcImagePullSecret.create=true \
+  --set ngcImagePullSecret.password=$NGC_API_KEY \
+  --set ngcApiSecret.create=true \
+  --set ngcApiSecret.password=$NGC_API_KEY
+```
+
+Helm accepts unknown `--set` paths without error. Paths such as `imagePullSecret`, `nimApiKey`, and `nims.ngcApiKey` do not create either Secret.
+
+For defaults and additional fields, refer to [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml).

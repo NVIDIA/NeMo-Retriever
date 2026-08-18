@@ -66,7 +66,7 @@ jobs:
             --push \
             --target service \
             --build-arg HF_ACCESS_TOKEN=${{ secrets.HF_ACCESS_TOKEN }} \
-            --build-arg DOWNLOAD_LLAMA_TOKENIZER=True \
+            --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True \
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             -t ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ needs.determine-version.outputs.docker-tag }} \
             .

@@ -112,6 +112,34 @@ def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
     assert df["text"].iloc[0].strip()
 
 
+@pytest.mark.parametrize("source_kind", ["file", "bytes"])
+def test_html_chunk_params_encoding_controls_decoding(tmp_path: Path, monkeypatch, source_kind: str):
+    pytest.importorskip("markitdown")
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer",
+        lambda model_id, cache_dir=None: _MockTokenizer(),
+    )
+    expected_text = "Café façade jalapeño año QA_LATIN1_268"
+    html_bytes = f"<html><body><h1>{expected_text}</h1></body></html>".encode("latin-1")
+    path = tmp_path / "latin1.html"
+    path.write_bytes(html_bytes)
+
+    def convert(encoding: str) -> str:
+        params = HtmlChunkParams(max_tokens=512, overlap_tokens=0, encoding=encoding)
+        if source_kind == "file":
+            result = html_file_to_chunks_df(str(path), params=params)
+        else:
+            result = html_bytes_to_chunks_df(html_bytes, str(path), params=params)
+        return result["text"].iloc[0]
+
+    latin1_text = convert("latin-1")
+    utf8_text = convert("utf-8")
+
+    assert "Café façade jalapeño año" in latin1_text
+    assert "Café façade jalapeño año" not in utf8_text
+    assert "jalape�o a�o" in utf8_text
+
+
 def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     monkeypatch.setattr(
@@ -123,7 +151,7 @@ def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(tmp_pa
         text_content = ""
 
     class _EmptyMarkItDown:
-        def convert(self, _source):
+        def convert_stream(self, _source, **_kwargs):
             return _EmptyResult()
 
     monkeypatch.setattr("markitdown.MarkItDown", _EmptyMarkItDown)
@@ -147,7 +175,7 @@ def test_html_to_markdown_fallback_ignores_noncontent_blocks(monkeypatch):
         text_content = ""
 
     class _EmptyMarkItDown:
-        def convert_stream(self, _source):
+        def convert_stream(self, _source, **_kwargs):
             return _EmptyResult()
 
     monkeypatch.setattr("markitdown.MarkItDown", _EmptyMarkItDown)

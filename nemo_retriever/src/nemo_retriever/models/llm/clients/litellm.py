@@ -12,88 +12,37 @@ local vLLM / Ollama servers via a model name prefix convention.
 
 from __future__ import annotations
 
-from copy import deepcopy
 import logging
 import time
 from typing import Any, Optional
 
-from nemo_retriever.models.llm.text_utils import strip_think_tags
-from nemo_retriever.models.llm.types import GenerationResult
-from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
-
-logger = logging.getLogger(__name__)
-
-_RAG_SYSTEM_PROMPT = (
-    "You are a precise question-answering assistant. "
-    "Answer the question using ONLY the information provided in the context below. "
-    "If the context does not contain enough information to answer, say so clearly. "
-    "Be concise and factual."
+from nemo_retriever.common.params.models import (
+    LLMInferenceParams,
+    LLMRemoteClientParams,
+    resolve_environment_reference,
+    validate_llm_extra_params,
+)
+from nemo_retriever.models.llm.tasks.rag_answer import (
+    RagAnswerTask,
+    _build_rag_prompt as _task_build_rag_prompt,
+    _deep_merge_dicts,
+)
+from nemo_retriever.models.llm.types import (
+    GenerationResult,
+    UnsupportedTextResponseError,
 )
 
-_RAG_USER_TEMPLATE = """\
-Context:
-{context}
-
-Question: {query}
-
-Answer:"""
-
-_NO_REASONING_SYSTEM_DIRECTIVE = "/no_think"
-_NO_REASONING_EXTRA_PARAMS = {"chat_template_kwargs": {"enable_thinking": False}}
+logger = logging.getLogger(__name__)
+# Backwards-compatible helper export retained for existing callers.
+_build_rag_prompt = _task_build_rag_prompt
+_NO_AUTH_API_KEY = "no-api-key"
 
 
-def _format_rag_system_prompt(
-    *,
-    rag_system_prompt: Optional[str] = None,
-    rag_system_prompt_prefix: Optional[str] = None,
-) -> str:
-    """Resolve the system prompt used for RAG answer generation."""
-    prompt = (rag_system_prompt if rag_system_prompt is not None else _RAG_SYSTEM_PROMPT).strip()
-    prefix = (rag_system_prompt_prefix or "").strip()
-    if not prefix:
-        return prompt
-    if not prompt:
-        return prefix
-    return f"{prefix}\n{prompt}"
-
-
-def _build_rag_prompt(
-    query: str,
-    chunks: list[str],
-    *,
-    formatted_rag_system_prompt: str,
-) -> list[dict]:
-    """Build the OpenAI-style messages list for a RAG prompt."""
-    context = "\n\n---\n\n".join(chunks) if chunks else "(no context retrieved)"
-    user_content = _RAG_USER_TEMPLATE.format(context=context, query=query)
-    return [
-        {"role": "system", "content": formatted_rag_system_prompt},
-        {"role": "user", "content": user_content},
-    ]
-
-
-def _deep_merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
-    """Return a recursive merge where ``right`` wins without mutating inputs."""
-    merged = deepcopy(left)
-    for key, value in right.items():
-        if isinstance(merged.get(key), dict) and isinstance(value, dict):
-            merged[key] = _deep_merge_dicts(merged[key], value)
-        else:
-            merged[key] = deepcopy(value)
-    return merged
-
-
-def _with_no_reasoning_controls(messages: list[dict]) -> list[dict]:
-    """Add no-reasoning prompt metadata understood by current Nemotron LLM NIMs."""
-    updated = [dict(message) for message in messages]
-    if updated and updated[0].get("role") == "system":
-        content = str(updated[0].get("content") or "").strip()
-        if _NO_REASONING_SYSTEM_DIRECTIVE not in content:
-            content = f"{_NO_REASONING_SYSTEM_DIRECTIVE}\n{content}" if content else _NO_REASONING_SYSTEM_DIRECTIVE
-        updated[0]["content"] = content
-        return updated
-    updated.insert(0, {"role": "system", "content": _NO_REASONING_SYSTEM_DIRECTIVE})
-    return updated
+def _field(value: object, name: str, default: object = None) -> object:
+    """Read a provider response field from either a mapping or an object."""
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
 
 
 class LiteLLMClient:
@@ -110,15 +59,16 @@ class LiteLLMClient:
 
     Configuration is split into two orthogonal Pydantic objects:
 
-    * ``transport``: :class:`~nemo_retriever.params.LLMRemoteClientParams`
+    * ``transport``: :class:`~nemo_retriever.common.params.LLMRemoteClientParams`
       owns provider endpoint, authentication, retry, and timeout.
-    * ``sampling``: :class:`~nemo_retriever.params.LLMInferenceParams`
+    * ``sampling``: :class:`~nemo_retriever.common.params.LLMInferenceParams`
       owns ``temperature``, ``top_p``, and ``max_tokens``.
 
     Use :meth:`from_kwargs` for a flat, backwards-compatible constructor.
     """
 
     _DEFAULT_MODEL: str = "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    supports_concurrent_calls: bool = True
 
     def __init__(
         self,
@@ -132,10 +82,6 @@ class LiteLLMClient:
         # ``max_tokens=1024`` for captioning/summarization workloads; RAG
         # answers routinely exceed that, so the client overrides it.
         self.sampling = sampling if sampling is not None else LLMInferenceParams(temperature=0.0, max_tokens=4096)
-        self._formatted_rag_system_prompt = _format_rag_system_prompt(
-            rag_system_prompt=transport.rag_system_prompt,
-            rag_system_prompt_prefix=transport.rag_system_prompt_prefix,
-        )
 
     @property
     def model(self) -> str:
@@ -149,7 +95,7 @@ class LiteLLMClient:
         model: str = _DEFAULT_MODEL,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: Optional[float] = 0.0,
         top_p: Optional[float] = None,
         max_tokens: int = 4096,
         extra_params: Optional[dict[str, Any]] = None,
@@ -190,6 +136,8 @@ class LiteLLMClient:
         extra_params: Optional[dict[str, Any]] = None,
     ) -> tuple[str, float]:
         """Raw litellm completion call. Returns (content_text, latency_s)."""
+        validate_llm_extra_params(self.transport.extra_params, source="LLMRemoteClientParams.extra_params")
+        validate_llm_extra_params(extra_params, source="GenerationRequest.extra_params")
         import litellm
 
         sampling_kwargs = self.sampling.to_sampling_kwargs()
@@ -205,8 +153,12 @@ class LiteLLMClient:
         }
         if self.transport.api_base:
             call_kwargs["api_base"] = self.transport.api_base
-        if self.transport.api_key:
-            call_kwargs["api_key"] = self.transport.api_key
+        if self.transport._uses_no_api_key("api_key"):
+            call_kwargs["api_key"] = _NO_AUTH_API_KEY
+        elif self.transport.api_key is not None:
+            resolved_api_key = resolve_environment_reference(self.transport.api_key)
+            if resolved_api_key:
+                call_kwargs["api_key"] = resolved_api_key
         call_kwargs.update(_deep_merge_dicts(self.transport.extra_params, extra_params or {}))
 
         t0 = time.monotonic()
@@ -227,7 +179,26 @@ class LiteLLMClient:
                 )
             raise
         latency = time.monotonic() - t0
-        content = (response.choices[0].message.content or "").strip()
+
+        choices = _field(response, "choices")
+        if not isinstance(choices, (list, tuple)) or len(choices) != 1:
+            raise UnsupportedTextResponseError("provider response must contain exactly one choice")
+        choice = choices[0]
+        message = _field(choice, "message")
+        if message is None:
+            raise UnsupportedTextResponseError("provider response choice has no message")
+        if _field(choice, "finish_reason") in {"tool_calls", "function_call"}:
+            raise UnsupportedTextResponseError("tool-call responses are unsupported by the text completion contract")
+        if _field(message, "tool_calls") or _field(message, "function_call"):
+            raise UnsupportedTextResponseError("tool-call responses are unsupported by the text completion contract")
+        if _field(message, "refusal"):
+            raise UnsupportedTextResponseError("refusal responses are unsupported by the text completion contract")
+        if any(_field(message, field_name) is not None for field_name in ("audio", "images", "videos")):
+            raise UnsupportedTextResponseError("non-text response modalities are unsupported")
+        content = _field(message, "content")
+        if not isinstance(content, str):
+            raise UnsupportedTextResponseError("provider response content must be plain text")
+        content = content.strip()
         return content, latency
 
     def generate(
@@ -238,34 +209,18 @@ class LiteLLMClient:
         reasoning_enabled: Optional[bool] = None,
     ) -> GenerationResult:
         """Generate an answer for the given query using retrieved chunks as context."""
-        messages = _build_rag_prompt(
-            query,
-            chunks,
-            formatted_rag_system_prompt=self._formatted_rag_system_prompt,
-        )
-        request_extra_params: dict[str, Any] | None = None
         effective_reasoning_enabled = (
             self.transport.reasoning_enabled if reasoning_enabled is None else reasoning_enabled
         )
-        if not effective_reasoning_enabled:
-            messages = _with_no_reasoning_controls(messages)
-            request_extra_params = _NO_REASONING_EXTRA_PARAMS
-        try:
-            raw_answer, latency = self.complete(messages, extra_params=request_extra_params)
-            answer = strip_think_tags(raw_answer)
-            if not answer:
-                return GenerationResult(
-                    answer="",
-                    latency_s=latency,
-                    model=self.transport.model,
-                    error="thinking_truncated",
-                )
-            return GenerationResult(answer=answer, latency_s=latency, model=self.transport.model)
-        except Exception as exc:
-            logger.debug("Generation failed for model=%s: %s", self.transport.model, exc)
-            return GenerationResult(
-                answer="",
-                latency_s=0.0,
-                model=self.transport.model,
-                error=str(exc),
-            )
+        task = RagAnswerTask(
+            system_prompt=self.transport.rag_system_prompt,
+            system_prompt_prefix=self.transport.rag_system_prompt_prefix,
+            reasoning_enabled=effective_reasoning_enabled,
+        )
+        result = task.execute(self, query=query, chunks=chunks)
+        return GenerationResult(
+            answer=result.text,
+            latency_s=result.latency_s,
+            model=result.model,
+            error=result.error,
+        )

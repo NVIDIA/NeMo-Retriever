@@ -8,10 +8,12 @@ For product-facing examples, prefer these commands:
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
 - `retriever query` - query a local LanceDB table written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
+- `retriever harness run` - run a named, code-owned benchmark.
+- `retriever service` - operate a Retriever service deployment.
 
-`retriever pipeline run` remains available as a development and compatibility
-command for legacy pipeline workflows, evaluation, intermediate artifacts, and
-pipeline-specific debugging. It is not the preferred public ingest interface.
+Format names and internal stages are not root commands. Use `retriever ingest`
+for PDF, HTML, TXT, image, Office, audio, and video inputs; it owns extraction,
+embedding, and index creation as one workflow.
 
 ## Public ingest shape
 
@@ -46,29 +48,26 @@ configuration, local embed backend selection, or local media controls.
 <!-- --8<-- [start:quickstart] -->
 
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
-> `retriever pipeline run` is development / compatibility only.
+> Use `retriever harness run` only for benchmark execution.
 
 ## Quick start
 
 ### Ingest a PDF locally
 
 ```bash
-retriever ingest ./data/multimodal_test.pdf \
-  --method pdfium \
-  --extract-text --extract-tables --extract-charts \
-  --use-table-structure \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+retriever ingest ./data/multimodal_test.pdf
 ```
 
 Then query the default LanceDB table:
 
 ```bash
-retriever query "What is in this document?" \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+retriever query "What is in this document?"
 ```
 
-By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
-reads from the same table.
+By default, local ingest auto-detects supported input formats and writes to
+`lancedb/nemo-retriever`; `retriever query` reads from the same table. Use
+explicit high-level options when a task needs behavior beyond the current ingest
+defaults.
 
 The plain `retriever query` examples below apply to local and batch ingest output
 written to LanceDB. Use `retriever query service` to query a Retriever service.
@@ -109,7 +108,7 @@ export NVIDIA_API_KEY=nvapi-...
 
 retriever ingest ./data/multimodal_test.pdf \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -158,8 +157,16 @@ It must always be greater than or equal to `--top-k`.
 
 Page deduplication and content-type filtering are applied after vector
 retrieval, preserving retriever ranking order and truncating the final output to
-`--top-k`. When querying a local table ingested with an explicit embedding
-model, pass the same `--embed-model-name` to `retriever query`.
+`--top-k`. Local and batch ingest record the canonical embedding model on the
+LanceDB table, and non-service query uses that model automatically. Use
+`--embed-model-name` only as an explicit override or when querying a legacy or
+third-party table without model metadata. Endpoint URLs and provider prefixes
+remain runtime configuration, so continue to pass `--embed-invoke-url` and
+`--embed-model-provider-prefix` when the selected model must be routed remotely.
+For example, a table can store the canonical model
+`nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
+`nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
+are intentionally not persisted on the table.
 
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
@@ -175,18 +182,22 @@ output are not used for content-type matching.
 `--agentic` swaps the single dense pass for an LLM-driven ReAct loop: the agent
 issues several retrieval sub-queries, fuses the candidates, and selects a final
 ranking. It searches the same LanceDB table built by `retriever ingest`, so it is
-a drop-in alternative to standard retrieval — add `--agentic` and name the chat
-model the agent drives with `--agentic-llm-model` (required):
+a drop-in alternative to standard retrieval.
+
+By default, agentic retrieval runs the agent LLM in process with local vLLM and
+`nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU
+host and the local extras installed. Provide `--agentic-invoke-url` when you want
+a custom model or a separately hosted OpenAI-compatible endpoint.
 
 ```bash
+# default local vLLM agent LLM: nemotron-8b
 retriever query "how does the ingestion pipeline handle tables?" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5
+  --agentic
 
-# remote agent + embedding endpoints, fewer reasoning rounds
+# custom/self-hosted model through an OpenAI-compatible endpoint
 retriever query "summarize the deployment options" \
   --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-llm-model custom-remote-model \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --embed-invoke-url http://localhost:8000/v1 \
   --agentic-react-max-steps 5
@@ -196,10 +207,11 @@ Unlike the dense path (which returns text-enriched hits), agentic mode returns
 the agent's ranked document IDs as JSON, each annotated with the source that
 produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
-`--embed-model-name` options as standard retrieval.
+`--embed-model-name` options as standard retrieval. Agentic retrieval uses the
+selected table's model automatically when `--embed-model-name` is omitted.
 
-**How it works.** Each agentic query runs `Query → ReActAgentOperator → (RRF
-fusion) → SelectionAgentOperator → ranked results`:
+**How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
+fusion) -> SelectionAgentOperator -> ranked results`:
 
 - `ReActAgentOperator` runs the per-query ReAct loop; every `retrieve` tool call
   delegates to the standard `Retriever`, so the agent searches the same vector
@@ -211,17 +223,35 @@ fusion) → SelectionAgentOperator → ranked results`:
 
 Agentic-only knobs (apply only with `--agentic`):
 
+- `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
+  provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
+  model ID when `--agentic-invoke-url` is provided.
+- `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
+  `tensor_parallel_size` for the in-process agent LLM. Use `2+` with matching
+  `CUDA_VISIBLE_DEVICES` for multi-GPU local profiles (for example
+  `super-49b`). Ignored when `--agentic-invoke-url` is set. When the first
+  `tensor_parallel_size` CUDA-visible GPUs are not NVLink-connected (typical
+  dual-GPU PCIe workstations), tensor-parallel startup automatically sets
+  `NCCL_NVLS_ENABLE=0` and `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, because NVLink
+  multicast collectives abort vLLM startup there; set either variable yourself
+  to override. Detection is scoped to that TP device group, not the whole host
+  or extra visible GPUs outside the shard.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
-  agent LLM; defaults to the operators' built-in endpoint when omitted.
+  agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
+  to run the in-process local model.
+- `--agentic-llm-client` (optional) — LLM client that builds the agent LLM.
+  Defaults to `callable`. It drives the in-process
+  adapter when `--agentic-invoke-url` is omitted, and the shared chat-completions
+  HTTP client when it is set.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
-  agentic LLM calls.
-- `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
-  per retrieval call.
+  OpenAI-compatible agentic LLM calls; ignored by the local adapter.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
-- `--agentic-temperature` (default `0.0`) — sampling temperature for agentic LLM
-  calls (`0.0` = greedy).
+- `--agentic-temperature` (default: unset) — sampling temperature for agent LLM
+  calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
+  non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
+  endpoints allow up to `1.0`.
 
 <!-- --8<-- [end:quickstart] -->
 
@@ -239,11 +269,14 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
+| `--index-mode` | `dense` | Dense vector index by default; `hybrid` also builds BM25/FTS and `sparse` builds an FTS-only table. |
 | `--method` | planner default | PDF extraction method such as `pdfium` or `nemotron_parse`. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
 | `--caption` | off | Add a captioning stage. |
+| `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights. On a dedicated 80 GB GPU, its local profile reserves `0.95` of GPU memory for vLLM model and KV-cache use. Nano models retain the `0.5` profile default and remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
+| `--caption-gpu-memory-utilization` | model profile | Fraction of a local caption GPU that vLLM can reserve. The Omni BF16 profile defaults to `0.95`; other local caption profiles default to `0.5`. Use this option only with `--caption` and local vLLM captioning. |
 | `--dedup` | off | Add image deduplication before captioning and embedding. |
 | `--text-chunk` | off | Enable token chunking during extraction. |
 | `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
@@ -297,10 +330,91 @@ retriever ingest ./data/pdf_corpus \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-### OCR language mode
+### Dense Nemotron embedding checkpoints
+
+`--embed-model-name` accepts a Hugging Face repository ID or an on-disk
+checkpoint compatible with a supported dense Nemotron text or vision-language
+embedding profile:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name acme/my-finetuned-nemotron-embed
+```
+
+Tested official checkpoints:
+
+- `nvidia/llama-3.2-nv-embedqa-1b-v2`
+- `nvidia/llama-nemotron-embed-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2`
+- `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
+- `nvidia/llama-nv-embed-reasoning-3b`
+- `nvidia/llama-embed-nemotron-8b`
+
+Equivalent local checkpoints and weight-only fine-tunes are supported. A
+compatible checkpoint must be complete and loadable, use
+`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
+pooling with a positive output width. LanceDB infers the schema from the
+produced vectors; the tested official checkpoints use 2048, 3072, and 4096
+dimensions. Query and document prompts are read from
+`config_sentence_transformers.json` when the checkpoint supplies it.
+Fine-tunes that require prefixes other than `query: ` and `passage: ` must
+retain that prompt metadata.
+
+This does not add support for every model in the Nemotron RAG collection,
+including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
+parsing models. Nemotron 3 Embed is also excluded because its Ministral3
+architecture requires a newer Transformers stack than this project currently
+supports. Those models require different dependencies, outputs, modalities,
+or operator contracts.
+
+Unregistered Hub repositories are resolved to an immutable commit and loaded
+with `trust_remote_code=True`; only use repositories you trust. The resolved
+model name and revision are recorded on the LanceDB table and reused by local
+query.
+
+For a compatible ModelOpt checkpoint, including FP8 or NVFP4 variants, select
+vLLM for ingest. Local query detects the ModelOpt configuration and selects
+vLLM automatically:
+
+```bash
+retriever ingest ./data/pdf_corpus \
+  --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
+  --local-ingest-embed-backend vllm
+
+retriever query "What is in this corpus?" \
+  --table-name nemo-retriever
+```
+
+Hugging Face remains the local query backend for non-ModelOpt checkpoints.
+Local directories must contain `config.json`, and their absolute path must be
+available to every Ray worker or service replica that loads the model.
+
+### PDF extraction method
+
+Use `--method` to select how the CLI extracts text from PDF pages. The default
+method is `pdfium`.
+
+- `pdfium` extracts native PDF text. It does not use OCR as a fallback for
+  scanned-page text.
+- `pdfium_hybrid` extracts native PDF text and uses OCR as a fallback for
+  scanned pages.
+- `ocr` uses OCR for PDF page text.
+- `nemotron_parse` uses the Nemotron Parse extraction path.
+
+For example, select hybrid extraction for a PDF that contains scanned pages:
 
 ```bash
 retriever ingest ./data/scanned.pdf \
+  --method pdfium_hybrid
+```
+
+`--ocr-version` and `--ocr-lang` configure the local OCR engine when an enabled
+stage uses OCR. These options do not select a PDF extraction method.
+
+### OCR language mode
+
+```bash
+retriever ingest ./data/multimodal_test.pdf \
   --ocr-version v2 \
   --ocr-lang english
 ```
@@ -327,6 +441,19 @@ retriever ingest ./data/test.pdf \
   --store-images-uri ./processed_docs/images
 ```
 
+For local Hugging Face Omni BF16 captioning, use a dedicated GPU. The default
+profile reserves `0.95` of GPU memory so that vLLM can allocate both the model
+and its KV cache. Override that reservation when your deployment requires it:
+
+```bash
+retriever ingest ./data/test.png \
+  --caption \
+  --caption-gpu-memory-utilization 0.95
+```
+
+An 80 GB requirement for a self-hosted Omni NIM does not by itself establish
+that direct local Hugging Face vLLM inference has sufficient KV-cache capacity.
+
 ## Results and diagnostics
 
 Local and batch ingest report the number of input files and LanceDB rows written:
@@ -344,16 +471,3 @@ Ingested 20 file(s) -> 1940 row(s) through retriever service http://localhost:76
 
 Use `--dry-run` on any ingest mode to inspect the resolved request without
 creating an ingestor or contacting the service.
-
-## Development / compatibility command
-
-Use `retriever pipeline run` only when you need pipeline-specific behavior that
-is intentionally not part of the first-class ingest/query workflow, such as:
-
-- `--save-intermediate` Parquet artifacts.
-- runtime metrics and pipeline reports.
-- eval, recall, harness, or BEIR/QA workflows.
-- legacy compatibility while callers migrate to `retriever ingest` and
-  `retriever query`.
-
-Run `retriever pipeline run --help` for the compatibility command flag list.

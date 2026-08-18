@@ -88,7 +88,7 @@ def enforce_metric_gates(
                 failure_reason="metric_gate_failed",
                 retryable=False,
                 message="; ".join(failures),
-                debug_artifacts=("summary_metrics.json", "results.json"),
+                debug_artifacts=(),
             ),
         )
     return tuple(skipped)

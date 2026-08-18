@@ -141,9 +141,10 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 - **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
 - **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Benchmarking Guide](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/)** - Performance testing and recall evaluation framework
-- **[MIG Deployment](https://docs.nvidia.com/nemo/retriever/extraction/mig-benchmarking/)** - Multi-Instance GPU configurations for Kubernetes
-- **[API Documentation](https://docs.nvidia.com/nemo/retriever/extraction/api/)** - Python client and API reference
+- **[Retriever Harness](nemo_retriever/harness/README.md)** - Repeatable end-to-end ingest and retrieval benchmarks
+- **[Stage Benchmarking](nemo_retriever/docs/cli/benchmarking.md)** - Internal per-stage throughput measurements
+- **[MIG Deployment](nemo_retriever/helm/README.md)** - Multi-Instance GPU configurations for Kubernetes
+- **[API Documentation](docs/docs/extraction/nemo-retriever-api-reference.md)** - Python client and API reference
 
 ## Notices
 
@@ -160,15 +161,19 @@ https://pypi.org/project/pdfservices-sdk/
     [license agreement](https://github.com/adobe/pdfservices-python-sdk?tab=License-1-ov-file) for the
     pdfservices-sdk before enabling this option.
 - **Built With Llama**:
-  - **Description**: The NeMo Retriever ingestion container comes with the `meta-llama/Llama-3.2-1B` tokenizer pre-downloaded so 
-    that the split task can use it for token-based splitting without making a network request. The [Llama 3.2 Community License Agreement](https://huggingface.co/meta-llama/Llama-3.2-1B/blob/main/LICENSE.txt) governs your use of these Llama materials.
-    
-    If you're building the container yourself and want to pre-download this model, you'll first need to set 
-    `DOWNLOAD_LLAMA_TOKENIZER` to `True`. Because this is a gated model, you'll also need to 
-    [request access](https://huggingface.co/meta-llama/Llama-3.2-1B) and set `HF_ACCESS_TOKEN` to your HuggingFace 
-    access token in order to use it.
+  - **Description**: Published NeMo Retriever service images pre-cache the
+    revision-pinned tokenizer for the default embedding model, currently
+    [`nvidia/llama-nemotron-embed-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2),
+    so TXT and HTML splitting does not need network access at runtime. The model
+    is governed by the [NVIDIA Open Model License](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/blob/main/LICENSE)
+    and identifies additional Llama 3.2 terms in its model card.
 
-Before contributing to this project, please review our [Contributor Guide](contributing.md).
+    Source builds opt in to the same pinned tokenizer cache with
+    `--build-arg DOWNLOAD_DEFAULT_TOKENIZER=True`. The default tokenizer
+    repository is not gated, so this download does not require a Hugging Face
+    access token.
+
+Before contributing to this project, please review our [Contributor Guide](CONTRIBUTING.md).
 
 ## Security Considerations
 

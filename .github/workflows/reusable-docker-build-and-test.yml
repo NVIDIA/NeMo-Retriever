@@ -36,8 +36,8 @@ on:
         required: false
         type: boolean
         default: false
-      download-llama-tokenizer:
-        description: 'Set Docker build arg DOWNLOAD_LLAMA_TOKENIZER'
+      download-default-tokenizer:
+        description: 'Set Docker build arg DOWNLOAD_DEFAULT_TOKENIZER'
         required: false
         type: boolean
         default: true
@@ -141,9 +141,9 @@ jobs:
             SECRET_ARG="--secret id=hf_token,src=./scripts/private_local/hf_token.txt"
           fi
 
-          DOWNLOAD_LLAMA="True"
-          if [ "${{ inputs.download-llama-tokenizer }}" != "true" ]; then
-            DOWNLOAD_LLAMA="False"
+          DOWNLOAD_DEFAULT_TOKENIZER="True"
+          if [ "${{ inputs.download-default-tokenizer }}" != "true" ]; then
+            DOWNLOAD_DEFAULT_TOKENIZER="False"
           fi
 
           docker buildx build \
@@ -154,7 +154,7 @@ jobs:
             --build-arg GIT_COMMIT=${GITHUB_SHA} \
             --build-arg BASE_IMG="${{ inputs.base-image }}" \
             --build-arg BASE_IMG_TAG="${{ inputs.base-image-tag }}" \
-            --build-arg DOWNLOAD_LLAMA_TOKENIZER=$DOWNLOAD_LLAMA \
+            --build-arg DOWNLOAD_DEFAULT_TOKENIZER=$DOWNLOAD_DEFAULT_TOKENIZER \
             $SECRET_ARG \
             $TAG_ARGS \
             .
@@ -202,6 +202,47 @@ jobs:
           if [ -z "$IMAGE" ]; then
             echo "Error: no image tag found to run tests (inputs.tags was empty)"
             exit 1
+          fi
+
+          if [ "${{ inputs.download-default-tokenizer }}" = "true" ]; then
+            # Verify the production image before test-only dependencies are
+            # installed. Disabling networking proves both service variants
+            # can use the tokenizer cache populated by the build argument.
+            docker run --rm -i --network none --platform "$PLATFORM" \
+              -e NEMO_RETRIEVER_IMAGE_TARGET="${{ inputs.target }}" \
+              --entrypoint bash "$IMAGE" \
+              -lc 'source /opt/retriever_runtime/bin/activate && python -' <<'PY'
+          import importlib.util
+          import os
+
+          target = os.environ["NEMO_RETRIEVER_IMAGE_TARGET"]
+          assert importlib.util.find_spec("tokenizers") is not None
+          assert importlib.util.find_spec("huggingface_hub") is not None
+          if target == "service":
+              assert importlib.util.find_spec("transformers") is None
+              assert os.environ.get("HF_HUB_OFFLINE") == "1"
+          elif target == "service-gpu":
+              assert os.environ.get("HF_HUB_OFFLINE") != "1"
+
+          from nemo_retriever.common.modality.html.convert import html_bytes_to_chunks_df
+          from nemo_retriever.common.modality.txt.split import (
+              DEFAULT_TOKENIZER_MODEL_ID,
+              txt_bytes_to_chunks_df,
+          )
+          from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer
+
+          tokenizer = load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)
+          assert tokenizer.encode("offline tokenizer smoke test")
+
+          txt = txt_bytes_to_chunks_df(b"offline tokenizer smoke test", "smoke.txt")
+          html = html_bytes_to_chunks_df(
+              b"<html><body><p>offline tokenizer smoke test</p></body></html>",
+              "smoke.html",
+          )
+          assert not txt.empty
+          assert not html.empty
+          print(f"{target} offline TXT/HTML chunking smoke test passed")
+          PY
           fi
 
           if [ "${{ inputs.test-selection }}" != "full" ] && [ "${{ inputs.test-selection }}" != "random" ]; then

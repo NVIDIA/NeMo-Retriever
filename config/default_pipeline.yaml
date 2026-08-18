@@ -225,33 +225,6 @@ stages:
         memory_per_replica_mb: 10000
         limit: 6
 
-  - name: "chart_extractor"
-    type: "stage"
-    phase: 1  # EXTRACTION
-    actor: "nv_ingest.framework.orchestration.ray.stages.extractors.chart_extractor:ChartExtractorStage"
-    config:
-      endpoint_config:
-        yolox_endpoints: [
-          $YOLOX_GRAPHIC_ELEMENTS_GRPC_ENDPOINT|"graphic-elements:8001",
-          $YOLOX_GRAPHIC_ELEMENTS_HTTP_ENDPOINT|""
-        ]
-        yolox_infer_protocol: $YOLOX_GRAPHIC_ELEMENTS_INFER_PROTOCOL|grpc
-        ocr_endpoints: [
-          $OCR_GRPC_ENDPOINT|"ocr:8001",
-          $OCR_HTTP_ENDPOINT|""
-        ]
-        ocr_infer_protocol: $OCR_INFER_PROTOCOL|grpc
-        auth_token: $NGC_API_KEY|$NVIDIA_API_KEY
-    replicas:
-      min_replicas: 0
-      max_replicas:
-        strategy: "memory_thresholding"
-        memory_per_replica_mb: 10000
-      static_replicas:
-        strategy: "memory_static_global_percent"
-        memory_per_replica_mb: 10000
-        limit: 6
-
   # Post-processing / Mutators
   - name: "image_filter"
     type: "stage"
@@ -326,7 +299,7 @@ stages:
     actor: "nv_ingest.framework.orchestration.ray.stages.transforms.image_caption:ImageCaptionTransformStage"
     config:
       api_key: $NGC_API_KEY|$NVIDIA_API_KEY
-      model_name: $VLM_CAPTION_MODEL_NAME|"nvidia/nemotron-nano-12b-v2-vl"
+      model_name: $VLM_CAPTION_MODEL_NAME|"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
       endpoint_url: $VLM_CAPTION_ENDPOINT|"http://vlm:8000/v1/chat/completions"
       prompt: $VLM_CAPTION_PROMPT|"Caption the content of this image:"
       system_prompt: $VLM_CAPTION_SYSTEM_PROMPT|"/no_think"
@@ -474,9 +447,6 @@ edges:
     to: "table_extractor"
     queue_size: 32
   - from: "table_extractor"
-    to: "chart_extractor"
-    queue_size: 32
-  - from: "chart_extractor"
     to: "image_filter"
     queue_size: 32
 
@@ -517,7 +487,6 @@ edges:
 
 # Pipeline Runtime Configuration
 pipeline:
-  disable_dynamic_scaling: $INGEST_DISABLE_DYNAMIC_SCALING|false
   dynamic_memory_threshold: $INGEST_DYNAMIC_MEMORY_THRESHOLD|0.75
   static_memory_threshold: $INGEST_STATIC_MEMORY_THRESHOLD|0.75
   pid_controller:

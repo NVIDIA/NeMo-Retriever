@@ -8,14 +8,23 @@ Re-exports are resolved lazily so that importing an ``operators`` submodule does
 not eagerly pull the compatibility aliases (which keeps package initialization
 free of import cycles during the bucket reorganization).
 """
+
 from __future__ import annotations
 
-__all__ = ["AbstractOperator", "CPUOperator", "GPUOperator", "ExplodeContentActor", "_BatchEmbedActor"]
+__all__ = [
+    "AbstractOperator",
+    "CPUOperator",
+    "GPUOperator",
+    "TextGenerationOperator",
+    "ExplodeContentActor",
+    "_BatchEmbedActor",
+]
 
 _LAZY = {
     "AbstractOperator": "nemo_retriever.operators.abstract_operator",
     "CPUOperator": "nemo_retriever.operators.cpu_operator",
     "GPUOperator": "nemo_retriever.operators.gpu_operator",
+    "TextGenerationOperator": "nemo_retriever.operators.generation",
     "ExplodeContentActor": "nemo_retriever.operators.graph_ops.content_operators",
     "_BatchEmbedActor": "nemo_retriever.operators.embed.operators",
 }

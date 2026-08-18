@@ -16,7 +16,14 @@ from fastapi.testclient import TestClient
 
 from nemo_retriever.models.llm.types import GenerationResult, JudgeResult
 from nemo_retriever.service.app import create_app
-from nemo_retriever.service.config import LLMConfig, LoggingConfig, PipelinePoolConfig, ServiceConfig, VectorDbConfig
+from nemo_retriever.service.config import (
+    AuthConfig,
+    LLMConfig,
+    LoggingConfig,
+    PipelinePoolConfig,
+    ServiceConfig,
+    VectorDbConfig,
+)
 
 
 def test_llm_config_defaults_to_reasoning_enabled_for_external_provider_safety() -> None:
@@ -50,6 +57,7 @@ def app_with_answer_config(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
@@ -137,6 +145,7 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
         {
             "url": "http://vectordb:7671/v1/query",
             "json": {"query": "What generates answers?", "top_k": 2},
+            "headers": {"X-NRL-Scope": "default"},
         }
     ]
     from_kwargs.assert_called_once_with(
@@ -311,6 +320,7 @@ def test_answer_returns_404_when_llm_disabled(monkeypatch: pytest.MonkeyPatch, t
     app = create_app(
         ServiceConfig(
             mode="standalone",
+            auth=AuthConfig(allow_unscoped_dev=True),
             logging=LoggingConfig(file=str(tmp_path / "service.log")),
             pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
             vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
@@ -341,6 +351,7 @@ def test_answer_returns_404_when_vectordb_disabled(monkeypatch: pytest.MonkeyPat
     app = create_app(
         ServiceConfig(
             mode="standalone",
+            auth=AuthConfig(allow_unscoped_dev=True),
             logging=LoggingConfig(file=str(tmp_path / "service.log")),
             pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
             vectordb=VectorDbConfig(enabled=False),

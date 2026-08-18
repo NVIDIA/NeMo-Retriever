@@ -8,17 +8,58 @@ auto-wire the NIM Operator-managed in-cluster Service URL when the
 apps.nvidia.com/v1alpha1 CRDs are present and the corresponding
 `nimOperator.<key>.enabled` flag is true. Each operator-managed Service
 inherits the NIMService resource name, so the mapping is fixed:
-  page_elements                          -> nemotron-page-elements-v3                /v1/infer
-  table_structure                        -> nemotron-table-structure-v1              /v1/infer
-  ocr                                    -> nemotron-ocr-v2                          /v1/infer
+  page_elements                          -> nemotron-page-elements-v3                /v1/page-elements
+  table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
+  ocr                                    -> nemotron-ocr-v2                          /v1/ocr
+  nemotron_parse                         -> nemotron-parse                           /v1/chat/completions
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 */}}
 {{- $ctx := . -}}
-{{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/infer") -}}
-{{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/infer") -}}
-{{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" $ctx.Values.nimOperator.ocr.nimServiceName "configKey" "ocrInvokeUrl" "invokePath" "/v1/infer") -}}
+{{- $auth := $ctx.Values.serviceConfig.auth -}}
+{{- $scopeTokenSecret := $auth.scopeTokenSecret -}}
+{{- $internalAuth := $ctx.Values.serviceConfig.vectordb.internalAuth -}}
+{{- if and $auth.enabled (not $auth.apiToken) (not $scopeTokenSecret.name) -}}
+{{- fail "serviceConfig.auth.enabled=true requires serviceConfig.auth.scopeTokenSecret.name or serviceConfig.auth.apiToken." -}}
+{{- end -}}
+{{- if and (not $auth.enabled) (or $auth.apiToken $scopeTokenSecret.name) -}}
+{{- fail "serviceConfig.auth.apiToken and serviceConfig.auth.scopeTokenSecret.name require serviceConfig.auth.enabled=true." -}}
+{{- end -}}
+{{- if and $auth.apiToken (not $auth.allowInsecureInlineApiToken) -}}
+{{- fail "serviceConfig.auth.apiToken writes a credential to a ConfigMap; set serviceConfig.auth.allowInsecureInlineApiToken=true only for explicit insecure development use, or configure serviceConfig.auth.scopeTokenSecret.name." -}}
+{{- end -}}
+{{- if and $auth.apiToken $scopeTokenSecret.name -}}
+{{- fail "serviceConfig.auth.apiToken and serviceConfig.auth.scopeTokenSecret.name are mutually exclusive." -}}
+{{- end -}}
+{{- if and $scopeTokenSecret.name (not $scopeTokenSecret.key) -}}
+{{- fail "serviceConfig.auth.scopeTokenSecret.name requires serviceConfig.auth.scopeTokenSecret.key." -}}
+{{- end -}}
+{{- if and $internalAuth.enabled (not $internalAuth.existingSecret.name) -}}
+{{- fail "serviceConfig.vectordb.internalAuth.enabled=true requires serviceConfig.vectordb.internalAuth.existingSecret.name." -}}
+{{- end -}}
+{{- if and $internalAuth.enabled (not $internalAuth.existingSecret.key) -}}
+{{- fail "serviceConfig.vectordb.internalAuth.enabled=true requires serviceConfig.vectordb.internalAuth.existingSecret.key." -}}
+{{- end -}}
+{{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/page-elements") -}}
+{{- $tableStructureURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "table_structure" "serviceName" "nemotron-table-structure-v1" "configKey" "tableStructureInvokeUrl" "invokePath" "/v1/table-structure") -}}
+{{- $ocrURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "ocr" "serviceName" $ctx.Values.nimOperator.ocr.nimServiceName "configKey" "ocrInvokeUrl" "invokePath" "/v1/ocr") -}}
+{{- $nemotronParseURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "nemotron_parse" "serviceName" "nemotron-parse" "configKey" "nemotronParseInvokeUrl" "invokePath" "/v1/chat/completions") -}}
+{{- $nemotronParseModel := $ctx.Values.serviceConfig.nimEndpoints.nemotronParseModel | default "" -}}
+{{- /*
+  When the chart auto-wires the operator-managed Parse NIM, derive the
+  matching model id from its SKU. Explicit endpoint/model settings keep
+  their existing precedence, and unknown image names retain the previous
+  URL-only behavior for custom deployments.
+*/}}
+{{- if and (not $nemotronParseModel) (not $ctx.Values.serviceConfig.nimEndpoints.nemotronParseInvokeUrl) $nemotronParseURL -}}
+{{- $parseRepository := $ctx.Values.nimOperator.nemotron_parse.image.repository | default "" -}}
+{{- if regexMatch "(^|/)nemotron-parse-v1\\.2$" $parseRepository -}}
+{{- $nemotronParseModel = "nvidia/nemotron-parse-v1.2" -}}
+{{- else if regexMatch "(^|/)nemotron-parse-v2\\.0$" $parseRepository -}}
+{{- $nemotronParseModel = "nvidia/nemotron-parse-v2.0" -}}
+{{- end -}}
+{{- end -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "vlm_embed" "serviceName" $ctx.Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 {{- $captionURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "nemotron_3_nano_omni_30b_a3b_reasoning" "serviceName" "nemotron-3-nano-omni-30b-a3b-reasoning" "configKey" "captionInvokeUrl" "invokePath" "/v1/chat/completions") -}}
 {{- /*
@@ -52,6 +93,25 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- end -}}
 
 {{- define "nemo-retriever.configBody" -}}
+{{- $rawMaxUploadBytes := .Values.serviceConfig.resources.maxUploadBytes -}}
+{{- $maxUploadBytes := toString $rawMaxUploadBytes -}}
+{{- if kindIs "float64" $rawMaxUploadBytes -}}
+{{- $maxUploadBytes = printf "%.0f" $rawMaxUploadBytes -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]*$" $maxUploadBytes)) (and (kindIs "float64" $rawMaxUploadBytes) (ne $rawMaxUploadBytes (float64 $maxUploadBytes))) -}}
+{{- fail "serviceConfig.resources.maxUploadBytes must be a positive integer" -}}
+{{- end -}}
+{{- $rawSidecarMaxPayloadBytes := .Values.serviceConfig.sidecarStore.maxPayloadBytes -}}
+{{- $sidecarMaxPayloadBytes := toString $rawSidecarMaxPayloadBytes -}}
+{{- if kindIs "float64" $rawSidecarMaxPayloadBytes -}}
+{{- $sidecarMaxPayloadBytes = printf "%.0f" $rawSidecarMaxPayloadBytes -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]*$" $sidecarMaxPayloadBytes)) (and (kindIs "float64" $rawSidecarMaxPayloadBytes) (ne $rawSidecarMaxPayloadBytes (float64 $sidecarMaxPayloadBytes))) -}}
+{{- fail "serviceConfig.sidecarStore.maxPayloadBytes must be a positive integer" -}}
+{{- end -}}
+{{- if gt (int $sidecarMaxPayloadBytes) (int $maxUploadBytes) -}}
+{{- fail "serviceConfig.sidecarStore.maxPayloadBytes must not exceed serviceConfig.resources.maxUploadBytes" -}}
+{{- end -}}
 server:
   host: {{ .Values.serviceConfig.server.host | quote }}
   port: {{ .Values.serviceConfig.server.port }}
@@ -65,8 +125,17 @@ nim_endpoints:
   page_elements_invoke_url: {{ .pageElementsURL | quote }}
   table_structure_invoke_url: {{ .tableStructureURL | quote }}
   ocr_invoke_url: {{ .ocrURL | quote }}
+  nemotron_parse_invoke_url: {{ if .nemotronParseURL }}{{ .nemotronParseURL | quote }}{{ else }}null{{ end }}
+  nemotron_parse_model: {{ if .nemotronParseModel }}{{ .nemotronParseModel | quote }}{{ else }}null{{ end }}
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+{{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
+  embed_model_provider_prefix: {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
+{{- else }}
+  embed_model_provider_prefix: null
+{{- end }}
+  rerank_invoke_url: {{ if .Values.serviceConfig.nimEndpoints.rerankInvokeUrl }}{{ .Values.serviceConfig.nimEndpoints.rerankInvokeUrl | quote }}{{ else }}null{{ end }}
+  rerank_model_name: {{ if .Values.serviceConfig.nimEndpoints.rerankModelName }}{{ .Values.serviceConfig.nimEndpoints.rerankModelName | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
@@ -82,7 +151,6 @@ local_models:
   extract:
     enabled: {{ .Values.serviceConfig.localModels.extract.enabled }}
     use_table_structure: {{ .Values.serviceConfig.localModels.extract.useTableStructure }}
-    use_graphic_elements: {{ .Values.serviceConfig.localModels.extract.useGraphicElements }}
     ocr_version: {{ .Values.serviceConfig.localModels.extract.ocrVersion | quote }}
     ocr_lang: {{ if .Values.serviceConfig.localModels.extract.ocrLang }}{{ .Values.serviceConfig.localModels.extract.ocrLang | quote }}{{ else }}null{{ end }}
   embed:
@@ -98,6 +166,7 @@ mcp:
   path: {{ .Values.serviceConfig.mcp.path | quote }}
   base_url: {{ if .Values.serviceConfig.mcp.baseUrl }}{{ .Values.serviceConfig.mcp.baseUrl | quote }}{{ else }}null{{ end }}
   enable_write_tools: {{ .Values.serviceConfig.mcp.enableWriteTools }}
+  query_methods: {{ .Values.serviceConfig.mcp.queryMethods | default "classic" | quote }}
   max_concurrency: {{ .Values.serviceConfig.mcp.maxConcurrency }}
   request_timeout_s: {{ .Values.serviceConfig.mcp.requestTimeoutS }}
   ingest_timeout_s: {{ .Values.serviceConfig.mcp.ingestTimeoutS }}
@@ -118,19 +187,48 @@ llm:
   rag_system_prompt_prefix: {{ if .llmRagSystemPromptPrefix }}{{ .llmRagSystemPromptPrefix | quote }}{{ else }}null{{ end }}
   reasoning_enabled: {{ .Values.serviceConfig.llm.reasoningEnabled }}
 
+agentic:
+  enabled: {{ .Values.serviceConfig.agentic.enabled }}
+  llm_model: {{ if .Values.serviceConfig.agentic.llmModel }}{{ .Values.serviceConfig.agentic.llmModel | quote }}{{ else }}null{{ end }}
+  invoke_url: {{ if .Values.serviceConfig.agentic.invokeUrl }}{{ .Values.serviceConfig.agentic.invokeUrl | quote }}{{ else }}null{{ end }}
+  reasoning_effort: {{ if .Values.serviceConfig.agentic.reasoningEffort }}{{ .Values.serviceConfig.agentic.reasoningEffort | quote }}{{ else }}null{{ end }}
+  backend_top_k: {{ .Values.serviceConfig.agentic.backendTopK }}
+  react_max_steps: {{ .Values.serviceConfig.agentic.reactMaxSteps }}
+  text_truncation: {{ .Values.serviceConfig.agentic.textTruncation }}
+  temperature: {{ .Values.serviceConfig.agentic.temperature }}
+  request_timeout_s: {{ .Values.serviceConfig.agentic.requestTimeoutS }}
+
 pipeline:
   realtime_workers: {{ .Values.serviceConfig.pipeline.realtimeWorkers }}
   realtime_queue_size: {{ .Values.serviceConfig.pipeline.realtimeQueueSize }}
   batch_workers: {{ .Values.serviceConfig.pipeline.batchWorkers }}
   batch_queue_size: {{ .Values.serviceConfig.pipeline.batchQueueSize }}
 
+work_queue:
+  gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.networkService.port }}"
+  spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
+  spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
+  claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
+  lease_ttl_s: {{ .Values.serviceConfig.workQueue.leaseTtlS }}
+  heartbeat_interval_s: {{ .Values.serviceConfig.workQueue.heartbeatIntervalS }}
+  max_delivery_attempts: {{ .Values.serviceConfig.workQueue.maxDeliveryAttempts }}
+  max_active_leases_realtime: {{ .Values.serviceConfig.workQueue.maxActiveLeases.realtime }}
+  max_active_leases_batch: {{ .Values.serviceConfig.workQueue.maxActiveLeases.batch }}
+
 resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
   max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
   gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
+  max_upload_bytes: {{ $maxUploadBytes }}
+
+sidecar_store:
+  max_payload_bytes: {{ $sidecarMaxPayloadBytes }}
 
 auth:
+  enabled: {{ .Values.serviceConfig.auth.enabled }}
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
+  default_scope: {{ .Values.serviceConfig.auth.defaultScope | quote }}
+  allow_unscoped_dev: {{ .Values.serviceConfig.auth.allowUnscopedDev }}
   header_name: {{ .Values.serviceConfig.auth.headerName | quote }}
   bypass_paths: {{ toJson .Values.serviceConfig.auth.bypassPaths }}
 
@@ -139,7 +237,13 @@ vectordb:
   enabled: true
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
+  index_mode: {{ .Values.serviceConfig.vectordb.indexMode | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+{{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
+  embed_model_provider_prefix: {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
+{{- else }}
+  embed_model_provider_prefix: null
+{{- end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
 vectordb:
@@ -149,6 +253,7 @@ vectordb:
 
 {{- $vectordbSvc := printf "%s-vectordb" (include "nemo-retriever.fullname" .) -}}
 {{- $vectordbPort := ((.Values.topology.vectordb).port | default 7671) -}}
+{{- $gatewaySvc := include "nemo-retriever.fullname" . -}}
 {{- if eq .Values.topology.mode "standalone" }}
 # =========================================================================
 # Standalone mode — single ConfigMap with mode: standalone
@@ -162,15 +267,16 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
 # =========================================================================
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $realtimeSvc := printf "%s-realtime" $fullname -}}
+{{- $gatewaySvc = printf "%s-gateway" $fullname -}}
 {{- $batchSvc := printf "%s-batch" $fullname -}}
-{{- $port := .Values.serviceConfig.server.port -}}
+{{- $port := .Values.networkService.port -}}
 {{- $roles := list "gateway" "realtime" "batch" }}
 {{- range $role := $roles }}
 ---
@@ -190,6 +296,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "gatewaySvc" $gatewaySvc "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "nemotronParseURL" $nemotronParseURL "nemotronParseModel" $nemotronParseModel "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AuthConfig,
     NimEndpointsConfig,
     PipelineOverridesConfig,
     PipelinePoolConfig,
@@ -318,6 +319,7 @@ def app_with_caption(monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkI
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         nim_endpoints=NimEndpointsConfig(
             caption_invoke_url="http://caption.svc/v1",

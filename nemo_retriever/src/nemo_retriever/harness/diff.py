@@ -8,13 +8,33 @@ from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload, HarnessRunError
-from nemo_retriever.harness.json_io import artifact_file, read_json_object
+from nemo_retriever.harness.json_io import read_json_object
 
 
 def _read_summary(path_or_dir: Path) -> tuple[Path, dict[str, Any]]:
     try:
-        summary_path = artifact_file(path_or_dir, "summary_metrics.json")
-        return summary_path, read_json_object(summary_path)
+        path = path_or_dir.expanduser().resolve()
+        if path.is_dir():
+            results_path = path / "results.json"
+            legacy_summary_path = path / "summary_metrics.json"
+        elif path.name == "results.json":
+            results_path = path
+            legacy_summary_path = path.parent / "summary_metrics.json"
+        elif path.name == "summary_metrics.json":
+            results_path = path.parent / "results.json"
+            legacy_summary_path = path
+        else:
+            raise ValueError(f"Expected a run directory, results.json, or summary_metrics.json: {path}")
+
+        if results_path.exists():
+            payload = read_json_object(results_path)
+            summary = payload.get("summary_metrics")
+            if not isinstance(summary, dict):
+                raise ValueError(f"'summary_metrics' must be an object in {results_path}")
+            return results_path, summary
+        if legacy_summary_path.exists():
+            return legacy_summary_path, read_json_object(legacy_summary_path)
+        raise FileNotFoundError(f"No results.json or summary_metrics.json found under {path}")
     except (FileNotFoundError, ValueError) as exc:
         raise HarnessRunError(
             EXIT_INVALID,

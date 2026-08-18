@@ -169,9 +169,18 @@ class Graph:
         Returns a list of leaf outputs (one per leaf node reached).
         """
         resolved = self.resolve_for_local_execution()
+        return resolved.execute_in_place(data, **kwargs)
+
+    def execute_in_place(self, data: Any, **kwargs: Any) -> List[Any]:
+        """Execute this graph as constructed, without resolving or cloning it.
+
+        Archetype operators resolve their delegates lazily, so retaining this
+        graph also retains stateful delegates such as locally loaded models
+        across repeated executions.
+        """
         results: List[Any] = []
-        for root in resolved.roots:
-            resolved._execute_node(root, data, results, **kwargs)
+        for root in self.roots:
+            self._execute_node(root, data, results, **kwargs)
         return results
 
     def resolve(self, resources: Any) -> "Graph":

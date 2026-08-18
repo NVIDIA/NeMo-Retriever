@@ -110,11 +110,11 @@ class TestOperatorErrorReporter:
 
     def test_report_error_collects(self):
         exc = RuntimeError("NIM returned 500")
-        report_error("graphic_elements_ocr_page_elements:ocr", exc, row_index=3)
+        report_error("ocr_page_elements:ocr", exc, row_index=3)
 
         results = drain_errors()
         assert len(results) == 1
-        assert results[0].stage == "graphic_elements_ocr_page_elements:ocr"
+        assert results[0].stage == "ocr_page_elements:ocr"
         assert results[0].exc_type == "RuntimeError"
         assert results[0].message == "NIM returned 500"
         assert results[0].row_index == 3

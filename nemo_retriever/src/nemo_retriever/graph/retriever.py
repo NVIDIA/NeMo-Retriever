@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model, resolve_embed_model_spec
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -115,7 +115,14 @@ class Retriever:
             "embed_inference_batch_size": 32,
             "local_ingest_embed_backend": "hf",
         }
-        merged = {**base, **dict(self.embed_kwargs or {}), **dict(extra or {})}
+        overrides = {**dict(self.embed_kwargs or {}), **dict(extra or {})}
+        merged = {**base, **overrides}
+        endpoint = str(merged.get("embedding_endpoint") or merged.get("embed_invoke_url") or "").strip()
+        if self.run_mode == "local" and not endpoint and overrides.get("local_ingest_embed_backend") is None:
+            model_id = str(merged.get("embed_model_name") or merged.get("model_name") or "").strip()
+            spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
+            merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
+            merged["embed_model_revision"] = spec.revision
         if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:
             merged["local_ingest_embed_backend"] = normalize_backend(
                 str(merged["local_ingest_embed_backend"]),
@@ -202,16 +209,22 @@ class Retriever:
         # with the embedded rows produced from ``df``. If this query graph grows
         # distributed/shuffled stages, carry row-local query text or IDs instead.
         graph = self._get_graph(embed_extra=embed_extra)
-        if not callable(getattr(graph, "resolve_for_local_execution", None)):
-            raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
 
         exec_kwargs: dict[str, Any] = {
             **filter_retrieval_kwargs(dict(vdb_call_kwargs or {})),
             "top_k": int(retrieval_top_k),
             "query_texts": query_texts,
         }
-        resolved = graph.resolve_for_local_execution()
-        leaves = resolved.execute(df, **exec_kwargs)
+        if self.graph is None:
+            leaves = graph.execute_in_place(df, **exec_kwargs)
+        else:
+            # Preserve resolve-per-query behavior for caller-owned graphs, which
+            # may be mutated between calls.
+            resolve = getattr(graph, "resolve_for_local_execution", None)
+            if not callable(resolve):
+                raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
+            resolved = resolve()
+            leaves = resolved.execute(df, **exec_kwargs)
         if len(leaves) != 1:
             raise RuntimeError(
                 f"Retriever query graph must yield exactly one leaf output; got {len(leaves)}. "
@@ -295,6 +308,38 @@ class Retriever:
             )
 
         return mode, caps, uri, table_name, mode_override != "auto"
+
+    @staticmethod
+    def _embedding_model_from_kwargs(kwargs: Optional[dict[str, Any]]) -> str | None:
+        values = dict(kwargs or {})
+        for key in ("model_name", "embed_model_name"):
+            value = str(values.get(key) or "").strip()
+            if value:
+                return value
+        return None
+
+    def _resolve_embed_kwargs(
+        self,
+        index_model: str | None,
+        runtime_embed_kwargs: Optional[dict[str, Any]],
+        index_revision: str | None = None,
+    ) -> dict[str, Any]:
+        """Choose the query model snapshot: explicit override, index metadata, or default."""
+        resolved = dict(runtime_embed_kwargs or {})
+        runtime_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
+        configured_model = self._embedding_model_from_kwargs(self.embed_kwargs)
+        explicit_model = runtime_model or configured_model
+        model_name = explicit_model or index_model
+        model_name = resolve_embed_model(model_name)
+        resolved["model_name"] = model_name
+        resolved["embed_model_name"] = model_name
+        if runtime_model and "embed_model_revision" not in resolved:
+            resolved_configured = resolve_embed_model(configured_model) if configured_model else None
+            if resolved_configured != model_name:
+                resolved["embed_model_revision"] = None
+        if explicit_model is None and index_revision:
+            resolved.setdefault("embed_model_revision", index_revision)
+        return resolved
 
     def _execute_sparse_lancedb_queries(
         self,
@@ -393,6 +438,16 @@ class Retriever:
         retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 
         vdb_call_kwargs = dict(vdb_kwargs or {})
+        index_model: str | None = None
+        index_revision: str | None = None
+        explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
+            self.embed_kwargs
+        )
+        if self.graph is None and explicit_model is None:
+            metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
+            index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
+            index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
+
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
@@ -422,6 +477,8 @@ class Retriever:
                 vdb_call_kwargs["hybrid"] = False
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
+        if self.graph is None:
+            embed_kwargs = self._resolve_embed_kwargs(index_model, embed_kwargs, index_revision)
 
         raw_hits = self._execute_queries_graph(
             query_texts,

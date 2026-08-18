@@ -5,7 +5,7 @@
 """Unit tests verifying all pipeline actors inherit from AbstractOperator."""
 
 import inspect
-from pathlib import Path
+import json
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -102,33 +102,6 @@ class TestPDFExtractionActor:
         record = result[0]
         assert record["metadata"]["error"]["type"] == "RuntimeError"
 
-    def test_pdfium_output_can_have_empty_text_without_ocr_flag(self):
-        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
-        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
-
-        pdf_path = Path("/raid/data/jp20/1312679.pdf")
-        if not pdf_path.exists():
-            pytest.skip(f"External regression fixture not available: {pdf_path}")
-
-        source_df = pd.DataFrame({"path": [str(pdf_path)], "bytes": [pdf_path.read_bytes()]})
-        split_df = PDFSplitActor()(source_df)
-
-        result = PDFExtractionActor(
-            method="pdfium",
-            extract_text=True,
-            extract_tables=True,
-            extract_charts=True,
-            extract_infographics=True,
-        )(split_df.head(5))
-
-        first_page = result[result["page_number"] == 1].iloc[0]
-        metadata = first_page["metadata"]
-
-        assert first_page["text"] == ""
-        assert metadata["has_text"] is False
-        assert metadata["needs_ocr_for_text"] is False
-        assert metadata["error"] is None
-
 
 # ---------------------------------------------------------------------------
 # 3. PageElementDetectionActor
@@ -176,105 +149,6 @@ class TestPageElementDetectionActor:
         result = actor(df)
         assert isinstance(result, pd.DataFrame)
         assert "page_elements_v3" in result.columns
-
-
-# ---------------------------------------------------------------------------
-# 4. GraphicElementsActor
-# ---------------------------------------------------------------------------
-class TestGraphicElementsActor:
-    def _make(self):
-        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
-
-        return GraphicElementsActor(
-            graphic_elements_invoke_url="http://fake",
-            ocr_invoke_url="http://fake",
-        )
-
-    def test_inherits(self):
-        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
-
-        assert issubclass(GraphicElementsActor, AbstractOperator)
-
-    def test_preprocess_passthrough(self):
-        actor = self._make()
-        df = pd.DataFrame({"page_image": ["x"]})
-        pd.testing.assert_frame_equal(actor.preprocess(df), df)
-
-    @patch("nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements")
-    def test_process(self, mock_fn):
-        expected = pd.DataFrame({"chart": [[]]})
-        mock_fn.return_value = expected
-        actor = self._make()
-        result = actor.process(pd.DataFrame({"page_image": ["x"]}))
-        mock_fn.assert_called_once()
-        pd.testing.assert_frame_equal(result, expected)
-
-    @patch(
-        "nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements",
-        side_effect=RuntimeError("boom"),
-    )
-    def test_call_error_handling(self, mock_fn):
-        actor = self._make()
-        df = pd.DataFrame({"page_image": ["x"]})
-        result = actor(df)
-        assert isinstance(result, pd.DataFrame)
-        assert "graphic_elements_ocr_v1" in result.columns
-
-
-# ---------------------------------------------------------------------------
-# 4b. GraphicElementsActor (GPU variant) default OCR tests
-# ---------------------------------------------------------------------------
-class TestGraphicElementsGPUActor:
-    def test_init_signature_uses_ocr_version_selector(self):
-        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
-
-        assert set(inspect.signature(GPUActor.__init__).parameters) == {
-            "self",
-            "graphic_elements_invoke_url",
-            "ocr_invoke_url",
-            "invoke_url",
-            "api_key",
-            "request_timeout_s",
-            "remote_max_pool_workers",
-            "remote_max_retries",
-            "remote_max_429_retries",
-            "inference_batch_size",
-            "ocr_version",
-            "ocr_lang",
-        }
-
-    def test_init_with_no_kwargs_defaults_to_local_ocr_v2(self, monkeypatch):
-        import nemo_retriever.models.local as local_models
-        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
-
-        mock_graphic = MagicMock()
-        mock_ocr_v2 = MagicMock()
-        monkeypatch.setitem(local_models.__dict__, "NemotronGraphicElementsV1", mock_graphic)
-        monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
-
-        actor = GPUActor()
-
-        assert actor._graphic_elements_invoke_url == ""
-        assert actor._ocr_invoke_url == ""
-        mock_graphic.assert_called_once_with()
-        mock_ocr_v2.assert_called_once_with(lang="multi")
-        assert actor._nim_client is None
-
-    def test_init_can_explicitly_use_local_ocr_v1(self, monkeypatch):
-        import nemo_retriever.models.local as local_models
-        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
-
-        mock_graphic = MagicMock()
-        mock_ocr_v2 = MagicMock()
-        monkeypatch.setitem(local_models.__dict__, "NemotronGraphicElementsV1", mock_graphic)
-        monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
-
-        actor = GPUActor(ocr_version="v1")
-
-        assert actor._ocr_invoke_url == ""
-        mock_graphic.assert_called_once_with()
-        mock_ocr_v2.assert_called_once_with(lang="v1")
-        assert actor._nim_client is None
 
 
 # ---------------------------------------------------------------------------
@@ -391,9 +265,9 @@ class TestTableStructureGPUActor:
         monkeypatch.setitem(local_models.__dict__, "NemotronTableStructureV1", mock_ts)
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr)
 
-        actor = GPUActor(ocr_invoke_url="http://ocr.example/v1/cv/nvidia/nemotron-ocr-v1")
+        actor = GPUActor(ocr_invoke_url="http://ocr.example/v1/cv/nvidia/nemotron-ocr-v2")
 
-        assert actor._ocr_invoke_url == "http://ocr.example/v1/cv/nvidia/nemotron-ocr-v1"
+        assert actor._ocr_invoke_url == "http://ocr.example/v1/cv/nvidia/nemotron-ocr-v2"
         assert actor._ocr_model is None
         mock_ocr.assert_not_called()
         mock_ts.assert_called_once_with()
@@ -569,9 +443,14 @@ class TestNemotronParseActor:
         assert client.kwargs["model"] == NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
         assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+        assert client.kwargs["repetition_penalty"] == 1.1
 
-    def test_remote_chat_completions_supports_legacy_tool_call_protocol(self):
-        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+    def test_remote_chat_completions_uses_v2_protocol(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import (
+            NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+            NEMOTRON_PARSE_V2_MODEL,
+            nemotron_parse_pages,
+        )
 
         class _FakeNIMClient:
             def __init__(self):
@@ -579,9 +458,7 @@ class TestNemotronParseActor:
 
             def invoke_chat_completions_images(self, **kwargs):
                 self.kwargs = kwargs
-                return [
-                    '[{"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, ' '"text": "Legacy text"}]'
-                ]
+                return ["<x_0><y_0>Chart text<x_1><y_1><class_Chart>"]
 
         client = _FakeNIMClient()
         df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
@@ -589,19 +466,22 @@ class TestNemotronParseActor:
         result = nemotron_parse_pages(
             df,
             invoke_url="http://nemotron-parse:8000/v1/chat/completions",
-            nemotron_parse_model="nvidia/nemotron-parse-v1.1",
-            extract_text=True,
+            nemotron_parse_model=NEMOTRON_PARSE_V2_MODEL,
+            extract_charts=True,
             nim_client=client,
         )
 
-        assert result["text"].tolist() == ["Legacy text"]
-        assert client.kwargs["task_prompt"] is None
+        assert len(result.at[0, "chart"]) == 1
+        assert client.kwargs["model"] == NEMOTRON_PARSE_V2_MODEL
+        assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         assert client.kwargs["extra_body"] == {
-            "max_tokens": 8192,
-            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
+            "max_tokens": 9000,
+            "top_k": 1,
+            "skip_special_tokens": False,
         }
+        assert client.kwargs["repetition_penalty"] == 1.1
 
-    def test_remote_chat_completions_does_not_treat_v1_10_as_legacy(self):
+    def test_remote_chat_completions_uses_tagged_protocol_for_unknown_version(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
 
         class _FakeNIMClient:
@@ -626,6 +506,159 @@ class TestNemotronParseActor:
         assert result["text"].tolist() == ["Future text"]
         assert client.kwargs["task_prompt"] is not None
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+
+    def test_hosted_build_contract_is_image_only_and_routes_nested_tool_json(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                elements = [
+                    {"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, "text": "Hosted text"},
+                    {"type": "Table", "bbox": {"xmin": 1, "ymin": 1, "xmax": 2, "ymax": 2}, "text": "A | B"},
+                    {"type": "Chart", "bbox": {"xmin": 2, "ymin": 2, "xmax": 3, "ymax": 3}, "text": "Chart text"},
+                    {"type": "Picture", "bbox": {"xmin": 3, "ymin": 3, "xmax": 4, "ymax": 4}, "text": "Picture text"},
+                ]
+                return [json.dumps({"result": [elements]})]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            extract_text=True,
+            extract_tables=True,
+            extract_charts=True,
+            extract_infographics=True,
+            nim_client=client,
+        )
+
+        assert client.kwargs["model"] == "nvidia/nemotron-parse"
+        assert client.kwargs["task_prompt"] is None
+        assert client.kwargs["repetition_penalty"] is None
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+        assert result["text"].tolist() == ["Hosted text"]
+        assert len(result.at[0, "table"]) == 1
+        assert len(result.at[0, "chart"]) == 1
+        assert len(result.at[0, "infographic"]) == 1
+
+    @pytest.mark.parametrize(
+        ("endpoint", "model", "expected_model", "expected_profile"),
+        [
+            ("https://integrate.api.nvidia.com/v1/chat/completions", None, "nvidia/nemotron-parse", "hosted_tool_call"),
+            ("http://parse:8000/v1/chat/completions", None, "nvidia/nemotron-parse-v1.2", "v1_2_tagged"),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse",
+                "nvidia/nemotron-parse",
+                "hosted_tool_call",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v2.0",
+                "nvidia/nemotron-parse-v2.0",
+                "v2_0_tagged",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.2",
+                "nvidia/nemotron-parse-v1.2",
+                "v1_2_tagged",
+            ),
+            (
+                "http://parse:8000/v1/chat/completions",
+                "nvidia/nemotron-parse-v1.10",
+                "nvidia/nemotron-parse-v1.10",
+                "v1_2_tagged",
+            ),
+            ("http://parse:8000/v1/chat/completions", "custom/parse", "custom/parse", "v1_2_tagged"),
+        ],
+    )
+    def test_contract_resolution(self, endpoint, model, expected_model, expected_profile):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+        contract = _resolve_nemotron_parse_contract(endpoint, model)
+
+        assert contract.model == expected_model
+        assert contract.profile.value == expected_profile
+
+    def test_contract_resolution_rejects_mixed_endpoints_without_model(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
+
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://parse:8000/v1/chat/completions"
+        with pytest.raises(ValueError, match="cannot mix NVIDIA Build and self-hosted"):
+            _resolve_nemotron_parse_contract(endpoints, None)
+
+        contract = _resolve_nemotron_parse_contract(endpoints, "nvidia/nemotron-parse-v1.2")
+        assert contract.profile.value == "v1_2_tagged"
+
+    def test_forced_v1_2_build_text_rejection_reports_contract_mismatch(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _RejectingNIMClient:
+            def invoke_chat_completions_images(self, **kwargs):
+                raise RuntimeError("Content cannot be a plain string; model does not support text input")
+
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+            nim_client=_RejectingNIMClient(),
+        )
+
+        error = result.at[0, "nemotron_parse_v1_2"]["error"]
+        assert error["type"] == "ValueError"
+        assert "model/contract mismatch" in error["message"]
+        assert "nvidia/nemotron-parse" in error["message"]
+        assert "RuntimeError: Content cannot be a plain string" in error["traceback"]
+        assert "ValueError: Nemotron Parse model/contract mismatch" in error["traceback"]
+
+    def test_forced_v2_build_text_rejection_reports_contract_mismatch(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        class _RejectingNIMClient:
+            def invoke_chat_completions_images(self, **kwargs):
+                raise RuntimeError("Content cannot be a plain string; model does not support text input")
+
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v2.0",
+            nim_client=_RejectingNIMClient(),
+        )
+
+        error = result.at[0, "nemotron_parse_v1_2"]["error"]
+        assert error["type"] == "ValueError"
+        assert "model/contract mismatch" in error["message"]
+        assert "nvidia/nemotron-parse-v2.0" in error["message"]
+        assert "tagged text-control-token contract" in error["message"]
+
+    def test_image_wrapper_can_omit_repetition_penalty(self):
+        from nemo_retriever.models.nim.nim import NIMClient
+
+        client = NIMClient(max_pool_workers=1)
+        try:
+            with patch.object(client, "invoke_chat_completions", return_value=["ok"]) as invoke:
+                result = client.invoke_chat_completions_images(
+                    invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+                    image_b64_list=["aW1hZ2U="],
+                    model="nvidia/nemotron-parse",
+                    repetition_penalty=None,
+                    extra_body={"max_tokens": 8192},
+                )
+            assert result == ["ok"]
+            payload_args = invoke.call_args.kwargs
+            assert payload_args["messages_list"][0][0]["content"] == [
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,aW1hZ2U="}}
+            ]
+            assert payload_args["extra_body"] == {"max_tokens": 8192}
+        finally:
+            client.shutdown()
 
     @patch(
         "nemo_retriever.operators.extract.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom")
@@ -737,7 +770,7 @@ class TestTxtSplitActor:
     def test_preprocess_empty(self):
         actor = self._make()
         result = actor.preprocess(pd.DataFrame())
-        assert list(result.columns) == ["text", "path", "page_number", "metadata"]
+        assert list(result.columns) == ["text", "content", "path", "page_number", "metadata"]
 
     def test_postprocess_passthrough(self):
         actor = self._make()
@@ -761,6 +794,20 @@ class TestTxtSplitActor:
         actor = self._make()
         result = actor(pd.DataFrame({"bytes": [b"hello"], "path": ["/a.txt"]}))
         pd.testing.assert_frame_equal(result, expected)
+
+    @patch(
+        "nemo_retriever.operators.extract.txt.ray_data.text_to_chunks_df",
+        side_effect=RuntimeError("tokenizer failed"),
+    )
+    def test_inline_failure_is_logged_with_source(self, mock_fn, caplog):
+        actor = self._make()
+
+        with caplog.at_level("WARNING", logger="nemo_retriever.operators.extract.txt.ray_data"):
+            result = actor.process(pd.DataFrame({"text": ["hello"], "path": ["inline://00000000"]}))
+
+        assert result.empty
+        record = next(record for record in caplog.records if "inline://00000000" in record.getMessage())
+        assert record.exc_info is not None
 
 
 # ---------------------------------------------------------------------------

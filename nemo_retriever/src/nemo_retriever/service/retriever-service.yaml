@@ -31,12 +31,25 @@ logging:
 # to spread load across replicas.
 nim_endpoints:
   page_elements_invoke_url: null
-  graphic_elements_invoke_url: null
   table_structure_invoke_url: null
   ocr_invoke_url: null
+  # Remote Nemotron Parse chat-completions endpoint and model. Both are
+  # server-owned; service clients select method="nemotron_parse" but cannot
+  # redirect the endpoint or change the deployed model.
+  nemotron_parse_invoke_url: null
+  nemotron_parse_model: null
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null
+  # Optional LiteLLM provider prefix prepended to embed_model_name for
+  # proxies that require provider/model IDs.
+  embed_model_provider_prefix: null
+  # Optional remote reranker used by POST /v1/query with rerank=true. The
+  # endpoint can be an in-cluster NIM, a vLLM server, or another compatible
+  # ranking API. This service config does not deploy or manage that endpoint.
+  rerank_invoke_url: null
+  # Optional server-owned model ID sent to the reranking endpoint.
+  rerank_model_name: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
@@ -63,7 +76,6 @@ local_models:
   extract:
     enabled: true
     use_table_structure: true
-    use_graphic_elements: true
     ocr_version: v2
     ocr_lang: null
   embed:
@@ -73,6 +85,17 @@ local_models:
     gpu_memory_utilization: 0.45
   asr:
     enabled: true
+  # Query-time reranking is loaded lazily in the main service process when a
+  # client sends ``rerank: true``. It is independent of ``local_models.enabled``
+  # because it does not run in the ingestion process pools. Leave this disabled
+  # when using a remote/NIM reranker configured under ``nim_endpoints``.
+  rerank:
+    enabled: false
+    model_name: nvidia/llama-nemotron-rerank-vl-1b-v2
+    backend: vllm
+    gpu_memory_utilization: 0.5
+    max_length: 512
+    batch_size: 32
 
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
 # fields when the Super-49B NIM is enabled.
@@ -91,6 +114,21 @@ llm:
   rag_system_prompt_prefix: null
   reasoning_enabled: true
 
+# Agentic (ReAct) retrieval exposed through POST /v1/query with agentic=true.
+# The agentic_query MCP tool is registered when mcp.query_methods is agentic or all
+# and agentic.enabled is true. Service mode requires a remote OpenAI-compatible
+# invoke_url and llm_model when enabled.
+agentic:
+  enabled: false
+  llm_model: null
+  invoke_url: null
+  reasoning_effort: high
+  backend_top_k: 20
+  react_max_steps: 50
+  text_truncation: 0
+  temperature: 0.0
+  request_timeout_s: 1800.0
+
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
 # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
@@ -100,6 +138,33 @@ pipeline:
   realtime_queue_size: 2048
   batch_workers: 16
   batch_queue_size: 4096
+
+# Split-mode gateway pull scheduler. The gateway owns queue metadata and
+# atomically spools upload bodies; worker execution slots long-poll it.
+work_queue:
+  gateway_url: "http://nemo-retriever-gateway:7670"
+  spool_directory: "/tmp/nemo-retriever-work"
+  spool_limit_bytes: 21474836480
+  claim_timeout_s: 30.0
+  lease_ttl_s: 60.0
+  heartbeat_interval_s: 20.0
+  max_delivery_attempts: 3
+  max_active_leases_realtime: 8
+  max_active_leases_batch: 48
+
+# Dedicated LanceDB pod used by standalone/gateway modes for /v1/query.
+# Workers POST embedding rows to vectordb_url; the gateway proxies queries.
+vectordb:
+  enabled: false
+  lancedb_uri: "/data/vectordb"
+  table_name: "nemo_retriever"
+  embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"
+  embed_model_provider_prefix: null
+  # /v1/query auto-detects retrieval from the table's own indexes: a table with
+  # both a vector column and an FTS/BM25 index runs hybrid, a vector-only table
+  # runs dense. The FTS index must be built at ingestion time; the service never
+  # mutates the table at query time.
+  vectordb_url: "http://nemo-retriever-vectordb:7671"
 
 resources:
   max_memory_mb: null
@@ -115,12 +180,14 @@ gateway:
   timeout_s: 300.0
   max_connections: 100
 
-# Optional bearer-token authentication.  When api_token is set, every
-# request must carry "Authorization: Bearer <token>".
+# Optional bearer-token authentication. When enabled, every request must carry
+# "Authorization: Bearer <token>" unless it is a bypass path.
 auth:
+  enabled: false
   api_token: null
   header_name: "Authorization"
   bypass_paths:
+    - "/v1/live"
     - "/v1/health"
     - "/docs"
     - "/openapi.json"
@@ -135,6 +202,9 @@ mcp:
   # Defaults to loopback on server.port when null.
   base_url: null
   enable_write_tools: true
+  # Which retrieval tools to register: classic | agentic | all.
+  # Agentic tools are omitted when agentic.enabled is false.
+  query_methods: classic
   max_concurrency: 8
   request_timeout_s: 60.0
   ingest_timeout_s: 1800.0

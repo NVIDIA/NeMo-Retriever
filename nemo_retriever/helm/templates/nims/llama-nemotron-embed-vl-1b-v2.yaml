@@ -18,6 +18,10 @@ spec:
       storageClass: {{ .Values.nimOperator.vlm_embed.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.vlm_embed.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.vlm_embed.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.vlm_embed.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.vlm_embed.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService

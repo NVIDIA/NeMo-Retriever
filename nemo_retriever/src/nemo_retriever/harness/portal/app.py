@@ -834,7 +834,7 @@ async def get_run_lancedb_info(run_id: int):
     if not uri:
         return {"available": False, "uri": None, "row_count": 0}
     try:
-        from nemo_retriever.common.vdb.lancedb_read import lancedb_row_count
+        from nemo_retriever.common.vdb.lancedb import lancedb_row_count
 
         count = int(lancedb_row_count(uri, LANCEDB_TABLE))
         return {"available": True, "uri": uri, "row_count": count, "table": LANCEDB_TABLE}
@@ -1111,23 +1111,6 @@ _AVAILABLE_MODELS = [
         ),
         "input_type": "image",
         "output_classes": ["cell", "row", "column"],
-    },
-    {
-        "id": "graphic_elements_v1",
-        "name": "Nemotron Graphic Elements v1",
-        "type": "object-detection",
-        "category": "Document AI",
-        "description": "Detects chart elements: axis titles/labels, legends, markers, value labels.",
-        "input_type": "image",
-        "output_classes": [
-            "chart_title",
-            "x_axis_title",
-            "y_axis_title",
-            "legend_title",
-            "legend_label",
-            "marker_label",
-            "value_label",
-        ],
     },
     {
         "id": "nvidia/NVIDIA-Nemotron-Parse-v1.2",
@@ -1410,22 +1393,6 @@ async def test_detect_model(req: DetectTestRequest):
 
             model = NemotronTableStructureV1()
             label_names = ["cell", "merged_cell", "row", "column"]
-        elif req.model_id == "graphic_elements_v1":
-            from nemo_retriever.models.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
-
-            model = NemotronGraphicElementsV1()
-            label_names = [
-                "chart_title",
-                "x_axis_title",
-                "y_axis_title",
-                "x_tick_label",
-                "y_tick_label",
-                "legend_title",
-                "legend_label",
-                "marker_label",
-                "value_label",
-                "other_label",
-            ]
         else:
             raise HTTPException(status_code=400, detail=f"Unknown detection model: {req.model_id}")
 

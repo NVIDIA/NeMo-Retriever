@@ -12,7 +12,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.common.modality.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
+from nemo_retriever.common.modality.txt.split import (
+    TextChunkParams,
+    split_df,
+    split_text_by_tokens,
+    text_to_chunks_df,
+    txt_bytes_to_chunks_df,
+    txt_file_to_chunks_df,
+)
 
 
 class _MockTokenizer:
@@ -57,8 +64,24 @@ def test_split_text_by_tokens_max_tokens_positive():
         split_text_by_tokens("hello", tokenizer=tokenizer, max_tokens=0)
 
 
+def test_split_df_preserves_source_page_numbers(monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+    source = pd.DataFrame(
+        [
+            {"text": "one two three four", "page_number": 2, "metadata": {}},
+            {"text": "five six seven eight", "page_number": 7, "metadata": {}},
+        ]
+    )
+
+    chunks = split_df(source, max_tokens=2)
+
+    assert chunks["page_number"].tolist() == [2, 2, 7, 7]
+    assert [metadata["chunk_index"] for metadata in chunks["metadata"]] == [0, 1, 0, 1]
+
+
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
-    pytest.importorskip("transformers")
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
     )
@@ -78,10 +101,63 @@ def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
 
 
 def test_txt_file_to_chunks_df_empty_file(tmp_path: Path):
-    pytest.importorskip("transformers")
     f = tmp_path / "empty.txt"
     f.write_text("", encoding="utf-8")
     df = txt_file_to_chunks_df(str(f), params=TextChunkParams(max_tokens=512))
     assert isinstance(df, pd.DataFrame)
-    assert list(df.columns) == ["text", "path", "page_number", "metadata"]
+    assert list(df.columns) == ["text", "content", "path", "page_number", "metadata"]
     assert len(df) == 0
+
+
+def test_text_to_chunks_df_preserves_logical_source_id(monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+
+    df = text_to_chunks_df(
+        "one two three four",
+        "inline://00000000",
+        params=TextChunkParams(max_tokens=2),
+    )
+
+    assert df["text"].tolist() == ["one two", "three four"]
+    assert df["path"].tolist() == ["inline://00000000", "inline://00000000"]
+    assert [metadata["source_path"] for metadata in df["metadata"]] == [
+        "inline://00000000",
+        "inline://00000000",
+    ]
+
+
+def test_txt_bytes_preserves_service_inline_identity_and_utf8_transport(monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+
+    df = txt_bytes_to_chunks_df(
+        "café document".encode("utf-8"),
+        "inline://00000007",
+        params=TextChunkParams(max_tokens=10, encoding="utf-16"),
+    )
+
+    assert df["text"].tolist() == ["café document"]
+    assert df["path"].tolist() == ["inline://00000007"]
+    assert df["metadata"].iloc[0]["source_path"] == "inline://00000007"
+
+
+def test_file_and_decoded_text_helpers_produce_equivalent_chunks(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
+    text = "one two three four five"
+    path = tmp_path / "document.txt"
+    path.write_text(text, encoding="utf-8")
+    params = TextChunkParams(max_tokens=2)
+
+    file_df = txt_file_to_chunks_df(str(path), params=params)
+    inline_df = text_to_chunks_df(text, "inline://00000000", params=params)
+
+    assert file_df["text"].tolist() == inline_df["text"].tolist()
+    assert file_df["page_number"].tolist() == inline_df["page_number"].tolist()
+    assert [metadata["chunk_index"] for metadata in file_df["metadata"]] == [
+        metadata["chunk_index"] for metadata in inline_df["metadata"]
+    ]

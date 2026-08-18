@@ -61,19 +61,23 @@ class SidecarStore:
     The store is intentionally simple — a dict guarded by a lock. The
     expected working set is small (one entry per active ingest batch
     that needs sidecar metadata) and lifetimes are short (default
-    one hour). For larger deployments a Redis-backed implementation
-    can plug in via the same interface.
+    one hour).
     """
 
-    def __init__(self, *, default_ttl_s: float = 3600.0, max_entries: int = 1024) -> None:
+    def __init__(
+        self, *, default_ttl_s: float = 3600.0, max_entries: int = 1024, max_payload_bytes: int = 33_554_432
+    ) -> None:
         if default_ttl_s <= 0:
             raise ValueError("default_ttl_s must be positive")
         if max_entries <= 0:
             raise ValueError("max_entries must be positive")
+        if max_payload_bytes <= 0:
+            raise ValueError("max_payload_bytes must be positive")
         self._entries: dict[str, SidecarEntry] = {}
         self._lock = threading.Lock()
         self._default_ttl_s = default_ttl_s
         self._max_entries = max_entries
+        self._max_payload_bytes = max_payload_bytes
 
     # ── public API ─────────────────────────────────────────────────
 
@@ -92,6 +96,8 @@ class SidecarStore:
         ``sidecar_id`` is a URL-safe 128-bit token (32 hex chars). The
         chance of collision is negligible for any realistic workload.
         """
+        if len(payload) > self._max_payload_bytes:
+            raise ValueError(f"Sidecar payload exceeds memory limit of {self._max_payload_bytes:,} bytes.")
         sidecar_id = secrets.token_urlsafe(16)
         now = time.time()
         ttl = float(ttl_s) if ttl_s is not None else self._default_ttl_s
@@ -179,9 +185,20 @@ class SidecarStore:
                 logger.debug("SidecarStore: sidecar_id=%s consumed and removed", sidecar_id)
         return entry
 
-    def delete(self, sidecar_id: str) -> bool:
+    def delete(self, sidecar_id: str, *, owner_token: Optional[str] = None) -> bool:
         with self._lock:
-            return self._entries.pop(sidecar_id, None) is not None
+            entry = self._entries.get(sidecar_id)
+            if entry is None or (entry.owner_token is not None and owner_token != entry.owner_token):
+                return False
+            self._entries.pop(sidecar_id, None)
+            return True
+
+    def restore(self, entry: SidecarEntry) -> None:
+        """Restore a just-consumed entry after standalone admission rolls back."""
+        if entry.expires_at <= time.time():
+            return
+        with self._lock:
+            self._entries[entry.sidecar_id] = entry
 
     def stats(self) -> dict[str, int | float]:
         now = time.time()
@@ -214,9 +231,18 @@ class SidecarStore:
 _instance: SidecarStore | None = None
 
 
-def init_sidecar_store(*, default_ttl_s: float = 3600.0, max_entries: int = 1024) -> SidecarStore:
+def init_sidecar_store(
+    *,
+    default_ttl_s: float = 3600.0,
+    max_entries: int = 1024,
+    max_payload_bytes: int = 33_554_432,
+) -> SidecarStore:
     global _instance
-    _instance = SidecarStore(default_ttl_s=default_ttl_s, max_entries=max_entries)
+    _instance = SidecarStore(
+        default_ttl_s=default_ttl_s,
+        max_entries=max_entries,
+        max_payload_bytes=max_payload_bytes,
+    )
     logger.info("SidecarStore initialised (ttl=%.0fs max_entries=%d)", default_ttl_s, max_entries)
     return _instance
 

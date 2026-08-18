@@ -17,6 +17,49 @@ class TestVideoFrameParams:
             VideoFrameParams(fps=0)
 
 
+class TestExtractParams:
+    @pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"])
+    def test_supported_extraction_methods_are_valid(self, method: str) -> None:
+        assert ExtractParams(method=method).method == method
+
+    def test_unsupported_extraction_method_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            ExtractParams(method="unsupported")
+
+        error = str(exc_info.value)
+        for method in ("pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"):
+            assert method in error
+
+    def test_extraction_method_schema_describes_supported_and_legacy_values(self) -> None:
+        schema = ExtractParams.model_json_schema()["properties"]["method"]
+
+        assert "PDF extraction supports" in schema["description"]
+        assert "legacy params-driven audio path" in schema["description"]
+
+    def test_parse_specific_configuration_requires_parse_method(self) -> None:
+        for field, value in (
+            ("nemotron_parse_invoke_url", "http://parse:8000/v1/chat/completions"),
+            ("nemotron_parse_model", "nvidia/nemotron-parse"),
+        ):
+            with pytest.raises(ValidationError, match="method='nemotron_parse'"):
+                ExtractParams(**{field: value})
+
+    def test_normal_and_selected_parse_configurations_are_valid(self) -> None:
+        assert ExtractParams().method == "pdfium"
+        assert ExtractParams(invoke_url="http://generic").method == "pdfium"
+        params = ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse",
+        )
+        assert params.method == "nemotron_parse"
+
+    def test_graphic_elements_controls_are_removed(self) -> None:
+        assert "use_graphic_elements" not in ExtractParams.model_fields
+        assert "graphic_elements_invoke_url" not in ExtractParams.model_fields
+        assert "extract_charts" in ExtractParams.model_fields
+
+
 class TestStoreParams:
     def test_storage_options_redacted_from_repr(self) -> None:
         params = StoreParams(storage_options={"key": "AKIA_TEST", "secret": "SECRET_TEST"})

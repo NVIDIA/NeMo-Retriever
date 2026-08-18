@@ -14,7 +14,6 @@ from typing import Any
 from nemo_retriever.operators.extract.caption.caption import CaptionActor
 from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
 from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
-from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.operators.dedup import dedup_images
 from nemo_retriever.graph import Graph, StoreOperator, UDFOperator, WebhookNotifyOperator
 from nemo_retriever.common.modality.content_transforms import (
@@ -32,7 +31,7 @@ from nemo_retriever.operators.extract.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
-from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
 from nemo_retriever.operators.vdb import IngestVdbOperator
@@ -52,6 +51,51 @@ DEFAULT_STORE_CPUS_PER_ACTOR = 0.1
 
 def _batch_tuning(params: Any) -> Any:
     return getattr(params, "batch_tuning", None)
+
+
+def _local_embed_requested(params: Any) -> bool:
+    """Return whether embedding configuration explicitly requires a local actor."""
+    if params is None:
+        return False
+    endpoint = getattr(params, "embed_invoke_url", None) or getattr(params, "embedding_endpoint", None)
+    if str(endpoint or "").strip():
+        return False
+    fields_set = getattr(params, "model_fields_set", set())
+    if "local_ingest_embed_backend" in fields_set:
+        return True
+    gpu_embed = getattr(_batch_tuning(params), "gpu_embed", None)
+    return gpu_embed is not None and float(gpu_embed) > 0
+
+
+def default_concurrency_node_names(
+    extract_params: Any | None,
+    embed_params: Any | None,
+    store_params: Any | None,
+    caption_params: Any | None,
+) -> set[str]:
+    """Return pools whose concurrency came from an unspecified default."""
+    names: set[str] = set()
+    extract_tuning = _batch_tuning(extract_params)
+    if extract_params is not None:
+        worker_fields = {
+            resolve_ocr_archetype(extract_params).__name__: "ocr_workers",
+            PageElementDetectionActor.__name__: "page_elements_workers",
+            TableStructureActor.__name__: "table_structure_workers",
+            PDFExtractionActor.__name__: "pdf_extract_workers",
+            NemotronParseActor.__name__: "nemotron_parse_workers",
+        }
+        names.update(
+            name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
+        )
+    embed_tuning = _batch_tuning(embed_params)
+    if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
+        names.add(_BatchEmbedActor.__name__)
+    store_tuning = _batch_tuning(store_params)
+    if store_params is not None and not _positive(getattr(store_tuning, "store_workers", None)):
+        names.add(StoreOperator.__name__)
+    if caption_params is not None:
+        names.add(CaptionActor.__name__)
+    return names
 
 
 def _positive(value: Any) -> Any:
@@ -91,7 +135,7 @@ def batch_tuning_to_node_overrides(
     PDF extract concurrency is capped so that it cannot exhaust the cluster CPU
     budget when all other persistent actors are running simultaneously.
     """
-    auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.available_gpu_count() == 0)
+    auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
     plan = (
         resolve_requested_plan(
@@ -299,28 +343,6 @@ def batch_tuning_to_node_overrides(
                 plan.table_structure_gpus_per_actor if plan else None,
             )
 
-        # --- Graphic Elements ---
-        graphic_elements_invoke_url = _positive(getattr(extract_params, "graphic_elements_invoke_url", None))
-        ge_bs = plan.graphic_elements_batch_size if plan else None
-        _set(GraphicElementsActor.__name__, "batch_size", ge_bs)
-        if ge_bs:
-            overrides.setdefault(GraphicElementsActor.__name__, {})["target_num_rows_per_block"] = ge_bs
-        ge_concurrency: int = 0
-        if graphic_elements_invoke_url:
-            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 2
-        else:
-            ge_concurrency = (plan.graphic_elements_initial_actors if plan else None) or 0
-        _set(GraphicElementsActor.__name__, "concurrency", ge_concurrency or None)
-        _set(GraphicElementsActor.__name__, "num_cpus", 1)
-        if effective_allow_no_gpu:
-            _force_cpu_only(GraphicElementsActor.__name__)
-        elif not graphic_elements_invoke_url:
-            _set(
-                GraphicElementsActor.__name__,
-                "num_gpus",
-                plan.graphic_elements_gpus_per_actor if plan else None,
-            )
-
         np_bs = _positive(
             getattr(extract_tuning, "nemotron_parse_batch_size", None) if extract_tuning is not None else None
         ) or (plan.nemotron_parse_batch_size if plan else None)
@@ -354,27 +376,6 @@ def batch_tuning_to_node_overrides(
             getattr(extract_tuning, "pdf_extract_workers", None) if extract_tuning is not None else None,
             plan.pdf_extract_tasks if plan else None,
         )
-
-        # Cap PDF extract concurrency so persistent actors for page-elements,
-        # OCR, embed, and caption plus fixed pipeline tasks (DocToPdf,
-        # PDFSplit, UDFOperator(s), ReadBinary) cannot exhaust the cluster
-        # CPU budget.
-        if pdf_extract_tasks is not None and cluster_resources is not None:
-            # Fixed overhead: ReadBinary + DocToPdf + PDFSplit + UDFOperator.
-            # Caption adds CaptionGPUActor + a second UDFOperator.
-            fixed_cpu_overhead = 4 + (2 if caption_params is not None else 0)
-            non_pdf_cpu_overhead = (
-                fixed_cpu_overhead
-                + page_elements_concurrency * page_elements_cpus
-                + ocr_concurrency * ocr_cpus
-                + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
-                + ge_concurrency * 1
-            )
-            pdf_extract_tasks = min(
-                pdf_extract_tasks,
-                max(1, int((cluster_resources.total_cpu_count() - non_pdf_cpu_overhead) // pdf_extract_cpus)),
-            )
 
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
@@ -569,6 +570,7 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="CollapseContentToPageRows",
+                        preserve_pandas_output=True,
                     )
                 else:
                     graph = graph >> UDFOperator(
@@ -581,8 +583,12 @@ def _append_ordered_transform_stages(
                             content_columns=content_columns,
                         ),
                         name="ExplodeContentToRows",
+                        preserve_pandas_output=True,
                     )
-            graph = graph >> _BatchEmbedActor(params=embed_params)
+            graph = graph >> _BatchEmbedActor(
+                params=embed_params,
+                force_local=_local_embed_requested(embed_params),
+            )
 
     if vdb_upload_params is not None:
         graph = graph >> IngestVdbOperator(
@@ -767,17 +773,7 @@ def build_graph(
             and (_positive(getattr(tuning, "nemotron_parse_batch_size", None)) is not None)
         )
 
-        extract_kwargs: dict[str, Any] = {
-            "method": extract_params.method,
-            "dpi": int(extract_params.dpi),
-            "extract_text": extract_params.extract_text,
-            "extract_images": extract_params.extract_images,
-            "extract_tables": extract_params.extract_tables,
-            "extract_charts": extract_params.extract_charts,
-            "extract_infographics": extract_params.extract_infographics,
-            "extract_page_as_image": extract_params.extract_page_as_image,
-            "api_key": extract_params.api_key,
-        }
+        extract_kwargs = build_pdf_extraction_kwargs(extract_params)
 
         if parse_mode:
             # PDF extraction renders pages to images required by Nemotron Parse.
@@ -814,11 +810,10 @@ def build_graph(
                 ocr_kwargs["extract_text"] = True
             if extract_params.extract_tables:
                 ocr_kwargs["extract_tables"] = True
-            if extract_params.extract_charts and not extract_params.use_graphic_elements:
+            if extract_params.extract_charts:
                 ocr_kwargs["extract_charts"] = True
             if extract_params.extract_infographics:
                 ocr_kwargs["extract_infographics"] = True
-            ocr_kwargs["use_graphic_elements"] = extract_params.use_graphic_elements
             ocr_kwargs["use_table_structure"] = extract_params.use_table_structure
             ocr_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
             if getattr(extract_params, "ocr_lang", None) is not None:
@@ -846,40 +841,23 @@ def build_graph(
             if getattr(extract_params, "ocr_lang", None) is not None:
                 table_kwargs["ocr_lang"] = extract_params.ocr_lang
 
-            graphic_kwargs: dict[str, Any] = {}
-            if extract_params.graphic_elements_invoke_url:
-                graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
-            if extract_params.ocr_invoke_url:
-                graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-            if extract_params.api_key:
-                graphic_kwargs["api_key"] = extract_params.api_key
-            graphic_kwargs["ocr_version"] = getattr(extract_params, "ocr_version", "v2")
-            if getattr(extract_params, "ocr_lang", None) is not None:
-                graphic_kwargs["ocr_lang"] = extract_params.ocr_lang
-
             _rr = _nim_remote_http_kwargs(extract_params)
             detect_kwargs.update(_rr)
             ocr_kwargs.update(_rr)
             table_kwargs.update(_rr)
-            graphic_kwargs.update(_rr)
 
             needs_ocr = any(
                 bool(ocr_kwargs.get(key))
                 for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
             )
             page_elements_needed = extract_params.use_page_elements and (
-                (extract_params.use_table_structure and extract_params.extract_tables)
-                or (extract_params.use_graphic_elements and extract_params.extract_charts)
-                or needs_ocr
+                (extract_params.use_table_structure and extract_params.extract_tables) or needs_ocr
             )
             graph = graph >> PDFExtractionActor(**extract_kwargs)
             if page_elements_needed:
                 graph = graph >> PageElementDetectionActor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
                 graph = graph >> TableStructureActor(**table_kwargs)
-            if extract_params.use_graphic_elements and extract_params.extract_charts:
-                graph = graph >> GraphicElementsActor(**graphic_kwargs)
-
             if needs_ocr:
                 ocr_archetype = resolve_ocr_archetype(extract_params)
                 logger.info(
