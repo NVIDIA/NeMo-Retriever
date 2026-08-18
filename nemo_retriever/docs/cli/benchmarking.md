@@ -1,8 +1,9 @@
 # Benchmarking with the Retriever CLI
 
-End-to-end experiments are maintained in the NeMo Retriever Benchmark (NRB)
-repository. The product CLI retains internal stage micro-benchmarks for focused
-development measurements. For product workflows on your own inputs, use
+End-to-end experiments are maintained in the [NeMo Retriever Benchmark (NRB)
+repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+The product CLI retains internal stage micro-benchmarks for focused development
+measurements. For product workflows on your own inputs, use
 `retriever ingest` and `retriever query`.
 
 ## Stage Micro-Benchmarks

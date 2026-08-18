@@ -132,6 +132,7 @@ def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
             "metric_keys": DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": False,
         },
+        release_references=[],
     )
     payload_text = json.dumps(payload)
 
@@ -147,6 +148,19 @@ def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
     assert str(tmp_path) not in payload_text
     assert ["-    physical GPU SKU", "NVIDIA H100 NVL"] in _table_rows(payload["blocks"][3])
     assert ["-    GPUs available to workload", "8"] in _table_rows(payload["blocks"][3])
+
+
+def test_post_slack_accepts_deprecated_reference_file_without_rendering_comparison(tmp_path):
+    session_dir = _write_session(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        ["post-slack", "--reference-file", str(tmp_path / "legacy-reference.json"), "--preview", str(session_dir)],
+    )
+
+    assert result.exit_code == 0
+    assert "reference comparisons are maintained in NRB" in result.stderr
+    assert "reference" not in result.stdout.lower()
 
 
 def test_slack_report_labels_dry_run_without_reporting_pass(tmp_path):

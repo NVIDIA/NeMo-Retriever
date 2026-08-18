@@ -376,6 +376,13 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = False,
+    reference_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--reference-file",
+            help="Deprecated compatibility option; reference comparisons are no longer rendered.",
+        ),
+    ] = None,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -384,6 +391,12 @@ def post_slack_command(
 ) -> None:
     """Render or post existing harness artifacts without running benchmarks."""
     try:
+        if reference_file is not None:
+            typer.echo(
+                "Warning: --reference-file is accepted for compatibility but ignored; "
+                "reference comparisons are maintained in NRB.",
+                err=True,
+            )
         report = load_replay_report(paths)
         slack_config = {
             "title": title,

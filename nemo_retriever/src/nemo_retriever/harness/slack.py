@@ -486,7 +486,10 @@ def _run_display_label(run: HarnessRunReport, repeated_datasets: set[str]) -> st
 def build_slack_payload(
     report: HarnessSessionReport,
     slack_config: dict[str, Any],
+    *,
+    release_references: object | None = None,
 ) -> dict[str, Any]:
+    """Build a Slack payload, accepting the removed reference argument for compatibility."""
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     vidore_v3_runs = _vidore_v3_runs(report.results)
@@ -662,7 +665,8 @@ def post_report_to_slack(
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
+    release_references: object | None = None,
 ) -> dict[str, Any]:
-    payload = build_slack_payload(report, slack_config)
+    payload = build_slack_payload(report, slack_config, release_references=release_references)
     post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload

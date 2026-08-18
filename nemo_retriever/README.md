@@ -832,9 +832,9 @@ After installing the headers, restart the pipeline.
 ## Benchmarking
 
 End-to-end Retriever experiments and benchmark orchestration are maintained in
-the NeMo Retriever Benchmark (NRB) repository. This repository continues to
-provide the library, CLI workflows, service implementation, and Helm chart that
-NRB benchmarks.
+the [NeMo Retriever Benchmark (NRB) repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+This repository continues to provide the library, CLI workflows, service
+implementation, and Helm chart that NRB benchmarks.
 
 ### Ingest image storage
 
