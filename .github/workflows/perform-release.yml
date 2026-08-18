@@ -506,12 +506,12 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Publish announcement to Slack
-        if: ${{ steps.generate-announcement.outputs.created == 'true' }}
+        if: ${{ !inputs.dry-run && steps.generate-announcement.outputs.created == 'true' }}
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
-          payload="$(jq --raw-input --compact-output '{text: .}' "$RUNNER_TEMP/slack-announcement.txt")"
-          curl --fail-with-body --retry 3 --retry-all-errors \
+          payload="$(jq --raw-input --slurp --compact-output '{text: .}' "$RUNNER_TEMP/slack-announcement.txt")"
+          curl --fail-with-body \
             --header 'Content-type: application/json' \
             --data "$payload" \
             "$SLACK_WEBHOOK"
