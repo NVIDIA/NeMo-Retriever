@@ -118,7 +118,7 @@ Extracted objects follow the schema and field descriptions in the [Metadata refe
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 
-Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must use the NVCF Asset API for larger inputs. For limits, `dpi` and `render_mode` tuning, and a step-by-step asset upload example, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must keep inline payloads under that cap. Hosted Page Elements does not accept NVCF Asset API references. For limits, plus `dpi` and `render_mode` tuning, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 Image payload limits are separate from the throughput metrics in the rest of this section.
 
