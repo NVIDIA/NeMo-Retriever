@@ -145,7 +145,10 @@ class VectorDBState:
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
+        max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     ) -> None:
+        if max_concurrent_queries <= 0:
+            raise ValueError("max_concurrent_queries must be positive")
         self.vdb = vdb
         self.ingest_operator = IngestVdbOperator(vdb=vdb)
         self.retrieve_operator = RetrieveVdbOperator(vdb=vdb)
@@ -158,7 +161,7 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
-        self.query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
+        self.query_semaphore = asyncio.Semaphore(max_concurrent_queries)
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
 
@@ -267,6 +270,7 @@ def create_vectordb_app(
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
     internal_api_token: str | None = None,
+    max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     reconciliation_interval_seconds: int = 60,
     expiration_cleanup_enabled: bool = True,
     vdb: VDB | None = None,
@@ -276,6 +280,8 @@ def create_vectordb_app(
     if reconciliation_interval_seconds < 0:
         raise ValueError("reconciliation_interval_seconds must be non-negative")
 
+    if max_concurrent_queries <= 0:
+        raise ValueError("max_concurrent_queries must be positive")
     if index_mode not in {"dense", "hybrid"}:
         raise ValueError("index_mode must be 'dense' or 'hybrid'")
     agentic_config = agentic_config or AgenticConfig()
@@ -303,6 +309,7 @@ def create_vectordb_app(
             hf_cache_dir=hf_cache_dir,
             device=device,
             gpu_memory_utilization=gpu_memory_utilization,
+            max_concurrent_queries=max_concurrent_queries,
         )
         app.state.vectordb_state = state
         if agentic_config.enabled:
@@ -315,7 +322,7 @@ def create_vectordb_app(
         logger.info(
             "VectorDB service started: embed_mode=%s max_concurrent_queries=%d",
             state.embed_mode,
-            MAX_CONCURRENT_QUERIES,
+            max_concurrent_queries,
         )
         if state.embed_mode == "none":
             logger.error(
@@ -834,6 +841,12 @@ def main() -> None:
         help="Lifecycle reconciliation interval; zero disables the local loop.",
     )
     parser.add_argument(
+        "--max-concurrent-queries",
+        type=int,
+        default=MAX_CONCURRENT_QUERIES,
+        help="Maximum number of concurrent non-agentic queries.",
+    )
+    parser.add_argument(
         "--disable-expiration-cleanup",
         action="store_true",
         help="Disable automatic collection expiration cleanup.",
@@ -907,6 +920,7 @@ def main() -> None:
         internal_api_token=args.internal_api_token or None,
         reconciliation_interval_seconds=args.reconciliation_interval_seconds,
         expiration_cleanup_enabled=not args.disable_expiration_cleanup,
+        max_concurrent_queries=args.max_concurrent_queries,
         agentic_config=AgenticConfig(
             enabled=args.agentic,
             llm_model=args.agentic_llm_model or None,

@@ -88,9 +88,11 @@ agentic:
 
 On Kubernetes, the Helm chart maps the same knobs under `serviceConfig.agentic`. Refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
-## Query with REST { #query-with-rest }
+The VectorDB service runs up to four non-agentic queries concurrently by default.
+Set `--max-concurrent-queries` when starting `nemo_retriever.service.vectordb_app`
+to use a different positive limit.
 
-REST clients set the flag on `/v1/query`. Use `format` `hits` (the default). Agentic requests reject `format=evidence`, a query list, and `rerank=true`.
+REST clients set the flag on `/v1/query`:
 
 ```bash
 curl -X POST http://localhost:7670/v1/query \
