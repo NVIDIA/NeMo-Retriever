@@ -368,10 +368,21 @@ def _create_lancedb_results(
         and ``counts`` is a dict containing ``accepted``,
         ``dropped_no_embedding``, ``dropped_bad_length``, and
         ``dropped_no_text`` keys.
+        Also ``empty_embedding``, added by the incomplete-index guard.
+
+    An empty embedding, ``[]``, means the embed stage produced no vector for that
+    row. Such rows are counted as ``empty_embedding`` and make this function
+    raise :class:`RuntimeError` after the loop, so no table is written.
+
+    :meth:`LanceDB.create_index` calls this function twice when ``vector_dim`` is
+    ``None``: pass 1 infers the dimension and its rows are discarded, pass 2
+    filters. The check ignores ``expected_dim``, so it raises in pass 1 and pass 2
+    never runs - which is why the error reports ``expected_dim=None``.
     """
     lancedb_rows: list = []
     accepted = 0
     dropped_no_embedding = 0
+    empty_embedding = 0
     dropped_bad_length = 0
     dropped_no_text = 0
 
@@ -386,6 +397,13 @@ def _create_lancedb_results(
             embedding = metadata.get("embedding")
             if embedding is None:
                 dropped_no_embedding += 1
+                continue
+
+            # ``[]`` is not ``None``, so the branch above misses it. Explicit
+            # isinstance/len, never ``not embedding``, which raises on an array.
+            if isinstance(embedding, (list, tuple)) and len(embedding) == 0:
+                empty_embedding += 1
+                logger.debug("Dropping row with an empty embedding (doc_type=%s)", doc_type)
                 continue
 
             if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
@@ -434,6 +452,7 @@ def _create_lancedb_results(
     counts: dict[str, int] = {
         "accepted": accepted,
         "dropped_no_embedding": dropped_no_embedding,
+        "empty_embedding": empty_embedding,
         "dropped_bad_length": dropped_bad_length,
         "dropped_no_text": dropped_no_text,
     }
@@ -448,6 +467,26 @@ def _create_lancedb_results(
             dropped_bad_length,
             dropped_no_text,
             expected_dim_repr,
+        )
+
+    if empty_embedding:
+        logger.warning(
+            "_create_lancedb_results: empty_embedding=%d",
+            empty_embedding,
+        )
+        total = accepted + dropped_no_embedding + empty_embedding + dropped_bad_length + dropped_no_text
+        raise RuntimeError(
+            "Refusing to build an incomplete index: "
+            f"{empty_embedding} of {total} rows had no embedding. No table is written and "
+            "this run fails; the alternative is an index that is silently short by those "
+            "rows while the run reports success. "
+            f"Counters: empty_embedding={empty_embedding}, no_embedding={dropped_no_embedding}, "
+            f"bad_length={dropped_bad_length}, no_text={dropped_no_text}, "
+            f"expected_dim={expected_dim_int if enforce_length else 'None'}. "
+            "Only empty_embedding caused this failure - the other three are rows filtered "
+            "under the configured policy. This normally means the embed stage failed for "
+            "whole batches: check the embed actor logs for engine initialization or "
+            "out-of-memory errors."
         )
 
     return lancedb_rows, counts

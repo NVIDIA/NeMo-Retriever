@@ -52,6 +52,7 @@ from nemo_retriever.common.api.util.string_processing import (
 )
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+from nemo_retriever.models.embed_errors import LocalEmbedderReturnedNothingError, LocalEmbedderRowsLostError
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,18 @@ def _multimodal_callable_runner(
             tolist = getattr(vecs, "tolist", None)
             vecs_list = tolist() if callable(tolist) else list(vecs)
 
+            # Only rows submitted with an image are owed a vector: the
+            # embedders drop empty entries before inference, and a row with no
+            # image gets ``None`` by contract. Comparing against ``size`` would
+            # false-fire on an image-free chunk.
+            submitted = sum(1 for b64 in images_b64 if b64)
+            if len(vecs_list) != submitted:
+                raise LocalEmbedderRowsLostError(
+                    lost=max(submitted - len(vecs_list), 0),
+                    total=submitted,
+                    embedder=type(embedder).__name__,
+                )
+
             if len(vecs_list) == size:
                 flat_embeddings.extend(vecs_list)
             else:
@@ -233,6 +246,16 @@ def _multimodal_callable_runner(
                 vecs = embedder.embed_text_image(mm_texts, mm_images, batch_size=bs)
                 tolist = getattr(vecs, "tolist", None)
                 mm_vecs_list = tolist() if callable(tolist) else list(vecs)
+                # ``mm_images`` is already image-only, so one vector per entry
+                # is the contract. A short answer means the engine lost rows;
+                # padding them with ``None`` here would hide that, because the
+                # writers ignore ``None``.
+                if len(mm_vecs_list) != len(mm_images):
+                    raise LocalEmbedderRowsLostError(
+                        lost=max(len(mm_images) - len(mm_vecs_list), 0),
+                        total=len(mm_images),
+                        embedder=type(embedder).__name__,
+                    )
 
             # text-only fallback subset
             fb_texts = [t for t, h in zip(texts, has_image) if not h and t.strip()]
@@ -241,6 +264,12 @@ def _multimodal_callable_runner(
                 vecs = embedder.embed(fb_texts, batch_size=bs)
                 tolist = getattr(vecs, "tolist", None)
                 fb_vecs_list = tolist() if callable(tolist) else list(vecs)
+                if len(fb_vecs_list) != len(fb_texts):
+                    raise LocalEmbedderRowsLostError(
+                        lost=max(len(fb_texts) - len(fb_vecs_list), 0),
+                        total=len(fb_texts),
+                        embedder=type(embedder).__name__,
+                    )
 
             # reassemble in original order
             mm_iter = iter(mm_vecs_list)
@@ -567,6 +596,16 @@ def _callable_runner(
             chunk = prompt_batch[i : i + max(1, int(batch_size))]
             vecs = embedder(chunk)
             vecs_list = list(vecs)
+            if not vecs_list:
+                # One row per input is the contract, so no rows at all means
+                # the engine is not serving. Classified as fatal by
+                # ``runtime.embed_text_main_text_embed``. The shipped local
+                # embedders fail earlier, in ``_finalize_vectors``; this is the
+                # backstop for an arbitrary callable.
+                raise LocalEmbedderReturnedNothingError(
+                    f"Local embedder returned no embeddings for a batch of {len(chunk)} input(s). "
+                    "The in-process engine produced nothing, so it is not serving."
+                )
             if len(vecs_list) != len(chunk):
                 raise ValueError(
                     "Local embedder returned a mismatched number of embeddings "

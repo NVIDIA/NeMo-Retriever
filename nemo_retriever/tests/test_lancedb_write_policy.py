@@ -284,12 +284,73 @@ def test_dense_write_requires_both_canonical_image_fields(tmp_path: Path, missin
 
 @pytest.mark.parametrize(
     "vector",
-    [pytest.param(None, id="missing"), pytest.param([1.0], id="wrong-length")],
+    [
+        pytest.param([], id="empty-embed-failure"),
+    ],
 )
-def test_dense_write_drops_image_only_row_with_invalid_embedding(tmp_path: Path, vector: list[float] | None) -> None:
-    table_rows = _write_rows(tmp_path, _image_only_records(vector))
+def test_dense_write_fails_on_image_only_row_with_no_usable_embedding(
+    tmp_path: Path, vector: list[float] | None
+) -> None:
+    """A row without a usable embedding must fail the write, not be dropped.
+
+    The embed stage writes ``embedding: []`` for every row of a batch whose
+    engine failed. On the unpatched tree that row was accepted here, because
+    ``[]`` is not ``None`` and this write infers the dimension, so the length
+    check does not run - which is how a run publishes a short index and still
+    reports success.
+
+    A ``None`` embedding is deliberately not covered: it has a legitimate
+    producer and keeps its pre-existing drop. See
+    ``test_lancedb_incomplete_index_guard.py``,
+    ``test_a_none_embedding_keeps_its_pre_existing_silent_drop``.
+    """
+    with pytest.raises(RuntimeError, match="Refusing to build an incomplete index"):
+        _write_rows(tmp_path, _image_only_records(vector))
+
+
+def test_dense_write_still_drops_wrong_length_row_under_the_default_policy(tmp_path: Path) -> None:
+    """``on_bad_vectors="drop"`` keeps working: a short vector is dropped, not fatal.
+
+    Known-bad for the first revision of this fix, which folded
+    ``dropped_bad_length`` into the fatal condition and made the shipped default
+    unreachable. Passes on unmodified HEAD too - it pins the documented contract
+    rather than a code change, so it is a guard test.
+    """
+    table_rows = _write_rows(tmp_path, _image_only_records([1.0]))
 
     assert table_rows == []
+
+
+def test_dense_write_keeps_on_bad_vectors_fill_reachable(tmp_path: Path) -> None:
+    """``on_bad_vectors="fill"`` with the wrapper check off still reaches LanceDB.
+
+    With ``validate_vector_length=False`` the short row is forwarded and LanceDB
+    fills it, which is what a user who configured ``fill`` asked for. The guard
+    must not pre-empt that.
+
+    Known-bad for the first revision of this fix, which raised before LanceDB
+    ever saw the row. Passes on unmodified HEAD; guard test.
+
+    Asserts the row survives at full schema width, not the exact filled
+    composition: how LanceDB distributes ``fill_value`` over a short vector is
+    its own detail and differs by version (0.34 replaces the whole vector, 0.37
+    pads and keeps the produced component), and ``lancedb`` is unpinned here.
+    What this guard owns is that the row reached the writer at all.
+    """
+    op = LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        create_index=False,
+        on_bad_vectors="fill",
+        fill_value=0.5,
+        validate_vector_length=False,
+    )
+    op.run(_image_only_records([1.0]))
+
+    table_rows = lancedb.connect(str(tmp_path)).open_table("t").to_arrow().to_pylist()
+    assert len(table_rows) == 1
+    assert len(table_rows[0]["vector"]) == 2
 
 
 def test_sparse_write_drops_image_only_row_without_text(tmp_path: Path) -> None:

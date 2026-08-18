@@ -38,7 +38,28 @@ configured invoke URL: Page Elements, OCR, Table Structure, Nemotron Parse,
 and embedding. It does not automatically raise for:
 
 - Local-only pipelines (`pdfium` without remote URLs), even when rows contain
-  `metadata.error` or column-level error payloads.
+  `metadata.error` or column-level error payloads. One exception: an in-process
+  vLLM embedding engine that has stopped serving - refused at startup for lack of
+  free GPU memory, dead after a crash, or returning no vectors - aborts the
+  ingest under every error policy. Such an engine produces no embedding for every
+  batch it is handed, and those rows are then excluded at the writer, so
+  continuing would publish an index covering only part of the corpus while the
+  run reported success. The error message names the knobs to change.
+
+  Row-level embedding failures are unaffected and still populate the error
+  column. A plain CUDA out-of-memory is not treated as an engine failure, because
+  on the HuggingFace embedding backend a smaller next batch can succeed. That is
+  about the embed stage, not the run: if the retry succeeds nothing changes, but
+  if the batch is lost its rows reach the writer with no embedding and the ingest
+  fails there. If you see `Refusing to build an incomplete index` with no
+  engine-startup message in the embed actor logs, look for an out-of-memory
+  instead.
+
+  `LanceDB(on_bad_vectors=...)` does not suppress that error. A row whose
+  embedding failed used to be counted as a wrong-length vector and silently
+  excluded; it now fails the run. Fix the embed stage - no policy value restores
+  the old behaviour.
+
 - Caption or remote VLM stages. Missing credentials fail at actor setup;
   inference failures can abort the entire ingest.
 - Audio or video ASR over gRPC or HTTP. Failures can drop individual rows and
@@ -81,7 +102,7 @@ troubleshooting path. A single document can pass through several stages.
 | `ExtractParams(method="ocr")` | Page rendering, Page Elements, and the local or remote OCR backend | Missing local model dependencies, invalid image payload, authentication/transport status, or OCR row-level failure |
 | `ExtractParams(method="nemotron_parse")` | PDF rendering and local Nemotron Parse model or configured Nemotron Parse NIM | Missing `open_clip`, missing local model configuration, unsupported image input, or Nemotron Parse row-level/HTTP failure |
 | `.caption(...)` | Local caption model or remote VLM endpoint | `ValueError` at setup when credentials or endpoint/protocol are invalid; remote inference failures can abort the whole ingest rather than populate a row error column |
-| `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured |
+| `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured. An in-process vLLM embedding engine that has stopped serving always aborts the ingest, whatever the error policy |
 | Audio or video extraction | `ffmpeg`/`ffprobe`, media decoding, frame/chunk creation, and local or remote ASR | Missing executable, malformed media, codec failure, gRPC status, or credential error; ASR failures may omit rows and log warnings instead of raising, so verify logs when output is unexpectedly empty |
 
 `pdfium` itself is primarily a local parser, so a Page Elements, Table

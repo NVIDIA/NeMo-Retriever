@@ -11,6 +11,7 @@ from typing import Any, Optional, Sequence
 import torch
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.embed_errors import report_lost_rows
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 from nemo_retriever.common.nvtx import gpu_inference_range
 
@@ -250,6 +251,11 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
 
     def _finalize_vectors(self, vectors: Sequence[Sequence[float]]) -> torch.Tensor:
         """Zero-pad rows vLLM failed to embed, then optionally normalize."""
+        # Fail here when vLLM did not embed every row. This is the only place
+        # that knows the count; it used to zero-pad the missing rows, which made
+        # them indistinguishable from real embeddings downstream. Mirrored in
+        # ``models/local/llama_nemotron_embed_1b_v2_embedder.py``.
+        report_lost_rows(vectors, embedder=type(self).__name__)
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)

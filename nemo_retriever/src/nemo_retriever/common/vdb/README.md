@@ -93,6 +93,12 @@ When `vdb_op="lancedb"` (or `vdb=LanceDB(...)` is passed explicitly), `_construc
 1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms ingestion batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
 2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS/BM25** index over the ingested `text` column when `hybrid=True`.
 
+During step 1, a row that arrives with an **empty** embedding, `[]`, raises `RuntimeError` and no table is written. `[]` is written only on embed failure paths, so it means no vector was produced for that row. Such a row used to be counted as a wrong-length vector and silently excluded, letting a run publish a short index and still report `success: true`.
+
+Only `[]` is fatal. A row whose embedding is absent or `None` keeps its pre-existing silent drop, because `operators/embed/text_embed.py` writes `None` on purpose for a blank-text row. `on_bad_vectors` is unaffected: it governs malformed vectors, and an empty list is the absence of a vector rather than a short one. The returned `counts` dict gains an `empty_embedding` key.
+
+The other half of the guard is upstream: a local embedder that fails to embed some rows raises `LocalEmbedderRowsLostError` from `_finalize_vectors` instead of zero-padding them, which this writer could not otherwise detect.
+
 Common constructor arguments include:
 
 | Parameter        | Purpose |
