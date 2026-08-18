@@ -67,6 +67,14 @@ def _local_embed_requested(params: Any) -> bool:
     return gpu_embed is not None and float(gpu_embed) > 0
 
 
+def _image_embedding_requires_page_image(params: Any | None) -> bool:
+    """Return whether embedding consumes a rendered image for each page row."""
+    return getattr(params, "embed_granularity", None) == "page" and getattr(params, "embed_modality", None) in {
+        "image",
+        "text_image",
+    }
+
+
 def default_concurrency_node_names(
     extract_params: Any | None,
     embed_params: Any | None,
@@ -696,6 +704,15 @@ def build_graph(
     # ingestor surface.
     if split_config is None:
         split_config = resolve_split_params(None)
+
+    # Page-level image modalities require a full page raster regardless of
+    # whether PDF extraction runs through the dedicated or auto-dispatch graph.
+    if (
+        extract_params is not None
+        and _image_embedding_requires_page_image(embed_params)
+        and not extract_params.extract_page_as_image
+    ):
+        extract_params = extract_params.model_copy(update={"extract_page_as_image": True})
 
     # Video ingestion uses a dedicated chain so each stage (fan-out, ASR,
     # frame OCR, scene fusion) shows up as its own Ray Data MapBatches op.
