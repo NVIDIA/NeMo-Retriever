@@ -67,7 +67,7 @@ Highlights for the 26.08 release include:
 
 ### Agentic retrieval and query { #agentic-retrieval-and-query }
 
-- Agentic retrieval as a first-class retrieval mode via CLI (`retriever query --agentic`), SDK helpers, and service HTTP / MCP endpoints
+- Agentic retrieval as a first-class retrieval mode through the CLI (`retriever query --agentic`), SDK helpers, and service HTTP / MCP endpoints
 - Local in-process vLLM agent LLMs by default for agentic query paths; optional OpenAI-compatible remote endpoints
 - Optional Helm NIM for the agentic / answer LLM (`llama-3.3-nemotron-super-49b-v1.5`); agentic remains opt-in (`serviceConfig.agentic.enabled`)
 - Configurable auto-retrieval on the service query path; evidence and coverage output formats on `/v1/query`
@@ -76,7 +76,7 @@ Highlights for the 26.08 release include:
 
 ### Retrieval and RAG { #retrieval-and-rag }
 
-- Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)
+- Live RAG SDK with `Retriever.retrieve()`, reference answer generation `Retriever.answer()`, and optional batch operator graphs through LiteLLM (`[llm]` extra)
 - Agentic retrieval: an LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 
 ### Vector database and retrieval { #vector-database-and-retrieval }
