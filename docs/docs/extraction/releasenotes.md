@@ -13,9 +13,9 @@ Highlights for the 26.08 release include:
 ### Upgrade notes { #upgrade-notes }
 
 - Nemotron OCR v2 is now the default OCR engine for local Hugging Face, hosted CPU actors, and Helm NIM deployments (26.05 kept Helm on OCR v1)
-- Helm and development Compose replace separate page-elements and table-structure NIMs with the combined `nemotron-object-detection:2.0.1` image, and use Nemotron OCR v2 `2.0.1` on the matching release train
+- Helm replaces separate page-elements and table-structure NIMs with the combined `nemotron-object-detection:2.0.1` image and Nemotron OCR v2 `2.0.1`. Development Compose uses the same combined object-detection image and OCR v2, but still defaults to `2.0.0` tags unless you override `NIM_*_TAG`
 - Default VLM image captioning is Nemotron 3 Nano Omni for local and hosted paths; chart-classified PDF regions remain on the layout and OCR path
-- Default VL embed and VL rerank NIM images bump to `2.3.0` (26.05 used `1.12.0` / `1.11.0`)
+- Helm default VL embed and VL rerank NIM images bump to `2.3.0` (26.05 used `1.12.0` / `1.11.0`). Development Compose still defaults to `1.12.0` / `1.11.0` unless you override `NIM_EMBED_TAG` / `NIM_RERANK_TAG`
 - Hosted Nemotron Parse and self-hosted Nemotron Parse use distinct HTTP contracts—select the matching client path for your endpoint
 - macOS Intel (x86_64) is no longer supported for package installs; use Apple Silicon (arm64) macOS, Windows x64, or Linux. Refer to [Packaging and platform](#packaging-and-platform)
 - Text splitting for graph and library ingest moved into `.extract(split_config=...)` instead of standalone `.split()` on the graph ingest path (the service ingestor API may still expose `.split()` separately)  
@@ -30,6 +30,11 @@ Highlights for the 26.08 release include:
 - Legacy `nv-ingest` and compatibility pipeline CLI code paths removed; `retriever ingest` and the graph stage registry are the canonical ingestion paths
 - Manifest-based ingest routing replaces input-type routing; `retriever ingest` is input-aware for PDF, image, audio, video, text, HTML, DOCX/PPTX, SVG, and related types  
 - `allow_no_gpu` option to skip GPU requirement during ingest for CPU-only experimentation  
+- Documented Markdown, JSON, and shell text inputs, plus inline text ingestion support
+- Service-mode TXT and HTML chunking
+- `return_failures` supported across in-process and batch ingest modes
+- Tabular ingestion and embedding improvements, including table-type handling
+- PDF render parameters forwarded through ingestion graphs
 
 ### CLI { #cli }
 
@@ -45,6 +50,11 @@ Highlights for the 26.08 release include:
 - Expanded air-gapped deployment guidance in [deployment options](deployment-options.md) and the Helm chart README  
 - Helm maps `serviceConfig.nimEndpoints.rerankInvokeUrl` / `rerankModelName` into `nim_endpoints.rerank_invoke_url` / `rerank_model_name`, and auto-wires those fields when `nimOperator.rerankqa.enabled=true`, so `/v1/query` with `rerank=true` works in split topology
 - Fixed Retriever Service OpenAPI `info.version` reporting a stale `26.5.0` value. The service now reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
+- Gateway worker pull scheduling replaces push routing
+- Development Docker Compose deployment for local service stacks
+- Zipkin tracing parity alongside OpenTelemetry
+- Helm maximum upload size configuration and OpenShift deployment follow-ups
+- Secret-backed Helm authentication for public and internal service tokens (inline tokens are gated for insecure development only)
 
 ### Models, OCR, and captioning { #models-ocr-and-captioning }
 
@@ -64,19 +74,10 @@ Highlights for the 26.08 release include:
 - Service-mode `Retriever.answer` support and FastMCP integration for local and remote agents
 - MCP query-method selection and rerank tools
 
-### Pipeline and ingestion { #pipeline-and-ingestion }
 ### Retrieval and RAG { #retrieval-and-rag }
 
 - Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)
 - Agentic retrieval: an LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
-
-### Vector database { #vector-database }
-
-- Documented Markdown, JSON, and shell text inputs, plus inline text ingestion support
-- Service-mode TXT and HTML chunking
-- `return_failures` supported across in-process and batch ingest modes
-- Tabular ingestion and embedding improvements, including table-type handling
-- PDF render parameters forwarded through ingestion graphs
 
 ### Vector database and retrieval { #vector-database-and-retrieval }
 
@@ -85,13 +86,6 @@ Highlights for the 26.08 release include:
 - Dense image-only VDB records retained where applicable
 - Scope-isolated collection and document lifecycle APIs (`/v1/collections`) for create, ingest, replace, query, and cleanup without exposing LanceDB table names
 
-### Retriever Service and deployment { #retriever-service-and-deployment }
-
-- Gateway worker pull scheduling replaces push routing
-- Development Docker Compose deployment for local service stacks
-- Zipkin tracing parity alongside OpenTelemetry
-- Helm maximum upload size configuration and OpenShift deployment follow-ups
-- Secret-backed Helm authentication for public and internal service tokens (inline tokens are gated for insecure development only)
 
 ### Packaging and platform { #packaging-and-platform }
 
