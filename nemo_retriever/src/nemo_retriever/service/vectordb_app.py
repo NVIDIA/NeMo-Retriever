@@ -145,7 +145,10 @@ class VectorDBState:
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
+        max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     ) -> None:
+        if max_concurrent_queries <= 0:
+            raise ValueError("max_concurrent_queries must be positive")
         self.vdb = vdb
         self.ingest_operator = IngestVdbOperator(vdb=vdb)
         self.retrieve_operator = RetrieveVdbOperator(vdb=vdb)
@@ -158,7 +161,7 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
-        self.query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
+        self.query_semaphore = asyncio.Semaphore(max_concurrent_queries)
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
 
@@ -242,7 +245,9 @@ def _safe_backend_health(state: VectorDBState | None) -> dict[str, Any] | None:
 
 def _legacy_strategies(health: dict[str, Any]) -> list[str]:
     strategies = health.get("retrieval_strategies")
-    if isinstance(strategies, list) and all(isinstance(item, str) for item in strategies):
+    if isinstance(strategies, list) and all(
+        isinstance(item, str) for item in strategies
+    ):
         return list(strategies)
     mode = health.get("effective_retrieval_mode")
     return ["hybrid" if mode == "hybrid" else "dense"]
@@ -262,6 +267,7 @@ def create_vectordb_app(
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
     internal_api_token: str | None = None,
+    max_concurrent_queries: int = MAX_CONCURRENT_QUERIES,
     reconciliation_interval_seconds: int = 60,
     expiration_cleanup_enabled: bool = True,
     vdb: VDB | None = None,
@@ -271,6 +277,8 @@ def create_vectordb_app(
     if reconciliation_interval_seconds < 0:
         raise ValueError("reconciliation_interval_seconds must be non-negative")
 
+    if max_concurrent_queries <= 0:
+        raise ValueError("max_concurrent_queries must be positive")
     agentic_config = agentic_config or AgenticConfig()
     state: VectorDBState | None = None
     agentic_executor: ThreadPoolExecutor | None = None
@@ -295,6 +303,7 @@ def create_vectordb_app(
             hf_cache_dir=hf_cache_dir,
             device=device,
             gpu_memory_utilization=gpu_memory_utilization,
+            max_concurrent_queries=max_concurrent_queries,
         )
         app.state.vectordb_state = state
         if agentic_config.enabled:
@@ -307,7 +316,7 @@ def create_vectordb_app(
         logger.info(
             "VectorDB service started: embed_mode=%s max_concurrent_queries=%d",
             state.embed_mode,
-            MAX_CONCURRENT_QUERIES,
+            max_concurrent_queries,
         )
         if state.embed_mode == "none":
             logger.error(
@@ -324,7 +333,9 @@ def create_vectordb_app(
                 await asyncio.sleep(reconciliation_interval_seconds)
 
         reconciliation_task = (
-            asyncio.create_task(reconciliation_loop()) if reconciliation_interval_seconds > 0 else None
+            asyncio.create_task(reconciliation_loop())
+            if reconciliation_interval_seconds > 0
+            else None
         )
         try:
             yield
@@ -359,27 +370,39 @@ def create_vectordb_app(
         return state
 
     @app.exception_handler(UnsupportedVDBOperation)
-    async def unsupported_operation(_request: Request, exc: UnsupportedVDBOperation) -> JSONResponse:
+    async def unsupported_operation(
+        _request: Request, exc: UnsupportedVDBOperation
+    ) -> JSONResponse:
         logger.info("Unsupported VDB operation: %s", exc)
         return JSONResponse(
             status_code=501,
-            content={"detail": "The configured VectorDB backend does not support this operation."},
+            content={
+                "detail": "The configured VectorDB backend does not support this operation."
+            },
         )
 
     @app.exception_handler(VDBResourceNotFound)
-    async def resource_not_found(_request: Request, exc: VDBResourceNotFound) -> JSONResponse:
+    async def resource_not_found(
+        _request: Request, exc: VDBResourceNotFound
+    ) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     @app.exception_handler(VDBResourceConflict)
-    async def resource_conflict(_request: Request, exc: VDBResourceConflict) -> JSONResponse:
+    async def resource_conflict(
+        _request: Request, exc: VDBResourceConflict
+    ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(VDBInvalidRequest)
-    async def invalid_request(_request: Request, exc: VDBInvalidRequest) -> JSONResponse:
+    async def invalid_request(
+        _request: Request, exc: VDBInvalidRequest
+    ) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(RetrievalContractError)
-    async def retrieval_contract_failure(_request: Request, exc: RetrievalContractError) -> JSONResponse:
+    async def retrieval_contract_failure(
+        _request: Request, exc: RetrievalContractError
+    ) -> JSONResponse:
         logger.exception("VectorDB retrieval contract violation", exc_info=exc)
         return JSONResponse(
             status_code=500,
@@ -387,7 +410,9 @@ def create_vectordb_app(
         )
 
     @app.exception_handler(Exception)
-    async def unexpected_backend_failure(_request: Request, exc: Exception) -> JSONResponse:
+    async def unexpected_backend_failure(
+        _request: Request, exc: Exception
+    ) -> JSONResponse:
         logger.exception("Unexpected VectorDB service failure", exc_info=exc)
         return JSONResponse(
             status_code=500,
@@ -419,7 +444,9 @@ def create_vectordb_app(
             "total_rows": backend_health.pop("total_rows", 0),
             "table_exists": backend_health.pop("table_exists", False),
             "embed_mode": current.embed_mode if current else "none",
-            "effective_retrieval_mode": backend_health.pop("effective_retrieval_mode", None),
+            "effective_retrieval_mode": backend_health.pop(
+                "effective_retrieval_mode", None
+            ),
             **backend_health,
         }
 
@@ -465,9 +492,13 @@ def create_vectordb_app(
             "Open collection-table cache size",
             registry=registry,
         ).set(backend_health.get("open_table_cache_count", 0))
-        return Response(generate_latest(registry), media_type="text/plain; version=0.0.4")
+        return Response(
+            generate_latest(registry), media_type="text/plain; version=0.0.4"
+        )
 
-    @app.post("/internal/vectordb/write", response_model=WriteResponse, tags=["internal"])
+    @app.post(
+        "/internal/vectordb/write", response_model=WriteResponse, tags=["internal"]
+    )
     async def write(req: WriteRequest) -> WriteResponse:
         current = require_state()
         context: CollectionWriteContext | None = None
@@ -484,7 +515,9 @@ def create_vectordb_app(
                 if not value
             ]
             if missing:
-                raise VDBInvalidRequest("Collection writes require: " + ", ".join(missing))
+                raise VDBInvalidRequest(
+                    "Collection writes require: " + ", ".join(missing)
+                )
             if not req.records or not any(req.records):
                 raise VDBInvalidRequest("Collection writes require at least one record")
             context = CollectionWriteContext(
@@ -542,7 +575,9 @@ def create_vectordb_app(
             continuation_token=continuation_token,
         )
 
-    @app.get("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
+    @app.get(
+        "/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"]
+    )
     async def get_collection(
         name: str,
         x_nrl_scope: str | None = Header(None),
@@ -554,7 +589,9 @@ def create_vectordb_app(
             collection_name=name,
         )
 
-    @app.patch("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
+    @app.patch(
+        "/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"]
+    )
     async def update_collection(
         name: str,
         req: CollectionUpdateRequest,
@@ -676,7 +713,9 @@ def create_vectordb_app(
         if req.collection_name is None:
             backend_health = current.vdb.health()
             if backend_health.get("table_exists") is False:
-                raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
+                raise VDBInvalidRequest(
+                    "No data has been ingested yet. Ingest documents first, then query."
+                )
 
         queries = req.query if isinstance(req.query, list) else [req.query]
         if not queries:
@@ -696,7 +735,9 @@ def create_vectordb_app(
                     top_k=req.top_k,
                 )
                 if not isinstance(result, tuple):
-                    raise RetrievalContractError("Collection retrieval did not return strategies")
+                    raise RetrievalContractError(
+                        "Collection retrieval did not return strategies"
+                    )
                 hits_per_query, strategies = result
             else:
                 hits_per_query = await asyncio.to_thread(
@@ -707,14 +748,21 @@ def create_vectordb_app(
                     hybrid=backend_health.get("effective_retrieval_mode") == "hybrid",
                 )
                 if not isinstance(hits_per_query, list):
-                    raise RetrievalContractError("Legacy retrieval returned an invalid shape")
+                    raise RetrievalContractError(
+                        "Legacy retrieval returned an invalid shape"
+                    )
                 strategies = _legacy_strategies(backend_health)
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
+                results=[
+                    EvidenceResult(**build_evidence_result(hits, strategies))
+                    for hits in hits_per_query
+                ]
             )
-        return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
+        return QueryResponse(
+            results=[QueryResult(hits=hits) for hits in hits_per_query]
+        )
 
     async def _run_agentic_query(req: QueryRequest) -> QueryResponse:
         """Run the blocking agentic workflow without consuming plain-query workers."""
@@ -735,9 +783,13 @@ def create_vectordb_app(
                 "NIM or --local-embed for in-pod Hugging Face query embedding.",
             )
         if current.embed_mode != "remote":
-            raise HTTPException(501, "Agentic service queries require a remote embedding endpoint.")
+            raise HTTPException(
+                501, "Agentic service queries require a remote embedding endpoint."
+            )
         if not current.table_exists:
-            raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
+            raise VDBInvalidRequest(
+                "No data has been ingested yet. Ingest documents first, then query."
+            )
         if req.top_k > agentic_config.backend_top_k:
             raise VDBInvalidRequest(
                 f"top_k ({req.top_k}) cannot exceed the configured agentic "
@@ -790,13 +842,21 @@ def create_vectordb_app(
 
 def main() -> None:
     internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN", "")
-    if not internal_token and (token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
+    if not internal_token and (
+        token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")
+    ):
         internal_token = Path(token_file).read_text(encoding="utf-8").strip()
 
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
-    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
-    parser.add_argument("--table-name", default="nemo_retriever", help="Vector table name")
-    parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
+    parser.add_argument(
+        "--lancedb-uri", default="/data/vectordb", help="LanceDB directory"
+    )
+    parser.add_argument(
+        "--table-name", default="nemo_retriever", help="Vector table name"
+    )
+    parser.add_argument(
+        "--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL"
+    )
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument(
         "--embed-model-provider-prefix",
@@ -820,6 +880,12 @@ def main() -> None:
         help="Lifecycle reconciliation interval; zero disables the local loop.",
     )
     parser.add_argument(
+        "--max-concurrent-queries",
+        type=int,
+        default=MAX_CONCURRENT_QUERIES,
+        help="Maximum number of concurrent non-agentic queries.",
+    )
+    parser.add_argument(
         "--disable-expiration-cleanup",
         action="store_true",
         help="Disable automatic collection expiration cleanup.",
@@ -835,7 +901,9 @@ def main() -> None:
         choices=("hf", "vllm"),
         help="Backend for --local-embed (default: hf).",
     )
-    parser.add_argument("--hf-cache-dir", default="", help="Hugging Face model cache directory")
+    parser.add_argument(
+        "--hf-cache-dir", default="", help="Hugging Face model cache directory"
+    )
     parser.add_argument(
         "--device",
         default="",
@@ -852,7 +920,9 @@ def main() -> None:
         action="store_true",
         help="Enable agentic=true on POST /v1/query using the agentic retrieval workflow.",
     )
-    parser.add_argument("--agentic-llm-model", default="", help="Agentic retrieval chat model.")
+    parser.add_argument(
+        "--agentic-llm-model", default="", help="Agentic retrieval chat model."
+    )
     parser.add_argument(
         "--agentic-invoke-url",
         default="",
@@ -892,6 +962,7 @@ def main() -> None:
         internal_api_token=args.internal_api_token or None,
         reconciliation_interval_seconds=args.reconciliation_interval_seconds,
         expiration_cleanup_enabled=not args.disable_expiration_cleanup,
+        max_concurrent_queries=args.max_concurrent_queries,
         agentic_config=AgenticConfig(
             enabled=args.agentic,
             llm_model=args.agentic_llm_model or None,

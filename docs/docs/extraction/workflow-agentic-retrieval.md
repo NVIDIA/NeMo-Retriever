@@ -71,6 +71,10 @@ from the service process environment. Service mode requires remote
 OpenAI-compatible LLM and embedding endpoints; local in-process models remain
 available through the one-shot CLI and harness paths.
 
+The VectorDB service runs up to four non-agentic queries concurrently by default.
+Set `--max-concurrent-queries` when starting `nemo_retriever.service.vectordb_app`
+to use a different positive limit.
+
 REST clients set the flag on `/v1/query`:
 
 ```bash
