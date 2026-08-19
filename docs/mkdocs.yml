@@ -149,8 +149,6 @@ plugins:
             members_order: source
             filters:
               - "!^_"
-            extensions:
-              - sphinx_roles.py:SphinxRoleConverter
           paths:
             - ../nemo_retriever/src
   - mkdocs-jupyter:

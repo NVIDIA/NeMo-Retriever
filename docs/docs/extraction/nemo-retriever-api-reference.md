@@ -274,6 +274,10 @@ Use the following public import paths:
 
 ### Ingest { #generated-ingest-api }
 
+`create_ingestor` returns `GraphIngestor` for `run_mode="inprocess"` or
+`"batch"`. `GraphIngestor` records pipeline stages and runs them when you call
+`ingest()`.
+
 ::: nemo_retriever.ingestor.core.create_ingestor
     options:
       heading_level: 4
@@ -282,6 +286,7 @@ Use the following public import paths:
     options:
       heading_level: 4
       docstring_style: numpy
+      show_docstring_description: false
       filters:
         - "!^_"
         - "!^pdf_split_config$"
@@ -289,29 +294,42 @@ Use the following public import paths:
 ::: nemo_retriever.ingestor.graph_ingestor.GraphIngestionError
     options:
       heading_level: 4
+      show_docstring_description: false
 
 ### Retrieve { #generated-retrieve-api }
+
+`Retriever` embeds queries, retrieves from a vector database, and can rerank
+results. Pass `embed_kwargs` that match `EmbedParams`, `vdb_kwargs` for
+`RetrieveVdbOperator`, and `rerank_kwargs` for `NemotronRerankActor`.
+
+`Retriever.pipeline()` returns `RetrieverPipelineBuilder`. `generate()` accepts
+a `LiteLLMClient` instance or `model=` keyword arguments. `judge()` accepts an
+`LLMJudge` instance or `model=` keyword arguments.
 
 ::: nemo_retriever.graph.retriever.Retriever
     options:
       heading_level: 4
+      show_docstring_description: false
 
 ::: nemo_retriever.graph.retriever.RetrieverPipelineBuilder
     options:
       heading_level: 4
+      show_docstring_description: false
 
 ### Evaluation clients { #generated-evaluation-clients }
 
 Import these clients from `nemo_retriever.models.llm`. The headings show the
-implementing modules.
+implementing modules. Use `from_kwargs()` for a flat constructor.
 
 ::: nemo_retriever.models.llm.clients.litellm.LiteLLMClient
     options:
       heading_level: 4
+      show_docstring_description: false
 
 ::: nemo_retriever.models.llm.clients.judge.LLMJudge
     options:
       heading_level: 4
+      show_docstring_description: false
 
 ### Parameter models { #generated-parameter-models }
 
