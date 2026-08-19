@@ -754,10 +754,11 @@ The following table lists the primary batch-mode worker controls:
 
 Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](docs/cli/README.md).
 
-For the CLI, pass the batch-mode flags on `retriever ingest batch`:
+For the CLI, pass the batch-mode flags on `retriever ingest batch`. Replace
+`/path/to/your/pdfs` with a directory of PDF files that you supply.
 
 ```bash
-retriever ingest batch ./data/pdf_corpus \
+retriever ingest batch /path/to/your/pdfs \
   --pdf-extract-workers 4 \
   --page-elements-workers 3 \
   --ocr-workers 3 \

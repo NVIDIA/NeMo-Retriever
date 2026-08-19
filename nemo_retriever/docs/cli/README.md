@@ -50,7 +50,22 @@ configuration, local embed backend selection, or local media controls.
 
 ## Quick start
 
+Local ingest embeds on the local GPU when `--embed-invoke-url` is unset. Install
+the `[local]` extra before you run the default `retriever ingest` or
+`retriever ingest batch` commands:
+
+```bash
+pip install "nemo-retriever[local]"
+```
+
+If you installed the base package for Remote NIM with no local GPU, keep that
+install and pass `--embed-invoke-url` instead. Refer to
+[Route ingest to hosted or self-hosted NIM endpoints](#route-ingest-to-hosted-or-self-hosted-nim-endpoints).
+
 ### Ingest a PDF locally
+
+From a clone of this repository, `./data/multimodal_test.pdf` is a valid
+first-run input. If you installed from PyPI, pass a PDF file that you supply.
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf
@@ -72,8 +87,11 @@ written to LanceDB. Use `retriever query service` to query a Retriever service.
 
 ### Ingest a larger corpus with batch mode
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply. The
+repository and the PyPI package do not include a `pdf_corpus` dataset.
+
 ```bash
-retriever ingest batch ./data/pdf_corpus \
+retriever ingest batch /path/to/your/pdfs \
   --profile fast-text \
   --pdf-extract-workers 4 \
   --embed-workers 2
@@ -84,8 +102,10 @@ Batch mode exposes Ray runtime and batch tuning flags such as `--ray-address`,
 
 ### Ingest through a Retriever service
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
+
 ```bash
-retriever ingest service ./data/pdf_corpus \
+retriever ingest service /path/to/your/pdfs \
   --service-url http://localhost:7670 \
   --service-concurrency 8
 ```
@@ -322,8 +342,10 @@ retriever query "What is in this document?" \
 
 ### Fast text-only PDF fallback
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
+
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --profile fast-text \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
@@ -335,7 +357,7 @@ checkpoint compatible with a supported dense Nemotron text or vision-language
 embedding profile:
 
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --embed-model-name acme/my-finetuned-nemotron-embed
 ```
 
@@ -381,7 +403,7 @@ vLLM for ingest. Local query detects the ModelOpt configuration and selects
 vLLM automatically:
 
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
   --local-ingest-embed-backend vllm
 

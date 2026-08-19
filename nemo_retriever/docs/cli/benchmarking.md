@@ -22,10 +22,10 @@ retriever benchmark ocr --help
 retriever benchmark all --help
 ```
 
-Example:
+The following example extracts from a directory of PDF files that you supply.
 
 ```bash
-retriever benchmark extract ./data/pdf_corpus \
+retriever benchmark extract /path/to/your/pdfs \
   --pdf-extract-batch-size 8 \
   --pdf-extract-actors 4
 ```

@@ -26,10 +26,11 @@ The library does not read environment variables to set worker counts or CPU and 
 
 Set explicit worker counts with batch-mode CLI flags or with `BatchTuningParams` on `.extract()` and `.embed()`.
 
-The following CLI example sets worker counts for a batch ingest:
+The following CLI example sets worker counts for a batch ingest. Replace
+`/path/to/your/pdfs` with a directory of PDF files that you supply.
 
 ```bash
-retriever ingest batch ./data/pdf_corpus \
+retriever ingest batch /path/to/your/pdfs \
   --pdf-extract-workers 4 \
   --page-elements-workers 3 \
   --ocr-workers 3 \
