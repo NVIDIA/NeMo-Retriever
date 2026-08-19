@@ -93,6 +93,32 @@ def test_split_startup_service_is_not_scraped_by_the_gateway_service_monitor() -
         assert not all(startup_labels.get(key) == value for key, value in selector.items())
 
 
+def test_long_release_keeps_the_startup_service_distinct_and_referenced() -> None:
+    documents = _render(
+        "--set",
+        "topology.mode=split",
+        "--set",
+        "serviceMonitor.autoEnableInSplitMode=false",
+        "--set-string",
+        f"fullnameOverride={'b' * 63}",
+    )
+    services = _services(documents)
+
+    startup = next(
+        name
+        for name, service in services.items()
+        if service["metadata"]["labels"].get("app.kubernetes.io/component") == "gateway-startup"
+    )
+    assert startup.endswith("-gateway-startup")
+    assert len(startup) <= 63
+    assert startup not in {
+        name
+        for name, service in services.items()
+        if service["metadata"]["labels"].get("app.kubernetes.io/component") == "gateway"
+    }
+    assert f'GATEWAY="{startup}"' in _init_container_script(documents, "realtime")
+
+
 def test_standalone_renders_no_startup_service_or_init_container() -> None:
     documents = _render()
 

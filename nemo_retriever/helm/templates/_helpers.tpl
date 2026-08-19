@@ -280,7 +280,7 @@ nemo-retriever.gateway.startupServiceName
   Usage: {{ include "nemo-retriever.gateway.startupServiceName" $ }}
 */}}
 {{- define "nemo-retriever.gateway.startupServiceName" -}}
-{{- printf "%s-startup" (include "nemo-retriever.role.fullname" (dict "context" . "role" "gateway")) | trunc 63 | trimSuffix "-" -}}
+{{- include "nemo-retriever.suffixedFullname" (dict "context" . "suffix" "-gateway-startup") -}}
 {{- end -}}
 
 
