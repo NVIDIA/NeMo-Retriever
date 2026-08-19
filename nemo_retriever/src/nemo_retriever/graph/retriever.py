@@ -201,8 +201,16 @@ class Retriever:
         vdb_call_kwargs: Optional[dict[str, Any]],
         embed_extra: Optional[dict[str, Any]],
     ) -> list[list[dict[str, Any]]]:
-        embed_params = self._merge_embed_params(embed_extra)
-        text_col = str(embed_params.text_column)
+        if self.graph is None:
+            embed_params = self._merge_embed_params(embed_extra)
+            text_col = str(embed_params.text_column)
+        else:
+            # A caller-owned graph controls its own operators and does not
+            # require default embedding configuration. In particular, avoid
+            # resolving a local embedding model merely to choose its input
+            # column. Agentic result graphs use ``query_text`` and delegate
+            # actual retrieval to their configured inner retriever.
+            text_col = str({**dict(self.embed_kwargs or {}), **dict(embed_extra or {})}.get("text_column") or "text")
         df = pd.DataFrame({text_col: query_texts})
 
         # Hybrid retrieval relies on these ordered query strings staying aligned

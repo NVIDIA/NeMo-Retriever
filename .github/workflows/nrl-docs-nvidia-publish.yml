@@ -11,22 +11,35 @@
 #   Variables (optional): DOCS_AWS_REGION, NRL_DOCS_PUBLISH_VERSION, DOCS_RELEASE_EMAILS
 #
 # S3 layout written under developer/docs/nemo/retriever/:
-#   index.html, versions.json, latest/, <version>/ (e.g. 26.5.0/)
+#   index.html, versions.json, latest/, <version>/ (e.g. 26.8.0/)
 #
-# Manual publish only (workflow_dispatch). Do not re-enable push/tag auto-publish
-# while docs.nvidia.com 26.5.0 / latest are frozen to the 26.05 release docs.
+# 26.08 current-docs model:
+#   - Build content from main (docs + library used by mkdocstrings).
+#   - Publish folder label is 26.8.0; versions.json on main owns the "latest" alias.
+#   - Auto-publish on main pushes is limited to docs/** and this workflow file so
+#     unrelated nemo_retriever code merges do not republish production docs.
 #
-# Operator steps when ready to publish:
-#   1. Merge doc changes to the 26.05 branch (content source for the build).
-#   2. Keep docs/publish/versions.json on main accurate (version picker + latest alias).
-#   3. Actions → "NRL documentation — docs.nvidia.com publish" → Run workflow:
-#        dry-run: false
-#        docs-version-override: 26.5.0 (or leave empty to use NRL_DOCS_PUBLISH_VERSION / default)
-#        publish-as-latest: true only when intentionally refreshing latest/
-# Backports: publish-as-latest: false; do not move the "latest" alias in versions.json.
+# Operator steps (first 26.08 go-live):
+#   1. Confirm this workflow is Enabled in Actions (it may still be Disabled manually).
+#   2. Keep docs/publish/versions.json on main with 26.8.0 aliases: ["latest"].
+#   3. Optional: set repo variable NRL_DOCS_PUBLISH_VERSION=26.8.0.
+#   4. Actions → "NRL documentation — docs.nvidia.com publish" → Run workflow:
+#        dry-run: true   (verify build)
+#        then dry-run: false
+#        docs-version-override: 26.8.0
+#        publish-as-latest: true
+#   5. Verify /26.8.0/ and /latest/, and that 26.5.0 remains in the picker without latest.
+# Backports to older trains: workflow_dispatch with publish-as-latest: false
+# (or /not-latest in the commit message); do not move the "latest" alias.
 name: NRL documentation — docs.nvidia.com publish
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/nrl-docs-nvidia-publish.yml"
   workflow_dispatch:
     inputs:
       dry-run:
@@ -35,7 +48,7 @@ on:
         type: boolean
         default: true
       docs-version-override:
-        description: Version folder to publish (e.g. 26.5.0). Empty uses NRL_DOCS_PUBLISH_VERSION, or 26.5.0.
+        description: Version folder to publish (e.g. 26.8.0). Empty uses NRL_DOCS_PUBLISH_VERSION, or 26.8.0.
         required: false
         type: string
         default: ""
@@ -78,25 +91,38 @@ jobs:
       - name: Resolve publish inputs
         id: publish
         env:
-          DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
-          VERSION_INPUT: ${{ inputs.docs-version-override }}
-          PUBLISH_LATEST_INPUT: ${{ inputs.publish-as-latest }}
-          NOTIFY_INPUT: ${{ inputs.notify-emails }}
+          DISPATCH_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          VERSION_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.docs-version-override || '' }}
+          PUBLISH_LATEST_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish-as-latest }}
+          NOTIFY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.notify-emails || '' }}
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          GITHUB_REF_NAME: ${{ github.ref }}
         run: |
-          echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
-          echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=true" >> "$GITHUB_OUTPUT"
+          fi
 
           VERSION="${VERSION_INPUT}"
           if [[ -z "${VERSION}" ]]; then
             VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
           fi
           if [[ -z "${VERSION}" ]]; then
-            VERSION="26.5.0"
+            VERSION="26.8.0"
           fi
           echo "docs_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "site_url=${{ env.DOCS_SITE_URL_BASE }}/${VERSION}/" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+            if [[ "${HEAD_COMMIT_MSG}" =~ /not-latest ]] || [[ "${GITHUB_REF_NAME}" =~ not-latest ]]; then
+              echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
 
           EMAILS="${DOCS_RELEASE_EMAILS_VAR}"
           if [[ -n "${NOTIFY_INPUT}" ]]; then
@@ -116,23 +142,13 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     steps:
-      # Publish the doc pages from the 26.05 release branch, not main. main keeps
-      # moving toward the next release, so its docs must not be published under the
-      # 26.5.0 label. mkdocs.yml, requirements.txt, and docs/docs/** come from 26.05.
-      - name: Checkout 26.05 docs content
+      # Publish the current 26.08 docs from the triggering main commit under the
+      # 26.8.0 label. Use github.sha (not the floating main tip) so a delayed run
+      # cannot publish a newer tip under flags resolved for an earlier commit.
+      - name: Checkout main docs content
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: "26.05"
-
-      # versions.json (the version picker + "latest" alias) is canonical on main and
-      # does not exist on 26.05, so fetch just that file from main into a side path.
-      - name: Checkout version-picker metadata from main
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
-          path: .docs-main-meta
-          sparse-checkout: docs/publish/versions.json
-          sparse-checkout-cone-mode: false
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -156,9 +172,9 @@ jobs:
 
       # MkDocs does not emit versions.json. publish-docs uploads the artifact copy to S3
       # (it does not merge with the live S3 file). versions.json is canonical on main.
-      - name: Stage version picker metadata for publish-docs
+      - name: Copy versions.json into site artifact
         run: |
-          cp .docs-main-meta/docs/publish/versions.json docs/site/versions.json
+          cp docs/publish/versions.json docs/site/versions.json
 
       - name: Upload docs.nvidia.com site artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

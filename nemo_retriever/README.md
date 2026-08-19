@@ -404,6 +404,13 @@ retriever query "What is RAG?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
+The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
+Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to
+`NIM_PASSTHROUGH_ARGS` before you point `--agentic-invoke-url` at that
+endpoint. Refer to
+[Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
+in the Helm chart README.
+
 Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
 text-enriched hits.
 
