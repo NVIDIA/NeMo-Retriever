@@ -13,19 +13,23 @@ content array alongside the text caption/description.
 Supported URI schemes for image_uri:
 - Local paths  : /abs/path/to/image.png  or  file:///abs/path/to/image.png
 - HTTP(S) URLs : https://host/path/image.png
-- S3 URIs      : s3://bucket/key  (requires boto3; skipped with a warning if absent)
+- S3 URIs      : s3://bucket/key
 """
 
 from __future__ import annotations
 
-import base64
-import ipaddress
 import logging
-import mimetypes
-import os
-from typing import Any, Optional
-from urllib.parse import urlparse
+from typing import Any
 
+from nemo_retriever.common.io.image_store import (
+    DEFAULT_MAX_IMAGE_BYTES,
+    image_mime_type_from_uri,
+    load_image_b64_from_uri,
+)
+from nemo_retriever.common.params.models import (
+    LLMInferenceParams,
+    LLMRemoteClientParams,
+)
 from nemo_retriever.models.llm.clients.litellm import (
     _NO_REASONING_EXTRA_PARAMS,
     LiteLLMClient,
@@ -33,36 +37,13 @@ from nemo_retriever.models.llm.clients.litellm import (
     _with_no_reasoning_controls,
 )
 from nemo_retriever.models.llm.text_utils import strip_think_tags
-from nemo_retriever.models.llm.types import VISUAL_CONTENT_TYPES, GenerationResult, MultimodalChunk
-from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
-
-logger = logging.getLogger(__name__)
-
-# Images larger than this are skipped to avoid OOM; logged as a warning.
-_MAX_IMAGE_BYTES = 50 * 1024 * 1024  # 50 MB
-
-# Cloud/infrastructure metadata endpoints that must never be fetched.
-_BLOCKED_HOSTS = frozenset(
-    {
-        "169.254.169.254",  # AWS / GCP instance metadata
-        "169.254.170.2",  # ECS task metadata
-        "metadata.google.internal",
-        "metadata.azure.com",
-    }
+from nemo_retriever.models.llm.types import (
+    VISUAL_CONTENT_TYPES,
+    GenerationResult,
+    MultimodalChunk,
 )
 
-_EXTENSION_MIME: dict[str, str] = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-    ".tiff": "image/tiff",
-    ".tif": "image/tiff",
-    ".bmp": "image/bmp",
-}
-
-_ALLOWED_IMAGE_EXTENSIONS = frozenset(_EXTENSION_MIME)
+logger = logging.getLogger(__name__)
 
 _VLM_RAG_SYSTEM_PROMPT = (
     "You are a precise question-answering assistant. "
@@ -71,99 +52,6 @@ _VLM_RAG_SYSTEM_PROMPT = (
     "If the context does not contain enough information to answer, say so clearly. "
     "Be concise and factual."
 )
-
-
-def _mime_type_from_uri(uri: str) -> str:
-    """Infer MIME type from the URI path extension; fall back to image/png.
-
-    Uses an explicit table for common image types so the result is
-    consistent across platforms regardless of the system MIME database.
-    """
-    ext = os.path.splitext(urlparse(uri).path)[1].lower()
-    return _EXTENSION_MIME.get(ext) or mimetypes.guess_type(uri)[0] or "image/png"
-
-
-def _validate_http_uri(uri: str) -> bool:
-    """Return False and log a warning for SSRF-risk URIs."""
-    parsed = urlparse(uri)
-    host = parsed.hostname or ""
-    if host in _BLOCKED_HOSTS:
-        logger.warning("Blocked request to known metadata endpoint: %s", host)
-        return False
-    try:
-        ip = ipaddress.ip_address(host)
-        if ip.is_private or ip.is_loopback or ip.is_link_local:
-            logger.warning("Blocked request to private/loopback address: %s", host)
-            return False
-    except ValueError:
-        pass  # hostname rather than a bare IP — allow through
-    return True
-
-
-def _validate_local_path(path: str) -> bool:
-    """Return False and log a warning for paths that look like non-image files."""
-    resolved = os.path.realpath(path)
-    ext = os.path.splitext(resolved)[1].lower()
-    if ext not in _ALLOWED_IMAGE_EXTENSIONS:
-        logger.warning("Rejected non-image local path (extension %r): %s", ext, path)
-        return False
-    return True
-
-
-def _load_image_as_base64(uri: str) -> Optional[str]:
-    """Load an image from a local path, file://, http(s)://, or s3:// URI.
-
-    Returns the raw base64 string (no data-URI prefix), or None if loading
-    fails so that callers can gracefully degrade to text-only.
-    """
-    try:
-        if uri.startswith("s3://"):
-            try:
-                import boto3
-
-                parts = uri[5:].split("/", 1)
-                bucket, key = parts[0], parts[1] if len(parts) > 1 else ""
-                s3 = boto3.client("s3")
-                head = s3.head_object(Bucket=bucket, Key=key)
-                if head.get("ContentLength", 0) > _MAX_IMAGE_BYTES:
-                    logger.warning("Skipping oversized S3 image (%d bytes): %s", head["ContentLength"], uri)
-                    return None
-                response = s3.get_object(Bucket=bucket, Key=key)
-                data = response["Body"].read()
-            except ImportError:
-                logger.warning("boto3 not installed; skipping image at %s", uri)
-                return None
-        elif uri.startswith("http://") or uri.startswith("https://"):
-            if not _validate_http_uri(uri):
-                return None
-            import urllib.request
-
-            req = urllib.request.Request(uri)  # noqa: S310
-            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                content_length = int(resp.headers.get("Content-Length") or 0)
-                if content_length > _MAX_IMAGE_BYTES:
-                    logger.warning("Skipping oversized HTTP image (%d bytes): %s", content_length, uri)
-                    return None
-                data = resp.read(_MAX_IMAGE_BYTES + 1)
-                if len(data) > _MAX_IMAGE_BYTES:
-                    logger.warning("Skipping oversized HTTP image (>%d bytes): %s", _MAX_IMAGE_BYTES, uri)
-                    return None
-        else:
-            # Local path — strip optional file:// scheme
-            path = uri.removeprefix("file://")
-            if not _validate_local_path(path):
-                return None
-            size = os.path.getsize(path)
-            if size > _MAX_IMAGE_BYTES:
-                logger.warning("Skipping oversized local image (%d bytes): %s", size, uri)
-                return None
-            with open(path, "rb") as fh:
-                data = fh.read()
-
-        return base64.b64encode(data).decode("ascii")
-    except Exception as exc:
-        logger.warning("Failed to load image %s: %s", uri, exc)
-        return None
 
 
 def _build_multimodal_rag_prompt(
@@ -189,13 +77,17 @@ def _build_multimodal_rag_prompt(
         for i, chunk in enumerate(chunks):
             label = f"[{i + 1}] ({chunk.content_type})"
             if chunk.image_uri and chunk.content_type in VISUAL_CONTENT_TYPES:
-                b64 = _load_image_as_base64(chunk.image_uri)
+                b64 = load_image_b64_from_uri(
+                    chunk.image_uri,
+                    max_bytes=DEFAULT_MAX_IMAGE_BYTES,
+                    validate=True,
+                )
                 if b64:
                     if chunk.text:
                         user_content.append({"type": "text", "text": f"{label} {chunk.text}\n"})
                     else:
                         user_content.append({"type": "text", "text": f"{label}\n"})
-                    mime = _mime_type_from_uri(chunk.image_uri)
+                    mime = image_mime_type_from_uri(chunk.image_uri)
                     user_content.append(
                         {
                             "type": "image_url",
@@ -240,7 +132,7 @@ class LiteVLMClient(LiteLLMClient):
     def __init__(
         self,
         transport: LLMRemoteClientParams,
-        sampling: Optional[LLMInferenceParams] = None,
+        sampling: LLMInferenceParams | None = None,
     ):
         super().__init__(transport=transport, sampling=sampling)
         # Use VLM-specific system prompt when no custom prompt was configured
@@ -254,7 +146,7 @@ class LiteVLMClient(LiteLLMClient):
         query: str,
         chunks: list[MultimodalChunk],
         *,
-        reasoning_enabled: Optional[bool] = None,
+        reasoning_enabled: bool | None = None,
     ) -> GenerationResult:
         """Generate an answer using both text and image context from chunks."""
         messages = _build_multimodal_rag_prompt(
