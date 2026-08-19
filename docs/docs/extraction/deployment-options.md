@@ -26,7 +26,10 @@ The Helm chart uses `GET /v1/live` for startup and liveness probes and
 `GET /v1/health` for readiness. Both endpoints are unauthenticated. In split
 topology, `/v1/health` returns HTTP `503` when the required realtime or batch
 worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
-Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
+In split topology, the realtime and batch init containers reach `/v1/live`
+through the chart's internal gateway startup Service
+(`<release>-nemo-retriever-gateway-startup`) so a clean install is not blocked
+by that readiness gate. Refer to the Helm chart [health probe guidance](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes).
 In split topology, the gateway authenticates public requests. When internal
 service authentication is configured, the gateway uses it for restricted worker
 handoffs instead of forwarding public credentials. Without internal service

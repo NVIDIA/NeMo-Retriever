@@ -416,6 +416,43 @@ Complete the following checks:
 
 For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
+## Split topology Helm install or upgrade times out with Deployments not ready { #helm-split-topology-startup-deadlock }
+
+`helm upgrade --install --wait` can time out in split topology
+(`topology.mode: split`) with errors similar to the following:
+
+```text
+Release "<release>" failed:
+resource Deployment/<release>-nemo-retriever-gateway not ready
+resource Deployment/<release>-nemo-retriever-realtime not ready
+resource Deployment/<release>-nemo-retriever-batch not ready
+context deadline exceeded
+```
+
+This deadlock occurs when the gateway readiness probe uses deep
+`GET /v1/health`, which returns HTTP `503` until realtime and batch workers are
+healthy, while worker Pods cannot start until their `wait-for-gateway` init
+container reaches the gateway's shallow `GET /v1/live` endpoint. The externally
+exposed gateway Service does not publish endpoints for an unready Pod, so neither
+side can become ready on a clean install.
+
+The chart renders an internal gateway startup Service named
+`<release>-nemo-retriever-gateway-startup` with `publishNotReadyAddresses: true`.
+Worker init containers poll `/v1/live` through that Service so startup completes
+without manual intervention. Client traffic continues to use the
+readiness-gated gateway Service.
+
+If you run an older chart that does not render the startup Service, you can
+unblock the install with a one-time patch on the gateway Service:
+
+```bash
+kubectl patch service <release>-nemo-retriever-gateway --type=merge \
+  -p '{"spec":{"publishNotReadyAddresses":true}}'
+```
+
+Upgrade to a chart version that includes the startup Service so you do not need
+to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
+
 ## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
 
 `helm upgrade` can fail when you change `nimOperator.<key>.image.repository` or `nimOperator.<key>.image.tag` on an existing release. The chart reuses the `NIMCache` name, for example `nemotron-page-elements-v3`, while `spec.source.ngc.modelPuller` changes to the new `repository:tag` value.

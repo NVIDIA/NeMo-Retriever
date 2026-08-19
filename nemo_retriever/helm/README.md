@@ -637,10 +637,27 @@ The service exposes unauthenticated health endpoints for Kubernetes probes:
 
 | Endpoint | Purpose | Default Helm use |
 | --- | --- | --- |
-| `GET /v1/live` | Shallow process liveness. The endpoint does not check worker backends or wait for service readiness. | Startup and liveness probes. In split mode, the realtime and batch init containers use this endpoint while waiting for the gateway. |
-| `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe. |
+| `GET /v1/live` | Shallow process liveness. The endpoint does not check worker backends or wait for service readiness. | Startup and liveness probes. In split mode, the realtime and batch `wait-for-gateway` init containers poll this endpoint on the internal gateway startup Service while waiting for the gateway process to start. |
+| `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe on the externally exposed gateway Service. |
 
-When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from the Service endpoints until its required workers are ready. The response includes backend health details to help diagnose the unavailable dependency.
+In split topology, the gateway readiness probe uses `/v1/health`, which returns
+HTTP `503` until realtime and batch workers are healthy. Worker Pods cannot start
+until their `wait-for-gateway` init container reaches the gateway's shallow
+`/v1/live` endpoint. The externally exposed gateway Service does not publish
+endpoints for an unready Pod, which would deadlock a clean install. The chart
+therefore renders an additional cluster-internal Service named
+`<release>-nemo-retriever-gateway-startup` with
+`publishNotReadyAddresses: true`. Init containers reach
+`http://<release>-nemo-retriever-gateway-startup:<networkService.port>/v1/live`
+through that Service so workers can start while the gateway Pod is still
+unready. Client traffic continues to use the readiness-gated gateway Service, so
+`/v1/health` still removes an unhealthy gateway from Service endpoints after
+startup.
+
+When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from
+the readiness-gated gateway Service endpoints until its required workers are
+ready. The response includes backend health details to help diagnose the
+unavailable dependency.
 
 ### Service networking
 
@@ -652,6 +669,22 @@ When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from 
 You can set these values independently. When they differ, Kubernetes Services
 listen on `networkService.port` and route to the container listener on
 `serviceConfig.server.port`.
+
+In standalone mode, the chart renders one Service named
+`<release>-nemo-retriever`.
+
+In split topology (`topology.mode: split`), the chart renders four Services:
+
+| Service | Example name (release `retriever`) | Type | Client entrypoint |
+| --- | --- | --- | --- |
+| Gateway | `retriever-nemo-retriever-gateway` | `networkService.type` (default `NodePort`) | Yes |
+| Gateway startup | `retriever-nemo-retriever-gateway-startup` | ClusterIP (cluster-internal only) | No |
+| Realtime | `retriever-nemo-retriever-realtime` | ClusterIP | No |
+| Batch | `retriever-nemo-retriever-batch` | ClusterIP | No |
+
+The gateway startup Service publishes the gateway Pod address while it is still
+unready so realtime and batch init containers can reach `/v1/live`. It is not a
+client entrypoint. Refer to [Health probes](#health-probes).
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 

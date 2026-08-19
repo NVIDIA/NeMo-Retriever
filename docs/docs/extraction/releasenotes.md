@@ -74,6 +74,7 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 ### Retriever Service and deployment { #retriever-service-and-deployment }
 
 - Helm maps `serviceConfig.nimEndpoints.rerankInvokeUrl` / `rerankModelName` into `nim_endpoints.rerank_invoke_url` / `rerank_model_name`, and auto-wires those fields when `nimOperator.rerankqa.enabled=true`, so `/v1/query` with `rerank=true` works in split topology.
+- Split topology renders an internal gateway startup Service so realtime and batch init containers can reach `GET /v1/live` before the gateway passes its deep `/v1/health` readiness check. This removes the clean-install deadlock that required manually patching `publishNotReadyAddresses` on the gateway Service.
 - Retriever Service exposes agentic retrieval on `POST /v1/query` when `agentic.enabled` is true. Refer to [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - Gateway worker pull scheduling replaces push routing.
 - Development Docker Compose deployment is available for local service stacks.
