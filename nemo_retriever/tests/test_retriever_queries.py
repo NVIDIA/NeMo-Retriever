@@ -305,6 +305,32 @@ class TestQueriesGraphExecution:
 
         assert graph.resolve_for_local_execution.call_count == 2
 
+    @patch("nemo_retriever.graph.retriever.resolve_embed_model_spec")
+    def test_custom_graph_does_not_resolve_default_embedding_model(self, resolve_spec: MagicMock) -> None:
+        hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+
+        class ResolvedGraph:
+            def execute(self, df: pd.DataFrame, **_kwargs: Any) -> list[Any]:
+                assert list(df.columns) == ["query_text"]
+                assert df["query_text"].tolist() == ["find doc"]
+                return [hits]
+
+        class Graph:
+            def resolve_for_local_execution(self) -> ResolvedGraph:
+                return ResolvedGraph()
+
+        retriever = Retriever(
+            graph=Graph(),
+            embed_kwargs={
+                "text_column": "query_text",
+                "embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+                "local_ingest_embed_backend": None,
+            },
+        )
+
+        assert retriever.query("find doc") == hits[0]
+        resolve_spec.assert_not_called()
+
     def test_embed_override_invalidates_graph_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
         graph_one = MagicMock()

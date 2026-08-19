@@ -89,6 +89,8 @@ agentic:
 
 `agentic.invoke_url` and `agentic.llm_model` are required when `agentic.enabled` is true. The VectorDB process owns the LanceDB volume and executes the agentic workflow. Start it with matching `--agentic`, `--agentic-llm-model`, and `--agentic-invoke-url` options. LLM and embedding credentials are resolved from the service process environment (`NVIDIA_API_KEY`, then `NGC_API_KEY`).
 
+Agentic service requests use the configured remote embedding endpoint for retrieval. The result-selection graph does not require a local embedding model or Hugging Face cache.
+
 On Kubernetes, the Helm chart maps the same knobs under `serviceConfig.agentic`. Refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 The VectorDB service runs up to four non-agentic queries concurrently by default.
