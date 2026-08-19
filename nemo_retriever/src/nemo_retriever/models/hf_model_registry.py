@@ -28,7 +28,6 @@ HF_MODEL_REVISIONS: dict[str, str] = {
     "nvidia/llama-nemotron-embed-1b-v2": "113abe4acafa848e77ead9c0623205e511932348",
     "nvidia/parakeet-ctc-1.1b": "20e63a0fed6aedba145b74b826dbd41df0941730",
     "nvidia/NVIDIA-Nemotron-Parse-v1.2": "2bd0189bffd6cdded6280d9f22a4077b25a504e3",
-    "nvidia/NVIDIA-Nemotron-Parse-2.0": "635b84d9b09bb9526b9a684d0b2c953d3cc3df05",
     "nvidia/llama-nemotron-embed-vl-1b-v2": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     "meta-llama/Llama-3.2-1B": "4e20de362430cd3b72f300e6b0f18e50e7166e08",
     "intfloat/e5-large-unsupervised": "15af9288f69a6291f37bfb89b47e71abc747b206",

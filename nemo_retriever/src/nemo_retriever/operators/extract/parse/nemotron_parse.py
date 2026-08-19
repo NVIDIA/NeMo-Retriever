@@ -553,15 +553,9 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
+            from nemo_retriever.models.local import NemotronParseV12
 
-            if self._nemotron_parse_model and self._nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL:
-                self._model = NemotronParse20(
-                    model_path=self._nemotron_parse_model,
-                    task_prompt=self._task_prompt,
-                )
-            else:
-                self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            self._model = NemotronParseV12(task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()

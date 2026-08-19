@@ -192,8 +192,6 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
     - **Self-hosted Parse v1.2** uses `nvidia/nemotron-parse-v1.2` and the tagged text-prompt contract. The Helm chart defaults to `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant`.
     - **Self-hosted Parse v2.0** uses `nvidia/nemotron-parse-v2.0` and its v2.0 contract. It is an optional Helm image override, not the chart default.
 
-    Local Hugging Face inference defaults to `nvidia/NVIDIA-Nemotron-Parse-v1.2`. Set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0"` to use Parse 2.0 locally.
-
     To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL and set `method="nemotron_parse"`. You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract.
 
     Each endpoint list must contain only hosted Build endpoints or only compatible self-hosted endpoints. The library rejects a list that mixes hosted Build and self-hosted endpoints because one extraction workflow uses one model ID and request contract. Setting `nemotron_parse_model` explicitly does not make a mixed list valid. To use both deployment types, configure separate ingestors or extraction workflows for each endpoint contract.

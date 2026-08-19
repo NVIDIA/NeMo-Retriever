@@ -1053,9 +1053,6 @@ async def delete_playground_session(session_id: str):
 # Models Playground
 # ---------------------------------------------------------------------------
 
-_NEMOTRON_PARSE_V1_2_MODEL_ID = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
-_NEMOTRON_PARSE_2_0_MODEL_ID = "nvidia/NVIDIA-Nemotron-Parse-2.0"
-
 _AVAILABLE_MODELS = [
     {
         "id": "nvidia/llama-nemotron-embed-1b-v2",
@@ -1116,19 +1113,11 @@ _AVAILABLE_MODELS = [
         "output_classes": ["cell", "row", "column"],
     },
     {
-        "id": _NEMOTRON_PARSE_V1_2_MODEL_ID,
+        "id": "nvidia/NVIDIA-Nemotron-Parse-v1.2",
         "name": "Nemotron Parse v1.2",
         "type": "document-parser",
         "category": "Document AI",
         "description": "Image-to-structured-text model. Converts document images to Markdown with bounding boxes.",
-        "input_type": "image",
-    },
-    {
-        "id": _NEMOTRON_PARSE_2_0_MODEL_ID,
-        "name": "Nemotron Parse 2.0",
-        "type": "document-parser",
-        "category": "Document AI",
-        "description": "Image-to-structured-text model with Parse 2.0 document classes and Markdown output.",
         "input_type": "image",
     },
     {
@@ -1310,10 +1299,7 @@ async def test_ocr_model(req: OCRTestRequest):
 
 
 class ParseTestRequest(BaseModel):
-    model_id: Literal[
-        "nvidia/NVIDIA-Nemotron-Parse-v1.2",
-        "nvidia/NVIDIA-Nemotron-Parse-2.0",
-    ] = _NEMOTRON_PARSE_V1_2_MODEL_ID
+    model_id: str = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
     image_b64: str
 
 
@@ -1329,7 +1315,7 @@ async def test_parse_model(req: ParseTestRequest):
 
         from PIL import Image
 
-        from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
+        from nemo_retriever.models.local.nemotron_parse_v1_2 import NemotronParseV12
 
         img_data = req.image_b64
         if "," in img_data:
@@ -1339,8 +1325,7 @@ async def test_parse_model(req: ParseTestRequest):
         pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
         t0 = _time.perf_counter()
-        model_cls = NemotronParse20 if req.model_id == _NEMOTRON_PARSE_2_0_MODEL_ID else NemotronParseV12
-        model = model_cls(model_path=req.model_id)
+        model = NemotronParseV12()
         load_time = _time.perf_counter() - t0
 
         t1 = _time.perf_counter()
