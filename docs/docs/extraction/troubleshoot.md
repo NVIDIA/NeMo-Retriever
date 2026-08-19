@@ -264,9 +264,9 @@ When you run PDF extraction with `method="nemotron_parse"`, a mismatched model a
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly.
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` only to a compatible self-hosted chat endpoint.
 
 Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
