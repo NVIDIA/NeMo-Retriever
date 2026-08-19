@@ -272,6 +272,17 @@ nemo-retriever.role.configMapName
 {{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
 {{- end -}}
 
+{{/*
+nemo-retriever.gateway.startupServiceName
+  Name of the gateway startup Service. This Service publishes not-ready
+  addresses so worker init containers can reach the gateway's shallow
+  /v1/live endpoint before the gateway's deep readiness probe passes.
+  Usage: {{ include "nemo-retriever.gateway.startupServiceName" $ }}
+*/}}
+{{- define "nemo-retriever.gateway.startupServiceName" -}}
+{{- printf "%s-startup" (include "nemo-retriever.role.fullname" (dict "context" . "role" "gateway")) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 
 {{/*
 =============================================================================
