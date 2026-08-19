@@ -13,6 +13,7 @@ import json
 import math
 import threading
 from dataclasses import replace
+from typing import Any
 
 import lancedb
 import pytest
@@ -1127,3 +1128,75 @@ def test_document_delete_waits_for_active_collection_query(tmp_path, monkeypatch
     assert delete_finished.is_set()
     assert query_errors == []
     assert delete_errors == []
+
+# --- incomplete-index guard: a row must not reach the index without an embedding ---
+# ``[]`` is not ``None``, so it used to fall through to the length check, be counted a
+# wrong-length vector, and be dropped - a short index published with exit 0.
+
+
+def _collection_context() -> CollectionWriteContext:
+    return CollectionWriteContext(
+        scope="workspace-a",
+        collection_name="collection-a",
+        document_id="document-a",
+        document_version="v1",
+        content_sha256="sha-v1",
+        filename="source.pdf",
+        job_id="job-a",
+        operation="append",
+    )
+
+
+def _collection_record(embedding: Any, *, text: str = "first chunk") -> dict:
+    return {
+        "document_type": "text",
+        "metadata": {
+            "embedding": embedding,
+            "content": text,
+            "content_metadata": {"type": "text", "page_number": 2},
+            "source_metadata": {"source_id": "/inputs/source.pdf", "source_name": "source.pdf"},
+        },
+    }
+
+
+def test_an_empty_embedding_on_the_collection_path_fails_the_write() -> None:
+    """Known-bad: returned the surviving rows and skipped the empty one silently.
+
+    On the unpatched tree ``not vector`` swallowed ``[]`` into the same branch as
+    a malformed value, so this returned one row and no error, and the collection
+    document was written short. It now raises before any row reaches LanceDB.
+
+    Fails on the unpatched tree: no exception is raised.
+    """
+    records = [[_collection_record([]), _collection_record([1.0, 0.0])]]
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _collection_rows(records, context=_collection_context())
+
+    message = str(excinfo.value)
+    assert "incomplete document" in message
+    assert "empty_embedding=1" in message
+
+
+def test_the_collection_path_reports_the_same_counter_name_as_the_pipeline_path() -> None:
+    """Both writers name the condition ``empty_embedding`` so one grep finds both.
+
+    Fails on the unpatched tree: no exception, so nothing to read the name from.
+    """
+    with pytest.raises(RuntimeError) as excinfo:
+        _collection_rows([[_collection_record([])]], context=_collection_context())
+
+    assert "empty_embedding" in str(excinfo.value)
+
+
+def test_a_healthy_collection_document_still_writes_every_row() -> None:
+    """False-failure guard: the fatal branch must not fire on good input.
+
+    Runs on the unpatched tree and passes there too, which is the point.
+    """
+    records = [[_collection_record([1.0, 0.0]), _collection_record([0.0, 1.0], text="second chunk")]]
+
+    rows = _collection_rows(records, context=_collection_context())
+
+    assert len(rows) == 2
+    assert [row["text"] for row in rows] == ["first chunk", "second chunk"]
