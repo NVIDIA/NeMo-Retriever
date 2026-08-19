@@ -8,6 +8,7 @@ import importlib
 import json
 from typing import Any
 
+from typer.main import get_command
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
@@ -685,3 +686,18 @@ def test_root_query_service_evidence_format(monkeypatch) -> None:
     assert body["coverage"]["strategies_used"] == ["semantic"]
     assert body["evidence"][0]["text"] == "service passage"
     assert body["evidence"][0]["citation"] == "doc p.3"
+
+
+def test_answer_is_top_level_command_with_descriptive_llm_flags() -> None:
+    root_help = RUNNER.invoke(cli_main.app, ["--help"])
+    answer_command = get_command(cli_main.app).commands["answer"]
+
+    assert root_help.exit_code == 0
+    assert "answer" in root_help.output
+    option_names = {name for param in answer_command.params for name in getattr(param, "opts", [])}
+    assert "--answer-llm-model" in option_names
+    assert "--answer-llm-invoke-url" in option_names
+    assert "--answer-llm-api-key-env" in option_names
+    assert "--answer-llm-max-tokens" in option_names
+    assert "--answer-llm-temperature" in option_names
+    assert "--answer-reasoning" in option_names

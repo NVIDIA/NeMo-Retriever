@@ -9,6 +9,7 @@ import logging
 
 import typer
 
+from nemo_retriever.cli.answer import ANSWER_HELP, answer_command
 from nemo_retriever.cli.ingest import app as ingest_app
 from nemo_retriever.cli.query import app as query_app
 from nemo_retriever.version import get_version_info
@@ -23,6 +24,7 @@ from nemo_retriever.service.cli import app as service_app  # noqa: E402
 app.add_typer(service_app, name="service")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(query_app, name="query")
+app.command("answer", help=ANSWER_HELP)(answer_command)
 
 # All other sub-apps are registered lazily so that missing optional
 # dependencies (tritonclient, torch, …) don't prevent the service
