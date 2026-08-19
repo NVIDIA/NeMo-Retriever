@@ -916,20 +916,28 @@ serviceConfig:
     invokeUrl: http://answer-llm:8000/v1/chat/completions
 ```
 
-Equivalent `--set` form when you do not use a values file:
+Equivalent `--set` form when you do not use a values file.
+Helm `--set` replaces the `env` list, so include every Super-49B
+environment entry and change only the `NIM_PASSTHROUGH_ARGS` value:
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
   --set nimOperator.answer_llm.enabled=true \
+  --set nimOperator.answer_llm.env[0].name=NIM_HTTP_API_PORT \
+  --set-string nimOperator.answer_llm.env[0].value=8000 \
+  --set nimOperator.answer_llm.env[1].name=NIM_TENSOR_PARALLEL_SIZE \
+  --set-string nimOperator.answer_llm.env[1].value=2 \
+  --set nimOperator.answer_llm.env[2].name=NIM_PASSTHROUGH_ARGS \
   --set-string nimOperator.answer_llm.env[2].value="--disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser llama3_json" \
+  --set nimOperator.answer_llm.env[3].name=NCCL_IB_DISABLE \
+  --set-string nimOperator.answer_llm.env[3].value=1 \
+  --set nimOperator.answer_llm.env[4].name=NCCL_P2P_DISABLE \
+  --set-string nimOperator.answer_llm.env[4].value=1 \
   --set serviceConfig.agentic.enabled=true \
   --set serviceConfig.agentic.llmModel=nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --set serviceConfig.agentic.invokeUrl=http://answer-llm:8000/v1/chat/completions
 ```
 
-`env[2]` is the chart-default `NIM_PASSTHROUGH_ARGS` entry for
-Super-49B. If you already replaced the `env` list, set the
-`NIM_PASSTHROUGH_ARGS` value on that list instead.
 `serviceConfig.agentic.llmModel` is the model ID advertised by the
 NIM, not the LiteLLM `openai/` prefix used by
 `serviceConfig.llm.model`. Change `invokeUrl` if you override

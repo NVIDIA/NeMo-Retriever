@@ -101,15 +101,22 @@ nimOperator:
         value: "1"
 ```
 
-Equivalent `--set` override when you do not use a values file:
+Equivalent `--set` override when you do not use a values file. Helm `--set` replaces the `env` list, so include every Super-49B environment entry and change only the `NIM_PASSTHROUGH_ARGS` value:
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
   --set nimOperator.answer_llm.enabled=true \
-  --set-string nimOperator.answer_llm.env[2].value="--disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser llama3_json"
+  --set nimOperator.answer_llm.env[0].name=NIM_HTTP_API_PORT \
+  --set-string nimOperator.answer_llm.env[0].value=8000 \
+  --set nimOperator.answer_llm.env[1].name=NIM_TENSOR_PARALLEL_SIZE \
+  --set-string nimOperator.answer_llm.env[1].value=2 \
+  --set nimOperator.answer_llm.env[2].name=NIM_PASSTHROUGH_ARGS \
+  --set-string nimOperator.answer_llm.env[2].value="--disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser llama3_json" \
+  --set nimOperator.answer_llm.env[3].name=NCCL_IB_DISABLE \
+  --set-string nimOperator.answer_llm.env[3].value=1 \
+  --set nimOperator.answer_llm.env[4].name=NCCL_P2P_DISABLE \
+  --set-string nimOperator.answer_llm.env[4].value=1
 ```
-
-`env[2]` is the chart-default `NIM_PASSTHROUGH_ARGS` entry for Super-49B. If you already replaced the `env` list, set the `NIM_PASSTHROUGH_ARGS` value on that list instead.
 
 After the NIM is Ready, confirm the passthrough arguments:
 
