@@ -675,9 +675,9 @@ listen on `networkService.port` and route to the container listener on
 | `serviceConfig.llm.model`                           | `""` | Optional explicit LiteLLM model id. Leave empty to inherit `nimOperator.answer_llm.model` when using the operator-managed answer LLM; set it for external endpoints. |
 | `serviceConfig.llm.ragSystemPromptPrefix`           | `""` | Optional explicit RAG prompt prefix. Leave empty unless an endpoint needs model-specific prompt directives. |
 | `serviceConfig.llm.reasoningEnabled`               | `true` | Request-level reasoning toggle for `/v1/answer`. Defaults to true for external OpenAI-compatible providers; set false for Nemotron endpoints that should receive portable no-reasoning controls. |
-| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true` and the additive `agentic_query` MCP tool. |
-| `serviceConfig.agentic.llmModel`                   | `""` | Chat model used by the inner agentic retrieval loop. Required when `invokeUrl` is set. |
-| `serviceConfig.agentic.invokeUrl`                  | `""` | OpenAI-compatible chat completions endpoint used by agentic retrieval. |
+| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true` and the additive `agentic_query` MCP tool. Not auto-enabled by `nimOperator.answer_llm`. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). |
+| `serviceConfig.agentic.llmModel`                   | `""` | Chat model used by the inner agentic retrieval loop. Required when `invokeUrl` is set. Use the NIM-advertised ID (for Super-49B, `nvidia/llama-3.3-nemotron-super-49b-v1.5`), not the LiteLLM `openai/` prefix. |
+| `serviceConfig.agentic.invokeUrl`                  | `""` | OpenAI-compatible chat completions endpoint used by agentic retrieval. Not auto-populated from `answer_llm`. For the in-cluster Super-49B NIM, set `http://answer-llm:8000/v1/chat/completions`. |
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
@@ -772,7 +772,12 @@ llm:
 
 The retriever service then exposes `POST /v1/answer`, which calls the
 VectorDB pod's `/v1/query` endpoint for context and sends those chunks to
-the configured LLM endpoint. The `answer_llm` NIM deployment leaves
+the configured LLM endpoint. This path does not require tool calling.
+The `answer_llm` NIM is not wired into `serviceConfig.agentic` and is
+not tool-call ready by default. For agentic retrieval against that NIM,
+refer to
+[Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm).
+The `answer_llm` NIM deployment leaves
 reasoning defaults model-neutral; `/v1/answer` controls reasoning per
 request. By default, `serviceConfig.llm.reasoningEnabled=true`, so requests
 leave reasoning behavior to the LLM endpoint defaults and avoid sending
@@ -866,6 +871,87 @@ Enabling caption Omni and the default Super-49B `answer_llm` as separate
 NIMServices adds their GPU and disk requirements. Reusing the caption
 Omni endpoint for `/v1/answer` does not add a second Omni GPU or cache.
 
+#### Agentic retrieval (self-hosted Super-49B) { #agentic-retrieval-llm }
+
+`nimOperator.answer_llm.enabled=true` deploys Super-49B and auto-wires
+it only to `serviceConfig.llm` for `POST /v1/answer`. That answer path
+sends a plain text-generation request and does not require tool
+calling. `serviceConfig.agentic` is a separate block. The chart does
+not populate it from `answer_llm`.
+
+The default Super-49B NIM starts with
+`NIM_PASSTHROUGH_ARGS=--disable-custom-all-reduce`. Agentic retrieval
+sends OpenAI-style tool-call messages with `tool_choice=auto`. A
+self-hosted vLLM-backed Super-49B NIM rejects those requests with
+HTTP 400 unless you also pass `--enable-auto-tool-choice` and
+`--tool-call-parser llama3_json`.
+
+You can reuse the same Super-49B NIM for agentic retrieval after you
+add those arguments. `POST /v1/answer` continues to work. This gap
+does not apply to NVIDIA-hosted Build endpoints.
+
+If you set `nimOperator.answer_llm.env` in a values file, include
+the full list. Change only the passthrough value:
+
+```yaml
+nimOperator:
+  answer_llm:
+    enabled: true
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TENSOR_PARALLEL_SIZE
+        value: "2"
+      - name: NIM_PASSTHROUGH_ARGS
+        value: "--disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser llama3_json"
+      - name: NCCL_IB_DISABLE
+        value: "1"
+      - name: NCCL_P2P_DISABLE
+        value: "1"
+
+serviceConfig:
+  agentic:
+    enabled: true
+    llmModel: nvidia/llama-3.3-nemotron-super-49b-v1.5
+    invokeUrl: http://answer-llm:8000/v1/chat/completions
+```
+
+Equivalent `--set` form when you do not use a values file:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set nimOperator.answer_llm.enabled=true \
+  --set-string nimOperator.answer_llm.env[2].value="--disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser llama3_json" \
+  --set serviceConfig.agentic.enabled=true \
+  --set serviceConfig.agentic.llmModel=nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set serviceConfig.agentic.invokeUrl=http://answer-llm:8000/v1/chat/completions
+```
+
+`env[2]` is the chart-default `NIM_PASSTHROUGH_ARGS` entry for
+Super-49B. If you already replaced the `env` list, set the
+`NIM_PASSTHROUGH_ARGS` value on that list instead.
+`serviceConfig.agentic.llmModel` is the model ID advertised by the
+NIM, not the LiteLLM `openai/` prefix used by
+`serviceConfig.llm.model`. Change `invokeUrl` if you override
+`nimOperator.answer_llm.nimServiceName`.
+
+After the NIM is Ready, confirm the passthrough arguments:
+
+```bash
+kubectl exec -n <namespace> deploy/answer-llm -- printenv NIM_PASSTHROUGH_ARGS
+```
+
+The value must include `--enable-auto-tool-choice` and
+`--tool-call-parser llama3_json`. For one-shot CLI use, port-forward
+`service/answer-llm` and point `--agentic-invoke-url` at
+`http://localhost:9000/v1/chat/completions`. For the CLI command,
+service request, and MCP notes, refer to
+[Self-hosted Helm Super-49B](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+
+For other self-hosted OpenAI-compatible NIMs, enable automatic tool
+choice and the parser that model requires. The `llama3_json` parser
+is the verified Super-49B setting.
+
 ### NIM Operator sub-stack
 
 Each enabled NIM block under `nimOperator.<key>` renders operator resources
@@ -890,7 +976,7 @@ gated on three conditions ALL holding:
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). The default image is Parse v1.2; you can select Parse v2.0 with its documented image override. Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
-| `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
+| `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
 | `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |

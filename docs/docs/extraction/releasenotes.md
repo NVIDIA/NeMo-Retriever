@@ -39,6 +39,7 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 - Agentic retrieval is a 26.08 user-facing feature. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - `retriever query --agentic` runs that ReAct loop over the same LanceDB table as one-pass retrieval. Local CLI and harness runs default to in-process vLLM (`nemotron-8b`). Remote OpenAI-compatible NIM or NVIDIA-hosted endpoints use `--agentic-invoke-url`.
 - Retriever Service exposes agentic retrieval on `POST /v1/query` with `agentic=true` and an `agentic_query` MCP tool when `agentic.enabled` is true. Service mode requires a remote OpenAI-compatible LLM endpoint. Agentic remains opt-in through `serviceConfig.agentic.enabled`.
+- The Helm `answer_llm` Super-49B NIM auto-wires `/v1/answer` only. Self-hosted agentic retrieval against that NIM requires `--enable-auto-tool-choice --tool-call-parser llama3_json` on `NIM_PASSTHROUGH_ARGS` and explicit `serviceConfig.agentic` wiring. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 - Configurable auto-retrieval is available on the service query path, with evidence and coverage output formats on `/v1/query`. MCP query-method selection and rerank tools are available.
 
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
