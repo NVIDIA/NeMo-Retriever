@@ -1,0 +1,92 @@
+navigation:
+- section: 1. Introduction
+  path: ../../docs/extraction/overview.mdx
+  contents:
+  - page: What is NeMo Retriever?
+    path: ../../docs/extraction/overview.mdx
+  - page: Key concepts
+    path: ../../docs/extraction/concepts.mdx
+  - page: Release notes
+    path: ../../docs/extraction/releasenotes.mdx
+- section: 2. Get started
+  path: ../../docs/extraction/getting-started-about.mdx
+  contents:
+  - page: About this section
+    path: ../../docs/extraction/getting-started-about.mdx
+  - page: Pre-Requisites & Support Matrix
+    path: ../../docs/extraction/prerequisites-support-matrix.mdx
+  - link: 'Quickstart: NeMo Retriever Library'
+    href: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever
+  - page: Authentication and API keys
+    path: ../../docs/extraction/api-keys.mdx
+- section: 3. Deployment options
+  path: ../../docs/extraction/deployment-options.mdx
+  contents:
+  - page: Compare deployment options
+    path: ../../docs/extraction/deployment-options.mdx
+  - link: OpenShift deployment (Helm)
+    href: https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/openshift.md
+  - link: Helm chart (Kubernetes)
+    href: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm
+  - link: Docker service image
+    href: https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md
+- section: 4. Core workflows
+  path: ../../docs/extraction/workflow-document-ingestion.mdx
+  contents:
+  - page: 'Workflow: Ingest documents into a searchable VDB collection'
+    path: ../../docs/extraction/workflow-document-ingestion.mdx
+  - page: 'Workflow: Audio & video ingestion'
+    path: ../../docs/extraction/audio-video.mdx
+- page: 5. Multimodal extraction
+  path: ../../docs/extraction/multimodal-extraction.mdx
+- section: 6. Embedding, indexing & storage
+  path: ../../docs/extraction/embedding.mdx
+  contents:
+  - page: Multimodal embeddings (VLM)
+    path: ../../docs/extraction/embedding.mdx
+  - page: Vector databases
+    path: ../../docs/extraction/vdbs.mdx
+- section: 7. Deployment & operations
+  path: ../../docs/extraction/ray-logging.mdx
+  contents:
+  - page: Ray and distributed ingest
+    path: ../../docs/extraction/ray-logging.mdx
+- section: 8. Customize & extend
+  path: ../../docs/extraction/customize-extend.mdx
+  contents:
+  - page: Customize & extend
+    path: ../../docs/extraction/customize-extend.mdx
+- link: Starter kits
+  href: https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md
+- section: 10. Evaluation & benchmarks
+  path: ../../docs/extraction/evaluate-on-your-data.mdx
+  contents:
+  - page: Evaluate on your own documents
+    path: ../../docs/extraction/evaluate-on-your-data.mdx
+- section: 11. Reference
+  path: ../../docs/extraction/nemo-retriever-api-reference.mdx
+  contents:
+  - page: API guide
+    path: ../../docs/extraction/nemo-retriever-api-reference.mdx
+  - link: CLI reference
+    href: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
+  - page: 'Quickstart: retriever CLI'
+    path: ../../docs/reference/retriever-cli-quickstart.mdx
+  - page: Environment variables
+    path: ../../docs/extraction/environment-config.mdx
+  - page: Metadata reference
+    path: ../../docs/extraction/content-metadata.mdx
+- section: 12. Support & community
+  path: ../../docs/extraction/troubleshoot.mdx
+  contents:
+  - page: Troubleshooting
+    path: ../../docs/extraction/troubleshoot.mdx
+  - page: FAQ
+    path: ../../docs/extraction/faq.mdx
+  - page: Contributing
+    path: ../../docs/extraction/contributing.mdx
+- section: Additional resources
+  path: ../../docs/license.mdx
+  contents:
+  - page: OSS licences
+    path: ../../docs/license.mdx
