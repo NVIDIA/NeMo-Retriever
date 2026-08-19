@@ -68,10 +68,11 @@ _RERANK_TEXT_SERVICE_NAME = "name: llama-nemotron-rerank-1b-v2"
 _PARSE_SERVICE_NAME = "name: nemotron-parse"
 _OMNI_SERVICE_NAME = "name: nemotron-3-nano-omni-30b-a3b-reasoning"
 
-# Image tag the chart pins for both NIMs in 26.05. Documenting it on
+# Image tags the chart pins for Parse and Omni in 26.05. Documenting it on
 # both ends (values.yaml comments + README) keeps air-gapped mirror
 # pipelines pointed at the right NGC tag.
-_VARIANT_TAG = "1.7.0-variant"
+_PARSE_VARIANT_TAG = "1.7.0-variant"
+_OMNI_VARIANT_TAG = "2.0.4-variant"
 
 # Repositories the rerank NIM may be pinned to. The chart MUST point at
 # the VL SKU — the text-only SKU silently degrades multimodal
@@ -250,12 +251,18 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         """
         values = _read_required_file(_VALUES_YAML)
         self.assertEqual(
-            values.count(f'tag: "{_VARIANT_TAG}"'),
-            2,
-            "Expected exactly two NIM image tags to be pinned to "
-            f"{_VARIANT_TAG!r} (Parse + Omni). If you bumped one tag, "
-            "bump the other together or split this test.",
+            values.count(f'tag: "{_PARSE_VARIANT_TAG}"'),
+            1,
+            "Expected exactly one Parse NIM image tag to be pinned to "
+            f"{_PARSE_VARIANT_TAG!r} (Parse)."
+            "Parse must retain its pinned tag.",
         )
+        self.assertEqual(
+            values.count(f'tag: "{_OMNI_VARIANT_TAG}"'),
+            1,
+            f"Expected exactly one Omni NIM image tag to be pinned to {_OMNI_VARIANT_TAG!r}.",
+        )
+
         # The comment must explain what `-variant` means, not just
         # mention the literal string.
         self.assertIn(
@@ -330,12 +337,18 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "values.yaml entries and per-NIM table can link to it.",
         )
         self.assertIn(
-            _VARIANT_TAG,
+            _PARSE_VARIANT_TAG,
             readme,
-            f"README must mention the {_VARIANT_TAG!r} tag verbatim so a "
+            f"README must mention the {_PARSE_VARIANT_TAG!r} tag verbatim so a "
             "`grep` for the tag inside the chart docs returns the "
             "explanation.",
         )
+        self.assertIn(
+            _OMNI_VARIANT_TAG,
+            readme,
+            f"README must mention the {_OMNI_VARIANT_TAG!r} Omni tag verbatim.",
+        )
+
         # The README explicitly tells operators NOT to substitute :latest
         # — this is the actionable guidance the bug report asks for.
         self.assertIn(
@@ -471,9 +484,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
         # The pinned tag must travel with the opt-in.
         self.assertIn(
-            f"tag: {_VARIANT_TAG}",
+            f"tag: {_PARSE_VARIANT_TAG}",
             proc.stdout,
-            f"Parse opt-in must render with the pinned {_VARIANT_TAG!r} tag.",
+            f"Parse opt-in must render with the pinned {_PARSE_VARIANT_TAG!r} tag.",
         )
 
     def test_helm_template_omni_opt_in_renders_nimservice_and_caption(self) -> None:
@@ -550,7 +563,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
 
     def test_helm_template_omni_image_tag_pins_to_variant(self) -> None:
-        """Opt-in Omni must render with the pinned ``1.7.0-variant`` tag, not ``:latest``.
+        """Opt-in Omni must render with the pinned ``2.0.4-variant`` tag, not ``:latest``.
 
         The bug report's reproducibility concern: substituting
         ``:latest`` would silently move to a different NIM build.
@@ -563,9 +576,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         )
         _assert_helm_ok(self, proc)
         self.assertIn(
-            f"tag: {_VARIANT_TAG}",
+            f"tag: {_OMNI_VARIANT_TAG}",
             proc.stdout,
-            f"Omni opt-in must render with the pinned {_VARIANT_TAG!r} tag.",
+            f"Omni opt-in must render with the pinned {_OMNI_VARIANT_TAG!r} tag.",
         )
         # And there is no stray `:latest` reference in the rendered
         # NIMCache/NIMService manifests for either heavy-weight NIM.

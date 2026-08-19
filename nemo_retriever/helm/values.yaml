@@ -1068,7 +1068,7 @@ nimOperator:
   # an additional dedicated GPU per NIM with no opt-in from the operator.
   # See helm/README.md "Recommended minimal install (26.05)" for the
   # opt-in flags and "Image tag conventions" for what the
-  # ``1.7.0-variant`` Parse / Omni tags mean.
+  # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
 
   # Page-element detector. Uses the combined nemotron-object-detection NIM image
@@ -1459,7 +1459,7 @@ nimOperator:
   # NIM SKU shipped alongside the 26.05 release; the `-variant` suffix
   # marks it as the build that ships with the per-GPU TensorRT engine
   # variants required by NIM Operator profile reconciliation, matching
-  # `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` and the row
+  # `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` and the row
   # for Nemotron Parse in
   # docs/extraction/prerequisites-support-matrix.md "Model hardware
   # requirements". Override to a different NGC tag only when validated
@@ -1522,7 +1522,7 @@ nimOperator:
   # Operator from the model profile (override with `kubectl edit
   # nimservice` if necessary).
   #
-  # The default image tag (`1.7.0-variant`) is the Omni NIM SKU shipped
+  # The default image tag (`2.0.4-variant`) is the Omni NIM SKU shipped
   # alongside the 26.05 release; the `-variant` suffix marks it as the
   # build that ships with the per-GPU TensorRT engine variants required
   # by NIM Operator profile reconciliation, matching the row for the
@@ -1534,7 +1534,7 @@ nimOperator:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-      tag: "1.7.0-variant"
+      tag: "2.0.4-variant"
       pullPolicy: IfNotPresent
       # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
       # chart-wide pull secret name(s) for this NIM only.

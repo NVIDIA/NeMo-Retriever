@@ -20,6 +20,7 @@ EmbedModelFamily = Literal["text", "vl"]
 _MODEL_PROFILES: dict[str, tuple[EmbedModelFamily, str]] = {
     "llama_bidirec": ("text", "LlamaBidirectionalModel"),
     "llama_nemotron_vl": ("vl", "LlamaNemotronVLModel"),
+    "ministral3": ("text", "Ministral3Model"),
 }
 _DEFAULT_QUERY_PREFIX = "query: "
 _DEFAULT_DOCUMENT_PREFIX = "passage: "
@@ -150,6 +151,12 @@ def _spec_from_config(
         raise ValueError(
             f"Embedding model {model_id!r} uses unsupported architectures {architectures!r}; "
             f"expected [{expected_architecture!r}] for the {family} dense embedding profile."
+        )
+
+    if model_type == "ministral3" and config.get("is_causal") is not False:
+        raise ValueError(
+            f"Embedding model {model_id!r} uses unsupported is_causal={config.get('is_causal')!r}; "
+            "dense Ministral3 embedding profiles require is_causal=false."
         )
 
     dimension_config = config.get("llm_config") if family == "vl" else config

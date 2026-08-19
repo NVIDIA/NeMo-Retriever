@@ -25,7 +25,7 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
-from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import ASRParams, EmbedParams, ExtractParams
 
 
 def _resolve_plan(
@@ -451,6 +451,43 @@ def test_text_html_branch_execution_skips_content_reshape_before_embed(monkeypat
     GraphIngestor(run_mode="inprocess", show_progress=False).files([str(text), str(html)]).extract().embed().ingest()
 
     assert post_calls[0]["reshape_content_before_embed"] is False
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_mixed_branch_image_embedding_enables_pdf_page_raster(monkeypatch, tmp_path, modality: str) -> None:
+    pdf = tmp_path / "manual.pdf"
+    text_file = tmp_path / "notes.txt"
+    pdf.write_bytes(b"pdf")
+    text_file.write_text("notes", encoding="utf-8")
+    extraction_calls: list[dict[str, Any]] = []
+
+    def fake_build_graph(**kwargs: Any) -> Graph:
+        extraction_calls.append(kwargs)
+        return _graph_with(_TagOperator(tag=kwargs["extraction_mode"]))
+
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", fake_build_graph)
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.branch_extraction.build_post_extract_graph",
+        lambda **_kwargs: _graph_with(_PostOperator()),
+    )
+
+    (
+        GraphIngestor(run_mode="inprocess", show_progress=False)
+        .files([str(pdf), str(text_file)])
+        .extract(
+            ExtractParams(
+                extract_images=False,
+                extract_tables=False,
+                extract_charts=False,
+                extract_page_as_image=False,
+            )
+        )
+        .embed(EmbedParams(embed_modality=modality, embed_granularity="page"))
+        .ingest()
+    )
+
+    pdf_call = next(call for call in extraction_calls if call["extraction_mode"] == "pdf")
+    assert pdf_call["extract_params"].extract_page_as_image is True
 
 
 class _FakeDataset:

@@ -255,6 +255,9 @@ def classify_failure(
     if gen_error == "thinking_truncated":
         return "thinking_truncated"
 
+    if gen_error is not None:
+        return "generation_error"
+
     if judge_score is None:
         return "judge_error"
 
@@ -308,7 +311,8 @@ def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
         judge_score_raw = row.get("judge_score")
         judge_score = None if pd.isna(judge_score_raw) else float(judge_score_raw)
-        gen_error = row.get("gen_error")
+        gen_error_raw = row.get("gen_error")
+        gen_error = None if pd.isna(gen_error_raw) else str(gen_error_raw)
         fm = classify_failure(
             ref_in_chunks=aic,
             judge_score=judge_score,

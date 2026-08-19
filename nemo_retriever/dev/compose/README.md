@@ -100,6 +100,8 @@ docker compose \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
+The `nim-caption` profile defaults to `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`. Set `NIM_CAPTION_IMAGE` or `NIM_CAPTION_TAG` only when you need a different registry or image tag.
+
 Reranker and Parse need only `--profile nim-reranker` or
 `--profile nim-parse`. They are lifecycle/API-only and intentionally are not
 injected into retriever service configuration, matching Helm.

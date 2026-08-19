@@ -37,17 +37,21 @@ from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.common.ray_resource_hueristics import Resources
 
 
-def _graph_node_names(graph: Graph) -> list[str]:
-    names: list[str] = []
+def _graph_nodes(graph: Graph) -> list[Node]:
+    nodes: list[Node] = []
 
     def visit(node: Node) -> None:
-        names.append(getattr(node.operator, "name", node.name))
+        nodes.append(node)
         for child in node.children:
             visit(child)
 
     for root in graph.roots:
         visit(root)
-    return names
+    return nodes
+
+
+def _graph_node_names(graph: Graph) -> list[str]:
+    return [getattr(node.operator, "name", node.name) for node in _graph_nodes(graph)]
 
 
 def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
@@ -70,6 +74,63 @@ def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
     )
 
     assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_pdf_image_embedding_enables_page_raster(modality: str) -> None:
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(
+            embed_modality=modality,
+            embed_granularity="page",
+            local_ingest_embed_backend="hf",
+        ),
+    )
+
+    pdf_extract_node = next(
+        node for node in _graph_nodes(graph) if node.operator.__class__.__name__ == "PDFExtractionActor"
+    )
+
+    assert pdf_extract_node.operator_kwargs["extract_page_as_image"] is True
+
+
+def test_pdf_text_embedding_preserves_disabled_page_raster() -> None:
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(embed_modality="text", embed_granularity="page"),
+    )
+
+    pdf_extract_node = next(
+        node for node in _graph_nodes(graph) if node.operator.__class__.__name__ == "PDFExtractionActor"
+    )
+
+    assert pdf_extract_node.operator_kwargs["extract_page_as_image"] is False
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_auto_image_page_embedding_enables_page_raster(modality: str) -> None:
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(extract_page_as_image=False),
+        embed_params=EmbedParams(embed_modality=modality, embed_granularity="page"),
+    )
+
+    operator = graph.roots[0].operator
+
+    assert isinstance(operator, MultiTypeExtractOperator)
+    assert operator.extract_params.extract_page_as_image is True
 
 
 def test_batch_graph_forwards_resolvable_hosted_parse_contract() -> None:

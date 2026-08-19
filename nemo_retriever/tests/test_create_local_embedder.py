@@ -312,6 +312,8 @@ def test_query_embedder_vl_vllm_uses_vllm_vl(_patch_embedders):
         pytest.param("llama_nemotron_vl", "hf", 2, id="vl-hf"),
         pytest.param("llama_bidirec", "vllm", 0, id="text-vllm"),
         pytest.param("llama_bidirec", "hf", 1, id="text-hf"),
+        pytest.param("ministral3", "vllm", 0, id="ministral3-vllm"),
+        pytest.param("ministral3", "hf", 1, id="ministral3-hf"),
     ],
 )
 def test_local_checkpoint_routes_from_config(

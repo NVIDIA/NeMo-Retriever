@@ -782,8 +782,14 @@ endpoints that should skip reasoning; the service then adds both `/no_think`
 and `chat_template_kwargs.enable_thinking=false`. The default Super-49B NIMService
 resources request two physical GPUs (`nvidia.com/gpu: 2`) to match the bundled
 tensor-parallel NIM profile. Do not satisfy that count with GPU Operator
-time-slice replicas. Override `resources`, `modelProfile`, or
-`env` for deployments that use a different profile or hardware topology.
+time-slice replicas. Those two GPUs are in addition to the four core NIMs.
+The chart NIMCache PVC is `250Gi`. A100 40GB, A10G, L40S, and RTX PRO 4500
+Blackwell are not supported for that default BF16 TP2 profile. Override
+`resources`, `modelProfile`, or `env` for deployments that use a different
+profile or hardware topology. Refer to
+[Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
+in the Support Matrix.
+
 When `answer_llm` is enabled and no explicit `serviceConfig.llm.apiKeySecret`
 is set, the service also mounts `nimOperator.answer_llm.authSecret` as
 `NEMO_RETRIEVER_LLM_API_KEY`; OpenAI-compatible clients require a
@@ -830,6 +836,36 @@ create a Kubernetes Secret and set `serviceConfig.llm.apiKeySecret.name`
 plus `serviceConfig.llm.apiKeySecret.key`; Helm mounts the Secret as an
 environment variable instead of writing the key into the ConfigMap.
 
+`nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` deploys Omni for
+image captioning only. It does not enable `/v1/answer`. Omni
+(`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`) is a supported
+configurable VLM-capable answer-generation backend. Use one of the
+following:
+
+- Override the generic `answer_llm` slot with the Omni image
+  `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`,
+  set `nimOperator.answer_llm.model` to
+  `openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, set
+  `NIM_SERVED_MODEL_NAME` to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`,
+  and size `resources` plus `NIM_TENSOR_PARALLEL_SIZE` from the Omni rows in the
+  [Support Matrix](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
+  (one GPU on 80 GB or better, two GPUs on L40S). Leave `modelProfile`
+  empty for NIM Operator auto-discovery, or pin a profile for your GPU.
+- If the Omni caption NIM is already in the cluster, reuse it for
+  `/v1/answer` without deploying Super-49B:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true \
+  --set serviceConfig.llm.enabled=true \
+  --set serviceConfig.llm.apiBase=http://nemotron-3-nano-omni-30b-a3b-reasoning:8000/v1 \
+  --set serviceConfig.llm.model=openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+```
+
+Enabling caption Omni and the default Super-49B `answer_llm` as separate
+NIMServices adds their GPU and disk requirements. Reusing the caption
+Omni endpoint for `/v1/answer` does not add a second Omni GPU or cache.
+
 ### NIM Operator sub-stack
 
 Each enabled NIM block under `nimOperator.<key>` renders operator resources
@@ -853,7 +889,7 @@ gated on three conditions ALL holding:
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional). Set `true` to opt in — refer to [Query-time reranking](#query-time-reranking). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). The default image is Parse v1.2; you can select Parse v2.0 with its documented image override. Image tags follow the [image tag conventions](#image-tag-conventions). |
-| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
@@ -950,7 +986,7 @@ Every NIM in this chart pins an exact NGC image tag in `values.yaml`
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
 | Plain semver | `nemotron-object-detection:2.0.1` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
-| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
+| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
 
 For air-gapped mirror pipelines: mirror the *exact* tag — both the
 plain semver and the `-variant` form — and do not substitute `:latest`.
@@ -1823,7 +1859,7 @@ your release tag). Defaults below match
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
-| Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
+| Omni caption or configurable answer VLM (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |
 | Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
 

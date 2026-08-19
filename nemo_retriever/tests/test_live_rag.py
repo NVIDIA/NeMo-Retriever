@@ -438,6 +438,62 @@ class TestRetrieveBatch:
 class TestPipelineBuilder:
     """Retriever.pipeline() fluent builder composition."""
 
+    @pytest.mark.parametrize(
+        ("gen_error", "answer", "judge_score", "judge_error", "expected_failure_mode"),
+        [
+            ("transport_error", "", None, "empty_candidate", "generation_error"),
+            ("request_error", "", None, "empty_candidate", "generation_error"),
+            ("thinking_truncated", "", None, "empty_candidate", "thinking_truncated"),
+            (None, "reference answer", None, "transport_error", "judge_error"),
+            (None, "reference answer", 1.0, None, "correct"),
+        ],
+    )
+    def test_failure_mode_uses_originating_stage(
+        self,
+        gen_error,
+        answer,
+        judge_score,
+        judge_error,
+        expected_failure_mode,
+    ):
+        """Generation errors take precedence in the supported operator order."""
+        from nemo_retriever.models.llm.types import GenerationResult, JudgeResult, RetrievalResult
+
+        class _Generator:
+            supports_concurrent_calls = False
+            model = "deterministic/generator"
+
+            def generate(self, query, chunks, *, reasoning_enabled=None):
+                return GenerationResult(
+                    answer=answer,
+                    latency_s=0.0,
+                    model=self.model,
+                    error=gen_error,
+                )
+
+        class _Judge:
+            def judge(self, query, reference, candidate):
+                if not candidate.strip():
+                    return JudgeResult(score=None, reasoning="Candidate answer was empty.", error="empty_candidate")
+                return JudgeResult(score=judge_score, reasoning="", error=judge_error)
+
+        r = _make_retriever()
+        retrieved = RetrievalResult(
+            chunks=["reference answer"],
+            metadata=[{"source": "deterministic"}],
+        )
+
+        with patch.object(r, "retrieve_batch", return_value=[retrieved]):
+            builder = r.pipeline().generate(_build_fake_llm_client()).judge(_build_fake_judge()).score()
+            builder._steps[0]._client = _Generator()
+            builder._steps[1]._judge = _Judge()
+            out = builder.run(["query"], reference=["reference answer"])
+
+        row = out.iloc[0]
+        assert row.gen_error == gen_error
+        assert row.judge_error == judge_error
+        assert row.failure_mode == expected_failure_mode
+
     def test_builder_composition_runs_expected_steps(self):
         """generate -> score -> judge builds and executes the full chain."""
         r = _make_retriever()
