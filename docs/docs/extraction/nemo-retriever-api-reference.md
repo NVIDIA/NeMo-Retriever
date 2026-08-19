@@ -259,12 +259,63 @@ QAGenerationOperator(
 
 Serializing a graph containing a literal API key fails with a contextual error instead of guessing which provider credential should be used on a worker.
 
+## Generated Python API { #generated-python-api }
 
-::: nemo_retriever.ingestor
+The signatures below are the supported public ingest, retrieve, and parameter
+surfaces. Private helpers, module loggers, and duplicate re-exports are omitted.
+
+Use the following public import paths:
+
+- Import `create_ingestor` and `GraphIngestionError` from `nemo_retriever`.
+- Import parameter models from `nemo_retriever.common.params`.
+- Import `LiteLLMClient` and `LLMJudge` from `nemo_retriever.models.llm`.
+- Import `RetrieveVdbOperator` from `nemo_retriever.operators.vdb`.
+- Import `NemotronRerankActor` from `nemo_retriever.operators.rerank`.
+
+### Ingest { #generated-ingest-api }
+
+::: nemo_retriever.ingestor.core.create_ingestor
     options:
+      heading_level: 4
+
+::: nemo_retriever.ingestor.graph_ingestor.GraphIngestor
+    options:
+      heading_level: 4
+      docstring_style: numpy
       filters:
+        - "!^_"
         - "!^pdf_split_config$"
 
-::: nemo_retriever.graph.retriever
+::: nemo_retriever.ingestor.graph_ingestor.GraphIngestionError
+    options:
+      heading_level: 4
+
+### Retrieve { #generated-retrieve-api }
+
+::: nemo_retriever.graph.retriever.Retriever
+    options:
+      heading_level: 4
+
+::: nemo_retriever.graph.retriever.RetrieverPipelineBuilder
+    options:
+      heading_level: 4
+
+### Evaluation clients { #generated-evaluation-clients }
+
+Import these clients from `nemo_retriever.models.llm`. The headings show the
+implementing modules.
+
+::: nemo_retriever.models.llm.clients.litellm.LiteLLMClient
+    options:
+      heading_level: 4
+
+::: nemo_retriever.models.llm.clients.judge.LLMJudge
+    options:
+      heading_level: 4
+
+### Parameter models { #generated-parameter-models }
 
 ::: nemo_retriever.common.params
+    options:
+      heading_level: 4
+      show_submodules: false

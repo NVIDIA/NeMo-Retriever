@@ -142,8 +142,16 @@ plugins:
             docstring_style: google
             show_source: true
             show_if_no_docstring: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_submodules: false
+            inherited_members: false
+            members_order: source
+            filters:
+              - "!^_"
+            extensions:
+              - sphinx_roles.py:SphinxRoleConverter
           paths:
-            - ../api/src
             - ../nemo_retriever/src
   - mkdocs-jupyter:
       theme: auto
