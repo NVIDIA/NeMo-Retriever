@@ -374,6 +374,36 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 
 
 
+## LanceDB index creation fails during concurrent Helm ingestion { #lancedb-concurrent-index-creation }
+
+Concurrent ingest workers can finish extraction at nearly the same time and
+send overlapping writes to the VectorDB service. In affected releases, those
+writes can rebuild the LanceDB vector or full-text-search index concurrently.
+LanceDB rejects one of the competing commits with an error similar to the
+following:
+
+```text
+Retryable commit conflict for version <version>:
+This CreateIndex transaction was preempted by concurrent transaction CreateIndex.
+Please retry.
+```
+
+Upgrade to a NeMo Retriever Library release that serializes the complete
+legacy LanceDB write transaction. The VectorDB service queues concurrent
+`/internal/vectordb/write` requests that reach the same pod, including the
+append and index rebuild, so the conflicting index commits do not overlap.
+There is no Helm value to configure for this behavior.
+
+Keep the VectorDB deployment at one replica. The serialization is local to a
+single VectorDB process and does not coordinate writes across multiple pods or
+independently deployed processes that share a LanceDB directory.
+
+If a request failed before the upgrade, inspect the table and the ingest job
+before resubmitting it. A write can append rows before a later index rebuild
+fails. The legacy append path does not deduplicate rows, so blindly rerunning
+the same input can create duplicates.
+
+
 ## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
 
 `helm install` can report `STATUS: deployed` while every default PersistentVolumeClaim stays `Pending`. That status means Helm rendered the release. It does not mean the retriever service, VectorDB, or core NIM workloads can schedule.
