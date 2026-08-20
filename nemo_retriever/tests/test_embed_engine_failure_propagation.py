@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pandas as pd
 import pytest
 
@@ -15,7 +16,7 @@ from nemo_retriever.models.embed_errors import (
     LocalEmbedderReturnedNothingError,
     LocalEmbedderRowsLostError,
 )
-from nemo_retriever.models.inference import main_text_embed, runtime
+from nemo_retriever.models.inference import runtime
 from nemo_retriever.models.nim.error_reporter import drain_errors
 
 
@@ -62,11 +63,16 @@ def _batch(rows: int = 4) -> pd.DataFrame:
     )
 
 
-def _raise(exc: BaseException):
-    def _fail(*_args: Any, **_kwargs: Any) -> pd.DataFrame:
-        raise exc
+class _TextModel:
+    """Model-boundary double for the local runtime."""
 
-    return _fail
+    def __init__(self, result: Any) -> None:
+        self.result = result
+
+    def embed(self, _texts: Any, *, batch_size: int) -> Any:
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
 
 
 def _wrapped(outer: BaseException, cause: BaseException) -> BaseException:
@@ -103,26 +109,21 @@ def _wrapped(outer: BaseException, cause: BaseException) -> BaseException:
         ),
     ],
 )
-def test_local_engine_failure_propagates(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
-    monkeypatch.setattr(runtime, "_embed_group", _raise(exc))
-
+def test_local_engine_failure_propagates(exc: BaseException) -> None:
     with pytest.raises(type(exc)):
-        runtime.embed_text_main_text_embed(_batch(), model=object(), inference_batch_size=2)
+        runtime.embed_text_main_text_embed(_batch(), model=_TextModel(exc), inference_batch_size=2)
 
 
 def test_local_embedder_returning_nothing_is_raised_as_a_classified_failure() -> None:
     with pytest.raises(LocalEmbedderReturnedNothingError):
-        main_text_embed._callable_runner([["page one", "page two"]], embedder=lambda _texts: [], batch_size=2)
-
-    assert runtime._is_engine_lifecycle_failure(LocalEmbedderReturnedNothingError("no vectors"))
+        runtime.embed_text_main_text_embed(_batch(2), model=_TextModel([]), inference_batch_size=2)
 
 
-def test_partial_local_result_is_a_plain_value_error() -> None:
-    with pytest.raises(ValueError) as excinfo:
-        main_text_embed._callable_runner([["page one", "page two"]], embedder=lambda _texts: [[1.0, 2.0]], batch_size=2)
+def test_partial_local_result_keeps_the_pre_existing_fallback() -> None:
+    out_df = runtime.embed_text_main_text_embed(_batch(2), model=_TextModel([[1.0, 2.0]]), inference_batch_size=2)
 
-    assert not isinstance(excinfo.value, LocalEmbedderReturnedNothingError)
-    assert not runtime._is_engine_lifecycle_failure(excinfo.value)
+    assert list(out_df["text_embeddings_1b_v2_has_embedding"]) == [False, False]
+    assert [payload["embedding"] for payload in out_df["text_embeddings_1b_v2"]] == [[], []]
 
 
 @pytest.mark.parametrize(
@@ -130,33 +131,34 @@ def test_partial_local_result_is_a_plain_value_error() -> None:
     [pytest.param(None, id="model-nulled-by-the-operator"), pytest.param(object(), id="model-also-set")],
 )
 def test_endpoint_mode_absorbs_engine_lifecycle_failure(monkeypatch: pytest.MonkeyPatch, model: object) -> None:
-    monkeypatch.setattr(runtime, "_embed_group", _raise(RuntimeError(ENGINE_INIT_FAILED)))
+    original_client = httpx.Client
+
+    def client_factory(*_args: Any, **_kwargs: Any) -> httpx.Client:
+        transport = httpx.MockTransport(lambda _request: httpx.Response(400, text=ENGINE_INIT_FAILED))
+        return original_client(transport=transport)
+
+    monkeypatch.setattr(httpx, "Client", client_factory)
 
     out_df = runtime.embed_text_main_text_embed(
         _batch(),
         model=model,
         embedding_endpoint="http://embed.example/v1",
-        inference_batch_size=2,
+        inference_batch_size=4,
     )
 
     assert list(out_df["text_embeddings_1b_v2_has_embedding"]) == [False] * 4
     assert [payload["embedding"] for payload in out_df["text_embeddings_1b_v2"]] == [[]] * 4
 
 
-def test_an_oom_alone_is_not_classified_as_an_engine_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(runtime, "_embed_group", _raise(OutOfMemoryError(OOM_IN_GELU)))
-
-    out_df = runtime.embed_text_main_text_embed(_batch(), model=object(), inference_batch_size=2)
+@pytest.mark.parametrize(
+    "exc",
+    [
+        pytest.param(OutOfMemoryError(OOM_IN_GELU), id="bare-oom"),
+        pytest.param(EngineGenerateError("generate() failed"), id="recoverable-generate-error"),
+    ],
+)
+def test_recoverable_local_failure_keeps_the_pre_existing_fallback(exc: BaseException) -> None:
+    out_df = runtime.embed_text_main_text_embed(_batch(), model=_TextModel(exc), inference_batch_size=2)
 
     assert list(out_df["text_embeddings_1b_v2_has_embedding"]) == [False] * 4
     assert [payload["embedding"] for payload in out_df["text_embeddings_1b_v2"]] == [[]] * 4
-
-
-def test_engine_lifecycle_classifier_rejects_unrelated_failures() -> None:
-    assert not runtime._is_engine_lifecycle_failure(ValueError("could not decode image payload"))
-    assert not runtime._is_engine_lifecycle_failure(TimeoutError("read timed out"))
-    # Recoverable on the HuggingFace backend; see the module docstring.
-    assert not runtime._is_engine_lifecycle_failure(OutOfMemoryError(OOM_IN_GELU))
-    # vLLM documents this one as recoverable in its own source.
-    assert not runtime._is_engine_lifecycle_failure(EngineGenerateError("generate() failed"))
-    assert runtime._is_engine_lifecycle_failure(RuntimeError(ENGINE_INIT_FAILED))

@@ -49,28 +49,33 @@ and embedding. It does not automatically raise for:
   an embedding failure to `None`, which can still be dropped silently as described
   below.
 
-  Row-level embedding failures are unaffected and still populate the error
-  column. A plain CUDA out-of-memory is not treated as an engine failure, because
-  on the HuggingFace embedding backend a smaller next batch can succeed. That is
-  about the embed stage, not the run: if the retry succeeds nothing changes. If
-  the batch is lost, whether the ingest then fails depends on the shape those
-  rows carry. The writer refuses `[]` but not `None`, as described below. If you
-  see `Refusing to build an incomplete index` with no engine-startup message in
-  the embed actor logs, look for an out-of-memory instead.
+  Alternate handlers that convert row-level failures to `None` still populate
+  the error column. The default local runtime is stricter: if its embedder
+  returns no vector for any submitted input, the embedder raises and aborts the
+  ingest. A plain CUDA out-of-memory is not classified as an engine failure,
+  because on the HuggingFace embedding backend a smaller next batch can succeed.
+  That is about the embed stage, not the run: if the retry succeeds nothing
+  changes. If the batch is lost, whether the ingest then fails depends on the
+  shape those rows carry. The dense writer refuses `[]` but not `None`, as
+  described below. If you see `Refusing to build an incomplete index` with no
+  engine-startup message in the embed actor logs, look for an out-of-memory
+  instead.
 
-  `LanceDB(on_bad_vectors=...)` does not suppress that error. A row that arrives
-  with an empty list or tuple embedding used to be counted as a wrong-length
-  vector and silently excluded; it now fails the run, and no policy value
-  restores the old behavior. Fix the embed stage.
+  `LanceDB(on_bad_vectors=...)` does not suppress that error. On a dense write, a
+  row that arrives with an empty list or tuple embedding used to be counted as a
+  wrong-length vector and silently excluded; it now fails the run, and no policy
+  value restores the old behavior. Fix the embed stage.
 
   This covers empty list and tuple values only. A failed embedding that arrives
-  as `None` keeps its pre-existing silent drop, counted as
-  `dropped_no_embedding`. Some embed
-  operators produce `None` for a lost batch as well as for a row they chose not
-  to embed. The two carry different `error` payloads upstream, but the writer
-  does not see that key, so it drops both alike. If recall is low and the run
-  reported success, check `dropped_no_embedding` in the ingest logs, not just
-  the guard.
+  as `None` keeps its pre-existing handling. For direct nested LanceDB records,
+  the writer silently drops the row and counts it as `dropped_no_embedding`.
+  Graph rows are converted before the writer: a mixed batch filters out `None`
+  rows without incrementing that writer counter, while a batch with no
+  uploadable rows raises `VdbUploadError`. Some embed operators produce `None`
+  for a lost batch as well as for a row they chose not to embed. The two carry
+  different `error` payloads upstream, but the writer does not see that key. If
+  recall is low and the run reported success, inspect the embed-stage row errors
+  and writer logs; do not rely on the empty-vector guard alone.
 
 - Caption or remote VLM stages. Missing credentials fail at actor setup;
   inference failures can abort the entire ingest.

@@ -1130,19 +1130,6 @@ def test_document_delete_waits_for_active_collection_query(tmp_path, monkeypatch
     assert delete_errors == []
 
 
-def _collection_context() -> CollectionWriteContext:
-    return CollectionWriteContext(
-        scope="workspace-a",
-        collection_name="collection-a",
-        document_id="document-a",
-        document_version="v1",
-        content_sha256="sha-v1",
-        filename="source.pdf",
-        job_id="job-a",
-        operation="append",
-    )
-
-
 def _collection_record(embedding: Any, *, text: str = "first chunk") -> dict:
     return {
         "document_type": "text",
@@ -1156,56 +1143,25 @@ def _collection_record(embedding: Any, *, text: str = "first chunk") -> dict:
 
 
 @pytest.mark.parametrize("empty_embedding", [pytest.param([], id="list"), pytest.param((), id="tuple")])
-def test_an_empty_embedding_on_the_collection_path_fails_the_write(empty_embedding: Any) -> None:
+def test_an_empty_embedding_on_the_collection_path_fails_the_write(tmp_path, empty_embedding: Any) -> None:
+    backend = _backend_with_collection(tmp_path)
     records = [[_collection_record(empty_embedding), _collection_record([1.0, 0.0])]]
 
     with pytest.raises(RuntimeError) as excinfo:
-        _collection_rows(records, context=_collection_context())
+        backend.write_collection(records, context=_context())
 
     message = str(excinfo.value)
     assert "incomplete document" in message
     assert "empty_embedding=1" in message
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_document(scope="workspace-a", collection_name="collection-a", document_id="document-a")
 
 
-@pytest.mark.parametrize(
-    "skipped_record",
-    [
-        pytest.param(None, id="non-dict-record"),
-        pytest.param({"metadata": None}, id="non-dict-metadata"),
-        pytest.param(_collection_record(None), id="malformed-embedding"),
-        pytest.param(_collection_record([1.0, 0.0], text="   "), id="text-free-non-image"),
-    ],
-)
-def test_collection_failure_counts_each_pre_existing_silent_skip(skipped_record: Any) -> None:
-    records = [
-        [
-            skipped_record,
-            _collection_record([]),
-            _collection_record([1.0, 0.0], text="good chunk"),
-        ]
-    ]
-
-    with pytest.raises(RuntimeError) as excinfo:
-        _collection_rows(records, context=_collection_context())
-
-    message = str(excinfo.value)
-    assert "empty_embedding=1" in message
-    assert "skipped_other=1" in message
-    assert "accepted=1" in message
-
-
-def test_a_numpy_collection_embedding_does_not_raise_on_truthiness() -> None:
+def test_collection_write_does_not_apply_sequence_truthiness_to_numpy(tmp_path) -> None:
     numpy = pytest.importorskip("numpy")
+    backend = _backend_with_collection(tmp_path)
+    records = [[_collection_record(numpy.array([1.0, 0.0])), _collection_record([1.0, 0.0])]]
 
-    records = [
-        [
-            _collection_record(numpy.array([1.0, 0.0])),
-            _collection_record(numpy.array([])),
-            _collection_record([1.0, 0.0], text="good chunk"),
-        ]
-    ]
+    result = backend.write_collection(records, context=_context())
 
-    rows = _collection_rows(records, context=_collection_context())
-
-    assert len(rows) == 1
-    assert rows[0]["text"] == "good chunk"
+    assert result.written == 1

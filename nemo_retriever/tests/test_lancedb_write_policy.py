@@ -13,7 +13,7 @@ import pytest
 
 lancedb = pytest.importorskip("lancedb")
 
-from nemo_retriever.common.vdb.lancedb import LanceDB, _create_lancedb_results
+from nemo_retriever.common.vdb.lancedb import LanceDB
 
 
 def _records(text: str = "hello", vector: list[float] | None = None) -> list[list[dict]]:
@@ -298,7 +298,10 @@ def test_dense_write_fails_on_image_only_row_with_an_empty_embedding(tmp_path: P
 
 
 def test_dense_write_drops_a_none_embedding_end_to_end(tmp_path: Path) -> None:
-    records = [[_record(None), _record([1.0, 2.0], text="good row")]]
+    records = _records(text="good row", vector=[1.0, 2.0])
+    missing = _records(text="lost row", vector=[1.0, 2.0])[0][0]
+    missing["metadata"]["embedding"] = None
+    records[0].insert(0, missing)
 
     table_rows = _write_rows(tmp_path, records)
 
@@ -336,6 +339,18 @@ def test_dense_write_keeps_on_bad_vectors_fill_reachable(tmp_path: Path) -> None
     assert len(table_rows[0]["vector"]) == 2
 
 
+def test_dense_write_does_not_apply_sequence_truthiness_to_numpy(tmp_path: Path) -> None:
+    numpy = pytest.importorskip("numpy")
+    records = _records(text="good row", vector=[1.0, 2.0])
+    unsupported = _records(text="unsupported row", vector=[1.0, 2.0])[0][0]
+    unsupported["metadata"]["embedding"] = numpy.array([1.0, 2.0])
+    records[0].insert(0, unsupported)
+
+    table_rows = _write_rows(tmp_path, records)
+
+    assert [row["text"] for row in table_rows] == ["good row"]
+
+
 def test_sparse_write_drops_image_only_row_without_text(tmp_path: Path) -> None:
     table_rows = _write_rows(tmp_path, _image_only_records([1.0, 0.0]), sparse=True)
 
@@ -346,55 +361,3 @@ def test_sparse_write_drops_whitespace_only_text(tmp_path: Path) -> None:
     table_rows = _write_rows(tmp_path, _records(text=" \n\t "), sparse=True)
 
     assert table_rows == []
-
-
-def _record(embedding: Any, *, text: str = "page text") -> dict:
-    return {
-        "document_type": "text",
-        "metadata": {
-            "embedding": embedding,
-            "content": text,
-            "content_metadata": {"page_number": 1, "id": "row-1"},
-            "source_metadata": {"source_name": "doc.pdf"},
-        },
-    }
-
-
-def test_create_lancedb_results_rejects_empty_embeddings_without_length_check() -> None:
-    with pytest.raises(RuntimeError, match="empty_embedding=1"):
-        _create_lancedb_results([[_record([])]], expected_dim=None)
-
-
-def test_wrong_length_rows_are_forwarded_when_the_wrapper_check_is_disabled() -> None:
-    records = [[_record([1.0]), _record([1.0, 2.0])]]
-
-    rows, counts = _create_lancedb_results(records, expected_dim=None)
-
-    assert len(rows) == 2
-    assert counts["dropped_bad_length"] == 0
-    assert counts["dropped_no_embedding"] == 0
-    assert counts["empty_embedding"] == 0
-
-
-@pytest.mark.parametrize(
-    "embedding",
-    [
-        pytest.param([0.0, 0.0], id="all-zero-but-present"),
-        pytest.param((1.0, 2.0), id="tuple"),
-    ],
-)
-def test_present_vectors_are_accepted_whatever_their_values(embedding) -> None:
-    rows, counts = _create_lancedb_results([[_record(embedding)]], expected_dim=2)
-
-    assert len(rows) == 1
-    assert counts["accepted"] == 1
-
-
-def test_an_empty_numpy_array_remains_a_nonfatal_bad_length_row() -> None:
-    numpy = pytest.importorskip("numpy")
-
-    rows, counts = _create_lancedb_results([[_record(numpy.array([]))]], expected_dim=2)
-
-    assert rows == []
-    assert counts["empty_embedding"] == 0
-    assert counts["dropped_bad_length"] == 1

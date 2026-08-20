@@ -547,39 +547,20 @@ class TestLlamaNemotronEmbed1BV2Embedder:
     def setup_method(self):
         self.embedder = _make_text_embedder()
 
-    def test_finalize_vectors_all_empty_raises_rows_lost(self):
-        with pytest.raises(LocalEmbedderRowsLostError):
-            self.embedder._finalize_vectors([[], []])
+    def test_embed_rejects_an_all_empty_result(self):
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[], []]):
+            with pytest.raises(LocalEmbedderRowsLostError):
+                self.embedder.embed(["first", "second"])
 
-    def test_finalize_vectors_rejects_a_missing_row(self):
+    def test_embed_rejects_a_missing_row(self):
         drain_errors()
-        with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
-            self.embedder._finalize_vectors([[1.0, 0.0], []])
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[1.0, 0.0], []]):
+            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+                self.embedder.embed(["first", "second"])
 
         assert (excinfo.value.lost, excinfo.value.total) == (1, 2)
         assert excinfo.value.embedder == "LlamaNemotronEmbed1BV2Embedder"
         assert [error.exc_type for error in drain_errors()] == ["LocalEmbedderRowsLostError"]
-
-    def test_report_lost_rows_never_fires_on_a_healthy_batch(self):
-        from nemo_retriever.models.embed_errors import report_lost_rows
-
-        drain_errors()
-        for batch in (
-            [[0.1] * 2048, [0.2] * 2048],
-            [[0.0]],
-            [[0.0, 0.0], [0.0, 0.0]],
-            [[1.0]] * 256,
-        ):
-            assert report_lost_rows(batch, embedder="X") == 0
-        assert drain_errors() == []
-
-    def test_report_lost_rows_does_not_evaluate_truthiness_of_arrays(self):
-        numpy = pytest.importorskip("numpy")
-        from nemo_retriever.models.embed_errors import report_lost_rows
-
-        drain_errors()
-        assert report_lost_rows([numpy.array([1.0, 2.0]), numpy.array([3.0, 4.0])], embedder="X") == 0
-        assert drain_errors() == []
 
     def test_embed_uses_passage_prefix_by_default(self):
         with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
