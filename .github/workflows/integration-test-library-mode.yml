@@ -16,6 +16,9 @@ on:
         type: string
         default: ''
 
+permissions:
+  contents: read
+
 jobs:
   integration-test:
     name: Integration Tests (${{ matrix.os-label }})

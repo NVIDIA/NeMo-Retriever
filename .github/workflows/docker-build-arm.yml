@@ -4,6 +4,9 @@ on:
   # Manual-only: arm64 builds run in scheduled nightly workflow.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: linux-large-disk
