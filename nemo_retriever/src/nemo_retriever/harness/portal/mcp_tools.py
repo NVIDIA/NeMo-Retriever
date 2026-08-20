@@ -27,8 +27,9 @@ from nemo_retriever.harness.portal.mcp_registry import portal_tool
     category="Jobs",
     description=(
         "Trigger a benchmark run on a dataset with an optional preset. "
-        "Returns the job ID and status. Use list_datasets and list_presets "
-        "first to discover valid names."
+        "Optionally set the execution mode ('local', 'batch', or 'service'; "
+        "defaults to 'local'). Returns the job ID and status. Use list_datasets "
+        "and list_presets first to discover valid names."
     ),
     tags=["write", "jobs"],
 )
@@ -37,32 +38,43 @@ def trigger_benchmark_run(
     preset: str | None = None,
     runner_id: int | None = None,
     tags: list[str] | None = None,
+    mode: str | None = None,
 ) -> dict[str, Any]:
     """Trigger a benchmark run."""
+    from nemo_retriever.harness.contracts import MODE_TO_RUN_MODE
     from nemo_retriever.harness.portal.app import (
+        DEFAULT_RUN_MODE,
         _resolve_dataset_config,
         _resolve_git_override,
         _resolve_preset_overrides,
     )
 
-    dataset_path, dataset_overrides = _resolve_dataset_config(dataset)
+    run_mode = (mode or DEFAULT_RUN_MODE).strip().lower()
+    if run_mode not in MODE_TO_RUN_MODE:
+        raise ValueError(f"mode must be one of {sorted(MODE_TO_RUN_MODE)}, got {run_mode!r}")
+
+    dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(dataset)
     preset_overrides = _resolve_preset_overrides(preset)
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+    merged_overrides["run_mode"] = run_mode
     pinned_sha, pinned_ref = _resolve_git_override(None, None)
 
-    job = history.create_job(
-        {
-            "trigger_source": "mcp",
-            "dataset": dataset,
-            "dataset_path": dataset_path,
-            "dataset_overrides": merged_overrides if merged_overrides else None,
-            "preset": preset,
-            "assigned_runner_id": runner_id,
-            "git_commit": pinned_sha,
-            "git_ref": pinned_ref,
-            "tags": tags or ["mcp-triggered"],
-        }
-    )
+    job_data: dict[str, Any] = {
+        "trigger_source": "mcp",
+        "dataset": dataset,
+        "dataset_path": dataset_path,
+        "dataset_overrides": merged_overrides if merged_overrides else None,
+        "preset": preset,
+        "assigned_runner_id": runner_id,
+        "git_commit": pinned_sha,
+        "git_ref": pinned_ref,
+        "tags": tags or ["mcp-triggered"],
+    }
+    if dataset_meta:
+        job_data["dataset_id"] = dataset_meta["dataset_id"]
+        job_data["dataset_config_hash"] = dataset_meta["dataset_config_hash"]
+
+    job = history.create_job(job_data)
     return {"job_id": job["id"], "status": "pending"}
 
 
