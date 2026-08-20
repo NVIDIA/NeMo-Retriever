@@ -22,6 +22,7 @@ import json
 import pytest
 
 from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
+from nemo_retriever.common.vdb import lancedb_capabilities
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
@@ -1064,3 +1065,17 @@ def test_post_records_to_vectordb_honors_the_configured_write_timeout(
     )
 
     assert seen["timeout"] == 45.0
+
+
+def test_default_write_timeout_outlasts_the_index_readiness_waits() -> None:
+    """A durable write must not fail because the VectorDB waited on its own indexes.
+
+    The VectorDB acknowledges a write only after index maintenance, and a hybrid
+    table waits once per index. If those advisory waits can outlast the worker's
+    timeout, a document whose rows are already committed fails on the wait alone.
+    """
+    worst_case_index_wait_s = (
+        lancedb_capabilities.MAX_INDEX_READY_WAITS_PER_WRITE * lancedb_capabilities.INDEX_READY_TIMEOUT.total_seconds()
+    )
+
+    assert worst_case_index_wait_s < _DEFAULT_VECTORDB_WRITE_TIMEOUT_S

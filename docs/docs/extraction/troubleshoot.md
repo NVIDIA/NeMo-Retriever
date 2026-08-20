@@ -407,7 +407,7 @@ queryable until the next rebuild covers them:
 
 ```text
 LanceDB index on column 'vector' did not report coverage of 512 row(s) within
-0:10:00. Queries still scan unindexed rows and the next rebuild will cover them.
+0:01:00. Queries still scan unindexed rows and the next rebuild will cover them.
 ```
 
 Keep the VectorDB deployment at one replica. Row and index serialization is

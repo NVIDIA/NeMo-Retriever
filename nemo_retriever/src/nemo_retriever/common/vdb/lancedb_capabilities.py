@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
 
-INDEX_READY_TIMEOUT: Final[timedelta] = timedelta(seconds=600)
+# Index readiness is advisory: rows are queryable before an index covers them,
+# so expiry only costs query speed until the next rebuild. A write is
+# acknowledged to its caller only after index maintenance, and hybrid tables
+# wait once per index, so keep MAX_INDEX_READY_WAITS_PER_WRITE times this value
+# below the caller's write timeout or a durable write fails on the wait alone.
+INDEX_READY_TIMEOUT: Final[timedelta] = timedelta(seconds=60)
+MAX_INDEX_READY_WAITS_PER_WRITE: Final[int] = 2
 _INDEX_READY_POLL_INTERVAL_S: Final[float] = 0.25
 
 _RETRIEVAL_MODE_METADATA_KEYS = (
