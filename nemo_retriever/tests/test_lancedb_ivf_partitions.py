@@ -98,8 +98,13 @@ def test_write_to_index_skips_vector_index_single_row() -> None:
     assert not table.list_indices()
 
 
-def test_run_serializes_write_and_index_transactions(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    """Concurrent service callbacks must not submit competing CreateIndex commits."""
+def test_run_serializes_row_admission(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Concurrent service callbacks must not append to the table at the same time.
+
+    Index maintenance is serialized separately; see
+    ``test_lancedb_concurrent_writes.py`` for the real-LanceDB coverage of the
+    write and index critical sections.
+    """
 
     class TrackingLock:
         def __init__(self) -> None:
