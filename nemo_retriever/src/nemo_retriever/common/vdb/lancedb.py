@@ -606,10 +606,6 @@ class LanceDB(VDB):
         self._collection_store: Any | None = None
         self._collection_store_init_failed = False
         self._collection_store_lock = threading.Lock()
-        # A write includes both the table mutation and an optional index rebuild.
-        # LanceDB treats competing index commits as a conflict, so these must be
-        # one transaction from the perspective of callers sharing this backend.
-        self._write_lock = threading.Lock()
         super().__init__(**kwargs)
 
     def _get_collection_store(self) -> Any:
@@ -1060,28 +1056,24 @@ class LanceDB(VDB):
 
     def run(self, records):
         """Orchestrate index creation and data ingestion."""
-        # The VectorDB service can dispatch multiple ingestion callbacks at
-        # once. Serialize append/create and index replacement as one critical
-        # section so a later CreateIndex cannot preempt an in-flight one.
-        with self._write_lock:
-            table = self.create_index(records=records, table_name=self.table_name)
-            if self.build_index:
-                self.write_to_index(
-                    records,
-                    table=table,
-                    index_type=self.index_type,
-                    metric=self.metric,
-                    num_partitions=self.num_partitions,
-                    num_sub_vectors=self.num_sub_vectors,
-                    hybrid=self.hybrid,
-                    sparse=self.sparse,
-                    fts_language=self.fts_language,
-                )
-            else:
-                logger.info(
-                    "Skipping LanceDB index creation for table %r because build_index=False.",
-                    self.table_name,
-                )
+        table = self.create_index(records=records, table_name=self.table_name)
+        if self.build_index:
+            self.write_to_index(
+                records,
+                table=table,
+                index_type=self.index_type,
+                metric=self.metric,
+                num_partitions=self.num_partitions,
+                num_sub_vectors=self.num_sub_vectors,
+                hybrid=self.hybrid,
+                sparse=self.sparse,
+                fts_language=self.fts_language,
+            )
+        else:
+            logger.info(
+                "Skipping LanceDB index creation for table %r because build_index=False.",
+                self.table_name,
+            )
         return records
 
     def put(
