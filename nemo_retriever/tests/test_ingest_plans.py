@@ -414,6 +414,23 @@ def test_batch_preflight_reduces_file_backed_text_pool_for_reader_cpu() -> None:
     assert overrides["TxtSplitActor"]["concurrency"] == 3
 
 
+def test_batch_preflight_rejects_explicit_text_pool_that_excludes_reader() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    explicit = {"TxtSplitActor": {"concurrency": 4, "num_cpus": 1, "num_gpus": 0.0}}
+    graph = build_graph(extraction_mode="text", stage_order=())
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=explicit,
+        auto_concurrency_nodes=default_concurrency_node_names(None, None, None, None) - set(explicit),
+        source_cpu_reservation=1,
+    )
+
+    with pytest.raises(ValueError, match="requested at least 5 CPUs"):
+        executor._preflight_resources(executor._linearize(graph), 4, 0)
+
+
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
