@@ -20,7 +20,7 @@ For filesystem inputs, the library reserves CPU capacity for each Ray Data `Read
 
 When ingestion creates multiple extraction datasets, preflight also reserves 1 CPU per dataset for possible schema-normalization work. This keeps actor pools from occupying the CPUs that join-compatible branch schemas require.
 
-Text-only extraction targets up to 8 `MultiTypeExtractOperator` actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
+Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
 
 If you set `BatchTuningParams` worker counts or direct `node_overrides`, those requests and required task reservations must fit the available Ray CPU and GPU budget. The library validates the final plan before submitting work and raises an error when it is infeasible. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity before retrying.
 

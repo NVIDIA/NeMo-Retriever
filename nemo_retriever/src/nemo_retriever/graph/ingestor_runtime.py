@@ -35,7 +35,7 @@ from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, bui
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
 from nemo_retriever.operators.vdb import IngestVdbOperator
-from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
+from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor, TxtSplitActor
 from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingestor.plans import IngestExecutionPlan
 from nemo_retriever.common.ray_resource_hueristics import (
@@ -61,7 +61,7 @@ def default_concurrency_node_names(
 ) -> set[str]:
     """Return pools whose concurrency came from an unspecified default."""
     names: set[str] = set()
-    names.add(MultiTypeExtractOperator.__name__)
+    names.update({MultiTypeExtractOperator.__name__, TxtSplitActor.__name__})
     extract_tuning = _batch_tuning(extract_params)
     if extract_params is not None:
         worker_fields = {
@@ -372,9 +372,9 @@ def batch_tuning_to_node_overrides(
     if extraction_mode == "text" and cluster_resources is not None:
         available_cpus = cluster_resources.available_cpu_count()
         if available_cpus > 0:
-            _set(MultiTypeExtractOperator.__name__, "concurrency", min(available_cpus, 8))
-            _set(MultiTypeExtractOperator.__name__, "num_cpus", 1)
-            _force_cpu_only(MultiTypeExtractOperator.__name__)
+            _set(TxtSplitActor.__name__, "concurrency", min(available_cpus, 8))
+            _set(TxtSplitActor.__name__, "num_cpus", 1)
+            _force_cpu_only(TxtSplitActor.__name__)
 
     # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
     # per actor during decode. Default Ray Data concurrency=1 serialises every
@@ -739,7 +739,13 @@ def build_graph(
     ):
         graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
         graph = _maybe_append_chunk_actor(graph, split_config, "audio")
-    elif extraction_mode in {"text", "html", "audio", "image", "auto"}:
+    elif extraction_mode == "text":
+        configured_text_params = split_config.get("text")
+        effective_text_params = (
+            configured_text_params if isinstance(configured_text_params, TextChunkParams) else text_params
+        )
+        graph = Graph() >> TxtSplitActor(params=effective_text_params)
+    elif extraction_mode in {"html", "audio", "image", "auto"}:
         graph = Graph() >> MultiTypeExtractOperator(
             extraction_mode=extraction_mode,
             extract_params=extract_params,
