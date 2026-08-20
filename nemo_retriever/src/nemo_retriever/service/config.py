@@ -450,6 +450,14 @@ class VectorDbConfig(RichModel):
         default=None,
         description="Dedicated gateway/worker credential for the VectorDB service.",
     )
+    write_timeout_s: float = Field(
+        default=300.0,
+        gt=0,
+        description=(
+            "How long a worker waits for the VectorDB service to acknowledge a "
+            "record write before failing the document."
+        ),
+    )
     reconciliation_interval_seconds: int = Field(
         default=60,
         ge=0,
