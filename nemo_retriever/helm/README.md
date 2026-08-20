@@ -694,6 +694,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.indexMode`                | `hybrid` | Create LanceDB dense-vector and full-text-search indexes. Set to `dense` to create only the dense-vector index. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
+| `serviceConfig.vectordb.writeTimeoutSeconds`      | `300` | Rendered as `vectordb.write_timeout_s`. How long a worker waits for the vectordb Pod to acknowledge a record write. A write that is not acknowledged fails the document, so raise this value on slow storage. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures). |
 
 ### Sidecar metadata in split topology
 
@@ -1543,6 +1544,7 @@ document callbacks even though only one root cause occurred.
 |-------|---------|-----------------|
 | Remote embed HTTP calls | **600 s** (10 min) | Service image (`EmbedParams.request_timeout_s`); not a Helm value today. |
 | Gateway → realtime/batch proxy | **300 s** | Rendered `gateway.timeout_s` in `retriever-service.yaml` (split topology). |
+| Worker → vectordb record write | **300 s** | `serviceConfig.vectordb.writeTimeoutSeconds`, rendered as `vectordb.write_timeout_s` in `retriever-service.yaml`. |
 | VLM embed model name | `serviceConfig.vectordb.embedModel` | Also copied into worker `nim_endpoints.embed_model_name` in the ConfigMap. |
 
 Symptoms to look for in pod logs:
@@ -1552,6 +1554,9 @@ Symptoms to look for in pod logs:
   `BrokenProcessPool` failures on other in-flight documents.
 - Embed NIM pod messages such as `failed to allocate pinned system memory`
   (GPU pressure from too many concurrent `/v1/embeddings` requests).
+- `Failed to POST <n> records to vectordb for <file>` on the **batch** or
+  **realtime** pod, followed by a `failed` document. The vectordb Pod did not
+  acknowledge the record write in time.
 
 The **gateway** pod usually only logs `status=failed` callbacks; diagnose on
 **batch** (and **realtime** for page-sized uploads), plus the embed NIM pod.
@@ -1603,6 +1608,31 @@ Long batch jobs may exceed the gateway proxy timeout (300 s) or an Ingress
 `proxy-read-timeout`. Increase ingress annotations if clients disconnect
 while workers are still processing; see the commented example on
 `ingress.annotations` in `values.yaml`.
+
+**6. Raise the vectordb write timeout on slow storage.**
+
+A worker fails the document when the vectordb Pod does not acknowledge its
+record write:
+
+```text
+VectorDB write failed for report.pdf: <error>. The extracted rows are not
+confirmed durable, so the document is not queryable.
+```
+
+That acknowledgement covers the row commit plus the index maintenance that
+follows it, so a large batch on slow storage can exceed the default 300 s.
+Raise the timeout and redeploy:
+
+```bash
+helm upgrade retriever ./nemo_retriever/helm \
+  --reuse-values \
+  --set serviceConfig.vectordb.writeTimeoutSeconds=900
+```
+
+Concurrent writes to one vectordb Pod do not block each other, so a write
+timeout points at storage throughput or table size rather than write
+serialization. Refer to
+[LanceDB index creation fails during concurrent Helm ingestion](https://docs.nvidia.com/nemo/retriever/latest/extraction/troubleshoot/#lancedb-concurrent-index-creation).
 
 ---
 
