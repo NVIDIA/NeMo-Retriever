@@ -100,11 +100,31 @@ def test_write_to_index_skips_vector_index_single_row() -> None:
 
 def test_run_serializes_write_and_index_transactions(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Concurrent service callbacks must not submit competing CreateIndex commits."""
+
+    class TrackingLock:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+            self._attempts = 0
+            self._attempts_lock = threading.Lock()
+            self.second_acquisition_attempted = threading.Event()
+
+        def __enter__(self):
+            with self._attempts_lock:
+                self._attempts += 1
+                if self._attempts == 2:
+                    self.second_acquisition_attempted.set()
+            self._lock.acquire()
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            self._lock.release()
+
     op = LanceDB(uri=str(tmp_path), table_name="concurrent", vector_dim=2)
     first_write_started = threading.Event()
     allow_first_write_to_finish = threading.Event()
     create_calls: list[int] = []
     calls_lock = threading.Lock()
+    write_lock = TrackingLock()
 
     def create_index(*, records, table_name):
         with calls_lock:
@@ -115,6 +135,7 @@ def test_run_serializes_write_and_index_transactions(monkeypatch: pytest.MonkeyP
             assert allow_first_write_to_finish.wait(timeout=5)
         return object()
 
+    monkeypatch.setattr(op, "_write_lock", write_lock)
     monkeypatch.setattr(op, "create_index", create_index)
     monkeypatch.setattr(op, "write_to_index", lambda *args, **kwargs: None)
 
@@ -122,8 +143,9 @@ def test_run_serializes_write_and_index_transactions(monkeypatch: pytest.MonkeyP
         first = executor.submit(op.run, [])
         assert first_write_started.wait(timeout=5)
         second = executor.submit(op.run, [])
-        # The second run cannot call create_index until the first transaction
-        # releases the backend write lock.
+        # Confirm the second worker reaches the lock while the first write is
+        # still in progress. It must not reach create_index yet.
+        assert write_lock.second_acquisition_attempted.wait(timeout=5)
         assert create_calls == [1]
         allow_first_write_to_finish.set()
         first.result(timeout=5)
