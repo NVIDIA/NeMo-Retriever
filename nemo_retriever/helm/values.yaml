@@ -709,9 +709,9 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
-    # Create a hybrid vector and FTS index by default. Set to "dense" for a
-    # vector-only index.
-    indexMode: "hybrid"
+    # auto creates hybrid storage when fresh and preserves existing physical indexes.
+    # Use hybrid explicitly to upgrade an existing dense table by adding FTS.
+    indexMode: "auto"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
     # How long a worker waits for the VectorDB pod to acknowledge a record

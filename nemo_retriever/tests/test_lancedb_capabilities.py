@@ -13,8 +13,15 @@ lancedb = pytest.importorskip("lancedb")
 pa = pytest.importorskip("pyarrow")
 
 import nemo_retriever.graph.retriever as retriever_module  # noqa: E402
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities, inspect_lancedb_table  # noqa: E402
+from nemo_retriever.common.vdb.hybrid_fusion import (
+    DEFAULT_HYBRID_FUSION_POLICY,  # noqa: E402
+)
 from nemo_retriever.common.vdb.lancedb import LanceDB  # noqa: E402
+from nemo_retriever.common.vdb.lancedb_capabilities import (  # noqa: E402
+    LanceTableCapabilities,
+    inspect_lancedb_table,
+    inspect_lancedb_table_object,
+)
 from nemo_retriever.graph.retriever import Retriever  # noqa: E402
 from nemo_retriever.operators.vdb import RetrieveVdbOperator  # noqa: E402
 
@@ -159,6 +166,36 @@ def test_detector_returns_hybrid_for_vector_plus_fts_table(tmp_path) -> None:
     assert caps.retrieval_mode == "hybrid"
 
 
+def test_physical_fts_overrides_stale_dense_schema_metadata(tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "upgraded", fts=True)
+    table = lancedb.connect(uri).open_table("upgraded")
+    stale_table = type(
+        "StaleSchemaTable",
+        (),
+        {"schema": table.schema.with_metadata({b"retrieval_mode": b"dense"}), "list_indices": table.list_indices},
+    )()
+
+    caps = inspect_lancedb_table_object(stale_table)
+
+    assert caps.retrieval_mode == "hybrid"
+
+
+def test_physical_vector_only_table_overrides_stale_hybrid_metadata(tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "legacy")
+    table = lancedb.connect(uri).open_table("legacy")
+    stale_table = type(
+        "StaleSchemaTable",
+        (),
+        {"schema": table.schema.with_metadata({b"retrieval_mode": b"hybrid"}), "list_indices": table.list_indices},
+    )()
+
+    caps = inspect_lancedb_table_object(stale_table)
+
+    assert caps.retrieval_mode == "dense"
+
+
 def test_detector_returns_sparse_for_fts_only_table(tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_sparse_table(uri, "sparse")
@@ -191,7 +228,7 @@ def test_hybrid_table_query_automatically_enables_hybrid(monkeypatch, tmp_path) 
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid"}).query("alpha", top_k=1)
 
-    assert calls == [{"hybrid": True}]
+    assert calls == [{"hybrid": True, "hybrid_fusion": DEFAULT_HYBRID_FUSION_POLICY}]
 
 
 def test_existing_dense_query_behavior_is_unchanged(monkeypatch, tmp_path) -> None:
@@ -221,7 +258,7 @@ def test_explicit_hybrid_override_on_hybrid_table(monkeypatch, tmp_path) -> None
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "hybrid"}).query("alpha", top_k=1)
 
-    assert calls == [{"hybrid": True}]
+    assert calls == [{"hybrid": True, "hybrid_fusion": DEFAULT_HYBRID_FUSION_POLICY}]
 
 
 def test_explicit_sparse_override_on_hybrid_table_uses_sparse_retrieval(monkeypatch, tmp_path) -> None:
