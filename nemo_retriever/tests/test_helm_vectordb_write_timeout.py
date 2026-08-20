@@ -30,6 +30,11 @@ def _render(*extra_args: str) -> dict:
             str(CHART),
             "--set",
             "nims.enabled=false",
+            # The value under test only renders with the vectordb sub-stack
+            # enabled, and that stack refuses to render without a query
+            # embedding backend.
+            "--set",
+            "serviceConfig.nimEndpoints.embedInvokeUrl=http://embed:8000/v1/embeddings",
             *extra_args,
         ],
         check=False,
