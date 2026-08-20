@@ -7,6 +7,7 @@ from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.operators.extract.ocr.ocr import OCRActor
 from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
 from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -89,10 +90,9 @@ def test_build_graph_accepts_execution_plan_with_split_config() -> None:
             break
         node = node.children[0]
 
-    # Text path uses MultiTypeExtractOperator; split_config['text'] = 32-token
-    # params is forwarded into TxtSplitActor inside the operator (no separate
-    # TextChunkActor at graph level here).
-    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
+    assert names == ["TxtSplitActor", "_BatchEmbedActor"]
+    assert isinstance(graph.roots[0].operator, TxtSplitActor)
+    assert graph.roots[0].operator_kwargs["params"].max_tokens == 32
 
 
 def test_build_graph_inserts_ingest_vdb_before_webhook() -> None:
@@ -436,7 +436,7 @@ def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> No
         extraction_mode="text",
     )
 
-    assert overrides["MultiTypeExtractOperator"] == {"concurrency": 8, "num_cpus": 1, "num_gpus": 0.0}
+    assert overrides["TxtSplitActor"] == {"concurrency": 8, "num_cpus": 1, "num_gpus": 0.0}
 
 
 def test_batch_preflight_reduces_file_backed_text_pool_for_reader_cpu() -> None:
@@ -456,7 +456,7 @@ def test_batch_preflight_reduces_file_backed_text_pool_for_reader_cpu() -> None:
 
     executor._preflight_resources(executor._linearize(graph), 4, 0)
 
-    assert overrides["MultiTypeExtractOperator"]["concurrency"] == 3
+    assert overrides["TxtSplitActor"]["concurrency"] == 3
 
 
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
@@ -693,7 +693,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
+    assert names == ["TxtSplitActor", "_BatchEmbedActor"]
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
