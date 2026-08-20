@@ -9,7 +9,6 @@ import threading
 import time
 
 from collections.abc import Iterable, Sequence
-from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, Final, FrozenSet
 
@@ -32,7 +31,10 @@ from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteResult,
     VDB,
 )
-from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table_object
+from nemo_retriever.common.vdb.lancedb_capabilities import (
+    inspect_lancedb_table_object,
+    wait_for_column_index,
+)
 from nemo_retriever.common.vdb.lancedb_schema import (
     build_lancedb_row,
     infer_vector_dim,
@@ -606,10 +608,16 @@ class LanceDB(VDB):
         self._collection_store: Any | None = None
         self._collection_store_init_failed = False
         self._collection_store_lock = threading.Lock()
-        # A write includes both the table mutation and an optional index rebuild.
-        # LanceDB treats competing index commits as a conflict, so these must be
-        # one transaction from the perspective of callers sharing this backend.
+        # Row admission is serialized on its own short-lived lock so a caller
+        # never waits on index maintenance to get its rows committed.
         self._write_lock = threading.Lock()
+        # LanceDB treats competing index commits as a conflict, so only one
+        # rebuild may run at a time. Rebuilds are coalesced by generation:
+        # a rebuild that starts after a batch was committed also covers it.
+        self._index_lock = threading.Lock()
+        self._index_generation_lock = threading.Lock()
+        self._index_requested_generation = 0
+        self._index_completed_generation = 0
         super().__init__(**kwargs)
 
     def _get_collection_store(self) -> Any:
@@ -998,10 +1006,9 @@ class LanceDB(VDB):
 
         if sparse:
             fts_index_start = time.perf_counter()
+            sparse_rows = int(table.count_rows())
             table.create_fts_index("text", language=fts_language, replace=True)
-            for index_stub in table.list_indices():
-                if "text" in index_stub.name.lower() or "fts" in index_stub.name.lower():
-                    table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            wait_for_column_index(table, "text", covered_rows=sparse_rows)
             _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
             return
 
@@ -1046,26 +1053,69 @@ class LanceDB(VDB):
                 vector_column_name="vector",
                 replace=True,
             )
-            for index_stub in table.list_indices():
-                table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            wait_for_column_index(table, "vector", covered_rows=num_rows)
             _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
 
         if hybrid:
             fts_index_start = time.perf_counter()
             table.create_fts_index("text", language=fts_language, replace=True)
-            for index_stub in table.list_indices():
-                if "text" in index_stub.name.lower() or "fts" in index_stub.name.lower():
-                    table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            wait_for_column_index(table, "text", covered_rows=num_rows)
             _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
 
     def run(self, records):
-        """Orchestrate index creation and data ingestion."""
-        # The VectorDB service can dispatch multiple ingestion callbacks at
-        # once. Serialize append/create and index replacement as one critical
-        # section so a later CreateIndex cannot preempt an in-flight one.
+        """Commit rows, then bring the table indexes up to date.
+
+        The VectorDB service can dispatch multiple ingestion callbacks at once.
+        Row admission and index maintenance are two separate critical sections:
+
+        * ``_write_lock`` serializes only the table create/append, so a
+          concurrent write is never held behind another writer's index build.
+          Rows are durable and queryable (Lance scans unindexed fragments)
+          as soon as this section commits.
+        * ``_index_lock`` serializes index commits, which LanceDB rejects when
+          they conflict. Rebuilds are coalesced: a rebuild that starts after
+          this batch was committed also indexes this batch, so concurrent
+          writers share one rebuild instead of queueing one each.
+        """
         with self._write_lock:
             table = self.create_index(records=records, table_name=self.table_name)
-            if self.build_index:
+
+        if not self.build_index:
+            logger.info(
+                "Skipping LanceDB index creation for table %r because build_index=False.",
+                self.table_name,
+            )
+            return records
+
+        self._maintain_indexes(records, table)
+        return records
+
+    def _maintain_indexes(self, records, table) -> None:
+        """Rebuild table indexes so they cover the rows committed by this call.
+
+        Returns once an index build that started after this caller's rows were
+        committed has finished. Callers that arrive while such a build is
+        already running wait for it rather than queueing another one.
+        """
+        with self._index_generation_lock:
+            self._index_requested_generation += 1
+            required_generation = self._index_requested_generation
+
+        while True:
+            with self._index_generation_lock:
+                if self._index_completed_generation >= required_generation:
+                    return
+
+            with self._index_lock:
+                with self._index_generation_lock:
+                    if self._index_completed_generation >= required_generation:
+                        return
+                    building_generation = self._index_requested_generation
+
+                # Index the newest committed version, not the snapshot this
+                # caller happened to open, so one rebuild can cover the rows
+                # of every writer it has coalesced.
+                self._checkout_latest(table)
                 self.write_to_index(
                     records,
                     table=table,
@@ -1077,12 +1127,23 @@ class LanceDB(VDB):
                     sparse=self.sparse,
                     fts_language=self.fts_language,
                 )
-            else:
-                logger.info(
-                    "Skipping LanceDB index creation for table %r because build_index=False.",
-                    self.table_name,
-                )
-        return records
+
+                with self._index_generation_lock:
+                    self._index_completed_generation = max(
+                        self._index_completed_generation,
+                        building_generation,
+                    )
+
+    @staticmethod
+    def _checkout_latest(table) -> None:
+        """Advance ``table`` to the latest committed version when supported."""
+        checkout_latest = getattr(table, "checkout_latest", None)
+        if not callable(checkout_latest):
+            return
+        try:
+            checkout_latest()
+        except Exception as exc:  # noqa: BLE001 - version refresh is advisory.
+            logger.debug("Could not advance LanceDB table handle to the latest version: %s", exc)
 
     def put(
         self,
