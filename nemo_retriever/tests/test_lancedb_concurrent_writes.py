@@ -24,6 +24,7 @@ lancedb = pytest.importorskip("lancedb")
 
 from lancedb.table import LanceTable  # noqa: E402
 
+from nemo_retriever.common.vdb import lancedb as lancedb_module  # noqa: E402
 from nemo_retriever.common.vdb import lancedb_capabilities  # noqa: E402
 from nemo_retriever.common.vdb.lancedb import LanceDB  # noqa: E402
 
@@ -105,6 +106,39 @@ def _await(event: threading.Event) -> None:
     assert event.wait(timeout=_WAIT_TIMEOUT_S), "timed out waiting for the write under test"
 
 
+def _record_index_waits(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record which column each index-readiness wait was scoped to.
+
+    Asserting on the columns rather than on elapsed time states the actual
+    requirement, and does not turn a slow machine into a failure.
+    """
+    waited: list[str] = []
+    original = lancedb_module.wait_for_column_index
+
+    def wait_for_column_index(table, column, **kwargs):
+        waited.append(column)
+        return original(table, column, **kwargs)
+
+    monkeypatch.setattr(lancedb_module, "wait_for_column_index", wait_for_column_index)
+    return waited
+
+
+def _await_index_requests(backend: LanceDB, expected: int) -> None:
+    """Block until ``expected`` writers have asked for index maintenance.
+
+    Rows are committed just before a writer registers its index generation.
+    Waiting for the registration instead of the rows makes coalescing
+    deterministic, because every writer is then known to be queued.
+    """
+    deadline = time.monotonic() + _WAIT_TIMEOUT_S
+    while time.monotonic() < deadline:
+        with backend._index_generation_lock:
+            if backend._index_requested_generation >= expected:
+                return
+        time.sleep(0.01)
+    raise AssertionError(f"only {backend._index_requested_generation} of {expected} writers requested a rebuild")
+
+
 def _await_committed(backend: LanceDB, expected: int) -> None:
     """Block until ``expected`` rows are committed to the table."""
     deadline = time.monotonic() + _WAIT_TIMEOUT_S
@@ -137,34 +171,38 @@ def _gate_first_index_build(monkeypatch: pytest.MonkeyPatch) -> tuple[threading.
     return entered, release
 
 
-def test_vector_index_phase_does_not_wait_on_an_fts_tail(tmp_path) -> None:
+def test_vector_index_phase_does_not_wait_on_an_fts_tail(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The vector phase must not block on rows another writer left unindexed."""
     backend = _backend(tmp_path)
     _seed(backend)
     _append_unindexed_row(backend, "gamma_comet", [0.0, 0.0, 1.0, 0.0])
     assert _unindexed_rows(backend, "text") == 1
+    waited = _record_index_waits(monkeypatch)
 
-    started = time.monotonic()
     backend.write_to_index([], table=_open_table(backend), num_partitions=2, hybrid=False)
-    elapsed = time.monotonic() - started
 
-    assert elapsed < _INDEX_READY_TIMEOUT_S
+    assert waited == ["vector"]
     # The FTS tail is untouched: the vector phase neither waited for it nor
     # rebuilt it.
     assert _unindexed_rows(backend, "text") == 1
     assert _unindexed_rows(backend, "vector") == 0
 
 
-def test_fts_index_phase_does_not_wait_on_a_vector_tail(tmp_path) -> None:
+def test_fts_index_phase_does_not_wait_on_a_vector_tail(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     backend = _backend(tmp_path)
     _seed(backend)
     _append_unindexed_row(backend, "gamma_comet", [0.0, 0.0, 1.0, 0.0])
+    waited = _record_index_waits(monkeypatch)
 
-    started = time.monotonic()
     backend.write_to_index([], table=_open_table(backend), sparse=True)
-    elapsed = time.monotonic() - started
 
-    assert elapsed < _INDEX_READY_TIMEOUT_S
+    assert waited == ["text"]
     assert _unindexed_rows(backend, "text") == 0
     assert _unindexed_rows(backend, "vector") == 1
 
@@ -254,6 +292,7 @@ def test_index_rebuilds_stay_serialized_and_coalesce(
 
         rest = [pool.submit(backend.run, [[_record(name, [1.0, 1.0, 0.0, 0.0])]]) for name in followers]
         _await_committed(backend, 2 + 1 + len(followers))
+        _await_index_requests(backend, 1 + len(followers))
 
         release.set()
         first.result(timeout=_WAIT_TIMEOUT_S)
@@ -263,6 +302,6 @@ def test_index_rebuilds_stay_serialized_and_coalesce(
     assert not overlapped, "index builds must never run concurrently"
     # Without coalescing each of the four writers rebuilds: the gated build plus
     # one per follower. Coalescing collapses the followers into one rebuild.
-    assert len(builds) <= 2
+    assert len(builds) == 2
     stored = {row["text"] for row in _open_table(backend).to_arrow().to_pylist()}
     assert {"gamma_comet", *followers} <= stored
