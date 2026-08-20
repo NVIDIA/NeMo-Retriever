@@ -38,27 +38,39 @@ configured invoke URL: Page Elements, OCR, Table Structure, Nemotron Parse,
 and embedding. It does not automatically raise for:
 
 - Local-only pipelines (`pdfium` without remote URLs), even when rows contain
-  `metadata.error` or column-level error payloads. One exception: an in-process
-  vLLM embedding engine that has stopped serving - refused at startup for lack of
-  free GPU memory, dead after a crash, or returning no vectors - aborts the
-  ingest under every error policy. Such an engine produces no embedding for every
-  batch it is handed, and those rows are then excluded at the writer, so
-  continuing would publish an index covering only part of the corpus while the
-  run reported success. The error message names the knobs to change.
+  `metadata.error` or column-level error payloads. One exception applies to the
+  default local embedding runtime: an in-process vLLM embedding engine that is
+  refused at startup, dies after a crash, or returns no vectors aborts the ingest
+  under every error policy. Continuing on that route would publish an index that
+  covers only part of the corpus while the run reports success. The error message
+  names the settings to change.
+
+  The Designer **Text Embedder** component uses a different handler. It converts
+  an embedding failure to `None`, which can still be dropped silently as described
+  below.
 
   Row-level embedding failures are unaffected and still populate the error
   column. A plain CUDA out-of-memory is not treated as an engine failure, because
   on the HuggingFace embedding backend a smaller next batch can succeed. That is
-  about the embed stage, not the run: if the retry succeeds nothing changes, but
-  if the batch is lost its rows reach the writer with no embedding and the ingest
-  fails there. If you see `Refusing to build an incomplete index` with no
-  engine-startup message in the embed actor logs, look for an out-of-memory
-  instead.
+  about the embed stage, not the run: if the retry succeeds nothing changes. If
+  the batch is lost, whether the ingest then fails depends on the shape those
+  rows carry. The writer refuses `[]` but not `None`, as described below. If you
+  see `Refusing to build an incomplete index` with no engine-startup message in
+  the embed actor logs, look for an out-of-memory instead.
 
-  `LanceDB(on_bad_vectors=...)` does not suppress that error. A row whose
-  embedding failed used to be counted as a wrong-length vector and silently
-  excluded; it now fails the run. Fix the embed stage - no policy value restores
-  the old behaviour.
+  `LanceDB(on_bad_vectors=...)` does not suppress that error. A row that arrives
+  with an empty list or tuple embedding used to be counted as a wrong-length
+  vector and silently excluded; it now fails the run, and no policy value
+  restores the old behavior. Fix the embed stage.
+
+  This covers empty list and tuple values only. A failed embedding that arrives
+  as `None` keeps its pre-existing silent drop, counted as
+  `dropped_no_embedding`. Some embed
+  operators produce `None` for a lost batch as well as for a row they chose not
+  to embed. The two carry different `error` payloads upstream, but the writer
+  does not see that key, so it drops both alike. If recall is low and the run
+  reported success, check `dropped_no_embedding` in the ingest logs, not just
+  the guard.
 
 - Caption or remote VLM stages. Missing credentials fail at actor setup;
   inference failures can abort the entire ingest.
@@ -102,7 +114,7 @@ troubleshooting path. A single document can pass through several stages.
 | `ExtractParams(method="ocr")` | Page rendering, Page Elements, and the local or remote OCR backend | Missing local model dependencies, invalid image payload, authentication/transport status, or OCR row-level failure |
 | `ExtractParams(method="nemotron_parse")` | PDF rendering and local Nemotron Parse model or configured Nemotron Parse NIM | Missing `open_clip`, missing local model configuration, unsupported image input, or Nemotron Parse row-level/HTTP failure |
 | `.caption(...)` | Local caption model or remote VLM endpoint | `ValueError` at setup when credentials or endpoint/protocol are invalid; remote inference failures can abort the whole ingest rather than populate a row error column |
-| `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured. An in-process vLLM embedding engine that has stopped serving always aborts the ingest, whatever the error policy |
+| `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured. On the default local embedding runtime, an in-process vLLM engine that has stopped serving aborts the ingest regardless of the error policy. The Designer **Text Embedder** component retains the `None` gap described above |
 | Audio or video extraction | `ffmpeg`/`ffprobe`, media decoding, frame/chunk creation, and local or remote ASR | Missing executable, malformed media, codec failure, gRPC status, or credential error; ASR failures may omit rows and log warnings instead of raising, so verify logs when output is unexpectedly empty |
 
 `pdfium` itself is primarily a local parser, so a Page Elements, Table

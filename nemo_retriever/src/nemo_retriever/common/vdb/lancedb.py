@@ -366,13 +366,12 @@ def _create_lancedb_results(
         ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
         LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
         and ``counts`` is a dict containing ``accepted``,
-        ``dropped_no_embedding``, ``dropped_bad_length``, and
-        ``dropped_no_text`` keys.
-        Also ``empty_embedding``, added by the incomplete-index guard.
+        ``dropped_no_embedding``, ``empty_embedding``,
+        ``dropped_bad_length``, and ``dropped_no_text`` keys.
 
-    An empty embedding, ``[]``, means the embed stage produced no vector for that
-    row. Such rows are counted as ``empty_embedding`` and make this function
-    raise :class:`RuntimeError` after the loop, so no table is written.
+    An empty list or tuple embedding means the embed stage produced no vector for
+    that row. Such rows are counted as ``empty_embedding`` and make this function
+    raise :class:`RuntimeError` after the loop, so no table rows are written.
 
     :meth:`LanceDB.create_index` calls this function twice when ``vector_dim`` is
     ``None``: pass 1 infers the dimension and its rows are discarded, pass 2
@@ -477,7 +476,7 @@ def _create_lancedb_results(
         total = accepted + dropped_no_embedding + empty_embedding + dropped_bad_length + dropped_no_text
         raise RuntimeError(
             "Refusing to build an incomplete index: "
-            f"{empty_embedding} of {total} rows had no embedding. No table is written and "
+            f"{empty_embedding} of {total} rows had no embedding. No table rows are written and "
             "this run fails; the alternative is an index that is silently short by those "
             "rows while the run reports success. "
             f"Counters: empty_embedding={empty_embedding}, no_embedding={dropped_no_embedding}, "

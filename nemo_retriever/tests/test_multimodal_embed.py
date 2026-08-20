@@ -357,12 +357,6 @@ class TestCollapseContentToPageRows:
         result = collapse_content_to_page_rows(None)
         assert result is None
 
-# --- multimodal row-loss guard ---
-# A short answer used to be padded with ``None`` for the shortfall, and ``None`` is the
-# one shape both writers ignore, so those rows were dropped and the run still succeeded.
-# The guard counts rows submitted *with an image*, not rows in the chunk: embedders drop
-# empty entries before inference, so comparing against chunk size would fail image-free chunks.
-
 
 class _StubVLEmbedder:
     """VL embedder stub whose per-call return length is scripted by the test."""
@@ -386,61 +380,74 @@ def _image_frame(image_values):
     return pd.DataFrame({"_image_b64": list(image_values), "text": [""] * len(image_values)})
 
 
-def test_image_mode_short_answer_is_fatal():
-    """A row submitted with an image and answered with nothing must fail the run.
-
-    Without the guard the shortfall is padded with ``None``, which both writers
-    ignore, so the row is dropped and the run still succeeds.
-    """
-    df = _image_frame(["b64-a", "b64-b", "b64-c"])
-    embedder = _StubVLEmbedder(images=[[0.1, 0.2]])  # 1 vector for 3 images
+@pytest.mark.parametrize(
+    ("images", "returned", "lost", "total"),
+    [
+        (["b64-a", "b64-b", "b64-c"], [[0.1, 0.2]], 2, 3),
+        (["b64-a", "b64-b"], [], 2, 2),
+    ],
+    ids=["partial-answer", "empty-answer"],
+)
+def test_image_mode_short_answer_is_fatal(images, returned, lost, total):
+    embedder = _StubVLEmbedder(images=returned)
 
     with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
-        main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="image")
-    assert excinfo.value.lost == 2
-    assert excinfo.value.total == 3
-
-
-def test_image_mode_empty_answer_is_fatal():
-    """Zero vectors for a chunk that did submit images is the whole-batch failure."""
-    df = _image_frame(["b64-a", "b64-b"])
-    embedder = _StubVLEmbedder(images=[])
-
-    with pytest.raises(LocalEmbedderRowsLostError):
-        main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="image")
+        main_text_embed._multimodal_callable_runner(
+            _image_frame(images), embedder=embedder, batch_size=8, embed_modality="image"
+        )
+    assert excinfo.value.lost == lost
+    assert excinfo.value.total == total
+    assert "pad or drop those rows" in str(excinfo.value)
 
 
 def test_text_image_mode_short_multimodal_answer_is_fatal():
     df = pd.DataFrame({"_image_b64": ["b64-a", "b64-b"], "text": ["alpha", "beta"]})
-    embedder = _StubVLEmbedder(text_image=[[0.1, 0.2]])  # 1 vector for 2 paired rows
+    embedder = _StubVLEmbedder(text_image=[[0.1, 0.2]])
 
     with pytest.raises(LocalEmbedderRowsLostError):
         main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="text_image")
 
 
 def test_text_image_mode_short_text_fallback_answer_is_fatal():
-    """The text-only fallback subset is owed one vector per row as well."""
     df = pd.DataFrame({"_image_b64": ["", ""], "text": ["alpha", "beta"]})
-    embedder = _StubVLEmbedder(text=[[0.1, 0.2]])  # 1 vector for 2 fallback rows
+    embedder = _StubVLEmbedder(text=[[0.1, 0.2]])
 
     with pytest.raises(LocalEmbedderRowsLostError):
         main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="text_image")
 
 
-def test_image_mode_rows_without_images_do_not_fire_the_guard():
-    """Rows with no image are owed nothing; they get ``None`` by contract.
+@pytest.mark.parametrize(
+    ("df", "embed_modality", "embedder"),
+    [
+        pytest.param(_image_frame(["b64-a"]), "image", _StubVLEmbedder(images=[[0.1], [0.2]]), id="image"),
+        pytest.param(
+            pd.DataFrame({"_image_b64": ["b64-a"], "text": ["alpha"]}),
+            "text_image",
+            _StubVLEmbedder(text_image=[[0.1], [0.2]]),
+            id="text-image",
+        ),
+        pytest.param(
+            pd.DataFrame({"_image_b64": [""], "text": ["alpha"]}),
+            "text_image",
+            _StubVLEmbedder(text=[[0.1], [0.2]]),
+            id="text-fallback",
+        ),
+    ],
+)
+def test_multimodal_extra_answer_reports_the_cardinality(df, embed_modality, embedder):
+    with pytest.raises(ValueError, match=r"returned 2 vectors for 1 submitted input"):
+        main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality=embed_modality)
 
-    This is the false-failure the naive ``if not vecs_list: raise`` would cause.
-    """
+
+def test_image_mode_rows_without_images_do_not_fire_the_guard():
     df = _image_frame(["b64-a", "", "b64-c"])
-    embedder = _StubVLEmbedder(images=[[0.1, 0.2], [0.3, 0.4]])  # 2 vectors for 2 images
+    embedder = _StubVLEmbedder(images=[[0.1, 0.2], [0.3, 0.4]])
 
     out = main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="image")
     assert out["embeddings"] == [[0.1, 0.2], None, [0.3, 0.4]]
 
 
 def test_image_mode_chunk_with_no_images_at_all_does_not_fire_the_guard():
-    """An image-free chunk submits nothing, so zero vectors back is correct."""
     df = _image_frame(["", ""])
     embedder = _StubVLEmbedder(images=[])
 
@@ -449,17 +456,8 @@ def test_image_mode_chunk_with_no_images_at_all_does_not_fire_the_guard():
 
 
 def test_text_image_mode_mixed_rows_do_not_fire_the_guard():
-    """Paired, text-only and empty rows each get their own correct treatment."""
     df = pd.DataFrame({"_image_b64": ["b64-a", "", ""], "text": ["alpha", "beta", "   "]})
     embedder = _StubVLEmbedder(text_image=[[0.1, 0.2]], text=[[0.3, 0.4]])
 
     out = main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="text_image")
     assert out["embeddings"] == [[0.1, 0.2], [0.3, 0.4], None]
-
-
-def test_image_mode_healthy_batch_does_not_fire_the_guard():
-    df = _image_frame(["b64-a", "b64-b"])
-    embedder = _StubVLEmbedder(images=[[0.1, 0.2], [0.3, 0.4]])
-
-    out = main_text_embed._multimodal_callable_runner(df, embedder=embedder, batch_size=8, embed_modality="image")
-    assert out["embeddings"] == [[0.1, 0.2], [0.3, 0.4]]

@@ -176,6 +176,16 @@ def _format_text_image_pair_input_string(text: str, image_b64: str, mime: str = 
     return f"{text}\n{data_url}"
 
 
+def _validate_vector_count(vectors: Sequence[Any], *, expected: int, embedder: str) -> None:
+    """Raise the appropriate error when a local embedder violates cardinality."""
+    actual = len(vectors)
+    if actual == expected:
+        return
+    if actual < expected:
+        raise LocalEmbedderRowsLostError(lost=expected - actual, total=expected, embedder=embedder)
+    raise ValueError(f"{embedder} returned {actual} vectors for {expected} submitted input(s)")
+
+
 def _multimodal_callable_runner(
     df_slice: pd.DataFrame,
     *,
@@ -219,13 +229,12 @@ def _multimodal_callable_runner(
             # image gets ``None`` by contract. Comparing against ``size`` would
             # false-fire on an image-free chunk.
             submitted = sum(1 for b64 in images_b64 if b64)
-            if len(vecs_list) != submitted:
-                raise LocalEmbedderRowsLostError(
-                    lost=max(submitted - len(vecs_list), 0),
-                    total=submitted,
-                    embedder=type(embedder).__name__,
-                )
+            _validate_vector_count(vecs_list, expected=submitted, embedder=type(embedder).__name__)
 
+            # Retained only for the no-blanks case: when the chunk has blank
+            # images ``submitted < size`` and the guard above already ensured
+            # one vector per submitted row, so the else-branch below is the
+            # only reachable route and produces the same list.
             if len(vecs_list) == size:
                 flat_embeddings.extend(vecs_list)
             else:
@@ -250,12 +259,7 @@ def _multimodal_callable_runner(
                 # is the contract. A short answer means the engine lost rows;
                 # padding them with ``None`` here would hide that, because the
                 # writers ignore ``None``.
-                if len(mm_vecs_list) != len(mm_images):
-                    raise LocalEmbedderRowsLostError(
-                        lost=max(len(mm_images) - len(mm_vecs_list), 0),
-                        total=len(mm_images),
-                        embedder=type(embedder).__name__,
-                    )
+                _validate_vector_count(mm_vecs_list, expected=len(mm_images), embedder=type(embedder).__name__)
 
             # text-only fallback subset
             fb_texts = [t for t, h in zip(texts, has_image) if not h and t.strip()]
@@ -264,12 +268,7 @@ def _multimodal_callable_runner(
                 vecs = embedder.embed(fb_texts, batch_size=bs)
                 tolist = getattr(vecs, "tolist", None)
                 fb_vecs_list = tolist() if callable(tolist) else list(vecs)
-                if len(fb_vecs_list) != len(fb_texts):
-                    raise LocalEmbedderRowsLostError(
-                        lost=max(len(fb_texts) - len(fb_vecs_list), 0),
-                        total=len(fb_texts),
-                        embedder=type(embedder).__name__,
-                    )
+                _validate_vector_count(fb_vecs_list, expected=len(fb_texts), embedder=type(embedder).__name__)
 
             # reassemble in original order
             mm_iter = iter(mm_vecs_list)

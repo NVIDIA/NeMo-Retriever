@@ -40,11 +40,10 @@ class LocalEmbedderRowsLostError(RuntimeError):
         self.embedder = str(embedder)
         super().__init__(
             f"{embedder} returned no vector for {lost} of {total} row(s) in this batch. "
-            "Those rows would be zero-padded to the right width, so nothing downstream could "
-            "tell them apart from real embeddings by shape alone, and indexing them would "
-            "publish rows that match nothing. This normally means the in-process engine "
-            "failed for the batch - check the embed actor logs for engine initialization or "
-            "out-of-memory errors."
+            "Continuing would pad or drop those rows, hide the loss, and allow an invalid or "
+            "incomplete index to be published. This normally means the in-process engine failed "
+            "for the batch - check the embed actor logs for engine initialization or out-of-memory "
+            "errors."
         )
 
 
@@ -66,11 +65,10 @@ def report_lost_rows(vectors: Sequence[Sequence[float]], *, embedder: str) -> in
 
     Returns ``0`` when nothing was lost; never returns a non-zero count.
 
-    Called from the local embedders' ``_finalize_vectors``, the only place that
-    holds both the batch that was sent and the vectors that came back. It used to
-    zero-pad the missing rows, which made them indistinguishable downstream: a
-    padded row has the right width, so ``has_embedding`` reported ``True`` for a
-    row carrying nothing.
+    Called from the local embedders' ``_finalize_vectors`` before they discard
+    empty placeholders. Raising before padding is required because a padded row
+    has the right width, so ``has_embedding`` would report ``True`` for a row
+    carrying nothing.
     """
     lost = sum(1 for vector in vectors if _has_no_vector(vector))
     if not lost:

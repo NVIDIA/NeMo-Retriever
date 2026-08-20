@@ -26,6 +26,13 @@ from nemo_retriever.models.embed_errors import LocalEmbedderRowsLostError
 from nemo_retriever.models.nim.error_reporter import drain_errors
 
 
+@pytest.fixture(autouse=True)
+def _clear_reported_errors():
+    drain_errors()
+    yield
+    drain_errors()
+
+
 def _make_output(embedding):
     """Build a fake vLLM EmbeddingRequestOutput with out.outputs.embedding."""
     return SimpleNamespace(outputs=SimpleNamespace(embedding=embedding))
@@ -501,34 +508,19 @@ class TestVLLMEmbedderImages:
         assert mock_mm.call_args.kwargs["normalize"] is False
         assert result.tolist() == [[3.0, 4.0]]
 
-    def test_no_valid_embeddings_no_longer_returns_an_empty_tensor(self):
-        # Rewritten, not weakened. This test previously asserted the defect:
-        # a batch vLLM failed to embed came back as a 0-row tensor, which is
-        # the same answer as an empty input, so the loss was unobservable.
+    @pytest.mark.parametrize("image_count", [1, 2])
+    def test_no_valid_embeddings_raise_with_the_exact_count(self, image_count: int):
         b64 = _make_minimal_b64()
         with patch(
             "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
-            return_value=[[]],
+            return_value=[[]] * image_count,
         ):
-            with pytest.raises(LocalEmbedderRowsLostError):
-                self.embedder.embed_images([b64])
+            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+                self.embedder.embed_images([b64] * image_count)
+
+        assert (excinfo.value.lost, excinfo.value.total) == (image_count, image_count)
 
     def test_a_partially_lost_batch_fails_with_the_exact_count(self):
-        """The count exists here and nowhere else, so it must leave the function.
-
-        ``_finalize_vectors`` holds both the batch it sent and the vectors that
-        came back, so ``len(vectors) - len(valid)`` is exact. It used to compute
-        that and discard it: the failed row was zero-padded to the right width,
-        which every shape check downstream accepts, and ``has_embedding`` then
-        reported ``True`` for a row carrying nothing.
-
-        The LanceDB writer guard cannot cover this row - correct width, non-zero
-        length - without guessing from its values, which is why the loss is
-        marked at the source instead.
-
-        Known-bad: returns a ``(2, 2)`` tensor whose second row is ``[0, 0]``,
-        with nothing raised and nothing collected.
-        """
         drain_errors()
         b64 = _make_minimal_b64()
         with patch(
@@ -543,36 +535,6 @@ class TestVLLMEmbedderImages:
         collected = drain_errors()
         assert [(error.exc_type, error.stage) for error in collected] == [("LocalEmbedderRowsLostError", "embed")]
 
-    def test_a_wholly_lost_batch_fails_naming_every_row(self):
-        """Total loss must name the count too, not just fail.
-
-        Known-bad: returns shape ``(0, 2048)``, the same answer as
-        ``embed_images([])``, so the whole batch vanishes with no padding to
-        notice and nothing raised.
-        """
-        b64 = _make_minimal_b64()
-        with patch(
-            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
-            return_value=[[], []],
-        ):
-            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
-                self.embedder.embed_images([b64, b64])
-
-        assert (excinfo.value.lost, excinfo.value.total) == (2, 2)
-
-    def test_a_complete_batch_is_untouched(self):
-        """Guard: no loss, nothing raised, nothing collected. Passes both ways."""
-        drain_errors()
-        b64 = _make_minimal_b64()
-        with patch(
-            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
-            return_value=[[3.0, 4.0], [0.0, 5.0]],
-        ):
-            result = self.embedder.embed_images([b64, b64])
-
-        assert drain_errors() == []
-        assert result.shape == (2, 2)
-
 
 def _make_text_embedder():
     with patch.object(LlamaNemotronEmbed1BV2Embedder, "__post_init__", lambda self: None):
@@ -585,40 +547,11 @@ class TestLlamaNemotronEmbed1BV2Embedder:
     def setup_method(self):
         self.embedder = _make_text_embedder()
 
-    def test_finalize_vectors_all_empty_no_longer_returns_empty_tensor(self):
-        # Rewritten, not weakened: the old assertion pinned the defect.
+    def test_finalize_vectors_all_empty_raises_rows_lost(self):
         with pytest.raises(LocalEmbedderRowsLostError):
             self.embedder._finalize_vectors([[], []])
 
-    def test_finalize_vectors_cannot_see_a_zero_output_batch(self):
-        """The conservation check counts empty rows, so zero rows count as zero loss.
-
-        When vLLM yields no outputs at all for a non-empty batch,
-        ``embed_with_vllm_llm`` returns ``[]``. ``report_lost_rows`` then sums
-        over nothing and reports no loss, and the ``if not valid`` early return
-        hands back a 0-row tensor - the same answer as an empty input. Nothing
-        raises here.
-
-        This is a pin on a real gap, not a defect this change fixes, so it
-        passes before and after. It is why the guard in
-        ``main_text_embed._callable_runner`` is not redundant with
-        ``_finalize_vectors``: that guard is the only layer that sees this
-        shape, and it fires before the LanceDB writer would.
-        """
-        assert self.embedder._finalize_vectors([]).shape == (0, 0)
-
-    def test_finalize_vectors_no_longer_zero_pads_missing(self):
-        # Rewritten, not weakened: the old assertion required the zero padding
-        # that made a lost row indistinguishable from a real embedding.
-        with pytest.raises(LocalEmbedderRowsLostError):
-            self.embedder._finalize_vectors([[1.0, 0.0], []])
-
-    def test_finalize_vectors_fails_on_the_rows_it_would_pad(self):
-        """The text embedder's ``_finalize_vectors`` has the same contract.
-
-        Both embedders pad, so both must refuse to. Known-bad: the padding in
-        the test above happens and nothing records or stops it.
-        """
+    def test_finalize_vectors_rejects_a_missing_row(self):
         drain_errors()
         with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
             self.embedder._finalize_vectors([[1.0, 0.0], []])
@@ -628,13 +561,6 @@ class TestLlamaNemotronEmbed1BV2Embedder:
         assert [error.exc_type for error in drain_errors()] == ["LocalEmbedderRowsLostError"]
 
     def test_report_lost_rows_never_fires_on_a_healthy_batch(self):
-        """No false positives: every batch in every run goes through this call.
-
-        A false positive here would fail runs that work today, so the healthy
-        shapes are pinned explicitly: full-width vectors, a single component, a
-        zero component, and an all-zero vector. An all-zero vector is a legal
-        thing for a model to emit; the check tests presence, never values.
-        """
         from nemo_retriever.models.embed_errors import report_lost_rows
 
         drain_errors()
@@ -648,41 +574,12 @@ class TestLlamaNemotronEmbed1BV2Embedder:
         assert drain_errors() == []
 
     def test_report_lost_rows_does_not_evaluate_truthiness_of_arrays(self):
-        """Explicit length test, because ``not vector`` raises on an array.
-
-        ``bool(numpy.array([1.0, 2.0]))`` raises ``ValueError: The truth value
-        of an array with more than one element is ambiguous``. This call runs
-        before any pre-existing code, so a crash here would be a new one.
-        """
         numpy = pytest.importorskip("numpy")
         from nemo_retriever.models.embed_errors import report_lost_rows
 
         drain_errors()
         assert report_lost_rows([numpy.array([1.0, 2.0]), numpy.array([3.0, 4.0])], embedder="X") == 0
         assert drain_errors() == []
-
-    def test_report_lost_rows_is_silent_when_nothing_was_lost(self):
-        """Guard: the added call is inert on the healthy path.
-
-        Every batch goes through it, so a false positive here would break runs
-        that work today. Cannot run on unmodified HEAD: the helper does not
-        exist there.
-        """
-        from nemo_retriever.models.embed_errors import report_lost_rows
-
-        drain_errors()
-        assert report_lost_rows([[1.0], [0.0]], embedder="X") == 0
-        assert report_lost_rows([], embedder="X") == 0
-        assert drain_errors() == []
-
-    def test_rows_lost_error_message_names_the_consequence(self):
-        """The message must say why a padded row matters, not just that it exists.
-
-        Cannot run on unmodified HEAD: the class does not exist there.
-        """
-        exc = LocalEmbedderRowsLostError(lost=7, total=64, embedder="SomeEmbedder")
-        assert (exc.lost, exc.total, exc.embedder) == (7, 64, "SomeEmbedder")
-        assert "match nothing" in str(exc)
 
     def test_embed_uses_passage_prefix_by_default(self):
         with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:

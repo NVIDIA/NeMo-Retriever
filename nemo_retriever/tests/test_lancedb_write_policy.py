@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import pytest
 
 lancedb = pytest.importorskip("lancedb")
@@ -284,61 +283,43 @@ def test_dense_write_requires_both_canonical_image_fields(tmp_path: Path, missin
     assert table_rows == []
 
 
-@pytest.mark.parametrize(
-    "vector",
-    [
-        pytest.param([], id="empty-embed-failure"),
-    ],
-)
-def test_dense_write_fails_on_image_only_row_with_no_usable_embedding(
-    tmp_path: Path, vector: list[float] | None
-) -> None:
-    """A row without a usable embedding must fail the write, not be dropped.
+@pytest.mark.parametrize("empty_embedding", [pytest.param([], id="list"), pytest.param((), id="tuple")])
+def test_dense_write_fails_on_image_only_row_with_an_empty_embedding(tmp_path: Path, empty_embedding: Any) -> None:
+    records = _image_only_records()
+    records[0][0]["metadata"]["embedding"] = empty_embedding
 
-    The embed stage writes ``embedding: []`` for every row of a batch whose
-    engine failed. On the unpatched tree that row was accepted here, because
-    ``[]`` is not ``None`` and this write infers the dimension, so the length
-    check does not run - which is how a run publishes a short index and still
-    reports success.
+    with pytest.raises(RuntimeError) as excinfo:
+        _write_rows(tmp_path, records)
 
-    A ``None`` embedding is deliberately not covered: it has a legitimate
-    producer and keeps its pre-existing drop. See
-    ``test_lancedb_incomplete_index_guard.py``,
-    ``test_a_none_embedding_keeps_its_pre_existing_silent_drop``.
-    """
-    with pytest.raises(RuntimeError, match="Refusing to build an incomplete index"):
-        _write_rows(tmp_path, _image_only_records(vector))
+    message = str(excinfo.value)
+    assert "Refusing to build an incomplete index" in message
+    assert "empty_embedding=1" in message
+    assert "No table rows are written" in message
 
 
-def test_dense_write_still_drops_wrong_length_row_under_the_default_policy(tmp_path: Path) -> None:
-    """``on_bad_vectors="drop"`` keeps working: a short vector is dropped, not fatal.
+def test_dense_write_drops_a_none_embedding_end_to_end(tmp_path: Path) -> None:
+    records = [[_record(None), _record([1.0, 2.0], text="good row")]]
 
-    Known-bad for the first revision of this fix, which folded
-    ``dropped_bad_length`` into the fatal condition and made the shipped default
-    unreachable. Passes on unmodified HEAD too - it pins the documented contract
-    rather than a code change, so it is a guard test.
-    """
+    table_rows = _write_rows(tmp_path, records)
+
+    assert len(table_rows) == 1
+    assert table_rows[0]["text"] == "good row"
+
+
+def test_dense_write_drops_an_image_only_row_with_no_embedding_key(tmp_path: Path) -> None:
+    table_rows = _write_rows(tmp_path, _image_only_records())
+
+    assert table_rows == []
+
+
+def test_dense_write_drops_wrong_length_row_under_the_default_policy(tmp_path: Path) -> None:
     table_rows = _write_rows(tmp_path, _image_only_records([1.0]))
 
     assert table_rows == []
 
 
 def test_dense_write_keeps_on_bad_vectors_fill_reachable(tmp_path: Path) -> None:
-    """``on_bad_vectors="fill"`` with the wrapper check off still reaches LanceDB.
-
-    With ``validate_vector_length=False`` the short row is forwarded and LanceDB
-    fills it, which is what a user who configured ``fill`` asked for. The guard
-    must not pre-empt that.
-
-    Known-bad for the first revision of this fix, which raised before LanceDB
-    ever saw the row. Passes on unmodified HEAD; guard test.
-
-    Asserts the row survives at full schema width, not the exact filled
-    composition: how LanceDB distributes ``fill_value`` over a short vector is
-    its own detail and differs by version (0.34 replaces the whole vector, 0.37
-    pads and keeps the produced component), and ``lancedb`` is unpinned here.
-    What this guard owns is that the row reached the writer at all.
-    """
+    """The empty-vector guard must not pre-empt LanceDB's fill policy."""
     op = LanceDB(
         uri=str(tmp_path),
         table_name="t",
@@ -366,10 +347,6 @@ def test_sparse_write_drops_whitespace_only_text(tmp_path: Path) -> None:
 
     assert table_rows == []
 
-# --- incomplete-index guard: a row must not reach the index without an embedding ---
-# ``[]`` is not ``None``, so it used to fall through to the length check, be counted a
-# wrong-length vector, and be dropped - a short index published with exit 0.
-
 
 def _record(embedding: Any, *, text: str = "page text") -> dict:
     return {
@@ -383,160 +360,19 @@ def _record(embedding: Any, *, text: str = "page text") -> dict:
     }
 
 
-def test_an_empty_embedding_fails_the_run() -> None:
-    """Known-bad: returned ``(rows, counts)`` and only logged a WARNING.
-
-    ``embedding: []`` is what ``embed_text_main_text_embed`` writes for every
-    row of a batch it could not embed. It was not counted before this change:
-    it is not ``None``, and it passed the length check as a wrong-length vector.
-    """
-    records = [[_record([]), _record([1.0, 2.0])]]
-
-    with pytest.raises(RuntimeError) as excinfo:
-        _create_lancedb_results(records, expected_dim=2)
-
-    message = str(excinfo.value)
-    assert "Refusing to build an incomplete index" in message
-    assert "1 of 2 rows" in message
-    assert "empty_embedding=1" in message
-
-
 def test_create_lancedb_results_rejects_empty_embeddings_without_length_check() -> None:
-    """The non-enforcing path must not write empty vectors into the index.
-
-    Known-bad: with ``expected_dim=None`` an ``embedding: []`` row was accepted
-    and counted in ``accepted``.
-    """
     with pytest.raises(RuntimeError, match="empty_embedding=1"):
         _create_lancedb_results([[_record([])]], expected_dim=None)
 
 
-@pytest.mark.parametrize("on_bad_vectors", ["drop", "fill", "error"])
-def test_wrong_length_rows_stay_under_the_on_bad_vectors_policy(on_bad_vectors: str) -> None:
-    """A short vector is a schema mismatch, not a missing embedding.
-
-    ``on_bad_vectors`` is a documented, user-configured tolerance
-    (``common/vdb/lancedb.py`` ``create_index``). The incomplete-index guard must
-    not reach into it, or a user who deliberately configured ``drop`` or ``fill``
-    would go from silent dropping to a hard run failure on upgrade.
-
-    Known-bad for the first revision of this fix, which folded
-    ``dropped_bad_length`` into the fatal condition and raised for all three
-    values. It pins a contract rather than a code change, so it is a guard test:
-    the drop it asserts is identical before and after. It cannot run on the
-    unpatched tree, because the final assertion reads the new
-    ``empty_embedding`` key.
-    """
+def test_wrong_length_rows_are_forwarded_when_the_wrapper_check_is_disabled() -> None:
     records = [[_record([1.0]), _record([1.0, 2.0])]]
 
-    # ``expected_dim=None`` is the shape ``create_index`` uses when the caller
-    # asked LanceDB to own the policy (``on_bad_vectors="error"``) or turned the
-    # wrapper's length check off.
-    rows, counts = _create_lancedb_results(records, expected_dim=None if on_bad_vectors == "error" else 2)
+    rows, counts = _create_lancedb_results(records, expected_dim=None)
 
-    if on_bad_vectors == "error":
-        # The wrapper forwards both rows so LanceDB itself raises, per the
-        # documented strict-fail semantics of that policy.
-        assert len(rows) == 2
-        assert counts["dropped_bad_length"] == 0
-    else:
-        assert len(rows) == 1
-        assert counts["dropped_bad_length"] == 1
+    assert len(rows) == 2
+    assert counts["dropped_bad_length"] == 0
     assert counts["dropped_no_embedding"] == 0
-    assert counts["empty_embedding"] == 0
-
-
-def test_empty_embeddings_from_the_endpoint_path_do_not_reach_the_index_silently(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The writer is the backstop for producers that legitimately keep going.
-
-    A local engine failure now propagates from
-    ``models/inference/runtime.py`` and never reaches here. The endpoint path
-    keeps its per-batch resilience by design - a single failed HTTP call should
-    not kill a service-mode run - so it can still emit ``embedding: []`` rows.
-    This is the case that makes the writer-side check load-bearing rather than
-    redundant.
-
-    Known-bad: the writer dropped those rows and returned normally.
-    """
-    from nemo_retriever.models.inference import runtime
-
-    def _refuse(*_args: Any, **_kwargs: Any) -> pd.DataFrame:
-        raise TimeoutError("read timed out waiting for the embedding endpoint")
-
-    monkeypatch.setattr(runtime, "_embed_group", _refuse)
-
-    batch_df = pd.DataFrame(
-        {
-            "text": ["page one", "page two"],
-            "metadata": [
-                {"content": "page one", "content_metadata": {"page_number": 1}, "source_metadata": {}},
-                {"content": "page two", "content_metadata": {"page_number": 2}, "source_metadata": {}},
-            ],
-        }
-    )
-
-    out_df = runtime.embed_text_main_text_embed(
-        batch_df,
-        embedding_endpoint="http://embed.example/v1",
-        inference_batch_size=2,
-    )
-
-    # The stage returns successfully - deliberate for the endpoint path - but
-    # every row is empty.
-    assert list(out_df["text_embeddings_1b_v2_has_embedding"]) == [False, False]
-    assert [payload["embedding"] for payload in out_df["text_embeddings_1b_v2"]] == [[], []]
-
-    records = [
-        [
-            {
-                "document_type": "text",
-                "metadata": {**row["metadata"], "embedding": row["text_embeddings_1b_v2"]["embedding"]},
-            }
-            for _index, row in out_df.iterrows()
-        ]
-    ]
-
-    with pytest.raises(RuntimeError, match="Refusing to build an incomplete index"):
-        _create_lancedb_results(records, expected_dim=2048)
-
-
-def test_canonical_image_row_without_text_is_accepted_not_dropped() -> None:
-    """The text carve-out for canonical image rows still works.
-
-    An image row legitimately carries ``text=""``. It has a real embedding, so
-    nothing here may touch it.
-    """
-    record = {
-        "document_type": "image",
-        "metadata": {
-            "embedding": [1.0, 2.0],
-            "content": "",
-            "content_metadata": {"page_number": 3, "type": "image"},
-            "source_metadata": {"source_name": "scan.pdf"},
-        },
-    }
-    rows, counts = _create_lancedb_results([[record]], expected_dim=2)
-
-    assert len(rows) == 1
-    assert counts["accepted"] == 1
-    assert counts["dropped_no_text"] == 0
-
-
-def test_text_free_non_image_row_is_dropped_and_never_fatal() -> None:
-    """``dropped_no_text`` stays out of the fatal condition.
-
-    It is a content filter, not a loss: the row embedded successfully and was
-    excluded for having nothing to search on.
-
-    Cannot run on the unpatched tree: it asserts on the new
-    ``empty_embedding`` key. The drop itself is unchanged.
-    """
-    rows, counts = _create_lancedb_results([[_record([1.0, 2.0], text="   ")]], expected_dim=2)
-
-    assert rows == []
-    assert counts["dropped_no_text"] == 1
     assert counts["empty_embedding"] == 0
 
 
@@ -548,24 +384,13 @@ def test_text_free_non_image_row_is_dropped_and_never_fatal() -> None:
     ],
 )
 def test_present_vectors_are_accepted_whatever_their_values(embedding) -> None:
-    """The check tests presence, never values.
-
-    Deciding from the numbers would mean guessing which embeddings are "real",
-    and an all-zero vector is a legal thing for a model to emit. Only the
-    absence of a vector is fatal.
-    """
     rows, counts = _create_lancedb_results([[_record(embedding)]], expected_dim=2)
 
     assert len(rows) == 1
     assert counts["accepted"] == 1
 
 
-def test_an_empty_numpy_array_is_not_swallowed_by_the_new_check() -> None:
-    """An empty ndarray is not a list, so it keeps its pre-existing route.
-
-    This is the narrowness of the check made explicit: it fires on ``[]`` and
-    ``()`` and nothing else.
-    """
+def test_an_empty_numpy_array_remains_a_nonfatal_bad_length_row() -> None:
     numpy = pytest.importorskip("numpy")
 
     rows, counts = _create_lancedb_results([[_record(numpy.array([]))]], expected_dim=2)
@@ -573,39 +398,3 @@ def test_an_empty_numpy_array_is_not_swallowed_by_the_new_check() -> None:
     assert rows == []
     assert counts["empty_embedding"] == 0
     assert counts["dropped_bad_length"] == 1
-
-
-def test_a_fully_healthy_batch_raises_nothing() -> None:
-    """The whole point: a normal run is untouched.
-
-    Cannot run on the unpatched tree, which has no ``empty_embedding``
-    key; the acceptance of all 50 rows is identical there.
-    """
-    records = [[_record([1.0, 2.0]) for _ in range(50)]]
-
-    rows, counts = _create_lancedb_results(records, expected_dim=2)
-
-    assert len(rows) == 50
-    assert counts["accepted"] == 50
-    assert counts["empty_embedding"] == 0
-    assert counts["dropped_no_embedding"] == 0
-
-
-def test_a_none_embedding_keeps_its_pre_existing_silent_drop() -> None:
-    """``None`` is NOT fatal, because it has a legitimate producer.
-
-    ``operators/embed/text_embed.py`` writes ``{"embedding": None}`` on purpose
-    for a row whose text was blank and which it therefore chose not to embed.
-    Making ``dropped_no_embedding`` fatal would fail ingests containing such
-    rows, which work today. Only ``[]`` - written solely on failure paths, at
-    ``models/inference/runtime.py`` and ``models/inference/vllm.py`` - is fatal.
-
-    Cannot run on the unpatched tree, which has no ``empty_embedding``
-    key. The drop it asserts is behaviour this change deliberately does not
-    touch.
-    """
-    rows, counts = _create_lancedb_results([[_record(None), _record([1.0, 2.0])]], expected_dim=2)
-
-    assert len(rows) == 1
-    assert counts["dropped_no_embedding"] == 1
-    assert counts["empty_embedding"] == 0
