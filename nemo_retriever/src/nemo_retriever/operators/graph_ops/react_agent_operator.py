@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 _LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
 _FATAL_AGENT_ERROR_CATEGORIES = frozenset({ERROR_LLM_CALL_FAILED, ERROR_TOOL_FAILED, ERROR_UNEXPECTED})
+_ACTIVE_QUERY_ID: ContextVar[Optional[str]] = ContextVar("react_agent_query_id", default=None)
 
 
 class _FatalAgentError(RuntimeError):
@@ -102,9 +104,14 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     llm_model : str
         Model identifier forwarded verbatim to the backend (litellm
         provider-prefix transform is deferred).
-    retriever_fn : Callable[[str, int], list[dict]]
-        ``(query_text, top_k) → [{doc_id: str, text: str, score: float}]``.
+    retriever_fn : callable
+        By default, ``(query_text, top_k) → [{doc_id, text, score}]``. When
+        ``retriever_fn_accepts_query_id`` is true, the operator also passes the
+        current input ``query_id`` as a keyword argument.
         Wrapped by ``create_retrieve_tool`` after renaming ``doc_id`` → ``id``.
+    retriever_fn_accepts_query_id : bool
+        Pass ``query_id=...`` to ``retriever_fn``. Defaults to false for backward
+        compatibility with two-argument callbacks.
     retriever_top_k : int
         Default number of documents requested per retrieve call (the tool's
         ``default_top_k``). Defaults to ``500``.
@@ -155,7 +162,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         *,
         invoke_url: Optional[str] = None,
         llm_model: str,
-        retriever_fn: Callable[[str, int], List[Dict[str, Any]]],
+        retriever_fn: Callable[..., List[Dict[str, Any]]],
+        retriever_fn_accepts_query_id: bool = False,
         retriever_top_k: int = 500,
         target_top_k: int = 10,
         max_steps: int = 200,
@@ -172,6 +180,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
         self._llm_model = llm_model
         self._retriever_fn = retriever_fn
+        self._retriever_fn_accepts_query_id = retriever_fn_accepts_query_id
         self._retriever_top_k = retriever_top_k
         self._target_top_k = target_top_k
         self._max_steps = max_steps
@@ -219,7 +228,14 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         """Adapt ``retriever_fn`` output to the private agent's ``id``/``score``/``text`` contract."""
         top_k = min(top_k, 1_000)
         out: List[Dict[str, Any]] = []
-        for doc in self._retriever_fn(query, top_k):
+        if self._retriever_fn_accepts_query_id:
+            query_id = _ACTIVE_QUERY_ID.get()
+            if query_id is None:
+                raise RuntimeError("ReAct retrieval callback ran outside an active query context.")
+            docs = self._retriever_fn(query, top_k, query_id=query_id)
+        else:
+            docs = self._retriever_fn(query, top_k)
+        for doc in docs:
             doc_id = str(doc.get("doc_id", doc.get("id", "")))
             if not doc_id:
                 continue
@@ -325,7 +341,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             int(self._target_top_k),
             _preview_text(query_text),
         )
-        result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
+        query_id_token = _ACTIVE_QUERY_ID.set(str(query_id))
+        try:
+            result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
+        finally:
+            _ACTIVE_QUERY_ID.reset(query_id_token)
 
         if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
             raise _FatalAgentError(

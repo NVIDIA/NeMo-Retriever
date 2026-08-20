@@ -20,13 +20,22 @@ from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import QueryResponse, QueryResult
 
 
-def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Map agentic document ranks onto the ``/v1/query`` hits envelope.
+#: Annotations the agentic workflow layers on top of the classic hit fields.
+_AGENTIC_ANNOTATION_FIELDS = frozenset({"doc_id", "rank", "result_source"})
 
-    Agentic retrieval selects documents (``doc_id``), not chunks. Each hit places
-    ``doc_id`` in ``source``, records ``result_source`` / ``rank`` under
-    ``metadata``, and leaves chunk-level fields (``text``, ``page_number``,
-    scores, …) unset.
+#: Classic fields reported as null when no retrieve hop captured the selected
+#: document, so the envelope keeps a stable key set either way.
+_UNRESOLVED_HIT_FIELDS = ("text", "metadata", "source_id", "path", "page_number", "pdf_basename", "pdf_page")
+
+
+def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map agentic ranked hits onto the ``/v1/query`` hits envelope.
+
+    Agentic retrieval selects documents (``doc_id``), not chunks, but each hit
+    carries the classic chunk-level fields (``text``, ``metadata``, ``source``,
+    ``page_number``, scores, …) rehydrated from the retrieve hop that returned the
+    document, plus ``doc_id`` / ``rank`` / ``result_source``. When no hop captured
+    the document, those fields are null and ``source`` falls back to ``doc_id``.
 
     Rows without a non-empty ``doc_id`` are a contract violation: the agentic
     workflow already skips blank ids on retrieve hops, and a hit with
@@ -40,21 +49,19 @@ def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "agentic ranked result is missing a non-empty doc_id "
                 f"(rank={item.get('rank')!r}, result_source={item.get('result_source')!r})"
             )
-        hits.append(
+        hit = {key: value for key, value in item.items() if key not in _AGENTIC_ANNOTATION_FIELDS}
+        if not hit:
+            hit = {field: None for field in _UNRESOLVED_HIT_FIELDS}
+        if not str(hit.get("source") or "").strip():
+            hit["source"] = doc_id
+        hit.update(
             {
-                "text": None,
-                "metadata": {
-                    "result_source": item.get("result_source"),
-                    "rank": item.get("rank"),
-                },
-                "source": doc_id,
-                "source_id": None,
-                "path": None,
-                "page_number": None,
-                "pdf_basename": None,
-                "pdf_page": None,
+                "doc_id": doc_id,
+                "rank": item.get("rank"),
+                "result_source": item.get("result_source"),
             }
         )
+        hits.append(hit)
     return hits
 
 

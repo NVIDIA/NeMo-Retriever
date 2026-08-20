@@ -216,18 +216,20 @@ def build_agentic_retriever(request: QueryRequest) -> "AgenticRetriever":
 
 
 def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
-    """Run agentic (ReAct) retrieval for a single query and return the agent's
-    ranked document IDs.
+    """Run agentic (ReAct) retrieval for a single query and return ranked hits.
 
-    Unlike the dense ``query_documents`` path (which returns enriched hits with
-    text), the agent operates at the document-ID granularity of the configured
-    index, so the result is the ranked ``doc_id`` list the agent selected,
-    annotated with the source that produced it (``final_results`` / ``rrf`` /
-    ``selection_agent``). The LanceDB ``uri``/``table_name``, embedding config,
-    and (when ``--rerank`` is enabled) reranker config are passed straight
-    through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
-    tool. Reranking therefore applies per agent retrieval hop.
+    The agent selects documents rather than chunks, but each returned hit carries
+    the same fields as the dense ``query_documents`` path (``text``, ``source``,
+    ``page_number``, ``metadata``, …), rehydrated from the retrieve hop that
+    returned the document, plus the agentic annotations ``doc_id``, ``rank``, and
+    ``result_source`` (``final_results`` / ``rrf`` / ``selection_agent``). The
+    LanceDB ``uri``/``table_name``, embedding config, and (when ``--rerank`` is
+    enabled) reranker config are passed straight through to the wrapped
+    ``Retriever`` that backs the agent's ``retrieve`` tool. Reranking therefore
+    applies per agent retrieval hop.
     """
+    from nemo_retriever.query.agentic import rehydrated_agentic_hit
+
     retriever = build_agentic_retriever(request)
     try:
         result = retriever.retrieve(["0"], [str(request.query)])
@@ -239,11 +241,12 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
             if not doc_id:
                 continue
             ranked.append(
-                {
-                    "rank": int(row.get("rank", len(ranked) + 1)),
-                    "doc_id": doc_id,
-                    "result_source": str(row.get("result_source", "")),
-                }
+                rehydrated_agentic_hit(
+                    row.get("hit"),
+                    doc_id=doc_id,
+                    rank=int(row.get("rank", len(ranked) + 1)),
+                    result_source=str(row.get("result_source", "")),
+                )
             )
             if len(ranked) >= request.retrieval.top_k:
                 break

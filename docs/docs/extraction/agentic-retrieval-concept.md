@@ -4,7 +4,7 @@
 
 NeMo Retriever Library includes a first-class agentic query path. `retriever query --agentic`, `POST /v1/query` with `agentic=true`, and the `agentic_query` Model Context Protocol (MCP) tool run a Reason and Act (ReAct) loop over the same LanceDB table that one-pass retrieval uses. You do not have to implement the agent loop in application code.
 
-The agentic path returns ranked document IDs rather than text-enriched chunks. Local CLI and harness runs default to an in-process vLLM agent LLM. Retriever Service requires a remote OpenAI-compatible chat-completions endpoint. A self-hosted vLLM-backed NIM must enable automatic tool choice and a tool-call parser. Helm `answer_llm` does not turn those options on by default.
+The agentic path ranks documents rather than chunks, and returns the same hit fields as one-pass retrieval for each selected document. Local CLI and harness runs default to an in-process vLLM agent LLM. Retriever Service requires a remote OpenAI-compatible chat-completions endpoint. A self-hosted vLLM-backed NIM must enable automatic tool choice and a tool-call parser. Helm `answer_llm` does not turn those options on by default.
 
 For commands, service configuration, request and response contracts, and failure behavior, refer to [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 

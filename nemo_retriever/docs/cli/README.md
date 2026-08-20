@@ -221,9 +221,12 @@ retriever query "summarize the deployment options" \
   --agentic-react-max-steps 5
 ```
 
-Unlike the dense path (which returns text-enriched hits), agentic mode returns
-the agent's ranked document IDs as JSON, each annotated with the source that
-produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
+Agentic mode returns the agent's ranked documents as JSON, with the same hit
+fields as the dense path (`text`, `metadata`, `source`, `page_number`, and
+related) plus `doc_id`, `rank`, and the stage that produced the ranking
+(`final_results`, `rrf`, or `selection_agent`). Hit fields are rehydrated at the
+end of the loop from the retrieval hop that returned the document, so a document
+the agent named without retrieving it reports null hit fields. It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
 `--embed-model-name` options as standard retrieval. Agentic retrieval uses the
 selected table's model automatically when `--embed-model-name` is omitted.
@@ -237,7 +240,7 @@ fusion) -> SelectionAgentOperator -> ranked results`:
 - `RRFAggregatorOperator` fuses candidates from the loop's multiple searches with
   reciprocal rank fusion.
 - `SelectionAgentOperator` runs a final LLM selection pass over the fused set and
-  emits the ranked document IDs.
+  emits the ranked document IDs, which are then rehydrated into full hits.
 
 Agentic-only knobs (apply only with `--agentic`):
 
