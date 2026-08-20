@@ -583,7 +583,8 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
                 "Run the configured agentic (ReAct) retrieval workflow over ingested "
                 "documents via POST /v1/query with agentic=true. Returns the standard "
                 "hits envelope with the same chunk-level fields as classic retrieval, "
-                "plus doc_id, rank, and result_source for the selecting stage."
+                "plus top-level doc_id, rank, and result_source for the selecting "
+                "stage; rank and result_source also remain under metadata for compatibility."
             ),
         )
         async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:

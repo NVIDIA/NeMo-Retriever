@@ -570,6 +570,19 @@ def rehydrated_agentic_hit(hit: Any, *, doc_id: str, rank: int, result_source: s
     ``RetrievalHit`` fields plus ``doc_id``, ``rank``, and ``result_source``, so
     agentic output matches classic retrieval output while still reporting which
     stage selected the document.
+
+    Args:
+        hit: Rehydrated classic hit mapping from ``AgenticRetriever.retrieve``.
+            Non-dict values represent unavailable hit metadata and produce an
+            annotation-only result.
+        doc_id: Non-empty document identifier selected by the agentic pipeline.
+        rank: One-based position in the final selected result list.
+        result_source: Stage that produced the final selection, normally
+            ``final_results``, ``selection_agent``, or ``rrf``.
+
+    Returns:
+        A new dictionary containing the classic hit fields, when available,
+        plus top-level ``doc_id``, ``rank``, and ``result_source`` annotations.
     """
 
     rehydrated: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}

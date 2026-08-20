@@ -231,7 +231,7 @@ Every agentic hit carries the one-pass hit fields (`text`, `metadata`, `source`,
 
 CLI `retriever query --agentic` prints those hits as JSON objects.
 
-Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`.
+Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
 
 An agent can name a document that no retrieval hop returned, which leaves nothing to rehydrate. Those hits report null one-pass fields, and `source` falls back to `doc_id`.
 

@@ -106,7 +106,7 @@ def test_agentic_ranked_to_hits_keeps_rehydrated_classic_fields() -> None:
     assert hits == [
         {
             "text": "revenue grew 4%",
-            "metadata": {"type": "text"},
+            "metadata": {"type": "text", "rank": 1, "result_source": "selection_agent"},
             "source": "/indexes/report.pdf",
             "source_id": "/indexes/report.pdf",
             "page_number": 7,
@@ -123,7 +123,7 @@ def test_agentic_ranked_to_hits_falls_back_to_doc_id_without_rehydrated_metadata
     assert hits == [
         {
             "text": None,
-            "metadata": None,
+            "metadata": {"rank": 1, "result_source": "final_results"},
             "source": "report.pdf",
             "source_id": None,
             "path": None,
@@ -225,7 +225,7 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
                 "hits": [
                     {
                         "text": "revenue grew 4%",
-                        "metadata": {"type": "text"},
+                        "metadata": {"type": "text", "rank": 1, "result_source": "selection_agent"},
                         "source": "/indexes/report.pdf",
                         "page_number": 7,
                         "doc_id": "report_7",
