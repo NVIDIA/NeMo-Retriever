@@ -1303,6 +1303,8 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
       # Optional: enable if your NIM build supports throughput mode for this SKU.
       # - name: NIM_TRITON_PERFORMANCE_MODE
       #   value: throughput
