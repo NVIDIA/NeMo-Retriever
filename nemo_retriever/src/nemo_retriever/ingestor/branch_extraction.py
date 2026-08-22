@@ -107,9 +107,10 @@ class ExtractionBranchExecutor:
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=None,
                 video_frame_params=effective_extraction.video_frame_params,
+                extraction_mode=effective_extraction.extraction_mode,
             )
             file_paths, inline_rows = self._partition_branch_inputs(branch)
-            inputs = []
+            inputs: list[Any] = []
             if file_paths:
                 inputs.append(file_paths)
             if inline_rows:
@@ -151,7 +152,12 @@ class ExtractionBranchExecutor:
             source_cpu_reservation=0,
         )
         if hasattr(cluster_resources, "available_cpu_count"):
-            preflight_executors([*branch_executors, post_executor], cluster_resources)
+            normalization_cpus = float(len(branch_inputs)) if len(branch_inputs) > 1 else 0.0
+            preflight_executors(
+                [*branch_executors, post_executor],
+                cluster_resources,
+                reserved_cpus=normalization_cpus,
+            )
 
         for executor, input_data in branch_inputs:
             branch_datasets.append(executor.build_dataset(input_data))
