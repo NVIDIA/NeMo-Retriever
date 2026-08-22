@@ -602,6 +602,8 @@ def _append_ordered_transform_stages(
         graph = graph >> IngestVdbOperator(
             vdb_op=vdb_upload_params.vdb_op,
             vdb_kwargs=vdb_upload_params.to_ingest_operator_kwargs(),
+            sink_policy=vdb_upload_params.sink.model_dump(exclude={"operation_id"}),
+            operation_id=vdb_upload_params.sink.operation_id,
         )
 
     if webhook_params is not None and getattr(webhook_params, "endpoint_url", None):
