@@ -93,6 +93,12 @@ When `vdb_op="lancedb"` (or `vdb=LanceDB(...)` is passed explicitly), `_construc
 1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms ingestion batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
 2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS/BM25** index over the ingested `text` column when `hybrid=True`.
 
+During a dense-vector step 1, a row that arrives with an **empty list or tuple** embedding raises `RuntimeError`, and no table rows are written. The embed failure path writes `[]` when it produces no vector for a row. Such a row used to be counted as a wrong-length vector and silently excluded, letting a run publish a short index and still report `success: true`.
+
+The new dense-writer guard treats only an empty list or tuple as fatal. A row whose embedding is absent or `None` keeps its pre-existing handling. For direct nested LanceDB records, the writer silently drops that row and counts it as `dropped_no_embedding`. Graph rows are converted first: a mixed batch can omit failed `None` rows while indexing healthy rows, but an all-rejected batch raises `VdbUploadError`. For this policy, `None` has two relevant meanings: a deliberate skip and a genuine embedding failure. For example, `operators/embed/text_embed.py` writes `error: None` alongside a blank-text skip, while its failure handler writes a populated `error` dict with stage, type, message, and traceback. Other embedding paths can produce the same two meanings. `common/vdb/records.py` reads that payload during conversion, so the discriminator is available there, but it is not forwarded to the writer. Making every `None` fatal would fail deliberate skips; source-aware handling is follow-up work. `on_bad_vectors` is unaffected: it governs malformed vectors, and an empty embedding is the absence of a vector rather than a short one. The returned `counts` dict gains an `empty_embedding` key.
+
+The other half of the guard is upstream: a local embedder that fails to embed some rows raises `LocalEmbedderRowsLostError` from `_finalize_vectors` instead of zero-padding them, which this writer could not otherwise detect.
+
 Common constructor arguments include:
 
 | Parameter        | Purpose |

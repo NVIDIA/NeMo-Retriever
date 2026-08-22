@@ -15,14 +15,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from nemo_retriever.models.embed_errors import LocalEmbedderRowsLostError
+
 # ---------------------------------------------------------------------------
 # Pure helpers from main_text_embed (no transitive-import issues)
 # ---------------------------------------------------------------------------
 from nemo_retriever.models.inference.main_text_embed import (
+    TextEmbeddingConfig,
     _format_image_input_string,
     _format_text_image_pair_input_string,
     _image_from_row,
     _multimodal_callable_runner,
+    create_text_embeddings_for_df,
 )
 
 # ---------------------------------------------------------------------------
@@ -353,3 +357,117 @@ class TestCollapseContentToPageRows:
         """Non-DataFrame input is returned as-is."""
         result = collapse_content_to_page_rows(None)
         assert result is None
+
+
+class _StubVLEmbedder:
+    """VL embedder stub whose per-call return length is scripted by the test."""
+
+    def __init__(self, *, images=None, text_image=None, text=None):
+        self._images = images
+        self._text_image = text_image
+        self._text = text
+
+    def embed_images(self, images_b64, *, batch_size=64):
+        return self._images
+
+    def embed_text_image(self, texts, images_b64, *, batch_size=64):
+        return self._text_image
+
+    def embed(self, texts, *, batch_size=64):
+        return self._text
+
+
+def _image_frame(image_values):
+    return pd.DataFrame({"_image_b64": list(image_values), "text": [""] * len(image_values)})
+
+
+def _run_multimodal(df, *, embedder, embed_modality):
+    config = TextEmbeddingConfig(embed_modality=embed_modality, output_payload_column="embedding_result")
+    out, _ = create_text_embeddings_for_df(
+        df,
+        task_config={"endpoint_url": None, "multimodal_embedder": embedder, "local_batch_size": 8},
+        transform_config=config,
+    )
+    return [payload["embedding"] for payload in out["embedding_result"]]
+
+
+@pytest.mark.parametrize(
+    ("images", "returned", "lost", "total"),
+    [
+        (["b64-a", "b64-b", "b64-c"], [[0.1, 0.2]], 2, 3),
+        (["b64-a", "b64-b"], [], 2, 2),
+    ],
+    ids=["partial-answer", "empty-answer"],
+)
+def test_image_mode_short_answer_is_fatal(images, returned, lost, total):
+    embedder = _StubVLEmbedder(images=returned)
+
+    with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+        _run_multimodal(_image_frame(images), embedder=embedder, embed_modality="image")
+    assert excinfo.value.lost == lost
+    assert excinfo.value.total == total
+    assert "pad or drop those rows" in str(excinfo.value)
+
+
+def test_text_image_mode_short_multimodal_answer_is_fatal():
+    df = pd.DataFrame({"_image_b64": ["b64-a", "b64-b"], "text": ["alpha", "beta"]})
+    embedder = _StubVLEmbedder(text_image=[[0.1, 0.2]])
+
+    with pytest.raises(LocalEmbedderRowsLostError):
+        _run_multimodal(df, embedder=embedder, embed_modality="text_image")
+
+
+def test_text_image_mode_short_text_fallback_answer_is_fatal():
+    df = pd.DataFrame({"_image_b64": ["", ""], "text": ["alpha", "beta"]})
+    embedder = _StubVLEmbedder(text=[[0.1, 0.2]])
+
+    with pytest.raises(LocalEmbedderRowsLostError):
+        _run_multimodal(df, embedder=embedder, embed_modality="text_image")
+
+
+@pytest.mark.parametrize(
+    ("df", "embed_modality", "embedder"),
+    [
+        pytest.param(_image_frame(["b64-a"]), "image", _StubVLEmbedder(images=[[0.1], [0.2]]), id="image"),
+        pytest.param(
+            pd.DataFrame({"_image_b64": ["b64-a"], "text": ["alpha"]}),
+            "text_image",
+            _StubVLEmbedder(text_image=[[0.1], [0.2]]),
+            id="text-image",
+        ),
+        pytest.param(
+            pd.DataFrame({"_image_b64": [""], "text": ["alpha"]}),
+            "text_image",
+            _StubVLEmbedder(text=[[0.1], [0.2]]),
+            id="text-fallback",
+        ),
+    ],
+)
+def test_multimodal_extra_answer_reports_the_cardinality(df, embed_modality, embedder):
+    with pytest.raises(ValueError, match=r"returned 2 vectors for 1 submitted input"):
+        _run_multimodal(df, embedder=embedder, embed_modality=embed_modality)
+
+
+def test_image_mode_rows_without_images_do_not_fire_the_guard():
+    df = _image_frame(["b64-a", "", "b64-c"])
+    embedder = _StubVLEmbedder(images=[[0.1, 0.2], [0.3, 0.4]])
+
+    assert _run_multimodal(df, embedder=embedder, embed_modality="image") == [[0.1, 0.2], None, [0.3, 0.4]]
+
+
+def test_image_mode_chunk_with_no_images_at_all_does_not_fire_the_guard():
+    df = _image_frame(["", ""])
+    embedder = _StubVLEmbedder(images=[])
+
+    assert _run_multimodal(df, embedder=embedder, embed_modality="image") == [None, None]
+
+
+def test_text_image_mode_mixed_rows_do_not_fire_the_guard():
+    df = pd.DataFrame({"_image_b64": ["b64-a", "", ""], "text": ["alpha", "beta", "   "]})
+    embedder = _StubVLEmbedder(text_image=[[0.1, 0.2]], text=[[0.3, 0.4]])
+
+    assert _run_multimodal(df, embedder=embedder, embed_modality="text_image") == [
+        [0.1, 0.2],
+        [0.3, 0.4],
+        None,
+    ]

@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -282,14 +283,72 @@ def test_dense_write_requires_both_canonical_image_fields(tmp_path: Path, missin
     assert table_rows == []
 
 
-@pytest.mark.parametrize(
-    "vector",
-    [pytest.param(None, id="missing"), pytest.param([1.0], id="wrong-length")],
-)
-def test_dense_write_drops_image_only_row_with_invalid_embedding(tmp_path: Path, vector: list[float] | None) -> None:
-    table_rows = _write_rows(tmp_path, _image_only_records(vector))
+@pytest.mark.parametrize("empty_embedding", [pytest.param([], id="list"), pytest.param((), id="tuple")])
+def test_dense_write_fails_on_image_only_row_with_an_empty_embedding(tmp_path: Path, empty_embedding: Any) -> None:
+    records = _image_only_records()
+    records[0][0]["metadata"]["embedding"] = empty_embedding
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _write_rows(tmp_path, records)
+
+    message = str(excinfo.value)
+    assert "Refusing to build an incomplete index" in message
+    assert "empty_embedding=1" in message
+    assert "No table rows are written" in message
+
+
+def test_dense_write_drops_a_none_embedding_end_to_end(tmp_path: Path) -> None:
+    records = _records(text="good row", vector=[1.0, 2.0])
+    missing = _records(text="lost row", vector=[1.0, 2.0])[0][0]
+    missing["metadata"]["embedding"] = None
+    records[0].insert(0, missing)
+
+    table_rows = _write_rows(tmp_path, records)
+
+    assert len(table_rows) == 1
+    assert table_rows[0]["text"] == "good row"
+
+
+def test_dense_write_drops_an_image_only_row_with_no_embedding_key(tmp_path: Path) -> None:
+    table_rows = _write_rows(tmp_path, _image_only_records())
 
     assert table_rows == []
+
+
+def test_dense_write_drops_wrong_length_row_under_the_default_policy(tmp_path: Path) -> None:
+    table_rows = _write_rows(tmp_path, _image_only_records([1.0]))
+
+    assert table_rows == []
+
+
+def test_dense_write_keeps_on_bad_vectors_fill_reachable(tmp_path: Path) -> None:
+    """The empty-vector guard must not pre-empt LanceDB's fill policy."""
+    op = LanceDB(
+        uri=str(tmp_path),
+        table_name="t",
+        vector_dim=2,
+        create_index=False,
+        on_bad_vectors="fill",
+        fill_value=0.5,
+        validate_vector_length=False,
+    )
+    op.run(_image_only_records([1.0]))
+
+    table_rows = lancedb.connect(str(tmp_path)).open_table("t").to_arrow().to_pylist()
+    assert len(table_rows) == 1
+    assert len(table_rows[0]["vector"]) == 2
+
+
+def test_dense_write_does_not_apply_sequence_truthiness_to_numpy(tmp_path: Path) -> None:
+    numpy = pytest.importorskip("numpy")
+    records = _records(text="good row", vector=[1.0, 2.0])
+    unsupported = _records(text="unsupported row", vector=[1.0, 2.0])[0][0]
+    unsupported["metadata"]["embedding"] = numpy.array([1.0, 2.0])
+    records[0].insert(0, unsupported)
+
+    table_rows = _write_rows(tmp_path, records)
+
+    assert [row["text"] for row in table_rows] == ["good row"]
 
 
 def test_sparse_write_drops_image_only_row_without_text(tmp_path: Path) -> None:
