@@ -938,6 +938,7 @@ def test_root_query_service_help_hides_local_only_options() -> None:
     assert "--content-types" in result.output
     assert "--format" in result.output
     assert "--max-text-chars" in result.output
+    assert "--agentic" in result.output
     assert "--run-mode" not in result.output
     assert "--lancedb-uri" not in result.output
     assert "--table-name" not in result.output
@@ -991,9 +992,25 @@ def test_root_query_service_mode_uses_service_options_and_prints_json(monkeypatc
     assert request.retrieval.candidate_k == 5
     assert request.retrieval.page_dedup is True
     assert request.retrieval.content_types == "text"
+    assert request.agentic is False
     assert json.loads(result.output) == [
         {"modality": "text", "page_number": 3, "score": 0.2, "source": "doc.pdf", "text": "service passage"},
     ]
+
+
+def test_root_query_service_forwards_agentic_flag(monkeypatch) -> None:
+    requests: list[Any] = []
+
+    def fake_query_documents(request: Any) -> list[dict[str, Any]]:
+        requests.append(request)
+        return []
+
+    monkeypatch.setattr(query_cli_app, "query_service_documents", fake_query_documents)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "service", "deployment?", "--agentic"])
+
+    assert result.exit_code == 0
+    assert requests[0].agentic is True
 
 
 def test_root_query_service_mode_rejects_local_storage_flags() -> None:

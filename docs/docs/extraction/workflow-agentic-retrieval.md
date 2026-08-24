@@ -187,6 +187,18 @@ curl -X POST http://localhost:7670/v1/query \
   -d '{"query": "find documents about parser behavior", "top_k": 5, "agentic": true}'
 ```
 
+The service-query CLI sends the same request when you pass `--agentic`:
+
+```bash
+retriever query service "find documents about parser behavior" \
+  --service-url http://localhost:7670 \
+  --agentic
+```
+
+This command uses the service's configured agentic LLM and embedding endpoints.
+It does not start a local agent LLM or accept the local query command's
+`--agentic-llm-model` and `--agentic-invoke-url` options.
+
 When service auth is enabled, send `Authorization: Bearer <token>` (`NEMO_RETRIEVER_API_TOKEN`). Requests with `agentic: true` return HTTP `400` when agentic retrieval is not configured on the service.
 
 `top_k` cannot exceed the configured `agentic.backend_top_k` (default 20). Agentic queries are capped at 4,096 characters.

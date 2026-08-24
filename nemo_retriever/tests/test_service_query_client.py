@@ -73,6 +73,15 @@ def test_service_client_query_accepts_empty_hits(monkeypatch) -> None:
     assert RetrieverServiceClient(base_url="http://svc:7670").query("deployment?", top_k=2) == [[]]
 
 
+def test_service_client_query_sends_agentic_flag(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _install_query_response(monkeypatch, {"results": [{"hits": []}]}, calls)
+
+    RetrieverServiceClient(base_url="http://svc:7670").query("deployment?", top_k=2, agentic=True)
+
+    assert calls[1]["json"] == {"query": "deployment?", "top_k": 2, "agentic": True}
+
+
 @pytest.mark.parametrize(
     ("body", "match"),
     [

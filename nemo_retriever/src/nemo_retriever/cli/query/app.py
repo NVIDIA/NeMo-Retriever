@@ -337,6 +337,7 @@ def _service_command(
     content_types: opts.ContentTypesOption = None,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
+    agentic: opts.AgenticOption = False,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     silence_noisy_libraries()
@@ -355,6 +356,7 @@ def _service_command(
                         service_url=service_url,
                         service_api_token=service_api_token,
                     ),
+                    agentic=agentic,
                 )
             )
     except ROOT_CLI_ERRORS as exc:

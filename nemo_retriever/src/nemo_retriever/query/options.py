@@ -92,3 +92,4 @@ class ServiceQueryRequest:
     query: str
     retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
     service: QueryServiceOptions = field(default_factory=QueryServiceOptions)
+    agentic: bool = False
