@@ -119,6 +119,18 @@ retriever query service "What is in this corpus?" \
   --service-url http://localhost:7670
 ```
 
+To run the service's configured agentic retrieval workflow, add `--agentic`:
+
+```bash
+retriever query service "What is in this corpus?" \
+  --service-url http://localhost:7670 \
+  --agentic
+```
+
+The service supplies the agent LLM and embedding configuration. This command
+does not support local agent settings such as `--agentic-llm-model` or
+`--agentic-invoke-url`.
+
 ### Route ingest to hosted or self-hosted NIM endpoints
 
 ```bash

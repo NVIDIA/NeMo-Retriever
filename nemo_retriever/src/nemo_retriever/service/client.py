@@ -553,6 +553,7 @@ class RetrieverServiceClient:
         *,
         top_k: int,
         collection_name: str | None = None,
+        agentic: bool = False,
     ) -> list[list[dict[str, Any]]] | list[QueryHit]:
         """Search ingested documents through ``POST /v1/query``.
 
@@ -560,7 +561,7 @@ class RetrieverServiceClient:
             ``top_k`` is required here but defaults to 10 on :meth:`aquery`.
             That asymmetry is part of the released signature; do not unify it.
         """
-        return self._run(self.aquery(query, top_k=top_k, collection_name=collection_name))
+        return self._run(self.aquery(query, top_k=top_k, collection_name=collection_name, agentic=agentic))
 
     def _query_hit(self, hit: dict[str, Any]) -> QueryHit:
         return self._model(
@@ -580,12 +581,15 @@ class RetrieverServiceClient:
         *,
         top_k: int = 10,
         collection_name: str | None = None,
+        agentic: bool = False,
     ) -> list[list[dict[str, Any]]] | list[QueryHit]:
         """Asynchronously search through ``POST /v1/query``."""
 
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
         if collection_name:
             payload["collection_name"] = collection_name
+        if agentic:
+            payload["agentic"] = True
         body = await self._arequest("POST", "/v1/query", json=payload)
         try:
             parsed = QueryResponse.model_validate(body).hits_by_query(

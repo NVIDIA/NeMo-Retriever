@@ -189,8 +189,8 @@ def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypat
         def __init__(self, *, base_url: str, api_token: str | None = None, **_kwargs: Any) -> None:
             client_calls.append({"base_url": base_url, "api_token": api_token})
 
-        def query(self, query: str, *, top_k: int) -> list[list[dict[str, Any]]]:
-            client_calls.append({"query": query, "top_k": top_k})
+        def query(self, query: str, *, top_k: int, agentic: bool = False) -> list[list[dict[str, Any]]]:
+            client_calls.append({"query": query, "top_k": top_k, "agentic": agentic})
             return [
                 [
                     {"text": "keep", "source": "doc.pdf", "page_number": 1, "metadata": {"type": "text"}},
@@ -217,7 +217,7 @@ def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypat
     ]
     assert client_calls == [
         {"base_url": "http://svc:7670", "api_token": "secret"},
-        {"query": "deployment?", "top_k": 3},
+        {"query": "deployment?", "top_k": 3, "agentic": False},
     ]
 
 
