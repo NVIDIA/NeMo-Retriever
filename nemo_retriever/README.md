@@ -411,8 +411,11 @@ endpoint. Refer to
 [Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
 in the Helm chart README.
 
-Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
-text-enriched hits.
+Agentic CLI output is not the five-field dense projection (`modality`,
+`page_number`, `score`, `source`, and `text`). Each JSON object is the
+internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
+`result_source` is `final_results`, `rrf`, or `selection_agent`. When no
+retrieval hop returned the document, only those three keys are present.
 
 For a quick smoke test, reduce agent work:
 
