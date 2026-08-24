@@ -136,20 +136,28 @@ retriever ingest ./data/multimodal_test.pdf \
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
 
-For NVIDIA inference hub rerank models that expose the Cohere-style rerank
-route, pass the full `/v1/rerank` URL and the model name shown in the hub
-snippet:
+To rerank local query results with the hosted vision-language reranker, pass the
+NVIDIA-hosted `/reranking` endpoint and model. Use the same `NVIDIA_API_KEY` that
+authorizes the hosted embedding URL:
 
 ```bash
-export NGC_INFERENCE_API_KEY=...
-
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
-  --reranker-invoke-url https://inference-api.nvidia.com/v1/rerank \
-  --reranker-model-name nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2 \
-  --reranker-api-key-env NGC_INFERENCE_API_KEY
+  --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking \
+  --reranker-model-name nvidia/llama-nemotron-rerank-vl-1b-v2 \
+  --reranker-api-key-env NVIDIA_API_KEY
 ```
+
+Passing `--rerank` without `--reranker-invoke-url` uses the local GPU reranker,
+not this hosted endpoint.
+
+A Cohere-style `/v1/rerank` URL is a gateway route, not an NVIDIA-hosted NIM
+endpoint. Pass the full URL that your gateway exposes, for example
+`https://<your-gateway>/v1/rerank`, and the model name that gateway expects.
+Set `--reranker-api-key-env` to an environment variable that holds a credential
+issued by that gateway. A gateway that expects a LiteLLM virtual key that starts
+with `sk-` rejects NVIDIA `nvapi-` keys and NGC keys.
 
 ### Query result controls
 
