@@ -12,4 +12,4 @@ For commands, service configuration, request and response contracts, and failure
 
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Semantic retrieval](vdbs.md#semantic-retrieval)
-- [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md)
+- [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/examples/README.md)
