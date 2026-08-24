@@ -202,6 +202,28 @@ class TestReActAgentOperator:
             {"id": "d2", "score": 0.4, "text": "u"},
         ]
 
+    def test_retrieve_adapter_passes_active_query_id_when_enabled(self):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        calls = []
+
+        def retrieve(query, top_k, *, query_id):
+            calls.append((query, top_k, query_id))
+            return []
+
+        op = self._op(retriever_fn=retrieve, retriever_fn_accepts_query_id=True)
+        mock_agent = MagicMock()
+
+        def run_sync(query, *, query_id=None, raw_log_dir=None):
+            op._retrieve_adapter("agent subquery", 5)
+            return _agent_result()
+
+        mock_agent.run_sync.side_effect = run_sync
+        with patch.object(ReActAgentOperator, "_ensure_agent", return_value=mock_agent):
+            op.run(self._input())
+
+        assert calls == [("agent subquery", 5, "q1")]
+
     def test_translates_retrieval_log_and_final(self):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 

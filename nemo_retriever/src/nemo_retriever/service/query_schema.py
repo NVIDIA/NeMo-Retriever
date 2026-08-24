@@ -34,9 +34,11 @@ class QueryRequest(BaseModel):
         description=(
             "When true, run the server-configured agentic (ReAct) retrieval workflow. "
             "Requires agentic.enabled in service configuration. Response uses the same "
-            "hits envelope as dense/hybrid query; document-level agentic results map "
-            "doc_id onto source, keep result_source/rank in metadata, and leave "
-            "chunk-level fields unset (null)."
+            "hits envelope as dense/hybrid query: each hit carries the classic hit "
+            "fields (text, metadata, source, page_number, scores, ...) plus doc_id, "
+            "rank, and result_source. For compatibility, metadata also carries rank "
+            "and result_source. Documents the agent selected without retrieving them "
+            "have null classic fields and source falls back to doc_id."
         ),
     )
 

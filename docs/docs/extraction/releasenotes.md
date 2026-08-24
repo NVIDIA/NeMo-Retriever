@@ -21,6 +21,7 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 - Legacy `nv-ingest` and compatibility pipeline CLI code paths are removed. Use `retriever ingest` and the graph stage registry.
 - Self-hosted Parakeet on Helm requires both `nimOperator.audio.enabled=true` and `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`. Enabling the audio NIM alone does not wire the service ASR endpoint.
 - Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+- A document whose VectorDB write is not acknowledged now fails instead of reporting `completed` with a positive row count. Earlier builds failed only collection-managed writes and logged a legacy fixed-table failure as a warning. The worker acknowledgement timeout is configurable through `serviceConfig.vectordb.writeTimeoutSeconds` (rendered as `vectordb.write_timeout_s`) and defaults to 300 seconds. Refer to [Ingest fails with a VectorDB write error](troubleshoot.md#vectordb-write-not-acknowledged).
 - Retriever Service OpenAPI `info.version` no longer reports a stale `26.5.0` value. The service reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
 
 ### Text generation and LLM configuration { #text-generation-and-llm-configuration }
@@ -103,6 +104,7 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 - LanceDB retrieval-mode autodetection and persisted embedding identity for automatic local queries.
 - Dense image-only VDB records are retained where applicable.
 - Scope-isolated collection and document lifecycle APIs (`/v1/collections`) support create, ingest, replace, query, and cleanup without exposing LanceDB table names.
+- Fixed an issue where concurrent ingests into one VectorDB pod could report success minutes before the rows were durable or queryable. Each write now commits its rows independently, and index maintenance runs in a separate serialized phase where concurrent writers share one coalesced rebuild. An index-readiness wait that expires logs a warning and leaves the committed rows queryable instead of failing the write. Refer to [LanceDB index creation fails during concurrent Helm ingestion](troubleshoot.md#lancedb-concurrent-index-creation).
 
 ### Packaging and platform { #packaging-and-platform }
 

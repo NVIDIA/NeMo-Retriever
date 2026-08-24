@@ -714,6 +714,10 @@ serviceConfig:
     indexMode: "hybrid"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
+    # How long a worker waits for the VectorDB pod to acknowledge a record
+    # write. A write that is not acknowledged fails the document, so raise
+    # this on slow storage rather than accepting unacknowledged writes.
+    writeTimeoutSeconds: 300
     # Optional service-internal authentication. When enabled, Retriever and
     # VectorDB pods read the same existing Secret key. In split topology, the
     # gateway also uses this credential for restricted gateway-to-worker
@@ -1299,6 +1303,8 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
       # Optional: enable if your NIM build supports throughput mode for this SKU.
       # - name: NIM_TRITON_PERFORMANCE_MODE
       #   value: throughput

@@ -255,6 +255,7 @@ vectordb:
   embed_model_provider_prefix: null
 {{- end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
+  write_timeout_s: {{ .Values.serviceConfig.vectordb.writeTimeoutSeconds | default 300 }}
 {{- else }}
 vectordb:
   enabled: false

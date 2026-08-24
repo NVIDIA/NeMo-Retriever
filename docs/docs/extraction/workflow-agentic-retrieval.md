@@ -221,16 +221,19 @@ The `ingest_documents` MCP tool accepts either paths visible to the MCP server p
 
 ## Result contract { #result-contract }
 
-One-pass retrieval returns text-enriched chunk hits. Agentic retrieval returns a document-level ranking.
+One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents, and returns the same hit fields as one-pass retrieval for each selected document. The agent works with reduced candidate records internally, but the selected documents are rehydrated at the end of the loop from the retrieval hop that returned them.
 
-CLI `retriever query --agentic` prints JSON objects with `rank`, `doc_id`, and `result_source`. `result_source` is `final_results`, `rrf`, or `selection_agent`, depending on which stage produced the ranked ID.
+Every agentic hit carries the one-pass hit fields (`text`, `metadata`, `source`, `source_id`, `path`, `page_number`, `pdf_basename`, `pdf_page`, scores, and related) plus these agentic annotations:
 
-Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval:
+- `doc_id` — the document identifier the agent selected.
+- `rank` — the position in the final ranking.
+- `result_source` — `final_results`, `rrf`, or `selection_agent`, depending on which stage produced the ranked ID.
 
-- Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`.
-- Each hit places the selected `doc_id` in `source`.
-- `metadata` carries `result_source` and `rank`.
-- Chunk-level fields (`text`, `page_number`, scores, and related) are unset.
+CLI `retriever query --agentic` prints those hits as JSON objects.
+
+Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
+
+An agent can name a document that no retrieval hop returned, which leaves nothing to rehydrate. Those hits report null one-pass fields, and `source` falls back to `doc_id`.
 
 ## Failure and retry behavior { #failure-and-retry-behavior }
 

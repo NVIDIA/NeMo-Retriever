@@ -87,18 +87,52 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
     assert request.agentic.react_max_steps == 7
 
 
-def test_agentic_ranked_to_hits_maps_doc_id_onto_query_hit_envelope() -> None:
-    hits = agentic_ranked_to_hits([{"rank": 1, "doc_id": "report.pdf", "result_source": "selection_agent"}])
+def test_agentic_ranked_to_hits_keeps_rehydrated_classic_fields() -> None:
+    hits = agentic_ranked_to_hits(
+        [
+            {
+                "text": "revenue grew 4%",
+                "metadata": {"type": "text"},
+                "source": "/indexes/report.pdf",
+                "source_id": "/indexes/report.pdf",
+                "page_number": 7,
+                "_score": 0.42,
+                "rank": 1,
+                "doc_id": "report_7",
+                "result_source": "selection_agent",
+            }
+        ]
+    )
+    assert hits == [
+        {
+            "text": "revenue grew 4%",
+            "metadata": {"type": "text", "rank": 1, "result_source": "selection_agent"},
+            "source": "/indexes/report.pdf",
+            "source_id": "/indexes/report.pdf",
+            "page_number": 7,
+            "_score": 0.42,
+            "doc_id": "report_7",
+            "rank": 1,
+            "result_source": "selection_agent",
+        }
+    ]
+
+
+def test_agentic_ranked_to_hits_falls_back_to_doc_id_without_rehydrated_metadata() -> None:
+    hits = agentic_ranked_to_hits([{"rank": 1, "doc_id": "report.pdf", "result_source": "final_results"}])
     assert hits == [
         {
             "text": None,
-            "metadata": {"result_source": "selection_agent", "rank": 1},
+            "metadata": {"rank": 1, "result_source": "final_results"},
             "source": "report.pdf",
             "source_id": None,
             "path": None,
             "page_number": None,
             "pdf_basename": None,
             "pdf_page": None,
+            "doc_id": "report.pdf",
+            "rank": 1,
+            "result_source": "final_results",
         }
     ]
 
@@ -159,8 +193,12 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
                 hits=agentic_ranked_to_hits(
                     [
                         {
+                            "text": "revenue grew 4%",
+                            "metadata": {"type": "text"},
+                            "source": "/indexes/report.pdf",
+                            "page_number": 7,
                             "rank": 1,
-                            "doc_id": "report.pdf",
+                            "doc_id": "report_7",
                             "result_source": "selection_agent",
                         }
                     ]
@@ -186,14 +224,13 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
             {
                 "hits": [
                     {
-                        "text": None,
-                        "metadata": {"result_source": "selection_agent", "rank": 1},
-                        "source": "report.pdf",
-                        "source_id": None,
-                        "path": None,
-                        "page_number": None,
-                        "pdf_basename": None,
-                        "pdf_page": None,
+                        "text": "revenue grew 4%",
+                        "metadata": {"type": "text", "rank": 1, "result_source": "selection_agent"},
+                        "source": "/indexes/report.pdf",
+                        "page_number": 7,
+                        "doc_id": "report_7",
+                        "rank": 1,
+                        "result_source": "selection_agent",
                     }
                 ]
             }

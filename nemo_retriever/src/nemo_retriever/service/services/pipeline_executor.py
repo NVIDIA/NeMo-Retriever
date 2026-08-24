@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 _MP_CONTEXT = mp.get_context("forkserver")
 _MAX_TASKS_PER_CHILD = 100
 _DEFAULT_WARM_MAX_TASKS_PER_CHILD = 10_000
+# Storage acknowledgement is part of the ingest contract, so the worker waits
+# long enough for a busy VectorDB to commit rather than reporting a success
+# the storage tier never confirmed.
+_DEFAULT_VECTORDB_WRITE_TIMEOUT_S = 300.0
 
 _SENSITIVE_PATTERNS = frozenset(
     {
@@ -289,12 +293,14 @@ def _post_records_to_vectordb(
     context: DocumentWriteContext,
     job_id: str | None = None,
     internal_api_token: str | None = None,
+    timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
 ) -> None:
-    """Post canonical NRL record batches to VectorDB, preserving legacy best-effort behavior.
+    """Post canonical NRL record batches to VectorDB and fail the job on rejection.
 
-    Collection-managed writes are lifecycle-authoritative and therefore fail
-    the job when storage rejects the write. Legacy fixed-table writes retain
-    their historical best-effort behavior.
+    A write the storage tier never acknowledged cannot be reported as a
+    completed ingest: the caller would see a row count for records that are
+    not queryable. Both collection-managed and legacy fixed-table writes
+    therefore surface the storage failure to the document.
     """
     import json
     import urllib.request
@@ -331,7 +337,7 @@ def _post_records_to_vectordb(
     )
     record_count = sum(len(batch) for batch in records)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             logging.getLogger(__name__).info(
                 "Posted %d records to vectordb for %s — HTTP %d",
                 record_count,
@@ -339,7 +345,7 @@ def _post_records_to_vectordb(
                 resp.status,
             )
     except Exception as exc:
-        logging.getLogger(__name__).warning(
+        logging.getLogger(__name__).error(
             "Failed to POST %d records to vectordb for %s: %s",
             record_count,
             filename,
@@ -347,6 +353,10 @@ def _post_records_to_vectordb(
         )
         if context.collection_name:
             raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
+        raise RuntimeError(
+            f"VectorDB write failed for {filename}: {exc}. "
+            "The extracted rows are not confirmed durable, so the document is not queryable."
+        ) from exc
 
 
 _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
@@ -735,6 +745,7 @@ def _run_pipeline_in_process(
     write_context: DocumentWriteContext | None = None,
     job_id: str | None = None,
     internal_api_token: str | None = None,
+    vectordb_write_timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -813,6 +824,7 @@ def _run_pipeline_in_process(
             context=write_context or DocumentWriteContext(),
             job_id=job_id,
             internal_api_token=internal_api_token,
+            timeout_s=vectordb_write_timeout_s,
         )
 
     result_options = pipeline_spec or {}
@@ -1134,6 +1146,7 @@ def _make_work_fn(
                 write_context,
                 item.job_id,
                 config.vectordb.internal_api_token,
+                config.vectordb.write_timeout_s,
             )
         except BrokenProcessPool:
             logger.error(

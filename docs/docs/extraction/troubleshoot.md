@@ -374,6 +374,96 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 
 
 
+## LanceDB index creation fails during concurrent Helm ingestion { #lancedb-concurrent-index-creation }
+
+Concurrent ingest workers can finish extraction at nearly the same time and
+send overlapping writes to the VectorDB service. In affected releases, those
+writes can rebuild the LanceDB vector or full-text-search index concurrently.
+LanceDB rejects one of the competing commits with an error similar to the
+following:
+
+```text
+Retryable commit conflict for version <version>:
+This CreateIndex transaction was preempted by concurrent transaction CreateIndex.
+Please retry.
+```
+
+Upgrade to a NeMo Retriever Library release that separates row commits from
+index maintenance. The VectorDB service admits concurrent
+`/internal/vectordb/write` requests that reach the same pod. Each request
+commits its rows under a short-lived lock, so those rows are durable as soon
+as the commit lands. LanceDB search also scans rows that no index covers yet,
+so a committed row is queryable before the next rebuild includes it.
+
+Only index maintenance is serialized, because LanceDB rejects competing index
+commits. Concurrent writers share one coalesced rebuild: a rebuild that starts
+after a batch was committed also indexes that batch. A write therefore never
+waits behind another writer's index build. There is no Helm value to configure
+this behavior.
+
+An index-readiness wait that expires no longer fails the write. The VectorDB
+pod logs a warning similar to the following, and the committed rows stay
+queryable until the next rebuild covers them:
+
+```text
+LanceDB index on column 'vector' did not report coverage of 512 row(s) within
+0:01:00. Queries still scan unindexed rows and the next rebuild will cover them.
+```
+
+Keep the VectorDB deployment at one replica. Row and index serialization is
+local to a single VectorDB process. It does not coordinate writes across
+multiple pods or independently deployed processes that share a LanceDB
+directory.
+
+If a request failed before the upgrade, inspect the table and the ingest job
+before you resubmit it. A write can append rows before a later index rebuild
+fails. The legacy append path does not deduplicate rows, so rerunning the same
+input can create duplicate rows.
+
+## Ingest fails with a VectorDB write error { #vectordb-write-not-acknowledged }
+
+A worker posts extracted records to the VectorDB service before it reports a
+document as complete. When the VectorDB service rejects that write or does not
+acknowledge it within the configured timeout, the document fails with an error
+similar to the following:
+
+```text
+RuntimeError: VectorDB write failed for report.pdf: <error>. The extracted rows
+are not confirmed durable, so the document is not queryable.
+```
+
+A write into a managed collection reports
+`Collection write failed for report.pdf: <error>` instead.
+
+The worker pod logs the underlying failure at error level:
+
+```text
+Failed to POST 128 records to vectordb for report.pdf: <error>
+```
+
+Earlier releases logged this failure as a warning for writes to the legacy
+fixed table and still reported the document as `completed` with a positive row
+count. Queries then returned no rows for a document that the ingest job called
+successful. A failed document now means the rows are not confirmed durable.
+
+Complete the following checks:
+
+1. Run `kubectl get pods --namespace <namespace>` and confirm the VectorDB pod is `Running` and ready. A pod that is restarting or unschedulable does not accept writes.
+2. Read the VectorDB pod logs for the same records. A rejected write reports a request or backend error. A write that the worker abandoned on timeout can still be in progress on the VectorDB pod.
+3. If writes time out under load or on slow storage, raise the acknowledgement timeout. `serviceConfig.vectordb.writeTimeoutSeconds` defaults to `300` seconds and covers the row commit plus the index maintenance that follows it.
+4. Resubmit the failed documents after the write path is healthy. A write that timed out on the worker can still have committed its rows, and the legacy append path does not deduplicate rows, so check the table row count first.
+
+To raise the timeout on an existing release, run the following command:
+
+```bash
+helm upgrade retriever ./nemo_retriever/helm \
+  --reuse-values \
+  --set serviceConfig.vectordb.writeTimeoutSeconds=900
+```
+
+For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
+
+
 ## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
 
 `helm install` can report `STATUS: deployed` while every default PersistentVolumeClaim stays `Pending`. That status means Helm rendered the release. It does not mean the retriever service, VectorDB, or core NIM workloads can schedule.
