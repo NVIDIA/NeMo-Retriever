@@ -8,7 +8,6 @@ For product-facing examples, prefer these commands:
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
 - `retriever query` - query a local LanceDB table written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
-- `retriever harness run` - run a named, code-owned benchmark.
 - `retriever service` - operate a Retriever service deployment.
 
 Format names and internal stages are not root commands. Use `retriever ingest`
@@ -48,11 +47,25 @@ configuration, local embed backend selection, or local media controls.
 <!-- --8<-- [start:quickstart] -->
 
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
-> Use `retriever harness run` only for benchmark execution.
 
 ## Quick start
 
+Local ingest embeds on the local GPU when `--embed-invoke-url` is unset. Install
+the `[local]` extra before you run the default `retriever ingest` or
+`retriever ingest batch` commands:
+
+```bash
+pip install "nemo-retriever[local]"
+```
+
+If you installed the base package for Remote NIM with no local GPU, keep that
+install and pass `--embed-invoke-url` instead. Refer to
+[Route ingest to hosted or self-hosted NIM endpoints](#route-ingest-to-hosted-or-self-hosted-nim-endpoints).
+
 ### Ingest a PDF locally
+
+From a clone of this repository, `./data/multimodal_test.pdf` is a valid
+first-run input. If you installed from PyPI, pass a PDF file that you supply.
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf
@@ -74,8 +87,11 @@ written to LanceDB. Use `retriever query service` to query a Retriever service.
 
 ### Ingest a larger corpus with batch mode
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply. The
+repository and the PyPI package do not include a `pdf_corpus` dataset.
+
 ```bash
-retriever ingest batch ./data/pdf_corpus \
+retriever ingest batch /path/to/your/pdfs \
   --profile fast-text \
   --pdf-extract-workers 4 \
   --embed-workers 2
@@ -86,8 +102,10 @@ Batch mode exposes Ray runtime and batch tuning flags such as `--ray-address`,
 
 ### Ingest through a Retriever service
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
+
 ```bash
-retriever ingest service ./data/pdf_corpus \
+retriever ingest service /path/to/your/pdfs \
   --service-url http://localhost:7670 \
   --service-concurrency 8
 ```
@@ -203,9 +221,12 @@ retriever query "summarize the deployment options" \
   --agentic-react-max-steps 5
 ```
 
-Unlike the dense path (which returns text-enriched hits), agentic mode returns
-the agent's ranked document IDs as JSON, each annotated with the source that
-produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
+Agentic mode returns the agent's ranked documents as JSON, with the same hit
+fields as the dense path (`text`, `metadata`, `source`, `page_number`, and
+related) plus `doc_id`, `rank`, and the stage that produced the ranking
+(`final_results`, `rrf`, or `selection_agent`). Hit fields are rehydrated at the
+end of the loop from the retrieval hop that returned the document, so a document
+the agent named without retrieving it reports null hit fields. It reuses the same
 `--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
 `--embed-model-name` options as standard retrieval. Agentic retrieval uses the
 selected table's model automatically when `--embed-model-name` is omitted.
@@ -219,7 +240,7 @@ fusion) -> SelectionAgentOperator -> ranked results`:
 - `RRFAggregatorOperator` fuses candidates from the loop's multiple searches with
   reciprocal rank fusion.
 - `SelectionAgentOperator` runs a final LLM selection pass over the fused set and
-  emits the ranked document IDs.
+  emits the ranked document IDs, which are then rehydrated into full hits.
 
 Agentic-only knobs (apply only with `--agentic`):
 
@@ -227,9 +248,15 @@ Agentic-only knobs (apply only with `--agentic`):
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
 - `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
-  `tensor_parallel_size` for the in-process agent LLM. Set to `2` (with two
-  visible GPUs via `CUDA_VISIBLE_DEVICES`) for local `super-49b`. Ignored when
-  `--agentic-invoke-url` is set.
+  `tensor_parallel_size` for the in-process agent LLM. Use `2+` with matching
+  `CUDA_VISIBLE_DEVICES` for multi-GPU local profiles (for example
+  `super-49b`). Ignored when `--agentic-invoke-url` is set. When the first
+  `tensor_parallel_size` CUDA-visible GPUs are not NVLink-connected (typical
+  dual-GPU PCIe workstations), tensor-parallel startup automatically sets
+  `NCCL_NVLS_ENABLE=0` and `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, because NVLink
+  multicast collectives abort vLLM startup there; set either variable yourself
+  to override. Detection is scoped to that TP device group, not the whole host
+  or extra visible GPUs outside the shard.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM. Providing it routes agent LLM calls to that remote endpoint; omit it
   to run the in-process local model.
@@ -259,12 +286,12 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | Option | Default | Notes |
 |---|---|---|
 | `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
-| `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` is a PDF/document text-only profile for faster fallback ingest. |
+| `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. `fast-text` selects `pdfium` and disables Page Elements, image, table, and chart extraction for text-only PDFs. |
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `dense` | Dense vector index by default; `hybrid` also builds BM25/FTS and `sparse` builds an FTS-only table. |
-| `--method` | planner default | PDF extraction method such as `pdfium` or `nemotron_parse`. |
+| `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -318,8 +345,10 @@ retriever query "What is in this document?" \
 
 ### Fast text-only PDF fallback
 
+Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
+
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --profile fast-text \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
@@ -331,7 +360,7 @@ checkpoint compatible with a supported dense Nemotron text or vision-language
 embedding profile:
 
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --embed-model-name acme/my-finetuned-nemotron-embed
 ```
 
@@ -343,23 +372,29 @@ Tested official checkpoints:
 - `nvidia/llama-nemotron-embed-vl-1b-v2-fp8`
 - `nvidia/llama-nv-embed-reasoning-3b`
 - `nvidia/llama-embed-nemotron-8b`
+- `nvidia/Nemotron-3-Embed-1B-BF16`
+- `nvidia/Nemotron-3-Embed-8B-BF16`
+- `nvidia/Nemotron-3-Embed-1B-NVFP4`
 
 Equivalent local checkpoints and weight-only fine-tunes are supported. A
-compatible checkpoint must be complete and loadable, use
-`LlamaBidirectionalModel` or `LlamaNemotronVLModel`, and declare average
-pooling with a positive output width. LanceDB infers the schema from the
-produced vectors; the tested official checkpoints use 2048, 3072, and 4096
-dimensions. Query and document prompts are read from
+compatible checkpoint must be complete and loadable, declare average pooling,
+and expose a positive output width. Supported architectures include
+`LlamaBidirectionalModel`, `LlamaNemotronVLModel`, and compatible Ministral 3
+dense encoders. A compatible Ministral 3 dense checkpoint must declare
+`model_type: "ministral3"`, `architectures: ["Ministral3Model"]`,
+`is_causal: false`, `pooling: "avg"`, and a positive `hidden_size`. LanceDB
+infers the schema from the produced vectors; the tested official checkpoints
+use 2048, 3072, and 4096 dimensions. Query and document prompts are read from
 `config_sentence_transformers.json` when the checkpoint supplies it.
 Fine-tunes that require prefixes other than `query: ` and `passage: ` must
 retain that prompt metadata.
 
-This does not add support for every model in the Nemotron RAG collection,
-including rerankers, ColEmbed late-interaction models, Omni Embed, OCR, or
-parsing models. Nemotron 3 Embed is also excluded because its Ministral3
-architecture requires a newer Transformers stack than this project currently
-supports. Those models require different dependencies, outputs, modalities,
-or operator contracts.
+General Mistral 3 Base, Instruct, and vision-language model (VLM) generation
+checkpoints remain unsupported because they do not match the dense encoder
+contract. NeMo AutoModel `ministral3_bidirec` checkpoints also remain
+unsupported. Other unsupported Nemotron RAG models include rerankers, ColEmbed
+late-interaction models, Omni Embed, OCR, and parsing models. These models
+require different dependencies, outputs, modalities, or operator contracts.
 
 Unregistered Hub repositories are resolved to an immutable commit and loaded
 with `trust_remote_code=True`; only use repositories you trust. The resolved
@@ -371,7 +406,7 @@ vLLM for ingest. Local query detects the ModelOpt configuration and selects
 vLLM automatically:
 
 ```bash
-retriever ingest ./data/pdf_corpus \
+retriever ingest /path/to/your/pdfs \
   --embed-model-name /models/my-finetuned-nemotron-embed-fp8 \
   --local-ingest-embed-backend vllm
 
@@ -383,10 +418,40 @@ Hugging Face remains the local query backend for non-ModelOpt checkpoints.
 Local directories must contain `config.json`, and their absolute path must be
 available to every Ray worker or service replica that loads the model.
 
-### OCR language mode
+### PDF extraction method
+
+Use `--method` to select how the CLI extracts text from PDF pages. The default
+`auto` profile selects `pdfium_hybrid` so that scanned pages can use OCR without
+bypassing Page Elements. An explicit `--method` value overrides the method
+selected by the profile.
+
+- `pdfium` extracts native PDF text. It does not use OCR as a fallback for
+  scanned-page text. Page Elements still supports enabled table and chart
+  extraction, but it does not recover page text in this method.
+- `pdfium_hybrid` extracts native text from text-bearing pages. For pages
+  classified as scanned, it uses Page Elements and OCR to recover page text.
+- `ocr` uses Page Elements and OCR for PDF page text on every page.
+- `nemotron_parse` uses the Nemotron Parse visual extraction path instead of
+  the Page Elements and OCR path.
+
+The `fast-text` profile is the explicit text-only exception. It selects
+`pdfium` and disables Page Elements, page rendering, image extraction, table
+extraction, and chart extraction.
+
+For example, select hybrid extraction for a PDF that contains scanned pages:
 
 ```bash
 retriever ingest ./data/scanned.pdf \
+  --method pdfium_hybrid
+```
+
+`--ocr-version` and `--ocr-lang` configure the local OCR engine when an enabled
+stage uses OCR. These options do not select a PDF extraction method.
+
+### OCR language mode
+
+```bash
+retriever ingest ./data/multimodal_test.pdf \
   --ocr-version v2 \
   --ocr-lang english
 ```

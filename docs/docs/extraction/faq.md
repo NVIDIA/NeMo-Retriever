@@ -77,6 +77,22 @@ The support matrix **Total GPUs: 1** row is combined VRAM co-residency for the f
 
 On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending` with `Insufficient nvidia.com/gpu`. Refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
 
+## Why does Helm upgrade fail after I change a NIM image repository or tag? { #helm-nim-image-tag-upgrade }
+
+The chart keeps the same `NIMCache` name when you change a NIM image repository or tag. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
+
+Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image repository or tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+
+## Why do NIMCache and NIMService still use ngc-secret after I rename ngcImagePullSecret.name? { #helm-nim-secret-rename }
+
+Empty per-NIM `image.pullSecrets` and `authSecret` inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Chart defaults leave those fields empty.
+
+A non-empty per-NIM override takes precedence. If you previously set those fields to `ngc-secret` or `ngc-api`, those values remain after you rename the global Secrets. Clear the per-NIM fields, or set them to the new names.
+
+`imagePullSecrets` applies only to Retriever Pods. It does not appear on NIMCache or NIMService.
+
+Refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [NIMCache or NIMService still uses ngc-secret after a global Secret rename](troubleshoot.md#helm-nim-secret-names).
+
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
 ### Self-Hosted Deployments { #self-hosted-deployments }

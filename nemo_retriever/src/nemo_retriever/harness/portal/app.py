@@ -1299,7 +1299,7 @@ async def test_ocr_model(req: OCRTestRequest):
 
 
 class ParseTestRequest(BaseModel):
-    model_id: str = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+    model_id: Literal["nvidia/NVIDIA-Nemotron-Parse-v1.2"] = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
     image_b64: str
 
 

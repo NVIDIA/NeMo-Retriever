@@ -18,6 +18,7 @@ from nemo_retriever.ingest.plan import (
     IngestMediaOptions,
     IngestPlanRequest,
     IngestSourceOptions,
+    profile_extract_defaults,
     resolve_ingest_plan,
 )
 from nemo_retriever.ingestor.manifest import (
@@ -25,7 +26,7 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
-from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import ASRParams, EmbedParams, ExtractParams
 
 
 def _resolve_plan(
@@ -183,6 +184,10 @@ def test_manifest_planner_empty_glob_does_not_invent_modal_branches(tmp_path) ->
     assert [(branch.family, branch.input_paths) for branch in branches] == [("pdf", (str(tmp_path / "*.wav"),))]
 
 
+def test_auto_profile_defaults_to_pdfium_hybrid() -> None:
+    assert profile_extract_defaults("auto") == {"method": "pdfium_hybrid"}
+
+
 def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     pdf.write_bytes(b"pdf")
@@ -191,7 +196,7 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
 
     assert plan.profile == "auto"
     assert [branch.family for branch in plan.branches] == ["pdf"]
-    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.method == "pdfium_hybrid"
     assert plan.extract_params.dpi == 200
     assert plan.extract_params.extract_images is True
     assert plan.extract_params.extract_tables is True
@@ -209,7 +214,7 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
         pytest.param(IngestExtractOptions(ocr_lang="english"), id="language"),
     ],
 )
-def test_ingest_plan_ocr_selector_enables_hybrid_pdf_extraction(tmp_path, extract) -> None:
+def test_ingest_plan_ocr_selector_preserves_default_pdfium_hybrid_method(tmp_path, extract) -> None:
     pdf = tmp_path / "scanned.pdf"
     pdf.write_bytes(b"pdf")
 
@@ -218,16 +223,17 @@ def test_ingest_plan_ocr_selector_enables_hybrid_pdf_extraction(tmp_path, extrac
     assert plan.extract_params.method == "pdfium_hybrid"
 
 
-def test_ingest_plan_explicit_pdf_method_wins_over_ocr_selector(tmp_path) -> None:
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid"])
+def test_ingest_plan_explicit_pdf_method_with_ocr_selector(tmp_path, method) -> None:
     pdf = tmp_path / "scanned.pdf"
     pdf.write_bytes(b"pdf")
 
     plan = _resolve_plan(
         [str(pdf)],
-        extract=IngestExtractOptions(method="pdfium", ocr_version="v2"),
+        extract=IngestExtractOptions(method=method, ocr_version="v2"),
     )
 
-    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.method == method
 
 
 def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
@@ -335,7 +341,6 @@ def test_ingest_plan_auto_builds_video_params(monkeypatch, tmp_path) -> None:
     plan = _resolve_plan([str(video)])
 
     assert [branch.family for branch in plan.branches] == ["video"]
-    assert plan.extract_params.method == "pdfium"
     assert plan.audio_chunk_params is not None
     assert plan.audio_chunk_params.enabled is True
     assert plan.video_frame_params is not None
@@ -361,7 +366,7 @@ def test_ingest_plan_auto_allows_mixed_supported_branches(monkeypatch, tmp_path)
     plan = _resolve_plan([str(pdf), str(audio), str(video)])
 
     assert [branch.family for branch in plan.branches] == ["pdf", "audio", "video"]
-    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.method == "pdfium_hybrid"
     assert plan.audio_chunk_params is not None
     assert plan.video_frame_params is not None
 
@@ -450,6 +455,43 @@ def test_text_html_branch_execution_skips_content_reshape_before_embed(monkeypat
     GraphIngestor(run_mode="inprocess", show_progress=False).files([str(text), str(html)]).extract().embed().ingest()
 
     assert post_calls[0]["reshape_content_before_embed"] is False
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_mixed_branch_image_embedding_enables_pdf_page_raster(monkeypatch, tmp_path, modality: str) -> None:
+    pdf = tmp_path / "manual.pdf"
+    text_file = tmp_path / "notes.txt"
+    pdf.write_bytes(b"pdf")
+    text_file.write_text("notes", encoding="utf-8")
+    extraction_calls: list[dict[str, Any]] = []
+
+    def fake_build_graph(**kwargs: Any) -> Graph:
+        extraction_calls.append(kwargs)
+        return _graph_with(_TagOperator(tag=kwargs["extraction_mode"]))
+
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", fake_build_graph)
+    monkeypatch.setattr(
+        "nemo_retriever.ingestor.branch_extraction.build_post_extract_graph",
+        lambda **_kwargs: _graph_with(_PostOperator()),
+    )
+
+    (
+        GraphIngestor(run_mode="inprocess", show_progress=False)
+        .files([str(pdf), str(text_file)])
+        .extract(
+            ExtractParams(
+                extract_images=False,
+                extract_tables=False,
+                extract_charts=False,
+                extract_page_as_image=False,
+            )
+        )
+        .embed(EmbedParams(embed_modality=modality, embed_granularity="page"))
+        .ingest()
+    )
+
+    pdf_call = next(call for call in extraction_calls if call["extraction_mode"] == "pdf")
+    assert pdf_call["extract_params"].extract_page_as_image is True
 
 
 class _FakeDataset:

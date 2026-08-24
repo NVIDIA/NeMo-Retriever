@@ -13,8 +13,11 @@ from nemo_retriever.models import hf_model_registry as registry
 
 def test_extraction_hf_repos_have_pinned_revisions():
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v1"] == "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"
-    assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v2"] == "86cacb0467fa4f7ce54342fdb250825e0d928ae7"
+    assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v2"] == "0e83e83f17943524b90afa6c0fd82ac2bc1a40ca"
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-page-elements-v3"] == "df62dbb631502575ac4d43b44d700b1674ab1d56"
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Parse-v1.2"] == "2bd0189bffd6cdded6280d9f22a4077b25a504e3"
+    )
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"] == "9350162faa1110320af62699105780b0c87b73ad"
     )
@@ -49,8 +52,24 @@ def test_local_hf_nemotron_models_use_transformers_5_compatible_revisions() -> N
         registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-embed-1b-v2"] == "113abe4acafa848e77ead9c0623205e511932348"
     )
     assert (
+        registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-embed-vl-1b-v2"]
+        == "582e3bf72aee355e3c59ed89de53543c5b0657ee"
+    )
+    assert (
         registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-rerank-vl-1b-v2"]
         == "9c20c4aedf9ec87b6b7346c3bc4754ea030dab35"
+    )
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"]
+        == "420ba7d28211abf116b8b103ab700d92619daf98"
+    )
+
+
+def test_local_hf_asr_and_agent_models_use_approved_revisions() -> None:
+    assert registry.HF_MODEL_REVISIONS["nvidia/parakeet-ctc-1.1b"] == "20e63a0fed6aedba145b74b826dbd41df0941730"
+    assert (
+        registry.HF_MODEL_REVISIONS["nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"]
+        == "420ba7d28211abf116b8b103ab700d92619daf98"
     )
 
 

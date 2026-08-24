@@ -291,6 +291,42 @@ def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_ke
     vectordb_module.main()
 
     assert create_app.call_args.kwargs["embed_api_key"] == expected_key
+    assert create_app.call_args.kwargs["index_mode"] == "hybrid"
+
+
+def test_main_passes_max_concurrent_queries(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["vectordb_app", "--max-concurrent-queries", "7"])
+    create_app = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(vectordb_module, "create_vectordb_app", create_app)
+    monkeypatch.setattr(vectordb_module.uvicorn, "run", MagicMock())
+
+    vectordb_module.main()
+
+    assert create_app.call_args.kwargs["max_concurrent_queries"] == 7
+
+
+def test_create_vectordb_app_uses_default_query_concurrency() -> None:
+    app = _app(FakeVDB())
+
+    with TestClient(app):
+        semaphore = app.state.vectordb_state.query_semaphore
+        assert semaphore._value == vectordb_module.MAX_CONCURRENT_QUERIES
+
+
+def test_create_vectordb_app_uses_configured_query_concurrency() -> None:
+    app = _app(FakeVDB(), max_concurrent_queries=2)
+
+    with TestClient(app):
+        semaphore = app.state.vectordb_state.query_semaphore
+        assert semaphore._value == 2
+
+
+@pytest.mark.parametrize("max_concurrent_queries", [0, -1])
+def test_create_vectordb_app_rejects_non_positive_query_concurrency(
+    max_concurrent_queries: int,
+) -> None:
+    with pytest.raises(ValueError, match="max_concurrent_queries must be positive"):
+        _app(FakeVDB(), max_concurrent_queries=max_concurrent_queries)
 
 
 def test_fake_vdb_completes_collection_http_flow_without_backend_details() -> None:
@@ -405,7 +441,7 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
     assert backend.legacy_retrieval_calls == 0
 
 
-def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
+def test_production_vdb_dense_mode_preserves_legacy_service_write_without_index_rebuild(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -413,6 +449,7 @@ def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
         lancedb_uri=str(tmp_path),
         table_name="legacy",
         expiration_cleanup_enabled=True,
+        index_mode="dense",
     )
     assert isinstance(backend, LanceDB)
     assert backend.build_index is False
@@ -431,6 +468,18 @@ def test_production_vdb_preserves_legacy_service_write_without_index_rebuild(
 
     assert backend.run([]) == []
     assert index_writes == []
+
+
+def test_production_vdb_defaults_to_hybrid_index(tmp_path) -> None:
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="hybrid",
+        expiration_cleanup_enabled=True,
+    )
+
+    assert isinstance(backend, LanceDB)
+    assert backend.hybrid is True
+    assert backend.build_index is True
 
 
 def test_legacy_write_and_query_keep_existing_vdb_path() -> None:

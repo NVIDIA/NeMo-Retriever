@@ -155,6 +155,78 @@ nemo-retriever.ngcImagePullSecret
 
 {{/*
 =============================================================================
+NIM Operator secret helpers
+=============================================================================
+
+Resolve the image pull Secret name list and auth Secret name for one
+operator-managed NIM. Per-NIM overrides win when non-empty; otherwise the
+chart-wide ``ngcImagePullSecret.name`` / ``ngcApiSecret.name`` values
+propagate into every NIMCache and NIMService (matching the documented
+Secrets contract).
+
+Usage inside ``templates/nims/<file>.yaml``:
+
+  {{- $nimSecrets := dict "context" $ "key" "page_elements" "cfg" .Values.nimOperator.page_elements -}}
+  pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
+  ...
+  pullSecrets:
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+*/}}
+{{- define "nemo-retriever.nimEffectivePullSecrets" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $secrets := list -}}
+{{- if and $cfg $cfg.image $cfg.image.pullSecrets -}}
+{{- $secrets = $cfg.image.pullSecrets -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- $globalName := ($ctx.Values.ngcImagePullSecret.name | default "") -}}
+{{- if $globalName -}}
+{{- $secrets = list $globalName -}}
+{{- end -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- fail (printf "nimOperator.%s.image.pullSecrets is empty and ngcImagePullSecret.name is unset; set one of them so NIMCache/NIMService can pull images" $key) -}}
+{{- end -}}
+{{- /* Emit one Secret name per line so callers can split without JSON. */ -}}
+{{- range $secrets }}
+{{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecrets" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- range (splitList "\n" $raw) }}
+- {{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecret" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- index (splitList "\n" $raw) 0 -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimAuthSecret" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $auth := "" -}}
+{{- if and $cfg $cfg.authSecret -}}
+{{- $auth = $cfg.authSecret -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- $auth = ($ctx.Values.ngcApiSecret.name | default "") -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- fail (printf "nimOperator.%s.authSecret is empty and ngcApiSecret.name is unset; set one of them so NIMCache/NIMService can authenticate to NGC" $key) -}}
+{{- end -}}
+{{- $auth -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Split-topology helpers (gateway / realtime / batch)
 =============================================================================
 */}}
@@ -198,6 +270,17 @@ nemo-retriever.role.configMapName
 */}}
 {{- define "nemo-retriever.role.configMapName" -}}
 {{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
+{{- end -}}
+
+{{/*
+nemo-retriever.gateway.startupServiceName
+  Name of the gateway startup Service. This Service publishes not-ready
+  addresses so worker init containers can reach the gateway's shallow
+  /v1/live endpoint before the gateway's deep readiness probe passes.
+  Usage: {{ include "nemo-retriever.gateway.startupServiceName" $ }}
+*/}}
+{{- define "nemo-retriever.gateway.startupServiceName" -}}
+{{- include "nemo-retriever.suffixedFullname" (dict "context" . "suffix" "-gateway-startup") -}}
 {{- end -}}
 
 
@@ -570,13 +653,13 @@ Mapping (key -> Service name, default invokePath):
   table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
   ocr                                    -> nemotron-ocr-v2                          /v1/ocr
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 
 Audio ASR (Parakeet) is configured directly via
   serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
-
 {{/*
 Emit ``helm.sh/resource-policy: keep`` on NIMCache when
 ``nimOperator.nimCache.keepOnUninstall`` is true (default). Helm uninstall

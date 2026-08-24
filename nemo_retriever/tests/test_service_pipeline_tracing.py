@@ -170,6 +170,7 @@ def test_make_work_fn_continues_when_trace_capture_fails(
             enabled=False,
             vectordb_url=None,
             internal_api_token=None,
+            write_timeout_s=300.0,
         ),
         pipeline=SimpleNamespace(
             realtime_workers=1,

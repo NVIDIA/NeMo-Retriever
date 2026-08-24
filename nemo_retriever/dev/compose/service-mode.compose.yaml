@@ -204,7 +204,7 @@ services:
   nim-caption:
     <<: *nim-service
     profiles: [nim-caption]
-    image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-1.7.0-variant}
+    image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-2.0.4-variant}
     ports: ["${NIM_CAPTION_HOST_PORT:-8007}:8000"]
     environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-3-nano-omni-30b-a3b-reasoning, NIM_TRITON_LOG_VERBOSE: "1"}
     volumes: ["nim_caption_cache:${NIM_CAPTION_CACHE_PATH:-/opt/nim/.cache}"]

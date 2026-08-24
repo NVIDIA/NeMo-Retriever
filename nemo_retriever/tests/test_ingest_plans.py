@@ -267,6 +267,51 @@ def test_build_graph_resolves_local_nodes_to_gpu_variants_when_gpus_available(
 
 
 @pytest.mark.parametrize(
+    "embed_params",
+    [
+        pytest.param(
+            EmbedParams(
+                model_name="nvidia/llama-nemotron-embed-1b-v2",
+                local_ingest_embed_backend="hf",
+            ),
+            id="explicit-local-hf-backend",
+        ),
+        pytest.param(
+            EmbedParams(
+                model_name="nvidia/llama-nemotron-embed-1b-v2",
+                batch_tuning=BatchTuningParams(gpu_embed=1.0),
+            ),
+            id="explicit-gpu-reservation",
+        ),
+    ],
+)
+def test_build_graph_explicit_local_embedding_resolves_to_gpu_variant(embed_params: EmbedParams) -> None:
+    graph = build_graph(extraction_mode="text", embed_params=embed_params)
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=0))
+    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
+
+    assert issubclass(classes["_BatchEmbedActor"], GPUOperator)
+
+
+def test_build_graph_remote_endpoint_wins_over_explicit_local_embedding_backend() -> None:
+    graph = build_graph(
+        extraction_mode="text",
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+            local_ingest_embed_backend="hf",
+            batch_tuning=BatchTuningParams(gpu_embed=1.0),
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
+    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
+
+    assert issubclass(classes["_BatchEmbedActor"], CPUOperator)
+
+
+@pytest.mark.parametrize(
     "ocr_version, expected_actor_name",
     [
         ("v2", "OCRActor"),

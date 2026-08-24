@@ -380,6 +380,15 @@ CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal i
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
+
+When the first ``tensor_parallel_size`` CUDA-visible GPUs are not
+NVLink-connected (typical dual-GPU PCIe workstations), tensor-parallel
+startup automatically sets `NCCL_NVLS_ENABLE=0` and
+`TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, since NVLink multicast collectives abort
+vLLM startup with a NCCL CUDA error there. Set either variable yourself to
+override the fallback. Detection is scoped to that TP device group, not the
+whole host or extra visible GPUs outside the shard.
+
 **OpenAI-compatible agent endpoint.** Pass `--agentic-invoke-url` when you want a
 custom model or a separately hosted chat-completions server, such as vLLM server
 mode or a self-hosted NIM. When an invoke URL is provided, `--agentic-llm-model`
@@ -394,6 +403,13 @@ retriever query "What is RAG?" \
   --table-name nemo-retriever \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
+
+The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
+Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to
+`NIM_PASSTHROUGH_ARGS` before you point `--agentic-invoke-url` at that
+endpoint. Refer to
+[Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
+in the Helm chart README.
 
 Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
 text-enriched hits.
@@ -745,10 +761,11 @@ The following table lists the primary batch-mode worker controls:
 
 Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](docs/cli/README.md).
 
-For the CLI, pass the batch-mode flags on `retriever ingest batch`:
+For the CLI, pass the batch-mode flags on `retriever ingest batch`. Replace
+`/path/to/your/pdfs` with a directory of PDF files that you supply.
 
 ```bash
-retriever ingest batch ./data/pdf_corpus \
+retriever ingest batch /path/to/your/pdfs \
   --pdf-extract-workers 4 \
   --page-elements-workers 3 \
   --ocr-workers 3 \
@@ -820,14 +837,12 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## Retriever Harness
+## Benchmarking
 
-The developer harness runs registered ingest and retrieval benchmarks through
-`retriever harness`. Start with the
-[harness guide](harness/README.md), then choose
-[library execution](harness/docs/library.md) or
-[service execution](harness/docs/service.md). Recurring workstation runs use the
-[nightly launcher](../ops/retriever-nightly/README.md).
+End-to-end Retriever experiments and benchmark orchestration are maintained in
+the [NeMo Retriever Benchmark (NRB) repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+This repository continues to provide the library, CLI workflows, service
+implementation, and Helm chart that NRB benchmarks.
 
 ### Ingest image storage
 

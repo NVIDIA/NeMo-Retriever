@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Callable
 
@@ -18,6 +18,7 @@ from nemo_retriever.graph.ingestor_runtime import (
     build_graph,
     build_post_extract_graph,
     default_concurrency_node_names,
+    _image_embedding_requires_page_image,
 )
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
@@ -198,7 +199,7 @@ class ExtractionBranchExecutor:
         return any(branch.family in {"pdf", "image"} for branch in self.branches)
 
     def _resolve_branch(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
-        return resolve_branch_extraction_inputs(
+        resolved = resolve_branch_extraction_inputs(
             branch,
             extract_params=self.extract_params,
             text_params=self.text_params,
@@ -209,6 +210,17 @@ class ExtractionBranchExecutor:
             video_text_dedup_params=self.video_text_dedup_params,
             av_fuse_params=self.av_fuse_params,
         )
+        if (
+            branch.family == "pdf"
+            and resolved.extract_params is not None
+            and _image_embedding_requires_page_image(self.embed_params)
+            and not resolved.extract_params.extract_page_as_image
+        ):
+            resolved = replace(
+                resolved,
+                extract_params=resolved.extract_params.model_copy(update={"extract_page_as_image": True}),
+            )
+        return resolved
 
     def _build_extraction_only_graph(self, effective_extraction: ResolvedExtractionInputs) -> Any:
         return build_graph(

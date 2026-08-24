@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any, Dict, List, Sequence
 
 import lancedb
+from nemo_retriever.common.vdb.lancedb_capabilities import wait_for_column_index
 from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,7 @@ def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, An
 
 def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "text") -> None:
     """Create vector (IVF_HNSW_SQ) and optionally FTS indices on a LanceDB table."""
+    covered_rows = int(table.count_rows())
     try:
         table.create_index(
             index_type=cfg.index_type,
@@ -86,8 +87,9 @@ def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "
                 exc_info=True,
             )
 
-    for index_stub in table.list_indices():
-        table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+    wait_for_column_index(table, "vector", covered_rows=covered_rows)
+    if cfg.hybrid:
+        wait_for_column_index(table, text_column, covered_rows=covered_rows)
 
 
 def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig) -> None:

@@ -103,6 +103,8 @@ imagePullSecrets:
   - name: default-dockercfg-xxxxx   # replace with your SA secret (section below)
 ```
 
+When `ngcImagePullSecret.name` is empty and NIM Operator CRs are enabled, set a non-empty `nimOperator.<key>.image.pullSecrets` for each enabled NIM (or keep the chart-wide name and use the "Both NGC NIMs..." pattern below). An empty global name with empty per-NIM `pullSecrets` fails chart render.
+
 **Both NGC NIMs and an internal-registry service image** — list every secret the pods need:
 
 ```yaml

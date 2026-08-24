@@ -329,7 +329,9 @@ def table_structure_ocr_page_elements(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("table_structure_ocr_page_elements currently only supports pandas.DataFrame input.")
 
-    ts_url = (table_structure_invoke_url or kwargs.get("table_structure_invoke_url") or "").strip()
+    ts_url = (
+        str(table_structure_invoke_url or "").strip() or str(kwargs.get("table_structure_invoke_url") or "").strip()
+    )
     use_remote_ts = bool(ts_url)
     table_output_format = kwargs.get("table_output_format")
 

@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 _MP_CONTEXT = mp.get_context("forkserver")
 _MAX_TASKS_PER_CHILD = 100
 _DEFAULT_WARM_MAX_TASKS_PER_CHILD = 10_000
+# Storage acknowledgement is part of the ingest contract, so the worker waits
+# long enough for a busy VectorDB to commit rather than reporting a success
+# the storage tier never confirmed.
+_DEFAULT_VECTORDB_WRITE_TIMEOUT_S = 300.0
 
 _SENSITIVE_PATTERNS = frozenset(
     {
@@ -289,12 +293,14 @@ def _post_records_to_vectordb(
     context: DocumentWriteContext,
     job_id: str | None = None,
     internal_api_token: str | None = None,
+    timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
 ) -> None:
-    """Post canonical NRL record batches to VectorDB, preserving legacy best-effort behavior.
+    """Post canonical NRL record batches to VectorDB and fail the job on rejection.
 
-    Collection-managed writes are lifecycle-authoritative and therefore fail
-    the job when storage rejects the write. Legacy fixed-table writes retain
-    their historical best-effort behavior.
+    A write the storage tier never acknowledged cannot be reported as a
+    completed ingest: the caller would see a row count for records that are
+    not queryable. Both collection-managed and legacy fixed-table writes
+    therefore surface the storage failure to the document.
     """
     import json
     import urllib.request
@@ -331,7 +337,7 @@ def _post_records_to_vectordb(
     )
     record_count = sum(len(batch) for batch in records)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             logging.getLogger(__name__).info(
                 "Posted %d records to vectordb for %s — HTTP %d",
                 record_count,
@@ -339,7 +345,7 @@ def _post_records_to_vectordb(
                 resp.status,
             )
     except Exception as exc:
-        logging.getLogger(__name__).warning(
+        logging.getLogger(__name__).error(
             "Failed to POST %d records to vectordb for %s: %s",
             record_count,
             filename,
@@ -347,6 +353,10 @@ def _post_records_to_vectordb(
         )
         if context.collection_name:
             raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
+        raise RuntimeError(
+            f"VectorDB write failed for {filename}: {exc}. "
+            "The extracted rows are not confirmed durable, so the document is not queryable."
+        ) from exc
 
 
 _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
@@ -415,49 +425,43 @@ def _resolve_extract_params(
     return ExtractParams(**extract_kwargs)
 
 
-def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Resolve ``vdb_upload_params.meta_dataframe_id`` to in-band bytes.
-
-    The pipeline runs in a child process that cannot reach the
-    ``SidecarStore`` directly, so the parent process consumes the
-    sidecar (or fails the request) before submitting the work item.
-    The returned spec stays pickleable: ``meta_dataframe_id`` becomes
-    ``_meta_dataframe_bytes`` + ``_meta_dataframe_content_type``,
-    which :func:`_build_graph_ingestor_from_spec` resolves to a
-    pandas DataFrame inside the worker.
-    """
+def inject_sidecar_attachment(
+    spec: dict[str, Any] | None, *, payload: bytes, content_type: str, filename: str
+) -> dict[str, Any] | None:
+    """Replace an admitted sidecar ID with gateway-bound attachment bytes."""
     if spec is None:
         return None
     vdb = spec.get("vdb_upload_params")
-    if not vdb:
+    if not vdb or not vdb.get("meta_dataframe_id"):
         return spec
-    sidecar_id = vdb.get("meta_dataframe_id")
-    if not sidecar_id:
-        return spec
+    resolved = dict(spec)
+    vdb_copy = dict(vdb)
+    vdb_copy.pop("meta_dataframe_id", None)
+    vdb_copy["_meta_dataframe_bytes"] = payload
+    vdb_copy["_meta_dataframe_content_type"] = content_type
+    vdb_copy["_meta_dataframe_filename"] = filename
+    resolved["vdb_upload_params"] = vdb_copy
+    return resolved
 
+
+def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Resolve legacy standalone sidecars; split work is resolved at admission."""
+    if spec is None:
+        return None
+    vdb = spec.get("vdb_upload_params")
+    if not vdb or not vdb.get("meta_dataframe_id"):
+        return spec
     from nemo_retriever.service.services.sidecar_store import get_sidecar_store
 
     store = get_sidecar_store()
     if store is None:
-        raise RuntimeError(
-            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
-        )
-    entry = store.consume(sidecar_id)
+        raise RuntimeError("Sidecar metadata must be resolved by ingest admission before worker execution.")
+    entry = store.consume(vdb["meta_dataframe_id"])
     if entry is None:
-        raise RuntimeError(
-            f"Sidecar id {sidecar_id!r} not found. The sidecar may have "
-            "expired (default TTL is 1h) or already been consumed. "
-            "Re-upload via POST /v1/ingest/sidecar."
-        )
-
-    resolved = dict(spec)
-    vdb_copy = dict(vdb)
-    vdb_copy.pop("meta_dataframe_id", None)
-    vdb_copy["_meta_dataframe_bytes"] = entry.payload
-    vdb_copy["_meta_dataframe_content_type"] = entry.content_type
-    vdb_copy["_meta_dataframe_filename"] = entry.filename
-    resolved["vdb_upload_params"] = vdb_copy
-    return resolved
+        raise RuntimeError(f"Sidecar id {vdb['meta_dataframe_id']!r} not found")
+    return inject_sidecar_attachment(
+        spec, payload=entry.payload, content_type=entry.content_type, filename=entry.filename
+    )
 
 
 def _resolve_service_extraction_mode(
@@ -741,6 +745,7 @@ def _run_pipeline_in_process(
     write_context: DocumentWriteContext | None = None,
     job_id: str | None = None,
     internal_api_token: str | None = None,
+    vectordb_write_timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -819,6 +824,7 @@ def _run_pipeline_in_process(
             context=write_context or DocumentWriteContext(),
             job_id=job_id,
             internal_api_token=internal_api_token,
+            timeout_s=vectordb_write_timeout_s,
         )
 
     result_options = pipeline_spec or {}
@@ -1140,6 +1146,7 @@ def _make_work_fn(
                 write_context,
                 item.job_id,
                 config.vectordb.internal_api_token,
+                config.vectordb.write_timeout_s,
             )
         except BrokenProcessPool:
             logger.error(

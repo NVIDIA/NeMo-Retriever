@@ -46,7 +46,17 @@ DryRunOption = Annotated[
     bool,
     typer.Option("--dry-run", help="Print the resolved ingest plan as JSON without creating an ingestor."),
 ]
-MethodOption = Annotated[str | None, typer.Option("--method", help="PDF text extraction method.")]
+MethodOption = Annotated[
+    str | None,
+    typer.Option(
+        "--method",
+        help=(
+            "PDF text extraction method: pdfium uses native PDF text only; pdfium_hybrid uses native text "
+            "with OCR for scanned pages (the auto-profile default); ocr uses OCR for every page; "
+            "nemotron_parse uses the Nemotron Parse visual extraction path."
+        ),
+    ),
+]
 DpiOption = Annotated[int | None, typer.Option("--dpi", min=72, help="Render DPI for PDF page images.")]
 ExtractTextOption = Annotated[
     bool | None,

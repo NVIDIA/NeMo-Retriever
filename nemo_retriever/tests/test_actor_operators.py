@@ -587,15 +587,44 @@ class TestNemotronParseActor:
         assert contract.model == expected_model
         assert contract.profile.value == expected_profile
 
-    def test_contract_resolution_rejects_mixed_endpoints_without_model(self):
+    @pytest.mark.parametrize(
+        "model",
+        [None, "nvidia/nemotron-parse", "nvidia/nemotron-parse-v1.2"],
+    )
+    def test_contract_resolution_rejects_mixed_endpoints(self, model):
         from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
 
         endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://parse:8000/v1/chat/completions"
         with pytest.raises(ValueError, match="cannot mix NVIDIA Build and self-hosted"):
-            _resolve_nemotron_parse_contract(endpoints, None)
+            _resolve_nemotron_parse_contract(endpoints, model)
 
-        contract = _resolve_nemotron_parse_contract(endpoints, "nvidia/nemotron-parse-v1.2")
-        assert contract.profile.value == "v1_2_tagged"
+    def test_remote_actors_reject_mixed_endpoints_before_client_creation(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import (
+            NemotronParseCPUActor,
+            NemotronParseGPUActor,
+        )
+
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://parse:8000/v1/chat/completions"
+        with patch("nemo_retriever.operators.extract.parse.nemotron_parse.NIMClient") as client:
+            for actor_class in (NemotronParseCPUActor, NemotronParseGPUActor):
+                with pytest.raises(ValueError, match="Configure a homogeneous endpoint list"):
+                    actor_class(
+                        nemotron_parse_invoke_url=endpoints,
+                        nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+                    )
+
+        client.assert_not_called()
+
+    def test_pages_reject_mixed_endpoints_without_input_rows(self):
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
+
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://parse:8000/v1/chat/completions"
+        with pytest.raises(ValueError, match="One `nemotron_parse_model` and request contract"):
+            nemotron_parse_pages(
+                pd.DataFrame(),
+                invoke_url=endpoints,
+                nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+            )
 
     def test_forced_v1_2_build_text_rejection_reports_contract_mismatch(self):
         from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
