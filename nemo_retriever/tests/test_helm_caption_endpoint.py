@@ -4,7 +4,7 @@
 
 """Regression tests for the Omni 30B caption-endpoint auto-wiring.
 
-In 26.05 RC2 the chart could deploy the Nemotron 3 Nano Omni VLM as a
+In 26.08 the chart could deploy the Nemotron 3 Nano Omni VLM as a
 NIMService, but the retriever-service ConfigMap rendered no
 ``caption_invoke_url`` / ``caption_model_name``.  The downstream service
 deriving ``caption_enabled`` from

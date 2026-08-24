@@ -2,12 +2,12 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for the 26.05 "optional and disabled by default" contract.
+"""Regression tests for the 26.08 "optional and disabled by default" contract.
 
-The 26.05 docs at ``docs/extraction/deployment-options.md`` mark the
+The 26.08 docs at ``docs/extraction/deployment-options.md`` mark the
 **VL reranker** (``llama-nemotron-rerank-vl-1b-v2``), **Nemotron Parse**,
 and the **Nemotron 3 Nano Omni 30B** caption NIM as optional and not
-auto-wired into the retriever-service.  Through 26.05 RC2 the Helm
+auto-wired into the retriever-service.  Through 26.08 the Helm
 chart did the opposite — all three NIMs were ``enabled: true`` in
 ``values.yaml`` — so a plain ``helm install`` (matching the documented
 quick-start) silently pulled tens of GiB of model weights and claimed a
@@ -30,7 +30,7 @@ These tests pin the chart-side fix:
   ``--set nimOperator.<key>.enabled=true`` workflow keeps working.
 * The README and ``values.yaml`` document the ``1.7.0-variant`` tag
   used by Parse + Omni so air-gapped mirror pipelines and
-  reproducibility audits can map it to the 26.05 release.
+  reproducibility audits can map it to the 26.08 release.
 
 The integration tests shell out to ``helm template`` when ``helm`` is
 on ``$PATH``; otherwise they skip cleanly.
@@ -68,7 +68,7 @@ _RERANK_TEXT_SERVICE_NAME = "name: llama-nemotron-rerank-1b-v2"
 _PARSE_SERVICE_NAME = "name: nemotron-parse"
 _OMNI_SERVICE_NAME = "name: nemotron-3-nano-omni-30b-a3b-reasoning"
 
-# Image tags the chart pins for Parse and Omni in 26.05. Documenting it on
+# Image tags the chart pins for Parse and Omni in 26.08. Documenting it on
 # both ends (values.yaml comments + README) keeps air-gapped mirror
 # pipelines pointed at the right NGC tag.
 _PARSE_VARIANT_TAG = "1.7.0-variant"
@@ -76,7 +76,7 @@ _OMNI_VARIANT_TAG = "2.0.4-variant"
 
 # Repositories the rerank NIM may be pinned to. The chart MUST point at
 # the VL SKU — the text-only SKU silently degrades multimodal
-# reranking, which is the bug surfaced in the 26.05 report.
+# reranking, which is the bug surfaced in the 26.08 report.
 _RERANK_VL_REPOSITORY = "nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2"
 _RERANK_TEXT_REPOSITORY = "nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2"
 
@@ -146,7 +146,7 @@ def _assert_helm_ok(self: TestCase, proc: subprocess.CompletedProcess[str]) -> N
 
 
 class OptionalNimsDefaultDisabledTests(TestCase):
-    """26.05 contract: Parse and Omni are off until the user opts in."""
+    """26.08 contract: Parse and Omni are off until the user opts in."""
 
     # ------------------------------------------------------------------
     # values.yaml — source-level invariants
@@ -193,7 +193,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
     def test_values_rerankqa_enabled_defaults_to_false(self) -> None:
         """``nimOperator.rerankqa.enabled`` must default to ``false``.
 
-        Through 26.05 RC2 this defaulted to ``true``, so a plain
+        Through 26.08 this defaulted to ``true``, so a plain
         ``helm install`` provisioned an extra ≈ 3.1 GiB GPU NIM with no
         opt-in. The docs explicitly mark the VL reranker as optional
         and disabled by default (``docs/extraction/deployment-options.md``
@@ -215,7 +215,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
 
         ``docs/extraction/prerequisites-support-matrix.md`` L92 / L128
         documents ``llama-nemotron-rerank-vl-1b-v2`` as the supported
-        reranker NIM for 26.05. Through RC2 the chart shipped the
+        reranker NIM for 26.08. Through RC2 the chart shipped the
         text-only ``llama-nemotron-rerank-1b-v2`` — that SKU silently
         degrades multimodal reranking and is not the documented POR.
         """
@@ -235,7 +235,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             values,
             "values.yaml must not pin the text-only rerank SKU "
             f"`{_RERANK_TEXT_REPOSITORY}` — that silently degrades "
-            "multimodal reranking and contradicts the 26.05 docs. Use "
+            "multimodal reranking and contradicts the 26.08 docs. Use "
             "the VL build instead.",
         )
 
@@ -298,7 +298,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             self.assertRegex(
                 readme,
                 rf"`{path}`.*\|\s*`false`",
-                f"README per-NIM defaults table must show `{path}` defaulting " "to `false` after the 26.05 fix.",
+                f"README per-NIM defaults table must show `{path}` defaulting " "to `false` after the 26.08 fix.",
             )
 
     def test_readme_image_table_pins_vl_rerank_sku(self) -> None:
@@ -400,7 +400,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             window,
             "Minimal-install recipe must not set "
             "`nimOperator.rerankqa.enabled=false` — that's the default "
-            "in 26.05 now and listing it implies the chart still "
+            "in 26.08 now and listing it implies the chart still "
             "provisions the VL reranker on a plain install.",
         )
 
@@ -429,14 +429,14 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             proc.stdout,
             "Default helm template render must not contain a "
             "`name: nemotron-parse` resource — Parse is optional and "
-            "disabled by default in 26.05.",
+            "disabled by default in 26.08.",
         )
         self.assertNotIn(
             _OMNI_SERVICE_NAME,
             proc.stdout,
             "Default helm template render must not contain a "
             "`name: nemotron-3-nano-omni-30b-a3b-reasoning` resource — "
-            "Omni 30B is optional and disabled by default in 26.05.",
+            "Omni 30B is optional and disabled by default in 26.08.",
         )
         # Caption auto-wiring must stay off too, otherwise the service
         # would call a non-existent NIM Service.
@@ -464,7 +464,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
                 proc.stdout,
                 "Default helm template render must not contain a "
                 f"`{name}` resource — the VL reranker is optional and "
-                "disabled by default in 26.05 (the text-only SKU must "
+                "disabled by default in 26.08 (the text-only SKU must "
                 "never appear at all).",
             )
 
@@ -546,7 +546,7 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             f"{_RERANK_TEXT_REPOSITORY}:",
             proc.stdout,
             "Rendered manifest must not reference the text-only rerank "
-            "repository — that is the bug the 26.05 fix exists to "
+            "repository — that is the bug the 26.08 fix exists to "
             "prevent.",
         )
         self.assertIn(

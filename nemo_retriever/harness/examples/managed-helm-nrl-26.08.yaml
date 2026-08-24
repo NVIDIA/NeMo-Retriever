@@ -1,4 +1,4 @@
-# Historical managed NRL Helm service configuration for the 26.05 perf sweep.
+# Historical managed NRL Helm service configuration for the 26.08 perf sweep.
 #
 # This body preserves the retired nested harness schema for release reference;
 # it is not accepted by the current managed-Helm runner. For current runs, use
@@ -11,9 +11,9 @@
 #   - ngc-api: opaque secret with the NGC API key entries required by the NIM operator
 # Keep credentials out of this file and out of command history.
 
-# Use the official 26.5.0 NGC chart. The chart defaults to the matching
-# nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0 service image.
-x-nrl-chart-version: &nrl_chart_version "26.5.0"
+# Use the official 26.8.0 NGC chart. The chart defaults to the matching
+# nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.0 service image.
+x-nrl-chart-version: &nrl_chart_version "26.8.0"
 
 active:
   dataset: bo767

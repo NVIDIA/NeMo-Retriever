@@ -18,8 +18,8 @@ description: |
   work and status history.
 
 type: application
-version: "26.5.0"
-appVersion: "26.5.0"
+version: "26.8.0"
+appVersion: "26.8.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/NVIDIA/NeMo-Retriever
 sources:

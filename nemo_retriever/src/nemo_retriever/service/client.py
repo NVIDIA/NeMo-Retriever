@@ -139,7 +139,7 @@ class RetrieverServiceCompatibilityError(RuntimeError):
     nrl-service is older than this SDK build.  Raising a dedicated
     error type lets callers surface a single, actionable message
     instead of the previous silent "no document_complete event"
-    failure mode that 26.05-RC2 customers reported.
+    failure mode that 26.08 customers reported.
     """
 
 
@@ -168,9 +168,9 @@ def _compat_error_message(
         "This signals an SDK/service version mismatch: this Python "
         "SDK targets the job-scoped ingest API "
         "(POST /v1/ingest/job + POST /v1/ingest/job/{job_id}/document "
-        "+ GET /v1/ingest/job/{job_id}/events) introduced in 26.05, "
+        "+ GET /v1/ingest/job/{job_id}/events) introduced in 26.08, "
         "but the deployed nrl-service does not advertise that route. "
-        "Upgrade the chart/image to a 26.05+ build, or downgrade the "
+        "Upgrade the chart/image to a 26.08+ build, or downgrade the "
         "Python SDK to match the deployed service version. Server "
         f"response body: {body_clip}"
     )
@@ -643,7 +643,7 @@ class RetrieverServiceClient:
         # A 404/410 here means the deployed service does not advertise
         # the job-scoped ingest API.  Surface a dedicated compatibility
         # error instead of a generic HTTPStatusError so callers see one
-        # actionable message — see the 26.05-RC2 release-integration
+        # actionable message — see the 26.08 release-integration
         # regression report.
         if _is_api_mismatch_status(resp.status_code):
             raise RetrieverServiceCompatibilityError(

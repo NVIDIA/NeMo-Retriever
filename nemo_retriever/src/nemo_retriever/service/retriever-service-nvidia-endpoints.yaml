@@ -1,0 +1,254 @@
+# Retriever Service Mode — NVIDIA Inference API MCP profile
+#
+# Discovery precedence:
+#   1. Explicit --config /path/to/retriever-service.yaml
+#   2. ./retriever-service.yaml  (current working directory)
+#   3. Bundled default shipped with the nemo-retriever package
+#
+# Every value below can also be overridden from the CLI:
+#   retriever service start --port 9000 --log-level DEBUG
+#
+# NVIDIA Inference API profile. Export NVIDIA_API_KEY before startup;
+# load_config expands ${NVIDIA_API_KEY} in this file. This profile keeps the
+# MCP transport mounted at /mcp and delegates extraction, embedding, and
+# reranking to NVIDIA-hosted endpoints.
+
+# Runtime role: standalone | gateway | realtime | batch
+#   standalone — single pod with both worker pools (default)
+#   gateway    — proxy that routes uploads to realtime/batch worker pods
+#   realtime   — worker pod running only the realtime pool
+#   batch      — worker pod running only the batch pool
+mode: standalone
+
+server:
+  host: "0.0.0.0"
+  port: 7670
+
+logging:
+  level: "INFO"
+  file: "retriever-service.log"
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+# Remote NIM microservice endpoints.  When set, the pipeline calls these
+# HTTP endpoints instead of loading GPU models locally.
+#
+# Multiple endpoints per model:  Provide a comma-separated list of URLs
+# to spread load across replicas.
+nim_endpoints:
+  page_elements_invoke_url: https://inference-api.nvidia.com/v1/ocr/nvidia/nvidia/nemotron-page-elements-v3/v1/page-elements
+  table_structure_invoke_url: null
+  ocr_invoke_url: https://inference-api.nvidia.com/v1/ocr/nvidia/nvidia/nemotron-ocr-v2-multilingual/v1/ocr
+  # Remote Nemotron Parse chat-completions endpoint and model. Both are
+  # server-owned; service clients select method="nemotron_parse" but cannot
+  # redirect the endpoint or change the deployed model.
+  nemotron_parse_invoke_url: null
+  nemotron_parse_model: null
+  embed_invoke_url: https://inference-api.nvidia.com/v1/embeddings
+  # Model name for the remote embed NIM (server-owned; must match the SKU).
+  embed_model_name: nvidia/nvidia/llama-nemotron-embed-vl-1b-v2
+  # Optional LiteLLM provider prefix prepended to embed_model_name for
+  # proxies that require provider/model IDs.
+  embed_model_provider_prefix: null
+  # Optional remote reranker used by POST /v1/query with rerank=true. The
+  # endpoint can be an in-cluster NIM, a vLLM server, or another compatible
+  # ranking API. This service config does not deploy or manage that endpoint.
+  rerank_invoke_url: https://inference-api.nvidia.com/v1/rerank
+  # Optional server-owned model ID sent to the reranking endpoint.
+  rerank_model_name: nvidia/nvidia/llama-nemotron-rerank-vl-1b-v2
+  # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
+  # When set, audio/video pipelines use remote ASR instead of loading
+  # the local Parakeet model (which requires torch + GPU).
+  audio_grpc_endpoint: null
+  # Remote VLM endpoint for the ``caption`` stage. When set, clients
+  # may submit caption_params overrides (prompt, system_prompt,
+  # batch_size, …). The endpoint URL, API key, and model name itself
+  # stay server-owned regardless of pipeline_overrides.mode.
+  caption_invoke_url: null
+  caption_model_name: null
+  api_key: "${NVIDIA_API_KEY}"
+
+# In-pod Hugging Face models (alternative to remote NIMs above).
+# Requires nemo-retriever[local] (+ multimedia for audio) and GPU resources.
+# NIM URLs always win when both are set for the same stage.
+local_models:
+  enabled: false
+  hf_cache_dir: null
+  device: null
+  warmup_on_startup: false
+  max_tasks_per_child: null
+  # Each process-pool worker loads the full HF stack into GPU memory.
+  max_process_pool_workers: 1
+  extract:
+    enabled: true
+    use_table_structure: true
+    ocr_version: v2
+    ocr_lang: null
+  embed:
+    enabled: true
+    model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    local_ingest_embed_backend: hf
+    gpu_memory_utilization: 0.45
+  asr:
+    enabled: true
+  # Query-time reranking is loaded lazily in the main service process when a
+  # client sends ``rerank: true``. It is independent of ``local_models.enabled``
+  # because it does not run in the ingestion process pools. Leave this disabled
+  # when using a remote/NIM reranker configured under ``nim_endpoints``.
+  rerank:
+    enabled: false
+    model_name: nvidia/llama-nemotron-rerank-1b-v2
+    backend: vllm
+    gpu_memory_utilization: 0.5
+    max_length: 512
+    batch_size: 32
+
+# Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
+# fields when the Super-49B NIM is enabled.
+llm:
+  enabled: false
+  model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  api_base: null
+  api_key: null
+  temperature: 0.0
+  top_p: null
+  max_tokens: 512
+  extra_params: {}
+  num_retries: 3
+  timeout: 180.0
+  rag_system_prompt: null
+  rag_system_prompt_prefix: null
+  reasoning_enabled: true
+
+# Agentic (ReAct) retrieval exposed through POST /v1/query with agentic=true.
+# The agentic_query MCP tool is registered when mcp.query_methods is agentic or all
+# and agentic.enabled is true. Service mode requires a remote OpenAI-compatible
+# invoke_url and llm_model when enabled.
+agentic:
+  enabled: false
+  llm_model: null
+  invoke_url: null
+  reasoning_effort: high
+  backend_top_k: 20
+  react_max_steps: 50
+  text_truncation: 0
+  temperature: 0.0
+  request_timeout_s: 1800.0
+
+# Pipeline worker pools.  Workers are abstract dispatchers — sizing
+# depends on whether they do local GPU work or fan out to remote NIMs.
+# For CPU-only NIM-forwarding nodes, higher worker counts are fine.
+# For in-pod HF models, local_models.max_process_pool_workers caps these.
+pipeline:
+  realtime_workers: 8
+  realtime_queue_size: 2048
+  batch_workers: 16
+  batch_queue_size: 4096
+
+# Split-mode gateway pull scheduler. The gateway owns queue metadata and
+# atomically spools upload bodies; worker execution slots long-poll it.
+work_queue:
+  gateway_url: "http://nemo-retriever-gateway:7670"
+  spool_directory: "/tmp/nemo-retriever-work"
+  spool_limit_bytes: 21474836480
+  claim_timeout_s: 30.0
+  lease_ttl_s: 60.0
+  heartbeat_interval_s: 20.0
+  max_delivery_attempts: 3
+  max_active_leases_realtime: 8
+  max_active_leases_batch: 48
+
+# Dedicated LanceDB pod used by standalone/gateway modes for /v1/query.
+# Workers POST embedding rows to vectordb_url; the gateway proxies queries.
+# Start that process with the same NVIDIA endpoint, for example:
+#   python -m nemo_retriever.service.vectordb_app \
+#     --embed-endpoint https://inference-api.nvidia.com/v1/embeddings \
+#     --embed-model nvidia/nvidia/llama-nemotron-embed-vl-1b-v2 \
+#     --embed-api-key ""
+vectordb:
+  enabled: true
+  lancedb_uri: "/data/vectordb"
+  table_name: "nemo_retriever"
+  embed_model: "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
+  embed_model_provider_prefix: null
+  # /v1/query auto-detects retrieval from the table's own indexes: a table with
+  # both a vector column and an FTS/BM25 index runs hybrid, a vector-only table
+  # runs dense. The FTS index must be built at ingestion time; the service never
+  # mutates the table at query time.
+  vectordb_url: "http://nemo-retriever-vectordb:7671"
+
+resources:
+  max_memory_mb: null
+  max_cpu_cores: null
+  gpu_devices: []
+
+# Gateway backend URLs (only used when mode: gateway).
+# Defaults point at the Kubernetes Services created by the Helm chart
+# when topology.mode is "split".
+gateway:
+  realtime_url: "http://nemo-retriever-realtime:7670"
+  batch_url: "http://nemo-retriever-batch:7670"
+  timeout_s: 300.0
+  max_connections: 100
+
+# Optional bearer-token authentication.  When api_token is set, every
+# request must carry "Authorization: Bearer <token>".
+auth:
+  api_token: null
+  header_name: "Authorization"
+  bypass_paths:
+    - "/v1/health"
+    - "/docs"
+    - "/openapi.json"
+    - "/redoc"
+
+# FastMCP agent integration. When enabled, retriever service start mounts
+# the MCP HTTP transport at /mcp. The same tools are available over stdio
+# through `retriever service mcp-stdio`.
+mcp:
+  enabled: true
+  path: "/mcp"
+  # Defaults to loopback on server.port when null.
+  base_url: null
+  enable_write_tools: true
+  # Which retrieval tools to register: classic | agentic | all.
+  # Agentic tools are omitted when agentic.enabled is false.
+  query_methods: classic
+  max_concurrency: 8
+  request_timeout_s: 60.0
+  ingest_timeout_s: 1800.0
+  poll_interval_s: 2.0
+
+# Controls whether (and how widely) client-supplied PipelineSpec
+# overrides are honored on a per-request basis.
+#
+#   reject     — every client override is rejected; YAML-only config.
+#   allow_list — only audited "shape" keys may be overridden
+#                (chunk sizes, batch sizes, output flags, …).
+#                Endpoint URLs and API keys are ALWAYS denied.
+#   allow_all  — every key passes except the endpoint/api_key denylist.
+#                Convenient in dev clusters; UNSAFE in multi-tenant prod.
+#
+# The extra_*_keys lists let operators widen the allow_list with
+# additional params keys without dropping to allow_all.
+#
+# The sinks: subsection gates client-driven egress (store / webhook /
+# vdb_upload). Each list is empty by default which DISABLES that sink
+# in service mode; populate them with URI schemes or URL prefixes to
+# enable. Use "*" as a single wildcard entry to bypass enforcement
+# (dev clusters only — never in multi-tenant production).
+pipeline_overrides:
+  mode: allow_list
+  extra_extract_keys: []
+  extra_embed_keys: []
+  extra_dedup_keys: []
+  extra_split_keys: []
+  extra_store_keys: []
+  extra_webhook_keys: []
+  extra_vdb_upload_keys: []
+  # extra_caption_keys only has effect when nim_endpoints.caption_invoke_url
+  # is set above — without an endpoint, the caption stage is rejected entirely.
+  extra_caption_keys: []
+  sinks:
+    storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
+    webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
+    vdb_uri_schemes: []          # e.g. ["s3://", "gs://"]

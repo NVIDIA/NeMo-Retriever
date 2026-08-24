@@ -4,7 +4,7 @@
 
 """Regression tests pinning the ``image_caption`` stage's concurrency.
 
-Customer-reported head-of-line block (26.05):
+Customer-reported head-of-line block (26.08):
 
     Client A ingests a small text-only PDF (``--task=extract:{...}``,
     no caption work).  On its own A finishes in ~0.45 s.
