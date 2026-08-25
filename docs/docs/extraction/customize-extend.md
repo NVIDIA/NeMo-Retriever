@@ -35,8 +35,8 @@ Use UDFs when you need a small, self-contained transformation that is not covere
 
 ### Repository guides
 
-- [NeMo Retriever graph README — `UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/graph#using-udfoperator) — API, lifecycle, and when to use `UDFOperator` versus a custom operator class
-- [NimClient and custom NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/developer_docs/nimclient.md#nimclient-and-custom-nim-endpoints) — call custom or self-hosted NIM microservices from UDF stages
+- [NeMo Retriever graph README — `UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/graph#using-udfoperator) — API, lifecycle, and when to use `UDFOperator` versus a custom operator class
+- [NimClient and custom NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/developer_docs/nimclient.md#nimclient-and-custom-nim-endpoints) — call custom or self-hosted NIM microservices from UDF stages
 
 ## Custom graph pipelines { #custom-graph-pipelines }
 
@@ -44,17 +44,17 @@ When you need to compose pipelines stage-by-stage, reuse operators across workfl
 
 The graph package provides `AbstractOperator`, executors (`InprocessExecutor`, `RayDataExecutor`), and operator chaining with `>>`. Built-in ingestion operators live under `nemo_retriever.operators`; you can add your own operators or UDF stages anywhere in the chain.
 
-For the full guide—including custom operator classes, executors, and graph shape constraints—refer to the [NeMo Retriever graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
+For the full guide—including custom operator classes, executors, and graph shape constraints—refer to the [NeMo Retriever graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
 
 ## Custom vector databases { #custom-vector-databases }
 
 The supported user path for vector storage is **[LanceDB](vdbs.md)** (`vdb_op="lancedb"`). That page covers upload, semantic retrieval, metadata filtering, and LanceDB deployment characteristics.
 
-To integrate a different vector store, implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface and wire it through graph [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/src/nemo_retriever/operators/vdb.py) / [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/src/nemo_retriever/operators/vdb.py). NVIDIA validates the first-party LanceDB operator; you are responsible for testing and maintaining other backends.
+To integrate a different vector store, implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface and wire it through graph [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) / [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py). NVIDIA validates the first-party LanceDB operator; you are responsible for testing and maintaining other backends.
 
 ### Repository guides
 
-- [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
+- [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
 

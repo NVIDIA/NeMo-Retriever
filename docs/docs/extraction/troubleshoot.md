@@ -461,7 +461,7 @@ helm upgrade retriever ./nemo_retriever/helm \
   --set serviceConfig.vectordb.writeTimeoutSeconds=900
 ```
 
-For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
+For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
 
 
 ## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
@@ -484,7 +484,7 @@ Complete the following checks:
 3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
 4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
 
-For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
 ## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
 
@@ -501,10 +501,10 @@ Complete the following checks:
 
 1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
 2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
-3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
 
-For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Split topology Helm install or upgrade times out with Deployments not ready { #helm-split-topology-startup-deadlock }
 
@@ -541,7 +541,7 @@ kubectl patch service <release>-nemo-retriever-gateway --type=merge \
 ```
 
 Upgrade to a chart version that includes the startup Service so you do not need
-to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
+to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
 
 ## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
 
@@ -568,7 +568,7 @@ The affected NIM is unavailable during re-cache. Repeat the sequence for every N
 
 Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
 
-For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
 ## NIMCache or NIMService still uses ngc-secret after a global Secret rename { #helm-nim-secret-names }
 
@@ -583,7 +583,7 @@ Complete the following checks:
 3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the global Secret names, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
 4. Top-level `imagePullSecrets` applies only to Retriever Pods. It does not update NIM Operator custom resources.
 
-For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
+For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
 
 ## Agentic retrieval fails with auto tool choice HTTP 400 { #agentic-auto-tool-choice }
 
@@ -605,8 +605,8 @@ For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super
 - [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
 - [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md)
-- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
-- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08/nemo_retriever/helm/README.md#use-externally-managed-secrets)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
+- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
+- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)
