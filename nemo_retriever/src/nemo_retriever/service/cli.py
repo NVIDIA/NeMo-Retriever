@@ -45,8 +45,8 @@ def _start_local_vectordb(cfg):
     local_embed = cfg.local_models.enabled and cfg.local_models.embed.enabled and not cfg.nim_endpoints.embed_invoke_url
     if not cfg.nim_endpoints.embed_invoke_url and not local_embed:
         raise typer.BadParameter(
-            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or enabled local_models.embed." +
-            "Configure one, then retry."
+            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or enabled local_models.embed."
+            + "Configure one, then retry."
         )
     port = parsed.port or 7671
     child_env = os.environ.copy()
