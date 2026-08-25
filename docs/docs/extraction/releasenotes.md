@@ -12,7 +12,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Upgrade notes { #upgrade-notes }
 
-- Nemotron OCR v2 is now the default OCR engine for local Hugging Face, hosted CPU actors, and Helm NIM deployments. The previous release kept Helm on OCR v1. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`.
+- Nemotron OCR v2 is now the default OCR engine for local Hugging Face and hosted CPU actors. For Helm NIM deployments, Nemotron OCR v2 is the default. The previous release kept Helm on OCR v1. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) for the chart image repository and tag.
 - Helm replaces separate page-elements and table-structure NIMs with the combined `nemotron-object-detection:2.0.1` image. Development Compose uses the same combined object-detection image and OCR v2, but still defaults to `2.0.0` tags unless you override `NIM_*_TAG`.
 - Helm default VL embed and VL rerank NIM images bump to `2.3.0`. The previous release used `1.12.0` and `1.11.0`. Development Compose still defaults to `1.12.0` and `1.11.0` unless you override `NIM_EMBED_TAG` and `NIM_RERANK_TAG`.
 - Default VLM image captioning is Nemotron 3 Nano Omni for local and hosted paths. Chart-classified PDF regions remain on the layout and OCR path.
@@ -45,10 +45,11 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
 
-- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration).
+- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) for the chart image.
 - Local OCR crop batching runs across page rows for throughput. Helm extraction NIMs (OCR and object detection) enable performance mode by default. The VL embed NIM does not.
 - 26.08.1 Helm default and optional NIM images that affect mirroring, allowlisting, and troubleshooting include the following:
     - Combined object detection for page elements and table structure: `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1`
+    - Image OCR: `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`
     - VL embedding: `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0`
     - VL reranking (optional): `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0`
     - Optional Omni caption and configurable answer VLM: `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`
