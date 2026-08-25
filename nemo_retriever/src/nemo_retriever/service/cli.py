@@ -22,6 +22,21 @@ import typer
 app = typer.Typer(help="Operate the Retriever service. Use `retriever ingest service` to submit documents.")
 
 
+def _stop_local_vectordb(process, *, timeout_s: float = 10) -> None:
+    """Stop a supervised VectorDB child without masking the caller error."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+
 def _start_local_vectordb(cfg):
     vdb = cfg.vectordb
     parsed = urlparse(vdb.vectordb_url)
@@ -74,8 +89,7 @@ def _start_local_vectordb(cfg):
                     return process
         except URLError:
             time.sleep(0.2)
-    process.terminate()
-    process.wait(timeout=5)
+    _stop_local_vectordb(process, timeout_s=5)
     raise RuntimeError(
         f"VectorDB did not become ready at {health_url} within 30 seconds. "
         "Inspect the VectorDB logs above and verify the embedding configuration, "
@@ -209,9 +223,8 @@ def start(
             log_level=cfg.logging.level.lower(),
         )
     finally:
-        if vectordb_process is not None and vectordb_process.poll() is None:
-            vectordb_process.terminate()
-            vectordb_process.wait(timeout=10)
+        if vectordb_process is not None:
+            _stop_local_vectordb(vectordb_process)
 
 
 @app.command("mcp-stdio")

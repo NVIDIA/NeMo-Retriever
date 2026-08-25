@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -793,3 +794,50 @@ def test_service_start_cleans_up_vectordb_when_app_creation_fails(monkeypatch: p
 
 def test_vectordb_launch_setting_has_schema_description() -> None:
     assert VectorDbConfig.model_fields["launch_on_start"].description
+
+
+def test_service_start_force_kills_vectordb_without_masking_app_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from nemo_retriever.service.cli import app as service_cli_app
+
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text(
+        "mode: standalone\n" "nim_endpoints:\n" "  embed_invoke_url: http://embed-nim:8000/v1\n",
+        encoding="utf-8",
+    )
+
+    class _FakeProcess:
+        terminated = False
+        killed = False
+        wait_calls = 0
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def wait(self, *, timeout: int | float) -> None:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise subprocess.TimeoutExpired("vectordb", timeout)
+
+    process = _FakeProcess()
+    monkeypatch.setattr("nemo_retriever.service.cli._start_local_vectordb", lambda config: process)
+    monkeypatch.setattr(
+        "nemo_retriever.service.app.create_app",
+        lambda config: (_ for _ in ()).throw(RuntimeError("create_app failed")),
+    )
+
+    result = CliRunner().invoke(service_cli_app, ["start", "--config", str(config_path), "--launch-vectordb"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "create_app failed"
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.wait_calls == 2

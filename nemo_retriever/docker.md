@@ -66,7 +66,7 @@ Use Kubernetes Secrets, Helm values, or container environment variables for cred
 
 ## Run A Local VectorDB With The Service
 
-For a local development deployment, start the service with `--launch-vectordb`. It starts a VectorDB child process on `127.0.0.1:7671`, waits for `/v1/health`, and stops the child when the service exits.
+For a local development deployment, start the service with `--launch-vectordb`. It starts a VectorDB child process on `127.0.0.1:7671`, waits for `/v1/health`, and terminates the child when the service exits. If the child does not exit promptly, the service forcefully stops it.
 
 The VectorDB child uses `nim_endpoints.embed_invoke_url` when configured. If that endpoint is unset, it uses local Hugging Face embedding when both `local_models.enabled` and `local_models.embed.enabled` are `true`.
 
