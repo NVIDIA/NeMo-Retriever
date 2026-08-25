@@ -662,3 +662,91 @@ def _build_fake_judge():
         timeout=120.0,
     )
     return SimpleNamespace(transport=transport)
+
+
+class TestHitsToMultimodalChunks:
+    """``--multimodal`` is a no-op unless visual hits keep their image URI.
+
+    The LanceDB retrieval path normalizes ``content_type`` / ``stored_image_uri``
+    into the nested ``metadata`` dict rather than onto the top level of the hit,
+    so these cases pin the shape that real ingest actually produces.
+    """
+
+    @staticmethod
+    def _chunks(hits):
+        from nemo_retriever.graph.retriever import _hits_to_multimodal_chunks
+
+        return _hits_to_multimodal_chunks(hits)
+
+    def test_reads_image_uri_from_nested_metadata(self):
+        # Exact hit shape emitted by normalize_retrieval_results for a local
+        # LanceDB index ingested with --store-images-uri.
+        hits = [
+            {
+                "text": "Chart 1 shows some gadgets.",
+                "page_number": 1,
+                "metadata": {
+                    "type": "chart",
+                    "page_number": 1,
+                    "stored_image_uri": "file:///images/page1.jpeg",
+                },
+            }
+        ]
+
+        (chunk,) = self._chunks(hits)
+
+        assert chunk.content_type == "chart"
+        assert chunk.image_uri == "file:///images/page1.jpeg"
+
+    def test_reads_image_uri_from_json_encoded_metadata(self):
+        import json
+
+        hits = [
+            {
+                "text": "a table",
+                "metadata": json.dumps({"type": "table", "stored_image_uri": "file:///images/p2.png"}),
+            }
+        ]
+
+        (chunk,) = self._chunks(hits)
+
+        assert chunk.content_type == "table"
+        assert chunk.image_uri == "file:///images/p2.png"
+
+    def test_top_level_keys_still_win(self):
+        hits = [
+            {
+                "text": "a chart",
+                "content_type": "chart",
+                "stored_image_uri": "file:///top.png",
+                "metadata": {"type": "text", "stored_image_uri": "file:///nested.png"},
+            }
+        ]
+
+        (chunk,) = self._chunks(hits)
+
+        assert chunk.content_type == "chart"
+        assert chunk.image_uri == "file:///top.png"
+
+    def test_non_visual_content_type_drops_image_uri(self):
+        hits = [{"text": "prose", "metadata": {"type": "text", "stored_image_uri": "file:///page.png"}}]
+
+        (chunk,) = self._chunks(hits)
+
+        assert chunk.content_type == "text"
+        assert chunk.image_uri is None
+
+    def test_visual_hit_without_stored_uri_is_text_only(self):
+        hits = [{"text": "uncaptioned chart", "metadata": {"type": "chart"}}]
+
+        (chunk,) = self._chunks(hits)
+
+        assert chunk.content_type == "chart"
+        assert chunk.image_uri is None
+
+    @pytest.mark.parametrize("metadata", [None, "not json", 42, []])
+    def test_malformed_metadata_degrades_to_text(self, metadata):
+        (chunk,) = self._chunks([{"text": "x", "metadata": metadata}])
+
+        assert chunk.content_type == "text"
+        assert chunk.image_uri is None

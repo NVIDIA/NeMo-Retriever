@@ -39,19 +39,37 @@ if TYPE_CHECKING:
     )
 
 
+def _hit_metadata(hit: RetrievalHit) -> dict:
+    """Return a hit's ``metadata`` as a dict, tolerating a JSON-encoded string."""
+    metadata = hit.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except (TypeError, ValueError):
+            return {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
 def _hits_to_multimodal_chunks(hits: list[RetrievalHit]) -> list["MultimodalChunk"]:
     """Convert raw retrieval hits to MultimodalChunk objects.
 
     Visual content types (image, chart, infographic, table) that have a
     stored_image_uri carry both the text caption and the image path.
     All other hits carry text only.
+
+    ``content_type`` and ``stored_image_uri`` are read from the top level of the
+    hit when present, but the LanceDB retrieval path normalizes them into the
+    nested ``metadata`` dict instead (as ``type`` / ``stored_image_uri``), so we
+    fall back to that. Without the fallback every hit from a locally ingested
+    index looks like plain text and no image is ever sent to the VLM.
     """
     from nemo_retriever.models.llm.types import MultimodalChunk, VISUAL_CONTENT_TYPES
 
     chunks: list[MultimodalChunk] = []
     for hit in hits:
-        content_type = str(hit.get("content_type") or "text")
-        image_uri: Optional[str] = hit.get("stored_image_uri")  # type: ignore[assignment]
+        metadata = _hit_metadata(hit)
+        content_type = str(hit.get("content_type") or metadata.get("type") or "text")
+        image_uri: Optional[str] = hit.get("stored_image_uri") or metadata.get("stored_image_uri")
         use_image = content_type in VISUAL_CONTENT_TYPES and bool(image_uri)
         chunks.append(
             MultimodalChunk(
