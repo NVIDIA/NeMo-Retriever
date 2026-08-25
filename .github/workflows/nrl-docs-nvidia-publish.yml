@@ -82,6 +82,7 @@ jobs:
       - name: Resolve publish inputs
         id: publish
         env:
+          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
           VERSION_INPUT: ${{ inputs.docs-version-override }}
           PUBLISH_LATEST_INPUT: ${{ inputs.publish-as-latest }}
@@ -89,8 +90,17 @@ jobs:
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
         run: |
-          echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
-          echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          # Fail closed: if a push/tag trigger is re-added, do not write S3/latest.
+          # Aug 19 26.08 leaked because a push event forced dry_run=false and
+          # publish_latest=true with no operator confirmation.
+          if [[ "${EVENT_NAME}" != "workflow_dispatch" ]]; then
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Non-dispatch event ${EVENT_NAME}; forcing dry-run and not moving latest/."
+          else
+            echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          fi
 
           VERSION="${VERSION_INPUT}"
           if [[ -z "${VERSION}" ]]; then
