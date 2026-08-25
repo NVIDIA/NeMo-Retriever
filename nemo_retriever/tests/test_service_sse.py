@@ -124,7 +124,7 @@ def test_legacy_ingest_upload_route_returns_410_with_migration_body(
     Older SDK builds upload through this path.  Without an explicit
     handler FastAPI returns a body-less 404 and the SDK surfaces an
     empty result — the customer-facing regression captured in the
-    26.05-RC2 release-integration report.  The 410 body must name the
+    26.08 release-integration report.  The 410 body must name the
     replacement pair (``/v1/ingest/job`` + ``/v1/ingest/job/{job_id}/document``).
     """
     # Body is intentionally empty — the route should reject the request

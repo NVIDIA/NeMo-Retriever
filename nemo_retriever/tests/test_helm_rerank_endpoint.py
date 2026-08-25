@@ -4,7 +4,7 @@
 
 """Regression tests for VL reranker endpoint auto-wiring.
 
-In 26.08 RC2 the chart could deploy the VL reranker as a NIMService and
+In 26.08 the chart could deploy the VL reranker as a NIMService and
 accept ``serviceConfig.nimEndpoints.rerankInvokeUrl`` /
 ``rerankModelName``, but ``templates/configmap.yaml`` never rendered
 ``nim_endpoints.rerank_invoke_url`` / ``rerank_model_name``. Split-mode

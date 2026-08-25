@@ -2,11 +2,11 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end regression test for the 26.05-RC2 version-mismatch bug.
+"""End-to-end regression test for the 26.08 version-mismatch bug.
 
 The customer-reported failure mode:
 
-    The published 26.05-RC2 Python SDK calls legacy ``/v1/ingest`` /
+    The published 26.08 Python SDK calls legacy ``/v1/ingest`` /
     ``/v1/ingest/events`` routes against an nrl-service image that
     expects the newer job-scoped API. The documented service-mode flow
     appears to run but returns an empty result with no successful
@@ -72,7 +72,7 @@ def _install_mock_transport(monkeypatch: pytest.MonkeyPatch, handler) -> None:
 def test_service_ingestor_ingest_surfaces_compat_error_on_404(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Customer entry point: ``ServiceIngestor.ingest()`` must raise, not return empty.
 
-    This pins the exact end-to-end behavior that 26.05-RC2 customers
+    This pins the exact end-to-end behavior that 26.08 customers
     expected.  Before the fix the documented flow produced an empty
     :class:`ServiceIngestResult` with ``len(result) == 0`` and no
     actionable error.  After the fix:
@@ -112,7 +112,7 @@ def test_service_ingestor_ingest_surfaces_compat_error_on_404(monkeypatch: pytes
 def test_service_ingestor_ingest_surfaces_compat_error_on_410(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """An explicit ``410 Gone`` from a new service raises the same error.
 
-    The mirror-image case: the SDK is the older 26.05-RC2 build, but
+    The mirror-image case: the SDK is the older 26.08 build, but
     the deployed service ships the 410 stub that explains the legacy
     route is gone.  Our new SDK targets the new route, so the 410 is
     delivered to the new client too — and it must still produce the
@@ -124,7 +124,7 @@ def test_service_ingestor_ingest_surfaces_compat_error_on_410(monkeypatch: pytes
         return httpx.Response(
             410,
             json={
-                "detail": ("POST /v1/ingest was removed in retriever-service 26.05"),
+                "detail": ("POST /v1/ingest was removed in retriever-service 26.08"),
             },
         )
 

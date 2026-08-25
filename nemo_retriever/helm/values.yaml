@@ -71,7 +71,7 @@ service:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
     repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.5.0"
+    tag: "26.8.0"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -1041,7 +1041,7 @@ nimOperator:
   # ---------------------------------------------------------------------------
   # Two enablement tiers, matching the docs' "core vs optional" contract
   # (see docs/extraction/deployment-options.md "Core NIMs for the default
-  # extraction pipeline (26.05)"):
+  # extraction pipeline (26.08)"):
   #
   #   Core (enabled: true by default, auto-wired into the service config):
   #     - page_elements
@@ -1065,11 +1065,11 @@ nimOperator:
   #   * `nimOperator.<key>.enabled: true` — per-NIM toggle below.
   #
   # The optional NIMs sit behind their per-NIM toggles to honor the
-  # "optional and disabled by default" contract in 26.05 — turning them
+  # "optional and disabled by default" contract in 26.08 — turning them
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.05)" for the
+  # See helm/README.md "Recommended minimal install (26.08)" for the
   # opt-in flags and "Image tag conventions" for what the
   # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
@@ -1390,7 +1390,7 @@ nimOperator:
 
   # Llama Nemotron rerank VL 1B v2 — multimodal reranking NIM.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md L21 and
   # docs/extraction/prerequisites-support-matrix.md L92 / L128). Opt in
   # only when the retrieval pipeline calls a reranker — enabling this NIM
@@ -1402,7 +1402,7 @@ nimOperator:
   # `serviceConfig.nimEndpoints.rerankInvokeUrl` /
   # `rerankModelName` when pointing at an external ranking endpoint.
   #
-  # IMPORTANT — VL vs text-only: 26.05 documents the **VL** reranker
+  # IMPORTANT — VL vs text-only: 26.08 documents the **VL** reranker
   # (``llama-nemotron-rerank-vl-1b-v2``) as the supported NIM so the
   # ingest pipeline can score image + text passages together. The
   # text-only ``llama-nemotron-rerank-1b-v2`` is a different SKU that
@@ -1454,14 +1454,14 @@ nimOperator:
 
   # Nemotron Parse v1.2. Optional structured document parser.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). Opt in only when
   # the pipeline runs `extract_method="nemotron_parse"`; enabling this
   # NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
   # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
   #
   # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
-  # NIM SKU shipped alongside the 26.05 release; the `-variant` suffix
+  # NIM SKU shipped alongside the 26.08 release; the `-variant` suffix
   # marks it as the build that ships with the per-GPU TensorRT engine
   # variants required by NIM Operator profile reconciliation, matching
   # `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` and the row
@@ -1515,7 +1515,7 @@ nimOperator:
   # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning VLM
   # used by the image-captioning stage.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). This is the
   # canonical caption NIM — once enabled the chart auto-wires
   # `nim_endpoints.caption_invoke_url` + `caption_model_name` into the
@@ -1528,7 +1528,7 @@ nimOperator:
   # nimservice` if necessary).
   #
   # The default image tag (`2.0.4-variant`) is the Omni NIM SKU shipped
-  # alongside the 26.05 release; the `-variant` suffix marks it as the
+  # alongside the 26.08 release; the `-variant` suffix marks it as the
   # build that ships with the per-GPU TensorRT engine variants required
   # by NIM Operator profile reconciliation, matching the row for the
   # Omni caption NIM in

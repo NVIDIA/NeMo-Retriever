@@ -68,7 +68,7 @@ class TestHelmServiceOpenApiVersion(TestCase):
                 "--set",
                 "topology.mode=standalone",
                 "--set",
-                "service.image.tag=26.08-RC4",
+                "service.image.tag=26.08",
             )
         )
         self.assertEqual(
@@ -79,7 +79,7 @@ class TestHelmServiceOpenApiVersion(TestCase):
         docs = list(yaml.safe_load_all(proc.stdout))
         containers = _nemo_retriever_containers(docs)
         self.assertEqual(len(containers), 1)
-        self.assertEqual(_env_value(containers[0], "RETRIEVER_SERVICE_VERSION"), "26.08-RC4")
+        self.assertEqual(_env_value(containers[0], "RETRIEVER_SERVICE_VERSION"), "26.08")
 
     def test_split_injects_image_tag_on_gateway_and_workers(self) -> None:
         proc = _helm_template(
@@ -87,7 +87,7 @@ class TestHelmServiceOpenApiVersion(TestCase):
                 "--set",
                 "topology.mode=split",
                 "--set",
-                "service.image.tag=26.08-RC4",
+                "service.image.tag=26.08",
             )
         )
         self.assertEqual(
@@ -99,7 +99,7 @@ class TestHelmServiceOpenApiVersion(TestCase):
         containers = _nemo_retriever_containers(docs)
         self.assertGreaterEqual(len(containers), 2)
         for container in containers:
-            self.assertEqual(_env_value(container, "RETRIEVER_SERVICE_VERSION"), "26.08-RC4")
+            self.assertEqual(_env_value(container, "RETRIEVER_SERVICE_VERSION"), "26.08")
 
 
 if __name__ == "__main__":

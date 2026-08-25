@@ -55,7 +55,7 @@ try prerelease/nightly Nemotron packages from PyPI within the same supported
 major-version windows, opt in with `--pre`:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.08-RC1"
+uv pip install --pre "nemo-retriever[local]==26.08"
 ```
 
 **Remote NIM (no local GPU)**

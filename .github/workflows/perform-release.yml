@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       source-branch:
-        description: 'Git ref to build from (e.g. `26.05`). When empty, RC versions like `26.05-RC8` build from `26.05`; otherwise uses the branch selected in "Run workflow".'
+        description: 'Git ref to build from (e.g. `26.08`). When empty, prerelease versions build from `26.08`; otherwise uses the branch selected in "Run workflow".'
         required: false
         type: string
         default: ''
       version:
-        description: 'Release version for artifacts and git tag (e.g. `26.05-RC8`). Does not need to exist before the run.'
+        description: 'Release version for artifacts and git tag (e.g. `26.08`). Does not need to exist before the run.'
         required: false
         type: string
         default: ''

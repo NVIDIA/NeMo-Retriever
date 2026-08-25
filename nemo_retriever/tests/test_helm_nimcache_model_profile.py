@@ -6,7 +6,7 @@
 
 The NIM Operator's NIMCache CRD supports an optional
 ``spec.source.ngc.model`` block that restricts which model profiles a
-cache job downloads (by GPU SKU or by profile UUID).  Through 26.05 RC2
+cache job downloads (by GPU SKU or by profile UUID).  Through 26.08
 the chart's NIMCache templates omitted the field entirely and
 ``values.yaml`` exposed no corresponding knob — even
 ``--set nimOperator.<key>.gpus[0].ids[0]=26B5`` could not move the
@@ -135,7 +135,7 @@ def _iter_nimcache_docs(rendered: str) -> list[dict]:
 
 
 class NimCacheModelProfileTests(TestCase):
-    """26.05 contract: every NIMCache exposes spec.source.ngc.model."""
+    """26.08 contract: every NIMCache exposes spec.source.ngc.model."""
 
     # ------------------------------------------------------------------
     # values.yaml — source-level invariants
