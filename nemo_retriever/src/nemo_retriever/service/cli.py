@@ -7,12 +7,69 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
+import time
+from urllib.error import URLError
+from urllib.parse import urlparse
+from urllib.request import urlopen
 from typing import Optional
 
 import typer
 
 app = typer.Typer(help="Operate the Retriever service. Use `retriever ingest service` to submit documents.")
 
+
+def _start_local_vectordb(cfg):
+    vdb = cfg.vectordb
+    parsed = urlparse(vdb.vectordb_url)
+    if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise typer.BadParameter("vectordb.vectordb_url must use localhost when vectordb.launch_on_start is enabled.")
+    local_embed = (
+        cfg.local_models.enabled
+        and cfg.local_models.embed.enabled
+        and not cfg.nim_endpoints.embed_invoke_url
+    )
+    if not cfg.nim_endpoints.embed_invoke_url and not local_embed:
+        raise typer.BadParameter(
+            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or local_models.embed."
+        )
+    port = parsed.port or 7671
+    command = [sys.executable, "-m", "nemo_retriever.service.vectordb_app", "--host", parsed.hostname, "--port", str(port), "--lancedb-uri", vdb.lancedb_uri, "--table-name", vdb.table_name, "--index-mode", vdb.index_mode, "--embed-model", vdb.embed_model]
+    if local_embed:
+        command += ["--local-embed", "--local-embed-backend", cfg.local_models.embed.local_ingest_embed_backend]
+        if cfg.local_models.hf_cache_dir:
+            command += ["--hf-cache-dir", cfg.local_models.hf_cache_dir]
+        if cfg.local_models.device:
+            command += ["--device", cfg.local_models.device]
+        command += ["--gpu-memory-utilization", str(cfg.local_models.embed.gpu_memory_utilization)]
+    else:
+        command += ["--embed-endpoint", cfg.nim_endpoints.embed_invoke_url]
+    if cfg.nim_endpoints.api_key and not local_embed:
+        command += ["--embed-api-key", cfg.nim_endpoints.api_key]
+    if vdb.embed_model_provider_prefix:
+        command += ["--embed-model-provider-prefix", vdb.embed_model_provider_prefix]
+    if vdb.internal_api_token:
+        command += ["--internal-api-token", vdb.internal_api_token]
+    if not vdb.expiration_cleanup_enabled:
+        command += ["--disable-expiration-cleanup"]
+    command += ["--reconciliation-interval-seconds", str(vdb.reconciliation_interval_seconds)]
+    if cfg.agentic.enabled:
+        command += ["--agentic", "--agentic-llm-model", cfg.agentic.llm_model or "", "--agentic-invoke-url", cfg.agentic.invoke_url or "", "--agentic-reasoning-effort", cfg.agentic.reasoning_effort or "", "--agentic-backend-top-k", str(cfg.agentic.backend_top_k), "--agentic-react-max-steps", str(cfg.agentic.react_max_steps), "--agentic-text-truncation", str(cfg.agentic.text_truncation), "--agentic-temperature", str(cfg.agentic.temperature), "--agentic-request-timeout", str(cfg.agentic.request_timeout_s)]
+    process = subprocess.Popen(command)
+    health_url = f"http://{parsed.hostname}:{port}/v1/health"
+    for _ in range(150):
+        if process.poll() is not None:
+            raise RuntimeError(f"VectorDB exited during startup with status {process.returncode}.")
+        try:
+            with urlopen(health_url, timeout=1) as response:
+                if response.status == 200:
+                    return process
+        except URLError:
+            time.sleep(0.2)
+    process.terminate()
+    process.wait(timeout=5)
+    raise RuntimeError(f"VectorDB did not become ready at {health_url} within 30 seconds.")
 
 @app.command("start")
 def start(
@@ -38,6 +95,7 @@ def start(
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
+    launch_vectordb: bool = typer.Option(False, "--launch-vectordb", help="Start and supervise a local VectorDB process on 127.0.0.1:7671."),
     local_models: Optional[bool] = typer.Option(
         None,
         "--local-models/--no-local-models",
@@ -99,6 +157,10 @@ def start(
         overrides["llm.api_key"] = llm_api_key
     if gpu_devices is not None:
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
+    if launch_vectordb:
+        overrides["vectordb.enabled"] = True
+        overrides["vectordb.launch_on_start"] = True
+        overrides["vectordb.vectordb_url"] = "http://127.0.0.1:7671"
     if local_models is not None:
         overrides["local_models.enabled"] = local_models
     if local_embed_backend is not None:
@@ -118,6 +180,7 @@ def start(
 
     from nemo_retriever.service.app import create_app
 
+    vectordb_process = _start_local_vectordb(cfg) if cfg.vectordb.launch_on_start else None
     application = create_app(cfg)
 
     try:
@@ -127,12 +190,17 @@ def start(
     except ImportError:
         pass
 
-    uvicorn.run(
-        application,
-        host=cfg.server.host,
-        port=cfg.server.port,
-        log_level=cfg.logging.level.lower(),
-    )
+    try:
+        uvicorn.run(
+            application,
+            host=cfg.server.host,
+            port=cfg.server.port,
+            log_level=cfg.logging.level.lower(),
+        )
+    finally:
+        if vectordb_process is not None and vectordb_process.poll() is None:
+            vectordb_process.terminate()
+            vectordb_process.wait(timeout=10)
 
 
 @app.command("mcp-stdio")

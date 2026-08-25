@@ -437,6 +437,7 @@ class VectorDbConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    launch_on_start: bool = False
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
     index_mode: Literal["dense", "hybrid"] = "hybrid"

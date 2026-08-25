@@ -615,3 +615,98 @@ def test_service_start_reads_llm_api_key_from_env(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 0, result.output
     assert captured["config"].llm.api_key == "secret-from-env"
     assert captured["uvicorn"]["app"] is application
+
+
+def test_service_start_launches_and_supervises_local_vectordb(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from nemo_retriever.service.cli import app as service_cli_app
+
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text(
+        "mode: standalone\n" "nim_endpoints:\n" "  embed_invoke_url: http://embed-nim:8000/v1\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, Any] = {}
+    application = object()
+
+    class _FakeProcess:
+        terminated = False
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def wait(self, *, timeout: int) -> None:
+            captured["wait_timeout"] = timeout
+
+    process = _FakeProcess()
+
+    def _fake_start_vectordb(config: ServiceConfig) -> _FakeProcess:
+        captured["config"] = config
+        return process
+
+    monkeypatch.setattr("nemo_retriever.service.cli._start_local_vectordb", _fake_start_vectordb)
+    monkeypatch.setattr("nemo_retriever.service.app.create_app", lambda config: application)
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
+
+    result = CliRunner().invoke(service_cli_app, ["start", "--config", str(config_path), "--launch-vectordb"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["config"].vectordb.enabled is True
+    assert captured["config"].vectordb.launch_on_start is True
+    assert captured["config"].vectordb.vectordb_url == "http://127.0.0.1:7671"
+    assert process.terminated is True
+    assert captured["wait_timeout"] == 10
+
+
+def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_retriever.service import cli
+
+    cfg = ServiceConfig(
+        local_models={
+            "enabled": True,
+            "hf_cache_dir": "/models/cache",
+            "device": "cuda:1",
+            "embed": {
+                "enabled": True,
+                "local_ingest_embed_backend": "hf",
+                "gpu_memory_utilization": 0.5,
+            },
+        },
+        vectordb=VectorDbConfig(vectordb_url="http://127.0.0.1:7671"),
+    )
+    command: list[str] = []
+
+    class _FakeProcess:
+        returncode = None
+
+        def poll(self) -> None:
+            return None
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    process = _FakeProcess()
+
+    def _fake_popen(args: list[str]) -> _FakeProcess:
+        command.extend(args)
+        return process
+
+    monkeypatch.setattr(cli.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(cli, "urlopen", lambda *args, **kwargs: _Response())
+
+    assert cli._start_local_vectordb(cfg) is process
+    assert "--local-embed" in command
+    assert ["--local-embed-backend", "hf"] == command[command.index("--local-embed-backend") : command.index("--local-embed-backend") + 2]
+    assert ["--hf-cache-dir", "/models/cache"] == command[command.index("--hf-cache-dir") : command.index("--hf-cache-dir") + 2]
+    assert ["--device", "cuda:1"] == command[command.index("--device") : command.index("--device") + 2]
+    assert "--embed-endpoint" not in command

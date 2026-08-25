@@ -64,6 +64,37 @@ docker run --rm \
 
 Use Kubernetes Secrets, Helm values, or container environment variables for credentials. Do not bake API keys into derived images.
 
+## Run A Local VectorDB With The Service
+
+For a local development deployment, start the service with `--launch-vectordb`. It starts a VectorDB child process on `127.0.0.1:7671`, waits for `/v1/health`, and stops the child when the service exits.
+
+The VectorDB child uses `nim_endpoints.embed_invoke_url` when configured. If that endpoint is unset, it uses local Hugging Face embedding when both `local_models.enabled` and `local_models.embed.enabled` are `true`.
+
+For a fully local deployment, use a CUDA-capable host and install the service and local extras:
+
+```bash
+pip install "nemo-retriever[service,local]"
+```
+
+Install the `multimedia` extra when you ingest audio or video. From a source checkout, start the included local configuration with:
+
+```bash
+scripts/launch_local_service_with_vectordb.sh \
+  nemo_retriever/examples/retriever-service.local.yaml
+```
+
+The example leaves all NIM endpoints unset and uses local Hugging Face models for service ingestion and VectorDB query embeddings. The launcher validates `/v1/health` on both components, then keeps the deployment running until you stop it with `Ctrl+C`.
+
+To use remote embedding instead, configure `nim_endpoints.embed_invoke_url` and run:
+
+```bash
+retriever service start --config my-retriever-service.yaml --launch-vectordb
+```
+
+The launcher is limited to loopback VectorDB URLs. Omit the flag for an existing VectorDB. Helm deployments continue to run VectorDB in a separate pod.
+
+
+
 ## Audio And Video
 
 The service image omits `ffmpeg` and `ffprobe` by default. For audio or video extraction on a development machine with package-repository network access, set `INSTALL_FFMPEG=true`:

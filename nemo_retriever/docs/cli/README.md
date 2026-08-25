@@ -119,6 +119,27 @@ retriever query service "What is in this corpus?" \
   --service-url http://localhost:7670
 ```
 
+
+### Start a local service with VectorDB
+
+Use `retriever service start --launch-vectordb` to run a local service with a supervised VectorDB child on `127.0.0.1:7671`. The child uses `nim_endpoints.embed_invoke_url` when configured. Otherwise, it uses local Hugging Face embedding when `local_models.enabled` and `local_models.embed.enabled` are both `true`. The command waits for VectorDB readiness and stops it when the service exits.
+
+For a fully local deployment, use a CUDA-capable host and install the service and local extras. Install the `multimedia` extra when you ingest audio or video.
+
+```bash
+pip install "nemo-retriever[service,local]"
+scripts/launch_local_service_with_vectordb.sh \
+  nemo_retriever/examples/retriever-service.local.yaml
+```
+
+The example configuration leaves NIM endpoints unset and uses local Hugging Face models. The launcher validates `/v1/health` on the service and VectorDB, then keeps both processes running until you stop it with `Ctrl+C`.
+
+```bash
+retriever service start --config my-retriever-service.yaml --launch-vectordb
+```
+
+Use the command above when `nim_endpoints.embed_invoke_url` is configured. Omit the flag to use an existing VectorDB. Helm continues to deploy VectorDB as a separate pod.
+
 ### Route ingest to hosted or self-hosted NIM endpoints
 
 ```bash
