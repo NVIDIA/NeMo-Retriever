@@ -179,7 +179,7 @@ plugins:
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
-        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-and-hybrid-retrieval
+        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-retrieval
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md
