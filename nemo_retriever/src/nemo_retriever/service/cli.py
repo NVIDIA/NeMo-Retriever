@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 import subprocess
 import sys
@@ -32,9 +34,10 @@ def _start_local_vectordb(cfg):
     )
     if not cfg.nim_endpoints.embed_invoke_url and not local_embed:
         raise typer.BadParameter(
-            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or local_models.embed."
+            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or enabled local_models.embed. Configure one, then retry."
         )
     port = parsed.port or 7671
+    child_env = os.environ.copy()
     command = [sys.executable, "-m", "nemo_retriever.service.vectordb_app", "--host", parsed.hostname, "--port", str(port), "--lancedb-uri", vdb.lancedb_uri, "--table-name", vdb.table_name, "--index-mode", vdb.index_mode, "--embed-model", vdb.embed_model]
     if local_embed:
         command += ["--local-embed", "--local-embed-backend", cfg.local_models.embed.local_ingest_embed_backend]
@@ -46,21 +49,25 @@ def _start_local_vectordb(cfg):
     else:
         command += ["--embed-endpoint", cfg.nim_endpoints.embed_invoke_url]
     if cfg.nim_endpoints.api_key and not local_embed:
-        command += ["--embed-api-key", cfg.nim_endpoints.api_key]
+        child_env["NVIDIA_API_KEY"] = cfg.nim_endpoints.api_key
     if vdb.embed_model_provider_prefix:
         command += ["--embed-model-provider-prefix", vdb.embed_model_provider_prefix]
     if vdb.internal_api_token:
-        command += ["--internal-api-token", vdb.internal_api_token]
+        child_env["NRL_INTERNAL_VDB_TOKEN"] = vdb.internal_api_token
     if not vdb.expiration_cleanup_enabled:
         command += ["--disable-expiration-cleanup"]
     command += ["--reconciliation-interval-seconds", str(vdb.reconciliation_interval_seconds)]
     if cfg.agentic.enabled:
         command += ["--agentic", "--agentic-llm-model", cfg.agentic.llm_model or "", "--agentic-invoke-url", cfg.agentic.invoke_url or "", "--agentic-reasoning-effort", cfg.agentic.reasoning_effort or "", "--agentic-backend-top-k", str(cfg.agentic.backend_top_k), "--agentic-react-max-steps", str(cfg.agentic.react_max_steps), "--agentic-text-truncation", str(cfg.agentic.text_truncation), "--agentic-temperature", str(cfg.agentic.temperature), "--agentic-request-timeout", str(cfg.agentic.request_timeout_s)]
-    process = subprocess.Popen(command)
+    process = subprocess.Popen(command, env=child_env)
     health_url = f"http://{parsed.hostname}:{port}/v1/health"
     for _ in range(150):
         if process.poll() is not None:
-            raise RuntimeError(f"VectorDB exited during startup with status {process.returncode}.")
+            raise RuntimeError(
+                f"VectorDB exited during startup with status {process.returncode}. "
+                "Inspect the VectorDB logs above and verify the embedding configuration, "
+                "LanceDB path, and port 7671 availability."
+            )
         try:
             with urlopen(health_url, timeout=1) as response:
                 if response.status == 200:
@@ -69,7 +76,11 @@ def _start_local_vectordb(cfg):
             time.sleep(0.2)
     process.terminate()
     process.wait(timeout=5)
-    raise RuntimeError(f"VectorDB did not become ready at {health_url} within 30 seconds.")
+    raise RuntimeError(
+        f"VectorDB did not become ready at {health_url} within 30 seconds. "
+        "Inspect the VectorDB logs above and verify the embedding configuration, "
+        "LanceDB path, and port 7671 availability."
+    )
 
 @app.command("start")
 def start(
@@ -181,16 +192,16 @@ def start(
     from nemo_retriever.service.app import create_app
 
     vectordb_process = _start_local_vectordb(cfg) if cfg.vectordb.launch_on_start else None
-    application = create_app(cfg)
-
     try:
-        import setproctitle
+        application = create_app(cfg)
 
-        setproctitle.setproctitle("nemo-retriever-server")
-    except ImportError:
-        pass
+        try:
+            import setproctitle
 
-    try:
+            setproctitle.setproctitle("nemo-retriever-server")
+        except ImportError:
+            pass
+
         uvicorn.run(
             application,
             host=cfg.server.host,

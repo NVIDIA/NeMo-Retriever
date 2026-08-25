@@ -70,6 +70,8 @@ For a local development deployment, start the service with `--launch-vectordb`. 
 
 The VectorDB child uses `nim_endpoints.embed_invoke_url` when configured. If that endpoint is unset, it uses local Hugging Face embedding when both `local_models.enabled` and `local_models.embed.enabled` are `true`.
 
+The child inherits credentials from the service environment. Set `NVIDIA_API_KEY` or `NGC_API_KEY` for a remote embedding endpoint. Set `NRL_INTERNAL_VDB_TOKEN` or `NRL_INTERNAL_VDB_TOKEN_FILE` for the VectorDB internal credential. Do not place credentials in the service YAML.
+
 For a fully local deployment, use a CUDA-capable host and install the service and local extras:
 
 ```bash
@@ -92,6 +94,8 @@ retriever service start --config my-retriever-service.yaml --launch-vectordb
 ```
 
 The launcher is limited to loopback VectorDB URLs. Omit the flag for an existing VectorDB. Helm deployments continue to run VectorDB in a separate pod.
+
+If VectorDB exits during startup or does not become ready, read the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory, and that port `7671` is available.
 
 
 

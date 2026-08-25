@@ -122,7 +122,9 @@ retriever query service "What is in this corpus?" \
 
 ### Start a local service with VectorDB
 
-Use `retriever service start --launch-vectordb` to run a local service with a supervised VectorDB child on `127.0.0.1:7671`. The child uses `nim_endpoints.embed_invoke_url` when configured. Otherwise, it uses local Hugging Face embedding when `local_models.enabled` and `local_models.embed.enabled` are both `true`. The command waits for VectorDB readiness and stops it when the service exits.
+Use `retriever service start --launch-vectordb` to run a local service with a supervised VectorDB child on `127.0.0.1:7671`. The child uses `nim_endpoints.embed_invoke_url` when configured. Otherwise, it uses local Hugging Face embedding when `local_models.enabled` and `local_models.embed.enabled` are both `true`. The command waits for VectorDB readiness and stops it when the service exits. You can set the same behavior in YAML with `vectordb.launch_on_start: true` and a loopback `vectordb.vectordb_url`.
+
+The child inherits credentials from the service environment. Set `NVIDIA_API_KEY` or `NGC_API_KEY` for remote embedding, and set `NRL_INTERNAL_VDB_TOKEN` or `NRL_INTERNAL_VDB_TOKEN_FILE` for the VectorDB internal credential. Do not place credentials in the service YAML.
 
 For a fully local deployment, use a CUDA-capable host and install the service and local extras. Install the `multimedia` extra when you ingest audio or video.
 
@@ -139,6 +141,8 @@ retriever service start --config my-retriever-service.yaml --launch-vectordb
 ```
 
 Use the command above when `nim_endpoints.embed_invoke_url` is configured. Omit the flag to use an existing VectorDB. Helm continues to deploy VectorDB as a separate pod.
+
+If VectorDB exits during startup or does not become ready, inspect the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory, and that port `7671` is available.
 
 ### Route ingest to hosted or self-hosted NIM endpoints
 

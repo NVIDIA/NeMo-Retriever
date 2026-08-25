@@ -697,7 +697,7 @@ def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.Monk
 
     process = _FakeProcess()
 
-    def _fake_popen(args: list[str]) -> _FakeProcess:
+    def _fake_popen(args: list[str], **kwargs) -> _FakeProcess:
         command.extend(args)
         return process
 
@@ -710,3 +710,86 @@ def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.Monk
     assert ["--hf-cache-dir", "/models/cache"] == command[command.index("--hf-cache-dir") : command.index("--hf-cache-dir") + 2]
     assert ["--device", "cuda:1"] == command[command.index("--device") : command.index("--device") + 2]
     assert "--embed-endpoint" not in command
+
+
+def test_local_vectordb_passes_secrets_through_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_retriever.service import cli
+
+    cfg = ServiceConfig(
+        nim_endpoints={"embed_invoke_url": "http://embed-nim:8000/v1", "api_key": "embed-secret"},
+        vectordb=VectorDbConfig(
+            vectordb_url="http://127.0.0.1:7671",
+            internal_api_token="internal-secret",
+        ),
+    )
+    captured: dict[str, Any] = {}
+
+    class _FakeProcess:
+        returncode = None
+
+        def poll(self) -> None:
+            return None
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    process = _FakeProcess()
+    monkeypatch.setattr(
+        cli.subprocess,
+        "Popen",
+        lambda command, *, env: captured.update(command=command, env=env) or process,
+    )
+    monkeypatch.setattr(cli, "urlopen", lambda *args, **kwargs: _Response())
+
+    assert cli._start_local_vectordb(cfg) is process
+    assert "embed-secret" not in captured["command"]
+    assert "internal-secret" not in captured["command"]
+    assert captured["env"]["NVIDIA_API_KEY"] == "embed-secret"
+    assert captured["env"]["NRL_INTERNAL_VDB_TOKEN"] == "internal-secret"
+
+
+def test_service_start_cleans_up_vectordb_when_app_creation_fails(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from nemo_retriever.service.cli import app as service_cli_app
+
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text(
+        "mode: standalone\n" "nim_endpoints:\n" "  embed_invoke_url: http://embed-nim:8000/v1\n",
+        encoding="utf-8",
+    )
+
+    class _FakeProcess:
+        terminated = False
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def wait(self, *, timeout: int) -> None:
+            return None
+
+    process = _FakeProcess()
+    monkeypatch.setattr("nemo_retriever.service.cli._start_local_vectordb", lambda config: process)
+    monkeypatch.setattr(
+        "nemo_retriever.service.app.create_app",
+        lambda config: (_ for _ in ()).throw(RuntimeError("create_app failed")),
+    )
+
+    result = CliRunner().invoke(service_cli_app, ["start", "--config", str(config_path), "--launch-vectordb"])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, RuntimeError)
+    assert process.terminated is True
+
+
+def test_vectordb_launch_setting_has_schema_description() -> None:
+    assert VectorDbConfig.model_fields["launch_on_start"].description
