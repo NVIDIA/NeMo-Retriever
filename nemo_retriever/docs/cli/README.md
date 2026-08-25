@@ -8,6 +8,7 @@ For product-facing examples, prefer these commands:
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
 - `retriever query` - query a local LanceDB table written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
+- `retriever answer` - retrieve from a local LanceDB table and generate an answer with an LLM.
 
 `retriever pipeline run` remains available as a development and compatibility
 command for legacy pipeline workflows, evaluation, intermediate artifacts, and
@@ -169,6 +170,44 @@ predicates. Hits with missing or unknown content-type metadata are excluded
 while `--content-types` is active. In service mode, results must include
 content-type metadata to match this filter. Default display values in the JSON
 output are not used for content-type matching.
+
+### Generate an answer with an LLM
+
+`retriever answer` is a separate top-level command, not a flag on `retriever
+query`: it returns a generated answer rather than a list of hits, so it has a
+different output contract. It retrieves from the same LanceDB table built by
+`retriever ingest`, then sends the retrieved context to a chat model.
+
+```bash
+export NVIDIA_API_KEY=nvapi-...
+
+retriever answer "Which animal is responsible for the typos?" \
+  --top-k 5 \
+  --answer-llm-model nvidia/nemotron-3-super-120b-a12b \
+  --answer-llm-invoke-url https://integrate.api.nvidia.com/v1 \
+  --answer-llm-api-key-env NVIDIA_API_KEY
+```
+
+Output is JSON with `answer`, `model`, `latency_s`, and `chunk_count`.
+
+The generation flags are prefixed with `answer` (`--answer-llm-model`,
+`--answer-llm-invoke-url`, `--answer-llm-api-key-env`, `--answer-llm-max-tokens`,
+`--answer-llm-temperature`, `--answer-reasoning`) to keep them distinct from the
+LLM driving `--agentic` retrieval, which uses `--agentic-llm-*`. All the
+retrieval flags described above (`--top-k`, `--candidate-k`, `--content-types`,
+`--rerank`, `--retrieval-mode`, and the embedding flags) apply here too.
+
+Two further options are specific to answering:
+
+| Option | What It Does |
+|---|---|
+| `--multimodal` | Use a Vision-Language Model. Visual chunks (image, chart, infographic, table) that have a stored image URI are loaded and sent inline alongside their text captions. |
+| `--reference TEXT` | Score the generated answer against a known-good reference with token-F1 and context coverage. |
+
+`--multimodal` needs image URIs in the index, so ingest with image storage
+enabled (see [Captioning and image storage](#captioning-and-image-storage)).
+Remote image URIs are fetched with a bounded timeout and size limit, and
+requests to private or cloud-metadata addresses are refused.
 
 ### Agentic retrieval
 

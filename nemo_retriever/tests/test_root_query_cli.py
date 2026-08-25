@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import pathlib
 from typing import Any
 
 from typer.main import get_command
@@ -701,3 +702,29 @@ def test_answer_is_top_level_command_with_descriptive_llm_flags() -> None:
     assert "--answer-llm-max-tokens" in option_names
     assert "--answer-llm-temperature" in option_names
     assert "--answer-reasoning" in option_names
+
+
+def test_answer_command_does_not_depend_on_query_command_internals() -> None:
+    # The `answer` command was split out of `query` because it has a different
+    # output contract; shared helpers live in cli.shared so the split is real at
+    # the code level too, not just in the command tree.
+    import ast
+
+    answer_module = importlib.import_module("nemo_retriever.cli.answer")
+    tree = ast.parse(pathlib.Path(answer_module.__file__).read_text())
+    imported_from = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
+    }
+
+    assert "nemo_retriever.cli.query.app" not in imported_from
+    assert "nemo_retriever.cli.shared" in imported_from
+
+
+def test_query_and_answer_share_retrieval_helpers() -> None:
+    from nemo_retriever.cli import answer as answer_cli
+    from nemo_retriever.cli import shared as cli_shared
+
+    assert answer_cli.build_retrieval_options is cli_shared.build_retrieval_options
+    assert answer_cli.resolve_retrieval_mode is cli_shared.resolve_retrieval_mode
+    assert query_cli_app.build_retrieval_options is cli_shared.build_retrieval_options
+    assert query_cli_app.resolve_retrieval_mode is cli_shared.resolve_retrieval_mode

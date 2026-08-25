@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import cast
 
 import click
 import typer
@@ -18,7 +17,10 @@ from nemo_retriever.cli.query_workflow import agentic_query_documents as query_a
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
+    api_key_from_env_option,
+    build_retrieval_options,
     quiet_capture,
+    resolve_retrieval_mode,
     silence_noisy_libraries,
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
@@ -27,8 +29,6 @@ from nemo_retriever.query.options import (
     QueryEmbedOptions,
     QueryRerankOptions,
     QueryRequest,
-    QueryRetrievalOptions,
-    QueryRetrievalMode,
     QueryServiceOptions,
     QueryStorageOptions,
     ServiceQueryRequest,
@@ -37,7 +37,6 @@ from nemo_retriever.query.service import query_documents as query_service_docume
 
 _DEFAULT_COMMAND = "_local"
 _GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
-_RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
 class DefaultLocalQueryGroup(TyperGroup):
@@ -78,16 +77,6 @@ def _query_cli_hit(hit: RetrievalHit, max_text_chars: int | None = None) -> dict
     }
 
 
-def _api_key_from_env_option(env_key: str | None) -> str | None:
-    key = (env_key or "").strip()
-    if not key:
-        return None
-    value = os.environ.get(key, "").strip()
-    if not value:
-        raise ValueError(f"{key} is not set or is empty.")
-    return value
-
-
 def _validate_output_options(output_format: str, max_text_chars: int | None) -> None:
     if output_format not in ("hits", "evidence"):
         typer.echo(f"Error: unknown --format {output_format!r} (use 'hits' or 'evidence').", err=True)
@@ -95,31 +84,6 @@ def _validate_output_options(output_format: str, max_text_chars: int | None) -> 
     if max_text_chars is not None and output_format != "hits":
         typer.echo("Error: --max-text-chars only applies to --format hits.", err=True)
         raise typer.Exit(1)
-
-
-def _validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
-    normalized = retrieval_mode.strip().lower()
-    if normalized not in _RETRIEVAL_MODES:
-        typer.echo(
-            "Error: unknown --retrieval-mode " f"{retrieval_mode!r} (use 'auto', 'dense', 'hybrid', or 'sparse').",
-            err=True,
-        )
-        raise typer.Exit(1)
-    return cast(QueryRetrievalMode, normalized)
-
-
-def _query_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
-    resolved = _validate_retrieval_mode(retrieval_mode)
-    hybrid_source = ctx.get_parameter_source("hybrid")
-    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
-    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
-    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
-    if has_hybrid_alias and has_retrieval_mode:
-        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
-        raise typer.Exit(1)
-    if has_hybrid_alias and hybrid:
-        return "hybrid"
-    return resolved
 
 
 def _emit_query_output(
@@ -136,23 +100,6 @@ def _emit_query_output(
         typer.echo(
             json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str)
         )
-
-
-def _retrieval_options(
-    *,
-    top_k: int,
-    candidate_k: int | None,
-    page_dedup: bool,
-    content_types: str | None,
-    retrieval_mode: QueryRetrievalMode = "auto",
-) -> QueryRetrievalOptions:
-    return QueryRetrievalOptions(
-        top_k=top_k,
-        candidate_k=candidate_k,
-        page_dedup=page_dedup,
-        content_types=content_types,
-        retrieval_mode=retrieval_mode,
-    )
 
 
 @app.command(
@@ -204,13 +151,13 @@ def _local_command(
         raise typer.Exit(1)
 
     try:
-        reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
-        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+        reranker_api_key = api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+        effective_retrieval_mode = resolve_retrieval_mode(ctx, retrieval_mode, hybrid)
 
         if agentic:
             request = QueryRequest(
                 query=query,
-                retrieval=_retrieval_options(
+                retrieval=build_retrieval_options(
                     top_k=top_k,
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
@@ -251,7 +198,7 @@ def _local_command(
         def _request() -> QueryRequest:
             return QueryRequest(
                 query=query,
-                retrieval=_retrieval_options(
+                retrieval=build_retrieval_options(
                     top_k=top_k,
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
@@ -305,7 +252,7 @@ def _service_command(
             hits = query_service_documents(
                 ServiceQueryRequest(
                     query=query,
-                    retrieval=_retrieval_options(
+                    retrieval=build_retrieval_options(
                         top_k=top_k,
                         candidate_k=candidate_k,
                         page_dedup=page_dedup,

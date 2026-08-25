@@ -17,7 +17,12 @@ from upath import UPath
 
 logger = logging.getLogger(__name__)
 
+# Images larger than this are skipped rather than loaded, to avoid OOM on
+# untrusted or remote URIs.
 DEFAULT_MAX_IMAGE_BYTES = 50 * 1024 * 1024
+# fsspec's HTTPFileSystem otherwise inherits aiohttp's 300s default timeout,
+# which lets a single unresponsive URI stall a whole batch of image loads.
+DEFAULT_IMAGE_HTTP_TIMEOUT_S = 10.0
 
 _BLOCKED_IMAGE_HOSTS = frozenset(
     {
@@ -85,6 +90,18 @@ def validate_image_uri(uri: str) -> bool:
     return True
 
 
+def _image_path(uri: str) -> UPath:
+    """Build a ``UPath`` for an image URI with a bounded HTTP timeout."""
+    if urlparse(uri).scheme not in {"http", "https"}:
+        return UPath(uri)
+    try:
+        import aiohttp
+    except ImportError:  # pragma: no cover - aiohttp ships with fsspec's http extra
+        return UPath(uri)
+    timeout = aiohttp.ClientTimeout(total=DEFAULT_IMAGE_HTTP_TIMEOUT_S)
+    return UPath(uri, client_kwargs={"timeout": timeout})
+
+
 def load_image_b64_from_uri(
     uri: str,
     *,
@@ -100,7 +117,7 @@ def load_image_b64_from_uri(
         if validate and not validate_image_uri(uri):
             return None
 
-        path = UPath(uri)
+        path = _image_path(uri)
         if max_bytes is None:
             raw = path.read_bytes()
         else:

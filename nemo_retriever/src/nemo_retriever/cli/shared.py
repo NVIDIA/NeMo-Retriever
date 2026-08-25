@@ -10,11 +10,72 @@ import logging
 import os
 import sys
 import tempfile
+from typing import cast
 
 from pydantic import ValidationError
 import typer
 
+from nemo_retriever.query.options import QueryRetrievalMode, QueryRetrievalOptions
+
 ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError, typer.BadParameter)
+
+_RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
+
+
+def api_key_from_env_option(env_key: str | None) -> str | None:
+    """Resolve the value of the environment variable named by ``env_key``."""
+    key = (env_key or "").strip()
+    if not key:
+        return None
+    value = os.environ.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{key} is not set or is empty.")
+    return value
+
+
+def validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
+    """Normalize and validate a ``--retrieval-mode`` value."""
+    normalized = retrieval_mode.strip().lower()
+    if normalized not in _RETRIEVAL_MODES:
+        typer.echo(
+            "Error: unknown --retrieval-mode " f"{retrieval_mode!r} (use 'auto', 'dense', 'hybrid', or 'sparse').",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return cast(QueryRetrievalMode, normalized)
+
+
+def resolve_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
+    """Reconcile ``--retrieval-mode`` with the deprecated ``--hybrid`` alias."""
+    resolved = validate_retrieval_mode(retrieval_mode)
+    hybrid_source = ctx.get_parameter_source("hybrid")
+    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
+    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
+    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
+    if has_hybrid_alias and has_retrieval_mode:
+        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
+        raise typer.Exit(1)
+    if has_hybrid_alias and hybrid:
+        return "hybrid"
+    return resolved
+
+
+def build_retrieval_options(
+    *,
+    top_k: int,
+    candidate_k: int | None,
+    page_dedup: bool,
+    content_types: str | None,
+    retrieval_mode: QueryRetrievalMode = "auto",
+) -> QueryRetrievalOptions:
+    """Build retrieval options shared by the query and answer commands."""
+    return QueryRetrievalOptions(
+        top_k=top_k,
+        candidate_k=candidate_k,
+        page_dedup=page_dedup,
+        content_types=content_types,
+        retrieval_mode=retrieval_mode,
+    )
 
 
 def silence_noisy_libraries() -> None:

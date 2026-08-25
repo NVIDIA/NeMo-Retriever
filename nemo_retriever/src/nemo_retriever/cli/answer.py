@@ -13,14 +13,12 @@ from typing import cast
 import typer
 
 from nemo_retriever.cli.query import options as opts
-from nemo_retriever.cli.query.app import (
-    _api_key_from_env_option,
-    _query_retrieval_mode,
-    _retrieval_options,
-)
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
+    api_key_from_env_option,
+    build_retrieval_options,
     quiet_capture,
+    resolve_retrieval_mode,
     silence_noisy_libraries,
 )
 from nemo_retriever.query.options import (
@@ -61,7 +59,7 @@ def _build_request(
 ) -> QueryRequest:
     return QueryRequest(
         query=query,
-        retrieval=_retrieval_options(
+        retrieval=build_retrieval_options(
             top_k=top_k,
             candidate_k=candidate_k,
             page_dedup=page_dedup,
@@ -127,12 +125,12 @@ def answer_command(
 
     try:
         reranker_api_key = (
-            _api_key_from_env_option(reranker_api_key_env)
+            api_key_from_env_option(reranker_api_key_env)
             if reranker_invoke_url
             else None
         )
-        answer_llm_api_key = _api_key_from_env_option(answer_llm_api_key_env)
-        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+        answer_llm_api_key = api_key_from_env_option(answer_llm_api_key_env)
+        effective_retrieval_mode = resolve_retrieval_mode(ctx, retrieval_mode, hybrid)
         request = _build_request(
             query,
             top_k=top_k,
