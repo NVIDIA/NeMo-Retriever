@@ -274,6 +274,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             )
         return self._agent
 
+    def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
+        """Remove and return provider-reported LLM usage for one query."""
+        if self._agent is None:
+            return {}
+        return self._agent.llm.pop_query_usage(str(query_id))
+
     # ------------------------------------------------------------------
     # AbstractOperator interface
     # ------------------------------------------------------------------

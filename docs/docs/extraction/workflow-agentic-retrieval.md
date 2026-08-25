@@ -69,6 +69,7 @@ The following options apply only with `--agentic`. For the full flag list, refer
 | `--agentic-local-tensor-parallel-size` | `1` | vLLM `tensor_parallel_size` for the in-process agent LLM. Set to `2` for local `super-49b`. Ignored when `--agentic-invoke-url` is set. |
 | `--agentic-react-max-steps` | `50` | Maximum ReAct loop iterations. |
 | `--agentic-reasoning-effort` | `high` | Forwarded on OpenAI-compatible agent LLM calls. Ignored by the local adapter. |
+| `--include-usage` | off | Print an object with `hits` and provider-reported LLM `usage` instead of the default hits list. |
 
 Embedding credentials use `NVIDIA_API_KEY` or `NGC_API_KEY` when you call a remote embedding endpoint. The CLI also reuses `--embed-invoke-url`, `--top-k`, `--lancedb-uri`, and `--table-name` from standard retrieval.
 
@@ -229,9 +230,41 @@ Every agentic hit carries the one-pass hit fields (`text`, `metadata`, `source`,
 - `rank` — the position in the final ranking.
 - `result_source` — `final_results`, `rrf`, or `selection_agent`, depending on which stage produced the ranked ID.
 
-CLI `retriever query --agentic` prints those hits as JSON objects.
+CLI `retriever query --agentic` keeps its default output as a JSON list of those
+hits. Add `--include-usage` to return a JSON object that contains `hits` and
+provider-reported LLM `usage`:
 
-Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
+```bash
+retriever query "find documents about parser behavior" \
+  --agentic \
+  --include-usage
+```
+
+```json
+{
+  "hits": [
+    {
+      "doc_id": "parser-guide",
+      "rank": 1,
+      "result_source": "final_results"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1250,
+    "output_tokens": 184,
+    "total_tokens": 1434
+  }
+}
+```
+
+The `usage` object reports the exact token counts returned by the LLM provider.
+It contains `input_tokens`, `output_tokens`, and `total_tokens`. When available,
+`stages` preserves the provider-reported breakdown for the ReAct and
+final-selection calls. If the provider does not report usage, the response
+sets `usage` to `null`. `--include-usage` applies only to agentic queries. Classic
+`retriever query` output is unchanged.
+
+Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval and can include the same optional `usage` object at the response root. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"` and does not add usage metadata. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
 
 An agent can name a document that no retrieval hop returned, which leaves nothing to rehydrate. Those hits report null one-pass fields, and `source` falls back to `doc_id`.
 

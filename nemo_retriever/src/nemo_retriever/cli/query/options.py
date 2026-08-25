@@ -165,6 +165,13 @@ AgenticOption = Annotated[
         help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
     ),
 ]
+IncludeUsageOption = Annotated[
+    bool,
+    typer.Option(
+        "--include-usage",
+        help="With --agentic, emit a {hits, usage} JSON envelope containing provider-reported LLM token usage.",
+    ),
+]
 AgenticLlmModelOption = Annotated[
     str | None,
     typer.Option(

@@ -216,6 +216,12 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             )
         return self._sel
 
+    def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
+        """Remove and return provider-reported LLM usage for one query."""
+        if self._sel is None:
+            return {}
+        return self._sel.llm.pop_query_usage(str(query_id))
+
     # ------------------------------------------------------------------
     # AbstractOperator interface
     # ------------------------------------------------------------------
