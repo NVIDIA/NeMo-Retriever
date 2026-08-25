@@ -707,8 +707,12 @@ def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.Monk
 
     assert cli._start_local_vectordb(cfg) is process
     assert "--local-embed" in command
-    assert ["--local-embed-backend", "hf"] == command[command.index("--local-embed-backend") : command.index("--local-embed-backend") + 2]
-    assert ["--hf-cache-dir", "/models/cache"] == command[command.index("--hf-cache-dir") : command.index("--hf-cache-dir") + 2]
+    assert ["--local-embed-backend", "hf"] == command[
+        command.index("--local-embed-backend") : command.index("--local-embed-backend") + 2
+    ]
+    assert ["--hf-cache-dir", "/models/cache"] == command[
+        command.index("--hf-cache-dir") : command.index("--hf-cache-dir") + 2
+    ]
     assert ["--device", "cuda:1"] == command[command.index("--device") : command.index("--device") + 2]
     assert "--embed-endpoint" not in command
 
@@ -796,7 +800,9 @@ def test_vectordb_launch_setting_has_schema_description() -> None:
     assert VectorDbConfig.model_fields["launch_on_start"].description
 
 
-def test_service_start_force_kills_vectordb_without_masking_app_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_service_start_force_kills_vectordb_without_masking_app_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     from typer.testing import CliRunner
 
     from nemo_retriever.service.cli import app as service_cli_app

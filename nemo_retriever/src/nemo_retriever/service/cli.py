@@ -42,18 +42,31 @@ def _start_local_vectordb(cfg):
     parsed = urlparse(vdb.vectordb_url)
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise typer.BadParameter("vectordb.vectordb_url must use localhost when vectordb.launch_on_start is enabled.")
-    local_embed = (
-        cfg.local_models.enabled
-        and cfg.local_models.embed.enabled
-        and not cfg.nim_endpoints.embed_invoke_url
-    )
+    local_embed = cfg.local_models.enabled and cfg.local_models.embed.enabled and not cfg.nim_endpoints.embed_invoke_url
     if not cfg.nim_endpoints.embed_invoke_url and not local_embed:
         raise typer.BadParameter(
-            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or enabled local_models.embed. Configure one, then retry."
+            "vectordb.launch_on_start requires nim_endpoints.embed_invoke_url or enabled local_models.embed." +
+            "Configure one, then retry."
         )
     port = parsed.port or 7671
     child_env = os.environ.copy()
-    command = [sys.executable, "-m", "nemo_retriever.service.vectordb_app", "--host", parsed.hostname, "--port", str(port), "--lancedb-uri", vdb.lancedb_uri, "--table-name", vdb.table_name, "--index-mode", vdb.index_mode, "--embed-model", vdb.embed_model]
+    command = [
+        sys.executable,
+        "-m",
+        "nemo_retriever.service.vectordb_app",
+        "--host",
+        parsed.hostname,
+        "--port",
+        str(port),
+        "--lancedb-uri",
+        vdb.lancedb_uri,
+        "--table-name",
+        vdb.table_name,
+        "--index-mode",
+        vdb.index_mode,
+        "--embed-model",
+        vdb.embed_model,
+    ]
     if local_embed:
         command += ["--local-embed", "--local-embed-backend", cfg.local_models.embed.local_ingest_embed_backend]
         if cfg.local_models.hf_cache_dir:
@@ -73,7 +86,25 @@ def _start_local_vectordb(cfg):
         command += ["--disable-expiration-cleanup"]
     command += ["--reconciliation-interval-seconds", str(vdb.reconciliation_interval_seconds)]
     if cfg.agentic.enabled:
-        command += ["--agentic", "--agentic-llm-model", cfg.agentic.llm_model or "", "--agentic-invoke-url", cfg.agentic.invoke_url or "", "--agentic-reasoning-effort", cfg.agentic.reasoning_effort or "", "--agentic-backend-top-k", str(cfg.agentic.backend_top_k), "--agentic-react-max-steps", str(cfg.agentic.react_max_steps), "--agentic-text-truncation", str(cfg.agentic.text_truncation), "--agentic-temperature", str(cfg.agentic.temperature), "--agentic-request-timeout", str(cfg.agentic.request_timeout_s)]
+        command += [
+            "--agentic",
+            "--agentic-llm-model",
+            cfg.agentic.llm_model or "",
+            "--agentic-invoke-url",
+            cfg.agentic.invoke_url or "",
+            "--agentic-reasoning-effort",
+            cfg.agentic.reasoning_effort or "",
+            "--agentic-backend-top-k",
+            str(cfg.agentic.backend_top_k),
+            "--agentic-react-max-steps",
+            str(cfg.agentic.react_max_steps),
+            "--agentic-text-truncation",
+            str(cfg.agentic.text_truncation),
+            "--agentic-temperature",
+            str(cfg.agentic.temperature),
+            "--agentic-request-timeout",
+            str(cfg.agentic.request_timeout_s),
+        ]
     process = subprocess.Popen(command, env=child_env)
     health_url = f"http://{parsed.hostname}:{port}/v1/health"
     for _ in range(150):
@@ -95,6 +126,7 @@ def _start_local_vectordb(cfg):
         "Inspect the VectorDB logs above and verify the embedding configuration, "
         "LanceDB path, and port 7671 availability."
     )
+
 
 @app.command("start")
 def start(
@@ -120,7 +152,9 @@ def start(
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
-    launch_vectordb: bool = typer.Option(False, "--launch-vectordb", help="Start and supervise a local VectorDB process on 127.0.0.1:7671."),
+    launch_vectordb: bool = typer.Option(
+        False, "--launch-vectordb", help="Start and supervise a local VectorDB process on 127.0.0.1:7671."
+    ),
     local_models: Optional[bool] = typer.Option(
         None,
         "--local-models/--no-local-models",
