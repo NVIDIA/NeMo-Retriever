@@ -52,7 +52,7 @@ silently select another extraction path.
 For local `nemotron_parse` extraction in NeMo Retriever Library 26.08, omit
 `nemotron_parse_model` to use the default model, or set it to
 `nvidia/NVIDIA-Nemotron-Parse-v1.2`. Other local model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise `ValueError` before pipeline
+`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before pipeline
 execution. To use a remote Nemotron Parse endpoint, configure
 `nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
 the endpoint contract.
