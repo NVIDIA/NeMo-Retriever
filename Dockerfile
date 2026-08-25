@@ -170,7 +170,7 @@ FROM install AS service
 
 # Optional release metadata for OpenAPI ``info.version`` and package version helpers.
 # Release builds should pass matching values, for example:
-#   --build-arg RETRIEVER_VERSION=26.08-RC4 --build-arg RETRIEVER_RELEASE_TYPE=release
+#   --build-arg RETRIEVER_VERSION=26.08.1 --build-arg RETRIEVER_RELEASE_TYPE=release
 ARG RETRIEVER_VERSION=
 ARG RETRIEVER_RELEASE_TYPE=dev
 ENV RETRIEVER_VERSION=${RETRIEVER_VERSION}

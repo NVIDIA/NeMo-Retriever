@@ -452,7 +452,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.08) { #recommended-minimal-install-2608 }
+### Recommended minimal install (26.08.1) { #recommended-minimal-install-26081 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
@@ -466,7 +466,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set service.image.tag=26.8.0
+  --set service.image.tag=26.8.1
 ```
 
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:

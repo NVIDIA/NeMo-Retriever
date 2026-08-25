@@ -21,17 +21,17 @@ def test_openapi_version_matches_service_api_version() -> None:
         schema = client.get("/openapi.json").json()
 
     assert schema["info"]["version"] == get_service_api_version()
-    assert schema["info"]["version"] != "26.5.0"
+    assert schema["info"]["version"] != "26.8.1"
 
 
 def test_openapi_version_respects_service_version_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("RETRIEVER_SERVICE_VERSION", "26.08-RC4")
+    monkeypatch.setenv("RETRIEVER_SERVICE_VERSION", "26.08.1")
     app = create_app(ServiceConfig(mode="gateway"))
 
     with TestClient(app) as client:
         schema = client.get("/openapi.json").json()
 
-    assert schema["info"]["version"] == "26.08-RC4"
-    assert get_service_api_version() == "26.08-RC4"
+    assert schema["info"]["version"] == "26.08.1"
+    assert get_service_api_version() == "26.08.1"
