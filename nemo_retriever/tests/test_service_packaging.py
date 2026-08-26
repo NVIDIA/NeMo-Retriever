@@ -35,3 +35,13 @@ def test_core_dependencies_include_tokenizer_stack() -> None:
 
     assert "tokenizers" in names
     assert "huggingface-hub" in names
+
+
+def test_os_classifiers_match_supported_platforms() -> None:
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    classifiers = pyproject["project"]["classifiers"]
+
+    assert "Operating System :: OS Independent" not in classifiers
+    assert "Operating System :: POSIX :: Linux" in classifiers
+    assert "Operating System :: Microsoft :: Windows" in classifiers
+    assert "Operating System :: MacOS" in classifiers
