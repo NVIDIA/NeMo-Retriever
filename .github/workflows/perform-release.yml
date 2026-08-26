@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       source-branch:
-        description: 'Git ref to build from (e.g. `26.05`). When empty, RC versions like `26.05-RC8` build from `26.05`; otherwise uses the branch selected in "Run workflow".'
+        description: 'Git ref to build from (e.g. `26.08`). When empty, prerelease and patch releases build from the corresponding release branch; otherwise uses the branch selected in "Run workflow".'
         required: false
         type: string
         default: ''
       version:
-        description: 'Release version for artifacts and git tag (e.g. `26.05-RC8`). Does not need to exist before the run.'
+        description: 'Release version for artifacts and git tag (e.g. `26.08.1`). Does not need to exist before the run.'
         required: false
         type: string
         default: ''
@@ -59,6 +59,9 @@ jobs:
           elif [ -n "$VERSION_INPUT" ] && [[ "$VERSION_INPUT" =~ ^(.+)-RC[0-9]+$ ]]; then
             SOURCE_REF="${BASH_REMATCH[1]}"
             echo "RC version $VERSION_INPUT: building from integration branch $SOURCE_REF"
+          elif [ -n "$VERSION_INPUT" ] && [[ "$VERSION_INPUT" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+            SOURCE_REF="${BASH_REMATCH[1]}"
+            echo "Patch release $VERSION_INPUT: building from release branch $SOURCE_REF"
           elif [ -n "$VERSION_INPUT" ]; then
             SOURCE_REF="$VERSION_INPUT"
           else

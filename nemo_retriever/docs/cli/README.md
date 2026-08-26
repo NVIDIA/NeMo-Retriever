@@ -119,6 +119,31 @@ retriever query service "What is in this corpus?" \
   --service-url http://localhost:7670
 ```
 
+
+### Start a local service with VectorDB
+
+Use `retriever service start --launch-vectordb` to run a local service with a supervised VectorDB child on `127.0.0.1:7671`. The child uses `nim_endpoints.embed_invoke_url` when configured. Otherwise, it uses local Hugging Face embedding when `local_models.enabled` and `local_models.embed.enabled` are both `true`. The command waits for VectorDB readiness and terminates the child when the service exits. If the child does not exit promptly, the service forcefully stops it. You can set the same behavior in YAML with `vectordb.launch_on_start: true` and a loopback `vectordb.vectordb_url`.
+
+The child inherits credentials from the service environment. Set `NVIDIA_API_KEY` or `NGC_API_KEY` for remote embedding, and set `NRL_INTERNAL_VDB_TOKEN` or `NRL_INTERNAL_VDB_TOKEN_FILE` for the VectorDB internal credential. Do not place credentials in the service YAML.
+
+For a fully local deployment, use a CUDA-capable host and install the service and local extras. Install the `multimedia` extra when you ingest audio or video.
+
+```bash
+pip install "nemo-retriever[service,local]"
+scripts/launch_local_service_with_vectordb.sh \
+  nemo_retriever/examples/retriever-service.local.yaml
+```
+
+The example configuration leaves NIM endpoints unset and uses local Hugging Face models. The launcher validates `/v1/health` on the service and VectorDB, then keeps both processes running until you stop it with `Ctrl+C`.
+
+```bash
+retriever service start --config my-retriever-service.yaml --launch-vectordb
+```
+
+Use the command above when `nim_endpoints.embed_invoke_url` is configured. Omit the flag to use an existing VectorDB. Helm continues to deploy VectorDB as a separate pod.
+
+If VectorDB exits during startup or does not become ready, inspect the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory, and that port `7671` is available.
+
 ### Route ingest to hosted or self-hosted NIM endpoints
 
 ```bash
@@ -186,9 +211,13 @@ retrieval, preserving retriever ranking order and truncating the final output to
 `--top-k`. Local and batch ingest record the canonical embedding model on the
 LanceDB table, and non-service query uses that model automatically. Use
 `--embed-model-name` only as an explicit override or when querying a legacy or
-third-party table without model metadata. Endpoint URLs and provider prefixes
-remain runtime configuration, so continue to pass `--embed-invoke-url` and
-`--embed-model-provider-prefix` when the selected model must be routed remotely.
+third-party table without model metadata. If the explicit model differs from
+the model recorded on the table, the query logs a warning that names both
+models and continues with the explicit override. Confirm that the models use a
+compatible vector space before you trust the relevance results. Endpoint URLs
+and provider prefixes remain runtime configuration, so continue to pass
+`--embed-invoke-url` and `--embed-model-provider-prefix` when the selected model
+must be routed remotely.
 For example, a table can store the canonical model
 `nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
 `nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
@@ -207,8 +236,10 @@ output are not used for content-type matching.
 
 `--agentic` swaps the single dense pass for an LLM-driven ReAct loop: the agent
 issues several retrieval sub-queries, fuses the candidates, and selects a final
-ranking. It searches the same LanceDB table built by `retriever ingest`, so it is
-a drop-in alternative to standard retrieval.
+ranking. It searches the same LanceDB table built by `retriever ingest`. You can
+reuse the same table, embedding flags, and `--top-k` as standard retrieval.
+The JSON hit shape is not a drop-in replacement for dense `retriever query`
+output.
 
 By default, agentic retrieval runs the agent LLM in process with local vLLM and
 `nemotron-8b` (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU
@@ -229,15 +260,27 @@ retriever query "summarize the deployment options" \
   --agentic-react-max-steps 5
 ```
 
-Agentic mode returns the agent's ranked documents as JSON, with the same hit
-fields as the dense path (`text`, `metadata`, `source`, `page_number`, and
-related) plus `doc_id`, `rank`, and the stage that produced the ranking
-(`final_results`, `rrf`, or `selection_agent`). Hit fields are rehydrated at the
-end of the loop from the retrieval hop that returned the document, so a document
-the agent named without retrieving it reports null hit fields. It reuses the same
-`--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
-`--embed-model-name` options as standard retrieval. Agentic retrieval uses the
-selected table's model automatically when `--embed-model-name` is omitted.
+Agentic mode returns the agent's ranked documents as JSON. The dense path
+projects each hit to five fields: `modality`, `page_number`, `score`,
+`source`, and `text`. Agentic mode does not use that projection. It prints
+the internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
+`result_source` is `final_results`, `rrf`, or `selection_agent`, depending
+on which stage produced the ranking.
+`modality` and `score` exist only on the dense path. Fields such as
+`content_type`, `_distance`, `metadata`, `path`, `pdf_basename`,
+`pdf_page`, and `source_id` appear on the agentic path when the retrieval
+hop returned them.
+
+Hit fields are rehydrated at the end of the loop from the retrieval hop
+that returned the document. When the agent names a document that no
+retrieval hop returned, the object contains only `doc_id`, `rank`, and
+`result_source`. Classic hit keys such as `text` and `source` are
+absent. They are not present with null values.
+
+Agentic retrieval reuses the same `--top-k`, `--lancedb-uri`, `--table-name`,
+`--embed-invoke-url`, and `--embed-model-name` options as standard retrieval.
+Agentic retrieval uses the selected table's model automatically when
+`--embed-model-name` is omitted.
 
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:
@@ -248,7 +291,8 @@ fusion) -> SelectionAgentOperator -> ranked results`:
 - `RRFAggregatorOperator` fuses candidates from the loop's multiple searches with
   reciprocal rank fusion.
 - `SelectionAgentOperator` runs a final LLM selection pass over the fused set and
-  emits the ranked document IDs, which are then rehydrated into full hits.
+  emits ranked document IDs. Those IDs are then rehydrated from the retrieval-hop
+  hit dictionary.
 
 Agentic-only knobs (apply only with `--agentic`):
 
@@ -298,7 +342,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
-| `--index-mode` | `dense` | Dense vector index by default; `hybrid` also builds BM25/FTS and `sparse` builds an FTS-only table. |
+| `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |

@@ -23,6 +23,8 @@ On Windows PowerShell you can use `$env:NVIDIA_API_KEY = "nvapi-..."`.
 
 The SDK and CLI do not load a `.env` file automatically. For a full list of related variables and how to source a `.env` file into the shell, refer to [Environment configuration variables](environment-config.md).
 
+For `LiteLLMClient` and `LLMJudge` with a `nvidia_nim/...` model, pass `api_key="os.environ/NVIDIA_API_KEY"`. LiteLLM does not read `NVIDIA_API_KEY` for that provider.
+
 Hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) cap inline base64 image payloads at about 180,000 characters (roughly 180 KB). This key authorizes those hosted inference calls. For size limits and what to do when an image exceeds the cap, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 !!! note
@@ -38,6 +40,8 @@ api_key="os.environ/NVIDIA_API_KEY"
 ```
 
 Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` for an OpenAI model. The reference is stored in graph JSON and resolved only when the operator is constructed or invoked on the worker.
+
+For LiteLLM `nvidia_nim/...` models, use `os.environ/NVIDIA_API_KEY`. The worker resolves that reference and passes the value as `api_key`. If you omit `api_key`, LiteLLM looks up `NVIDIA_NIM_API_KEY` instead.
 
 Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
 
