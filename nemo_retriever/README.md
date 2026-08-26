@@ -51,11 +51,14 @@ uv pip install "nemo-retriever[local]"
 ```
 
 The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease/nightly Nemotron packages from PyPI within the same supported
-major-version windows, opt in with `--pre`:
+try prerelease or nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
+version you are installing.
+
+Run the following command, and replace `<version>` with that version:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.08.1"
+uv pip install --pre "nemo-retriever[local]==<version>"
 ```
 
 **Remote NIM (no local GPU)**
