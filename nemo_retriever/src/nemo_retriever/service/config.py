@@ -247,7 +247,7 @@ class LLMConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    model: str = "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    model: str = "openai/nvidia/nemotron-3.5-lightning-30b-a3b"
     api_base: str | None = None
     api_key: str | None = None
     temperature: float = 0.0

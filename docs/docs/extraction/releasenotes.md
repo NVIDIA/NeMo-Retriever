@@ -32,7 +32,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Answer generation { #answer-generation }
 
-- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The default hosted LLM is `nvidia/nemotron-3.5-lightning-30b-a3b`; Helm `nimOperator.answer_llm` defaults to `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant`. The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
 - Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Agentic retrieval { #agentic-retrieval }
@@ -40,7 +40,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 - Agentic retrieval is available in 26.08.1. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - `retriever query --agentic` runs that ReAct loop over the same LanceDB table as one-pass retrieval. Local CLI and harness runs default to in-process vLLM (`nemotron-8b`). Remote OpenAI-compatible NIM or NVIDIA-hosted endpoints use `--agentic-invoke-url`.
 - Retriever Service exposes agentic retrieval on `POST /v1/query` with `agentic=true` and an `agentic_query` MCP tool when `agentic.enabled` is true. Service mode requires a remote OpenAI-compatible LLM endpoint. Agentic remains opt-in through `serviceConfig.agentic.enabled`.
-- The Helm `answer_llm` Super-49B NIM auto-wires `/v1/answer` only. Self-hosted agentic retrieval against that NIM requires `--enable-auto-tool-choice --tool-call-parser llama3_json` on `NIM_PASSTHROUGH_ARGS` and explicit `serviceConfig.agentic` wiring. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+- The Helm `answer_llm` Nemotron 3.5 Lightning NIM auto-wires `/v1/answer` only and enables the `nemotron_v3` reasoning parser. Agentic retrieval requires explicit `serviceConfig.agentic` wiring. A self-hosted Super-49B override also requires `--enable-auto-tool-choice --tool-call-parser llama3_json` on `NIM_PASSTHROUGH_ARGS`. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 - Configurable auto-retrieval is available on the service query path, with evidence and coverage output formats on `/v1/query`. MCP query-method selection and rerank tools are available.
 
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
@@ -53,7 +53,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
     - VL embedding: `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0`
     - VL reranking (optional): `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0`
     - Optional Omni caption and configurable answer VLM: `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`
-    - Optional answer-generation LLM: `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`
+    - Optional answer-generation LLM: `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant`
 - Optional Nemotron-3-Embed-1B is available in 26.08.1. It is not enabled by default and is not a Helm NIM.
     - Optional NIM: `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`
     - Optional Hugging Face checkpoint: `nvidia/Nemotron-3-Embed-1B-BF16` (revision `9e0b24858b1195815ecb1188ffa1b73bcea7b30a`)
@@ -95,7 +95,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Retrieval and RAG { #retrieval-and-rag }
 
-- `Retriever.answer()` supports the Super-49B default LLM path and the Omni VLM-capable path documented under [Answer generation](#answer-generation).
+- `Retriever.answer()` supports the Nemotron 3.5 Lightning default LLM path and the Omni VLM-capable path documented under [Answer generation](#answer-generation).
 - Service-mode `Retriever.answer` support and FastMCP integration are available for local and remote agents.
 - Agentic retrieval is available on the CLI, Python query workflow, REST, and MCP surfaces. Refer to [Agentic retrieval](#agentic-retrieval).
 
@@ -115,13 +115,13 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Helm chart { #helm-chart }
 
-- The Helm chart under `nemo_retriever/helm/` defaults to OCR v2, the combined object-detection NIM, and VL embedder 2.3.0. Optional NIMs include VL rerank 2.3.0, Omni `2.0.4-variant`, Nemotron Parse, and the Super-49B `answer_llm` slot. Nemotron-3-Embed-1B is optional and is not a chart NIM. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Models, OCR, and NIM artifacts](#models-ocr-and-captioning).
+- The Helm chart under `nemo_retriever/helm/` defaults to OCR v2, the combined object-detection NIM, and VL embedder 2.3.0. Optional NIMs include VL rerank 2.3.0, Omni `2.0.4-variant`, Nemotron Parse, and the Nemotron 3.5 Lightning `answer_llm` slot. Nemotron-3-Embed-1B is optional and is not a chart NIM. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Models, OCR, and NIM artifacts](#models-ocr-and-captioning).
 
 ### Documentation { #documentation }
 
 - Published [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage.
 - Published [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation) for `TextGenerationTask`, `GenericGenerationOperator`, `SummarizationOperator`, and `TextGenerationParams`.
-- Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
+- Clarified Nemotron 3.5 Lightning defaults, the Super-49B override, and the Omni answer-generation path on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Current foundational capabilities { #current-foundational-capabilities }
 

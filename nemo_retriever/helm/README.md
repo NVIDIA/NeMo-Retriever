@@ -181,9 +181,8 @@ Choose one of the following before you install:
 
 - Provide four allocatable `nvidia.com/gpu` slots across eligible
   nodes for the default core topology. Each optional NIM adds its
-  per-NIM GPU request. Most optional keys use `nimServiceGpuLimit`
-  (one GPU). The default `answer_llm` Super-49B resources request
-  two physical GPUs.
+  per-NIM GPU request. Optional keys, including the default
+  `answer_llm` Nemotron 3.5 Lightning NIM, use `nimServiceGpuLimit` (one GPU).
 - Configure GPU sharing so the cluster advertises at least four
   `nvidia.com/gpu` slots. Time-slicing is the documented sharing
   path. It works on GPUs that do not support Multi-Instance GPU
@@ -253,14 +252,11 @@ pinned to that node. Confirm that node's `Allocatable`
 `nvidia.com/gpu` is `4` or greater, and pin the four core
 NIMServices as shown below.
 
-The default `answer_llm` Super-49B NIMService is outside that
-one-physical-GPU recipe. It requests two GPUs (`nvidia.com/gpu: 2`
-and `NIM_TENSOR_PARALLEL_SIZE=2`). A time-sliced request for more
-than one GPU does not provide two physical GPUs or proportional
-compute, so extra time-slice replicas cannot satisfy that
-tensor-parallel requirement. Keep Super-49B on two physical GPUs
-unless you override the slot with a separately validated model and
-profile. Refer to [Answer generation](#answer-generation-llm).
+The default `answer_llm` Nemotron 3.5 Lightning NIMService is outside the
+four-core-NIM sharing recipe and adds one GPU request. If you override
+the slot with a multi-GPU profile, provide the required physical GPUs;
+time-slice replicas do not satisfy tensor-parallel requirements. Refer
+to [Answer generation](#answer-generation-llm).
 
 On a multi-GPU or multi-node cluster, pin the four core
 NIMServices to a single-GPU node. Set
@@ -469,7 +465,7 @@ helm install retriever ./nemo_retriever/helm \
   --set service.image.tag=26.8.1
 ```
 
-> The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
+> The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Nemotron 3.5 Lightning defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
 >
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true` (auto-wires `nim_endpoints.rerank_invoke_url` / `rerank_model_name` — refer to [Query-time reranking](#query-time-reranking))
 > * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
@@ -759,7 +755,7 @@ sources](#3-install-with-the-nim-operator-in-cluster-nims)):
 
 Enable the generic `answer_llm` NIM slot to add service-mode answer
 generation on top of the VectorDB query path. The slot defaults to the
-Super-49B NIM, but the image, model id, service name, resources,
+Nemotron 3.5 Lightning NIM, but the image, model id, service name, resources,
 profile filter, and environment can be overridden for another
 OpenAI-compatible LLM NIM.
 
@@ -775,7 +771,7 @@ NIMCache/NIMService by default and writes this block into
 ```yaml
 llm:
   enabled: true
-  model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  model: "openai/nvidia/nemotron-3.5-lightning-30b-a3b"
   api_base: "http://answer-llm:8000/v1"
   rag_system_prompt_prefix: null
   reasoning_enabled: true
@@ -784,25 +780,21 @@ llm:
 The retriever service then exposes `POST /v1/answer`, which calls the
 VectorDB pod's `/v1/query` endpoint for context and sends those chunks to
 the configured LLM endpoint. This path does not require tool calling.
-The `answer_llm` NIM is not wired into `serviceConfig.agentic` and is
-not tool-call ready by default. For agentic retrieval against that NIM,
-refer to
-[Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm).
-The `answer_llm` NIM deployment leaves
-reasoning defaults model-neutral; `/v1/answer` controls reasoning per
-request. By default, `serviceConfig.llm.reasoningEnabled=true`, so requests
+The `answer_llm` NIM is not wired into `serviceConfig.agentic`. Configure
+that block separately when you use the same endpoint for agentic retrieval.
+The `answer_llm` NIM starts with
+`NIM_PASSTHROUGH_ARGS=--reasoning-parser nemotron_v3`, which separates
+Lightning reasoning from the final answer content. `/v1/answer` controls
+reasoning per request. By default, `serviceConfig.llm.reasoningEnabled=true`, so requests
 leave reasoning behavior to the LLM endpoint defaults and avoid sending
 provider-specific `chat_template_kwargs` to external OpenAI-compatible
 endpoints. Set `serviceConfig.llm.reasoningEnabled=false` for Nemotron
 endpoints that should skip reasoning; the service then adds both `/no_think`
-and `chat_template_kwargs.enable_thinking=false`. The default Super-49B NIMService
-resources request two physical GPUs (`nvidia.com/gpu: 2`) to match the bundled
-tensor-parallel NIM profile. Do not satisfy that count with GPU Operator
-time-slice replicas. Those two GPUs are in addition to the four core NIMs.
-The chart NIMCache PVC is `250Gi`. A100 40GB, A10G, L40S, and RTX PRO 4500
-Blackwell are not supported for that default BF16 TP2 profile. Override
-`resources`, `modelProfile`, or `env` for deployments that use a different
-profile or hardware topology. Refer to
+and `chat_template_kwargs.enable_thinking=false`. The default Nemotron 3.5 Lightning
+NIMService requests one GPU through `nimOperator.nimServiceGpuLimit` and lets
+the NIM Operator select a compatible profile. The chart NIMCache PVC is
+`250Gi`. Override `resources`, `modelProfile`, or `env` for deployments that
+use a different profile or hardware topology. Refer to
 [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
 in the Support Matrix.
 
@@ -812,38 +804,15 @@ is set, the service also mounts `nimOperator.answer_llm.authSecret` as
 credential value even for in-cluster NIM endpoints, and the key is never
 rendered into the ConfigMap.
 
-For example, to try Nemotron 3 Nano as the answer LLM on an A100 80GB
-node, override the operator-managed slot instead of adding a second
-hard-coded LLM service:
-
-```bash
-helm upgrade --install retriever ./nemo_retriever/helm \
-  --set nimOperator.answer_llm.enabled=true \
-  --set nimOperator.answer_llm.nimServiceName=nemotron-3-nano \
-  --set nimOperator.answer_llm.image.repository=nvcr.io/nim/nvidia/nemotron-3-nano \
-  --set nimOperator.answer_llm.image.tag=1.7.0-variant \
-  --set nimOperator.answer_llm.model=openai/nvidia/nemotron-3-nano-30b-a3b \
-  --set-json nimOperator.answer_llm.modelProfile='{"profiles":["5f89f01a0af587fd8bae50c611b1f358f92effdb9fb29362e1af0a986e5561c3"]}' \
-  --set-json nimOperator.answer_llm.resources='{"limits":{"nvidia.com/gpu":1},"requests":{"nvidia.com/gpu":1}}' \
-  --set nimOperator.answer_llm.env[0].name=NIM_HTTP_API_PORT \
-  --set-string nimOperator.answer_llm.env[0].value=8000 \
-  --set nimOperator.answer_llm.env[1].name=NIM_SERVED_MODEL_NAME \
-  --set-string nimOperator.answer_llm.env[1].value=nvidia/nemotron-3-nano-30b-a3b \
-  --set nimOperator.answer_llm.env[2].name=NIM_TENSOR_PARALLEL_SIZE \
-  --set-string nimOperator.answer_llm.env[2].value=1
-```
-
 Use the repository and tag available in your NGC environment; staging
 registries can use the same override shape with `nvstaging` image names
 or tags. `nimOperator.answer_llm.model` is the LiteLLM model id used by
 the retriever service; for an OpenAI-compatible in-cluster NIM, keep the
 `openai/` prefix there and set `NIM_SERVED_MODEL_NAME` to the raw model
-name advertised by the NIM. Replace the default Super-49B `modelProfile`,
-`resources`, and `env` when the target model requires a different
-GPU/profile setup. Leaving `modelProfile` empty preserves NIM
-Operator auto-discovery, but for Nano it can cache every advertised
-profile on first reconciliation; pin a known-compatible profile when you
-know the target GPU topology.
+name advertised by the NIM. Leaving `modelProfile` empty preserves NIM
+Operator auto-discovery, but it can cache every advertised profile on first
+reconciliation; pin a known-compatible profile when you know the target GPU
+topology.
 
 `serviceConfig.llm.apiBase` and `serviceConfig.llm.model` can be set
 explicitly to point `/v1/answer` at an external OpenAI-compatible LLM
@@ -868,7 +837,7 @@ following:
   (one GPU on 80 GB or better, two GPUs on L40S). Leave `modelProfile`
   empty for NIM Operator auto-discovery, or pin a profile for your GPU.
 - If the Omni caption NIM is already in the cluster, reuse it for
-  `/v1/answer` without deploying Super-49B:
+  `/v1/answer` without deploying a separate answer LLM:
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
@@ -878,19 +847,18 @@ helm upgrade --install retriever ./nemo_retriever/helm \
   --set serviceConfig.llm.model=openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 ```
 
-Enabling caption Omni and the default Super-49B `answer_llm` as separate
+Enabling caption Omni and the default Nemotron 3.5 Lightning `answer_llm` as separate
 NIMServices adds their GPU and disk requirements. Reusing the caption
 Omni endpoint for `/v1/answer` does not add a second Omni GPU or cache.
 
 #### Agentic retrieval (self-hosted Super-49B) { #agentic-retrieval-llm }
 
-`nimOperator.answer_llm.enabled=true` deploys Super-49B and auto-wires
-it only to `serviceConfig.llm` for `POST /v1/answer`. That answer path
-sends a plain text-generation request and does not require tool
-calling. `serviceConfig.agentic` is a separate block. The chart does
-not populate it from `answer_llm`.
+The generic `answer_llm` slot defaults to Nemotron 3.5 Lightning. To use the
+self-hosted Super-49B NIM for agentic retrieval, override that slot as
+shown below. The chart auto-wires the slot only to `serviceConfig.llm`
+for `POST /v1/answer`; `serviceConfig.agentic` remains separate.
 
-The default Super-49B NIM starts with
+The Super-49B override starts with
 `NIM_PASSTHROUGH_ARGS=--disable-custom-all-reduce`. Agentic retrieval
 sends OpenAI-style tool-call messages with `tool_choice=auto`. A
 self-hosted vLLM-backed Super-49B NIM rejects those requests with
@@ -898,8 +866,7 @@ HTTP 400 unless you also pass `--enable-auto-tool-choice` and
 `--tool-call-parser llama3_json`.
 
 You can reuse the same Super-49B NIM for agentic retrieval after you
-add those arguments. `POST /v1/answer` continues to work. This gap
-does not apply to NVIDIA-hosted Build endpoints.
+add those arguments. `POST /v1/answer` continues to work.
 
 If you set `nimOperator.answer_llm.env` in a values file, include
 the full list. Change only the passthrough value:
@@ -908,6 +875,16 @@ the full list. Change only the passthrough value:
 nimOperator:
   answer_llm:
     enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+      tag: "2.0.5"
+    model: openai/nvidia/llama-3.3-nemotron-super-49b-v1.5
+    modelProfile:
+      profiles:
+        - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+    resources:
+      limits:
+        nvidia.com/gpu: 2
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -934,6 +911,11 @@ environment entry and change only the `NIM_PASSTHROUGH_ARGS` value:
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
   --set nimOperator.answer_llm.enabled=true \
+  --set nimOperator.answer_llm.image.repository=nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set nimOperator.answer_llm.image.tag=2.0.5 \
+  --set nimOperator.answer_llm.model=openai/nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set-json nimOperator.answer_llm.modelProfile='{"profiles":["1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"]}' \
+  --set-json nimOperator.answer_llm.resources='{"limits":{"nvidia.com/gpu":2}}' \
   --set nimOperator.answer_llm.env[0].name=NIM_HTTP_API_PORT \
   --set-string nimOperator.answer_llm.env[0].value=8000 \
   --set nimOperator.answer_llm.env[1].name=NIM_TENSOR_PARALLEL_SIZE \
@@ -996,8 +978,8 @@ gated on three conditions ALL holding:
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
-| `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
-| `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
+| `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Nemotron 3.5 Lightning defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm) for an explicit Super-49B override. Default `false` so installs do not silently claim an answer-generation GPU. |
+| `nimOperator.answer_llm.model`         | `openai/nvidia/nemotron-3.5-lightning-30b-a3b` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
 | `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
@@ -1995,7 +1977,7 @@ your release tag). Defaults below match
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption or configurable answer VLM (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |
-| Answer LLM (optional, Super-49B default) | `answer_llm` | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` |
+| Answer LLM (optional, Nemotron 3.5 Lightning default) | `answer_llm` | `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
 
 GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).

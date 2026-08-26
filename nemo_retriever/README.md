@@ -404,8 +404,8 @@ retriever query "What is RAG?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
-Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to
+If you override the Helm `answer_llm` slot with Super-49B, add
+`--enable-auto-tool-choice --tool-call-parser llama3_json` to
 `NIM_PASSTHROUGH_ARGS` before you point `--agentic-invoke-url` at that
 endpoint. Refer to
 [Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
@@ -500,7 +500,7 @@ retriever = Retriever(
     top_k=5,
 )
 llm = LiteLLMClient.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    model="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b",
     temperature=0.0,
     max_tokens=512,
 )
@@ -521,7 +521,7 @@ Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    model="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b",
     temperature=0.1,
     max_tokens=4096,
 )

@@ -595,7 +595,7 @@ For value paths and a rename example, refer to [Use externally managed Secrets](
 
 The CLI then exits with `Agentic retrieval failed (llm_call_failed)`.
 
-The Helm `answer_llm` Super-49B NIM is not tool-call ready by default. Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. NVIDIA-hosted Build endpoints do not need this change. `POST /v1/answer` is a separate path and does not require tool calling.
+If you override the Helm `answer_llm` slot with Super-49B, add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. `POST /v1/answer` is a separate path and does not require tool calling.
 
 For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 

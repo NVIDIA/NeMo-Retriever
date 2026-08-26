@@ -312,12 +312,12 @@ retriever eval run --from-env
 | `QA_MAX_WORKERS` | `4` | Concurrent API calls |
 | `QA_LIMIT` | `0` (all) | Evaluate only first N queries |
 | `RESULTS_DIR` | `data/eval` | Directory for auto-timestamped result JSONs |
-| `GEN_MODEL` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Generator (single) |
+| `GEN_MODEL` | `nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b` | Generator (single) |
 | `GEN_MODEL_NAME` | `generator` | Short label for the generator |
 | `GEN_API_BASE` | _(unset)_ | Override endpoint URL for the generator |
 | `GEN_MODELS` | _(unset)_ | Multi-model sweep: `name:model,...` (overrides `GEN_MODEL`) |
 | `GEN_TEMPERATURE` | `0.0` | Sampling temperature for generator |
-| `JUDGE_MODEL` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Judge model |
+| `JUDGE_MODEL` | `nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b` | Judge model |
 | `JUDGE_API_BASE` | _(unset)_ | Override endpoint URL for the judge |
 | `JUDGE_TEMPERATURE` | `0.1` | Sampling temperature for judge |
 | `JUDGE_MAX_TOKENS` | `4096` | Max tokens for judge JSON output |
@@ -522,8 +522,8 @@ from nemo_retriever.evaluation.scoring_operator import ScoringOperator
 
 graph = (
     RetrievalLoaderOperator(retrieval_json="retrieval.json", ground_truth_csv="gt.csv")
-    >> QAGenerationOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
-    >> JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
+    >> QAGenerationOperator(model="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b")
+    >> JudgingOperator(model="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b")
     >> ScoringOperator()
 )
 result_df = graph.execute(None)
@@ -646,7 +646,7 @@ retrieval:
 
 models:
   generator-a:
-    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    model: "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
     api_key: "${NVIDIA_API_KEY}"
 
   generator-b:
@@ -654,19 +654,19 @@ models:
     api_base: "https://your-openai-compatible-endpoint/v1"
     api_key: "${GEN_API_KEY}"
 
-  nemotron-super-judge:
-    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  nemotron-lightning-judge:
+    model: "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
     api_key: "${NVIDIA_API_KEY}"
     temperature: 0.1
     max_tokens: 4096
 
 evaluations:
   - generator: "generator-b"
-    judge: "nemotron-super-judge"
+    judge: "nemotron-lightning-judge"
     runs: 2
 
   - generator: "generator-a"
-    judge: "nemotron-super-judge"
+    judge: "nemotron-lightning-judge"
     runs: 5
 
 execution:
@@ -701,13 +701,13 @@ same judge.
 ```yaml
 generators:
   - name: "nemotron"
-    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    model: "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
     api_key: "${NVIDIA_API_KEY}"
     temperature: 0.0
     max_tokens: 4096
 
 judge:
-  model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  model: "nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"
   api_key: "${NVIDIA_API_KEY}"
   temperature: 0.1
   max_tokens: 4096
@@ -736,7 +736,7 @@ LiteLLM routes by prefix:
 
 | Prefix | Provider | Example |
 |--------|----------|---------|
-| `nvidia_nim/` | NVIDIA NIM (build.nvidia.com) | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` |
+| `nvidia_nim/` | NVIDIA NIM (build.nvidia.com) | `nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b` |
 | `openai/` | OpenAI or any OpenAI-compatible server | `openai/gpt-4o` |
 | `huggingface/` | HuggingFace Inference Endpoints | `huggingface/meta-llama/Llama-3-70b-instruct` |
 
@@ -840,7 +840,7 @@ llm = LiteLLMClient.from_kwargs(
 )
 
 judge = LLMJudge.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    model="nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b",
     temperature=0.1,
     max_tokens=4096,
 )
