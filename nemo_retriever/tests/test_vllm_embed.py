@@ -22,6 +22,15 @@ from nemo_retriever.models.inference.vllm import (
     embed_with_vllm_llm,
 )
 from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
+from nemo_retriever.models.embed_errors import LocalEmbedderRowsLostError
+from nemo_retriever.models.nim.error_reporter import drain_errors
+
+
+@pytest.fixture(autouse=True)
+def _clear_reported_errors():
+    drain_errors()
+    yield
+    drain_errors()
 
 
 def _make_output(embedding):
@@ -499,14 +508,32 @@ class TestVLLMEmbedderImages:
         assert mock_mm.call_args.kwargs["normalize"] is False
         assert result.tolist() == [[3.0, 4.0]]
 
-    def test_no_valid_embeddings_returns_empty_tensor(self):
+    @pytest.mark.parametrize("image_count", [1, 2])
+    def test_no_valid_embeddings_raise_with_the_exact_count(self, image_count: int):
         b64 = _make_minimal_b64()
         with patch(
             "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
-            return_value=[[]],
+            return_value=[[]] * image_count,
         ):
-            result = self.embedder.embed_images([b64])
-        assert result.shape[0] == 0
+            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+                self.embedder.embed_images([b64] * image_count)
+
+        assert (excinfo.value.lost, excinfo.value.total) == (image_count, image_count)
+
+    def test_a_partially_lost_batch_fails_with_the_exact_count(self):
+        drain_errors()
+        b64 = _make_minimal_b64()
+        with patch(
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
+            return_value=[[3.0, 4.0], []],
+        ):
+            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+                self.embedder.embed_images([b64, b64])
+
+        assert (excinfo.value.lost, excinfo.value.total) == (1, 2)
+        assert excinfo.value.embedder == "LlamaNemotronEmbedVL1BV2VLLMEmbedder"
+        collected = drain_errors()
+        assert [(error.exc_type, error.stage) for error in collected] == [("LocalEmbedderRowsLostError", "embed")]
 
 
 def _make_text_embedder():
@@ -520,15 +547,20 @@ class TestLlamaNemotronEmbed1BV2Embedder:
     def setup_method(self):
         self.embedder = _make_text_embedder()
 
-    def test_finalize_vectors_all_empty_returns_empty_tensor(self):
-        result = self.embedder._finalize_vectors([[], []])
-        assert isinstance(result, torch.Tensor)
-        assert result.shape[0] == 0
+    def test_embed_rejects_an_all_empty_result(self):
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[], []]):
+            with pytest.raises(LocalEmbedderRowsLostError):
+                self.embedder.embed(["first", "second"])
 
-    def test_finalize_vectors_zero_pads_missing(self):
-        result = self.embedder._finalize_vectors([[1.0, 0.0], []])
-        assert result.shape == (2, 2)
-        assert result[1].tolist() == [0.0, 0.0]
+    def test_embed_rejects_a_missing_row(self):
+        drain_errors()
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[1.0, 0.0], []]):
+            with pytest.raises(LocalEmbedderRowsLostError) as excinfo:
+                self.embedder.embed(["first", "second"])
+
+        assert (excinfo.value.lost, excinfo.value.total) == (1, 2)
+        assert excinfo.value.embedder == "LlamaNemotronEmbed1BV2Embedder"
+        assert [error.exc_type for error in drain_errors()] == ["LocalEmbedderRowsLostError"]
 
     def test_embed_uses_passage_prefix_by_default(self):
         with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:

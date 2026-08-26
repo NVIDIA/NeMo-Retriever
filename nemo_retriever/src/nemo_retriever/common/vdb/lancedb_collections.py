@@ -168,22 +168,59 @@ def _collection_rows(
     *,
     context: CollectionWriteContext,
 ) -> list[dict[str, Any]]:
-    """Convert canonical NRL record batches into collection-managed LanceDB rows."""
+    """Convert canonical NRL record batches into collection-managed LanceDB rows.
+
+    An empty list or tuple embedding means the embed stage produced no vector for
+    that row. Such rows are counted as ``empty_embedding`` and make this function
+    raise :class:`RuntimeError` after the loop, so no rows are written for the
+    document.
+    This is the same guarantee :func:`nemo_retriever.common.vdb.lancedb._create_lancedb_results`
+    carries on the pipeline write path for this representation: an empty list or
+    tuple must not reach the index, and its presence fails the write rather than
+    publishing a short document while reporting success.
+
+    Every other row-level skip remains non-fatal and is
+    counted only as ``skipped_other``: a malformed record, metadata or embedding
+    value, and a text-free non-image row, are all still dropped without failing
+    the write. A malformed outer batch is ignored but is not included in the row
+    counters. Only an empty list or tuple
+    is fatal. The embed stage writes ``[]`` to mean "this output carried no
+    embedding". ``None`` can represent either a row the embed stage chose not to
+    embed or a chunk whose embedding failed. Those meanings are distinguishable
+    by the ``error`` key that travels with the payload -
+    ``None`` for the deliberate skip, a populated dict for the failure - but that
+    key is not visible at this layer, so ``None`` keeps its silent drop until the
+    discriminator is threaded down. That is follow-up work, not an impossibility.
+    """
     rows: list[dict[str, Any]] = []
     created_at = _now()
     row_index = 0
+    empty_embedding = 0
+    skipped_other = 0
 
     for batch in records or []:
         if not isinstance(batch, list):
             continue
         for record in batch:
             if not isinstance(record, dict):
+                skipped_other += 1
                 continue
             metadata = record.get("metadata")
             if not isinstance(metadata, dict):
+                skipped_other += 1
                 continue
             vector = metadata.get("embedding")
+            # Empty lists and tuples are folded into the skip below by ``not vector``,
+            # which drops them silently. Check them first with ``isinstance``/``len``;
+            # never ``not vector``: the latter raises ValueError on a
+            # multi-element array. The skip below is left exactly as it was, so all
+            # other values keep their current route.
+            if isinstance(vector, (list, tuple)) and len(vector) == 0:
+                empty_embedding += 1
+                logger.debug("Row has an empty embedding (document_id=%s)", context.document_id)
+                continue
             if not isinstance(vector, (list, tuple)) or not vector:
+                skipped_other += 1
                 continue
             content_metadata = metadata.get("content_metadata")
             if not isinstance(content_metadata, dict):
@@ -200,6 +237,7 @@ def _collection_rows(
                 content_metadata["type"] = content_type
                 content_metadata["_content_type"] = content_type
             if not text.strip() and content_type != "image":
+                skipped_other += 1
                 continue
 
             source_id = str(
@@ -238,6 +276,24 @@ def _collection_rows(
                 }
             )
             row_index += 1
+
+    if empty_embedding:
+        total = len(rows) + empty_embedding + skipped_other
+        logger.warning("_collection_rows: empty_embedding=%d", empty_embedding)
+        raise RuntimeError(
+            "Refusing to write an incomplete document: "
+            f"{empty_embedding} of {total} rows had no embedding. No rows are written and "
+            "this write fails; the alternative is a document that is silently short by those "
+            "rows while the ingest reports success. "
+            f"Counters: empty_embedding={empty_embedding}, skipped_other={skipped_other}, "
+            f"accepted={len(rows)}, document_id={context.document_id}, "
+            f"document_version={context.document_version}. "
+            "Only empty_embedding caused this failure - skipped_other counts rows filtered "
+            "under the non-fatal row rules. This normally means the embed stage failed for "
+            "whole batches: check the embed actor logs for engine initialization or "
+            "out-of-memory errors."
+        )
+
     return rows
 
 

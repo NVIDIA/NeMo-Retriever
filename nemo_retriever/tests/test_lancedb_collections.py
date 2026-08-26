@@ -13,6 +13,7 @@ import json
 import math
 import threading
 from dataclasses import replace
+from typing import Any
 
 import lancedb
 import pytest
@@ -1127,3 +1128,40 @@ def test_document_delete_waits_for_active_collection_query(tmp_path, monkeypatch
     assert delete_finished.is_set()
     assert query_errors == []
     assert delete_errors == []
+
+
+def _collection_record(embedding: Any, *, text: str = "first chunk") -> dict:
+    return {
+        "document_type": "text",
+        "metadata": {
+            "embedding": embedding,
+            "content": text,
+            "content_metadata": {"type": "text", "page_number": 2},
+            "source_metadata": {"source_id": "/inputs/source.pdf", "source_name": "source.pdf"},
+        },
+    }
+
+
+@pytest.mark.parametrize("empty_embedding", [pytest.param([], id="list"), pytest.param((), id="tuple")])
+def test_an_empty_embedding_on_the_collection_path_fails_the_write(tmp_path, empty_embedding: Any) -> None:
+    backend = _backend_with_collection(tmp_path)
+    records = [[_collection_record(empty_embedding), _collection_record([1.0, 0.0])]]
+
+    with pytest.raises(RuntimeError) as excinfo:
+        backend.write_collection(records, context=_context())
+
+    message = str(excinfo.value)
+    assert "incomplete document" in message
+    assert "empty_embedding=1" in message
+    with pytest.raises(VDBResourceNotFound):
+        backend.get_document(scope="workspace-a", collection_name="collection-a", document_id="document-a")
+
+
+def test_collection_write_does_not_apply_sequence_truthiness_to_numpy(tmp_path) -> None:
+    numpy = pytest.importorskip("numpy")
+    backend = _backend_with_collection(tmp_path)
+    records = [[_collection_record(numpy.array([1.0, 0.0])), _collection_record([1.0, 0.0])]]
+
+    result = backend.write_collection(records, context=_context())
+
+    assert result.written == 1

@@ -19,6 +19,53 @@ from nemo_retriever.common.params.models import IMAGE_MODALITIES
 from nemo_retriever.models.inference.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
 
+# Exception classes and message fragments that mean "the in-process embed engine
+# is not serving", as opposed to "this batch failed". Matched by name and text
+# rather than by import so this module keeps working without vLLM or torch,
+# which is the case on the endpoint-only path.
+#
+# ``OutOfMemoryError`` is deliberately absent. The HuggingFace backend raises it
+# from an ordinary forward pass, where a smaller next batch can succeed, and the
+# two backends are not distinguishable here - this function receives only the
+# embedder object. Classifying it would abort on a per-batch condition. The cost
+# is time-to-failure only: a vLLM engine that OOMs raises ``EngineDeadError``
+# from the next batch onward.
+_ENGINE_LIFECYCLE_EXC_NAMES: frozenset[str] = frozenset(
+    {
+        "EngineDeadError",
+        "LocalEmbedderReturnedNothingError",
+        "LocalEmbedderRowsLostError",
+    }
+)
+_ENGINE_LIFECYCLE_MESSAGES: tuple[str, ...] = (
+    "Engine core initialization failed",
+    "less than desired GPU memory utilization",
+)
+_ENGINE_LIFECYCLE_CAUSE_DEPTH: int = 5
+
+
+def _is_engine_lifecycle_failure(exc: BaseException) -> bool:
+    """Return whether ``exc`` means the local embed engine stopped serving.
+
+    Walks the ``__cause__``/``__context__`` chain because vLLM re-raises the
+    original failure wrapped in its own error, so the OOM that killed the engine
+    is often not the outermost exception.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    for _depth in range(_ENGINE_LIFECYCLE_CAUSE_DEPTH):
+        if current is None or id(current) in seen:
+            return False
+        seen.add(id(current))
+        if any(klass.__name__ in _ENGINE_LIFECYCLE_EXC_NAMES for klass in type(current).__mro__):
+            return True
+        message = str(current)
+        if any(fragment in message for fragment in _ENGINE_LIFECYCLE_MESSAGES):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _embed_group(
     group_df: pd.DataFrame,
     *,
@@ -190,6 +237,21 @@ def embed_text_main_text_embed(
             logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         report_error("embed", exc)
+        if endpoint is None and model is not None and _is_engine_lifecycle_failure(exc):
+            logger.error(
+                "Local embed engine failure is fatal: aborting instead of returning %d empty "
+                "embedding(s) for this batch (embedder=%s, failure=%s: %s). A failed in-process "
+                "engine keeps accepting batches and returning empty rows for as long as the stage "
+                "runs, so continuing would write a partial index. Most often the engine was "
+                "refused admission because several embed workers share one GPU: lower "
+                "`embed_workers`, lower `gpu_memory_utilization`, give the run a larger card, or "
+                "point `embedding_endpoint` at a separate embedding service.",
+                len(batch_df),
+                type(model).__name__,
+                type(exc).__name__,
+                exc,
+            )
+            raise
         out_df = batch_df.copy()
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
         out_df[embedding_dim_column] = 0

@@ -10,8 +10,9 @@ from typing import Any, List, Optional, Sequence
 
 import torch
 
-from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.embed_errors import report_lost_rows
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -84,6 +85,8 @@ class LlamaNemotronEmbed1BV2Embedder:
         return False
 
     def _finalize_vectors(self, vectors: List[List[float]]) -> torch.Tensor:
+        """Reject empty rows before tensor conversion and normalization."""
+        report_lost_rows(vectors, embedder=type(self).__name__)
         valid = [v for v in vectors if v]
         if not valid:
             return torch.empty((0, 0), dtype=torch.float32)
