@@ -222,6 +222,12 @@ The `ingest_documents` MCP tool accepts either paths visible to the MCP server p
 
 ## Result contract { #result-contract }
 
+Every agentic Retriever run writes a lightweight Agent Trajectory Interchange
+Format (ATIF) JSON trajectory under `./agentic-traces` by default. The
+trajectory bounds observation content to keep the file lightweight. These
+traces are not added to HTTP responses. If a trace cannot be persisted,
+retrieval continues and emits a warning.
+
 One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents, and returns the same hit fields as one-pass retrieval for each selected document. The agent works with reduced candidate records internally, but the selected documents are rehydrated at the end of the loop from the retrieval hop that returned them.
 
 Every agentic hit carries the one-pass hit fields (`text`, `metadata`, `source`, `source_id`, `path`, `page_number`, `pdf_basename`, `pdf_page`, scores, and related) plus these agentic annotations:
@@ -260,9 +266,11 @@ retriever query "find documents about parser behavior" \
 The `usage` object reports the exact token counts returned by the LLM provider.
 It contains `input_tokens`, `output_tokens`, and `total_tokens`. When available,
 `stages` preserves the provider-reported breakdown for the ReAct and
-final-selection calls. If the provider does not report usage, the response
-sets `usage` to `null`. `--include-usage` applies only to agentic queries. Classic
-`retriever query` output is unchanged.
+final-selection calls. When a provider reports uncached, cache-creation, and
+cache-read input separately, `input_tokens` includes all three counters. If the
+provider does not report usage, the response sets `usage` to `null`.
+`--include-usage` applies only to agentic queries. Classic `retriever query`
+output is unchanged.
 
 Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval and can include the same optional `usage` object at the response root. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"` and does not add usage metadata. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
 

@@ -221,10 +221,11 @@ def sum_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Dict[str
 def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     """Return stable token totals plus the exact provider stage breakdown.
 
-    Providers use both OpenAI-style ``prompt_tokens`` / ``completion_tokens``
-    and ``input_tokens`` / ``output_tokens`` names. Values are copied from the
-    provider aggregate; ``total_tokens`` is only filled by exact addition when
-    both component totals are present.
+    Usage schemas use both ``prompt_tokens`` / ``completion_tokens`` and
+    ``input_tokens`` / ``output_tokens`` names. Values are copied from the
+    provider aggregate. Separately reported cache-write and cache-read input
+    counters are included in the input total. ``total_tokens`` is only filled
+    by exact addition when both component totals are present.
     """
     if not usage_by_stage:
         return {}
@@ -238,14 +239,32 @@ def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Di
                 return int(value)
         return None
 
+    def _token_count(
+        usage: Mapping[str, Any],
+        aliases: tuple[str, ...],
+        *,
+        additive_keys: tuple[str, ...] = (),
+    ) -> Optional[int]:
+        value = _integer(usage, *aliases)
+        additions = [_integer(usage, key) for key in additive_keys]
+        if not any(addition is not None for addition in additions):
+            return value
+        if value is None:
+            return None
+        return value + sum(addition or 0 for addition in additions)
+
     input_by_stage: list[int | None] = []
     output_by_stage: list[int | None] = []
     total_by_stage: list[int | None] = []
     for usage in usage_by_stage.values():
         if not isinstance(usage, Mapping) or not usage:
             continue
-        stage_input = _integer(usage, "input_tokens", "prompt_tokens")
-        stage_output = _integer(usage, "output_tokens", "completion_tokens")
+        stage_input = _token_count(
+            usage,
+            ("input_tokens", "prompt_tokens"),
+            additive_keys=("cache_creation_input_tokens", "cache_read_input_tokens"),
+        )
+        stage_output = _token_count(usage, ("output_tokens", "completion_tokens"))
         stage_total = _integer(usage, "total_tokens")
         if stage_total is None and stage_input is not None and stage_output is not None:
             stage_total = stage_input + stage_output

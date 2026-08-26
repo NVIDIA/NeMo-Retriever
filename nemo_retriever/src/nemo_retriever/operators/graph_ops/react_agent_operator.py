@@ -29,6 +29,7 @@ from nemo_retriever._agentic.nemo_agent import (
     AgentConfig,
     create_retrieve_tool,
 )
+from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -352,6 +353,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
         finally:
             _ACTIVE_QUERY_ID.reset(query_id_token)
+        persist_atif_trajectory(result.atif_trace)
 
         if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
             raise _FatalAgentError(

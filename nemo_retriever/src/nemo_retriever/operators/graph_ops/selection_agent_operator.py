@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from nemo_retriever._agentic.nemo_agent import SelectionAgent, SelectionAgentConfig
+from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever._agentic.nemo_agent.results import AgentRunResult
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -350,13 +351,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     ) -> Optional[AgentRunResult]:
         """Run the selection agent, returning None on an unexpected failure."""
         try:
-            return self._ensure_agent().select_sync(
+            result = self._ensure_agent().select_sync(
                 query_text,
                 documents,
                 scores=scores,
                 query_id=query_id,
                 raw_log_dir=None,
             )
+            persist_atif_trajectory(result.atif_trace)
+            return result
         except Exception as exc:  # production: fall back to RRF rather than crash
             logger.warning("SelectionAgentOperator: selection failed for query %r: %s", query_id, exc, exc_info=True)
             return None

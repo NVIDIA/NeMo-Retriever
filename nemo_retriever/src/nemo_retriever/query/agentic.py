@@ -19,7 +19,6 @@ from typing import Any, Optional, Sequence
 
 import pandas as pd
 
-from nemo_retriever._agentic.nemo_agent.llm.usage import deep_merge_usage_breakdown
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_RERANK_MODEL
@@ -536,9 +535,13 @@ class AgenticRetriever:
             # ...). Pop both operator-owned backends after all query workers
             # finish, then restore the caller's IDs.
             for position, caller_query_id in enumerate(caller_query_ids):
-                breakdown: dict[str, Any] = {}
-                deep_merge_usage_breakdown(breakdown, react_operator.pop_query_usage(str(position)))
-                deep_merge_usage_breakdown(breakdown, selection_operator.pop_query_usage(str(position)))
+                # Each backend has already summed repeated calls within its
+                # stages. Operator stage names are disjoint
+                # (main_agent vs top{K}_agent), so joining the maps is enough.
+                breakdown = {
+                    **react_operator.pop_query_usage(str(position)),
+                    **selection_operator.pop_query_usage(str(position)),
+                }
                 if breakdown:
                     usage_by_query[caller_query_id] = breakdown
 

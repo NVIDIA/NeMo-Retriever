@@ -259,9 +259,11 @@ retriever query "how does the ingestion pipeline handle tables?" \
 ```
 
 The `usage` object can also include `stages`, which preserves the
-provider-reported breakdown for the ReAct and final-selection calls. The output
-sets `usage` to `null` when the LLM provider does not report it. This flag applies only
-with `--agentic`; classic query behavior and output are unchanged.
+provider-reported breakdown for the ReAct and final-selection calls. When a
+provider reports uncached, cache-creation, and cache-read input separately,
+`input_tokens` includes all three counters. The output sets `usage` to `null`
+when the LLM provider does not report it. This flag applies only with
+`--agentic`; classic query behavior and output are unchanged.
 
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:

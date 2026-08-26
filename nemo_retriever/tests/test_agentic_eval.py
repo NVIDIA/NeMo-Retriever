@@ -386,6 +386,32 @@ def test_agentic_query_documents_with_metadata_normalizes_usage():
     retriever.unload.assert_called_once()
 
 
+def test_normalize_usage_breakdown_includes_split_cache_input_tokens():
+    """Separately reported cache counters contribute to the input total."""
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    split_input_usage = {
+        "input_tokens": 120,
+        "cache_creation_input_tokens": 30,
+        "cache_read_input_tokens": 400,
+        "cache_creation": {
+            "ephemeral_5m_input_tokens": 30,
+            "ephemeral_1h_input_tokens": 0,
+        },
+        "output_tokens": 25,
+        "service_tier": "standard",
+    }
+
+    result = normalize_usage_breakdown({"main_agent": split_input_usage})
+
+    assert result == {
+        "input_tokens": 550,
+        "output_tokens": 25,
+        "total_tokens": 575,
+        "stages": {"main_agent": split_input_usage},
+    }
+
+
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_agentic_retriever_honors_top_k():
     """cfg.top_k drives the pipeline output count, not the hardcoded default of 10."""
