@@ -20,9 +20,9 @@ For a release-tagged image whose OpenAPI document should report a specific versi
 docker build \
   -f Dockerfile \
   --target service \
-  --build-arg RETRIEVER_VERSION=26.08-RC4 \
+  --build-arg RETRIEVER_VERSION=26.08.1 \
   --build-arg RETRIEVER_RELEASE_TYPE=release \
-  -t nemo-retriever-service:26.08-RC4 \
+  -t nemo-retriever-service:26.08.1 \
   .
 ```
 
