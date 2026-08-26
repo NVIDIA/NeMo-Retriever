@@ -215,7 +215,7 @@ retriever ingest /path/to/file-or-directory \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 > **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
@@ -283,8 +283,8 @@ same model that produced the stored chunk vectors:
 retriever = Retriever(
     vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
     embed_kwargs={
-        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
-        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
         "embedding_endpoint": "https://integrate.api.nvidia.com/v1/embeddings",
     },
     top_k=5,
@@ -349,6 +349,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
+When `--embed-model-name` is omitted, agentic retrieval uses the selected
+table's model.
 
 By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
 (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
@@ -368,7 +370,7 @@ CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is 
   --agentic \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 ```bash
@@ -401,7 +403,7 @@ retriever query "What is RAG?" \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
@@ -421,7 +423,7 @@ CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --agentic \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
   --top-k 1 \
   --agentic-react-max-steps 1
 ```
@@ -451,7 +453,7 @@ results = agentic_query_documents(
             table_name="nemo-retriever",
         ),
         embed=QueryEmbedOptions(
-            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
@@ -493,8 +495,8 @@ from nemo_retriever.models.llm import LiteLLMClient
 retriever = Retriever(
     vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
     embed_kwargs={
-        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
-        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
         "embedding_endpoint": "https://integrate.api.nvidia.com/v1/embeddings",
     },
     top_k=5,
@@ -704,7 +706,7 @@ ingestor = (
   )
   .embed(
     embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",
-    model_name="nvidia/llama-nemotron-embed-1b-v2",
+    model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_modality="text",
   )
   .vdb_upload()
