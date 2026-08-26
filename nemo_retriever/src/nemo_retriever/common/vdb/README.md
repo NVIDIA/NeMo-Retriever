@@ -123,9 +123,9 @@ For `vdb_op="lancedb"`, **`LanceDB.retrieval`**:
 
 - Opens the table with `lancedb.connect(table_path).open_table(table_name)`.
 - For dense retrieval, each query vector uses **`table.search([vector], vector_column_name=..., **search_kwargs)`**, optional **`.where(where_clause)`** (Lance / DataFusion SQL; `metadata` / `source` are stored as JSON strings), then **`.limit(top_k).refine_factor(...).nprobes(...)`**.
-- For hybrid retrieval, callers pass `hybrid=True` plus `query_texts` aligned with the vectors. LanceDB uses **`table.search(query_type="hybrid", vector_column_name=..., fts_columns="text").vector(vector).text(query_text)`** before applying the same `where`, limit, refine, probe, and select handling.
+- For hybrid retrieval, callers pass `hybrid=True` plus `query_texts` aligned with the vectors. LanceDB uses **`table.search(query_type="hybrid", vector_column_name=..., fts_columns="text").vector(vector).text(query_text)`** before applying the same `where`, limit, refine, probe, and select handling. Product query paths also pass the shared weighted-RRF policy (`candidate_depth=50`, `dense_weight=0.8`, `rrf_k=10`), then truncate the fused ranking to `top_k`. Direct low-level callers opt into that behavior explicitly with `hybrid_fusion=HybridFusionPolicy(...)`.
 
-Notable kwargs: `top_k`, `refine_factor`, `n_probe` / `nprobes`, `where` or `_filter`, `table_path`, `table_name`, `search_kwargs`, `hybrid`, and `query_texts`. `query_texts` is stripped from constructor kwargs and forwarded only for retrieval calls whose effective mode is hybrid.
+Notable kwargs: `top_k`, `refine_factor`, `n_probe` / `nprobes`, `where` or `_filter`, `table_path`, `table_name`, `search_kwargs`, `hybrid`, `query_texts`, and `hybrid_fusion`. `query_texts` is stripped from constructor kwargs and forwarded only for retrieval calls whose effective mode is hybrid.
 
 Example of **direct** operator use (you supply vectors):
 
