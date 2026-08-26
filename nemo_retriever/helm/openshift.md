@@ -192,7 +192,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set persistence.enabled=false \
   --set retrieverResults.enabled=false \
   --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
-  --set service.image.tag=26.8.0
+  --set service.image.tag=26.8.1
 ```
 
 Verify pods:
@@ -214,7 +214,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set ngcImagePullSecret.create=false \
   --set ngcApiSecret.create=false \
   --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
-  --set service.image.tag=26.8.0
+  --set service.image.tag=26.8.1
 ```
 
 After install, confirm workloads reach Ready before you run ingest:
