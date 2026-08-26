@@ -16,6 +16,10 @@ Creating the JSON job aggregate does not complete ingestion. For the live OpenAP
 
 Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations. For UDFs and other extension paths, refer to [Customize & extend](customize-extend.md). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
 
+## Collection { #collection }
+
+A **collection** is a scoped logical container for ingested documents on the Retriever service. The public catalog contract is REST `/v1/collections` on the published gateway. Python applications can use `RetrieverServiceClient`, which wraps those endpoints. Ingest and retrieval use `/v1/ingest/job` and `/v1/query` with `collection_name`. Callers do not supply LanceDB table names. Refer to [Collection management API](../reference/collection-management-api.md).
+
 ## Pipeline and tasks { #pipeline-and-tasks }
 
 NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. For UDFs, custom graph stages, and other extension paths, refer to [Customize & extend](customize-extend.md).

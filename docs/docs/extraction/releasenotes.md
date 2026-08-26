@@ -105,7 +105,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 - LanceDB retrieval-mode autodetection and persisted embedding identity for automatic local queries.
 - Local queries warn when an explicit embedding model differs from the model recorded on the LanceDB table. The query continues with the explicit override so intentional model overrides remain available.
 - Dense image-only VDB records are retained where applicable.
-- Scope-isolated collection and document lifecycle APIs (`/v1/collections`) support create, ingest, replace, query, and cleanup without exposing LanceDB table names.
+- Scope-isolated collection and document catalog APIs (`/v1/collections`) create, list, get, update, and delete collections and committed documents without exposing LanceDB table names. Ingest and replace use `POST /v1/ingest/job` with `collection_name`. Retrieval uses `POST /v1/query` with `collection_name`. Refer to [Collection management API](../reference/collection-management-api.md).
 - Fixed an issue where concurrent ingests into one VectorDB pod could report success minutes before the rows were durable or queryable. Each write now commits its rows independently, and index maintenance runs in a separate serialized phase where concurrent writers share one coalesced rebuild. An index-readiness wait that expires logs a warning and leaves the committed rows queryable instead of failing the write. Refer to [LanceDB index creation fails during concurrent Helm ingestion](troubleshoot.md#lancedb-concurrent-index-creation).
 
 ### Packaging and platform { #packaging-and-platform }
