@@ -60,7 +60,7 @@ This self-hosted NIM configuration gap does not apply to NVIDIA-hosted Build end
 
 ### CLI options { #cli-options }
 
-The following options apply only with `--agentic`. For the full flag list, refer to [Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#agentic-retrieval) in the CLI reference.
+The following options apply only with `--agentic`. For the full flag list, refer to [Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#agentic-retrieval) in the CLI reference.
 
 | Option | Default | Notes |
 |---|---|---|
@@ -150,7 +150,7 @@ If you register MCP retrieval tools, set `serviceConfig.mcp.queryMethods` to `ag
 
 For other self-hosted OpenAI-compatible NIMs, enable automatic tool choice and the parser that model requires. The `llama3_json` parser is the verified Super-49B setting.
 
-For chart keys, refer to [Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#agentic-retrieval-llm) in the Helm chart README.
+For chart keys, refer to [Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm) in the Helm chart README.
 
 ## Enable agentic retrieval in the service { #enable-agentic-retrieval-in-the-service }
 
@@ -173,7 +173,7 @@ agentic:
 
 Agentic service requests use the configured remote embedding endpoint for retrieval. The result-selection graph does not require a local embedding model or Hugging Face cache.
 
-On Kubernetes, the Helm chart maps the same knobs under `serviceConfig.agentic`. Enabling `nimOperator.answer_llm` does not populate this block. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#agentic-retrieval-llm).
+On Kubernetes, the Helm chart maps the same knobs under `serviceConfig.agentic`. Enabling `nimOperator.answer_llm` does not populate this block. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm).
 
 The VectorDB service runs up to four non-agentic queries concurrently by default.
 Set `--max-concurrent-queries` when starting `nemo_retriever.service.vectordb_app`
@@ -267,6 +267,6 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 - [Metadata and filtering](vdbs.md#metadata-and-filtering)
 - [Evaluate on your data](evaluate-on-your-data.md)
 - [Authentication and API keys](api-keys.md)
-- [CLI reference: Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#agentic-retrieval)
-- [Helm chart README: Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#agentic-retrieval-llm)
+- [CLI reference: Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#agentic-retrieval)
+- [Helm chart README: Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm)
 - [Release notes](releasenotes.md#retrieval-and-rag)
