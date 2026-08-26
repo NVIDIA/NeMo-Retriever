@@ -451,10 +451,22 @@ class Retriever:
         explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
             self.embed_kwargs
         )
-        if self.graph is None and explicit_model is None:
+        if self.graph is None:
             metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
             index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
             index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
+            if explicit_model and index_model:
+                resolved_explicit_model = resolve_embed_model(explicit_model)
+                resolved_index_model = resolve_embed_model(index_model)
+                if resolved_explicit_model != resolved_index_model:
+                    logger.warning(
+                        "The explicitly configured query embedding model %r differs from the model %r "
+                        "recorded on the index. Results may be unreliable because different embedding "
+                        "models can use incompatible vector spaces. Use the index model or rebuild the "
+                        "index with the query model. Continuing with the explicitly configured model.",
+                        resolved_explicit_model,
+                        resolved_index_model,
+                    )
 
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
         for key in _QUERY_ROUTING_VDB_KWARGS:

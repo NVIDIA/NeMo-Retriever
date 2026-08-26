@@ -156,6 +156,9 @@ work_queue:
 # Workers POST embedding rows to vectordb_url; the gateway proxies queries.
 vectordb:
   enabled: false
+  # Start and supervise a local VectorDB process from `retriever service start`.
+  # This must use a loopback vectordb_url.
+  launch_on_start: false
   lancedb_uri: "/data/vectordb"
   table_name: "nemo_retriever"
   embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"
