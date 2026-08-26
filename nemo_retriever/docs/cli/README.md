@@ -203,9 +203,13 @@ retrieval, preserving retriever ranking order and truncating the final output to
 `--top-k`. Local and batch ingest record the canonical embedding model on the
 LanceDB table, and non-service query uses that model automatically. Use
 `--embed-model-name` only as an explicit override or when querying a legacy or
-third-party table without model metadata. Endpoint URLs and provider prefixes
-remain runtime configuration, so continue to pass `--embed-invoke-url` and
-`--embed-model-provider-prefix` when the selected model must be routed remotely.
+third-party table without model metadata. If the explicit model differs from
+the model recorded on the table, the query logs a warning that names both
+models and continues with the explicit override. Confirm that the models use a
+compatible vector space before you trust the relevance results. Endpoint URLs
+and provider prefixes remain runtime configuration, so continue to pass
+`--embed-invoke-url` and `--embed-model-provider-prefix` when the selected model
+must be routed remotely.
 For example, a table can store the canonical model
 `nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
 `nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
