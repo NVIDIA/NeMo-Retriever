@@ -570,7 +570,7 @@ Scoring tiers on `AnswerResult`:
 - **Tier 1** (`answer_in_context`) -- whether retrieval surfaced the evidence; requires `reference`.
 - **Tier 2** (`token_f1`, `exact_match`) -- token-level overlap; requires `reference`.
 - **Tier 3** (`judge_score`) -- dual-judge `AnswerAccuracy` LLM-as-judge score (0.0-1.0), ported from ragas onto `litellm`; requires `reference` and `judge`. `judge_reasoning` is always empty (the metric emits only a rating).
-- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`, `judge_error`).
+- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `generation_error`, `refused_*`, `thinking_truncated`, `judge_error`).
 
 If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
 
