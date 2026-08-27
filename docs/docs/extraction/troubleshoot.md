@@ -215,15 +215,66 @@ To reduce memory pressure, try one or more of the following:
 
 ## Embedding service fails to start with an unsupported batch size error { #embedding-service-fails-unsupported-batch-size }
 
-On certain hardware, for example RTX 6000,
-the embedding service might fail to start and you might see an error similar to the following.
+On some GPUs, for example RTX 6000, a self-hosted embedding NIM can fail
+during startup with an error similar to the following:
 
-```bash
-ValueError: Configured max_batch_size (30) is larger than the model''s supported max_batch_size (3).
+```text
+ValueError: Configured max_batch_size (30) is larger than the model's supported max_batch_size (3).
 ```
 
-If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in the process environment. For example, run `export EMBEDDER_BATCH_SIZE=3`. The SDK and CLI do not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
+This error comes from the embedding NIM process. NeMo Retriever Library does
+not read `EMBEDDER_BATCH_SIZE`. Setting that variable in the SDK, CLI, or
+Helm process environment does not change NIM startup.
+
+Configure the embedding NIM container instead. Use the supported maximum
+from the error message. In this example, that value is `3`.
+
+**Helm:** The default chart deploys `llama-nemotron-embed-vl-1b-v2:2.3.0`
+as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
+on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
+keep the default entries. The following example keeps those defaults and
+adds the batch-size variable:
+
+```yaml
+nimOperator:
+  vlm_embed:
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "3"
+```
+
+**Development Compose:** The default `nim-embedding` image tag is `1.12.0`.
+For that image, add `NIM_TRITON_MAX_BATCH_SIZE` to the existing
+`nim-embedding` environment mapping in
+`nemo_retriever/dev/compose/service-mode.compose.yaml`.
+The following example shows the key to add:
+
+```yaml
+NIM_TRITON_MAX_BATCH_SIZE: "3"
+```
+
+**Library or CLI with a remote NIM:** Set the image-specific batch-size
+variable on the NIM container or NIMService that serves your embed URL.
+`--embed-batch-size` and `.embed(inference_batch_size=...)` batch requests
+after the NIM is running. They do not start the NIM.
+
+**NVIDIA-hosted Build endpoints:** NVIDIA operates the NIM. This startup
+error does not apply.
+
+For image-specific variables, refer to
+[Troubleshoot NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/troubleshoot.html)
+and
+[Environment Variables for NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/environment-variables.html).
+For the Helm env list contract, refer to
+[NIM Operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 
 
@@ -343,34 +394,21 @@ ulimit -n 10000
 
 ## Triton server INFO messages incorrectly logged as errors { #triton-server-info-messages-incorrectly-logged-as-errors }
 
-Sometimes messages are incorrectly logged as errors, when they are information.
-When this happens, you can ignore the errors, and treat the messages as information.
-For example, you might see log messages that look similar to the following.
+Self-hosted NIM containers can wrap Triton server INFO lines as ERROR in
+the container log. The logger can show a filename such as `nimutils.py`.
+That logger is inside the NIM image. It is not part of the NeMo Retriever
+Library source.
 
-```bash
-ERROR 2025-04-24 22:49:44.266 nimutils.py:68] tritonserver: /usr/local/lib/libcurl.so.4: ...
+You can ignore messages whose Triton payload starts with `I` (INFO).
+Treat them as informational. They do not mean ingest failed.
+
+```text
 ERROR 2025-04-24 22:49:44.268 nimutils.py:68] I0424 22:49:44.265292 98 cache_manager.cc:480] "Create CacheManager with cache_dir: '/opt/tritonserver/caches'"
 ERROR 2025-04-24 22:49:44.431 nimutils.py:68] I0424 22:49:44.431796 98 pinned_memory_manager.cc:277] "Pinned memory pool is created at '0x7f8e4a000000' with size 268435456"
-ERROR 2025-04-24 22:49:44.432 nimutils.py:68] I0424 22:49:44.432036 98 cuda_memory_manager.cc:107] "CUDA memory pool is created on device 0 with size 67108864"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] I0424 22:49:44.433448 98 model_config_utils.cc:753] "Server side auto-completed config: "
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "yolox"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] platform: "tensorrt_plan"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] max_batch_size: 32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] input {
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "input"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 3
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] }
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] output {
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] name: "output"
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 21504
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 9
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
-...
 ```
+
+If a real failure occurs, inspect the NIM pod or Compose container logs for
+the same timestamp. Do not treat these startup INFO lines as the root cause.
 
 
 

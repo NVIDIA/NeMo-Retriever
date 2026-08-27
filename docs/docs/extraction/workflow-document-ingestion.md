@@ -14,7 +14,9 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-`create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. The Python example below stops after `.embed()` so you can inspect chunks first; append `.vdb_upload(vdb_op="lancedb", vdb_kwargs={...})` before `.ingest()` to write directly to LanceDB (refer to [Vector databases](vdbs.md)).
+`create_ingestor(run_mode="inprocess")` and `create_ingestor(run_mode="batch")` return a `GraphIngestor`. That object chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. `create_ingestor(run_mode="service")` returns a `ServiceIngestor` for a remote Retriever service. Refer to the [Python API guide](nemo-retriever-api-reference.md#public-ingestion-factory) for the factory contract.
+
+The Python example below stops after `.embed()` so you can inspect chunks first; append `.vdb_upload(vdb_op="lancedb", vdb_kwargs={...})` before `.ingest()` to write directly to LanceDB (refer to [Vector databases](vdbs.md)).
 
 ## Choose how you call the library { #choose-how-you-call-the-library }
 
