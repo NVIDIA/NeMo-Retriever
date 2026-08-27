@@ -1747,16 +1747,34 @@ topology:
   batch:    { hpa: { enabled: false } }
 ```
 
-Then apply your own `ScaledObject` — example for the realtime pool:
+Then apply your own `ScaledObject` for the realtime pool.
+`spec.scaleTargetRef.name` must match the rendered realtime Deployment
+in the same namespace. For the documented quickstart release `retriever`,
+that Deployment is `retriever-nemo-retriever-realtime`. The chart names
+that Deployment from the Helm fullname plus the `-realtime` suffix, so a
+different release produces a different name. Discover the rendered name
+with the `app.kubernetes.io/instance` and `app.kubernetes.io/component`
+labels:
+
+```bash
+kubectl get deploy \
+  -l app.kubernetes.io/instance=retriever,app.kubernetes.io/component=realtime \
+  -o jsonpath='{.items[0].metadata.name}{"\n"}'
+```
+
+Replace `retriever` in the label selector with your Helm release name.
+Repeat the same pattern for the batch pool with
+`app.kubernetes.io/component=batch`. The following example uses the
+documented quickstart realtime Deployment:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: nemo-retriever-realtime
+  name: retriever-nemo-retriever-realtime
 spec:
   scaleTargetRef:
-    name: nemo-retriever-realtime
+    name: retriever-nemo-retriever-realtime
   minReplicaCount: 2
   maxReplicaCount: 8
   cooldownPeriod: 300
