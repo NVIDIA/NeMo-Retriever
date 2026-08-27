@@ -667,6 +667,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | Path                                              | Default | Notes |
 |---------------------------------------------------|---------|-------|
 | `serviceConfig.server.port`                       | `7670`  | Retriever service container listener port. Refer to [Service networking](#service-networking). |
+| `serviceConfig.logging.level`                     | `INFO`  | Retriever service log verbosity, rendered as `logging.level` in the ConfigMap. Typical values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`. Setting `INGEST_LOG_LEVEL` in `service.env` does not change this field. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
