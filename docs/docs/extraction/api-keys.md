@@ -3,7 +3,7 @@
 NeMo Retriever uses different credentials depending on what you are doing:
 
 - **`NVIDIA_API_KEY`** — Authorizes HTTP calls to [NVIDIA-hosted NIMs](https://build.nvidia.com/) (for example `ai.api.nvidia.com` and `integrate.api.nvidia.com`). Obtain this key from [build.nvidia.com](https://build.nvidia.com/). Keys typically start with `nvapi-`.
-- **NGC personal key** — Used when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) so the cluster can authenticate to NGC Helm repos, pull images from `nvcr.io`, and provide `NGC_API_KEY` to in-cluster NIM workloads.
+- **NGC personal key** — Used when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) so the cluster can authenticate to NGC Helm repos, pull images from `nvcr.io`, and provide `NGC_API_KEY` to in-cluster NIM workloads.
 
 You may need one or both, for example if you deploy with Helm from NGC and also call hosted inference APIs.
 
@@ -74,7 +74,7 @@ On Windows PowerShell you can use `$env:NGC_API_KEY = "<ngc-personal-key>"`.
 
 ## Using your NGC key with Helm { #using-your-ngc-key-with-helm }
 
-Set the chart values in the [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) section of the Helm chart README so the chart renders `ngc-secret` and `ngc-api`:
+Set the chart values in the [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#secrets) section of the Helm chart README so the chart renders `ngc-secret` and `ngc-api`:
 
 - `ngcImagePullSecret.create` and `ngcImagePullSecret.password` create the `ngc-secret` dockerconfigjson Secret for pulls from `nvcr.io`.
 - `ngcApiSecret.create` and `ngcApiSecret.password` create the `ngc-api` Secret with `NGC_API_KEY` and `NGC_CLI_API_KEY`. The service container maps `NGC_API_KEY` and `NVIDIA_API_KEY` from the Secret `NGC_API_KEY` key when the Secret exists.
@@ -90,4 +90,4 @@ helm install retriever ./nemo_retriever/helm \
 
 Helm accepts unknown `--set` paths without error. Paths such as `imagePullSecret`, `nimApiKey`, and `nims.ngcApiKey` do not create either Secret.
 
-For defaults and additional fields, refer to [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml).
+For defaults and additional fields, refer to [`values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/values.yaml).
