@@ -1,5 +1,9 @@
 # NeMo Retriever API Reference
 
+This page is the public Python SDK contract for NeMo Retriever Library. The generated signatures document `create_ingestor()` and the concrete objects it returns. They also document `Retriever` query and answer helpers, generation operators, and parameter models.
+
+Import the factory and `GraphIngestionError` from `nemo_retriever`. Import generation operators from `nemo_retriever.operators.generation`. Import LLM client, task, and result types from `nemo_retriever.models.llm`.
+
 ## Error and failure contract { #error-and-failure-contract }
 
 The Python API does not define a separate set of numeric NeMo Retriever
@@ -43,7 +47,8 @@ streaming methods can yield no results.
 `ExtractParams` validates `method` when you construct the model. For PDF
 extraction, use `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The
 `audio` value remains available for the legacy params-driven audio path. For
-new audio pipelines, use `GraphIngestor.extract_audio()` instead.
+new audio pipelines, use [`GraphIngestor.extract_audio()`](#graph-ingestor)
+instead.
 
 Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
@@ -178,7 +183,7 @@ Large PDFs are split into page batches before Ray processing so extraction can r
 
 To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
 
-**Python client (`pdf_split_config`):** Only `create_ingestor(run_mode="service")` implements `.pdf_split_config(pages_per_chunk=...)`, which records page-chunking settings in the request pipeline spec for the remote gateway. Local graph ingest (`run_mode="inprocess"` or `"batch"`) raises `NotImplementedError` if you call this method; PDFs are split automatically on the default ingest path without client-side configuration.
+**Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs are split automatically on the default graph ingest path without client-side configuration.
 
 ## One-shot text generation { #one-shot-text-generation }
 
@@ -250,6 +255,8 @@ To define another one-request/one-text-result task, subclass `TextGenerationTask
 
 Generation failures are collected per row using stable error codes: `empty_input`, `request_error`, `transport_error`, `unsupported_response`, `parse_error`, `empty_output`, and the RAG-specific `thinking_truncated`. Raw provider exceptions and credentials are not written to DataFrame outputs.
 
+Generated signatures for `TextGenerationOperator`, `GenericGenerationOperator`, and `SummarizationOperator` appear in [Generation operators](#generation-operators). Generated signatures for `TextGenerationTask`, `LiteLLMClient`, `LLMClient`, `AnswerJudge`, `AnswerResult`, and related types appear in [LLM clients, tasks, and results](#llm-clients-tasks-and-results). `Retriever.answer()` requires an `LLMClient` and returns `AnswerResult`.
+
 ## Persisted graphs are trusted configuration { #persisted-graphs-are-trusted-configuration }
 
 Graph loading imports operator classes and invokes their constructors. Load graph JSON only from trusted sources; do not expose graph payloads, callable references, or class names as model- or user-controlled agent tools.
@@ -265,14 +272,171 @@ QAGenerationOperator(
 )
 ```
 
+For LiteLLM `nvidia_nim/...` models, including the default `LiteLLMClient` and `LLMJudge` models, use `os.environ/NVIDIA_API_KEY`. Refer to [Authentication and API keys](api-keys.md#credential-references-in-persisted-graphs).
+
 Serializing a graph containing a literal API key fails with a contextual error instead of guessing which provider credential should be used on a worker.
 
+## Generated Python API { #generated-python-api }
 
-::: nemo_retriever.ingestor
+The signatures below are the supported public ingest, retrieve, generation, and parameter surfaces. Private helpers, module loggers, and duplicate re-exports are omitted.
+
+Use the following public import paths:
+
+- Import `create_ingestor` and `GraphIngestionError` from `nemo_retriever`.
+- Import `GraphIngestor` from `nemo_retriever.ingestor.graph_ingestor`.
+- Import `ServiceIngestor` from `nemo_retriever.service.service_ingestor`.
+- Import generation operators from `nemo_retriever.operators.generation`.
+- Import LLM client, task, and result types from `nemo_retriever.models.llm`.
+- Import parameter models from `nemo_retriever.common.params`.
+- Import `RetrieveVdbOperator` from `nemo_retriever.operators.vdb`.
+- Import `NemotronRerankActor` from `nemo_retriever.operators.rerank`.
+
+### Public ingestion factory { #public-ingestion-factory }
+
+`create_ingestor()` returns a concrete ingestion client from `run_mode`. The supported values are `inprocess`, `batch`, and `service`.
+
+| `run_mode` | Runtime type | Execution |
+| --- | --- | --- |
+| `inprocess` | `GraphIngestor` | Local in-process graph. This is the default. |
+| `batch` | `GraphIngestor` | Ray Data graph. |
+| `service` | `ServiceIngestor` | Remote Retriever service. |
+
+The function is annotated as returning the shared `Ingestor` interface. At runtime it returns `GraphIngestor` or `ServiceIngestor`. Use the generated class entries below for run-mode-specific methods.
+
+Factory keyword arguments merge into `IngestorCreateParams`. Common fields include `documents`, `base_url`, `api_key`, `error_policy`, `ray_address`, and `max_concurrency`. Refer to `IngestorCreateParams` in [Parameter models](#generated-parameter-models).
+
+```python
+from nemo_retriever import GraphIngestionError, create_ingestor
+
+graph = create_ingestor(run_mode="inprocess")
+batch = create_ingestor(run_mode="batch")
+service = create_ingestor(run_mode="service", base_url="http://localhost:7670")
+```
+
+::: nemo_retriever.ingestor.core.create_ingestor
     options:
+      heading_level: 4
+      show_docstring_description: false
+
+### Graph ingest { #graph-ingestor }
+
+`create_ingestor(run_mode="inprocess")` and `create_ingestor(run_mode="batch")` return `GraphIngestor`. Import the class from `nemo_retriever.ingestor.graph_ingestor` when you need the type explicitly. Import `GraphIngestionError` from `nemo_retriever`.
+
+`GraphIngestor` methods include `extract_html()`, `extract_audio()`, `extract_video()`, `get_error_rows()`, and `get_dataset()`. `get_error_rows()` filters rows that contain stage error payloads from a pandas DataFrame or Ray Dataset. If you omit `dataset`, it uses the dataset retained from the last `ingest()` call. `get_dataset()` returns that retained dataset.
+
+::: nemo_retriever.ingestor.graph_ingestor.GraphIngestor
+    options:
+      heading_level: 4
+      docstring_style: numpy
+      show_docstring_description: false
       filters:
+        - "!^_"
         - "!^pdf_split_config$"
 
-::: nemo_retriever.graph.retriever
+::: nemo_retriever.ingestor.graph_ingestor.GraphIngestionError
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+### Service ingest { #service-ingestor }
+
+`create_ingestor(run_mode="service")` returns `ServiceIngestor`. Import the class from `nemo_retriever.service.service_ingestor`. `ingest()` returns `ServiceIngestResult`.
+
+Service-only methods include `split()`, `pdf_split_config()`, `save_to_disk()`, `ingest_stream()`, `aingest_stream()`, and `cancel()`. `cancel()` is part of the public class. It currently raises `NotImplementedError` because the service does not expose a cancel endpoint.
+
+::: nemo_retriever.service.service_ingestor.ServiceIngestor
+    options:
+      heading_level: 4
+      docstring_style: numpy
+      show_docstring_description: false
+
+::: nemo_retriever.service.service_ingestor.ServiceIngestResult
+    options:
+      heading_level: 4
+      docstring_style: numpy
+      show_docstring_description: false
+
+### Retrieve { #generated-retrieve-api }
+
+`Retriever` embeds queries, retrieves from a vector database, and can rerank results. Pass `embed_kwargs` that match `EmbedParams`, `vdb_kwargs` for `RetrieveVdbOperator`, and `rerank_kwargs` for `NemotronRerankActor`.
+
+`Retriever.answer()` requires an `LLMClient` and returns `AnswerResult`. Pass an `AnswerJudge` only when you also pass `reference`. Those types are documented in [LLM clients, tasks, and results](#llm-clients-tasks-and-results).
+
+`Retriever.pipeline()` returns `RetrieverPipelineBuilder`. `generate()` accepts a `LiteLLMClient` instance or `model=` keyword arguments. `judge()` accepts an `LLMJudge` instance or `model=` keyword arguments.
+
+The package exports `nemo_retriever.retriever` as a default `Retriever()` instance. Construct `Retriever` directly when you need a configured object.
+
+::: nemo_retriever.graph.retriever.Retriever
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+::: nemo_retriever.graph.retriever.RetrieverPipelineBuilder
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+### Generation operators { #generation-operators }
+
+Import these classes from `nemo_retriever.operators.generation`. Usage notes and parameter-field tables appear in [One-shot text generation](#one-shot-text-generation).
+
+::: nemo_retriever.operators.generation.TextGenerationOperator
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+::: nemo_retriever.operators.generation.GenericGenerationOperator
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+::: nemo_retriever.operators.generation.SummarizationOperator
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+### LLM clients, tasks, and results { #llm-clients-tasks-and-results }
+
+Import these names from `nemo_retriever.models.llm`. That package path is the supported public import. `LiteLLMClient` and `LLMJudge` load from implementation submodules. Import those classes from `nemo_retriever.models.llm`. Use `from_kwargs()` for a flat constructor.
+
+::: nemo_retriever.models.llm
+    options:
+      heading_level: 4
+      show_docstring_description: false
+      members:
+        - AnswerJudge
+        - AnswerRequest
+        - AnswerResult
+        - GeneratedTextResult
+        - GenerationRequest
+        - GenerationResult
+        - GenerationTaskError
+        - GenericPromptTask
+        - JudgeResult
+        - LLMClient
+        - RagAnswerTask
+        - RetrievalResult
+        - RetrieverStrategy
+        - SummarizeTask
+        - TextCompletionClient
+        - TextGenerationTask
+
+::: nemo_retriever.models.llm.clients.litellm.LiteLLMClient
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+::: nemo_retriever.models.llm.clients.judge.LLMJudge
+    options:
+      heading_level: 4
+      show_docstring_description: false
+
+### Parameter models { #generated-parameter-models }
 
 ::: nemo_retriever.common.params
+    options:
+      heading_level: 4
+      show_submodules: false
+      filters:
+        - "!^_"
+        - "!^__all__$"

@@ -142,8 +142,14 @@ plugins:
             docstring_style: google
             show_source: true
             show_if_no_docstring: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_submodules: false
+            inherited_members: false
+            members_order: source
+            filters:
+              - "!^_"
           paths:
-            - ../api/src
             - ../nemo_retriever/src
   - mkdocs-jupyter:
       theme: auto
@@ -179,7 +185,7 @@ plugins:
         extraction/audio.md: extraction/audio-video.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
-        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-and-hybrid-retrieval
+        extraction/semantic-hybrid-retrieval.md: extraction/vdbs.md#semantic-retrieval
         extraction/vector-db-partners.md: extraction/vdbs.md#vector-database-partners
         extraction/prerequisites.md: extraction/prerequisites-support-matrix.md
         extraction/support-matrix.md: extraction/prerequisites-support-matrix.md

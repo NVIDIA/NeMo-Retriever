@@ -221,19 +221,21 @@ The `ingest_documents` MCP tool accepts either paths visible to the MCP server p
 
 ## Result contract { #result-contract }
 
-One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents, and returns the same hit fields as one-pass retrieval for each selected document. The agent works with reduced candidate records internally, but the selected documents are rehydrated at the end of the loop from the retrieval hop that returned them.
+One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents. Each selected document is rehydrated from the retrieval hop that returned it. CLI and service output then use different JSON shapes.
 
-Every agentic hit carries the one-pass hit fields (`text`, `metadata`, `source`, `source_id`, `path`, `page_number`, `pdf_basename`, `pdf_page`, scores, and related) plus these agentic annotations:
+CLI `retriever query` without `--agentic` projects each hit to five fields: `modality`, `page_number`, `score`, `source`, and `text`. CLI `retriever query --agentic` does not use that projection. It prints the internal hit dictionary plus these ranking annotations:
 
 - `doc_id` — the document identifier the agent selected.
 - `rank` — the position in the final ranking.
 - `result_source` — `final_results`, `rrf`, or `selection_agent`, depending on which stage produced the ranked ID.
 
-CLI `retriever query --agentic` prints those hits as JSON objects.
+`modality` and `score` exist only on the dense CLI path. Agentic CLI objects can include internal fields such as `content_type`, `_distance`, `metadata`, `path`, `pdf_basename`, `pdf_page`, and `source_id` when the retrieval hop returned them.
 
-Service `POST /v1/query` with `agentic=true` uses the same hits envelope as classic retrieval. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
+When the agent names a document that no retrieval hop returned, the CLI object contains only `doc_id`, `rank`, and `result_source`. Classic hit keys are absent, not present with null values.
 
-An agent can name a document that no retrieval hop returned, which leaves nothing to rehydrate. Those hits report null one-pass fields, and `source` falls back to `doc_id`.
+Service `POST /v1/query` with `agentic=true` maps those ranked hits onto the classic hits envelope. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
+
+When no retrieval hop captured the document, the service envelope fills these classic fields with null: `text`, `source_id`, `path`, `page_number`, `pdf_basename`, and `pdf_page`. `source` falls back to `doc_id`. That null-key behavior applies to service and MCP hits only, not to CLI `--agentic` output.
 
 ## Failure and retry behavior { #failure-and-retry-behavior }
 
@@ -257,7 +259,7 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 - Local CLI and harness runs need a CUDA GPU host and the `[local]` extra. `super-49b` needs two visible GPUs and `--agentic-local-tensor-parallel-size 2`.
 - Retriever Service agentic queries require a remote chat-completions URL, a remote embedding endpoint, and matching credentials in the process environment.
 - The default Helm `answer_llm` Super-49B NIM is limited to `POST /v1/answer` until you add the tool-call passthrough arguments. Enabling `nimOperator.answer_llm` does not configure `serviceConfig.agentic`.
-- Agentic results are document IDs, not chunk text. Downstream answer generation must load source documents by those IDs if it needs passage text.
+- Agentic ranking is document-level. Rehydrated hits include chunk `text` when a retrieval hop returned the document. Otherwise load the source document by `doc_id`.
 - Service agentic queries accept a single query string, `format=hits` only, and cannot combine `rerank=true` on the same `/v1/query` request. On the CLI, `--rerank` applies to each agent retrieve hop.
 
 ## Related Topics { #related-topics }
