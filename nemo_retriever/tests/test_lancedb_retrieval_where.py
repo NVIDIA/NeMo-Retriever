@@ -14,6 +14,7 @@ import pytest
 
 lancedb = pytest.importorskip("lancedb")
 
+from nemo_retriever.common.vdb.hybrid_fusion import HybridFusionPolicy
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.records import to_client_vdb_records
 
@@ -45,6 +46,34 @@ def _tiny_table(uri: str, *, create_fts_index: bool = False) -> None:
     table = db.create_table("t", rows, schema=schema, mode="overwrite")
     if create_fts_index:
         table.create_fts_index("text", replace=True)
+
+
+def _hybrid_weighting_table(uri: str) -> None:
+    schema = pa.schema(
+        [
+            pa.field("vector", pa.list_(pa.float32(), 2)),
+            pa.field("text", pa.string()),
+            pa.field("metadata", pa.string()),
+            pa.field("source", pa.string()),
+        ]
+    )
+    rows = [
+        {
+            "vector": vector,
+            "text": text,
+            "metadata": json.dumps({"doc_id": doc_id}),
+            "source": "{}",
+        }
+        for doc_id, vector, text in (
+            ("dense", [1.0, 0.0], "semantic dense anchor"),
+            ("middle_1", [0.9, 0.1], "middle one"),
+            ("middle_2", [0.8, 0.2], "middle two"),
+            ("middle_3", [0.7, 0.3], "middle three"),
+            ("sparse", [0.0, 1.0], "rare unicorn identifier"),
+        )
+    ]
+    table = lancedb.connect(uri).create_table("t", rows, schema=schema, mode="overwrite")
+    table.create_fts_index("text", replace=True)
 
 
 def test_retrieval_where_filters_rows() -> None:
@@ -122,6 +151,34 @@ def test_hybrid_retrieval_uses_query_texts() -> None:
 
     assert results[0]
     assert results[0][0]["text"] == "alpha"
+
+
+def test_hybrid_retrieval_applies_explicit_weighted_rrf_policy() -> None:
+    d = tempfile.mkdtemp()
+    _hybrid_weighting_table(d)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    equal_rrf = op.retrieval(
+        [[1.0, 0.0]],
+        top_k=5,
+        table_path=d,
+        table_name="t",
+        hybrid=True,
+        query_texts=["unicorn"],
+    )
+    tuned = op.retrieval(
+        [[1.0, 0.0]],
+        top_k=1,
+        table_path=d,
+        table_name="t",
+        hybrid=True,
+        query_texts=["unicorn"],
+        hybrid_fusion=HybridFusionPolicy(candidate_depth=5, dense_weight=0.8, rrf_k=10),
+    )
+
+    assert json.loads(equal_rrf[0][0]["metadata"])["doc_id"] == "sparse"
+    assert json.loads(tuned[0][0]["metadata"])["doc_id"] == "dense"
+    assert len(tuned[0]) == 1
 
 
 def test_hybrid_ingestion_builds_searchable_fts_index_from_record_text() -> None:

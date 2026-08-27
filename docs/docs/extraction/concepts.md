@@ -7,7 +7,7 @@ These terms appear throughout NeMo Retriever Library documentation.
 An **ingestion job** is a unit of work you run on input content (documents, audio, video, and other supported types). Submit jobs through any of these supported entry points:
 
 - **Python API** — `Ingestor` task chains such as `.extract(...)`. Library and batch modes run ingest in-process. Against a deployed Retriever service (`run_mode="service"`), the client wraps the REST contract below. Refer to the [Python API guide](nemo-retriever-api-reference.md).
-- **`retriever ingest` CLI** — including `retriever ingest service` for a running service. Refer to the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+- **`retriever ingest` CLI** — including `retriever ingest service` for a running service. Refer to the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 - **Retriever service REST API** — the public two-step ingest workflow:
   1. Create and configure the job aggregate with `POST /v1/ingest/job` and an `application/json` `JobCreateRequest` body. The JSON sets job-level fields such as `expected_documents`; it does not embed document bytes.
   2. Upload document content separately with multipart requests to job-scoped endpoints such as `POST /v1/ingest/job/{job_id}/document`.
@@ -15,6 +15,10 @@ An **ingestion job** is a unit of work you run on input content (documents, audi
 Creating the JSON job aggregate does not complete ingestion. For the live OpenAPI schema, open `/docs` or `/openapi.json` on a running service. For how to run a service, refer to [Deployment options](deployment-options.md).
 
 Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations. For UDFs and other extension paths, refer to [Customize & extend](customize-extend.md). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
+
+## Collection { #collection }
+
+A **collection** is a scoped logical container for ingested documents on the Retriever service. The public catalog contract is REST `/v1/collections` on the published gateway. Python applications can use `RetrieverServiceClient`, which wraps those endpoints. Ingest and retrieval use `/v1/ingest/job` and `/v1/query` with `collection_name`. Callers do not supply LanceDB table names. Refer to [Collection management API](../reference/collection-management-api.md).
 
 ## Pipeline and tasks { #pipeline-and-tasks }
 
@@ -45,7 +49,7 @@ Token-based splitting uses the revision-pinned tokenizer for the default embeddi
 ## Deployment modes { #deployment-modes }
 
 - **Library mode** — Run without the full container stack where appropriate; refer to [Deployment options](deployment-options.md).
-- **Kubernetes / Helm (self-hosted)** — Refer to [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
-- **Notebooks** — [Jupyter examples](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md) for experimentation and RAG demos.
+- **Kubernetes / Helm (self-hosted)** — Refer to [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
+- **Notebooks** — [Jupyter examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md) for experimentation and RAG demos.
 
 For a concise comparison, refer to [Deployment options](deployment-options.md).

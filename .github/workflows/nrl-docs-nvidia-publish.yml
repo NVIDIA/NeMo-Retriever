@@ -14,24 +14,35 @@
 #   index.html, versions.json, latest/, <version>/ (e.g. 26.8.1/)
 #
 # 26.08.1 current-docs model:
-#   - Build content from the workflow commit (dispatch from main after this
-#     merges, or from this branch for a one-shot cutover).
+#   - Build content from the workflow commit (github.sha).
 #   - Publish folder label is 26.8.1; versions.json on that commit owns latest.
 #
-# Manual publish only (workflow_dispatch). Do not re-enable push/tag auto-publish
-# until that is an explicit operator decision.
+# Auto-publish matches nrl-docs-github-pages.yml: push to main (path-filtered),
+# nightly cron, and workflow_dispatch. Live S3 writes are NVIDIA/NeMo-Retriever
+# only (publish job if). Tags and other unexpected events stay fail-closed.
 #
-# Operator steps when ready to publish:
-#   1. Merge doc changes to main (content source for the build).
-#   2. Keep docs/publish/versions.json on main accurate (version picker + latest alias).
-#   3. Actions → "NRL documentation — docs.nvidia.com publish" → Run workflow:
-#        dry-run: false
-#        docs-version-override: 26.8.1 (or leave empty to use NRL_DOCS_PUBLISH_VERSION / default)
-#        publish-as-latest: true only when intentionally refreshing latest/
-# Backports: publish-as-latest: false; do not move the "latest" alias in versions.json.
+# Operator steps:
+#   - Merges to main that touch docs/**, nemo_retriever/**, or this workflow
+#     publish 26.8.1/ and latest/ (same path set as GitHub Pages).
+#   - Nightly 07:00 UTC republishes main even if there was no push.
+#   - Manual: Actions → "NRL documentation — docs.nvidia.com publish":
+#        dry-run: false for a live cut; default remains true
+#        docs-version-override: 26.8.1 (or empty for NRL_DOCS_PUBLISH_VERSION)
+#        publish-as-latest: false for backports (do not move latest in versions.json)
+# Keep docs/publish/versions.json on main accurate (version picker + latest alias).
 name: NRL documentation — docs.nvidia.com publish
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "nemo_retriever/**"
+      - ".github/workflows/nrl-docs-nvidia-publish.yml"
+  schedule:
+    # Nightly (UTC): pick up doc changes even if no pushes (same as GitHub Pages)
+    - cron: "0 7 * * *"
   workflow_dispatch:
     inputs:
       dry-run:
@@ -91,16 +102,26 @@ jobs:
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
         run: |
-          # Fail closed: if a push/tag trigger is re-added, do not write S3/latest.
-          # Aug 19 26.08 leaked because a push event forced dry_run=false and
-          # publish_latest=true with no operator confirmation.
-          if [[ "${EVENT_NAME}" != "workflow_dispatch" ]]; then
-            echo "dry_run=true" >> "$GITHUB_OUTPUT"
-            echo "publish_latest=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Non-dispatch event ${EVENT_NAME}; forcing dry-run and not moving latest/."
-          else
+          # Live auto-publish: push and nightly schedule on main (matches GitHub Pages).
+          # Manual dispatch keeps operator inputs (dry-run defaults to true).
+          # Fail closed for tags and any other unexpected event — the Aug 19 26.08
+          # leak wrote S3/latest from a push with no confirmation path.
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
             echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          elif [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "schedule" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+              echo "dry_run=true" >> "$GITHUB_OUTPUT"
+              echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::${EVENT_NAME} on ${GITHUB_REF}; forcing dry-run (main only)."
+            else
+              echo "dry_run=false" >> "$GITHUB_OUTPUT"
+              echo "publish_latest=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Unsupported event ${EVENT_NAME}; forcing dry-run and not moving latest/."
           fi
 
           VERSION="${VERSION_INPUT}"
@@ -175,7 +196,9 @@ jobs:
   publish:
     name: Publish to S3 and flush Akamai
     needs: [resolve, build]
-    if: github.repository == 'NVIDIA/NeMo-Retriever'
+    if: >
+      github.repository == 'NVIDIA/NeMo-Retriever' &&
+      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     environment: docs-nvidia-prod
     steps:
