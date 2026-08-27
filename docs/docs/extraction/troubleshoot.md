@@ -215,15 +215,66 @@ To reduce memory pressure, try one or more of the following:
 
 ## Embedding service fails to start with an unsupported batch size error { #embedding-service-fails-unsupported-batch-size }
 
-On certain hardware, for example RTX 6000,
-the embedding service might fail to start and you might see an error similar to the following.
+On some GPUs, for example RTX 6000, a self-hosted embedding NIM can fail
+during startup with an error similar to the following:
 
-```bash
-ValueError: Configured max_batch_size (30) is larger than the model''s supported max_batch_size (3).
+```text
+ValueError: Configured max_batch_size (30) is larger than the model's supported max_batch_size (3).
 ```
 
-If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in the process environment. For example, run `export EMBEDDER_BATCH_SIZE=3`. The SDK and CLI do not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
+This error comes from the embedding NIM process. NeMo Retriever Library does
+not read `EMBEDDER_BATCH_SIZE`. Setting that variable in the SDK, CLI, or
+Helm process environment does not change NIM startup.
+
+Configure the embedding NIM container instead. Use the supported maximum
+from the error message. In this example, that value is `3`.
+
+**Helm:** The default chart deploys `llama-nemotron-embed-vl-1b-v2:2.3.0`
+as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
+on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
+keep the default entries. The following example keeps those defaults and
+adds the batch-size variable:
+
+```yaml
+nimOperator:
+  vlm_embed:
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "3"
+```
+
+**Development Compose:** The default `nim-embedding` image tag is `1.12.0`.
+For that image, add `NIM_TRITON_MAX_BATCH_SIZE` to the existing
+`nim-embedding` environment mapping in
+`nemo_retriever/dev/compose/service-mode.compose.yaml`.
+The following example shows the key to add:
+
+```yaml
+NIM_TRITON_MAX_BATCH_SIZE: "3"
+```
+
+**Library or CLI with a remote NIM:** Set the image-specific batch-size
+variable on the NIM container or NIMService that serves your embed URL.
+`--embed-batch-size` and `.embed(inference_batch_size=...)` batch requests
+after the NIM is running. They do not start the NIM.
+
+**NVIDIA-hosted Build endpoints:** NVIDIA operates the NIM. This startup
+error does not apply.
+
+For image-specific variables, refer to
+[Troubleshoot NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/troubleshoot.html)
+and
+[Environment Variables for NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/environment-variables.html).
+For the Helm env list contract, refer to
+[NIM Operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 
 
@@ -343,34 +394,21 @@ ulimit -n 10000
 
 ## Triton server INFO messages incorrectly logged as errors { #triton-server-info-messages-incorrectly-logged-as-errors }
 
-Sometimes messages are incorrectly logged as errors, when they are information.
-When this happens, you can ignore the errors, and treat the messages as information.
-For example, you might see log messages that look similar to the following.
+Self-hosted NIM containers can wrap Triton server INFO lines as ERROR in
+the container log. The logger can show a filename such as `nimutils.py`.
+That logger is inside the NIM image. It is not part of the NeMo Retriever
+Library source.
 
-```bash
-ERROR 2025-04-24 22:49:44.266 nimutils.py:68] tritonserver: /usr/local/lib/libcurl.so.4: ...
+You can ignore messages whose Triton payload starts with `I` (INFO).
+Treat them as informational. They do not mean ingest failed.
+
+```text
 ERROR 2025-04-24 22:49:44.268 nimutils.py:68] I0424 22:49:44.265292 98 cache_manager.cc:480] "Create CacheManager with cache_dir: '/opt/tritonserver/caches'"
 ERROR 2025-04-24 22:49:44.431 nimutils.py:68] I0424 22:49:44.431796 98 pinned_memory_manager.cc:277] "Pinned memory pool is created at '0x7f8e4a000000' with size 268435456"
-ERROR 2025-04-24 22:49:44.432 nimutils.py:68] I0424 22:49:44.432036 98 cuda_memory_manager.cc:107] "CUDA memory pool is created on device 0 with size 67108864"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] I0424 22:49:44.433448 98 model_config_utils.cc:753] "Server side auto-completed config: "
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "yolox"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] platform: "tensorrt_plan"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] max_batch_size: 32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] input {
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "input"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 3
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] }
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] output {
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] name: "output"
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 21504
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 9
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
-...
 ```
+
+If a real failure occurs, inspect the NIM pod or Compose container logs for
+the same timestamp. Do not treat these startup INFO lines as the root cause.
 
 
 
@@ -461,7 +499,7 @@ helm upgrade retriever ./nemo_retriever/helm \
   --set serviceConfig.vectordb.writeTimeoutSeconds=900
 ```
 
-For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
+For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
 
 
 ## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
@@ -484,7 +522,7 @@ Complete the following checks:
 3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
 4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
 
-For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
 ## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
 
@@ -501,10 +539,10 @@ Complete the following checks:
 
 1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
 2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
-3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
 
-For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Split topology Helm install or upgrade times out with Deployments not ready { #helm-split-topology-startup-deadlock }
 
@@ -541,7 +579,7 @@ kubectl patch service <release>-nemo-retriever-gateway --type=merge \
 ```
 
 Upgrade to a chart version that includes the startup Service so you do not need
-to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
+to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
 
 ## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
 
@@ -568,7 +606,7 @@ The affected NIM is unavailable during re-cache. Repeat the sequence for every N
 
 Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
 
-For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
 ## NIMCache or NIMService still uses ngc-secret after a global Secret rename { #helm-nim-secret-names }
 
@@ -583,7 +621,7 @@ Complete the following checks:
 3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the global Secret names, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
 4. Top-level `imagePullSecrets` applies only to Retriever Pods. It does not update NIM Operator custom resources.
 
-For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
+For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
 
 ## Agentic retrieval fails with auto tool choice HTTP 400 { #agentic-auto-tool-choice }
 
@@ -605,8 +643,8 @@ For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super
 - [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
 - [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
-- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
-- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
+- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
+- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

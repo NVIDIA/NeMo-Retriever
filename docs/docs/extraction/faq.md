@@ -34,9 +34,9 @@ for record in result.to_dict(orient="records"):
 
 Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, and metadata to your retriever.
 
-The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
+The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
-For Python ingest and indexing, refer to [Ingest documents into a searchable VDB collection](workflow-document-ingestion.md). After you have an index, the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb) and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb) show framework integration.
+For Python ingest and indexing, refer to [Ingest documents into a searchable VDB collection](workflow-document-ingestion.md). After you have an index, the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/llama_index_multimodal_rag.ipynb) and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/langchain_multimodal_rag.ipynb) show framework integration.
 
 ## Where does NeMo Retriever Library ingest to? { #where-does-nrl-ingest-to }
 
@@ -81,7 +81,7 @@ On a conventional cluster without GPU sharing, extra core NIM pods stay `Pending
 
 The chart keeps the same `NIMCache` name when you change a NIM image repository or tag. The NIM Operator marks `spec.source.ngc.modelPuller` immutable, so Kubernetes rejects the in-place update.
 
-Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image repository or tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Helm upgrade fails when changing a NIM image repository or tag](troubleshoot.md#helm-nimcache-modelpuller-immutable) and [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
 ## Why do NIMCache and NIMService still use ngc-secret after I rename ngcImagePullSecret.name? { #helm-nim-secret-rename }
 
@@ -91,7 +91,7 @@ A non-empty per-NIM override takes precedence. If you previously set those field
 
 `imagePullSecrets` applies only to Retriever Pods. It does not appear on NIMCache or NIMService.
 
-Refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [NIMCache or NIMService still uses ngc-secret after a global Secret rename](troubleshoot.md#helm-nim-secret-names).
+Refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [NIMCache or NIMService still uses ngc-secret after a global Secret rename](troubleshoot.md#helm-nim-secret-names).
 
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
@@ -106,7 +106,7 @@ For production environments, you should use the provided Helm charts. When you r
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 
-For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md).
 
 When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`. Refer to the [Python API error contract](nemo-retriever-api-reference.md#error-and-failure-contract) and [Python API error triage](troubleshoot.md#python-api-error-triage) for error signals, extraction-path mappings, and escalation criteria.
 
