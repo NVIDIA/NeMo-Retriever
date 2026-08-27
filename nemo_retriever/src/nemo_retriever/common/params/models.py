@@ -692,6 +692,39 @@ class EmbedParams(_ParamsModel):
 MetaJoinKey = Literal["auto", "source_id", "source_name"]
 
 
+class VdbSinkParams(_ParamsModel):
+    """Bounded terminal-sink policy for Ray Data VDB ingestion."""
+
+    max_batch_bytes: int = Field(
+        default=256 << 20,
+        gt=0,
+        description="Maximum retained Arrow batch size in bytes for the coordinated VDB sink.",
+    )
+    prefetch_batches: int = Field(
+        default=1,
+        ge=0,
+        description="Number of upstream batches buffered while the VDB sink writes.",
+    )
+    optimize: bool = Field(
+        default=False,
+        description="Run the backend optimization lifecycle after the bounded write completes.",
+    )
+    operation_id: Optional[str] = Field(
+        default=None,
+        description="Stable retry identity used to recover or reject repeated sink operations.",
+    )
+
+    @field_validator("operation_id")
+    @classmethod
+    def _validate_operation_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("operation_id must be non-empty when provided")
+        return normalized
+
+
 class VdbUploadParams(_ParamsModel):
     """Post-graph vector DB upload configuration.
 
@@ -701,6 +734,7 @@ class VdbUploadParams(_ParamsModel):
 
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
+    sink: VdbSinkParams = Field(default_factory=VdbSinkParams)
     meta_dataframe: Optional[Any] = None
     """Path to csv/json/parquet or an in-memory :class:`pandas.DataFrame`."""
     meta_source_field: Optional[str] = None

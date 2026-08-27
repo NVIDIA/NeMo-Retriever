@@ -4,10 +4,10 @@
 
 import json
 import logging
+import math
 import os
 import threading
 import time
-
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -28,9 +28,9 @@ from nemo_retriever.common.schemas.collections import (
     DocumentPage,
 )
 from nemo_retriever.common.vdb.adt_vdb import (
+    VDB,
     CollectionWriteContext,
     CollectionWriteResult,
-    VDB,
 )
 from nemo_retriever.common.vdb.hybrid_fusion import (
     HybridFusionPolicy,
@@ -83,6 +83,43 @@ def _normalize_on_bad_vectors(value: str) -> str:
     if normalized not in _VALID_ON_BAD_VECTORS:
         raise ValueError(f"on_bad_vectors must be one of {sorted(_VALID_ON_BAD_VECTORS)}; got {value!r}")
     return normalized
+
+
+def _stabilize_fill_vectors(
+    rows: list[dict[str, Any]],
+    *,
+    vector_dim: int,
+    fill_value: float,
+) -> list[dict[str, Any]]:
+    """Make ``fill`` independent of the installed LanceDB release.
+
+    LanceDB 0.34 replaces the complete vector when its width is wrong or any
+    element is NaN. Newer releases preserve valid elements and fill only the
+    invalid positions. NeMo Retriever supports both installation paths, so
+    normalize the historical public behavior before handing rows to LanceDB.
+    Values that LanceDB cannot coerce remain untouched so its normal validation
+    and error reporting still apply.
+    """
+
+    replacement = [float(fill_value)] * int(vector_dim)
+    stabilized: list[dict[str, Any]] = []
+    for row in rows:
+        vector = row.get("vector")
+        try:
+            wrong_dim = len(vector) != vector_dim
+        except TypeError:
+            wrong_dim = True
+
+        has_nan = False
+        if not wrong_dim:
+            try:
+                has_nan = any(value is not None and math.isnan(float(value)) for value in vector)
+            except (TypeError, ValueError):
+                stabilized.append(row)
+                continue
+
+        stabilized.append({**row, "vector": list(replacement)} if wrong_dim or has_nan else row)
+    return stabilized
 
 
 def _json_str(value) -> str:
@@ -1006,6 +1043,13 @@ class LanceDB(VDB):
                     record_batches, expected_dim=vector_dim if enforce_dim else None
                 )
 
+            if self.on_bad_vectors == "fill":
+                results = _stabilize_fill_vectors(
+                    results,
+                    vector_dim=vector_dim,
+                    fill_value=self.fill_value,
+                )
+
             if self._service_table_schema:
                 results = _to_service_lancedb_rows(results)
                 schema = _with_retrieval_mode_metadata(
@@ -1112,13 +1156,20 @@ class LanceDB(VDB):
         hybrid = hybrid if hybrid is not None else self.hybrid
         sparse = sparse if sparse is not None else self.sparse
         fts_language = fts_language or self.fts_language
+        phase_timings = kwargs.pop("_phase_timings", None)
+        if isinstance(phase_timings, dict):
+            phase_timings.setdefault("vector_index", 0.0)
+            phase_timings.setdefault("fts_index", 0.0)
 
         if sparse:
             fts_index_start = time.perf_counter()
             sparse_rows = int(table.count_rows())
             table.create_fts_index("text", language=fts_language, replace=True)
             wait_for_column_index(table, "text", covered_rows=sparse_rows)
-            _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
+            fts_duration = time.perf_counter() - fts_index_start
+            _record_timing("lancedb.fts_index_ready", fts_duration)
+            if isinstance(phase_timings, dict):
+                phase_timings["fts_index"] = fts_duration
             return
 
         num_rows = int(table.count_rows())
@@ -1163,13 +1214,19 @@ class LanceDB(VDB):
                 replace=True,
             )
             wait_for_column_index(table, "vector", covered_rows=num_rows)
-            _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
+        vector_duration = time.perf_counter() - vector_index_start
+        _record_timing("lancedb.vector_index_ready", vector_duration)
+        if isinstance(phase_timings, dict):
+            phase_timings["vector_index"] = vector_duration
 
         if hybrid:
             fts_index_start = time.perf_counter()
             table.create_fts_index("text", language=fts_language, replace=True)
             wait_for_column_index(table, "text", covered_rows=num_rows)
-            _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
+            fts_duration = time.perf_counter() - fts_index_start
+            _record_timing("lancedb.fts_index_ready", fts_duration)
+            if isinstance(phase_timings, dict):
+                phase_timings["fts_index"] = fts_duration
 
     def run(self, records):
         """Commit rows, then bring the table indexes up to date.
@@ -1326,6 +1383,13 @@ class LanceDB(VDB):
                 "put() only updates existing rows and will not create tables."
             ) from exc
 
+        if self.on_bad_vectors == "fill":
+            rows = _stabilize_fill_vectors(
+                rows,
+                vector_dim=_schema_vector_dim(_table_schema(table)),
+                fill_value=self.fill_value,
+            )
+
         input_ids = [r[key] for r in rows]
         unique_input_ids = list(dict.fromkeys(input_ids))
 
@@ -1389,6 +1453,9 @@ class LanceDB(VDB):
             where_clause = str(where_clause).strip() or None
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
+        from nemo_retriever.common.vdb.sink import assert_lancedb_table_ready
+
+        assert_lancedb_table_ready(table)
 
         search_results = []
         for query_text in query_texts:
@@ -1479,6 +1546,9 @@ class LanceDB(VDB):
             where_clause = str(where_clause).strip() or None
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
+        from nemo_retriever.common.vdb.sink import assert_lancedb_table_ready
+
+        assert_lancedb_table_ready(table)
 
         if hybrid:
             vectors_for_search = list(vectors)

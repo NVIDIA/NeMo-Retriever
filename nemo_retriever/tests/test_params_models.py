@@ -7,7 +7,16 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_retriever.common.params.models import EmbedParams, ExtractParams, NO_API_KEY, StoreParams, VideoFrameParams
+from nemo_retriever.common.params.models import (
+    EmbedParams,
+    ExtractParams,
+    NO_API_KEY,
+    StoreParams,
+    VdbSinkParams,
+    VdbUploadParams,
+    VideoFrameParams,
+)
+from nemo_retriever.graph.ingestor_runtime import build_post_extract_graph
 
 
 class TestVideoFrameParams:
@@ -106,6 +115,41 @@ class TestStoreParams:
         assert "SECRET_TEST" not in rendered
         assert "storage_options=***" in rendered
         assert params.storage_options == {"key": "AKIA_TEST", "secret": "SECRET_TEST"}
+
+
+class TestVdbSinkParams:
+    def test_sink_configuration_reaches_the_operator_not_the_backend(self, tmp_path) -> None:
+        params = VdbUploadParams(
+            vdb_kwargs={
+                "uri": str(tmp_path),
+                "table_name": "chunks",
+                "vector_dim": 2,
+                "build_index": False,
+            },
+            sink=VdbSinkParams(
+                max_batch_bytes=64 << 20,
+                prefetch_batches=2,
+                optimize=True,
+                operation_id="qualification-run",
+            ),
+        )
+
+        operator = build_post_extract_graph(vdb_upload_params=params, stage_order=()).roots[0].operator
+
+        assert operator.sink_policy.max_batch_bytes == 64 << 20
+        assert operator.sink_policy.prefetch_batches == 2
+        assert operator.sink_policy.optimize is True
+        assert operator.operation_id == "qualification-run"
+        assert "sink" not in operator._vdb_kwargs
+        assert "operation_id" not in operator._vdb_kwargs
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("max_batch_bytes", 0), ("prefetch_batches", -1), ("operation_id", "   ")],
+    )
+    def test_invalid_bounds_and_identity_are_rejected(self, field: str, value) -> None:
+        with pytest.raises(ValueError):
+            VdbSinkParams(**{field: value})
 
 
 class TestResolveApiKeys:

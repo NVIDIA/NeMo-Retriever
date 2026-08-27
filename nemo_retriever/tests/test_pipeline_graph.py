@@ -1097,6 +1097,7 @@ class TestRayDataExecutor:
         g.add_chain(AddOperator(1))
         executor = RayDataExecutor(g)
         assert executor.graph is g
+        assert executor.last_vdb_write_report is None
 
     def test_linearize_empty(self):
         g = Graph()
@@ -1161,6 +1162,170 @@ class TestRayDataExecutor:
             + second._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
             <= 4
         )
+
+    def test_shared_preflight_excludes_coordinator_owned_bounded_sink(self, tmp_path):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+        from nemo_retriever.operators.vdb import IngestVdbOperator
+
+        graph = (
+            Graph()
+            >> CPUAdaptiveAddOperator()
+            >> IngestVdbOperator(
+                vdb_op="lancedb",
+                vdb_kwargs={
+                    "uri": str(tmp_path),
+                    "table_name": "chunks",
+                    "vector_dim": 2,
+                    "build_index": False,
+                },
+            )
+        )
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 1, "num_cpus": 1}},
+        )
+        resources = Resources(cpu_count=1, gpu_count=0)
+
+        preflight_executors(
+            [executor],
+            ClusterResources(total_resources=resources, available_resources=resources),
+        )
+
+    def test_build_dataset_rejects_bounded_sink_without_driver_finalization(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+        from nemo_retriever.operators.vdb import IngestVdbOperator
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.ensure_local_ray_runtime",
+            lambda _address: fake_ray,
+        )
+        resources = Resources(cpu_count=1, gpu_count=0)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: ClusterResources(total_resources=resources, available_resources=resources),
+        )
+
+        graph = Graph() >> IngestVdbOperator(
+            vdb_op="lancedb",
+            vdb_kwargs={
+                "uri": str(tmp_path),
+                "table_name": "chunks",
+                "vector_dim": 2,
+                "build_index": False,
+            },
+        )
+
+        with pytest.raises(RuntimeError, match="must be executed with RayDataExecutor.ingest"):
+            RayDataExecutor(graph).build_dataset(fake_dataset)
+
+    def test_bounded_sink_closes_ray_batch_iterator_after_early_failure(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+        from nemo_retriever.common.vdb.sink import VdbSinkPolicy
+        from nemo_retriever.operators.vdb import IngestVdbOperator
+
+        class _ClosableBatchIterator:
+            def __init__(self):
+                self.closed = False
+                self._yielded = False
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if self._yielded:
+                    raise StopIteration
+                self._yielded = True
+                return pd.DataFrame({"text": ["first"]})
+
+            def close(self):
+                self.closed = True
+
+        batch_iterator = _ClosableBatchIterator()
+
+        class _RayBatchIterable:
+            def __iter__(self):
+                return batch_iterator
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def iter_batches(self, **_kwargs):
+                return _RayBatchIterable()
+
+        class _FakeTensorDtype:
+            pass
+
+        class _FailingSink(IngestVdbOperator):
+            def consume_batches(self, batches, *, operation_id, policy):
+                next(batches)
+                raise RuntimeError("sink rejected first batch")
+
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setitem(
+            sys.modules,
+            "ray.data.extensions",
+            SimpleNamespace(TensorDtype=_FakeTensorDtype),
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.ensure_local_ray_runtime",
+            lambda _address: fake_ray,
+        )
+        resources = Resources(cpu_count=1, gpu_count=0)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: ClusterResources(total_resources=resources, available_resources=resources),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, _cluster: graph)
+
+        graph = Graph() >> _FailingSink(
+            vdb_op="lancedb",
+            vdb_kwargs={
+                "uri": str(tmp_path),
+                "table_name": "chunks",
+                "vector_dim": 2,
+                "build_index": False,
+            },
+        )
+        executor = RayDataExecutor(graph)
+
+        with pytest.raises(RuntimeError, match="sink rejected first batch") as exc_info:
+            executor.ingest(_FakeDataset(), vdb_sink_policy=VdbSinkPolicy(prefetch_batches=0))
+
+        assert batch_iterator.closed
+        assert type(exc_info.value) is RuntimeError
+        assert executor.last_vdb_operation_id
+        assert any(executor.last_vdb_operation_id in note for note in getattr(exc_info.value, "__notes__", ()))
 
     def test_preflight_counts_implicit_gpu_operator_reservation(self):
         graph = Graph()

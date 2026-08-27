@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import replace
 import math
+import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 import pandas as pd
 
@@ -219,7 +221,12 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
     available_cpus = cluster_resources.available_cpu_count()
     available_gpus = cluster_resources.available_gpu_count()
     for executor in executors:
-        for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
+        nodes = executor._linearize(resolve_graph(executor.graph, cluster_resources))
+        sink_index = executor._bounded_vdb_sink_index(nodes)
+        planned_nodes = (
+            [node for index, node in enumerate(nodes) if index != sink_index] if sink_index is not None else nodes
+        )
+        for node in planned_nodes:
             override = executor._node_overrides.get(node.name, {})
             concurrency = override.get("concurrency", 1)
             entries.append(
@@ -446,6 +453,8 @@ class RayDataExecutor(AbstractExecutor):
         self._node_overrides = node_overrides or {}
         self._auto_concurrency_nodes = auto_concurrency_nodes or set()
         self._resources_preflight_complete = False
+        self.last_vdb_write_report: Any | None = None
+        self.last_vdb_operation_id: str | None = None
 
     def _has_remote_endpoint(self, node: Node) -> bool:
         """Return whether a node delegates inference to a remote endpoint."""
@@ -553,13 +562,117 @@ class RayDataExecutor(AbstractExecutor):
             node = node.children[0] if node.children else None
         return ordered
 
+    @staticmethod
+    def _bounded_vdb_sink_index(nodes: List[Node]) -> int | None:
+        """Return the one bounded terminal VDB sink position, if present."""
+        from nemo_retriever.operators.vdb import IngestVdbOperator
+
+        positions = [
+            index
+            for index, node in enumerate(nodes)
+            if isinstance(node.operator, IngestVdbOperator) and node.operator.supports_bounded_sink()
+        ]
+        if len(positions) > 1:
+            raise ValueError("RayDataExecutor supports at most one bounded terminal VDB sink per linear graph.")
+        return positions[0] if positions else None
+
     def ingest(self, data: Any, **kwargs: Any) -> Any:
         """Build, execute, and materialize a Ray Data pipeline from the graph."""
 
-        return ray_dataset_to_pandas(self.build_dataset(data, **kwargs))
+        nodes = self._linearize(self.graph)
+        sink_index = self._bounded_vdb_sink_index(nodes)
+        if sink_index is None:
+            return ray_dataset_to_pandas(self.build_dataset(data, **kwargs))
+
+        self.last_vdb_write_report = None
+        self.last_vdb_operation_id = None
+        from nemo_retriever.common.vdb.sink import VdbSinkPolicy
+
+        sink_operator = nodes[sink_index].operator
+        policy = kwargs.pop("vdb_sink_policy", None) or sink_operator.sink_policy
+        if not isinstance(policy, VdbSinkPolicy):
+            raise TypeError("vdb_sink_policy must be a VdbSinkPolicy")
+        operation_id = str(kwargs.pop("vdb_operation_id", "") or sink_operator.operation_id or uuid.uuid4())
+        self.last_vdb_operation_id = operation_id
+        has_downstream_nodes = sink_index + 1 < len(nodes)
+
+        dataset = self.build_dataset(
+            data,
+            _stop_before_bounded_vdb_sink=True,
+            **kwargs,
+        )
+
+        terminal_frames: list[pd.DataFrame] = []
+        batch_iterator = iter(
+            dataset.iter_batches(
+                batch_format=None,
+                batch_size=None,
+                prefetch_batches=policy.prefetch_batches,
+            )
+        )
+
+        def sink_batches() -> Any:
+            for block in batch_iterator:
+                # Tee the public result while the sink consumes the one lazy
+                # upstream execution. Post-sink effects are rebuilt from this
+                # required result only after the sink finalizes; they must not
+                # force a corpus-wide Ray materialization before the sink.
+                terminal_frames.append(arrow_table_to_pandas(block))
+                # Keep the sink side Arrow-native when Ray produced Arrow.
+                # The separate terminal frame preserves the pandas API result.
+                yield block
+
+        try:
+            self.last_vdb_write_report = nodes[sink_index].operator.consume_batches(
+                sink_batches(),
+                operation_id=operation_id,
+                policy=policy,
+            )
+        except Exception as exc:
+            exc.add_note(f"VDB operation_id: {operation_id}")
+            raise
+        finally:
+            close = getattr(batch_iterator, "close", None)
+            if callable(close):
+                close()
+
+        def record_terminal_result(frame: pd.DataFrame) -> pd.DataFrame:
+            terminal_bytes = int(frame.memory_usage(index=True, deep=True).sum())
+            self.last_vdb_write_report = replace(
+                self.last_vdb_write_report,
+                terminal_result_bytes=terminal_bytes,
+            )
+            return frame
+
+        if has_downstream_nodes:
+            import ray.data as rd
+
+            if terminal_frames:
+                continuation_input = rd.from_pandas(terminal_frames)
+            else:
+                schema = dataset.schema()
+                names = getattr(schema, "names", None)
+                continuation_input = rd.from_pandas(pd.DataFrame(columns=list(names) if names is not None else None))
+            downstream = self.build_dataset(
+                continuation_input,
+                _start_after_bounded_vdb_sink=True,
+                _input_preserves_pandas_output=True,
+                **kwargs,
+            )
+            return record_terminal_result(ray_dataset_to_pandas(downstream))
+
+        if terminal_frames:
+            return record_terminal_result(pd.concat(terminal_frames, ignore_index=True))
+        schema = dataset.schema()
+        names = getattr(schema, "names", None)
+        return record_terminal_result(pd.DataFrame(columns=list(names) if names is not None else None))
 
     def build_dataset(self, data: Any, **kwargs: Any) -> Any:
         """Build a lazy Ray Data pipeline from the graph.
+
+        A graph containing a coordinated bounded terminal sink cannot be represented
+        as a lazy ``Dataset``: table finalization happens on the driver after
+        the upstream Dataset is consumed. Call :meth:`ingest` for that graph.
 
         Parameters
         ----------
@@ -572,6 +685,9 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The lazy Ray dataset with all graph stages appended.
         """
+        stop_before_sink = bool(kwargs.pop("_stop_before_bounded_vdb_sink", False))
+        start_after_sink = bool(kwargs.pop("_start_after_bounded_vdb_sink", False))
+        input_preserves_pandas_output = bool(kwargs.pop("_input_preserves_pandas_output", False))
         ray = ensure_local_ray_runtime(self._ray_address)
         import ray.data as rd
 
@@ -607,8 +723,23 @@ class RayDataExecutor(AbstractExecutor):
         cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
-        nodes = self._linearize(resolved_graph)
-        requires_stable_pandas_blocks = _requires_stable_pandas_blocks(nodes)
+        all_nodes = self._linearize(resolved_graph)
+        sink_index = self._bounded_vdb_sink_index(all_nodes)
+        if stop_before_sink and start_after_sink:
+            raise ValueError("Cannot request both sides of the bounded VDB sink.")
+        if sink_index is not None:
+            if stop_before_sink:
+                nodes = all_nodes[:sink_index]
+            elif start_after_sink:
+                nodes = all_nodes[sink_index + 1 :]
+            else:
+                raise RuntimeError(
+                    "A graph containing a bounded terminal VDB sink must be executed with "
+                    "RayDataExecutor.ingest(); build_dataset() cannot finalize a terminal sink."
+                )
+        else:
+            nodes = all_nodes
+        requires_stable_pandas_blocks = input_preserves_pandas_output or _requires_stable_pandas_blocks(nodes)
 
         if isinstance(data, rd.Dataset):
             ds = rd.Dataset.copy(data, _deep_copy=True) if requires_stable_pandas_blocks else data
@@ -636,9 +767,17 @@ class RayDataExecutor(AbstractExecutor):
                         ctx.enable_tensor_extension_casting = original_tensor_extension_casting
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
-        if nodes and not self._resources_preflight_complete:
-            self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
-        preserve_pandas_output = False
+        if all_nodes and not self._resources_preflight_complete:
+            planned_nodes = (
+                [node for index, node in enumerate(all_nodes) if index != sink_index]
+                if sink_index is not None
+                else all_nodes
+            )
+            self._preflight_resources(planned_nodes, cluster.available_cpu_count(), available_gpus)
+            self._resources_preflight_complete = True
+            self._preflight_source_cpu_reservation = self._source_cpu_reservation
+            self._preflight_cluster_resources = cluster
+        preserve_pandas_output = input_preserves_pandas_output
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)

@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 import pandas as pd
 
 from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
+from nemo_retriever.common.vdb.sink import VdbSinkPolicy
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.common.vdb.records import (
@@ -104,6 +106,11 @@ def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]
 class IngestVdbOperator(AbstractOperator):
     """Upload already-embedded graph output through an nv-ingest-client VDB."""
 
+    #: The Ray executor may replace this operator's global ``map_batches``
+    #: call with one coordinated, bounded LanceDB stream. Subclasses whose
+    #: mutation semantics differ must opt out explicitly.
+    SUPPORTS_BOUNDED_LANCEDB_SINK: bool = True
+
     #: Ray batch mode: repartition to one block and one ``map_batches`` call so
     #: ``VDB.run`` sees the full dataset once (matches historical post-graph upload).
     REQUIRES_GLOBAL_BATCH: bool = True
@@ -114,10 +121,21 @@ class IngestVdbOperator(AbstractOperator):
         vdb: VDB | None = None,
         vdb_op: str | None = None,
         vdb_kwargs: dict[str, Any] | None = None,
+        sink_policy: VdbSinkPolicy | dict[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
+        resolved_policy = (
+            sink_policy if isinstance(sink_policy, VdbSinkPolicy) else VdbSinkPolicy(**dict(sink_policy or {}))
+        )
+        super().__init__(
+            vdb=vdb,
+            vdb_op=vdb_op,
+            vdb_kwargs=merged,
+            sink_policy=resolved_policy,
+            operation_id=operation_id,
+        )
         self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
         self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
@@ -155,6 +173,44 @@ class IngestVdbOperator(AbstractOperator):
             self._vdb.run(records)
         return data
 
+    def supports_bounded_sink(self) -> bool:
+        """Return whether this operator can consume a bounded terminal stream."""
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        return self.SUPPORTS_BOUNDED_LANCEDB_SINK and isinstance(self._vdb, LanceDB)
+
+    def consume_batches(
+        self,
+        batches: Iterable[Any],
+        *,
+        operation_id: str,
+        policy: VdbSinkPolicy,
+    ) -> Any:
+        """Consume Ray output batches through one coordinated backend write.
+
+        This terminal-sink entry point is intentionally separate from
+        :meth:`process`: Ray blocks must not each invoke the complete VDB table
+        lifecycle. The legacy in-process path continues to use ``process``.
+        """
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+        from nemo_retriever.common.vdb.sink import write_lancedb_batches
+
+        if not isinstance(policy, VdbSinkPolicy):
+            raise TypeError("policy must be a VdbSinkPolicy")
+        if not isinstance(self._vdb, LanceDB):
+            raise TypeError(
+                "Bounded batch ingestion is currently supported only by the LanceDB backend; "
+                f"got {type(self._vdb).__name__}."
+            )
+        return write_lancedb_batches(
+            self._vdb,
+            batches,
+            operation_id=operation_id,
+            policy=policy,
+            sidecar_spec=self._sidecar_spec,
+            sidecar_lookup=self._sidecar_lookup,
+        )
+
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
@@ -178,6 +234,8 @@ class PutVdbOperator(IngestVdbOperator):
     overridden it are detected at construction time and fail fast rather
     than silently no-oping at runtime.
     """
+
+    SUPPORTS_BOUNDED_LANCEDB_SINK: bool = False
 
     def __init__(
         self,

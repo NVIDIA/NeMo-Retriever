@@ -16,6 +16,8 @@ from nemo_retriever.common.vdb.adt_vdb import (
     VDB,
 )
 from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
+from nemo_retriever.graph.executor import RayDataExecutor
+from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
@@ -614,6 +616,27 @@ def test_put_operator_delegates_records_with_configured_key_and_table_name() -> 
             }
         ]
     ]
+
+
+def test_batch_put_is_not_classified_as_bounded_ingest_sink(tmp_path) -> None:
+    operator = PutVdbOperator(
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": str(tmp_path), "table_name": "entities"},
+    )
+    graph = Graph() >> operator
+
+    assert RayDataExecutor._bounded_vdb_sink_index(RayDataExecutor._linearize(graph)) is None
+
+
+def test_bounded_sink_capability_keeps_backend_detection_in_operator(tmp_path) -> None:
+    custom = IngestVdbOperator(vdb=FakeVDB())
+    lancedb = IngestVdbOperator(
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": str(tmp_path), "table_name": "chunks"},
+    )
+
+    assert custom.supports_bounded_sink() is False
+    assert lancedb.supports_bounded_sink() is True
 
 
 def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
