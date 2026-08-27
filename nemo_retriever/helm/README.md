@@ -767,8 +767,8 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
+| `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
-| `serviceConfig.vectordb.indexMode`                | `hybrid` | Create LanceDB dense-vector and full-text-search indexes. Set to `dense` to create only the dense-vector index. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
 | `serviceConfig.vectordb.writeTimeoutSeconds`      | `300` | Rendered as `vectordb.write_timeout_s`. How long a worker waits for the vectordb Pod to acknowledge a record write. A write that is not acknowledged fails the document, so raise this value on slow storage. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures). |
 
@@ -799,6 +799,14 @@ independent realtime and batch pools, worker replicas, and routing decisions
 without requiring sidecar replication between workers.
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
+
+The VectorDB storage default is `indexMode: auto`; most users should leave it
+unchanged. A fresh table creates and waits for its FTS index after the first
+write, while an existing dense table is left dense. Set
+`serviceConfig.vectordb.indexMode=hybrid` only when you explicitly want to
+upgrade an existing dense table. Incremental rows remain searchable through
+LanceDB's unindexed-tail scan; the service performs incremental FTS maintenance
+automatically and reports FTS and maintenance state from `/v1/health`.
 
 The vectordb Pod's `/v1/query` handler embeds the incoming query text
 before searching LanceDB.  It needs a NIM embedding endpoint to do that,

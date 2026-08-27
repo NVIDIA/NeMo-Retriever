@@ -51,11 +51,14 @@ uv pip install "nemo-retriever[local]"
 ```
 
 The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease/nightly Nemotron packages from PyPI within the same supported
-major-version windows, opt in with `--pre`:
+try prerelease or nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
+version you are installing.
+
+Run the following command, and replace `<version>` with that version:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.08.1"
+uv pip install --pre "nemo-retriever[local]==<version>"
 ```
 
 **Remote NIM (no local GPU)**
@@ -196,6 +199,12 @@ retriever ingest /path/to/file-or-directory \
   --lancedb-uri lancedb \
   --table-name nemo-retriever
 ```
+
+You do not need to choose a retrieval index mode for the normal workflow. The
+default `index_mode=auto` creates a hybrid table (dense
+vectors plus BM25/full-text search), and query mode `auto` uses that table
+automatically. The explicit `dense`, `hybrid`, and `sparse` modes are advanced
+overrides for experiments or specialized deployments.
 
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
@@ -411,8 +420,11 @@ endpoint. Refer to
 [Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
 in the Helm chart README.
 
-Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
-text-enriched hits.
+Agentic CLI output is not the five-field dense projection (`modality`,
+`page_number`, `score`, `source`, and `text`). Each JSON object is the
+internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
+`result_source` is `final_results`, `rrf`, or `selection_agent`. When no
+retrieval hop returned the document, only those three keys are present.
 
 For a quick smoke test, reduce agent work:
 
@@ -482,6 +494,10 @@ uv pip install "nemo-retriever[llm]"
 export NVIDIA_API_KEY=nvapi-...
 ```
 
+The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does not
+read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
+so the same key is forwarded on each request.
+
 Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
 embedding model in `embed_kwargs` must match the one used during ingestion so
 query vectors land in the same embedding space as the stored chunks.
@@ -501,6 +517,7 @@ retriever = Retriever(
 )
 llm = LiteLLMClient.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.0,
     max_tokens=512,
 )
@@ -522,6 +539,7 @@ from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.1,
     max_tokens=4096,
 )
