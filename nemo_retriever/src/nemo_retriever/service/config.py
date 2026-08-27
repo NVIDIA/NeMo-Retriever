@@ -444,6 +444,11 @@ class VectorDbConfig(RichModel):
             "The configured vectordb_url must use localhost or 127.0.0.1."
         ),
     )
+    max_concurrent_queries: int = Field(
+        default=4,
+        ge=1,
+        description=("Maximum number of concurrent queries handled by a supervised " "VectorDB child."),
+    )
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
     index_mode: Literal["auto", "dense", "hybrid"] = "auto"

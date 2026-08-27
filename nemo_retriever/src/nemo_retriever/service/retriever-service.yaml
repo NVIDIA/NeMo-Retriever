@@ -159,6 +159,10 @@ vectordb:
   # Start and supervise a local VectorDB process from `retriever service start`.
   # This must use a loopback vectordb_url.
   launch_on_start: false
+  # Maximum number of concurrent non-agentic queries in a supervised VectorDB
+  # child. This setting has no effect when vectordb_url points to an existing
+  # VectorDB deployment.
+  max_concurrent_queries: 4
   lancedb_uri: "/data/vectordb"
   table_name: "nemo_retriever"
   embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"

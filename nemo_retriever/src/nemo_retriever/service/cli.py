@@ -66,6 +66,8 @@ def _start_local_vectordb(cfg):
         vdb.index_mode,
         "--embed-model",
         vdb.embed_model,
+        "--max-concurrent-queries",
+        str(vdb.max_concurrent_queries),
     ]
     if local_embed:
         command += ["--local-embed", "--local-embed-backend", cfg.local_models.embed.local_ingest_embed_backend]

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import lancedb
 import pytest
@@ -94,6 +94,77 @@ def test_fresh_auto_write_builds_fts_and_query_uses_hybrid(tmp_path) -> None:
     assert health.json()["configured_index_mode"] == "auto"
     assert health.json()["effective_index_mode"] == "hybrid"
     assert health.json()["fts_present"] is True
+
+
+def test_quoted_query_supports_fts_index_without_positions() -> None:
+    attempted_texts: list[str] = []
+
+    class FakeQuery:
+        def __init__(self) -> None:
+            self.text_value = ""
+
+        def vector(self, _vector):
+            return self
+
+        def text(self, value: str):
+            self.text_value = value
+            attempted_texts.append(value)
+            return self
+
+        def limit(self, _value):
+            return self
+
+        def refine_factor(self, _value):
+            return self
+
+        def nprobes(self, _value):
+            return self
+
+        def to_list(self):
+            if '"' in self.text_value:
+                raise RuntimeError(
+                    "position is not found but required for phrase queries, try recreating the index with position"
+                )
+            return [{"text": "Revenue grew 12% year over year."}]
+
+    class FakeTable:
+        def search(self, **_kwargs):
+            return FakeQuery()
+
+    backend = LanceDB(uri="unused", table_name="nemo_retriever", hybrid=True)
+    with patch.object(backend, "_open_table", return_value=FakeTable()):
+        results = backend.retrieval(
+            [[1.0, 0.0, 0.0, 0.0]],
+            query_texts=['What was the "year over year" growth?'],
+            top_k=5,
+            hybrid=True,
+        )
+
+    assert results == [[{"text": "Revenue grew 12% year over year."}]]
+    assert attempted_texts == [
+        'What was the "year over year" growth?',
+        "What was the year over year growth?",
+    ]
+
+
+def test_backend_reuses_connection_and_table_handles() -> None:
+    table = object()
+    database = MagicMock()
+    database.open_table.return_value = table
+
+    backend = LanceDB(uri="memory://cache-test", table_name="nemo_retriever")
+    with patch("nemo_retriever.common.vdb.lancedb.lancedb.connect", return_value=database) as connect:
+        first_connection = backend._connect()
+        second_connection = backend._connect()
+        first_table = backend._open_table(backend.table_name)
+        second_table = backend._open_table(backend.table_name)
+
+    assert first_connection is second_connection is database
+    assert connect.call_count == 1
+    assert database.open_table.call_count == 1
+    assert first_table is second_table
+    assert len(backend._connections) == 1
+    assert len(backend._opened_tables) == 1
 
 
 @pytest.mark.integration

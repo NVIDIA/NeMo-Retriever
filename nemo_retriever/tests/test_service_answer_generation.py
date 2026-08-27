@@ -677,7 +677,10 @@ def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.Monk
                 "gpu_memory_utilization": 0.5,
             },
         },
-        vectordb=VectorDbConfig(vectordb_url="http://127.0.0.1:7671"),
+        vectordb=VectorDbConfig(
+            vectordb_url="http://127.0.0.1:7671",
+            max_concurrent_queries=7,
+        ),
     )
     command: list[str] = []
 
@@ -715,6 +718,9 @@ def test_local_vectordb_uses_configured_local_embedding(monkeypatch: pytest.Monk
     ]
     assert ["--device", "cuda:1"] == command[command.index("--device") : command.index("--device") + 2]
     assert "--embed-endpoint" not in command
+    assert ["--max-concurrent-queries", "7"] == command[
+        command.index("--max-concurrent-queries") : command.index("--max-concurrent-queries") + 2
+    ]
 
 
 def test_local_vectordb_passes_secrets_through_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -798,6 +804,7 @@ def test_service_start_cleans_up_vectordb_when_app_creation_fails(monkeypatch: p
 
 def test_vectordb_launch_setting_has_schema_description() -> None:
     assert VectorDbConfig.model_fields["launch_on_start"].description
+    assert VectorDbConfig.model_fields["max_concurrent_queries"].description
 
 
 def test_service_start_force_kills_vectordb_without_masking_app_error(

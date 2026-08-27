@@ -375,7 +375,11 @@ class LanceDBCollectionStore:
         where: str | None = None,
         columns: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        query = self._db.open_table(table_name).search()
+        table = self._open_table(table_name)
+        checkout_latest = getattr(table, "checkout_latest", None)
+        if callable(checkout_latest):
+            checkout_latest()
+        query = table.search()
         if where:
             query = query.where(where)
         if columns:

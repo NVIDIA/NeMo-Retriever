@@ -56,10 +56,30 @@ _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 _EMBEDDING_MODEL_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_name"
 _EMBEDDING_MODEL_REVISION_METADATA_KEY: Final[bytes] = b"nemo_retriever.embedding_model_revision"
+_MISSING_FTS_POSITIONS_ERROR: Final[str] = "position is not found but required for phrase queries"
 # Appended rows remain searchable through LanceDB's unindexed-tail scan until
 # optimize() folds them into FTS. These thresholds follow its recommended cadence.
 _SERVICE_OPTIMIZE_WRITE_THRESHOLD: Final[int] = 20
 _SERVICE_OPTIMIZE_ROW_THRESHOLD: Final[int] = 100_000
+
+
+def _without_fts_phrase_syntax(query_text: str) -> str:
+    """Convert a quoted FTS phrase into an unquoted term query."""
+
+    return " ".join(query_text.replace('"', " ").split())
+
+
+def _run_fts_query_with_legacy_index_fallback(build_query, query_text: str) -> list[dict[str, Any]]:
+    """Run FTS, retrying quoted searches on indexes built without positions."""
+
+    try:
+        return build_query(query_text).to_list()
+    except RuntimeError as exc:
+        fallback_text = _without_fts_phrase_syntax(query_text)
+        if _MISSING_FTS_POSITIONS_ERROR not in str(exc) or fallback_text == query_text or not fallback_text:
+            raise
+        logger.info("LanceDB FTS index does not contain positions; retrying quoted query without phrase syntax.")
+        return build_query(fallback_text).to_list()
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -626,6 +646,13 @@ class LanceDB(VDB):
         self._collection_store: Any | None = None
         self._collection_store_init_failed = False
         self._collection_store_lock = threading.Lock()
+        # Reuse native LanceDB handles for the lifetime of this backend. Opening
+        # a connection and table for every service health check and query leaves
+        # native file descriptors pending collection long enough for sustained
+        # workloads to exhaust the process limit.
+        self._connection_lock = threading.RLock()
+        self._connections: dict[str, Any] = {}
+        self._opened_tables: dict[tuple[str, str], Any] = {}
         # Row admission is serialized on its own short-lived lock so a caller
         # never waits on index maintenance to get its rows committed.
         self._write_lock = threading.Lock()
@@ -638,9 +665,9 @@ class LanceDB(VDB):
         self._index_completed_generation = 0
         super().__init__(**kwargs)
         if self._service_index_mode is not None and self.hybrid:
-            db = lancedb.connect(uri=self.uri)
+            db = self._connect()
             if self.table_name in db.list_tables().tables:
-                self._ensure_fts_index(db.open_table(self.table_name))
+                self._ensure_fts_index(self._open_table(self.table_name))
 
     @staticmethod
     def _is_fts_index(index: Any) -> bool:
@@ -709,6 +736,37 @@ class LanceDB(VDB):
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "error": None,
         }
+
+    def _connect(self, uri: str | None = None) -> Any:
+        """Return a backend-owned LanceDB connection for ``uri``."""
+
+        resolved_uri = str(uri or self.uri)
+        with self._connection_lock:
+            connection = self._connections.get(resolved_uri)
+            if connection is None:
+                connection = lancedb.connect(uri=resolved_uri)
+                self._connections[resolved_uri] = connection
+            return connection
+
+    def _open_table(self, table_name: str, *, uri: str | None = None) -> Any:
+        """Return a backend-owned table handle instead of reopening per query."""
+
+        resolved_uri = str(uri or self.uri)
+        key = (resolved_uri, table_name)
+        with self._connection_lock:
+            table = self._opened_tables.get(key)
+            if table is None:
+                table = self._connect(resolved_uri).open_table(table_name)
+                self._opened_tables[key] = table
+            return table
+
+    def _remember_table(self, table_name: str, table: Any, *, uri: str | None = None) -> Any:
+        """Cache a table returned by a create or append operation."""
+
+        resolved_uri = str(uri or self.uri)
+        with self._connection_lock:
+            self._opened_tables[(resolved_uri, table_name)] = table
+        return table
 
     def _get_collection_store(self) -> Any:
         """Lazily initialize collection catalogs only when a collection API is used."""
@@ -889,7 +947,7 @@ class LanceDB(VDB):
 
         from nemo_retriever.common.vdb.lancedb_collections import LanceDBCollectionStore
 
-        db = lancedb.connect(uri=self.uri)
+        db = self._connect()
         table_exists = self.table_name in db.list_tables().tables
         total_rows = 0
         effective_mode: str | None = None
@@ -897,8 +955,9 @@ class LanceDB(VDB):
         table: Any | None = None
         capabilities = None
         if table_exists:
+            table = self._open_table(self.table_name)
+            self._checkout_latest(table)
             try:
-                table = db.open_table(self.table_name)
                 total_rows = int(table.count_rows())
             except Exception:
                 logger.warning(
@@ -906,8 +965,6 @@ class LanceDB(VDB):
                     exc_info=True,
                 )
             try:
-                if table is None:
-                    table = db.open_table(self.table_name)
                 capabilities = inspect_lancedb_table_object(table)
                 mode = capabilities.retrieval_mode
                 if mode in {"dense", "hybrid"}:
@@ -952,7 +1009,8 @@ class LanceDB(VDB):
         """Read one NeMo Retriever metadata value from the selected table."""
         uri = str(kwargs.get("table_path") or kwargs.get("uri") or kwargs.get("lancedb_uri") or self.uri)
         table_name = str(kwargs.get("table_name") or kwargs.get("lancedb_table") or self.table_name)
-        table = lancedb.connect(uri=uri).open_table(table_name)
+        table = self._open_table(table_name, uri=uri)
+        self._checkout_latest(table)
         metadata = _table_schema(table).metadata or {}
         value = metadata.get(f"nemo_retriever.{key}".encode("utf-8"))
         if value is None and key == "retrieval_mode":
@@ -974,7 +1032,7 @@ class LanceDB(VDB):
         semantics of that policy.
         """
         connect_start = time.perf_counter()
-        db = lancedb.connect(uri=self.uri)
+        db = self._connect()
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
         record_batches = list(records or [])
 
@@ -987,7 +1045,7 @@ class LanceDB(VDB):
             vector_dim = self.vector_dim
             if vector_dim is None and not self.overwrite:
                 try:
-                    existing_table = db.open_table(self.table_name)
+                    existing_table = self._open_table(self.table_name)
                 except ValueError as exc:
                     if not _is_missing_lancedb_table_error(exc):
                         raise
@@ -1045,7 +1103,7 @@ class LanceDB(VDB):
             event = "lancedb.create_table"
         else:
             try:
-                table = db.open_table(table_name)
+                table = self._open_table(table_name)
             except ValueError as exc:
                 if not _is_missing_lancedb_table_error(exc):
                     raise
@@ -1083,6 +1141,7 @@ class LanceDB(VDB):
                     )
                 event = "lancedb.add_rows"
 
+        self._remember_table(table_name, table)
         _record_timing(
             event,
             time.perf_counter() - create_start,
@@ -1181,7 +1240,7 @@ class LanceDB(VDB):
         with self._write_lock:
             table_existed = False
             if service_write:
-                db = lancedb.connect(uri=self.uri)
+                db = self._connect()
                 table_existed = self.table_name in db.list_tables().tables
 
             table = self.create_index(records=records, table_name=self.table_name)
@@ -1293,9 +1352,6 @@ class LanceDB(VDB):
         plus: ``put``.
         """
         target_name = table_name or self.table_name
-        connect_start = time.perf_counter()
-        db = lancedb.connect(uri=self.uri)
-        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
 
         if self.validate_vector_length and self.on_bad_vectors != "error":
             expected_dim: int | None = self.vector_dim
@@ -1317,7 +1373,7 @@ class LanceDB(VDB):
             )
 
         try:
-            table = db.open_table(target_name)
+            table = self._open_table(target_name)
         except (ValueError, FileNotFoundError) as exc:
             if isinstance(exc, ValueError) and not _is_missing_lancedb_table_error(exc):
                 raise
@@ -1388,17 +1444,22 @@ class LanceDB(VDB):
         if where_clause is not None:
             where_clause = str(where_clause).strip() or None
 
-        table = lancedb.connect(uri=table_path).open_table(table_name)
+        table = self._open_table(table_name, uri=table_path)
+        self._checkout_latest(table)
 
         search_results = []
         for query_text in query_texts:
-            query = table.search(str(query_text), **search_kwargs)
-            if where_clause is not None:
-                query = query.where(where_clause)
-            query = query.limit(top_k)
-            if result_fields is not None:
-                query = query.select(result_fields)
-            search_results.append(query.to_list())
+
+            def build_query(text: str):
+                query = table.search(text, **search_kwargs)
+                if where_clause is not None:
+                    query = query.where(where_clause)
+                query = query.limit(top_k)
+                if result_fields is not None:
+                    query = query.select(result_fields)
+                return query
+
+            search_results.append(_run_fts_query_with_legacy_index_fallback(build_query, str(query_text)))
 
         return search_results
 
@@ -1478,7 +1539,8 @@ class LanceDB(VDB):
         if where_clause is not None:
             where_clause = str(where_clause).strip() or None
 
-        table = lancedb.connect(uri=table_path).open_table(table_name)
+        table = self._open_table(table_name, uri=table_path)
+        self._checkout_latest(table)
 
         if hybrid:
             vectors_for_search = list(vectors)
@@ -1495,24 +1557,37 @@ class LanceDB(VDB):
         search_results = []
         for idx, vector in enumerate(vectors_for_search):
             if hybrid:
-                query = (
-                    table.search(vector_column_name=vector_column_name, **search_kwargs)
-                    .vector(vector)
-                    .text(str(query_texts_list[idx]))
+
+                def build_query(text: str, *, query_vector=vector):
+                    query = (
+                        table.search(vector_column_name=vector_column_name, **search_kwargs)
+                        .vector(query_vector)
+                        .text(text)
+                    )
+                    if where_clause is not None:
+                        query = query.where(where_clause)
+                    query_limit = max(top_k, hybrid_fusion.candidate_depth) if hybrid_fusion is not None else top_k
+                    query = query.limit(query_limit).refine_factor(refine_factor).nprobes(n_probe)
+                    if hybrid_fusion is not None:
+                        query = query.rerank(WeightedRRFReranker(hybrid_fusion))
+                    if result_fields is not None:
+                        query = query.select(result_fields)
+                    return query
+
+                results = _run_fts_query_with_legacy_index_fallback(
+                    build_query,
+                    str(query_texts_list[idx]),
                 )
+                if hybrid_fusion is not None:
+                    results = results[:top_k]
             else:
                 query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
-            if where_clause is not None:
-                query = query.where(where_clause)
-            query_limit = max(top_k, hybrid_fusion.candidate_depth) if hybrid_fusion is not None else top_k
-            query = query.limit(query_limit).refine_factor(refine_factor).nprobes(n_probe)
-            if hybrid_fusion is not None:
-                query = query.rerank(WeightedRRFReranker(hybrid_fusion))
-            if result_fields is not None:
-                query = query.select(result_fields)
-            results = query.to_list()
-            if hybrid_fusion is not None:
-                results = results[:top_k]
+                if where_clause is not None:
+                    query = query.where(where_clause)
+                query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
+                if result_fields is not None:
+                    query = query.select(result_fields)
+                results = query.to_list()
             search_results.append(results)
 
         return search_results

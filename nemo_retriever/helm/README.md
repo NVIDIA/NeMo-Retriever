@@ -1308,8 +1308,7 @@ The VL reranker NIM (`llama-nemotron-rerank-vl-1b-v2`) backs
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
-  --set nimOperator.rerankqa.enabled=true \
-  ...
+  --set nimOperator.rerankqa.enabled=true
 ```
 
 the chart auto-wires two fields into the rendered
@@ -1351,8 +1350,7 @@ this chart. When you enable it,
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
-  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true \
-  ...
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true
 ```
 
 the chart now auto-wires two fields into the rendered
