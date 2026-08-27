@@ -82,6 +82,9 @@ By default, local ingest auto-detects supported input formats and writes to
 explicit high-level options when a task needs behavior beyond the current ingest
 defaults.
 
+Those CLI defaults differ from the Python SDK. Bare `.vdb_upload()` and default
+`Retriever()` use table `nv-ingest`. Match ingest and query to the same table.
+
 The plain `retriever query` examples below apply to local and batch ingest output
 written to LanceDB. Use `retriever query service` to query a Retriever service.
 
@@ -340,7 +343,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
 | `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. `fast-text` selects `pdfium` and disables Page Elements, image, table, and chart extraction for text-only PDFs. |
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
-| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
+| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python SDK `.vdb_upload()` and default `Retriever()` use `nv-ingest` instead. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |

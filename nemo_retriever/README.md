@@ -130,6 +130,11 @@ ingestor = (
 )
 ```
 
+Bare `.vdb_upload()` writes to the SDK default LanceDB table `nv-ingest`.
+Default `Retriever()` queries that same table. The CLI examples later on this
+page use a different default table, `nemo-retriever`. Match the query table to
+the ingest path you ran.
+
 ### Ingest inline text
 
 Python callers can pass raw text documents directly to the same text splitting,
@@ -158,6 +163,8 @@ Inline text can be combined with
 routed through its matching extractor before the results enter the shared
 embedding and sink stages. Inline corpora remain resident in client or driver
 memory, so prefer file ingestion when the corpus may exceed the available memory.
+
+This inline ingest uses the same SDK default table `nv-ingest`.
 
 ### Optional extras
 
@@ -206,10 +213,11 @@ vectors plus BM25/full-text search), and query mode `auto` uses that table
 automatically. The explicit `dense`, `hybrid`, and `sparse` modes are advanced
 overrides for experiments or specialized deployments.
 
-Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
-used in [Run a recall query](#run-a-recall-query) below. With the
-`[local]` extra installed (see setup), defaults point at local-GPU extraction
-and embedding.
+Chunks land at `./lancedb/nemo-retriever`. The [CLI table query](#query-the-cli-ingest-table)
+examples that pass `table_name="nemo-retriever"` are paired with this CLI ingest
+path. They are not paired with the earlier SDK examples that used bare
+`.vdb_upload()`. With the `[local]` extra installed (refer to the setup steps
+above), defaults point at local-GPU extraction and embedding.
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
@@ -264,15 +272,39 @@ dict_keys([1, 2, 3])
 '# Extracted Content\n\n## Page 1\n\nTestingDocument\r\nA s'
 ```
 
-Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
+The `chunks` inspection above uses the SDK ingest DataFrame. Querying is a
+separate step. Use the table that matches the ingest path you ran.
 
 ### Run a recall query
+
+#### Query the SDK default table
+
+If you ingested with the Python examples that call `.vdb_upload()` with no
+`vdb_kwargs`, query the SDK default table `nv-ingest`:
+
+```python
+from nemo_retriever.graph.retriever import Retriever
+
+retriever = Retriever(top_k=5, rerank=False)
+
+query = "Given their activities, which animal is responsible for the typos in my documents?"
+
+# you can also submit a list with retriever.queries[...]
+hits = retriever.query(query)
+```
+
+Default `Retriever()` reads `lancedb/nv-ingest`. Pass `vdb_kwargs` only when you
+wrote a different URI or table name.
+
+#### Query the CLI ingest table
+
+If you ingested with `retriever ingest` and `--table-name nemo-retriever`,
+configure `Retriever` for that CLI table:
 
 ```python
 from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
-  # values used by the retriever ingest example above
   vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
   top_k=5,
   rerank=False
@@ -284,7 +316,7 @@ query = "Given their activities, which animal is responsible for the typos in my
 hits = retriever.query(query)
 ```
 
-If you ingested with the remote-NIM recipe above (no local GPU), point the
+If you ingested with the remote-NIM CLI recipe above (no local GPU), point the
 `Retriever` at the same embedding endpoint so query vectors are produced by the
 same model that produced the stored chunk vectors:
 
@@ -301,6 +333,9 @@ retriever = Retriever(
 )
 hits = retriever.query(query)
 ```
+
+To query the SDK default table with the same remote embedder, omit `vdb_kwargs`
+or set `table_name` to `nv-ingest`.
 
 ```text
 # retrieved text from the first page
@@ -358,8 +393,9 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
-When you omit `--embed-model-name`, agentic retrieval uses the selected
-table's model.
+The examples below use the CLI default table `nemo-retriever`. If you ingested
+with the SDK default, pass `nv-ingest` instead. When you omit
+`--embed-model-name`, agentic retrieval uses the selected table's model.
 
 By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
 (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
@@ -493,9 +529,10 @@ The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does no
 read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
 so the same key is forwarded on each request.
 
-Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
-embedding model in `embed_kwargs` must match the one used during ingestion so
-query vectors land in the same embedding space as the stored chunks.
+Single-query live RAG. Set `vdb_kwargs["table_name"]` to the table you ingested.
+Use `nv-ingest` after SDK-default `.vdb_upload()`, or `nemo-retriever` after the
+CLI ingest examples. The example below uses the CLI table. The embedding model
+in `embed_kwargs` must match the model used during ingestion.
 
 ```python
 from nemo_retriever.graph.retriever import Retriever

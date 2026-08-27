@@ -34,8 +34,11 @@ It does not store the embeddings for images.
 
 NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)) and through the public `retriever ingest` CLI.
 
+- **Python SDK ingest** (`.vdb_upload()` on `create_ingestor(...)`) persists embeddings to LanceDB with default URI `lancedb` and default table `nv-ingest`. Default `Retriever()` queries that same table.
 - **Local and batch CLI ingest** (`retriever ingest`, `retriever ingest local`, `retriever ingest batch`) persist embeddings to LanceDB (default URI `lancedb`, table `nemo-retriever`).
 - **Service CLI ingest** (`retriever ingest service`) writes to service-configured storage.
+
+The SDK and CLI defaults are independent. Query the table that matches the ingest path you ran. To share one table across both paths, pass the same URI and table name at ingest and at query time.
 
 For supported modes and target storage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
@@ -54,6 +57,9 @@ result = (
     .ingest()
 )
 ```
+
+Bare `.vdb_upload()` writes to table `nv-ingest`. Default `Retriever()` queries
+that table.
 
 You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. If extracted content reaches `.vdb_upload()` without embeddings, `.ingest()` raises `ValueError`. An extraction that produces no content completes without uploading records.
 
@@ -75,7 +81,7 @@ LanceDB uses the `LanceDB` operator class from the client library. You can confi
 
 ### CLI
 
-The following command runs local ingest into the default LanceDB table:
+The following command runs local ingest into the CLI default LanceDB table `nemo-retriever`:
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf
