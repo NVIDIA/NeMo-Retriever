@@ -581,9 +581,16 @@ that namespace is not `default`.
 
 3. Delete kept `NIMCache` objects and leftover `NIMService` CRs. Helm
    leaves **NIMCache** objects when
-   `nimOperator.nimCache.keepOnUninstall` is `true` (the default). The
-   chart uses fixed CR names rather than the Helm release name. Default
-   names for the four core NIMs:
+   `nimOperator.nimCache.keepOnUninstall` is `true` (the default). Each
+   NIM uses a resource name from the chart, not the Helm release name.
+   The following command deletes every default name this chart can
+   create, including optional NIMs. `--ignore-not-found` skips names
+   you did not install.
+
+   If you overrode `nimOperator.ocr.nimServiceName`,
+   `nimOperator.vlm_embed.nimServiceName`, or
+   `nimOperator.answer_llm.nimServiceName`, replace those three default
+   names with the values you set.
 
    ```bash
    kubectl delete nimservice,nimcache -n "${NS}" \
@@ -591,13 +598,17 @@ that namespace is not `default`.
      nemotron-table-structure-v1 \
      nemotron-ocr-v2 \
      llama-nemotron-embed-vl-1b-v2 \
+     llama-nemotron-rerank-vl-1b-v2 \
+     nemotron-parse \
+     nemotron-3-nano-omni-30b-a3b-reasoning \
+     audio \
+     answer-llm \
      --ignore-not-found
    ```
 
-   If you enabled optional NIMs, delete those named CRs as well
-   (`llama-nemotron-rerank-vl-1b-v2`, `nemotron-parse`,
-   `nemotron-3-nano-omni-30b-a3b-reasoning`, `audio`, `answer-llm`).
-   List what remains:
+   List what remains. Delete leftover CRs by the names in that list
+   before you continue. Remaining objects can be renamed caches or
+   resources that another product owns.
 
    ```bash
    kubectl get nimservice,nimcache -n "${NS}"
@@ -608,8 +619,10 @@ that namespace is not `default`.
    deletes every `NIMService` and `NIMCache` in the namespace, including
    resources that another release or product owns.
 
-4. Optional: drop model PVCs if you will re-pull from NGC. Confirm
-   claim names first. Default claim names use a `-pvc` suffix:
+4. Optional: drop model PVCs when you re-pull weights from NGC. Confirm
+   claim names first. Default claim names use a `-pvc` suffix. Include
+   optional NIM claims. If you overrode a `nimServiceName` value, use
+   `<that-name>-pvc` instead of the default claim.
 
    ```bash
    kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
@@ -618,7 +631,19 @@ that namespace is not `default`.
      nemotron-table-structure-v1-pvc \
      nemotron-ocr-v2-pvc \
      llama-nemotron-embed-vl-1b-v2-pvc \
+     llama-nemotron-rerank-vl-1b-v2-pvc \
+     nemotron-parse-pvc \
+     nemotron-3-nano-omni-30b-a3b-reasoning-pvc \
+     audio-pvc \
+     answer-llm-pvc \
      --ignore-not-found
+   ```
+
+   List operator PVCs again and delete any leftover claim that belongs
+   to this install:
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
    ```
 
 **Dev installs** that should not retain caches on uninstall:
