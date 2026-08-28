@@ -819,6 +819,131 @@ is set, the service also mounts `nimOperator.answer_llm.authSecret` as
 credential value even for in-cluster NIM endpoints, and the key is never
 rendered into the ConfigMap.
 
+##### Call POST /v1/answer { #call-v1-answer }
+
+After the answer LLM NIM is Ready, send answer requests to the retriever
+gateway. The endpoint retrieves VectorDB chunks and generates a grounded
+answer. Index at least one document and wait until that ingest job
+succeeds before you call `/v1/answer`.
+
+Reach the gateway on `networkService.port` (default `7670`). For a first
+request against the default standalone release named `retriever`,
+port-forward the Service and set `SERVICE_URL`:
+
+```bash
+kubectl port-forward -n <namespace> svc/retriever-nemo-retriever 7670:7670
+export SERVICE_URL=http://127.0.0.1:7670
+```
+
+In split topology, port-forward `svc/retriever-nemo-retriever-gateway`
+instead. You can also use the assigned NodePort (chart default `30670`)
+or the Ingress host. Send `/v1/answer` to the gateway. Realtime and
+batch worker pods return HTTP `404` for this route.
+
+Ingest through that same gateway URL:
+
+```bash
+retriever ingest service /path/to/document.pdf \
+  --service-url "${SERVICE_URL}"
+```
+
+Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when public
+gateway authentication is enabled. Refer to
+[Ingest through a Retriever service](../docs/cli/README.md#ingest-through-a-retriever-service).
+
+Public gateway authentication is off by default
+(`serviceConfig.auth.enabled=false`). Omit the `Authorization` header
+in that case. When you enable public authentication, send
+`Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}` and `X-NRL-Scope`
+with a workspace scope that the token is allowed to use. Refer to
+[Secrets](#secrets).
+
+The following table lists the `POST /v1/answer` JSON fields.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `query` | string | yes | | Question to answer from retrieved chunks. |
+| `top_k` | integer | no | `5` | Number of VectorDB chunks to retrieve. Valid range is 1 through 1000. |
+| `include_chunks` | boolean | no | `false` | When `true`, the response includes retrieved chunk texts. |
+| `include_metadata` | boolean | no | `false` | When `true`, the response includes per-chunk metadata aligned with `chunks`. |
+| `reasoning_enabled` | boolean or null | no | `null` | Per-request reasoning override. When omitted, the service uses `serviceConfig.llm.reasoningEnabled`. |
+| `reference` | string or null | no | `null` | Optional ground-truth answer for scoring. |
+| `judge` | boolean | no | `false` | When `true`, run LLM-as-judge scoring. `judge` requires `reference`. The gateway returns HTTP `422` when `judge` is `true` and `reference` is omitted. |
+
+The only required field is `query`. The following example is a minimal
+request:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "What does the indexed document say?"}'
+```
+
+The following example sets optional retrieval and reasoning fields.
+Include the `Authorization` and `X-NRL-Scope` headers only when public
+gateway authentication is enabled:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}" \
+  -H "X-NRL-Scope: ${NRL_SCOPE}" \
+  -d '{
+    "query": "What does the indexed document say?",
+    "top_k": 5,
+    "include_chunks": true,
+    "include_metadata": true,
+    "reasoning_enabled": true
+  }'
+```
+
+A successful HTTP `200` response includes `query`, `answer`, `model`,
+`latency_s`, and `chunk_count`. `chunks` and `metadata` are `null`
+unless you set `include_chunks` or `include_metadata`. `error` is
+`null` on HTTP `200`. Generation failures return HTTP `502`. The
+gateway returns HTTP `404` when VectorDB or the answer LLM is not
+enabled.
+
+The following example is a representative HTTP `200` body when
+`include_chunks` and `include_metadata` are `true`:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "answer": "The indexed document describes the retrieval workflow.",
+  "model": "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+  "latency_s": 1.24,
+  "chunk_count": 1,
+  "chunks": [
+    "This document describes the retrieval workflow."
+  ],
+  "metadata": [
+    {
+      "source": "example.pdf",
+      "page_number": 1
+    }
+  ],
+  "error": null
+}
+```
+
+When you send `reference`, the response also includes scoring fields
+such as `token_f1`, `exact_match`, `answer_in_context`, and
+`failure_mode`. When you send `judge` with `reference`, the response
+also includes `judge_score`. The following request body enables judge
+scoring:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "reference": "The indexed document describes the retrieval workflow.",
+  "judge": true
+}
+```
+
+The gateway publishes the live request schema at `/docs` and
+`/openapi.json`.
+
 For example, to try Nemotron 3 Nano as the answer LLM on an A100 80GB
 node, override the operator-managed slot instead of adding a second
 hard-coded LLM service:
