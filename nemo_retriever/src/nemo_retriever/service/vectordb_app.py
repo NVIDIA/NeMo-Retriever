@@ -447,7 +447,7 @@ def create_vectordb_app(
 
     @app.get("/v1/live", tags=["system"])
     async def live() -> dict[str, str]:
-        """Report whether the VectorDB process can answer HTTP requests."""
+        """Return ``{"status": "ok"}`` when the VectorDB process can answer HTTP requests."""
         return {"status": "ok"}
 
     @app.get("/v1/health", tags=["system"])
