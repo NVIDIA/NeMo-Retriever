@@ -435,7 +435,7 @@ def create_vectordb_app(
 
     @app.middleware("http")
     async def require_internal_credential(request: Request, call_next):
-        if request.url.path == "/v1/health" or not required_internal_token:
+        if request.url.path in {"/v1/health", "/v1/live"} or not required_internal_token:
             return await call_next(request)
         supplied = request.headers.get("X-NRL-Internal-Token", "")
         if not supplied or not hmac.compare_digest(supplied, required_internal_token):
@@ -445,10 +445,15 @@ def create_vectordb_app(
             )
         return await call_next(request)
 
+    @app.get("/v1/live", tags=["system"])
+    async def live() -> dict[str, str]:
+        """Report whether the VectorDB process can answer HTTP requests."""
+        return {"status": "ok"}
+
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         current = state
-        backend_health = _safe_backend_health(current)
+        backend_health = await asyncio.to_thread(_safe_backend_health, current)
         if backend_health is None:
             raise HTTPException(503, "VectorDB backend is unavailable")
         return {
@@ -465,7 +470,7 @@ def create_vectordb_app(
         from prometheus_client import CollectorRegistry, Gauge, generate_latest
 
         registry = CollectorRegistry()
-        backend_health = _safe_backend_health(state) or {}
+        backend_health = await asyncio.to_thread(_safe_backend_health, state) or {}
         collections = backend_health.get("collections") or {}
         cleanup = backend_health.get("cleanup") or {}
         reconciliation = backend_health.get("reconciliation") or {}

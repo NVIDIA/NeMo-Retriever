@@ -613,8 +613,8 @@ The service exposes unauthenticated health endpoints for Kubernetes probes:
 
 | Endpoint | Purpose | Default Helm use |
 | --- | --- | --- |
-| `GET /v1/live` | Shallow process liveness. The endpoint does not check worker backends or wait for service readiness. | Startup and liveness probes. In split mode, the realtime and batch `wait-for-gateway` init containers poll this endpoint on the internal gateway startup Service while waiting for the gateway process to start. |
-| `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. It returns HTTP `503` when either required worker is unreachable or returns a non-2xx health response. | Readiness probe on the externally exposed gateway Service. |
+| `GET /v1/live` | Shallow process liveness. The endpoint does not check worker or storage backends or wait for service readiness. | Startup and liveness probes for the retriever and VectorDB services. In split mode, the realtime and batch `wait-for-gateway` init containers also poll this endpoint on the internal gateway startup Service while waiting for the gateway process to start. |
+| `GET /v1/health` | Deep readiness. In split gateway mode, the endpoint checks the realtime and batch workers. On the VectorDB service, it inspects backend and collection-catalog health. It returns HTTP `503` when a required backend is unavailable. | Readiness probes for the externally exposed gateway and internal VectorDB services. |
 
 In split topology, the gateway readiness probe uses `/v1/health`, which returns
 HTTP `503` until realtime and batch workers are healthy. Worker Pods cannot start
@@ -634,6 +634,10 @@ When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from
 the readiness-gated gateway Service endpoints until its required workers are
 ready. The response includes backend health details to help diagnose the
 unavailable dependency.
+
+The internal VectorDB Deployment follows the same probe separation. Startup and
+liveness use `/v1/live`, which performs no LanceDB access. Readiness uses
+`/v1/health`, which inspects the backend without blocking the HTTP event loop.
 
 ### Service networking
 
