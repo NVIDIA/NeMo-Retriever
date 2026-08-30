@@ -1072,11 +1072,9 @@ def ocr_page_elements(
 
     # This bounds the outer crop list passed to the persistent model wrapper.
     # Nemotron's internal detector_max_batch_size is a separate control.
-    local_invoke_batch_size = 0
-    if not use_remote:
-        if inference_batch_size is None or inference_batch_size < 1:
-            raise ValueError(f"inference_batch_size must be set and greater than 0. Value: {inference_batch_size}")
-        local_invoke_batch_size = int(inference_batch_size)
+    if inference_batch_size is None or inference_batch_size < 1:
+        raise ValueError(f"inference_batch_size must be set and greater than 0. Value: {inference_batch_size}")
+    invoke_batch_size = int(inference_batch_size)
 
     t0_total = time.perf_counter()
     prepared_rows, row_results = _prepare_ocr_rows(
@@ -1092,9 +1090,7 @@ def ocr_page_elements(
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
-            # Preserve the existing remote behavior. The named
-            # inference_batch_size parameter is local policy in this path.
-            max_batch_size=int(kwargs.get("inference_batch_size", 8)),
+            max_batch_size=invoke_batch_size,
             retry=retry,
             nim_client=nim_client,
             use_table_structure=use_table_structure,
@@ -1105,7 +1101,7 @@ def ocr_page_elements(
             model,
             jobs_by_merge_level,
             row_results,
-            batch_size=local_invoke_batch_size,
+            batch_size=invoke_batch_size,
             use_table_structure=use_table_structure,
         )
 
