@@ -10,6 +10,8 @@ import base64
 import io
 from typing import Any
 
+import pytest
+
 import pandas as pd
 from PIL import Image
 
@@ -141,6 +143,32 @@ def _local_actor(
     }
     actor._remote_retry = RemoteRetryParams()
     actor._model = model
+    actor._nim_client = None
+    return actor
+
+
+def _remote_actor(
+    *,
+    inference_batch_size: int,
+    extract_text: bool = False,
+    extract_tables: bool = False,
+    extract_charts: bool = False,
+    extract_infographics: bool = False,
+) -> OCRActor:
+    actor = object.__new__(OCRActor)
+    actor._graph_init_kwargs = {}
+    actor.ocr_kwargs = {
+        "extract_text": extract_text,
+        "extract_tables": extract_tables,
+        "extract_charts": extract_charts,
+        "extract_infographics": extract_infographics,
+        "use_table_structure": False,
+        "request_timeout_s": 120.0,
+        "inference_batch_size": inference_batch_size,
+        "invoke_url": "http://ocr-nim:8000",
+    }
+    actor._remote_retry = RemoteRetryParams()
+    actor._model = None
     actor._nim_client = None
     return actor
 
@@ -416,3 +444,38 @@ def test_local_actor_falls_back_when_batch_result_count_is_wrong() -> None:
         ],
         "errors": [None, None],
     }
+
+
+def test_remote_actor_forwards_inference_batch_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The named inference_batch_size argument must reach the remote OCR call."""
+
+    captured: dict[str, Any] = {}
+
+    def _fake_invoke_image_inference_batches(
+        *,
+        invoke_url: str,
+        image_b64_list: list[str],
+        max_batch_size: int,
+        **kwargs: Any,
+    ) -> list[Any]:
+        captured["invoke_url"] = invoke_url
+        captured["image_count"] = len(image_b64_list)
+        captured["max_batch_size"] = max_batch_size
+        return [_ocr_prediction(11) for _ in image_b64_list]
+
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.ocr.shared.invoke_image_inference_batches",
+        _fake_invoke_image_inference_batches,
+    )
+
+    actor = _remote_actor(inference_batch_size=5, extract_charts=True)
+    batch = pd.DataFrame(
+        [_page("page-A", 11, [_detection("chart-A", "chart", [0.0, 0.0, 0.5, 0.5])])]
+    )
+
+    result = actor(batch)
+
+    assert captured["invoke_url"] == "http://ocr-nim:8000"
+    assert captured["image_count"] == 1
+    assert captured["max_batch_size"] == 5
+    assert result.iloc[0]["chart"][0]["text"] == "crop-11"
