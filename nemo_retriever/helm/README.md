@@ -327,6 +327,8 @@ The chart defaults to the image published to NGC:
 nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
 ```
 
+Release-published tags of that image are multi-architecture (`linux/amd64` and `linux/arm64`). Kubernetes pulls the variant that matches the node.
+
 Pulling from `nvcr.io` requires an NGC pull secret — either set
 `ngcImagePullSecret.create=true` (see below) or pre-create one in the
 namespace named `ngc-secret`.
