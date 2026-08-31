@@ -62,6 +62,7 @@ from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.agentic_query import run_agentic_query
 from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import (
+    AgenticQueryResponse,
     EvidenceQueryResponse,
     EvidenceResult,
     QueryRequest,
@@ -689,13 +690,13 @@ def create_vectordb_app(
 
     @app.post(
         "/v1/query",
-        response_model=Union[QueryResponse, EvidenceQueryResponse],
+        response_model=Union[AgenticQueryResponse, QueryResponse, EvidenceQueryResponse],
         tags=["query"],
     )
     async def query(
         req: QueryRequest,
         x_nrl_scope: str | None = Header(None),
-    ) -> QueryResponse | EvidenceQueryResponse:
+    ) -> AgenticQueryResponse | QueryResponse | EvidenceQueryResponse:
         current = require_state()
         if req.agentic:
             if req.collection_name is not None:
@@ -759,7 +760,7 @@ def create_vectordb_app(
             )
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
-    async def _run_agentic_query(req: QueryRequest) -> QueryResponse:
+    async def _run_agentic_query(req: QueryRequest) -> AgenticQueryResponse:
         """Run the blocking agentic workflow without consuming plain-query workers."""
         current = require_state()
         if not agentic_config.enabled:

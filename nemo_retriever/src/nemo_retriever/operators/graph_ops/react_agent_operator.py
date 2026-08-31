@@ -29,6 +29,7 @@ from nemo_retriever._agentic.nemo_agent import (
     AgentConfig,
     create_retrieve_tool,
 )
+from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -274,6 +275,30 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             )
         return self._agent
 
+    def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
+        """Transfer the accumulated provider usage for one query to the caller.
+
+        Parameters
+        ----------
+        query_id:
+            Graph-assigned query ID used while executing the agent.
+
+        Returns
+        -------
+        dict[str, Any]
+            Stage-keyed provider usage, or an empty mapping when the agent has
+            not been initialized or no usage was reported.
+
+        Notes
+        -----
+        This operation removes the query's usage from the operator-owned
+        backend. A second call for the same ID returns an empty mapping unless
+        additional LLM calls have recorded new usage.
+        """
+        if self._agent is None:
+            return {}
+        return self._agent.llm.pop_query_usage(str(query_id))
+
     # ------------------------------------------------------------------
     # AbstractOperator interface
     # ------------------------------------------------------------------
@@ -346,6 +371,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             result = agent.run_sync(str(query_text), query_id=str(query_id), raw_log_dir=None)
         finally:
             _ACTIVE_QUERY_ID.reset(query_id_token)
+        persist_atif_trajectory(result.atif_trace)
 
         if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
             raise _FatalAgentError(
