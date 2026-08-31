@@ -29,6 +29,20 @@ class QueryDocumentsResult:
 
 @dataclass(frozen=True)
 class AgenticQueryDocumentsResult:
+    """Agentic query hits and normalized provider-reported LLM usage.
+
+    Attributes
+    ----------
+    hits:
+        Ranked agentic document hits in the root query output shape.
+    usage:
+        Normalized usage with ``input_tokens``, ``output_tokens``,
+        ``total_tokens``, and the original provider breakdown under ``stages``.
+        Token totals are integers or ``None`` when the provider did not report
+        enough information for an exact total. The mapping is empty when no
+        provider usage was reported.
+    """
+
     hits: list[dict[str, Any]]
     usage: dict[str, Any]
 

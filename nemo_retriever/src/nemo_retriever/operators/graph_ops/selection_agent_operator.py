@@ -218,7 +218,25 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         return self._sel
 
     def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
-        """Remove and return provider-reported LLM usage for one query."""
+        """Transfer the accumulated provider usage for one query to the caller.
+
+        Parameters
+        ----------
+        query_id:
+            Graph-assigned query ID used while executing the agent.
+
+        Returns
+        -------
+        dict[str, Any]
+            Stage-keyed provider usage, or an empty mapping when the agent has
+            not been initialized or no usage was reported.
+
+        Notes
+        -----
+        This operation removes the query's usage from the operator-owned
+        backend. A second call for the same ID returns an empty mapping unless
+        additional LLM calls have recorded new usage.
+        """
         if self._sel is None:
             return {}
         return self._sel.llm.pop_query_usage(str(query_id))

@@ -75,7 +75,19 @@ _RETRIEVED_ONLY_RESULT_SOURCES = frozenset({"rrf", "selection_agent"})
 
 @dataclass(frozen=True)
 class AgenticRetrieveResult:
-    """Ranked agentic documents and provider-reported usage by query ID."""
+    """Ranked agentic documents and provider-reported usage by query ID.
+
+    Attributes
+    ----------
+    documents:
+        Ranked rows for all requested queries. See
+        :meth:`AgenticRetriever.retrieve` for the column contract.
+    usage:
+        Mapping from caller query ID to a stage-keyed provider usage breakdown,
+        ``{query_id: {stage: provider_usage}}``. Repeated LLM calls within each
+        stage are summed. Queries for which the provider reported no usage are
+        omitted.
+    """
 
     documents: pd.DataFrame
     usage: dict[str, dict[str, Any]]
@@ -462,7 +474,26 @@ class AgenticRetriever:
         query_ids: Sequence[str],
         query_texts: Sequence[str],
     ) -> AgenticRetrieveResult:
-        """Return ranked documents and exact per-query agent LLM usage."""
+        """Return ranked documents and exact per-query agent LLM usage.
+
+        Parameters
+        ----------
+        query_ids:
+            Caller-owned IDs used as keys in the returned usage mapping.
+        query_texts:
+            Query strings aligned positionally with ``query_ids``.
+
+        Returns
+        -------
+        AgenticRetrieveResult
+            Ranked documents and a stage-keyed provider usage breakdown for
+            each query that reported usage.
+
+        Raises
+        ------
+        ValueError
+            If ``query_ids`` and ``query_texts`` have different lengths.
+        """
 
         if len(query_ids) != len(query_texts):
             raise ValueError("query_ids and query_texts must have the same length.")
