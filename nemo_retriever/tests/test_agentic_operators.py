@@ -188,6 +188,15 @@ class TestReActAgentOperator:
     def _input(self):
         return pd.DataFrame({"query_id": ["q1"], "query_text": ["What causes inflation?"]})
 
+    def test_pop_query_usage_delegates_without_building_agent(self):
+        op = self._op()
+        assert op.pop_query_usage("q1") == {}
+
+        op._agent = MagicMock()
+        op._agent.llm.pop_query_usage.return_value = {"main_agent": {"prompt_tokens": 3}}
+        assert op.pop_query_usage("q1") == {"main_agent": {"prompt_tokens": 3}}
+        op._agent.llm.pop_query_usage.assert_called_once_with("q1")
+
     def test_retrieve_adapter_renames_and_coerces(self):
         op = self._op(
             retriever_fn=lambda q, k: [
@@ -379,6 +388,15 @@ class TestSelectionAgentOperator:
                 "react_final_rank": react_final_rank,
             }
         )
+
+    def test_pop_query_usage_delegates_without_building_agent(self):
+        op = self._op()
+        assert op.pop_query_usage("q1") == {}
+
+        op._sel = MagicMock()
+        op._sel.llm.pop_query_usage.return_value = {"top2_agent": {"completion_tokens": 2}}
+        assert op.pop_query_usage("q1") == {"top2_agent": {"completion_tokens": 2}}
+        op._sel.llm.pop_query_usage.assert_called_once_with("q1")
 
     def test_final_results_passthrough(self):
         """Tier 1: a ReAct final list passes through; the selection agent is not run."""
