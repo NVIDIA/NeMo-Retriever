@@ -27,6 +27,26 @@ class QueryDocumentsResult:
     strategies: list[str]
 
 
+@dataclass(frozen=True)
+class AgenticQueryDocumentsResult:
+    """Agentic query hits and normalized provider-reported LLM usage.
+
+    Attributes
+    ----------
+    hits:
+        Ranked agentic document hits in the root query output shape.
+    usage:
+        Normalized usage with ``input_tokens``, ``output_tokens``,
+        ``total_tokens``, and the original provider breakdown under ``stages``.
+        Token totals are integers or ``None`` when the provider did not report
+        enough information for an exact total. The mapping is empty when no
+        provider usage was reported.
+    """
+
+    hits: list[dict[str, Any]]
+    usage: dict[str, Any]
+
+
 def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
     if mode == "hybrid":
         return ["semantic", "lexical"]
@@ -228,30 +248,50 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     ``Retriever`` that backs the agent's ``retrieve`` tool. Reranking therefore
     applies per agent retrieval hop.
     """
-    from nemo_retriever.query.agentic import rehydrated_agentic_hit
-
     retriever = build_agentic_retriever(request)
     try:
         result = retriever.retrieve(["0"], [str(request.query)])
-        if "rank" in result.columns:
-            result = result.sort_values("rank")
-        ranked: list[dict[str, Any]] = []
-        for _, row in result.iterrows():
-            doc_id = str(row.get("doc_id", "")).strip()
-            if not doc_id:
-                continue
-            ranked.append(
-                rehydrated_agentic_hit(
-                    row.get("hit"),
-                    doc_id=doc_id,
-                    rank=int(row.get("rank", len(ranked) + 1)),
-                    result_source=str(row.get("result_source", "")),
-                )
-            )
-            if len(ranked) >= request.retrieval.top_k:
-                break
-        return ranked
+        return _agentic_rows_to_hits(result, top_k=request.retrieval.top_k)
     finally:
         # One-shot CLI/Python entry: tear down cached local vLLM EngineCore so the
         # process can exit instead of hanging on a live child worker.
         retriever.unload()
+
+
+def agentic_query_documents_with_metadata(request: QueryRequest) -> AgenticQueryDocumentsResult:
+    """Run one agentic query and return ranked hits plus exact LLM usage."""
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.retrieve_with_usage(["0"], [str(request.query)])
+        return AgenticQueryDocumentsResult(
+            hits=_agentic_rows_to_hits(result.documents, top_k=request.retrieval.top_k),
+            usage=normalize_usage_breakdown(result.usage.get("0")),
+        )
+    finally:
+        retriever.unload()
+
+
+def _agentic_rows_to_hits(result: Any, *, top_k: int) -> list[dict[str, Any]]:
+    """Convert an agentic result DataFrame to ranked, rehydrated hits."""
+    from nemo_retriever.query.agentic import rehydrated_agentic_hit
+
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    ranked: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        doc_id = str(row.get("doc_id", "")).strip()
+        if not doc_id:
+            continue
+        ranked.append(
+            rehydrated_agentic_hit(
+                row.get("hit"),
+                doc_id=doc_id,
+                rank=int(row.get("rank", len(ranked) + 1)),
+                result_source=str(row.get("result_source", "")),
+            )
+        )
+        if len(ranked) >= top_k:
+            break
+    return ranked
