@@ -60,6 +60,30 @@ spec:
       nodePort: {{ .Values.networkService.nodePort }}
       {{- end }}
 
+# Gateway startup Service — internal only. The gateway readiness probe is a deep
+# check that requires healthy realtime and batch workers, and the workers wait on
+# the gateway's shallow /v1/live endpoint before they start. Gating every gateway
+# address on readiness therefore deadlocks a clean install, so this Service
+# publishes the gateway address while the Pod is still unready. Client traffic
+# keeps using the readiness-gated Service above.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.gateway.startupServiceName" . }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "gateway-startup") | nindent 4 }}
+spec:
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "gateway") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networkService.port }}
+      targetPort: {{ .Values.networkService.targetPort }}
+
 # Realtime Service — ClusterIP, used by gateway for internal routing
 ---
 apiVersion: v1

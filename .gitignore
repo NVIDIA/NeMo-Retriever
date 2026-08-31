@@ -189,6 +189,7 @@ tags
 /build*/
 dask-worker-space
 data/*
+!data/jp20_query_gt.csv
 docs/source/_lib
 docs/source/_modules
 mlruns/*
@@ -230,6 +231,7 @@ test_results/
 sweep_results/
 artifacts/
 nemo_retriever/artifacts/
+agentic-traces/
 
 # Ignore cursor rules
 .cursor
@@ -275,3 +277,10 @@ spool/
 
 # Local git worktrees
 .worktrees/
+
+# Local huggingface cache and build directories
+.work*/
+dist*
+
+# Rotated service logs
+*.log.*

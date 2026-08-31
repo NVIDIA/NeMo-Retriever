@@ -24,7 +24,6 @@ from nemo_retriever.service.services.pipeline_executor import (
 def test_build_warmup_spec_full_local_stack() -> None:
     extract = {
         "use_table_structure": True,
-        "use_graphic_elements": True,
         "ocr_version": "v2",
     }
     embed = {
@@ -37,7 +36,6 @@ def test_build_warmup_spec_full_local_stack() -> None:
     assert "page_elements" in spec["stages"]
     assert "ocr" in spec["stages"]
     assert "table_structure" in spec["stages"]
-    assert "graphic_elements" in spec["stages"]
     assert spec["embed"]["backend"] == "hf"
     assert spec["asr"] is True
 
@@ -64,12 +62,11 @@ def test_warm_local_models_registers_mock_instances() -> None:
         patch("nemo_retriever.models.local.NemotronPageElementsV3", return_value=mock_page),
         patch("nemo_retriever.models.local.NemotronOCRV2", return_value=mock_ocr),
         patch("nemo_retriever.models.local.NemotronTableStructureV1"),
-        patch("nemo_retriever.models.local.NemotronGraphicElementsV1"),
         patch("nemo_retriever.models.create_local_embedder", return_value=mock_embed),
     ):
         warm_local_models(
             {
-                "stages": ["page_elements", "ocr", "table_structure", "graphic_elements"],
+                "stages": ["page_elements", "ocr", "table_structure"],
                 "ocr_version": "v2",
                 "embed": {"model_name": "m", "backend": "hf"},
             }

@@ -8,6 +8,7 @@ import base64
 import io
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -48,6 +49,99 @@ def test_caption_images_skips_already_captioned():
     result = caption_images(_make_page_df(captioned=True), model=mock_model)
     mock_model.caption_batch.assert_not_called()
     assert result.iloc[0]["images"][0]["text"] == "done"
+
+
+def test_caption_images_uses_page_image_for_direct_image_when_images_is_empty():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    b64 = _make_test_png_b64()
+    df = pd.DataFrame([{"path": "/data/direct.png", "text": "", "page_image": {"image_b64": b64}, "images": []}])
+    mock_model = MagicMock()
+    mock_model.caption_batch.return_value = ["a red square"]
+
+    result = caption_images(df, model=mock_model)
+
+    mock_model.caption_batch.assert_called_once()
+    assert result.iloc[0]["images"] == [
+        {
+            "image_b64": b64,
+            "text": "a red square",
+            "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+        }
+    ]
+
+
+def test_caption_images_uses_page_image_for_direct_image_with_ray_object_array():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    b64 = _make_test_png_b64()
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/data/direct.png",
+                "text": "",
+                "page_image": {"image_b64": b64},
+                "images": np.array([], dtype=object),
+            }
+        ]
+    )
+    mock_model = MagicMock()
+    mock_model.caption_batch.return_value = ["a red square"]
+
+    result = caption_images(df, model=mock_model)
+
+    mock_model.caption_batch.assert_called_once()
+    assert result.iloc[0]["images"][0]["text"] == "a red square"
+
+
+def test_caption_images_persists_caption_in_arrow_backed_images_column():
+    pa = pytest.importorskip("pyarrow")
+
+    from nemo_retriever.graph.executor import arrow_table_to_pandas
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    b64 = _make_test_png_b64()
+    df = arrow_table_to_pandas(
+        pa.Table.from_pylist(
+            [
+                {
+                    "path": "/data/direct.png",
+                    "text": "",
+                    "page_image": {"image_b64": b64},
+                    "images": [{"image_b64": b64, "text": "", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0]}],
+                }
+            ]
+        )
+    )
+    assert isinstance(df["images"].dtype, pd.ArrowDtype)
+    mock_model = MagicMock()
+    mock_model.caption_batch.return_value = ["a red square"]
+
+    result = caption_images(df, model=mock_model)
+
+    mock_model.caption_batch.assert_called_once()
+    assert result.iloc[0]["images"][0]["text"] == "a red square"
+
+
+def test_caption_images_does_not_use_pdf_page_image_when_images_is_empty():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    df = pd.DataFrame(
+        [
+            {
+                "path": "/data/document.pdf",
+                "text": "page text",
+                "page_image": {"image_b64": _make_test_png_b64()},
+                "images": [],
+            }
+        ]
+    )
+    mock_model = MagicMock()
+
+    result = caption_images(df, model=mock_model)
+
+    mock_model.caption_batch.assert_not_called()
+    assert result.iloc[0]["images"] == []
 
 
 @patch("nemo_retriever.operators.extract.pdf.extract.extract_image_like_objects_from_pdfium_page")
@@ -415,7 +509,7 @@ def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configure
     mock_create_client.assert_called_once()
     assert mock_create_client.call_args.args[0] == "https://integrate.api.nvidia.com/v1/chat/completions"
     infer_kwargs = mock_nim.infer.call_args.kwargs
-    assert infer_kwargs["model_name"] == "nvidia/nemotron-nano-12b-v2-vl"
+    assert infer_kwargs["model_name"] == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
 
 @patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
@@ -667,7 +761,7 @@ def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
     assert omni_result.iloc[0]["images"][0]["text"] == "local cap 2"
     assert omni_again.iloc[0]["images"][0]["text"] == "local cap 2"
     assert [kwargs["model_name"] for kwargs in created_kwargs] == [
-        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
         "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8",
     ]
 

@@ -55,16 +55,16 @@ def test_image_modalities_constant():
     assert isinstance(IMAGE_MODALITIES, frozenset)
 
 
-def test_build_embed_option_kwargs_applies_remote_model_provider_prefix():
+def test_build_embed_option_kwargs_defers_remote_model_provider_prefix():
     kwargs = build_embed_option_kwargs(
         "https://litellm.example.com/v1/embeddings",
         "nvidia/llama-nemotron-embed-vl-1b-v2",
         embed_model_provider_prefix="nvidia",
     )
 
-    assert kwargs["model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert kwargs["embed_model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert "embed_model_provider_prefix" not in kwargs
+    assert kwargs["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert kwargs["embed_model_provider_prefix"] == "nvidia"
 
 
 def test_build_embed_option_kwargs_leaves_model_unchanged_without_prefix():
@@ -77,29 +77,7 @@ def test_build_embed_option_kwargs_leaves_model_unchanged_without_prefix():
     assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 
-def test_build_embed_option_kwargs_prefix_supports_other_vendor_namespaces():
-    kwargs = build_embed_option_kwargs(
-        "https://litellm.example.com/v1/embeddings",
-        "mistral/embed-small",
-        embed_model_provider_prefix="acme",
-    )
-
-    assert kwargs["model_name"] == "acme/mistral/embed-small"
-    assert kwargs["embed_model_name"] == "acme/mistral/embed-small"
-
-
-def test_build_embed_option_kwargs_prefix_supports_bare_model_name():
-    kwargs = build_embed_option_kwargs(
-        "https://litellm.example.com/v1/embeddings",
-        "nv-embedqa-e5-v5",
-        embed_model_provider_prefix="nvidia",
-    )
-
-    assert kwargs["model_name"] == "nvidia/nv-embedqa-e5-v5"
-    assert kwargs["embed_model_name"] == "nvidia/nv-embedqa-e5-v5"
-
-
-def test_build_embed_option_kwargs_prefix_is_remote_only():
+def test_build_embed_option_kwargs_keeps_provider_prefix_separate_without_endpoint():
     kwargs = build_embed_option_kwargs(
         None,
         "nvidia/llama-nemotron-embed-vl-1b-v2",
@@ -108,7 +86,21 @@ def test_build_embed_option_kwargs_prefix_is_remote_only():
 
     assert kwargs["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert "embed_model_provider_prefix" not in kwargs
+    assert kwargs["embed_model_provider_prefix"] == "nvidia"
+
+
+def test_build_embed_option_kwargs_retains_prefix_when_model_is_omitted():
+    kwargs = build_embed_option_kwargs(
+        "https://inference-api.nvidia.com/v1",
+        None,
+        embed_model_provider_prefix="nvidia",
+    )
+
+    assert kwargs == {
+        "embed_invoke_url": "https://inference-api.nvidia.com/v1",
+        "embedding_endpoint": "https://inference-api.nvidia.com/v1",
+        "embed_model_provider_prefix": "nvidia",
+    }
 
 
 # ===================================================================

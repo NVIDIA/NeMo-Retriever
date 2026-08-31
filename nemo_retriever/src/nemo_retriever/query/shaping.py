@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from typing import Any, Sequence, cast
 
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type
-from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.common.vdb.records import RetrievalHit, normalize_content_type
 from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
 
 
-def normalize_query_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
+def normalize_query_content_type_allowlist(
+    content_types: str | Sequence[str] | None,
+) -> set[str] | None:
     """Normalize query-time content type filters to stored hit metadata values."""
     if content_types is None:
         return None
@@ -29,7 +30,8 @@ def normalize_query_content_type_allowlist(content_types: str | Sequence[str] | 
     return normalized
 
 
-def _hit_content_type(hit: dict[str, Any]) -> str | None:
+def resolve_hit_content_type(hit: dict[str, Any]) -> str | None:
+    """Resolve a hit's canonical modality, preferring persisted metadata."""
     metadata = parse_hit_content_metadata(hit)
     for value in (
         metadata.get("type"),
@@ -90,7 +92,7 @@ def shape_query_hits(
 
     for hit in hits:
         if allowed_types is not None:
-            hit_type = _hit_content_type(hit)
+            hit_type = resolve_hit_content_type(hit)
             if hit_type not in allowed_types:
                 continue
         if page_dedup:

@@ -25,4 +25,13 @@ def test_service_extra_includes_litellm_for_answer_generation() -> None:
     litellm = next((req for req in requirements if req.name == "litellm"), None)
 
     assert litellm is not None
-    assert any(str(spec).startswith(">=") and "1.86.0" in str(spec) for spec in litellm.specifier)
+    assert any(str(spec).startswith(">=") and "1.95.0rc3" in str(spec) for spec in litellm.specifier)
+
+
+def test_core_dependencies_include_tokenizer_stack() -> None:
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = [Requirement(dep) for dep in pyproject["project"]["dependencies"]]
+    names = {req.name for req in requirements}
+
+    assert "tokenizers" in names
+    assert "huggingface-hub" in names

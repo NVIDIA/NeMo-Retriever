@@ -81,6 +81,9 @@ class NemotronParseV12(BaseModel):
     ) -> None:
         super().__init__()
 
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+
+        apply_vllm_startup_defaults()
         try:
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:

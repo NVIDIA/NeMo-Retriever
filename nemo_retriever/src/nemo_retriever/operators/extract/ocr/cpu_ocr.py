@@ -19,26 +19,25 @@ from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 class OCRCPUActor(AbstractOperator, CPUOperator):
     """Remote OCR variant of :class:`OCRActor`.
 
-    The hosted NIM endpoint is still v1-only until OCR v2 is released remotely.
+    Defaults to the hosted Nemotron OCR v2 NIM endpoint.
     """
 
-    # Keep the remote default on v1 until a hosted OCR v2 NIM is available.
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
         self.ocr_kwargs = dict(ocr_kwargs)
-        invoke_url = str(
-            self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or self.DEFAULT_INVOKE_URL
-        ).strip()
-        if "invoke_url" not in self.ocr_kwargs:
-            self.ocr_kwargs["invoke_url"] = invoke_url
+        invoke_url = (
+            str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
+            or str(self.ocr_kwargs.get("invoke_url") or "").strip()
+            or self.DEFAULT_INVOKE_URL
+        )
+        self.ocr_kwargs["invoke_url"] = invoke_url
 
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
         self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
-        self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
         self.ocr_kwargs["use_table_structure"] = bool(self.ocr_kwargs.get("use_table_structure", False))
         self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))

@@ -1,5 +1,6 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.vlm_embed.enabled true) -}}
 {{- $name := .Values.nimOperator.vlm_embed.nimServiceName -}}
+{{- $nimSecrets := dict "context" $ "key" "vlm_embed" "cfg" .Values.nimOperator.vlm_embed -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -9,8 +10,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ .Values.nimOperator.vlm_embed.image.repository }}:{{ .Values.nimOperator.vlm_embed.image.tag }}"
-      pullSecret: "{{ index .Values.nimOperator.vlm_embed.image.pullSecrets 0 }}"
-      authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "vlm_embed") | nindent 6 }}
   storage:
     pvc:
@@ -18,6 +19,10 @@ spec:
       storageClass: {{ .Values.nimOperator.vlm_embed.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.vlm_embed.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.vlm_embed.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.vlm_embed.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.vlm_embed.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -29,8 +34,8 @@ spec:
     tag: {{ .Values.nimOperator.vlm_embed.image.tag }}
     pullPolicy: {{ .Values.nimOperator.vlm_embed.image.pullPolicy }}
     pullSecrets:
-{{ toYaml .Values.nimOperator.vlm_embed.image.pullSecrets | indent 6 }}
-  authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: {{ $name }}
@@ -48,6 +53,6 @@ spec:
     - name: NGC_API_KEY
       valueFrom:
         secretKeyRef:
-          name: {{ .Values.nimOperator.vlm_embed.authSecret | quote }}
+          name: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
           key: NGC_API_KEY
 {{- end }}

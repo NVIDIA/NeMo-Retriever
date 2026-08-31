@@ -64,6 +64,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             normalize=bool(self._kwargs.get("normalize", True)),
             max_length=int(self._kwargs.get("max_length", 8192)),
             query_max_length=int(self._kwargs.get("query_max_length", 128)),
+            revision=self._kwargs.get("embed_model_revision"),
         )
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

@@ -93,14 +93,11 @@ def test_root_help_lists_only_product_workflows() -> None:
         assert f"│ {developer_command} " not in result.output
 
 
-def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
-    result = RUNNER.invoke(cli_main.app, ["pipeline", "--help"])
-
-    assert result.exit_code == 0
-
-
-@pytest.mark.parametrize("removed_command", ("txt", "html"))
-def test_format_specific_root_commands_are_not_callable(removed_command: str) -> None:
+@pytest.mark.parametrize(
+    "removed_command",
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline"),
+)
+def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
 
     assert result.exit_code == 2
@@ -164,6 +161,9 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": True,
+        "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -204,6 +204,9 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "uri": "/tmp/default-lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -243,6 +246,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
             return self
 
         def ingest(self, *args: Any, **kwargs: Any):
+            captured["ingest_kwargs"] = kwargs
             return self
 
     monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
@@ -290,6 +294,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
+    assert captured["ingest_kwargs"] == {"return_results": True}
     assert "through retriever service http://retriever-service:7670" in result.output
 
 
@@ -397,6 +402,9 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "uri": "/tmp/lancedb",
         "table_name": "docs",
         "overwrite": True,
+        "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -415,6 +423,9 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -512,8 +523,13 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.embed_invoke_url == "http://embed:8000/v1/embeddings"
     assert embed_params.embedding_endpoint == "http://embed:8000/v1/embeddings"
-    assert embed_params.model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
-    assert embed_params.embed_model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_provider_prefix == "nvidia"
+    vdb_kwargs = fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs
+    assert vdb_kwargs["embedding_model_name"] == "nvidia/llama-nemotron-embed-1b-v2"
+    assert vdb_kwargs["vector_dim"] is None
+    assert "embedding_model_revision" not in vdb_kwargs
 
 
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
@@ -544,7 +560,6 @@ def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch,
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_page_elements is True
-    assert extract_params.use_graphic_elements is False
     assert extract_params.use_table_structure is False
     assert extract_params.table_output_format == "pseudo_markdown"
 
@@ -644,6 +659,7 @@ def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "pdfium_hybrid"
     assert extract_params.ocr_version == "v2"
     assert extract_params.ocr_lang == "english"
 
@@ -1022,6 +1038,22 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
+@pytest.mark.parametrize("suffix", [".md", ".json", ".sh"])
+def test_root_ingest_treats_documented_plain_text_extensions_as_text(monkeypatch, tmp_path, suffix) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / f"notes{suffix}"
+    document.write_text("plain text content", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
+    assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
 def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
     monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
@@ -1032,7 +1064,7 @@ def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyP
     )
 
     assert result.exit_code == 0
-    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "input formats, not commands" in result.output
     assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
     assert "retriever ingest batch --help" in result.output
@@ -1079,7 +1111,7 @@ def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.Monkey
     result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"])
 
     assert result.exit_code == 0
-    assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: root ingest batch [OPTIONS] {documents}..." in result.output
     assert "--ray-address" in result.output
     assert "--pdf-extract-workers" in result.output
     assert "--lancedb-uri" in result.output
@@ -1091,14 +1123,14 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"], prog_name="retriever")
 
     assert result.exit_code == 0
-    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "retriever ingest local" not in result.output
     assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
     assert "--service-url" not in result.output
     assert "--ray-address" in result.output
     assert "--profile" in result.output
-    assert "[auto|fast-text]" in result.output
+    assert "<auto|fast-text>" in result.output
     assert "--extract-images" in result.output
     assert "--use-page" not in result.output
     assert "--use-graphic" not in result.output
@@ -1152,7 +1184,7 @@ def test_root_ingest_service_help_hides_local_only_options() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
-    assert "Usage: root ingest service [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: root ingest service [OPTIONS] {documents}..." in result.output
     assert "--service-url" in result.output
     assert "--extract-images" in result.output
     assert "--embed-granular" in result.output
@@ -1190,6 +1222,42 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["extract"]["extract_images"] is False
     assert payload["extract"]["use_page_elements"] is False
     assert payload["extract"]["extract_tables"] is False
+
+
+def test_root_ingest_dry_run_routes_avi_to_video(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "sample.avi"
+    document.write_bytes(b"AVI")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == [str(document)]
+    assert payload["branch_summary"] == "video:1"
+
+
+def test_root_ingest_dry_run_discovers_avi_in_mixed_directory(monkeypatch, tmp_path) -> None:
+    avi_document = tmp_path / "sample.avi"
+    avi_document.write_bytes(b"AVI")
+    pdf_document = tmp_path / "sample.pdf"
+    pdf_document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path), "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["documents"] == sorted((str(avi_document), str(pdf_document)))
+    assert payload["branch_summary"] == "pdf:1, video:1"
 
 
 def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
@@ -1300,6 +1368,8 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
             "http://vlm:8000/v1/chat/completions",
             "--caption-model-name",
             "nvidia/test-vlm",
+            "--caption-gpu-memory-utilization",
+            "0.8",
             "--caption-context-text-max-chars",
             "512",
             "--caption-infographics",
@@ -1319,6 +1389,7 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     assert isinstance(caption_params, CaptionParams)
     assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
     assert caption_params.model_name == "nvidia/test-vlm"
+    assert caption_params.gpu_memory_utilization == 0.8
     assert caption_params.context_text_max_chars == 512
     assert caption_params.caption_infographics is True
 
@@ -1337,6 +1408,8 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
             str(document),
             "--caption-invoke-url",
             "http://vlm:8000/v1/chat/completions",
+            "--caption-gpu-memory-utilization",
+            "0.8",
         ],
     )
 
@@ -1409,7 +1482,6 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
-    assert extract_params.method == "pdfium"
     kwargs = fake_ingestor.extract.call_args.kwargs
     assert isinstance(kwargs["audio_chunk_params"], AudioChunkParams)
     assert kwargs["audio_chunk_params"].enabled is False
@@ -1474,19 +1546,23 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_text_formats_directory_skips_markdown(monkeypatch, tmp_path) -> None:
+def test_root_ingest_text_formats_directory_includes_documented_plain_text_extensions(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     dataset = tmp_path / "data"
     dataset.mkdir()
     html = dataset / "architecture.html"
     text = dataset / "api_changelog.txt"
     markdown = dataset / "aurora_README.md"
+    json_document = dataset / "metadata.json"
+    shell_script = dataset / "setup.sh"
     html.write_text("<h1>Architecture</h1>", encoding="utf-8")
     text.write_text("API changelog", encoding="utf-8")
-    markdown.write_text("# Unsupported markdown", encoding="utf-8")
+    markdown.write_text("# Aurora", encoding="utf-8")
+    json_document.write_text('{"project": "aurora"}', encoding="utf-8")
+    shell_script.write_text("#!/bin/sh\necho aurora\n", encoding="utf-8")
 
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 2)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 5)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(dataset)])
 
@@ -1494,12 +1570,44 @@ def test_root_ingest_text_formats_directory_skips_markdown(monkeypatch, tmp_path
     assert set(fake_ingestor.files.call_args.args[0]) == {
         str(html.resolve()),
         str(text.resolve()),
+        str(markdown.resolve()),
+        str(json_document.resolve()),
+        str(shell_script.resolve()),
     }
-    assert str(markdown.resolve()) not in fake_ingestor.files.call_args.args[0]
     extract_kwargs = fake_ingestor.extract.call_args.kwargs
     assert isinstance(extract_kwargs["text_params"], TextChunkParams)
     assert isinstance(extract_kwargs["html_params"], HtmlChunkParams)
-    assert "Ingested 2 file(s) → 2 row(s)" in result.output
+    assert "Ingested 5 file(s) → 5 row(s)" in result.output
+
+
+def test_root_ingest_directory_discovers_text_extensions_case_insensitively(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "README.MD"
+    document.write_text("# Heading\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(document.resolve())],)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
+def test_root_ingest_expands_documented_plain_text_glob(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    script = nested / "setup.sh"
+    script.write_text("#!/bin/sh\necho hello\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path / "**" / "*.sh")])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(script)],)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
 def test_root_ingest_reports_os_errors(monkeypatch) -> None:
@@ -1646,6 +1754,8 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
     }
 
 
@@ -1668,6 +1778,66 @@ def test_root_ingest_rejects_redundant_no_dedup_flag(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert "No such option" in result.output
+
+
+def test_root_ingest_default_builds_vector_and_fts_table(monkeypatch, tmp_path) -> None:
+    lancedb = pytest.importorskip("lancedb")
+    from nemo_retriever.common.vdb.lancedb import LanceDB
+
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+    db_path = tmp_path / "db"
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [1.0, 0.0],
+                    "content": "alpha hybrid manual",
+                    "content_metadata": {"id": "alpha", "page_number": 1},
+                    "source_metadata": {"source_id": str(doc)},
+                },
+            },
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.0, 1.0],
+                    "content": "beta hybrid manual",
+                    "content_metadata": {"id": "beta", "page_number": 2},
+                    "source_metadata": {"source_id": str(doc)},
+                },
+            },
+        ]
+    ]
+
+    def write_with_real_lancedb(params) -> Any:
+        LanceDB(
+            **params.vdb_kwargs,
+            vector_dim=2,
+            num_partitions=1,
+            num_sub_vectors=1,
+        ).run(records)
+        return fake_ingestor
+
+    fake_ingestor.vdb_upload.side_effect = write_with_real_lancedb
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+    monkeypatch.setattr(
+        ingest_execution,
+        "_count_lancedb_rows",
+        lambda uri, table_name: lancedb.connect(uri).open_table(table_name).count_rows(),
+    )
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(doc), "--lancedb-uri", str(db_path), "--table-name", "hybrid_docs"],
+    )
+
+    assert result.exit_code == 0, result.output
+    table = lancedb.connect(str(db_path)).open_table("hybrid_docs")
+    assert "vector" in table.schema.names
+    index_names = {index.name.lower() for index in table.list_indices()}
+    assert any("text" in name or "fts" in name for name in index_names)
 
 
 def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monkeypatch, tmp_path) -> None:
@@ -1708,5 +1878,7 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     table = lancedb.connect(str(tmp_path / "db")).open_table("sparse_docs")
     assert "vector" not in table.schema.names
     assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
+    assert table.schema.metadata[b"nemo_retriever.retrieval_mode"] == b"sparse"
+    assert b"nemo_retriever.embedding_model_name" not in table.schema.metadata
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)

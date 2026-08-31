@@ -9,8 +9,7 @@ Covers all three call sites where the OCR engine is selected:
 * The Ray graph builder (build_graph) for page-elements OCR.
 * The override block (batch_tuning_to_node_overrides) keyed by actor name.
 * The in-process pipeline (multi_type_extract_operator), which forwards
-  ``ocr_version`` and ``ocr_lang`` into TableStructureActor and
-  GraphicElementsActor.
+  ``ocr_version`` and ``ocr_lang`` into OCR-using stages.
 """
 
 from __future__ import annotations
@@ -258,12 +257,10 @@ def test_resolved_remote_ocr_stages_drop_local_selector_kwargs() -> None:
             extract_tables=True,
             use_table_structure=True,
             extract_charts=True,
-            use_graphic_elements=True,
             extract_infographics=False,
             page_elements_invoke_url="http://page.example/v1",
             ocr_invoke_url="http://ocr.example/v1",
             table_structure_invoke_url="http://table.example/v1",
-            graphic_elements_invoke_url="http://graphic.example/v1",
             ocr_lang="english",
         ),
         embed_params=EmbedParams(
@@ -275,13 +272,12 @@ def test_resolved_remote_ocr_stages_drop_local_selector_kwargs() -> None:
     resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
     nodes = {node.name: node for node in _linear_nodes(resolved)}
 
-    for name in ("TableStructureActor", "GraphicElementsActor", "OCRActor"):
+    for name in ("TableStructureActor", "OCRActor"):
         assert nodes[name].operator_class.__name__.endswith("CPUActor")
         assert "ocr_version" not in nodes[name].operator_kwargs
         assert "ocr_lang" not in nodes[name].operator_kwargs
 
     assert nodes["TableStructureActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
-    assert nodes["GraphicElementsActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
     assert nodes["OCRActor"].operator_kwargs["ocr_invoke_url"] == "http://ocr.example/v1"
 
 
@@ -327,7 +323,6 @@ def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
             extract_tables=True,
             use_table_structure=True,
             extract_charts=True,
-            use_graphic_elements=True,
             extract_infographics=True,
             ocr_lang="english",
         ),
@@ -336,9 +331,5 @@ def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
     op._run_detection_pipeline(pd.DataFrame({"page_image": ["x"]}))
 
     table_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "TableStructureActor")
-    graphic_kwargs = next(kwargs for name, kwargs in captured_kwargs if name == "GraphicElementsActor")
-
     assert table_kwargs.get("ocr_version") == "v2"
-    assert graphic_kwargs.get("ocr_version") == "v2"
     assert table_kwargs.get("ocr_lang") == "english"
-    assert graphic_kwargs.get("ocr_lang") == "english"

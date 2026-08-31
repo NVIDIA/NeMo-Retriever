@@ -11,6 +11,7 @@ from typing import ClassVar
 
 from fastapi import HTTPException, UploadFile
 
+from nemo_retriever.common.inline_text import is_inline_text_source
 from nemo_retriever.common.schemas.base import RichModel
 
 
@@ -51,6 +52,9 @@ class FileClassifier:
         ".pptx": (FileCategory.DOCUMENT, "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
         # Plain text
         ".txt": (FileCategory.TEXT, "text/plain"),
+        ".md": (FileCategory.TEXT, "text/plain"),
+        ".json": (FileCategory.TEXT, "text/plain"),
+        ".sh": (FileCategory.TEXT, "text/plain"),
         # Web / markup
         ".html": (FileCategory.HTML, "text/html"),
         # Image
@@ -125,6 +129,9 @@ def infer_extraction_mode_from_filename(filename: str) -> str | None:
     routing text-like uploads through the PDF or audio-only graphs when the
     client leaves ``extraction_mode`` at the default ``"auto"``.
     """
+    if is_inline_text_source(filename):
+        return "text"
+
     dot = filename.rfind(".")
     suffix = filename[dot:].lower() if dot != -1 else ""
     entry = FileClassifier.SUFFIX_MAP.get(suffix)

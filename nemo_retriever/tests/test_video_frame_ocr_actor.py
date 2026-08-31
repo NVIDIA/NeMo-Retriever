@@ -72,10 +72,10 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
     assert call_kwargs["invoke_url"] == "https://example/ocr"
 
 
-def test_cpu_actor_defaults_to_hosted_ocr_v1() -> None:
+def test_cpu_actor_defaults_to_hosted_ocr_v2() -> None:
     actor = VideoFrameOCRCPUActor()
 
-    assert "nemotron-ocr-v1" in actor._invoke_url
+    assert "nemotron-ocr-v2" in actor._invoke_url
 
 
 def test_gpu_actor_invokes_local_model_per_frame() -> None:
