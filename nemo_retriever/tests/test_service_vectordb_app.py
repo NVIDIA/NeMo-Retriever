@@ -36,6 +36,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
 from nemo_retriever.common.vdb.hybrid_fusion import DEFAULT_HYBRID_FUSION_POLICY
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
@@ -681,30 +682,57 @@ def test_internal_auth_is_optional_and_can_be_enabled() -> None:
         )
 
 
-def test_blocked_health_does_not_block_liveness_or_ordinary_requests() -> None:
+@pytest.mark.parametrize(
+    ("method", "path", "payload", "expected_status", "agentic_enabled"),
+    [
+        ("GET", "/v1/health", None, 200, False),
+        (
+            "POST",
+            "/internal/vectordb/write",
+            {
+                "records": [[{"document_type": "text", "metadata": {}}]],
+                "filename": "legacy.pdf",
+                "document_version": "1",
+            },
+            200,
+            False,
+        ),
+        ("POST", "/v1/query", {"query": "legacy"}, 422, False),
+        ("POST", "/v1/query", {"query": "legacy", "agentic": True}, 422, True),
+    ],
+)
+def test_blocked_health_inspection_does_not_block_other_requests(
+    method: str,
+    path: str,
+    payload: dict[str, Any] | None,
+    expected_status: int,
+    agentic_enabled: bool,
+) -> None:
     backend = BlockingHealthVDB()
-    app = _app(backend, internal_api_token="internal-secret")
+    agentic_config = (
+        AgenticConfig(enabled=True, llm_model="model", invoke_url="https://llm.example/v1/chat/completions")
+        if agentic_enabled
+        else None
+    )
+    app = _app(backend, internal_api_token="internal-secret", agentic_config=agentic_config)
+    headers = {"X-NRL-Internal-Token": "internal-secret"}
 
     with TestClient(app) as client, ThreadPoolExecutor(max_workers=3) as executor:
-        health_future = executor.submit(client.get, "/v1/health")
+        blocked_future = executor.submit(client.request, method, path, headers=headers, json=payload)
         assert backend.health_entered.wait(timeout=2)
         live_future = executor.submit(client.get, "/v1/live")
-        collections_future = executor.submit(
-            client.get,
-            "/v1/collections",
-            headers={"X-NRL-Internal-Token": "internal-secret"},
-        )
+        collections_future = executor.submit(client.get, "/v1/collections", headers=headers)
         try:
             live = live_future.result(timeout=2)
             collections = collections_future.result(timeout=2)
         finally:
             backend.release_health.set()
-        health = health_future.result(timeout=5)
+        blocked = blocked_future.result(timeout=5)
 
     assert live.status_code == 200
     assert live.json() == {"status": "ok"}
     assert collections.status_code == 200
-    assert health.status_code == 200
+    assert blocked.status_code == expected_status
 
 
 def test_health_and_metrics_use_backend_neutral_health() -> None:

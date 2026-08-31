@@ -547,7 +547,7 @@ def create_vectordb_app(
         )
         if isinstance(result, CollectionWriteResult):
             return WriteResponse(written=result.written, total_rows=result.total_rows)
-        backend_health = current.vdb.health()
+        backend_health = await asyncio.to_thread(current.vdb.health)
         return WriteResponse(
             written=sum(len(batch) for batch in req.records),
             total_rows=int(backend_health.get("total_rows", 0)),
@@ -716,7 +716,7 @@ def create_vectordb_app(
 
         backend_health: dict[str, Any] = {}
         if req.collection_name is None:
-            backend_health = current.vdb.health()
+            backend_health = await asyncio.to_thread(current.vdb.health)
             if backend_health.get("table_exists") is False:
                 raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
 
@@ -784,7 +784,7 @@ def create_vectordb_app(
             )
         if current.embed_mode != "remote":
             raise HTTPException(501, "Agentic service queries require a remote embedding endpoint.")
-        if not current.table_exists:
+        if not await asyncio.to_thread(lambda: current.table_exists):
             raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
         if req.top_k > agentic_config.backend_top_k:
             raise VDBInvalidRequest(
