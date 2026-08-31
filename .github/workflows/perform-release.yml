@@ -123,6 +123,9 @@ jobs:
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
+        with:
+          use-qemu: 'true'
+          platforms: 'linux/amd64,linux/arm64'
 
       - name: Set image metadata
         id: meta
@@ -144,34 +147,27 @@ jobs:
             printf '%s' "${HF_ACCESS_TOKEN}" > ./scripts/private_local/hf_token.txt
           fi
 
-      - name: Build image (validate)
+      # Multi-platform images cannot be docker-saved/loaded. Build both
+      # architectures into GHA cache here; the publish job rebuilds from that
+      # cache and pushes a manifest list only after every artifact validates.
+      - name: Build image (validate, do not push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: false
-          load: true
           target: service
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
           build-args: |
             DOWNLOAD_DEFAULT_TOKENIZER=True
             GIT_COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.image }}
           secret-files: hf_token=./scripts/private_local/hf_token.txt
-          cache-to: type=gha,scope=nvingest,mode=max
-          cache-from: type=gha,scope=nvingest
-
-      - name: Export Docker image
-        run: |
-          docker save "${{ steps.meta.outputs.image }}" | gzip -1 > nrl-service-docker-image.tar.gz
-          ls -lh nrl-service-docker-image.tar.gz
-
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: nrl-service-docker-image
-          path: nrl-service-docker-image.tar.gz
-          if-no-files-found: error
+          cache-to: type=gha,scope=nvingest-release,mode=max
+          cache-from: type=gha,scope=nvingest-release
+          outputs: type=cacheonly
 
   helm-build:
     name: Build Helm Chart
@@ -247,30 +243,49 @@ jobs:
         with:
           ref: ${{ needs.determine-version.outputs.source-ref }}
 
+      - name: Setup Docker Buildx
+        uses: ./.github/actions/setup-docker-buildx
+        with:
+          use-qemu: 'true'
+          platforms: 'linux/amd64,linux/arm64'
+
       - name: Login to NGC
         uses: ./.github/actions/docker-login-ngc
         with:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: nrl-service-docker-image
+      - name: Create HF token file
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+        run: |
+          mkdir -p ./scripts/private_local
+          if [ -n "${HF_ACCESS_TOKEN}" ]; then
+            printf '%s' "${HF_ACCESS_TOKEN}" > ./scripts/private_local/hf_token.txt
+          fi
 
-      - name: Load and push image
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          target: service
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
+          build-args: |
+            DOWNLOAD_DEFAULT_TOKENIZER=True
+            GIT_COMMIT=${{ github.sha }}
+          tags: ${{ needs.nvingest-docker-build.outputs.image }}
+          secret-files: hf_token=./scripts/private_local/hf_token.txt
+          cache-from: type=gha,scope=nvingest-release
+
+      - name: Inspect published image
         id: push
         run: |
-          echo "Loading image from tarball..."
-          LOAD_OUTPUT=$(gunzip -c nrl-service-docker-image.tar.gz | docker load)
-          echo "$LOAD_OUTPUT"
-          IMAGE=$(echo "$LOAD_OUTPUT" | sed -n 's/^Loaded image: //p')
-          if [ -z "$IMAGE" ]; then
-            echo "::error::Failed to parse image name from docker load output"
-            exit 1
-          fi
-          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
-          echo "Pushing ${IMAGE}..."
-          docker push "${IMAGE}"
+          IMAGE="${{ needs.nvingest-docker-build.outputs.image }}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          docker buildx imagetools inspect "$IMAGE"
 
   helm-publish:
     name: Publish Helm Chart
@@ -459,7 +474,7 @@ jobs:
           elif [ "$DRY_RUN" = "true" ]; then
             MSG+="\n$(status_emoji "$NVINGEST_BUILD_RESULT") *nv-ingest Docker* — Built and validated (not pushed)"
           elif [ "$NVINGEST_PUBLISH_RESULT" = "success" ]; then
-            MSG+="\n:white_check_mark: *nv-ingest Docker* — \`${NVINGEST_IMAGE}\`"
+            MSG+="\n:white_check_mark: *nv-ingest Docker* — \`${NVINGEST_IMAGE}\` (linux/amd64, linux/arm64)"
             MSG+="\n    \`\`\`docker pull ${NVINGEST_IMAGE}\`\`\`"
           elif [ "$NVINGEST_BUILD_RESULT" != "success" ]; then
             MSG+="\n$(status_emoji "$NVINGEST_BUILD_RESULT") *nv-ingest Docker* — Build: ${NVINGEST_BUILD_RESULT}"
