@@ -13,6 +13,7 @@ import json
 import math
 import threading
 from dataclasses import replace
+from unittest.mock import MagicMock
 
 import lancedb
 import pytest
@@ -36,12 +37,28 @@ from nemo_retriever.common.vdb.lancedb import (
     _to_service_lancedb_rows,
 )
 from nemo_retriever.common.vdb.lancedb_collections import (
+    LanceDBCollectionStore,
     _collection_rows,
     _encode_cursor,
     _normalize_collection_results,
     _public_collection_hit,
 )
 from nemo_retriever.common.vdb.records import RetrievalContractError
+
+
+def test_catalog_scans_reuse_open_table_handle() -> None:
+    table = MagicMock()
+    table.search.return_value.limit.return_value.to_list.return_value = []
+    database = MagicMock()
+    database.open_table.return_value = table
+    store = object.__new__(LanceDBCollectionStore)
+    store._db = database
+    store._opened_tables = {}
+
+    assert store._rows("_nrl_collections") == []
+    assert store._rows("_nrl_collections") == []
+
+    database.open_table.assert_called_once_with("_nrl_collections")
 
 
 def _context(

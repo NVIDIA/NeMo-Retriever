@@ -51,11 +51,14 @@ uv pip install "nemo-retriever[local]"
 ```
 
 The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease/nightly Nemotron packages from PyPI within the same supported
-major-version windows, opt in with `--pre`:
+try prerelease or nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
+version you are installing.
+
+Run the following command, and replace `<version>` with that version:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.08-RC1"
+uv pip install --pre "nemo-retriever[local]==<version>"
 ```
 
 **Remote NIM (no local GPU)**
@@ -196,6 +199,12 @@ retriever ingest /path/to/file-or-directory \
   --lancedb-uri lancedb \
   --table-name nemo-retriever
 ```
+
+You do not need to choose a retrieval index mode for the normal workflow. The
+default `index_mode=auto` creates a hybrid table (dense
+vectors plus BM25/full-text search), and query mode `auto` uses that table
+automatically. The explicit `dense`, `hybrid`, and `sparse` modes are advanced
+overrides for experiments or specialized deployments.
 
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
 used in [Run a recall query](#run-a-recall-query) below. With the
@@ -349,6 +358,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
+When you omit `--embed-model-name`, agentic retrieval uses the selected
+table's model.
 
 By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
 (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
@@ -367,8 +378,7 @@ GPUs (for example `CUDA_VISIBLE_DEVICES=0,1`).
 CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
   --agentic \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --table-name nemo-retriever
 ```
 
 ```bash
@@ -377,8 +387,7 @@ CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal i
   --agentic-llm-model super-49b \
   --agentic-local-tensor-parallel-size 2 \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
+  --table-name nemo-retriever
 ```
 
 When the first ``tensor_parallel_size`` CUDA-visible GPUs are not
@@ -400,8 +409,7 @@ retriever query "What is RAG?" \
   --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --table-name nemo-retriever
 ```
 
 The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
@@ -411,8 +419,11 @@ endpoint. Refer to
 [Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
 in the Helm chart README.
 
-Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
-text-enriched hits.
+Agentic CLI output is not the five-field dense projection (`modality`,
+`page_number`, `score`, `source`, and `text`). Each JSON object is the
+internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
+`result_source` is `final_results`, `rrf`, or `selection_agent`. When no
+retrieval hop returned the document, only those three keys are present.
 
 For a quick smoke test, reduce agent work:
 
@@ -421,20 +432,19 @@ CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --agentic \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --top-k 1 \
   --agentic-react-max-steps 1
 ```
 
 You can run the same flow from Python. Omit `invoke_url` for the default local
 in-process vLLM backend, or pass `invoke_url` on `QueryAgenticOptions` for a
-separate OpenAI-compatible chat-completions endpoint.
+separate OpenAI-compatible chat-completions endpoint. Omit `embed_model_name`
+so the query reuses the table's recorded model.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
-    QueryEmbedOptions,
     QueryRequest,
     QueryRetrievalOptions,
     QueryStorageOptions,
@@ -449,9 +459,6 @@ results = agentic_query_documents(
         storage=QueryStorageOptions(
             lancedb_uri="lancedb",
             table_name="nemo-retriever",
-        ),
-        embed=QueryEmbedOptions(
-            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
@@ -482,6 +489,10 @@ uv pip install "nemo-retriever[llm]"
 export NVIDIA_API_KEY=nvapi-...
 ```
 
+The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does not
+read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
+so the same key is forwarded on each request.
+
 Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
 embedding model in `embed_kwargs` must match the one used during ingestion so
 query vectors land in the same embedding space as the stored chunks.
@@ -501,6 +512,7 @@ retriever = Retriever(
 )
 llm = LiteLLMClient.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.0,
     max_tokens=512,
 )
@@ -522,6 +534,7 @@ from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.1,
     max_tokens=4096,
 )

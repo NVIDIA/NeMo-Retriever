@@ -281,3 +281,6 @@ spool/
 # Local huggingface cache and build directories
 .work*/
 dist*
+
+# Rotated service logs
+*.log.*

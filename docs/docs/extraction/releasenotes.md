@@ -2,42 +2,42 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
-## 26.08 Release Notes (26.8.0) { #release-2608 }
+## 26.08.1 Release Notes (26.8.1) { #release-26081 }
 
-NVIDIA® NeMo Retriever Library version 26.08 adds a shared text-generation task API, configurable large language model (LLM) settings, grounded answer-generation model paths, agentic retrieval, and updated Helm NIM defaults. It continues the 26.05 graph ingest, multimodal extraction, and Helm-first deployment foundation.
+NVIDIA® NeMo Retriever Library version 26.08.1 includes a shared text-generation task API, configurable large language model (LLM) settings, grounded answer-generation model paths, agentic retrieval, and updated Helm NIM defaults. It builds on the graph ingest, multimodal extraction, and Helm-first deployment foundation.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md).
 
-The following sections summarize user-visible changes introduced in 26.08. Capabilities first documented in 26.05 that remain current are listed under [Continuing from 26.05](#continuing-from-2605).
+The following sections summarize user-visible changes included in 26.08.1 and foundational capabilities that remain current.
 
 ### Upgrade notes { #upgrade-notes }
 
-- Nemotron OCR v2 is now the default OCR engine for local Hugging Face, hosted CPU actors, and Helm NIM deployments. 26.05 kept Helm on OCR v1. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`.
+- Nemotron OCR v2 is now the default OCR engine for local Hugging Face and hosted CPU actors. For Helm NIM deployments, Nemotron OCR v2 is the default. The previous release kept Helm on OCR v1. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) for the chart image repository and tag.
 - Helm replaces separate page-elements and table-structure NIMs with the combined `nemotron-object-detection:2.0.1` image. Development Compose uses the same combined object-detection image and OCR v2, but still defaults to `2.0.0` tags unless you override `NIM_*_TAG`.
-- Helm default VL embed and VL rerank NIM images bump to `2.3.0`. 26.05 used `1.12.0` and `1.11.0`. Development Compose still defaults to `1.12.0` and `1.11.0` unless you override `NIM_EMBED_TAG` and `NIM_RERANK_TAG`.
+- Helm default VL embed and VL rerank NIM images bump to `2.3.0`. The previous release used `1.12.0` and `1.11.0`. Development Compose still defaults to `1.12.0` and `1.11.0` unless you override `NIM_EMBED_TAG` and `NIM_RERANK_TAG`.
 - Default VLM image captioning is Nemotron 3 Nano Omni for local and hosted paths. Chart-classified PDF regions remain on the layout and OCR path.
 - Hosted Nemotron Parse and self-hosted Nemotron Parse use distinct HTTP contracts. Select the matching client path for your endpoint.
 - macOS Intel (x86_64) is no longer supported for package installs. Use Apple Silicon (arm64) macOS, Windows x64, or Linux. Refer to [Packaging and platform](#packaging-and-platform).
 - Legacy `nv-ingest` and compatibility pipeline CLI code paths are removed. Use `retriever ingest` and the graph stage registry.
 - Self-hosted Parakeet on Helm requires both `nimOperator.audio.enabled=true` and `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`. Enabling the audio NIM alone does not wire the service ASR endpoint.
-- Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+- Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 - A document whose VectorDB write is not acknowledged now fails instead of reporting `completed` with a positive row count. Earlier builds failed only collection-managed writes and logged a legacy fixed-table failure as a warning. The worker acknowledgement timeout is configurable through `serviceConfig.vectordb.writeTimeoutSeconds` (rendered as `vectordb.write_timeout_s`) and defaults to 300 seconds. Refer to [Ingest fails with a VectorDB write error](troubleshoot.md#vectordb-write-not-acknowledged).
-- Retriever Service OpenAPI `info.version` no longer reports a stale `26.5.0` value. The service reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
+- Retriever Service OpenAPI `info.version` no longer reports a stale package-version value. The service reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
 
 ### Text generation and LLM configuration { #text-generation-and-llm-configuration }
 
-- 26.08 introduces a shared one-request-per-row text-generation abstraction: `TextGenerationTask` plus `TextGenerationOperator`. `GenericGenerationOperator` accepts a validated custom prompt. Refer to [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation).
+- 26.08.1 includes a shared one-request-per-row text-generation abstraction: `TextGenerationTask` plus `TextGenerationOperator`. `GenericGenerationOperator` accepts a validated custom prompt. Refer to [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation).
 - `SummarizeTask` inherits from `TextGenerationTask`. `SummarizationOperator` provides the built-in summarization behavior with the default prompt or a custom prompt.
 - Configure those operators with `TextGenerationParams.from_kwargs(...)`. Supported fields include `model`, `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `extra_params`, `num_retries`, `timeout`, `prompt`, `system_prompt`, `rag_system_prompt`, `rag_system_prompt_prefix`, `reasoning_enabled`, and `max_workers`. Refer to [TextGenerationParams configuration](nemo-retriever-api-reference.md#textgenerationparams-configuration).
 
 ### Answer generation { #answer-generation }
 
 - `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
-- Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
+- Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Agentic retrieval { #agentic-retrieval }
 
-- Agentic retrieval is a 26.08 user-facing feature. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
+- Agentic retrieval is available in 26.08.1. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 - `retriever query --agentic` runs that ReAct loop over the same LanceDB table as one-pass retrieval. Local CLI and harness runs default to in-process vLLM (`nemotron-8b`). Remote OpenAI-compatible NIM or NVIDIA-hosted endpoints use `--agentic-invoke-url`.
 - Retriever Service exposes agentic retrieval on `POST /v1/query` with `agentic=true` and an `agentic_query` MCP tool when `agentic.enabled` is true. Service mode requires a remote OpenAI-compatible LLM endpoint. Agentic remains opt-in through `serviceConfig.agentic.enabled`.
 - The Helm `answer_llm` Super-49B NIM auto-wires `/v1/answer` only. Self-hosted agentic retrieval against that NIM requires `--enable-auto-tool-choice --tool-call-parser llama3_json` on `NIM_PASSTHROUGH_ARGS` and explicit `serviceConfig.agentic` wiring. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
@@ -45,18 +45,19 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
 
-- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration).
+- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration) for the chart image.
 - Local OCR crop batching runs across page rows for throughput. Helm extraction NIMs (OCR and object detection) enable performance mode by default. The VL embed NIM does not.
-- 26.08 Helm default and optional NIM images that affect mirroring, allowlisting, and troubleshooting include the following:
+- 26.08.1 Helm default and optional NIM images that affect mirroring, allowlisting, and troubleshooting include the following:
     - Combined object detection for page elements and table structure: `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1`
+    - Image OCR: `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`
     - VL embedding: `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0`
     - VL reranking (optional): `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0`
     - Optional Omni caption and configurable answer VLM: `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`
     - Optional answer-generation LLM: `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`
-- Optional Nemotron-3-Embed-1B is a released 26.08 embedding artifact. It is not enabled by default and is not a Helm NIM.
+- Optional Nemotron-3-Embed-1B is available in 26.08.1. It is not enabled by default and is not a Helm NIM.
     - Optional NIM: `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`
     - Optional Hugging Face checkpoint: `nvidia/Nemotron-3-Embed-1B-BF16` (revision `9e0b24858b1195815ecb1188ffa1b73bcea7b30a`)
-- The CLI lists `nvidia/Nemotron-3-Embed-1B-BF16` among tested official local checkpoints. For local Hugging Face inference, pass `--embed-model-name nvidia/Nemotron-3-Embed-1B-BF16`. For a self-hosted or hosted embedding NIM, pass `--embed-invoke-url` with `--embed-model-name`. Refer to [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints) for local checkpoint usage. Refer to [Route ingest to hosted or self-hosted NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#route-ingest-to-hosted-or-self-hosted-nim-endpoints) and the text-only embedding NIM note in [Multimodal embeddings](embedding.md) for external endpoints.
+- The CLI lists `nvidia/Nemotron-3-Embed-1B-BF16` among tested official local checkpoints. For local Hugging Face inference, pass `--embed-model-name nvidia/Nemotron-3-Embed-1B-BF16`. For a self-hosted or hosted embedding NIM, pass `--embed-invoke-url` with `--embed-model-name`. Refer to [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints) for local checkpoint usage. Refer to [Route ingest to hosted or self-hosted NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#route-ingest-to-hosted-or-self-hosted-nim-endpoints) and the text-only embedding NIM note in [Multimodal embeddings](embedding.md) for external endpoints.
 - The `page_elements` and `table_structure` services share the combined object-detection image and select distinct models. Pull that image once for air-gapped or allowlisted deployments.
 - Nemotron 3 Nano Omni is the canonical caption model. It is opt-in on Helm and has a larger GPU footprint than Nano caption profiles.
 - Nemotron Parse endpoint wiring is available in service extraction workers, with documented hosted versus self-hosted contract selection.
@@ -102,14 +103,15 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 
 - True LanceDB hybrid retrieval.
 - LanceDB retrieval-mode autodetection and persisted embedding identity for automatic local queries.
+- Local queries warn when an explicit embedding model differs from the model recorded on the LanceDB table. The query continues with the explicit override so intentional model overrides remain available.
 - Dense image-only VDB records are retained where applicable.
-- Scope-isolated collection and document lifecycle APIs (`/v1/collections`) support create, ingest, replace, query, and cleanup without exposing LanceDB table names.
+- Scope-isolated collection and document catalog APIs (`/v1/collections`) create, list, get, update, and delete collections and committed documents without exposing LanceDB table names. Ingest and replace use `POST /v1/ingest/job` with `collection_name`. Retrieval uses `POST /v1/query` with `collection_name`. Refer to [Collection management API](../reference/collection-management-api.md).
 - Fixed an issue where concurrent ingests into one VectorDB pod could report success minutes before the rows were durable or queryable. Each write now commits its rows independently, and index maintenance runs in a separate serialized phase where concurrent writers share one coalesced rebuild. An index-readiness wait that expires logs a warning and leaves the committed rows queryable instead of failing the write. Refer to [LanceDB index creation fails during concurrent Helm ingestion](troubleshoot.md#lancedb-concurrent-index-creation).
 
 ### Packaging and platform { #packaging-and-platform }
 
 - Public nightlies are published to PyPI while local install extras remain stable.
-- Ray is raised to `>=2.56.1` for CVE remediation. 26.05 used `>=2.49.0`. Ray no longer publishes wheels for macOS Intel (x86_64), so `pip` and `uv` installs fail on Intel Macs, including in-process library mode. Apple Silicon (arm64) macOS remains supported for slim remote or NIM-only installs, alongside Windows x64.
+- Ray is raised to `>=2.56.1` for CVE remediation. The previous release used `>=2.49.0`. Ray no longer publishes wheels for macOS Intel (x86_64), so `pip` and `uv` installs fail on Intel Macs, including in-process library mode. Apple Silicon (arm64) macOS remains supported for slim remote or NIM-only installs, alongside Windows x64.
 
 ### Helm chart { #helm-chart }
 
@@ -119,11 +121,11 @@ The following sections summarize user-visible changes introduced in 26.08. Capab
 
 - Published [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage.
 - Published [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation) for `TextGenerationTask`, `GenericGenerationOperator`, `SummarizationOperator`, and `TextGenerationParams`.
-- Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
+- Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
-### Continuing from 26.05 { #continuing-from-2605 }
+### Current foundational capabilities { #current-foundational-capabilities }
 
-The following capabilities shipped in 26.05 and remain current in 26.08. They are not new 26.08 highlights. For the original 26.05 wording, refer to the [26.05 Release Notes](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/).
+The following foundational capabilities remain current. They are not new 26.08.1 highlights.
 
 - Text splitting for graph and library ingest uses `.extract(split_config=...)` instead of standalone `.split()` on the graph ingest path. The service ingestor API can still expose `.split()` separately.
 - Direct `Retriever(...)` construction uses `vdb_kwargs`, `embed_kwargs`, and `rerank` instead of flat `lancedb_uri`, `lancedb_table`, `embedder`, `embedding_endpoint`, `local_query_embed_backend`, and `reranker` arguments.
@@ -146,11 +148,11 @@ The following capabilities shipped in 26.05 and remain current in 26.08. They ar
 - Evaluation includes a BEIR-centric overhaul and the experimental `retriever skill-eval` benchmark CLI.
 - Text-to-SQL agent graph and tabular tooling support structured data retrieval, including tabular data ingestion.
 - Optional install extras include `[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and slim remote or NIM-only installs on Mac and Windows.
-- Documentation is aligned to a Helm-first supported path and consolidates extraction concepts, ingest workflow, embeddings, audio and video guides, prerequisites and support matrix, and UDF or custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
+- Documentation is aligned to a Helm-first supported path and consolidates extraction concepts, ingest workflow, embeddings, audio and video guides, prerequisites and support matrix, and UDF or custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
 
 ## Release Notes for Previous Versions { #previous-versions }
 
-- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/) (GA on docs.nvidia.com at time of 26.08 RC)
+- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/)
 - [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
 - [26.1.2](https://archive.docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
 - [26.1.1](https://archive.docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)
@@ -169,4 +171,4 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
-- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)

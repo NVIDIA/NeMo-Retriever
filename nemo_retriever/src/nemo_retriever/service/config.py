@@ -437,9 +437,21 @@ class VectorDbConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    launch_on_start: bool = Field(
+        default=False,
+        description=(
+            "Start and supervise a loopback VectorDB child when retriever service starts. "
+            "The configured vectordb_url must use localhost or 127.0.0.1."
+        ),
+    )
+    max_concurrent_queries: int = Field(
+        default=4,
+        ge=1,
+        description=("Maximum number of concurrent queries handled by a supervised " "VectorDB child."),
+    )
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
-    index_mode: Literal["dense", "hybrid"] = "hybrid"
+    index_mode: Literal["auto", "dense", "hybrid"] = "auto"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
