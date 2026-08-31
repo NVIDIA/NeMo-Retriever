@@ -55,8 +55,8 @@ class AgentRunResult:
     run failed and no usable end attempt was ever made.
 
     The verbose fields (``trajectory``, ``retrieval_log``, ``extra_data``)
-    are always populated; callers that don't need them simply don't persist
-    them.
+    are always populated. ``atif_trace`` is the lightweight ATIF rendering of
+    the run when trace construction succeeded.
     """
 
     final_doc_ids: List[str] = field(default_factory=list)
@@ -65,6 +65,7 @@ class AgentRunResult:
     trajectory: List[Dict[str, Any]] = field(default_factory=list)
     retrieval_log: List[Dict[str, Any]] = field(default_factory=list)
     extra_data: Dict[str, Any] = field(default_factory=dict)
+    atif_trace: Optional[Dict[str, Any]] = None
 
     @property
     def succeeded(self) -> bool:
