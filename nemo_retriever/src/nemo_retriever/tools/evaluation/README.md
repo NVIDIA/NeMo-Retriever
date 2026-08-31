@@ -1,6 +1,6 @@
 # QA Evaluation Pipeline
 
-The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[llm]` from PyPI, or **`uv pip install -e "./nemo_retriever[llm]"` from this repo root** so `graph_pipeline` and local changes resolve).
+The evaluation framework lives in **`nemo_retriever.evaluation`** (install `nemo-retriever[llm]` from PyPI, or **`uv pip install -e "./nemo_retriever[llm]"` from this repo root** to exercise local changes).
 
 Measures LLM answer quality over a RAG pipeline: retrieve context from a VDB, generate answers with one or more LLMs, and score each answer against ground-truth references using multi-tier scoring and an LLM-as-judge.
 
@@ -39,28 +39,27 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
 
 | Stage | Artifacts produced | Code / APIs involved |
 |-------|-------------------|----------------------|
-| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks); optionally `data/bo767_extracted/*.parquet` | `python -m nemo_retriever.examples.graph_pipeline` (extract, embed, VDB upload to LanceDB via the operator graph). Add `--save-intermediate` to also save extraction Parquet for full-page markdown (recommended for best results). **Table name must match** `retriever eval export` (`--lancedb-table`, default `nemo-retriever`). |
-| **2. Full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | `retriever eval build-page-index` -> `nemo_retriever.io.markdown.build_page_index()` (which calls `to_markdown_by_page` per document); numpy list columns are coerced so structured content is not dropped. |
+| **1. Ingest + embed** | `lancedb/<uri>/<table>/` (embedded sub-page chunks) | `retriever ingest` extracts, embeds, and writes LanceDB through the supported ingest workflow. **Table name must match** `retriever eval export` (`--lancedb-table`, default `nemo-retriever`). |
+| **2. Optional full-page markdown index** | `data/bo767_page_markdown.json` (`source_id` -> page -> markdown) | If you already have extraction Parquet, `retriever eval build-page-index` calls `nemo_retriever.io.markdown.build_page_index()` to create a page index. |
 | **3. Retrieval export** | `data/eval/bo767_retrieval_fullpage.json` (or sub-page JSON) | `retriever eval export` -> `nemo_retriever.export.export_retrieval_json()` queries LanceDB; if `--page-index` is provided, hits are expanded/deduped by `(source_id, page)` and replaced with full-page markdown strings. |
 | **4. Ground truth** | `data/bo767_annotations.csv` (repo root) | Questions/answers for export and eval; must align with **query string normalization** in `FileRetriever` (see retrieval JSON rules). |
 | **5. Evaluation** | `qa_results_*.json` | `retriever eval run` or operator graph chain -> `nemo_retriever.evaluation`: `RetrievalLoaderOperator >> QAGenerationOperator >> JudgingOperator >> ScoringOperator`, or `QAEvalPipeline` for multi-model sweeps. |
 
-**Data flow (conceptual):** PDFs -> (A) **chunked embeddings in LanceDB** for similarity search; (B) **Parquet** for full-page reconstruction. **Export** runs search on (A), then **replaces** hit chunks with pages from (B) via the index. In **file mode**, eval reads the retrieval JSON + ground-truth CSV. In **[lancedb mode](#in-memory-lancedb-retrieval)**, eval queries LanceDB directly in-memory (optionally saving the JSON for later re-runs).
+**Data flow (conceptual):** `retriever ingest` writes chunk embeddings to
+LanceDB. **Export** queries that table and writes retrieval JSON. If a separate
+workflow supplies extraction Parquet, an optional page index can replace hit
+chunks with full-page markdown during export. In **file mode**, evaluation reads
+the retrieval JSON and ground-truth CSV. In **[lancedb mode](#in-memory-lancedb-retrieval)**,
+evaluation queries LanceDB directly (optionally saving JSON for later re-runs).
 
 ```
- NeMo Retriever (steps 1-3)                            Universal (steps 4-5)
- ──────────────────────────                             ─────────────────────
- Step 1                         Step 2      Step 3
- Ingest + Embed                 Index       Export           QA Eval
-+-----------------------------+ +--------+  +----------+  +------------------+
-| graph_pipeline              | | Parquet|  | LanceDB  |  | RetrievalLoader  |
-|  --vdb-kwargs-json ...      | | -> page|->| queries  |->| >> Generation    |
-|  [--save-intermediate <dir>]| | md idx |  | + pages  |  | >> Judging       |
-| (always: LanceDB output)   | +--------+  | -> JSON  |  | >> Scoring       |
-| (optional: Parquet output)  |             +----------+  +------------------+
-+-----------------------------+       |          |               |
-  |               |            page_md.json  retrieval.json  qa_results.json
-lancedb/    *.parquet (opt.)
++--------------------+    +---------+    +----------------+    +------------------+
+| retriever ingest   | -> | LanceDB | -> | eval export    | -> | RetrievalLoader  |
+| --lancedb-uri ...  |    | table   |    | retrieval JSON |    | >> Generation    |
+| --table-name ...   |    +---------+    +----------------+    | >> Judging       |
++--------------------+          ^                              | >> Scoring       |
+                                | optional page index          +------------------+
+                   extraction Parquet -> build-page-index
 
  Bring Your Own Retrieval    +---------+--------+
  ─────────────────────────   | Any pipeline that |
@@ -77,11 +76,13 @@ Steps 4-5 can be re-run with different LLM configs without repeating retrieval.
 
 ## Reproducing the bo767 Run
 
-Exact commands to reproduce the full-page markdown QA evaluation from scratch.
+The default supported path evaluates sub-page chunks from a LanceDB table. A
+full-page markdown run additionally requires a separately produced extraction
+Parquet dataset for `retriever eval build-page-index`.
 
 **Working directory:** All commands below run from the **repo root** unless otherwise noted.
 
-**Debug:** Lance index build can hit `No space left on device` when `/tmp` is a tiny tmpfs; set `export TMPDIR=/path/to/large/filesystem/tmp` and `mkdir -p "$TMPDIR"` before step 1. If `extraction.parquet` was written but LanceDB failed, retry with `python -c "from nemo_retriever.utils.parquet_to_lancedb import reload_parquet_to_lancedb; reload_parquet_to_lancedb('<parquet_dir>', '<lancedb_uri>')""`; otherwise re-run `graph_pipeline`.
+**Debug:** Lance index build can hit `No space left on device` when `/tmp` is a tiny tmpfs; set `export TMPDIR=/path/to/large/filesystem/tmp` and `mkdir -p "$TMPDIR"` before step 1, then re-run `retriever ingest`.
 
 **Before running any quick reference below**, complete the one-time setup:
 
@@ -101,35 +102,6 @@ export NVIDIA_API_KEY="nvapi-..."
 See [Python environment](#python-environment) and [Prerequisites](#prerequisites-data-and-keys) for details.
 
 <details>
-<summary><strong>Quick reference -- full-page markdown (all commands)</strong></summary>
-
-```bash
-cd /path/to/nemo-retriever
-
-# 1. Ingest + embed + save Parquet in one pass (~45-90 min)
-python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
-  --save-intermediate data/bo767_extracted
-
-# 2. Build page markdown index (~5-10 min)
-retriever eval build-page-index \
-  --parquet-dir data/bo767_extracted \
-  --output data/bo767_page_markdown.json
-
-# 3. Export retrieval results (~5-15 min)
-retriever eval export \
-  --lancedb-uri lancedb \
-  --query-csv data/bo767_annotations.csv \
-  --output data/eval/bo767_retrieval_fullpage.json \
-  --page-index data/bo767_page_markdown.json
-
-# 4. Run QA evaluation (~1-2 hrs)
-retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
-```
-
-</details>
-
-<details>
 <summary><strong>Quick reference -- sub-page chunks (skip full-page markdown)</strong></summary>
 
 If you do not need full-page markdown context and want the simplest path,
@@ -141,8 +113,9 @@ retrieval context, which may produce lower scores for structured content
 cd /path/to/nemo-retriever
 
 # 1. Ingest + embed into LanceDB
-python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
+retriever ingest /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever
 
 # 2. Export retrieval (sub-page chunks, no page index)
 retriever eval export \
@@ -157,35 +130,21 @@ retriever eval run --config nemo_retriever/examples/eval_sweep.yaml
 </details>
 
 <details>
-<summary><strong>Quick reference -- end-to-end in-memory (single command: ingest + eval)</strong></summary>
+<summary><strong>Quick reference -- live LanceDB evaluation</strong></summary>
 
-Alternative to the separable export+eval path above. One command ingests
-PDFs, builds the full-page markdown index in-memory, queries LanceDB, and
-runs generation + judging + scoring. Optionally saves the retrieval JSON
-so you can re-run eval later without re-querying.
+Alternative to the separable export+eval path above. Ingest first, then let the
+evaluation command query LanceDB directly. Optionally save retrieval JSON so
+you can re-run evaluation later without re-querying.
 
 ```bash
 cd /path/to/nemo-retriever
 
-# Single command: ingest -> page index -> LanceDB query -> QA eval
-python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
-  --evaluation-mode qa \
-  --eval-config nemo_retriever/examples/eval_sweep.yaml \
-  --query-csv data/bo767_annotations.csv \
-  --retrieval-save-path data/eval/bo767_retrieval.json
-```
+retriever ingest /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever
 
-The page index is built automatically from the ingestion results (no
-separate step needed). Pass `--page-index <path>` to use a pre-built
-index instead, or `--save-intermediate <dir>` if you also want the
-extraction Parquet saved for other uses.
-
-Or, if you already have a LanceDB from a previous ingestion and want to
-run eval standalone (no re-ingestion):
-
-```bash
 export LANCEDB_URI="lancedb"
+export LANCEDB_TABLE="nemo-retriever"
 export QA_DATASET="csv:data/bo767_annotations.csv"
 export RETRIEVAL_SAVE_PATH="data/eval/bo767_retrieval.json"  # optional
 retriever eval run --from-env
@@ -195,19 +154,18 @@ retriever eval run --from-env
 
 ### Which path should I use?
 
-| | **Option A: Separable (recommended)** | **Option B: End-to-end in-memory** |
+| | **Option A: Separable (recommended)** | **Option B: Live LanceDB** |
 |---|---|---|
-| **Steps** | Ingest -> Export JSON -> Run eval | Single command: Ingest -> Page index -> LanceDB query -> Eval |
+| **Steps** | Ingest -> Export JSON -> Run eval | Ingest -> LanceDB query -> Eval |
 | **Re-run eval with a different model?** | Instant -- just re-run step 4 with the same JSON | Must re-query LanceDB (or pass `save_path` to cache) |
 | **Share results with teammates?** | Send the retrieval JSON file | Must share LanceDB or use `save_path` |
 | **Best for** | Benchmarking, CI, reproducible comparisons | Quick end-to-end validation, development iteration |
-| **Commands** | `retriever eval export` + `retriever eval run` | `--evaluation-mode qa` on `graph_pipeline` or `LANCEDB_URI` with `--from-env` |
+| **Commands** | `retriever eval export` + `retriever eval run` | `LANCEDB_URI` with `retriever eval run --from-env` |
 
 Option A is the primary design -- the retrieval JSON is the interface contract
 that lets you re-run eval N times without re-querying, swap retrievers, and
-share results. Option B is a convenience shortcut for when you want a single
-end-to-end pass (e.g. validating a new ingestion pipeline). Both produce
-identical evaluation results.
+share results. Option B is a convenience path for direct evaluation against an
+existing LanceDB table.
 
 ### Bring your own retrieval (skip steps 1-3)
 
@@ -230,7 +188,7 @@ the [interface contract](#retrieval-json-format-interface-contract) below.
 
 Steps 1-3 (ingest, build index, export) require the **`nemo_retriever`** library with LanceDB, CUDA, and Ray support. Step 4 (QA eval) additionally requires **`litellm`**.
 
-**Recommended setup:** create an isolated Python 3.12 virtual environment and install the **local** `nemo_retriever` checkout in editable mode (required when working in this repo so `python -m nemo_retriever.examples.graph_pipeline` resolves):
+**Recommended setup:** create an isolated Python 3.12 virtual environment and install the **local** `nemo_retriever` checkout in editable mode:
 
 ```bash
 uv venv qa-retriever --python 3.12
@@ -255,46 +213,29 @@ ls /path/to/bo767/*.pdf | wc -l   # should be 767
 
 ### Step 1: Ingest and embed PDFs (NeMo Retriever)
 
-`graph_pipeline.py` builds an operator graph (`AbstractOperator` nodes connected via `>>`) and
-executes it through either an `InprocessExecutor` (inprocess mode, default) or `RayDataExecutor`
-(batch mode). The pipeline extracts, embeds, and uploads chunks to LanceDB in a
-single pass.
+`retriever ingest` resolves the manifest and executes the same graph ingest
+implementation in local mode by default or with Ray Data in explicit `batch`
+mode. It extracts, embeds, and uploads chunks to LanceDB in one workflow.
 
 Run from the **repo root**. **Estimated time: ~45-90 min** (767 PDFs, GPU-accelerated
 extraction + embedding).
 
-**Recommended (full-page markdown):** pass `--save-intermediate <dir>` to also write the
-extraction DataFrame as Parquet. That preserves table/chart/infographic columns for step 2
-to reconstruct full pages and generally yields better results on structured content.
-
 ```bash
-python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
-  --save-intermediate data/bo767_extracted
-```
-
-Output:
-- `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
-- `data/bo767_extracted/*.parquet` -- used by step 2 for full-page markdown.
-
-**Minimal (skip Parquet / full-page path):** omit `--save-intermediate` if you only need
-LanceDB and will skip step 2. Step 3 will use raw sub-page chunks instead of full-page
-markdown.
-
-```bash
-python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
+retriever ingest /path/to/bo767 \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever
 ```
 
 Output:
 - `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
 
-**Note:** `graph_pipeline.py` defaults to `--run-mode inprocess`. Pass `--run-mode batch` for Ray Data scale-out. Both modes return a `pandas.DataFrame` and produce compatible chunk records for downstream evaluation.
+Use `retriever ingest batch ...` for Ray Data scale-out.
 
 ### Step 2: Build page markdown index (NeMo Retriever)
 
-> **Requires** `--save-intermediate` from step 1. If you skipped it, you can
-> skip this step too -- step 3 will fall back to raw sub-page chunks.
+> **Optional:** this step requires an extraction Parquet dataset produced by a
+> separate workflow. Skip it to evaluate the sub-page chunks stored by
+> `retriever ingest` directly.
 
 Steps 2-4 are run from the repo root (or adjust paths accordingly).
 
@@ -313,8 +254,8 @@ Output: `data/bo767_page_markdown.json` (~180 MB, ~6k pages across 767 docs).
 
 ### Step 3: Export retrieval results (NeMo Retriever)
 
-> **Skip this step** if using the [end-to-end in-memory path](#which-path-should-i-use)
-> (`--evaluation-mode qa`), which queries LanceDB live instead of reading a JSON file.
+> **Skip this step** if using the [live LanceDB path](#which-path-should-i-use),
+> which queries LanceDB during evaluation instead of reading a JSON file.
 
 Queries LanceDB for each ground-truth question via `nemo_retriever.export.export_retrieval_json()`,
 then looks up the full-page markdown for each hit's page. Multiple sub-page hits
@@ -342,15 +283,13 @@ retriever eval export \
 Output: `data/eval/bo767_retrieval_fullpage.json` (~50 MB, 1005 queries).
 
 **Sub-page chunk mode:** omit `--page-index` to skip full-page
-expansion. The export will use raw sub-page chunks directly from LanceDB, which requires
-only step 1 without `--save-intermediate` (no Parquet or page index needed).
+expansion. The export will use raw sub-page chunks directly from LanceDB, so no
+Parquet or page index is needed.
 
 ### Step 4: Run QA evaluation
 
-> **Alternative:** skip steps 3 and 4 and use `--evaluation-mode qa` on
-> `graph_pipeline` to query LanceDB in-memory and run eval in one pass.
-> See [Which path should I use?](#which-path-should-i-use) and the
-> end-to-end quick reference above.
+> **Alternative:** use the [live LanceDB path](#which-path-should-i-use) to
+> query the table during `retriever eval run --from-env`.
 
 **Estimated time: ~15 min - 45 min** (1005 queries, ~12s per query for generation + judge, 8 concurrent workers).
 
@@ -453,9 +392,8 @@ plus `generation_miss` (model had the context but answered incorrectly).
 
 ### Sub-page chunk mode
 
-To skip full-page markdown and use raw sub-page chunks instead, omit
-`--save-intermediate` from step 1, skip step 2, and omit
-`--page-index` in step 3. This produces smaller context windows and may
+To use raw sub-page chunks, skip step 2 and omit `--page-index` in step 3.
+This produces smaller context windows and may
 result in lower scores for queries that span structured content (tables, charts,
 infographics). See the sub-page quick reference above.
 
@@ -679,7 +617,7 @@ independently of any ingestion or retrieval pipeline.
 
 | Entry Point | Use Case |
 |-------------|----------|
-| `python -m nemo_retriever.examples.graph_pipeline` | Ingest PDFs into LanceDB (extract + embed + VDB upload via operator graph). |
+| `retriever ingest` | Ingest supported documents and media into LanceDB. |
 | `retriever eval build-page-index` | Build full-page markdown index from Parquet extraction results |
 | `retriever eval export` | Export retrieval from NeMo Retriever LanceDB (supports full-page markdown) |
 | `retriever eval run` | QA eval runner -- env-var (`--from-env`) or config-driven (`--config`), uses `QAEvalPipeline` |
@@ -846,22 +784,21 @@ export QA_DATASET="csv:data/bo767_annotations.csv"
 retriever eval run --from-env
 ```
 
-**Graph pipeline (single command: ingest + page index + QA eval):**
+**Live LanceDB evaluation:**
 
-The page index is built automatically from the ingestion results -- no
-separate `build-page-index` step is needed.
+Ingest through the supported CLI, then run evaluation against that table.
 
 ```bash
-python -m nemo_retriever.examples.graph_pipeline /data/pdfs \
-    --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
-    --evaluation-mode qa \
-    --eval-config nemo_retriever/examples/eval_sweep.yaml \
-    --query-csv data/bo767_annotations.csv \
-    --retrieval-save-path data/eval/bo767_retrieval.json
-```
+retriever ingest /data/pdfs \
+    --lancedb-uri lancedb \
+    --table-name nemo-retriever
 
-Pass `--page-index <path>` to use a pre-built index instead of the
-automatic in-memory build.
+export LANCEDB_URI="lancedb"
+export LANCEDB_TABLE="nemo-retriever"
+export QA_DATASET="csv:data/bo767_annotations.csv"
+export RETRIEVAL_SAVE_PATH="data/eval/bo767_retrieval.json"
+retriever eval run --from-env
+```
 
 ### Environment Variables
 

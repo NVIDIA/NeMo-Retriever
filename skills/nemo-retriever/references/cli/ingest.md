@@ -75,8 +75,9 @@ Write to a custom DB / table:
 - Positional `DOCUMENTS...` is required and repeatable.
 - Values may be file paths, directories, or shell globs.
 - Supported input families are detected automatically from extensions:
-  `pdf`, `docx`, `pptx`, `txt`, `html`, `jpg`, `jpeg`, `png`, `tiff`, `tif`,
-  `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and `mkv`.
+  `pdf`, `docx`, `pptx`, `txt`, `md`, `json`, `sh`, `html`, `jpg`, `jpeg`,
+  `png`, `tiff`, `tif`, `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and
+  `mkv`. Markdown, JSON, and shell scripts are treated as plain text.
 
 ## Outputs
 
@@ -108,11 +109,7 @@ when available, and an embedding vector.
 The root ingest entrypoint expands inputs, builds a manifest, resolves the
 selected profile into typed ingest options, and calls the canonical ingest
 execution path. The manifest planner routes PDF/document, image, text, HTML,
-audio, and video branches without relying on `retriever pipeline run`.
-
-`retriever pipeline run` remains callable, but hidden from root help, for legacy
-or development behavior such as intermediate Parquet artifacts, pipeline
-reports, eval, recall, or harness work.
+audio, and video branches through the same supported interface.
 
 ## Common failure modes
 

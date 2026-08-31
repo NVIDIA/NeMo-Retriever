@@ -46,7 +46,17 @@ DryRunOption = Annotated[
     bool,
     typer.Option("--dry-run", help="Print the resolved ingest plan as JSON without creating an ingestor."),
 ]
-MethodOption = Annotated[str | None, typer.Option("--method", help="PDF text extraction method.")]
+MethodOption = Annotated[
+    str | None,
+    typer.Option(
+        "--method",
+        help=(
+            "PDF text extraction method: pdfium uses native PDF text only; pdfium_hybrid uses native text "
+            "with OCR for scanned pages (the auto-profile default); ocr uses OCR for every page; "
+            "nemotron_parse uses the Nemotron Parse visual extraction path."
+        ),
+    ),
+]
 DpiOption = Annotated[int | None, typer.Option("--dpi", min=72, help="Render DPI for PDF page images.")]
 ExtractTextOption = Annotated[
     bool | None,
@@ -153,6 +163,18 @@ CaptionModelNameOption = Annotated[
         ),
     ),
 ]
+CaptionGpuMemoryUtilizationOption = Annotated[
+    float | None,
+    typer.Option(
+        "--caption-gpu-memory-utilization",
+        min=0.001,
+        max=1.0,
+        help=(
+            "Fraction of GPU memory reserved by local vLLM captioning. "
+            "Defaults to the selected local caption model profile."
+        ),
+    ),
+]
 CaptionContextTextMaxCharsOption = Annotated[
     int | None,
     typer.Option(
@@ -200,8 +222,9 @@ IndexModeOption = Annotated[
     typer.Option(
         "--index-mode",
         help=(
-            "LanceDB index mode: dense, hybrid, or sparse. Dense is vector-only; hybrid also builds "
-            "BM25/FTS; sparse skips dense embedding and writes an FTS-only table."
+            "Recommended: leave unset. Auto creates a hybrid table for new indexes and preserves an existing "
+            "table on append. Dense, hybrid, and sparse are advanced overrides for experiments or specialized "
+            "deployments."
         ),
     ),
 ]
@@ -241,6 +264,7 @@ EmbedInvokeUrlOption = Annotated[
     str | None,
     typer.Option(
         "--embed-invoke-url",
+        envvar="EMBED_INVOKE_URL",
         help=(
             "Embedding endpoint override. On CPU-only hosts, ingest automatically uses NVIDIA's hosted "
             "embedding endpoint with NVIDIA_API_KEY or NGC_API_KEY; pass this only for another endpoint."
@@ -251,6 +275,7 @@ EmbedModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-name",
+        envvar="EMBED_MODEL_NAME",
         help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
     ),
 ]
@@ -258,6 +283,7 @@ EmbedModelProviderPrefixOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-provider-prefix",
+        envvar="EMBED_MODEL_PROVIDER_PREFIX",
         help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]

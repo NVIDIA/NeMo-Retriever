@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from difflib import get_close_matches
+import multiprocessing
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
 from nemo_retriever.harness.artifact_writer import redact
-from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr
+from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr, working_tree_dirty
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
@@ -28,6 +29,8 @@ from nemo_retriever.harness.json_io import artifact_write_error, write_json
 from nemo_retriever.harness.runfile import load_runfile
 
 _SESSION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_ISOLATED_CHILD_TIMEOUT_SECONDS = 6 * 60 * 60
+_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -218,6 +221,100 @@ def _failed_child_outcome(
     )
 
 
+def _isolated_run_worker(connection: Any, run: PreparedRun, *, output_dir: str, run_id: str) -> None:
+    """Execute one prepared benchmark in a fresh spawned process."""
+
+    try:
+        outcome = run_prepared_benchmark(
+            run.prepared,
+            output_dir=output_dir,
+            run_id=run_id,
+            runfile_payload=run.runfile_payload,
+            runfile_path=run.runfile_path,
+        )
+        connection.send(("outcome", outcome))
+    except Exception as exc:
+        connection.send(("error", f"{type(exc).__name__}: {exc}"))
+    finally:
+        connection.close()
+
+
+def _stop_isolated_process(process: multiprocessing.Process) -> None:
+    """Best-effort bounded cleanup for an isolated benchmark process."""
+
+    if process.is_alive():
+        process.terminate()
+    process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+
+
+def _run_prepared_benchmark_isolated(
+    run: PreparedRun,
+    *,
+    output_dir: str,
+    run_id: str,
+) -> RunOutcome:
+    """Run one child with a process boundary that releases Ray and dataframe memory."""
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_isolated_run_worker,
+        kwargs={
+            "connection": send_connection,
+            "run": run,
+            "output_dir": output_dir,
+            "run_id": run_id,
+        },
+        name=f"retriever-harness-{run.artifact_name}",
+    )
+    try:
+        process.start()
+    except BaseException:
+        receive_connection.close()
+        send_connection.close()
+        raise
+    send_connection.close()
+
+    message: tuple[str, Any] | None = None
+    try:
+        if not receive_connection.poll(_ISOLATED_CHILD_TIMEOUT_SECONDS):
+            raise TimeoutError(
+                f"isolated benchmark {run.name!r} exceeded the "
+                f"{_ISOLATED_CHILD_TIMEOUT_SECONDS:g}-second child timeout"
+            )
+        try:
+            message = receive_connection.recv()
+        except EOFError:
+            pass
+    except BaseException:
+        _stop_isolated_process(process)
+        raise
+    finally:
+        receive_connection.close()
+
+    process.join(timeout=_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS)
+    if process.is_alive():
+        _stop_isolated_process(process)
+        raise RuntimeError(
+            f"isolated benchmark {run.name!r} returned an outcome but did not exit within "
+            f"{_ISOLATED_PROCESS_STOP_TIMEOUT_SECONDS} seconds"
+        )
+    if message is None:
+        if process.exitcode != 0:
+            raise RuntimeError(f"isolated benchmark process exited with code {process.exitcode}")
+        raise RuntimeError("isolated benchmark process returned no outcome")
+
+    message_type, payload = message
+    if message_type == "error":
+        raise RuntimeError(str(payload))
+    if message_type != "outcome" or not isinstance(payload, RunOutcome):
+        raise RuntimeError("isolated benchmark process returned an invalid outcome")
+    return payload
+
+
 def _session_summary(
     *,
     session_type: str,
@@ -252,6 +349,7 @@ def _run_session(
     run_commit: str,
     dry_run: bool,
     summary_extra: Mapping[str, Any],
+    isolate_runs: bool = False,
 ) -> RunOutcome:
     try:
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -264,14 +362,22 @@ def _run_session(
     exit_code = EXIT_SUCCESS
     for run in runs:
         artifact_dir = session_dir / run.artifact_name
+        run_id = f"{session_name}_{run.artifact_name}"
         try:
-            outcome = run_prepared_benchmark(
-                run.prepared,
-                output_dir=str(artifact_dir),
-                run_id=f"{session_name}_{run.artifact_name}",
-                runfile_payload=run.runfile_payload,
-                runfile_path=run.runfile_path,
-            )
+            if isolate_runs:
+                outcome = _run_prepared_benchmark_isolated(
+                    run,
+                    output_dir=str(artifact_dir),
+                    run_id=run_id,
+                )
+            else:
+                outcome = run_prepared_benchmark(
+                    run.prepared,
+                    output_dir=str(artifact_dir),
+                    run_id=run_id,
+                    runfile_payload=run.runfile_payload,
+                    runfile_path=run.runfile_path,
+                )
         except Exception as exc:
             outcome = _failed_child_outcome(
                 benchmark=run.prepared.benchmark,
@@ -357,7 +463,7 @@ def run_runset(
         expanded_payload={"runset": spec.to_dict(), "runs": expanded_runs},
         run_commit=last_commit(),
         dry_run=dry_run,
-        summary_extra={"runset": spec.name},
+        summary_extra={"runset": spec.name, "working_tree_dirty": working_tree_dirty()},
     )
 
 
@@ -378,6 +484,7 @@ def run_runfiles(
 
     session_name = _validate_session_label(session_name, field="--session-name")
     run_commit = last_commit()
+    source_worktree_dirty = working_tree_dirty()
     local_dataset_paths = load_dataset_paths(dataset_paths_file)
     requests = [load_runfile(path) for path in runfiles]
     runs: list[PreparedRun] = []
@@ -432,6 +539,7 @@ def run_runfiles(
         )
 
     dataset_paths_value = str(dataset_paths_file.expanduser().resolve()) if dataset_paths_file else None
+    isolate_runs = not dry_run
     return _run_session(
         session_type="runfiles",
         session_name=session_name,
@@ -440,7 +548,9 @@ def run_runfiles(
         expanded_payload={
             "session_name": session_name,
             "run_commit": run_commit,
+            "working_tree_dirty": source_worktree_dirty,
             "dataset_paths_file": dataset_paths_value,
+            "isolate_runs": bool(isolate_runs),
             "runfiles": expanded_runs,
         },
         run_commit=run_commit,
@@ -448,5 +558,8 @@ def run_runfiles(
         summary_extra={
             "session_name": session_name,
             "dataset_paths_file": dataset_paths_value,
+            "isolate_runs": bool(isolate_runs),
+            "working_tree_dirty": source_worktree_dirty,
         },
+        isolate_runs=isolate_runs,
     )

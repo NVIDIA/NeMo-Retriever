@@ -1,4 +1,5 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled true) -}}
+{{- $nimSecrets := dict "context" $ "key" "nemotron_3_nano_omni_30b_a3b_reasoning" "cfg" .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -8,8 +9,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.repository }}:{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag }}"
-      pullSecret: "{{ index .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullSecrets 0 }}"
-      authSecret: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.authSecret }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "nemotron_3_nano_omni_30b_a3b_reasoning") | nindent 6 }}
   storage:
     pvc:
@@ -17,6 +18,10 @@ spec:
       storageClass: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -28,8 +33,8 @@ spec:
     tag: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag }}
     pullPolicy: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullPolicy }}
     pullSecrets:
-{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullSecrets | indent 6 }}
-  authSecret: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.authSecret }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: nemotron-3-nano-omni-30b-a3b-reasoning

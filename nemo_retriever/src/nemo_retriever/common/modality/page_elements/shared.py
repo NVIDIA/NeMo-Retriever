@@ -496,7 +496,7 @@ def detect_page_elements_v3(
     # print(preds)
     # breakpoint()
 
-    invoke_url = (invoke_url or kwargs.get("page_elements_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("page_elements_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
 
     if not use_remote and model is None:

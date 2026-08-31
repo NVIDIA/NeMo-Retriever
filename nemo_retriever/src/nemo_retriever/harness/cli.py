@@ -15,7 +15,7 @@ from nemo_retriever.harness.benchmark_registry import (
     list_benchmarks,
     list_runsets,
 )
-from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload
+from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_MISSING_INPUT, FailurePayload
 from nemo_retriever.harness.revamp_runner import (
     HarnessRunError,
     run_benchmark,
@@ -32,6 +32,7 @@ from nemo_retriever.harness.slack import (
     post_slack_payload,
     resolve_slack_webhook_url,
 )
+from nemo_retriever.harness.vidore_access import VidoreAccessError, check_vidore_access
 
 app = typer.Typer(
     help=(
@@ -43,6 +44,42 @@ app = typer.Typer(
 
 def _echo_json(payload: object) -> None:
     typer.echo(json.dumps(payload, indent=2, sort_keys=False))
+
+
+@app.command("check-vidore-access")
+def check_vidore_access_command(
+    dataset_names: Annotated[
+        list[str] | None,
+        typer.Option("--dataset", help="Check one ViDoRe dataset name. Repeat to check multiple datasets."),
+    ] = None,
+    timeout_seconds: Annotated[
+        float,
+        typer.Option("--timeout-seconds", min=1.0, help="HTTP timeout for each streamed range request."),
+    ] = 20.0,
+    require_token: Annotated[
+        bool,
+        typer.Option("--require-token/--allow-anonymous", help="Require HF_TOKEN before checking public data."),
+    ] = True,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Verify ViDoRe queries, qrels, and corpus objects without downloading them."""
+
+    try:
+        results = check_vidore_access(
+            dataset_names=dataset_names,
+            timeout_seconds=timeout_seconds,
+            require_token=require_token,
+        )
+    except VidoreAccessError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=EXIT_MISSING_INPUT) from exc
+
+    payload = {"success": True, "datasets": [result.to_dict() for result in results]}
+    if json_output:
+        _echo_json(payload)
+        return
+    for result in results:
+        typer.echo(f"{result.dataset}: access ok ({', '.join(result.checked_partitions)})")
 
 
 @app.command("list")
@@ -291,6 +328,37 @@ def run_files_command(
         typer.echo(f"Runfile session failed with exit code {outcome.exit_code}", err=True)
         typer.echo(f"Session artifacts: {outcome.artifact_dir}", err=True)
     raise typer.Exit(code=outcome.exit_code)
+
+
+@app.command("run-helm")
+def run_helm_command(
+    runfiles: Annotated[list[Path], typer.Argument(help="Runfile paths to execute as one managed Helm session.")],
+    config: Annotated[Path, typer.Option("--config", help="Non-secret Helm deployment YAML.")],
+    output_dir: Annotated[Path, typer.Option("--output-dir", help="Portable run-files session directory.")],
+    dataset_paths: Annotated[
+        Path | None,
+        typer.Option(
+            "--dataset-paths",
+            help="Machine-local YAML file that maps registered datasets to document and query paths.",
+        ),
+    ] = None,
+    session_name: Annotated[str, typer.Option("--session-name", help="Stable session label.")] = "helm_service",
+) -> None:
+    """Provision a Helm service around one portable run-files session."""
+    from nemo_retriever.harness.helm_runner import run_helm_session
+
+    try:
+        exit_code = run_helm_session(
+            config,
+            runfiles,
+            output_dir=output_dir,
+            session_name=session_name,
+            dataset_paths=dataset_paths,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=EXIT_INVALID) from exc
+    raise typer.Exit(code=exit_code)
 
 
 @app.command("post-slack")

@@ -80,7 +80,7 @@ The following is the metadata for images.
 | Text | Extracted text from a structured chart | Extracted | Pending Research |
 | Image location | Location (x,y) of chart within an image | Extracted |
 | Image location max dimensions | Max dimensions (x\_max,y\_max) of location (x,y) | Extracted |
-| uploaded\_image\_uri | Mirrors source\_metadata.source\_location | — |
+| uploaded\_image\_uri | URI of the stored image when image storage is configured. | Generated |
 
 
 ## Table Metadata
@@ -100,7 +100,7 @@ The following is the metadata for tables within documents.
 | Title | The title of the table. | Extracted |
 | Subtitle | The subtitle of the table. | Extracted |
 | Axis | Axis information for the table. | Extracted |
-| uploaded\_image\_uri | A mirror of source\_metadata.source\_location. | Generated |
+| uploaded\_image\_uri | URI of the stored table, chart, or infographic image when image storage is configured. | Generated |
 
 
 
@@ -221,6 +221,7 @@ Specific metadata for image content.
 | `image_location`                  | `tuple`                            | `(0, 0, 0, 0)`             | Bounding box or coordinates of the image within its source.                                             |
 | `image_location_max_dimensions`   | `tuple`                            | `(0, 0)`                   | Maximum dimensions of the space where `image_location` is defined.                                      |
 | `uploaded_image_url`              | `str`                              | `""`                       | URL of the image if it has been uploaded to a separate storage location.                                |
+| `uploaded_image_uri`              | `str`                              | `""`                       | URI of the stored image when image storage is configured.                                               |
 | `width`                           | `int`                              | `0`                        | Width of the image in pixels. Clamped to be non-negative.                                               |
 | `height`                          | `int`                              | `0`                        | Height of the image in pixels. Clamped to be non-negative.                                              |
 
@@ -235,7 +236,7 @@ Specific metadata for tabular content.
 | `table_content_format`            | `Union[TableFormatEnum, str]`         | `""`                | Specific format of `table_content`.                                                                     |
 | `table_location`                  | `tuple`                               | `(0, 0, 0, 0)`      | Bounding box or coordinates of the table within its source.                                             |
 | `table_location_max_dimensions`   | `tuple`                               | `(0, 0)`            | Maximum dimensions of the space where `table_location` is defined.                                      |
-| `uploaded_image_uri`              | `str`                                 | `""`                | URI of an image representation of the table, if applicable.                                             |
+| `uploaded_image_uri`              | `str`                                 | `""`                | URI of the stored table image when image storage is configured.                                         |
 
 ### `ChartMetadataSchema`
 Metadata for table content extracted from charts.
@@ -248,7 +249,7 @@ Metadata for table content extracted from charts.
 | `table_content_format`            | `Union[TableFormatEnum, str]`         | `""`                | Specific format of `table_content`.                                                                     |
 | `table_location`                  | `tuple`                               | `(0, 0, 0, 0)`      | Bounding box or coordinates of the chart within its source.                                             |
 | `table_location_max_dimensions`   | `tuple`                               | `(0, 0)`            | Maximum dimensions of the space where `table_location` is defined.                                      |
-| `uploaded_image_uri`              | `str`                                 | `""`                | URI of an image representation of the chart, if applicable.                                             |
+| `uploaded_image_uri`              | `str`                                 | `""`                | URI of the stored chart image when image storage is configured.                                         |
 
 ### `AudioMetadataSchema`
 Specific metadata for audio content.
@@ -303,7 +304,7 @@ The following enums are used by this schema:
 
 The following is an example JSON representation of metadata. 
 This is an example only, and does not contain the full metadata.
-For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Retriever/blob/main/data/multimodal_test.json).
+For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/data/multimodal_test.json).
 
 ```json
 {

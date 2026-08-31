@@ -44,12 +44,11 @@ def test_remote_stage_diagnostics_populated_from_extract_params() -> None:
             page_elements_invoke_url="http://page-elements.svc/v1/infer",
             ocr_invoke_url="http://ocr.svc/v1/infer",
             table_structure_invoke_url="http://table-structure.svc/v1/infer",
-            graphic_elements_invoke_url="http://graphic-elements.svc/v1/infer",
         ),
     )
     diagnostics = ingestor._remote_stage_diagnostics()
 
-    assert set(diagnostics.keys()) >= {"ocr", "table_structure_ocr_v1", "graphic_elements_ocr_v1"}
+    assert set(diagnostics.keys()) >= {"ocr", "table_structure_ocr_v1"}
 
     page_elements = diagnostics.get("page_elements_v3") or diagnostics.get(
         ingestor._param_value(ingestor._extract_params, "output_column")
@@ -60,7 +59,6 @@ def test_remote_stage_diagnostics_populated_from_extract_params() -> None:
 
     assert diagnostics["ocr"].invoke_url == "http://ocr.svc/v1/infer"
     assert diagnostics["table_structure_ocr_v1"].invoke_url == "http://table-structure.svc/v1/infer"
-    assert diagnostics["graphic_elements_ocr_v1"].invoke_url == "http://graphic-elements.svc/v1/infer"
 
 
 def test_remote_stage_diagnostics_populated_from_embed_params() -> None:

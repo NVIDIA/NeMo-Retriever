@@ -26,6 +26,17 @@ class _BatchEmbedActor(ArchetypeOperator):
     """Graph-facing batch embedding archetype."""
 
     @classmethod
+    def resolve_operator_class(
+        cls,
+        resources: Any = None,
+        operator_kwargs: dict[str, Any] | None = None,
+    ):
+        kwargs = operator_kwargs or {}
+        if kwargs.get("force_local") and not cls.prefers_cpu_variant(kwargs):
+            return cls.gpu_variant_class()
+        return super().resolve_operator_class(resources, operator_kwargs=kwargs)
+
+    @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         params = (operator_kwargs or {}).get("params")
         endpoint = getattr(params, "embed_invoke_url", None) or getattr(params, "embedding_endpoint", None)
@@ -43,8 +54,18 @@ class _BatchEmbedActor(ArchetypeOperator):
 
         return _BatchEmbedGPUActor
 
-    def __init__(self, params: Any) -> None:
-        super().__init__(params=params)
+    @classmethod
+    def variant_operator_kwargs(
+        cls,
+        operator_class: type,
+        operator_kwargs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        kwargs = super().variant_operator_kwargs(operator_class, operator_kwargs)
+        kwargs.pop("force_local", None)
+        return kwargs
+
+    def __init__(self, params: Any, *, force_local: bool = False) -> None:
+        super().__init__(params=params, force_local=force_local)
 
 
 def __getattr__(name: str):

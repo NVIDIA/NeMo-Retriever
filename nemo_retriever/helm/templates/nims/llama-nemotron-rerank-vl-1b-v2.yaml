@@ -1,4 +1,5 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.rerankqa.enabled true) -}}
+{{- $nimSecrets := dict "context" $ "key" "rerankqa" "cfg" .Values.nimOperator.rerankqa -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -8,8 +9,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ .Values.nimOperator.rerankqa.image.repository }}:{{ .Values.nimOperator.rerankqa.image.tag }}"
-      pullSecret: "{{ index .Values.nimOperator.rerankqa.image.pullSecrets 0 }}"
-      authSecret: {{ .Values.nimOperator.rerankqa.authSecret }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "rerankqa") | nindent 6 }}
   storage:
     pvc:
@@ -17,6 +18,10 @@ spec:
       storageClass: {{ .Values.nimOperator.rerankqa.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.rerankqa.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.rerankqa.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.rerankqa.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.rerankqa.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -28,8 +33,8 @@ spec:
     tag: {{ .Values.nimOperator.rerankqa.image.tag }}
     pullPolicy: {{ .Values.nimOperator.rerankqa.image.pullPolicy }}
     pullSecrets:
-{{ toYaml .Values.nimOperator.rerankqa.image.pullSecrets | indent 6 }}
-  authSecret: {{ .Values.nimOperator.rerankqa.authSecret }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: llama-nemotron-rerank-vl-1b-v2

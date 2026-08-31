@@ -47,8 +47,8 @@ logger = logging.getLogger(__name__)
 
 
 def _ocr_invoke_url(ocr_kwargs: dict[str, Any]) -> str | None:
-    raw = ocr_kwargs.get("ocr_invoke_url") or ocr_kwargs.get("invoke_url")
-    return str(raw).strip() if raw else None
+    endpoint = str(ocr_kwargs.get("ocr_invoke_url") or "").strip() or str(ocr_kwargs.get("invoke_url") or "").strip()
+    return endpoint or None
 
 
 class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
@@ -87,11 +87,11 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
 class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
     """Remote Nemotron OCR on full video frames, batched per call.
 
-    Hosted OCR NIM is currently v1-only; the local GPU variant uses
+    Hosted OCR NIM defaults to Nemotron OCR v2; the local GPU variant uses
     ``NemotronOCRV2`` with the selected OCR mode.
     """
 
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)

@@ -155,6 +155,78 @@ nemo-retriever.ngcImagePullSecret
 
 {{/*
 =============================================================================
+NIM Operator secret helpers
+=============================================================================
+
+Resolve the image pull Secret name list and auth Secret name for one
+operator-managed NIM. Per-NIM overrides win when non-empty; otherwise the
+chart-wide ``ngcImagePullSecret.name`` / ``ngcApiSecret.name`` values
+propagate into every NIMCache and NIMService (matching the documented
+Secrets contract).
+
+Usage inside ``templates/nims/<file>.yaml``:
+
+  {{- $nimSecrets := dict "context" $ "key" "page_elements" "cfg" .Values.nimOperator.page_elements -}}
+  pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
+  ...
+  pullSecrets:
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+*/}}
+{{- define "nemo-retriever.nimEffectivePullSecrets" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $secrets := list -}}
+{{- if and $cfg $cfg.image $cfg.image.pullSecrets -}}
+{{- $secrets = $cfg.image.pullSecrets -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- $globalName := ($ctx.Values.ngcImagePullSecret.name | default "") -}}
+{{- if $globalName -}}
+{{- $secrets = list $globalName -}}
+{{- end -}}
+{{- end -}}
+{{- if not $secrets -}}
+{{- fail (printf "nimOperator.%s.image.pullSecrets is empty and ngcImagePullSecret.name is unset; set one of them so NIMCache/NIMService can pull images" $key) -}}
+{{- end -}}
+{{- /* Emit one Secret name per line so callers can split without JSON. */ -}}
+{{- range $secrets }}
+{{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecrets" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- range (splitList "\n" $raw) }}
+- {{ . }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimPullSecret" -}}
+{{- $raw := include "nemo-retriever.nimEffectivePullSecrets" . | trim -}}
+{{- index (splitList "\n" $raw) 0 -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimAuthSecret" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := .cfg -}}
+{{- $auth := "" -}}
+{{- if and $cfg $cfg.authSecret -}}
+{{- $auth = $cfg.authSecret -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- $auth = ($ctx.Values.ngcApiSecret.name | default "") -}}
+{{- end -}}
+{{- if not $auth -}}
+{{- fail (printf "nimOperator.%s.authSecret is empty and ngcApiSecret.name is unset; set one of them so NIMCache/NIMService can authenticate to NGC" $key) -}}
+{{- end -}}
+{{- $auth -}}
+{{- end -}}
+
+{{/*
+=============================================================================
 Split-topology helpers (gateway / realtime / batch)
 =============================================================================
 */}}
@@ -198,6 +270,17 @@ nemo-retriever.role.configMapName
 */}}
 {{- define "nemo-retriever.role.configMapName" -}}
 {{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
+{{- end -}}
+
+{{/*
+nemo-retriever.gateway.startupServiceName
+  Name of the gateway startup Service. This Service publishes not-ready
+  addresses so worker init containers can reach the gateway's shallow
+  /v1/live endpoint before the gateway's deep readiness probe passes.
+  Usage: {{ include "nemo-retriever.gateway.startupServiceName" $ }}
+*/}}
+{{- define "nemo-retriever.gateway.startupServiceName" -}}
+{{- include "nemo-retriever.suffixedFullname" (dict "context" . "suffix" "-gateway-startup") -}}
 {{- end -}}
 
 
@@ -300,6 +383,45 @@ Tracing helpers
 {{- fail "topology.otel.config must be a map when topology.otel.enabled=true" -}}
 {{- end -}}
 {{- $config := deepCopy $configValue -}}
+{{- $otelPorts := include "nemo-retriever.otel.ports" . | fromYaml -}}
+{{- $service := get $config "service" | default dict -}}
+{{- if not (kindIs "map" $service) -}}
+{{- fail "topology.otel.config.service must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $pipelines := get $service "pipelines" | default dict -}}
+{{- if not (kindIs "map" $pipelines) -}}
+{{- fail "topology.otel.config.service.pipelines must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $metrics := get $pipelines "metrics" -}}
+{{- if not (kindIs "map" $metrics) -}}
+{{- fail "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics; provide a metrics pipeline with non-empty receivers" -}}
+{{- end -}}
+{{- $metricReceivers := get $metrics "receivers" -}}
+{{- if not $metricReceivers -}}
+{{- fail "the chart-managed Prometheus exporter requires topology.otel.config.service.pipelines.metrics with non-empty receivers; provide a metrics pipeline with non-empty receivers" -}}
+{{- end -}}
+{{- $exporters := get $config "exporters" | default dict -}}
+{{- if not (kindIs "map" $exporters) -}}
+{{- fail "topology.otel.config.exporters must be a map when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- $prometheusExporter := get $exporters "prometheus" | default dict -}}
+{{- if not (kindIs "map" $prometheusExporter) -}}
+{{- fail "topology.otel.config.exporters.prometheus must be a map; the chart-managed Prometheus exporter controls its endpoint" -}}
+{{- end -}}
+{{- $prometheusExporter = mergeOverwrite (deepCopy $prometheusExporter) (dict "endpoint" (printf "0.0.0.0:%v" (get $otelPorts "prometheus"))) -}}
+{{- $_ := set $exporters "prometheus" $prometheusExporter -}}
+{{- $_ := set $config "exporters" $exporters -}}
+{{- $metricExporters := get $metrics "exporters" | default list -}}
+{{- if not (kindIs "slice" $metricExporters) -}}
+{{- fail "topology.otel.config.service.pipelines.metrics.exporters must be a list when topology.otel.enabled=true" -}}
+{{- end -}}
+{{- if not (has "prometheus" $metricExporters) -}}
+{{- $metricExporters = append $metricExporters "prometheus" -}}
+{{- end -}}
+{{- $_ := set $metrics "exporters" $metricExporters -}}
+{{- $_ := set $pipelines "metrics" $metrics -}}
+{{- $_ := set $service "pipelines" $pipelines -}}
+{{- $_ := set $config "service" $service -}}
 {{- $zipkin := .Values.topology.zipkin | default dict -}}
 {{- if not (kindIs "map" $zipkin) -}}
 {{- fail "topology.zipkin must be a map" -}}
@@ -386,6 +508,7 @@ Tracing helpers
   "OTEL_SERVICE_NAME" (default "nemo-retriever-service" (get $serviceOtel "serviceName"))
   "OTEL_TRACES_EXPORTER" "otlp"
   "OTEL_METRICS_EXPORTER" "otlp"
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "OTEL_LOGS_EXPORTER" "none"
   "OTEL_PROPAGATORS" "tracecontext,baggage"
   "OTEL_RESOURCE_ATTRIBUTES" (printf "service.namespace=nemo-retriever,service.role=%s" $role)
@@ -451,8 +574,9 @@ Tracing helpers
   "NIM_ENABLE_OTEL" "true"
   "NIM_OTEL_SERVICE_NAME" $serviceName
   "NIM_OTEL_TRACES_EXPORTER" "otlp"
-  "NIM_OTEL_METRICS_EXPORTER" "console"
+  "NIM_OTEL_METRICS_EXPORTER" "otlp"
   "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" $endpoint
+  "OTEL_METRIC_EXPORT_INTERVAL" "5000"
   "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath)
   "TRITON_OTEL_RATE" "1"
 -}}
@@ -487,7 +611,7 @@ NIMService GPU resources
 By default the chart sets ``spec.resources.limits.nvidia.com/gpu`` on
 every NIMService (see ``nimOperator.nimServiceGpuLimit``) because the
 NIM Operator does **not** reliably populate that field from the model
-profile on all tested versions (for example v3.1.1 on A100/H100), which
+profile on all tested versions (for example v3.1.2 on A100/H100), which
 otherwise leaves NIM pods without GPU access.
 
 Helm and the operator may both server-side-apply the same field; a
@@ -525,17 +649,17 @@ file name under templates/nims/<model>.yaml) so the retriever-service
 config can address each NIM as `http://<service-name>:<port><invokePath>`.
 
 Mapping (key -> Service name, default invokePath):
-  page_elements                          -> nemotron-page-elements-v3                /v1/infer
-  table_structure                        -> nemotron-table-structure-v1              /v1/infer
-  ocr                                    -> nemotron-ocr-v2                          /v1/infer
+  page_elements                          -> nemotron-page-elements-v3                /v1/page-elements
+  table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
+  ocr                                    -> nemotron-ocr-v2                          /v1/ocr
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 
 Audio ASR (Parakeet) is configured directly via
   serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
-
 {{/*
 Emit ``helm.sh/resource-policy: keep`` on NIMCache when
 ``nimOperator.nimCache.keepOnUninstall`` is true (default). Helm uninstall
@@ -627,7 +751,7 @@ nemo-retriever.nimOperator.url
          "context" $
          "key" "page_elements"
          "serviceName" "nemotron-page-elements-v3"
-         "invokePath" "/v1/infer") }}
+         "invokePath" "/v1/page-elements") }}
 */}}
 {{- define "nemo-retriever.nimOperator.url" -}}
 {{- $ctx := .context -}}
@@ -659,7 +783,7 @@ nemo-retriever.nim.endpointURL
          "key" "page_elements"
          "serviceName" "nemotron-page-elements-v3"
          "configKey" "pageElementsInvokeUrl"
-         "invokePath" "/v1/infer") }}
+         "invokePath" "/v1/page-elements") }}
 */}}
 {{- define "nemo-retriever.nim.endpointURL" -}}
 {{- $ctx := .context -}}

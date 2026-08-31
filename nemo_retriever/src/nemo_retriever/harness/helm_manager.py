@@ -10,13 +10,13 @@ import os
 import shlex
 import signal
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from nemo_retriever.harness.config import NEMO_RETRIEVER_ROOT
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class HelmServiceManager:
         self.local_port = int(config.helm_service_local_port)
         self.remote_port = 7670
         self.port_forward_processes: list[subprocess.Popen] = []
+        self._port_forward_logs: dict[int, BinaryIO] = {}
         self._forwarded_service_name: str | None = None
         self._forwarded_component: str | None = None
 
@@ -155,9 +156,11 @@ class HelmServiceManager:
 
     def stop(self, *, uninstall: bool = True) -> int:
         self.stop_port_forwards()
+        cleanup_rc = 0 if not self.port_forward_processes else 1
         if not uninstall:
-            return 0
-        return self._run(self.helm_cmd + ["uninstall", self.release_name, "--namespace", self.namespace])
+            return cleanup_rc
+        uninstall_rc = self._run(self.helm_cmd + ["uninstall", self.release_name, "--namespace", self.namespace])
+        return uninstall_rc or cleanup_rc
 
     def _run(self, cmd: list[str]) -> int:
         logger.info("$ %s", self.format_command(cmd))
@@ -208,42 +211,90 @@ class HelmServiceManager:
             f"{local}:{remote}",
         ]
         logger.info("$ %s (background)", self.format_command(cmd))
+        # The handle intentionally stays open for the lifetime of the background process.
+        output = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
             preexec_fn=os.setsid,
         )
         self.port_forward_processes.append(proc)
+        self._port_forward_logs[proc.pid] = output
         time.sleep(2)
         if proc.poll() is not None:
-            _, stderr = proc.communicate()
-            detail = stderr.decode("utf-8", errors="replace").strip()
+            output.flush()
+            output.seek(0)
+            detail = output.read().decode("utf-8", errors="replace").strip()
+            self.port_forward_processes.remove(proc)
+            self._port_forward_logs.pop(proc.pid).close()
             raise RuntimeError(f"kubectl port-forward failed for {service_name}: {detail}")
 
     def stop_port_forwards(self) -> None:
+        remaining_processes = []
         for proc in self.port_forward_processes:
+            stopped = False
+            # start_port_forward creates a new session, so the launch PID is also
+            # the stable process-group ID even if a sudo/wrapper leader exits.
+            pgid = proc.pid
             try:
-                pgid = os.getpgid(proc.pid)
-            except ProcessLookupError:
-                continue
-            try:
-                os.killpg(pgid, signal.SIGTERM)
-                proc.wait(timeout=5)
+                self._signal_port_forward_group(pgid, signal.SIGTERM)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+                if self._process_group_exists(pgid):
+                    self._signal_port_forward_group(pgid, signal.SIGKILL)
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                stopped = self._wait_for_process_group_exit(pgid, timeout_s=5)
+                if not stopped:
+                    logger.warning("Port-forward process group %s for pid %s is still running", pgid, proc.pid)
             except PermissionError as exc:
                 logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(pgid, signal.SIGKILL)
-                except PermissionError as exc:
-                    logger.warning(
-                        "Could not force-kill port-forward process group %s for pid %s: %s", pgid, proc.pid, exc
-                    )
-                except ProcessLookupError:
-                    pass
             except ProcessLookupError:
-                pass
-        self.port_forward_processes = []
+                stopped = True
+            if stopped:
+                output = self._port_forward_logs.pop(proc.pid, None)
+                if output is not None:
+                    output.close()
+            else:
+                remaining_processes.append(proc)
+        self.port_forward_processes = remaining_processes
+
+    @staticmethod
+    def _process_group_exists(pgid: int) -> bool:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _wait_for_process_group_exit(self, pgid: int, *, timeout_s: float) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while self._process_group_exists(pgid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return not self._process_group_exists(pgid)
+
+    def _signal_port_forward_group(self, pgid: int, sent_signal: signal.Signals) -> None:
+        try:
+            os.killpg(pgid, sent_signal)
+        except PermissionError:
+            if not getattr(getattr(self, "config", None), "kubectl_sudo", False):
+                raise
+            signal_name = sent_signal.name.removeprefix("SIG")
+            result = subprocess.run(
+                ["sudo", "kill", f"-{signal_name}", "--", f"-{pgid}"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or f"sudo kill exited with {result.returncode}"
+                raise PermissionError(detail)
 
     def get_service_url(self, service: str = "api") -> str:
         base = f"http://localhost:{self.local_port}"

@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from typing import Any, ClassVar, Literal, Optional, Sequence, Tuple
+from typing import Any, ClassVar, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -24,6 +24,11 @@ from pydantic import (
     model_validator,
 )
 
+from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+    validate_nemotron_parse_endpoint_list,
+)
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
@@ -515,13 +520,18 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options
-    method: str = "pdfium"
-    # Run PageElementDetection (layout/yolox). Required by TableStructure,
-    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
+        default="pdfium",
+        description=(
+            "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
+            "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
+        ),
+    )
+    # Run PageElementDetection (layout/yolox). Required by TableStructure and
+    # OCR. Safe to disable for text-only ingests.
     use_page_elements: bool = True
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
-    use_graphic_elements: bool = False
     dpi: int = 200
     image_format: str = "jpeg"
     jpeg_quality: int = 100
@@ -541,7 +551,6 @@ class ExtractParams(_ParamsModel):
     ocr_invoke_url: Optional[str] = None
     ocr_api_key: Optional[str] = None
     ocr_request_timeout_s: Optional[float] = None
-    graphic_elements_invoke_url: Optional[str] = None
     table_structure_invoke_url: Optional[str] = None
     nemotron_parse_invoke_url: Optional[str] = None
     nemotron_parse_model: Optional[str] = None
@@ -558,32 +567,38 @@ class ExtractParams(_ParamsModel):
     def _auto_enable_features(self) -> "ExtractParams":
         """Auto-configure feature flags from remote endpoints.
 
-        * Enable ``use_graphic_elements`` when ``graphic_elements_invoke_url``
-          is provided.
         * Enable ``use_table_structure`` when ``table_structure_invoke_url``
           is provided.
         * Default ``table_output_format`` to ``"markdown"`` when the stage is
           enabled and the caller did not explicitly choose a format.
         """
-        if self.graphic_elements_invoke_url and not self.use_graphic_elements:
-            self.use_graphic_elements = True
         if self.table_structure_invoke_url and not self.use_table_structure:
             self.use_table_structure = True
         if self.table_output_format is None:
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if self.method != "nemotron_parse" and (
+            self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
+        ):
+            raise ValueError(
+                "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
+                "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
+            )
+        if self.method == "nemotron_parse":
+            parse_endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
+            if (
+                not parse_endpoints
+                and self.nemotron_parse_model is not None
+                and self.nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+            ):
+                raise ValueError(
+                    f"Local Nemotron Parse supports only `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` in this release; "
+                    f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
+                    "to use a compatible remote model."
+                )
         if not self.use_page_elements:
-            consumers = [
-                (
-                    "use_table_structure",
-                    self.use_table_structure and self.extract_tables,
-                ),
-                (
-                    "use_graphic_elements",
-                    self.use_graphic_elements and self.extract_charts,
-                ),
-            ]
+            consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
             enabled = [name for name, on in consumers if on]
             if enabled:
                 raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
@@ -599,6 +614,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_revision: Optional[str] = None
     embed_model_provider_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
@@ -980,7 +996,13 @@ class TextGenerationParams(_ParamsModel):
 
 class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
-    model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+    model_name: str = Field(
+        default=DEFAULT_LOCAL_CAPTION_MODEL_ID,
+        description=(
+            "Caption model identifier. The default local BF16 checkpoint has approximately 62 GiB of weights; "
+            "set this explicitly to select a smaller local model or an API model for a remote endpoint."
+        ),
+    )
     api_key: Optional[str] = None
     prompt: str = "Caption the content of this image:"
     system_prompt: Optional[str] = "/no_think"
@@ -989,7 +1011,12 @@ class CaptionParams(LLMInferenceParams):
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.5
+    gpu_memory_utilization: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Fraction of GPU memory reserved for local vLLM captioning; defaults to the model profile.",
+    )
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
@@ -1020,16 +1047,6 @@ class DedupParams(_ParamsModel):
     content_hash: bool = True
     bbox_iou: bool = True
     iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-
-
-class InfographicParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    allowed_page_element_labels: Sequence[str] = ("infographic", "title")
-    output_column: str = "infographic_elements_v1"
-    num_detections_column: str = "infographic_elements_v1_num_detections"
-    counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
 
 
 # ---------------------------------------------------------------------------
