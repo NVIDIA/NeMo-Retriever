@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 **Important: The default branch is main, which tracks active development and may be ahead of the latest supported release.**
 
-For the latest supported release, use the [26.05 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) (GA PyPI and Helm chart version `26.5.0`). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
+For the latest supported release, use the [26.08 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08) (GA PyPI and Helm chart version `26.8.1`). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
 
 See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
@@ -141,7 +141,6 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 - **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
 - **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Retriever Harness](nemo_retriever/harness/README.md)** - Repeatable end-to-end ingest and retrieval benchmarks
 - **[Stage Benchmarking](nemo_retriever/docs/cli/benchmarking.md)** - Internal per-stage throughput measurements
 - **[MIG Deployment](nemo_retriever/helm/README.md)** - Multi-Instance GPU configurations for Kubernetes
 - **[API Documentation](docs/docs/extraction/nemo-retriever-api-reference.md)** - Python client and API reference

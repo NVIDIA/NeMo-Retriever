@@ -11,10 +11,18 @@ from unittest.mock import MagicMock
 
 
 def test_resolve_agent_llm_profile_aliases() -> None:
-    from nemo_retriever.models.local.agent_llm import resolve_agent_llm_model_name
+    from nemo_retriever.models.hf_model_registry import get_hf_revision
+    from nemo_retriever.models.local.agent_llm import is_supported_agent_llm_model, resolve_agent_llm_model_name
 
     assert resolve_agent_llm_model_name("nemotron-8b") == "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
-    assert resolve_agent_llm_model_name("nemotron-super-49b") == "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+    resolved_super = resolve_agent_llm_model_name("nemotron-super-49b")
+    assert resolved_super == "nvidia/Llama-3_3-Nemotron-Super-49B-v1_5"
+    assert get_hf_revision(resolved_super) == "420ba7d28211abf116b8b103ab700d92619daf98"
+    assert is_supported_agent_llm_model("nvidia/Llama-3_3-Nemotron-Super-49B-v1_5")
+    assert (
+        resolve_agent_llm_model_name("nvidia/Llama-3_3-Nemotron-Super-49B-v1")
+        == "nvidia/Llama-3_3-Nemotron-Super-49B-v1"
+    )
 
 
 def test_local_agent_llm_config_carries_vllm_resource_options() -> None:
@@ -292,3 +300,51 @@ def test_agentic_retriever_unload_noop_when_no_local_llm() -> None:
         retriever.unload()
 
     assert retriever._chat_completion_fn is None
+
+
+def _offline_llm(sampling_params_cls: Any) -> Any:
+    """A VLLMAgentChatLLM with the engine faked out, so no vLLM install is needed."""
+    from nemo_retriever.models.local.agent_llm import VLLMAgentChatLLM
+
+    completion = MagicMock(text="hello", finish_reason="stop", token_ids=[1, 2])
+    completion.tool_calls = None
+    completion.tool_call = None
+    request_output = MagicMock(outputs=[completion], prompt_token_ids=[1])
+
+    llm = VLLMAgentChatLLM.__new__(VLLMAgentChatLLM)
+    llm._llm = MagicMock(chat=MagicMock(return_value=[request_output]))
+    llm._lock = threading.Lock()
+    llm._sampling_params_cls = sampling_params_cls
+    llm._model_path = "nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
+    llm._max_tokens = 512
+    llm._request_extras = {}
+    return llm
+
+
+def test_local_llm_maps_unset_temperature_to_greedy() -> None:
+    # The agent forwards temperature=None to mean "unset". There is no provider to
+    # defer to in-process, and adopting vLLM's own sampling default would silently
+    # make every local benchmark non-deterministic -- so None means greedy here.
+    # Deliberately asymmetric with invoke_chat_completion_step, which omits the
+    # field so the remote provider's default applies.
+    sampling_params_cls = MagicMock()
+    _offline_llm(sampling_params_cls)(messages=[{"role": "user", "content": "q"}], temperature=None)
+
+    assert sampling_params_cls.call_args.kwargs["temperature"] == 0.0
+
+
+def test_local_llm_forwards_an_explicit_temperature() -> None:
+    sampling_params_cls = MagicMock()
+    _offline_llm(sampling_params_cls)(messages=[{"role": "user", "content": "q"}], temperature=0.7)
+
+    assert sampling_params_cls.call_args.kwargs["temperature"] == 0.7
+
+
+def test_local_llm_returns_an_openai_shaped_response() -> None:
+    # The callable contract is an OpenAI chat.completion dict; CallableLLMBackend
+    # parses this exact shape.
+    response = _offline_llm(MagicMock())(messages=[{"role": "user", "content": "q"}], temperature=None)
+
+    assert response["choices"][0]["message"] == {"role": "assistant", "content": "hello"}
+    assert response["choices"][0]["finish_reason"] == "stop"
+    assert response["usage"]["total_tokens"] == 3

@@ -10,7 +10,7 @@ For air-gapped or disconnected deployments, refer to [Air-gapped and disconnecte
 
 This documentation describes two ways to run [NeMo Retriever Library](overview.md) with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files:
 
-- Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
 
 Supported file types for speech extraction today:
@@ -45,7 +45,7 @@ requirements.
 
 For Kubernetes deployments with network access to package repositories, set
 `service.installFfmpeg=true` in the
-[Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
+[Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#1-service-image)
 to install ffmpeg/ffprobe at service startup. This runtime path requires
 package-repository network egress, a writable root filesystem, and a security
 policy that allows the image's scoped sudo use. For air-gapped clusters, refer to
@@ -61,15 +61,29 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 ## Run Parakeet on the cluster (Helm) { #run-parakeet-on-the-cluster-helm }
 
-Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes through the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Enable the ASR NIM per [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default). GPU pinning and endpoint wiring are documented in [Parakeet ASR](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet).
+Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes through the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md). Parakeet is disabled by default and is not auto-wired into the retriever service. Refer to [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default) for the enablement table. GPU pinning is documented in [Parakeet ASR](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#audio-video-parakeet).
 
-1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and enable Parakeet for your release (refer to [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)). Follow [Deployment options](deployment-options.md).
+1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md). Set both of the following values, then follow [Deployment options](deployment-options.md).
 
-2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
+    ```yaml
+    nimOperator:
+      audio:
+        enabled: true
+
+    serviceConfig:
+      nimEndpoints:
+        audioGrpcEndpoint: audio:50051
+    ```
+
+    Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
+
+    Enabling only the audio NIM deploys Parakeet and leaves `audio_grpc_endpoint` set to `null`.
+
+2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
 
 3. After the services are running, interact with the pipeline from Python (refer to the [Python API guide](nemo-retriever-api-reference.md) for parameter details).
 
-    - In `batch` mode, pass the in-cluster Parakeet gRPC endpoint through `ASRParams.audio_endpoints` (for example `audio:50051` from your Helm release). The retriever service auto-wires this endpoint; graph ingest does not.
+    - In `batch` mode, pass the in-cluster Parakeet gRPC endpoint through `ASRParams.audio_endpoints`. Use `audio:50051` from your Helm release. Graph ingest does not read the Helm service endpoint.
 
     ```python
     from nemo_retriever import create_ingestor
@@ -138,6 +152,7 @@ For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDI
 ## Related topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
+- [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)
 - [Troubleshoot NeMo Retriever extraction](troubleshoot.md)
 - [Use the Python API](nemo-retriever-api-reference.md)
 - [Chunking](concepts.md#chunking) (includes audio and video segmenting defaults)

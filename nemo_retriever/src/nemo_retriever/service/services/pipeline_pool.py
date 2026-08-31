@@ -105,6 +105,7 @@ class DocumentWriteContext(RichModel):
     content_sha256: str | None = None
     document_version: str | None = None
     storage_document_id: str | None = None
+    document_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def resolved_version(self) -> str:
@@ -145,6 +146,7 @@ class WorkItem(RichModel):
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.
     pipeline_spec: dict[str, Any] | None = None
+    sidecar_attachment: Any = None
     trace_context: dict[str, str] = Field(default_factory=dict)
     enqueued_at_monotonic_s: float | None = None
     lease_id: str | None = None

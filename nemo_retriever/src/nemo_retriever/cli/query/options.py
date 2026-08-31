@@ -8,10 +8,15 @@ from typing import Annotated
 
 import typer
 
+from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 
 DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
 DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
+
+# Advertised in --agentic-llm-client help; sourced from the registry so a newly
+# registered client shows up without editing this string.
+_AGENTIC_LLM_CLIENT_CHOICES = ", ".join(get_available_backends())
 
 
 QueryArgument = Annotated[str, typer.Argument(..., help="Query text.")]
@@ -117,12 +122,12 @@ RerankerBackendOption = Annotated[
     ),
 ]
 RerankOption = Annotated[
-    bool,
+    bool | None,
     typer.Option(
         "--rerank/--no-rerank",
         help=(
-            "Enable reranking after vector retrieval. Default off. Implicitly enabled when "
-            "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
+            "Enable reranking after vector retrieval. Default off. When neither flag is passed, implicitly enabled "
+            "when any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
         ),
     ),
 ]
@@ -131,8 +136,8 @@ RetrievalModeOption = Annotated[
     typer.Option(
         "--retrieval-mode",
         help=(
-            "Expert LanceDB retrieval mode: auto, dense, hybrid, or sparse. Default auto inspects the table "
-            "and chooses the supported mode."
+            "Advanced override: auto, dense, hybrid, or sparse. Leave at auto to inspect the table and use "
+            "the supported default mode."
         ),
     ),
 ]
@@ -160,6 +165,13 @@ AgenticOption = Annotated[
         help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
     ),
 ]
+IncludeUsageOption = Annotated[
+    bool,
+    typer.Option(
+        "--include-usage",
+        help="With --agentic, emit a {hits, usage} JSON envelope containing provider-reported LLM token usage.",
+    ),
+]
 AgenticLlmModelOption = Annotated[
     str | None,
     typer.Option(
@@ -184,14 +196,6 @@ AgenticReasoningEffortOption = Annotated[
         help="reasoning_effort forwarded on agentic LLM calls.",
     ),
 ]
-AgenticBackendTopKOption = Annotated[
-    int,
-    typer.Option(
-        "--agentic-backend-top-k",
-        min=1,
-        help="Backend retrieve-pool depth per agentic retrieval call.",
-    ),
-]
 AgenticReactMaxStepsOption = Annotated[
     int,
     typer.Option(
@@ -209,11 +213,38 @@ AgenticTextTruncationOption = Annotated[
     ),
 ]
 AgenticTemperatureOption = Annotated[
-    float,
+    float | None,
     typer.Option(
         "--agentic-temperature",
         min=0.0,
-        help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
+        help=(
+            "Sampling temperature for agentic LLM calls. "
+            "Omit to leave it unset (endpoint/model default; 0.0 = greedy)."
+        ),
+    ),
+]
+AgenticLocalTensorParallelSizeOption = Annotated[
+    int,
+    typer.Option(
+        "--agentic-local-tensor-parallel-size",
+        min=1,
+        help=(
+            "vLLM tensor_parallel_size for the in-process agent LLM. "
+            "Use 2+ with matching CUDA_VISIBLE_DEVICES for multi-GPU local "
+            "profiles (e.g. super-49b); ignored when --agentic-invoke-url is set."
+        ),
+    ),
+]
+AgenticLlmClientOption = Annotated[
+    str | None,
+    typer.Option(
+        "--agentic-llm-client",
+        help=(
+            "LLM client that builds the agent LLM in agentic mode. Optional: defaults to "
+            "'callable' for both in-process local runs and remote (--agentic-invoke-url) runs. "
+            f"Registered clients: {_AGENTIC_LLM_CLIENT_CHOICES}. Any client other than 'callable' "
+            "is remote-only and requires --agentic-invoke-url."
+        ),
     ),
 ]
 ServiceUrlOption = Annotated[

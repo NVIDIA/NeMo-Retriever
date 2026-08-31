@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
+from nemo_retriever.service.routers import ingest as ingest_router
 from nemo_retriever.service.config import (
     AuthConfig,
     LoggingConfig,
@@ -32,6 +33,7 @@ from nemo_retriever.service.services.pipeline_pool import PipelinePool, PoolType
 from nemo_retriever.service.services.prometheus import POOL_ACTIVE_SLOTS, WORK_QUEUE_CLAIMS
 from nemo_retriever.service.services.work_queue import (
     GatewayWorkClient,
+    SidecarAttachment,
     StaleLease,
     WorkBroker,
     WorkQueueFull,
@@ -63,6 +65,46 @@ async def _enqueue(broker: WorkBroker, work_id: str, payload: bytes = b"payload"
         pipeline_spec=None,
         trace_context={"traceparent": "00-abc"},
     )
+
+
+@pytest.mark.anyio
+async def test_sidecar_attachment_is_spooled_and_unactivated_leases_do_not_spend_delivery(tmp_path):
+    broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
+    await broker.start()
+    try:
+        record = await broker.enqueue(
+            PoolType.BATCH,
+            work_id="sidecar-work",
+            job_id="job",
+            payload=b"document",
+            filename="document.pdf",
+            retain_results=False,
+            pipeline_spec={"vdb_upload_params": {"meta_dataframe_id": "opaque-id"}},
+            trace_context={},
+            sidecar=SidecarAttachment(payload=b"source,title\na,b\n", filename="meta.csv", content_type="text/csv"),
+        )
+        first_claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
+        assert first_claim is not None and first_claim.lease is not None
+        assert first_claim.delivery_attempt == 0
+        assert first_claim.sidecar_path is not None
+        assert first_claim.sidecar_path.read_bytes() == b"source,title\na,b\n"
+
+        first_claim.lease.expires_at = time.monotonic() - 1
+        broker._expire_locked(PoolType.BATCH)
+        assert record.delivery_attempt == 0
+        assert broker.has_record(record.work_id)
+
+        second_claim = await broker.claim(PoolType.BATCH, worker_uid="pod-b", worker_ip="10.0.0.2")
+        assert second_claim is not None and second_claim.lease is not None
+        assert (
+            await broker.activate(second_claim.work_id, second_claim.lease.lease_id, second_claim.lease.generation) == 1
+        )
+        await broker.acknowledge(second_claim.work_id, second_claim.lease.lease_id, second_claim.lease.generation)
+        await asyncio.gather(*tuple(broker._unlink_tasks))
+        assert not record.spool_path.exists()
+        assert record.sidecar_path is not None and not record.sidecar_path.exists()
+    finally:
+        await broker.shutdown()
 
 
 @pytest.mark.anyio
@@ -123,6 +165,7 @@ async def test_release_revalidates_lease_after_acquiring_condition(tmp_path):
         record = await _enqueue(broker, "raced-release")
         claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
         assert claim is not None and claim.lease is not None
+        await broker.activate(claim.work_id, claim.lease.lease_id, claim.lease.generation)
         lease_id = claim.lease.lease_id
         generation = claim.lease.generation
         condition = broker._conditions[PoolType.BATCH]
@@ -154,6 +197,7 @@ async def test_missing_payload_revalidates_lease_after_acquiring_condition(tmp_p
         record = await _enqueue(broker, "raced-payload")
         claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
         assert claim is not None and claim.lease is not None
+        await broker.activate(claim.work_id, claim.lease.lease_id, claim.lease.generation)
         lease_id = claim.lease.lease_id
         generation = claim.lease.generation
         record.spool_path.unlink()
@@ -223,6 +267,7 @@ async def test_heartbeat_release_expiry_and_stale_generation(tmp_path):
         first = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
         lease1 = first.lease
         assert lease1 is not None
+        assert await broker.activate("work", lease1.lease_id, lease1.generation) == 1
         old_expiry = lease1.expires_at
         await broker.heartbeat("work", lease1.lease_id, lease1.generation)
         assert lease1.expires_at >= old_expiry
@@ -231,13 +276,15 @@ async def test_heartbeat_release_expiry_and_stale_generation(tmp_path):
         second = await broker.claim(PoolType.BATCH, worker_uid="pod-b", worker_ip="10.0.0.2")
         lease2 = second.lease
         assert lease2 is not None and lease2.generation == lease1.generation + 1
+        assert await broker.activate("work", lease2.lease_id, lease2.generation) == 2
         with pytest.raises(StaleLease):
             broker.validate_callback("work", lease1.lease_id, lease1.generation)
 
         lease2.expires_at = time.monotonic() - 1
         broker._expire_locked(PoolType.BATCH)
         third = await broker.claim(PoolType.BATCH, worker_uid="pod-c", worker_ip="10.0.0.3")
-        assert third.delivery_attempt == 3
+        assert third is not None and third.lease is not None
+        assert await broker.activate("work", third.lease.lease_id, third.lease.generation) == 3
     finally:
         await broker.shutdown()
 
@@ -251,6 +298,9 @@ async def test_three_expired_deliveries_exhaust_and_delete(tmp_path):
         for attempt in range(3):
             claimed = await broker.claim(PoolType.BATCH, worker_uid=f"pod-{attempt}", worker_ip="10.0.0.1")
             assert claimed is not None and claimed.lease is not None
+            assert (
+                await broker.activate(claimed.work_id, claimed.lease.lease_id, claimed.lease.generation) == attempt + 1
+            )
             claimed.lease.expires_at = time.monotonic() - 1
             broker._expire_locked(PoolType.BATCH)
         await asyncio.gather(*tuple(broker._unlink_tasks))
@@ -360,7 +410,11 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         accepted = client.post(
             f"/v1/ingest/job/{job_id}/whole",
             files={"file": ("document.txt", b"hello gateway", "text/plain")},
-            data={"metadata": "{}"},
+            data={
+                "metadata": (
+                    '{"metadata":{"category":"Finance_Investment",' '"source_path":"Finance_Investment/document.txt"}}'
+                )
+            },
         )
         assert accepted.status_code == 202
         document_id = accepted.json()["document_id"]
@@ -376,7 +430,7 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
         assert claim_response.status_code == 200
         claim = claim_response.json()
         assert claim["work_id"] == document_id
-        assert claim["delivery_attempt"] == 1
+        assert claim["delivery_attempt"] == 0
         assert claim["extra"] == {
             "write": {
                 "scope": "default",
@@ -385,11 +439,15 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
                 "content_sha256": hashlib.sha256(b"hello gateway").hexdigest(),
                 "document_version": None,
                 "storage_document_id": document_id,
+                "document_metadata": {
+                    "category": "Finance_Investment",
+                    "source_path": "Finance_Investment/document.txt",
+                },
             }
         }
 
         processing = client.get(f"/v1/ingest/job/{job_id}/document/{document_id}")
-        assert processing.json()["status"] == "processing"
+        assert processing.json()["status"] == "pending"
 
         payload = client.get(
             f"/v1/internal/work/{document_id}/payload",
@@ -399,6 +457,13 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
             },
         )
         assert payload.content == b"hello gateway"
+        activation = client.post(
+            f"/v1/internal/work/{document_id}/activate",
+            json={"lease_id": claim["lease_id"], "lease_generation": claim["lease_generation"]},
+        )
+        assert activation.json()["delivery_attempt"] == 1
+        processing = client.get(f"/v1/ingest/job/{job_id}/document/{document_id}")
+        assert processing.json()["status"] == "processing"
 
         callback = client.post(
             "/v1/internal/job-callback",
@@ -456,6 +521,11 @@ def test_gateway_callback_treats_stale_acknowledge_as_idempotent(tmp_path, monke
 
         broker = get_work_broker()
         assert broker is not None
+        activation = client.post(
+            f"/v1/internal/work/{document_id}/activate",
+            json={"lease_id": claim["lease_id"], "lease_generation": claim["lease_generation"]},
+        )
+        assert activation.status_code == 200
 
         async def stale_acknowledge(*_args, **_kwargs):
             raise StaleLease("lease expired during callback")
@@ -483,7 +553,7 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         mode="gateway",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         mcp=MCPConfig(enabled=False),
-        auth=AuthConfig(api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret"),
         work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
     )
     with TestClient(create_app(config)) as client:
@@ -521,7 +591,7 @@ def test_split_worker_uses_internal_gateway_credential_when_configured(tmp_path)
     assert compatibility_pool._batch._pull_client.headers == {"Authorization": "Bearer public-secret"}
 
 
-def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
+def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path, monkeypatch):
     config = ServiceConfig(
         mode="gateway",
         auth=AuthConfig(allow_unscoped_dev=True),
@@ -536,6 +606,22 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
         assert created.status_code == 201
         job_id = created.json()["job_id"]
         headers = {"X-Nemo-Dry-Run": "true"}
+        accepted_metrics = []
+
+        class Metrics:
+            def record_request(self, *_args, **_kwargs):
+                accepted_metrics.append("request")
+
+            def record_page_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("page")
+
+            def record_document_accepted(self, *_args, **_kwargs):
+                accepted_metrics.append("document")
+
+        monkeypatch.setattr(
+            ingest_router, "_record_prometheus", lambda *_args, **_kwargs: accepted_metrics.append("otel")
+        )
+        monkeypatch.setattr(ingest_router, "get_metrics", lambda: Metrics())
 
         page = client.post(
             f"/v1/ingest/job/{job_id}/page",
@@ -571,6 +657,7 @@ def test_gateway_dry_run_does_not_register_or_enqueue_work(tmp_path):
             == 204
         )
         assert not list((tmp_path / "spool").glob("*.payload"))
+        assert accepted_metrics == []
 
 
 def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
@@ -713,7 +800,7 @@ async def test_explicit_release_exhausts_total_delivery_attempts(tmp_path):
         for attempt in range(1, 4):
             claimed = await broker.claim(PoolType.BATCH, worker_uid=f"pod-{attempt}", worker_ip="10.0.0.1")
             assert claimed is not None and claimed.lease is not None
-            assert claimed.delivery_attempt == attempt
+            assert await broker.activate(claimed.work_id, claimed.lease.lease_id, claimed.lease.generation) == attempt
             await broker.release(
                 claimed.work_id,
                 claimed.lease.lease_id,

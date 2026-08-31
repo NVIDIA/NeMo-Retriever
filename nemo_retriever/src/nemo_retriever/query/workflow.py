@@ -27,6 +27,26 @@ class QueryDocumentsResult:
     strategies: list[str]
 
 
+@dataclass(frozen=True)
+class AgenticQueryDocumentsResult:
+    """Agentic query hits and normalized provider-reported LLM usage.
+
+    Attributes
+    ----------
+    hits:
+        Ranked agentic document hits in the root query output shape.
+    usage:
+        Normalized usage with ``input_tokens``, ``output_tokens``,
+        ``total_tokens``, and the original provider breakdown under ``stages``.
+        Token totals are integers or ``None`` when the provider did not report
+        enough information for an exact total. The mapping is empty when no
+        provider usage was reported.
+    """
+
+    hits: list[dict[str, Any]]
+    usage: dict[str, Any]
+
+
 def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
     if mode == "hybrid":
         return ["semantic", "lexical"]
@@ -171,6 +191,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
+        "candidate_k": request.retrieval.candidate_k,
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
@@ -183,11 +204,11 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "local_max_num_seqs": request.agentic.local_max_num_seqs,
         "api_key": api_key,
         "reasoning_effort": request.agentic.reasoning_effort,
-        "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
-        "temperature": float(request.agentic.temperature),
+        "temperature": request.agentic.temperature,
+        "llm_client": request.agentic.llm_client,
     }
     if request.agentic.llm_backend:
         cfg_kwargs["llm_backend"] = request.agentic.llm_backend
@@ -215,39 +236,62 @@ def build_agentic_retriever(request: QueryRequest) -> "AgenticRetriever":
 
 
 def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
-    """Run agentic (ReAct) retrieval for a single query and return the agent's
-    ranked document IDs.
+    """Run agentic (ReAct) retrieval for a single query and return ranked hits.
 
-    Unlike the dense ``query_documents`` path (which returns enriched hits with
-    text), the agent operates at the document-ID granularity of the configured
-    index, so the result is the ranked ``doc_id`` list the agent selected,
-    annotated with the source that produced it (``final_results`` / ``rrf`` /
-    ``selection_agent``). The LanceDB ``uri``/``table_name``, embedding config,
-    and (when ``--rerank`` is enabled) reranker config are passed straight
-    through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
-    tool. Reranking therefore applies per agent retrieval hop.
+    The agent selects documents rather than chunks, but each returned hit carries
+    the same fields as the dense ``query_documents`` path (``text``, ``source``,
+    ``page_number``, ``metadata``, …), rehydrated from the retrieve hop that
+    returned the document, plus the agentic annotations ``doc_id``, ``rank``, and
+    ``result_source`` (``final_results`` / ``rrf`` / ``selection_agent``). The
+    LanceDB ``uri``/``table_name``, embedding config, and (when ``--rerank`` is
+    enabled) reranker config are passed straight through to the wrapped
+    ``Retriever`` that backs the agent's ``retrieve`` tool. Reranking therefore
+    applies per agent retrieval hop.
     """
     retriever = build_agentic_retriever(request)
     try:
         result = retriever.retrieve(["0"], [str(request.query)])
-        if "rank" in result.columns:
-            result = result.sort_values("rank")
-        ranked: list[dict[str, Any]] = []
-        for _, row in result.iterrows():
-            doc_id = str(row.get("doc_id", "")).strip()
-            if not doc_id:
-                continue
-            ranked.append(
-                {
-                    "rank": int(row.get("rank", len(ranked) + 1)),
-                    "doc_id": doc_id,
-                    "result_source": str(row.get("result_source", "")),
-                }
-            )
-            if len(ranked) >= request.retrieval.top_k:
-                break
-        return ranked
+        return _agentic_rows_to_hits(result, top_k=request.retrieval.top_k)
     finally:
         # One-shot CLI/Python entry: tear down cached local vLLM EngineCore so the
         # process can exit instead of hanging on a live child worker.
         retriever.unload()
+
+
+def agentic_query_documents_with_metadata(request: QueryRequest) -> AgenticQueryDocumentsResult:
+    """Run one agentic query and return ranked hits plus exact LLM usage."""
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.retrieve_with_usage(["0"], [str(request.query)])
+        return AgenticQueryDocumentsResult(
+            hits=_agentic_rows_to_hits(result.documents, top_k=request.retrieval.top_k),
+            usage=normalize_usage_breakdown(result.usage.get("0")),
+        )
+    finally:
+        retriever.unload()
+
+
+def _agentic_rows_to_hits(result: Any, *, top_k: int) -> list[dict[str, Any]]:
+    """Convert an agentic result DataFrame to ranked, rehydrated hits."""
+    from nemo_retriever.query.agentic import rehydrated_agentic_hit
+
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    ranked: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        doc_id = str(row.get("doc_id", "")).strip()
+        if not doc_id:
+            continue
+        ranked.append(
+            rehydrated_agentic_hit(
+                row.get("hit"),
+                doc_id=doc_id,
+                rank=int(row.get("rank", len(ranked) + 1)),
+                result_source=str(row.get("result_source", "")),
+            )
+        )
+        if len(ranked) >= top_k:
+            break
+    return ranked

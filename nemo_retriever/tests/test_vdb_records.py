@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+from ray.data.extensions import TensorArray
 import pytest
 from pydantic import ValidationError
 
@@ -127,6 +129,25 @@ def test_canonical_record_batches_pass_through_without_reconversion() -> None:
     assert to_client_vdb_records(records) is records
 
 
+@pytest.mark.parametrize(
+    ("records", "expected"),
+    [
+        pytest.param([[]], [], id="single-empty-batch"),
+        pytest.param([[], []], [], id="multiple-empty-batches"),
+        pytest.param(
+            [[], [{"metadata": {"content": "canonical"}}], []],
+            [[{"metadata": {"content": "canonical"}}]],
+            id="mixed",
+        ),
+    ],
+)
+def test_canonical_record_batches_remove_empty_inner_batches(
+    records: list[list[dict]],
+    expected: list[list[dict]],
+) -> None:
+    assert to_client_vdb_records(records) == expected
+
+
 def test_graph_record_conversion_preserves_service_provenance() -> None:
     records = to_client_vdb_records(
         [
@@ -165,6 +186,7 @@ def test_graph_record_conversion_preserves_service_provenance() -> None:
         "type": "table",
         "fidelity": "ocr",
         "stored_image_uri": "s3://artifacts/table.png",
+        "uploaded_image_uri": "s3://artifacts/table.png",
         "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
         "page_elements_v3_num_detections": 3,
         "page_elements_v3_counts_by_label": {"table": 2, "chart": 1},
@@ -174,6 +196,60 @@ def test_graph_record_conversion_preserves_service_provenance() -> None:
         "segment_start_seconds": 1.5,
         "frame_timestamp_seconds": 2.5,
     }
+
+
+@pytest.mark.parametrize("content_type", ["table", "chart_caption", "infographic"])
+def test_graph_record_conversion_does_not_publish_inherited_page_uri(content_type: str) -> None:
+    records = to_client_vdb_records(
+        [
+            {
+                "text": "structured content",
+                "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+                "_content_type": content_type,
+                "_stored_image_uri": "s3://artifacts/page.png",
+                "page_image": {"stored_image_uri": "s3://artifacts/page.png"},
+            }
+        ]
+    )
+
+    content_metadata = records[0][0]["metadata"]["content_metadata"]
+    assert content_metadata["stored_image_uri"] == "s3://artifacts/page.png"
+    assert "uploaded_image_uri" not in content_metadata
+
+
+def test_graph_record_conversion_normalizes_arrow_backed_bbox_array() -> None:
+    records = to_client_vdb_records(
+        [
+            {
+                "text": "table content",
+                "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+                "_content_type": "table",
+                "_bbox_xyxy_norm": np.array([0.1, 0.2, 0.8, 0.9]),
+            }
+        ]
+    )
+
+    assert records[0][0]["metadata"]["content_metadata"]["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
+
+
+def test_graph_record_conversion_normalizes_arrow_backed_embedding_array() -> None:
+    records = to_client_vdb_records(
+        [
+            {
+                "text": "embedded content",
+                "metadata": {"embedding": np.array([0.1, 0.2])},
+            }
+        ]
+    )
+
+    assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
+
+
+def test_graph_record_conversion_normalizes_ray_tensor_embedding() -> None:
+    embedding = TensorArray([np.array([0.1, 0.2])])[0]
+    records = to_client_vdb_records([{"text": "embedded content", "metadata": {"embedding": embedding}}])
+
+    assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
 
 
 def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:

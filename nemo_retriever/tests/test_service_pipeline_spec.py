@@ -16,16 +16,19 @@ Covers three layers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
 
 from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
+from nemo_retriever.common.vdb import lancedb_capabilities
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
+    _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
     _merge_server_owned,
     _post_records_to_vectordb,
     _request_needs_asr_params,
@@ -166,7 +169,6 @@ def test_service_empty_inline_list_preserves_explicit_extraction_mode(
     assert ingestor._pipeline_payload()["extraction_mode"] == expected_mode
 
 
-@pytest.mark.parametrize("values", [[], ["", "  \n"]])
 @pytest.mark.parametrize(
     ("result_schema", "expected_columns"),
     [
@@ -174,13 +176,12 @@ def test_service_empty_inline_list_preserves_explicit_extraction_mode(
         ("compact", ["text", "source_id", "element_type", "page_number"]),
     ],
 )
-def test_service_inline_empty_corpus_short_circuits_with_schema(
-    values: list[str],
+def test_service_blank_inline_corpus_short_circuits_with_schema(
     result_schema: str,
     expected_columns: list[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ingestor = ServiceIngestor(base_url="http://retriever.example").texts(values).embed()
+    ingestor = ServiceIngestor(base_url="http://retriever.example").texts(["", "  \n"]).embed()
     monkeypatch.setattr(
         ingestor,
         "ingest_stream",
@@ -194,6 +195,22 @@ def test_service_inline_empty_corpus_short_circuits_with_schema(
     assert result.dataframe.empty
     assert result.dataframe.columns.tolist() == expected_columns
     assert ingestor._collect_inputs() == []
+
+
+@pytest.mark.parametrize("input_method", [None, "files", "texts", "buffers"])
+def test_service_streaming_ingest_requires_input_sources(input_method: str | None) -> None:
+    ingestor = ServiceIngestor(base_url="http://retriever.example")
+    if input_method is not None:
+        getattr(ingestor, input_method)([])
+
+    with pytest.raises(ValueError, match="No input sources configured"):
+        ingestor.ingest_stream()
+
+    async def consume_async_stream() -> list[dict]:
+        return [event async for event in ingestor.aingest_stream()]
+
+    with pytest.raises(ValueError, match="No input sources configured"):
+        asyncio.run(consume_async_stream())
 
 
 def test_legacy_pipeline_payload_disables_bulk_result_payloads() -> None:
@@ -623,6 +640,57 @@ def test_build_graph_ingestor_attaches_asr_params_for_audio_upload() -> None:
     assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
 
 
+def test_build_graph_ingestor_preserves_canonical_video_defaults() -> None:
+    """Auto-routed MP4 uploads must build the full video extraction branch."""
+    base_extract = {"ocr_invoke_url": "https://server.example/v1/ocr"}
+    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        "talk.mp4",
+        b"video bytes",
+        base_extract,
+        None,
+        spec,
+        base_asr=base_asr,
+    )
+
+    assert mode == "video"
+    assert ingestor._extraction_mode == "video"
+    assert ingestor._extract_params.ocr_invoke_url == "https://server.example/v1/ocr"
+    assert ingestor._audio_chunk_params.enabled is True
+    assert ingestor._audio_chunk_params.split_type == "size"
+    assert ingestor._audio_chunk_params.split_interval == 500000
+    assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
+    assert ingestor._video_frame_params.enabled is True
+    assert ingestor._video_frame_params.fps == 0.5
+    assert ingestor._video_frame_params.dedup is True
+    assert ingestor._video_text_dedup_params.enabled is True
+    assert ingestor._video_text_dedup_params.max_dropped_frames == 2
+    assert ingestor._av_fuse_params.enabled is True
+
+
+def test_build_graph_ingestor_keeps_video_frames_when_asr_is_unconfigured() -> None:
+    """An unconfigured ASR endpoint disables audio, not frame OCR."""
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        "silent.mp4",
+        b"video bytes",
+        {"ocr_invoke_url": "https://server.example/v1/ocr"},
+        None,
+        spec,
+        base_asr=None,
+    )
+
+    assert mode == "video"
+    assert ingestor._audio_chunk_params.enabled is False
+    assert ingestor._asr_params is None
+    assert ingestor._video_frame_params.enabled is True
+    assert ingestor._video_text_dedup_params.enabled is True
+    assert ingestor._av_fuse_params.enabled is True
+
+
 def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> None:
     """``extraction_mode='audio'`` must always attach the worker ASR params."""
     base_extract: dict[str, object] = {}
@@ -841,6 +909,12 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
             storage_document_id="document-1",
             content_sha256="a" * 64,
             document_version="version-2",
+            document_metadata={
+                "category": "Finance_Investment",
+                "source_path": "Finance_Investment/report.pdf",
+                "source_filename": "report.pdf",
+                "page_number": 999,
+            },
         ),
         job_id="job-1",
     )
@@ -863,7 +937,11 @@ def test_run_pipeline_posts_canonical_pdf_table_image_provenance(
         "type": "table",
         "fidelity": "ocr",
         "stored_image_uri": "s3://artifacts/table.png",
+        "uploaded_image_uri": "s3://artifacts/table.png",
         "bbox_xyxy_norm": [0.1, 0.2, 0.8, 0.9],
+        "category": "Finance_Investment",
+        "source_path": "Finance_Investment/report.pdf",
+        "source_filename": "report.pdf",
     }
     assert payload["scope"] == "tenant-a"
     assert payload["collection_name"] == "papers"
@@ -921,7 +999,7 @@ def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: p
     )
 
     assert posted["url"] == "http://vectordb:7671/internal/vectordb/write"
-    assert posted["timeout"] == 30
+    assert posted["timeout"] == _DEFAULT_VECTORDB_WRITE_TIMEOUT_S
     assert posted["headers"]["X-nrl-internal-token"] == "internal-token"
     assert posted["json"] == {
         "records": records,
@@ -936,3 +1014,68 @@ def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: p
     }
     assert "rows" not in posted["json"]
     assert "artifact_prefix" not in posted["json"]
+
+
+def test_post_records_to_vectordb_fails_the_document_when_the_write_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A write the storage tier never acknowledged must not be reported as ingested."""
+
+    def _urlopen(request, timeout):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    records = [[{"document_type": "text", "metadata": {"embedding": [0.1], "content": "chunk"}}]]
+
+    # A legacy fixed-table write, i.e. no collection context.
+    with pytest.raises(RuntimeError, match="VectorDB write failed for gamma.txt"):
+        _post_records_to_vectordb(
+            records,
+            "http://vectordb:7671",
+            "gamma.txt",
+            context=DocumentWriteContext(),
+        )
+
+
+def test_post_records_to_vectordb_honors_the_configured_write_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def _urlopen(request, timeout):
+        seen["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    _post_records_to_vectordb(
+        [[{"document_type": "text", "metadata": {"embedding": [0.1], "content": "chunk"}}]],
+        "http://vectordb:7671",
+        "gamma.txt",
+        context=DocumentWriteContext(),
+        timeout_s=45.0,
+    )
+
+    assert seen["timeout"] == 45.0
+
+
+def test_default_write_timeout_outlasts_the_index_readiness_waits() -> None:
+    """A durable write must not fail because the VectorDB waited on its own indexes.
+
+    The VectorDB acknowledges a write only after index maintenance, and a hybrid
+    table waits once per index. If those advisory waits can outlast the worker's
+    timeout, a document whose rows are already committed fails on the wait alone.
+    """
+    worst_case_index_wait_s = (
+        lancedb_capabilities.MAX_INDEX_READY_WAITS_PER_WRITE * lancedb_capabilities.INDEX_READY_TIMEOUT.total_seconds()
+    )
+
+    assert worst_case_index_wait_s < _DEFAULT_VECTORDB_WRITE_TIMEOUT_S

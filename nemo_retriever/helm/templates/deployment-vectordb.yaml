@@ -6,7 +6,12 @@
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 {{- $localEmbed := include "nemo-retriever.localEmbed.enabled" . | eq "true" -}}
 {{- $localModels := .Values.serviceConfig.localModels -}}
+{{- $indexMode := .Values.serviceConfig.vectordb.indexMode | default "auto" -}}
+{{- if not (has $indexMode (list "auto" "dense" "hybrid")) -}}
+{{- fail "serviceConfig.vectordb.indexMode must be one of: auto, dense, hybrid" -}}
+{{- end -}}
 {{- $agentic := .Values.serviceConfig.agentic -}}
+{{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
 {{- /*
   Fail-fast guard: rendering a vectordb Deployment without any query-time
   embedding backend produces a "healthy" Pod whose first /v1/query request
@@ -76,6 +81,8 @@ spec:
             - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
             - --table-name
             - {{ .Values.serviceConfig.vectordb.tableName | quote }}
+            - --index-mode
+            - {{ $indexMode | quote }}
             {{- if $embedURL }}
             - --embed-endpoint
             - {{ $embedURL | quote }}
@@ -136,6 +143,14 @@ spec:
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
             {{- if or $embedURL (and $agentic.enabled $agentic.invokeUrl) }}
             - name: NVIDIA_API_KEY
               valueFrom:

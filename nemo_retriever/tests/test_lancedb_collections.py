@@ -13,6 +13,7 @@ import json
 import math
 import threading
 from dataclasses import replace
+from unittest.mock import MagicMock
 
 import lancedb
 import pytest
@@ -36,12 +37,28 @@ from nemo_retriever.common.vdb.lancedb import (
     _to_service_lancedb_rows,
 )
 from nemo_retriever.common.vdb.lancedb_collections import (
+    LanceDBCollectionStore,
     _collection_rows,
     _encode_cursor,
     _normalize_collection_results,
     _public_collection_hit,
 )
 from nemo_retriever.common.vdb.records import RetrievalContractError
+
+
+def test_catalog_scans_reuse_open_table_handle() -> None:
+    table = MagicMock()
+    table.search.return_value.limit.return_value.to_list.return_value = []
+    database = MagicMock()
+    database.open_table.return_value = table
+    store = object.__new__(LanceDBCollectionStore)
+    store._db = database
+    store._opened_tables = {}
+
+    assert store._rows("_nrl_collections") == []
+    assert store._rows("_nrl_collections") == []
+
+    database.open_table.assert_called_once_with("_nrl_collections")
 
 
 def _context(
@@ -276,6 +293,114 @@ def test_collection_write_enforces_append_and_replace_invariants(tmp_path):
     assert store._open_table(table_name).count_rows() == 1
 
 
+def test_collection_writes_refresh_sliding_expiration(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+    backend.write_collection(_records(), context=_context())
+    appended = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert appended.updated_at == "2030-01-01T12:00:00+00:00"
+    assert appended.expires_at == "2030-01-02T12:00:00+00:00"
+
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T18:00:00+00:00")
+    backend.write_collection(
+        _records(text="replacement"),
+        context=_context(version="v2", operation="replace"),
+    )
+    replaced = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert replaced.updated_at == "2030-01-01T18:00:00+00:00"
+    assert replaced.expires_at == "2030-01-02T18:00:00+00:00"
+
+
+def test_collection_activity_without_expiration_only_updates_timestamp(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+
+    backend.write_collection(_records(), context=_context())
+
+    collection = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert collection.updated_at == "2030-01-01T12:00:00+00:00"
+    assert collection.expires_at is None
+
+
+def test_failed_or_empty_collection_write_does_not_refresh_expiration(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+
+    with pytest.raises(VDBInvalidRequest, match="no writable vector rows"):
+        backend.write_collection(
+            [[{"document_type": "text", "metadata": {"content": "no vector"}}]],
+            context=_context(),
+        )
+    empty = backend.write_collection([], context=_context())
+    assert empty.written == 0
+
+    unchanged = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert unchanged.updated_at == "2030-01-01T00:00:00+00:00"
+    assert unchanged.expires_at == "2030-01-02T00:00:00+00:00"
+
+
+def test_collection_updates_preserve_replace_or_clear_expiration_window(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
+    preserved = backend.update_collection(
+        scope="workspace-a",
+        collection_name="collection-a",
+        request=CollectionUpdateRequest(description="active"),
+    )
+    assert preserved.updated_at == "2030-01-01T12:00:00+00:00"
+    assert preserved.expires_at == "2030-01-02T12:00:00+00:00"
+
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T13:00:00+00:00")
+    replaced = backend.update_collection(
+        scope="workspace-a",
+        collection_name="collection-a",
+        request=CollectionUpdateRequest(expires_at="2030-01-04T13:00:00+00:00"),
+    )
+    assert replaced.updated_at == "2030-01-01T13:00:00+00:00"
+    assert replaced.expires_at == "2030-01-04T13:00:00+00:00"
+
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T14:00:00+00:00")
+    cleared = backend.update_collection(
+        scope="workspace-a",
+        collection_name="collection-a",
+        request=CollectionUpdateRequest(expires_at=None),
+    )
+    assert cleared.updated_at == "2030-01-01T14:00:00+00:00"
+    assert cleared.expires_at is None
+
+
 def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
     uri = str(tmp_path / "lancedb")
     backend = LanceDB(
@@ -434,6 +559,16 @@ def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
 def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monkeypatch):
     backend = _backend_with_collection(tmp_path)
     store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+    monkeypatch.setattr(collections_module, "_now", lambda: "2030-01-01T12:00:00+00:00")
     _fail_document_finalize(monkeypatch, store)
 
     with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
@@ -485,6 +620,9 @@ def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monk
     assert document.status == "completed"
     assert document.document_version == "v1"
     assert document.chunk_count == 1
+    collection = restarted.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert collection.updated_at == "2030-01-01T12:00:00+00:00"
+    assert collection.expires_at == "2030-01-02T12:00:00+00:00"
     assert restarted._get_collection_store()._open_table(table_name).count_rows() == 1
     visible_hits, strategies = restarted.retrieve_collection(
         [[1.0, 0.0]],
@@ -495,6 +633,64 @@ def test_initial_append_reconciles_after_catalog_finalize_failure(tmp_path, monk
     )
     assert strategies == ["dense"]
     assert visible_hits[0][0]["document_id"] == "document-a"
+
+
+def test_recovery_retries_activity_refresh_without_reextending_expiration(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(_records(), context=_context())
+    store = backend._get_collection_store()
+    collection = store._collection_row("workspace-a", "collection-a")
+    assert collection is not None
+    collection.update(
+        {
+            "updated_at": "2030-01-01T00:00:00+00:00",
+            "expires_at": "2030-01-02T00:00:00+00:00",
+        }
+    )
+    store._persist_collection_row(collection)
+    document = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    document.update(
+        {
+            "pending_document_version": "v1",
+            "recovery_state": "appending",
+            "status": "appending",
+        }
+    )
+    store._persist_document_row(document)
+    activity_at = "2030-01-01T12:00:00+00:00"
+    monkeypatch.setattr(collections_module, "_now", lambda: activity_at)
+
+    refreshes = 0
+    original_persist_collection = store._persist_collection_row
+
+    def count_activity_refresh(row):
+        nonlocal refreshes
+        refreshes += 1
+        return original_persist_collection(row)
+
+    monkeypatch.setattr(store, "_persist_collection_row", count_activity_refresh)
+    original_persist_document = store._persist_document_row
+    marker_clear_failed = False
+
+    def fail_first_marker_clear(row):
+        nonlocal marker_clear_failed
+        if not marker_clear_failed and row.get("recovery_state") == "" and row.get("updated_at") == activity_at:
+            marker_clear_failed = True
+            raise RuntimeError("injected marker clear failure")
+        return original_persist_document(row)
+
+    monkeypatch.setattr(store, "_persist_document_row", fail_first_marker_clear)
+
+    assert backend.reconcile_collections() == {"successes": 0, "failures": 1}
+    marker = store._document_rows("workspace-a", "collection-a", "document-a")[0]
+    assert marker["recovery_state"] == "refreshing_collection_activity"
+    refreshed = backend.get_collection(scope="workspace-a", collection_name="collection-a")
+    assert refreshed.updated_at == activity_at
+    assert refreshed.expires_at == "2030-01-02T12:00:00+00:00"
+
+    assert backend.reconcile_collections() == {"successes": 1, "failures": 0}
+    assert refreshes == 1
+    assert store._document_rows("workspace-a", "collection-a", "document-a")[0]["recovery_state"] == ""
 
 
 def test_reconciliation_filters_recoverable_documents_before_scan_limit(tmp_path, monkeypatch):

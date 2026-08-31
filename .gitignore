@@ -231,6 +231,7 @@ test_results/
 sweep_results/
 artifacts/
 nemo_retriever/artifacts/
+agentic-traces/
 
 # Ignore cursor rules
 .cursor
@@ -280,3 +281,6 @@ spool/
 # Local huggingface cache and build directories
 .work*/
 dist*
+
+# Rotated service logs
+*.log.*

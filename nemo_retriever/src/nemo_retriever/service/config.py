@@ -80,6 +80,24 @@ class LocalAsrConfig(RichModel):
     enabled: bool = True
 
 
+class LocalRerankConfig(RichModel):
+    """In-pod reranker used by the main service query API.
+
+    This is deliberately separate from the ingestion process-pool settings:
+    query-time reranking lives in the main service process and is loaded lazily
+    on the first ``rerank=true`` request.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    model_name: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    backend: Literal["hf", "vllm"] = "vllm"
+    gpu_memory_utilization: float = Field(default=0.5, gt=0, le=1)
+    max_length: int = Field(default=512, ge=1, le=8192)
+    batch_size: int = Field(default=32, ge=1)
+
+
 class LocalModelsConfig(RichModel):
     """Load Nemotron Hugging Face weights inside the service worker pod.
 
@@ -123,6 +141,7 @@ class LocalModelsConfig(RichModel):
     extract: LocalExtractConfig = Field(default_factory=LocalExtractConfig)
     embed: LocalEmbedConfig = Field(default_factory=LocalEmbedConfig)
     asr: LocalAsrConfig = Field(default_factory=LocalAsrConfig)
+    rerank: LocalRerankConfig = Field(default_factory=LocalRerankConfig)
 
 
 class NimEndpointsConfig(RichModel):
@@ -165,7 +184,20 @@ class NimEndpointsConfig(RichModel):
             "remote embedding endpoints that require namespaced model IDs."
         ),
     )
-    rerank_invoke_url: str | None = None
+    rerank_invoke_url: str | None = Field(
+        default=None,
+        description=(
+            "Remote reranking endpoint used by the main service for /v1/query "
+            "requests with rerank=true. The endpoint, model, and API key are "
+            "server-owned."
+        ),
+    )
+    rerank_model_name: str | None = Field(
+        default=None,
+        description=(
+            "Model identifier passed to rerank_invoke_url. Defaults to the " "Nemotron VL reranker when omitted."
+        ),
+    )
     audio_grpc_endpoint: str | None = Field(
         default=None,
         description=(
@@ -200,6 +232,12 @@ class NimEndpointsConfig(RichModel):
         self.nemotron_parse_model = model or None
         if model and not endpoint:
             raise ValueError("nim_endpoints.nemotron_parse_model requires " "nim_endpoints.nemotron_parse_invoke_url")
+        rerank_endpoint = (self.rerank_invoke_url or "").strip()
+        rerank_model = (self.rerank_model_name or "").strip()
+        self.rerank_invoke_url = rerank_endpoint or None
+        self.rerank_model_name = rerank_model or None
+        if rerank_model and not rerank_endpoint:
+            raise ValueError("nim_endpoints.rerank_model_name requires " "nim_endpoints.rerank_invoke_url")
         return self
 
 
@@ -266,17 +304,32 @@ class ResourceLimitsConfig(RichModel):
     )
 
 
+class SidecarStoreConfig(RichModel):
+    """Gateway-owned in-memory store for sidecars before work admission."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_payload_bytes: int = Field(
+        default=33_554_432,
+        ge=1,
+        description="Maximum accepted sidecar payload size in bytes.",
+    )
+
+
 class AuthConfig(RichModel):
     """Bearer authentication and authorization for logical workspace scopes."""
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = False
     api_token: str | None = None
     default_scope: str = "default"
     scope_token_file: str | None = None
     allow_unscoped_dev: bool = False
     header_name: str = "Authorization"
-    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
+    bypass_paths: list[str] = Field(
+        default_factory=lambda: ["/v1/live", "/v1/health", "/docs", "/openapi.json", "/redoc"]
+    )
 
 
 class MCPConfig(RichModel):
@@ -384,8 +437,21 @@ class VectorDbConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    launch_on_start: bool = Field(
+        default=False,
+        description=(
+            "Start and supervise a loopback VectorDB child when retriever service starts. "
+            "The configured vectordb_url must use localhost or 127.0.0.1."
+        ),
+    )
+    max_concurrent_queries: int = Field(
+        default=4,
+        ge=1,
+        description=("Maximum number of concurrent queries handled by a supervised " "VectorDB child."),
+    )
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
+    index_mode: Literal["auto", "dense", "hybrid"] = "auto"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
@@ -395,6 +461,14 @@ class VectorDbConfig(RichModel):
     internal_api_token: str | None = Field(
         default=None,
         description="Dedicated gateway/worker credential for the VectorDB service.",
+    )
+    write_timeout_s: float = Field(
+        default=300.0,
+        gt=0,
+        description=(
+            "How long a worker waits for the VectorDB service to acknowledge a "
+            "record write before failing the document."
+        ),
     )
     reconciliation_interval_seconds: int = Field(
         default=60,
@@ -530,12 +604,19 @@ class ServiceConfig(RichModel):
     agentic: AgenticConfig = Field(default_factory=AgenticConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    sidecar_store: SidecarStoreConfig = Field(default_factory=SidecarStoreConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     work_queue: WorkQueueConfig = Field(default_factory=WorkQueueConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+
+    @model_validator(mode="after")
+    def _validate_sidecar_payload_limit(self) -> "ServiceConfig":
+        if self.sidecar_store.max_payload_bytes > self.resources.max_upload_bytes:
+            raise ValueError("sidecar_store.max_payload_bytes must not exceed resources.max_upload_bytes")
+        return self
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -622,8 +703,9 @@ def load_config(
     if not internal_token and (internal_token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
         internal_token = Path(internal_token_file).read_text(encoding="utf-8").strip()
     if internal_token:
+        internal_token = internal_token.strip()
+    if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
-
     config = ServiceConfig(**raw)
 
     _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})

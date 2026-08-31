@@ -13,9 +13,9 @@ the visual portion capped at :data:`FRAME_TEXT_MAX_CHARS`. The source
 audio row is dropped whenever a fused row was produced for its window
 so retrieval doesn't see two near-identical embeddings (audio-only and
 audio+visual) for the same utterance; audio rows whose window has no
-concurrent frame are preserved. ``video_frame`` rows are consumed by
-the fusion and not passed through downstream — every visual moment that
-mattered is already represented inside an ``audio_visual`` row.
+concurrent frame are preserved. A ``video_frame`` row is consumed only
+when it supplied the visual text for a fused row. Other frame-OCR rows
+remain visible downstream instead of being silently discarded.
 
 Set :attr:`AudioVisualFuseParams.enabled` to ``False`` to skip fusion.
 """
@@ -66,11 +66,20 @@ def _row_segment_window(row: Any) -> tuple[float, float] | None:
     return start, end
 
 
-def _keep_upstream(row: Any, fused_window_keys: set[tuple[str, float, float]]) -> bool:
-    """Drop ``video_frame`` rows and audio rows whose window already fused."""
+def _keep_upstream(
+    row: Any,
+    fused_window_keys: set[tuple[str, float, float]],
+    fused_frame_keys: set[tuple[str, float, float, str]],
+) -> bool:
+    """Drop rows represented by a fused result and preserve all others."""
     kind = _row_content_type(row)
     if kind == _CT.VIDEO_FRAME:
-        return False
+        window = _row_segment_window(row)
+        source = getattr(row, "source_path", None)
+        text = getattr(row, "text", None)
+        if window is None or not isinstance(source, str) or not isinstance(text, str):
+            return True
+        return (source, float(window[0]), float(window[1]), text.strip()) not in fused_frame_keys
     if kind != _CT.AUDIO:
         return True
     window = _row_segment_window(row)
@@ -82,8 +91,12 @@ def _keep_upstream(row: Any, fused_window_keys: set[tuple[str, float, float]]) -
     return (source, float(window[0]), float(window[1])) not in fused_window_keys
 
 
-def _filter_upstream(batch_df: pd.DataFrame, fused_window_keys: set[tuple[str, float, float]]) -> pd.DataFrame:
-    mask = [_keep_upstream(row, fused_window_keys) for row in batch_df.itertuples(index=False)]
+def _filter_upstream(
+    batch_df: pd.DataFrame,
+    fused_window_keys: set[tuple[str, float, float]],
+    fused_frame_keys: set[tuple[str, float, float, str]],
+) -> pd.DataFrame:
+    mask = [_keep_upstream(row, fused_window_keys, fused_frame_keys) for row in batch_df.itertuples(index=False)]
     return batch_df[mask].reset_index(drop=True)
 
 
@@ -140,9 +153,10 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             frames_by_source.setdefault(source, []).append((float(f_start), float(f_end), text.strip()))
 
         if not frames_by_source:
-            return _filter_upstream(batch_df, set())
+            return _filter_upstream(batch_df, set(), set())
 
         fused_rows: List[Dict[str, Any]] = []
+        fused_frame_keys: set[tuple[str, float, float, str]] = set()
         for row in batch_df.itertuples(index=False):
             if _row_content_type(row) != _CT.AUDIO:
                 continue
@@ -176,6 +190,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
                 concurrent_entries,
                 key=lambda fe: (abs((fe[0] + fe[1]) / 2.0 - u_mid), -len(fe[2])),
             )
+            fused_frame_keys.add((source, float(best[0]), float(best[1]), best[2]))
             visual_text = best[2]
             if len(visual_text) > FRAME_TEXT_MAX_CHARS:
                 visual_text = visual_text[:FRAME_TEXT_MAX_CHARS].rstrip()
@@ -199,7 +214,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
             fused_rows.append(fused_row)
 
         if not fused_rows:
-            return _filter_upstream(batch_df, set())
+            return _filter_upstream(batch_df, set(), set())
 
         fused_window_keys = {
             (
@@ -211,7 +226,7 @@ class AudioVisualFuser(AbstractOperator, CPUOperator):
         }
         return concat_with_passthrough(
             pd.DataFrame(fused_rows),
-            _filter_upstream(batch_df, fused_window_keys),
+            _filter_upstream(batch_df, fused_window_keys, fused_frame_keys),
         )
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

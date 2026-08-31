@@ -97,7 +97,7 @@ def invoke_chat_completion_step(
     tools: Optional[List[Dict[str, Any]]] = None,
     tool_choice: str = "auto",
     timeout_s: float = 120.0,
-    temperature: float = 0.0,
+    temperature: Optional[float] = 0.0,
     max_tokens: Optional[int] = None,
     extra_body: Optional[Dict[str, Any]] = None,
     max_retries: int = 10,
@@ -117,6 +117,9 @@ def invoke_chat_completion_step(
     tool_choice
         ``"auto"`` (default) lets the model decide; ``"none"`` suppresses tool
         use; or a specific tool name dict.
+    temperature
+        Sampling temperature.  ``None`` omits the field from the payload entirely
+        so the endpoint/model default applies.
     """
     token = (api_key or "").strip()
     headers: Dict[str, str] = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -126,10 +129,10 @@ def invoke_chat_completion_step(
     invoke_urls = _parse_invoke_urls(invoke_url)
     endpoint_url = invoke_urls[0]
 
-    payload: Dict[str, Any] = {
-        "messages": messages,
-        "temperature": temperature,
-    }
+    payload: Dict[str, Any] = {"messages": messages}
+    # Unset (None) => omit, so the endpoint/model default applies.
+    if temperature is not None:
+        payload["temperature"] = temperature
     if model:
         payload["model"] = model
     if max_tokens is not None:

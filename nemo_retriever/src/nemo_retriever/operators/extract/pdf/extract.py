@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
 
 import base64
 import traceback
@@ -29,6 +29,9 @@ from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
+if TYPE_CHECKING:
+    from nemo_retriever.common.params import ExtractParams
+
 try:
     import pypdfium2 as pdfium
 except Exception as e:  # pragma: no cover
@@ -47,6 +50,31 @@ _MODEL_INPUT_SIZE: Tuple[int, int] = (1024, 1024)
 
 # Allowed render-mode values.
 RenderMode = Literal["full_dpi", "fit_to_model"]
+
+
+def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
+    """Build keyword arguments for ``PDFExtractionActor``.
+
+    Args:
+        params: PDF extraction configuration to convert.
+
+    Returns:
+        Keyword arguments accepted by ``PDFExtractionActor``.
+    """
+    return {
+        "method": params.method,
+        "dpi": int(params.dpi),
+        "image_format": params.image_format,
+        "jpeg_quality": int(params.jpeg_quality),
+        "render_mode": params.render_mode,
+        "extract_text": params.extract_text,
+        "extract_images": params.extract_images,
+        "extract_tables": params.extract_tables,
+        "extract_charts": params.extract_charts,
+        "extract_infographics": params.extract_infographics,
+        "extract_page_as_image": params.extract_page_as_image,
+        "api_key": params.api_key,
+    }
 
 
 def _compute_fit_to_model_scale(

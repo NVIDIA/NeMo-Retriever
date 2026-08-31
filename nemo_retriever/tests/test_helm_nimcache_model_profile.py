@@ -6,7 +6,7 @@
 
 The NIM Operator's NIMCache CRD supports an optional
 ``spec.source.ngc.model`` block that restricts which model profiles a
-cache job downloads (by GPU SKU or by profile UUID).  Through 26.05 RC2
+cache job downloads (by GPU SKU or by profile UUID).  Through 26.08.1
 the chart's NIMCache templates omitted the field entirely and
 ``values.yaml`` exposed no corresponding knob — even
 ``--set nimOperator.<key>.gpus[0].ids[0]=26B5`` could not move the
@@ -97,16 +97,6 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "ngcImagePullSecret.create=false",
         "--set",
         "ngcApiSecret.create=false",
-        "--set",
-        "nimOperator.page_elements.modelDownloadMode=nimCache",
-        "--set",
-        "nimOperator.table_structure.modelDownloadMode=nimCache",
-        "--set",
-        "nimOperator.ocr.modelDownloadMode=nimCache",
-        "--set",
-        "nimOperator.vlm_embed.modelDownloadMode=nimCache",
-        "--set",
-        "nimOperator.rerankqa.modelDownloadMode=nimCache",
         # Opt every default-empty-profile NIM in so this suite exercises
         # their shared modelProfile contract in one render. Defaults are
         # covered separately.
@@ -145,7 +135,7 @@ def _iter_nimcache_docs(rendered: str) -> list[dict]:
 
 
 class NimCacheModelProfileTests(TestCase):
-    """26.05 contract: every NIMCache exposes spec.source.ngc.model."""
+    """26.08.1 contract: every NIMCache exposes spec.source.ngc.model."""
 
     # ------------------------------------------------------------------
     # values.yaml — source-level invariants
@@ -275,7 +265,7 @@ class NimCacheModelProfileTests(TestCase):
         )
         self.assertEqual(
             ocr_cache["spec"]["source"]["ngc"]["modelPuller"],
-            "nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0",
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1",
         )
 
         ocr_service = next(
@@ -287,7 +277,7 @@ class NimCacheModelProfileTests(TestCase):
             ocr_service["spec"]["image"]["repository"],
             "nvcr.io/nim/nvidia/nemotron-ocr-v2",
         )
-        self.assertEqual(ocr_service["spec"]["image"]["tag"], "2.0.0")
+        self.assertEqual(ocr_service["spec"]["image"]["tag"], "2.0.1")
 
         configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
         self.assertTrue(

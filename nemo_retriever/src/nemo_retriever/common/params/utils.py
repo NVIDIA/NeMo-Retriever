@@ -7,9 +7,30 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
+
+
+NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+
+
+def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
+    """Normalize Parse endpoints and reject mixed NVIDIA Build/self-hosted lists."""
+    invoke_urls = tuple(part.strip() for part in str(invoke_url or "").split(",") if part.strip())
+    build_endpoints = tuple(
+        (urlsplit(endpoint).hostname or "").lower() == "integrate.api.nvidia.com" for endpoint in invoke_urls
+    )
+    if any(build_endpoints) and not all(build_endpoints):
+        raise ValueError(
+            "Nemotron Parse endpoint lists cannot mix NVIDIA Build and self-hosted endpoints. "
+            "One `nemotron_parse_model` and request contract apply to the entire endpoint list, but NVIDIA Build "
+            "requires `nvidia/nemotron-parse` with the hosted tool-call contract and self-hosted Parse requires a "
+            "versioned model with a tagged contract. Configure a homogeneous endpoint list or use separate "
+            "ingestors for NVIDIA Build and self-hosted Parse."
+        )
+    return invoke_urls
 
 
 def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any]) -> T:
@@ -67,6 +88,7 @@ def build_embed_option_kwargs(
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
     embed_gpus_per_actor: float | None = None,
+    embed_model_revision: str | None = None,
 ) -> Dict[str, Any]:
     """Build ``EmbedParams`` kwargs from CLI/request option values."""
     embed_kwargs: Dict[str, Any] = {}
@@ -76,6 +98,8 @@ def build_embed_option_kwargs(
         # Remote HTTP embedding reads model_name; local/GPU paths read embed_model_name.
         embed_kwargs["model_name"] = embed_model_name
         embed_kwargs["embed_model_name"] = embed_model_name
+    if embed_model_revision is not None:
+        embed_kwargs["embed_model_revision"] = embed_model_revision
     if local_ingest_embed_backend is not None:
         embed_kwargs["local_ingest_embed_backend"] = local_ingest_embed_backend
     if embed_api_key is not None:

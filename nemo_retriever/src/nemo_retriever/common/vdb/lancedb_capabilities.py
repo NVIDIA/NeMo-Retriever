@@ -6,12 +6,26 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from datetime import timedelta
+from typing import Any, Final, Literal
 
 import pyarrow as pa
 
+logger = logging.getLogger(__name__)
+
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
+
+# Index readiness is advisory: rows are queryable before an index covers them,
+# so expiry only costs query speed until the next rebuild. A write is
+# acknowledged to its caller only after index maintenance, and hybrid tables
+# wait once per index, so keep MAX_INDEX_READY_WAITS_PER_WRITE times this value
+# below the caller's write timeout or a durable write fails on the wait alone.
+INDEX_READY_TIMEOUT: Final[timedelta] = timedelta(seconds=60)
+MAX_INDEX_READY_WAITS_PER_WRITE: Final[int] = 2
+_INDEX_READY_POLL_INTERVAL_S: Final[float] = 0.25
 
 _RETRIEVAL_MODE_METADATA_KEYS = (
     "retrieval_mode",
@@ -108,6 +122,82 @@ def _detect_fts_columns(table: Any) -> list[str]:
     return list(dict.fromkeys(column for column in fts_columns if column))
 
 
+def column_index_stubs(table: Any, column: str) -> list[Any]:
+    """Return the index descriptors LanceDB reports for ``column``."""
+    list_indices = getattr(table, "list_indices", None)
+    if not callable(list_indices):
+        return []
+
+    stubs: list[Any] = []
+    for index in list_indices():
+        name = getattr(index, "name", None)
+        if not name:
+            continue
+        columns = _index_columns(index)
+        if columns:
+            if column in columns:
+                stubs.append(index)
+        elif column in str(name).lower():
+            # Older LanceDB builds do not report columns on the index stub.
+            stubs.append(index)
+    return stubs
+
+
+def wait_for_column_index(
+    table: Any,
+    column: str,
+    *,
+    covered_rows: int,
+    timeout: timedelta | None = None,
+) -> None:
+    """Wait until the index on ``column`` covers ``covered_rows`` rows.
+
+    Two things this deliberately does not do:
+
+    * It does not wait on indexes of other columns. A vector-index phase that
+      blocks on an FTS index stalls every writer sharing the table for the
+      whole timeout, even though the FTS index is none of its business.
+    * It does not wait for the index to have zero unindexed rows, which is what
+      ``Table.wait_for_index`` requires. Concurrent writers keep committing
+      rows, so that condition can stay false until the timeout expires even
+      though the index this phase built is complete. Rows outside the index are
+      still returned by search because Lance scans them, so an unindexed tail
+      is a performance property rather than a correctness one, and the next
+      rebuild folds it in.
+    """
+    timeout = timeout or INDEX_READY_TIMEOUT
+    deadline = time.monotonic() + timeout.total_seconds()
+    while True:
+        stubs = column_index_stubs(table, column)
+        if stubs and all(_indexed_rows(stub) >= covered_rows for stub in stubs):
+            return
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "LanceDB index on column %r did not report coverage of %d row(s) within %s. "
+                "Queries still scan unindexed rows and the next rebuild will cover them.",
+                column,
+                covered_rows,
+                timeout,
+            )
+            return
+        time.sleep(_INDEX_READY_POLL_INTERVAL_S)
+
+
+def _indexed_rows(index: Any) -> float:
+    """Return how many rows ``index`` reports as indexed.
+
+    Builds that do not report the counter are treated as fully covered: the
+    local LanceDB path indexes synchronously, so there is nothing to poll for.
+    """
+    indexed = getattr(index, "num_indexed_rows", None)
+    if indexed is None:
+        return float("inf")
+    try:
+        return float(indexed)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
 def _mode_from_capabilities(has_vector: bool, has_fts: bool) -> LanceRetrievalMode:
     if has_vector and has_fts:
         return "hybrid"
@@ -133,7 +223,8 @@ def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
     has_vector = vector_column is not None
     has_fts = bool(fts_columns)
 
-    retrieval_mode = _metadata_retrieval_mode(schema) or _mode_from_capabilities(has_vector, has_fts)
+    physical_mode = _mode_from_capabilities(has_vector, has_fts)
+    retrieval_mode = physical_mode if physical_mode != "unknown" else (_metadata_retrieval_mode(schema) or "unknown")
 
     return LanceTableCapabilities(
         has_vector=has_vector,

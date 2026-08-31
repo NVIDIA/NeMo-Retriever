@@ -7,12 +7,19 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
-from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph, build_post_extract_graph
+from nemo_retriever.graph.executor import call_pandas_function_on_arrow, preflight_executors
+from nemo_retriever.graph.ingestor_runtime import (
+    batch_tuning_to_node_overrides,
+    build_graph,
+    build_post_extract_graph,
+    default_concurrency_node_names,
+    _image_embedding_requires_page_image,
+)
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -79,8 +86,10 @@ class ExtractionBranchExecutor:
 
     def _execute_batch(self) -> Any:
         ray_module, cluster_resources = self.ensure_batch_runtime()
-        effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        effective_allow_no_gpu = self.allow_no_gpu or cluster_resources.total_gpu_count() == 0
         branch_datasets: list[Any] = []
+        branch_executors: list[RayDataExecutor] = []
+        branch_inputs: list[tuple[RayDataExecutor, Any]] = []
         for branch in self.branches:
             effective_extraction = self._resolve_branch(branch)
             logger.info(
@@ -99,17 +108,21 @@ class ExtractionBranchExecutor:
                 caption_params=None,
                 video_frame_params=effective_extraction.video_frame_params,
             )
-            executor = self._ray_executor(graph, derived_overrides)
             file_paths, inline_rows = self._partition_branch_inputs(branch)
+            inputs = []
             if file_paths:
-                branch_datasets.append(executor.build_dataset(file_paths))
+                inputs.append(file_paths)
             if inline_rows:
-                branch_datasets.append(executor.build_dataset(ray_module.data.from_items(inline_rows)))
-
-        normalized = normalize_ray_branch_datasets(branch_datasets)
-        combined = normalized[0]
-        for branch_ds in normalized[1:]:
-            combined = combined.union(branch_ds)
+                inputs.append(ray_module.data.from_items(inline_rows))
+            for input_data in inputs:
+                executor = self._ray_executor(
+                    graph,
+                    derived_overrides,
+                    default_concurrency_node_names(effective_extraction.extract_params, None, None, None),
+                    source_cpu_reservation=1 if isinstance(input_data, list) else 0,
+                )
+                branch_executors.append(executor)
+                branch_inputs.append((executor, input_data))
 
         logger.info("Retriever ingest post-extraction stages: %s", format_post_stage_summary(self.post_extract_order))
         post_graph = build_post_extract_graph(
@@ -131,7 +144,22 @@ class ExtractionBranchExecutor:
             caption_params=self.caption_params,
             video_frame_params=None,
         )
-        return self._ray_executor(post_graph, post_overrides).ingest(combined)
+        post_executor = self._ray_executor(
+            post_graph,
+            post_overrides,
+            default_concurrency_node_names(None, self.embed_params, self.store_params, self.caption_params),
+            source_cpu_reservation=0,
+        )
+        if hasattr(cluster_resources, "available_cpu_count"):
+            preflight_executors([*branch_executors, post_executor], cluster_resources)
+
+        for executor, input_data in branch_inputs:
+            branch_datasets.append(executor.build_dataset(input_data))
+        normalized = normalize_ray_branch_datasets(branch_datasets)
+        combined = normalized[0]
+        for branch_ds in normalized[1:]:
+            combined = combined.union(branch_ds)
+        return post_executor.ingest(combined)
 
     def _execute_inprocess(self) -> Any:
         frames = []
@@ -165,7 +193,7 @@ class ExtractionBranchExecutor:
         return any(branch.family in {"pdf", "image"} for branch in self.branches)
 
     def _resolve_branch(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
-        return resolve_branch_extraction_inputs(
+        resolved = resolve_branch_extraction_inputs(
             branch,
             extract_params=self.extract_params,
             text_params=self.text_params,
@@ -176,6 +204,17 @@ class ExtractionBranchExecutor:
             video_text_dedup_params=self.video_text_dedup_params,
             av_fuse_params=self.av_fuse_params,
         )
+        if (
+            branch.family == "pdf"
+            and resolved.extract_params is not None
+            and _image_embedding_requires_page_image(self.embed_params)
+            and not resolved.extract_params.extract_page_as_image
+        ):
+            resolved = replace(
+                resolved,
+                extract_params=resolved.extract_params.model_copy(update={"extract_page_as_image": True}),
+            )
+        return resolved
 
     def _build_extraction_only_graph(self, effective_extraction: ResolvedExtractionInputs) -> Any:
         return build_graph(
@@ -192,7 +231,13 @@ class ExtractionBranchExecutor:
             stage_order=(),
         )
 
-    def _ray_executor(self, graph: Any, derived_overrides: dict[str, dict[str, Any]]) -> RayDataExecutor:
+    def _ray_executor(
+        self,
+        graph: Any,
+        derived_overrides: dict[str, dict[str, Any]],
+        auto_concurrency_nodes: set[str],
+        source_cpu_reservation: float,
+    ) -> RayDataExecutor:
         return RayDataExecutor(
             graph,
             ray_address=self.ray_address,
@@ -200,6 +245,8 @@ class ExtractionBranchExecutor:
             num_cpus=self.num_cpus,
             num_gpus=self.num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self.node_overrides),
+            auto_concurrency_nodes=auto_concurrency_nodes - set(self.node_overrides),
+            source_cpu_reservation=source_cpu_reservation,
         )
 
     def _inprocess_branch_input(self, branch: ExtractionBranchPlan) -> Any:
@@ -341,9 +388,12 @@ def normalize_ray_branch_datasets(branch_datasets: list[Any]) -> list[Any]:
     stable_columns = tuple(columns)
     return [
         dataset.map_batches(
-            ensure_pandas_columns,
-            batch_format="pandas",
-            fn_kwargs={"columns": stable_columns},
+            call_pandas_function_on_arrow,
+            batch_format="pyarrow",
+            fn_kwargs={
+                "fn": ensure_pandas_columns,
+                "fn_kwargs": {"columns": stable_columns},
+            },
         )
         for dataset in branch_datasets
     ]

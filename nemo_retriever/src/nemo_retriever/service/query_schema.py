@@ -34,14 +34,40 @@ class QueryRequest(BaseModel):
         description=(
             "When true, run the server-configured agentic (ReAct) retrieval workflow. "
             "Requires agentic.enabled in service configuration. Response uses the same "
-            "hits envelope as dense/hybrid query; document-level agentic results map "
-            "doc_id onto source, keep result_source/rank in metadata, and leave "
-            "chunk-level fields unset (null)."
+            "hits envelope as dense/hybrid query: each hit carries the classic hit "
+            "fields (text, metadata, source, page_number, scores, ...) plus doc_id, "
+            "rank, and result_source. For compatibility, metadata also carries rank "
+            "and result_source. Documents the agent selected without retrieving them "
+            "have null classic fields and source falls back to doc_id."
+        ),
+    )
+
+    rerank: bool = Field(
+        default=False,
+        description=(
+            "When true, retrieve a larger candidate set from VectorDB, then rerank "
+            "it through the server-configured reranker before returning top_k hits."
+        ),
+    )
+    rerank_top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description=(
+            "Number of VectorDB candidates to retrieve before reranking. Defaults "
+            "to max(top_k, 50) when rerank is enabled."
         ),
     )
 
     @model_validator(mode="after")
     def _validate_agentic_request(self) -> "QueryRequest":
+        if self.rerank:
+            if self.agentic:
+                raise ValueError("rerank cannot be combined with agentic queries")
+            if self.format != "hits":
+                raise ValueError("rerank queries require format='hits'")
+            if self.rerank_top_k is not None and self.rerank_top_k < self.top_k:
+                raise ValueError("rerank_top_k must be greater than or equal to top_k")
         if not self.agentic:
             return self
         if not isinstance(self.query, str):
@@ -79,6 +105,15 @@ class QueryResult(BaseModel):
     hits: list[dict[str, Any]]
 
 
+class AgenticTokenUsage(BaseModel):
+    """Provider-reported LLM usage for one agentic retrieval query."""
+
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    stages: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class QueryResponse(BaseModel):
     results: list[QueryResult]
     query_mode: QueryMode = Field(
@@ -93,6 +128,16 @@ class QueryResponse(BaseModel):
         if expected_results is not None and len(self.results) != expected_results:
             raise ValueError(f"expected {expected_results} result set(s), got {len(self.results)}")
         return [result.hits for result in self.results]
+
+
+class AgenticQueryResponse(QueryResponse):
+    """Agentic query response with exact provider-reported LLM usage."""
+
+    query_mode: Literal["agentic"] = "agentic"
+    usage: AgenticTokenUsage | None = Field(
+        default=None,
+        description="Exact provider-reported LLM usage; present for instrumented agentic queries.",
+    )
 
 
 class Locator(BaseModel):

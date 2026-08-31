@@ -231,14 +231,21 @@ class ServiceMCPClient:
         *,
         top_k: int = 5,
         format: QueryFormat = "hits",
+        rerank: bool = False,
+        rerank_top_k: int | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = dict(payload or {})
-        # Classic query tool must not smuggle agentic=true; use agentic_query instead.
-        body.pop("agentic", None)
-        body.setdefault("query", query)
-        body.setdefault("top_k", top_k)
-        body.setdefault("format", format)
+        # Typed tool arguments are authoritative; payload is only for additional
+        # service options such as filters. In particular, it must not enable
+        # reranking when the explicit rerank argument is false.
+        for key in ("query", "top_k", "format", "agentic", "rerank", "rerank_top_k"):
+            body.pop(key, None)
+        body.update({"query": query, "top_k": top_k, "format": format})
+        if rerank:
+            body["rerank"] = True
+        if rerank_top_k is not None:
+            body["rerank_top_k"] = rerank_top_k
         async with self._client() as client:
             resp = await client.post("/v1/query", json=body)
         self._raise_for_status(resp)
@@ -254,7 +261,12 @@ class ServiceMCPClient:
         async with self._client(timeout_s=self._settings.agentic_request_timeout_s) as client:
             resp = await client.post(
                 "/v1/query",
-                json={"query": query, "top_k": top_k, "format": "hits", "agentic": True},
+                json={
+                    "query": query,
+                    "top_k": top_k,
+                    "format": "hits",
+                    "agentic": True,
+                },
             )
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
@@ -542,16 +554,26 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
                 "Search ingested documents through the service VectorDB endpoint. "
                 "format='hits' (default) returns raw retrieval hits; format='evidence' "
                 "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
-                "Retrieval (dense vs hybrid) is auto-detected from the table's own indexes."
+                "Retrieval (dense vs hybrid) is auto-detected from the table's own indexes. "
+                "Set rerank=true to rerank candidates through the configured service endpoint."
             ),
         )
         async def query(
             query: str,
             top_k: int = 5,
             format: QueryFormat = "hits",
+            rerank: bool = False,
+            rerank_top_k: int | None = None,
             payload: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
-            return await service.query(query, top_k=top_k, format=format, payload=payload)
+            return await service.query(
+                query,
+                top_k=top_k,
+                format=format,
+                rerank=rerank,
+                rerank_top_k=rerank_top_k,
+                payload=payload,
+            )
 
     if settings.enable_agentic_query:
 
@@ -560,8 +582,9 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
             description=(
                 "Run the configured agentic (ReAct) retrieval workflow over ingested "
                 "documents via POST /v1/query with agentic=true. Returns the standard "
-                "hits envelope: source holds doc_id; result_source and rank are under "
-                "metadata; chunk-level fields are unset for document-level results."
+                "hits envelope with the same chunk-level fields as classic retrieval, "
+                "plus top-level doc_id, rank, and result_source for the selecting "
+                "stage; rank and result_source also remain under metadata for compatibility."
             ),
         )
         async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:

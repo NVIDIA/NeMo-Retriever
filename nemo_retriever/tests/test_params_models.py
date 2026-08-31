@@ -18,6 +18,24 @@ class TestVideoFrameParams:
 
 
 class TestExtractParams:
+    @pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"])
+    def test_supported_extraction_methods_are_valid(self, method: str) -> None:
+        assert ExtractParams(method=method).method == method
+
+    def test_unsupported_extraction_method_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            ExtractParams(method="unsupported")
+
+        error = str(exc_info.value)
+        for method in ("pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"):
+            assert method in error
+
+    def test_extraction_method_schema_describes_supported_and_legacy_values(self) -> None:
+        schema = ExtractParams.model_json_schema()["properties"]["method"]
+
+        assert "PDF extraction supports" in schema["description"]
+        assert "legacy params-driven audio path" in schema["description"]
+
     def test_parse_specific_configuration_requires_parse_method(self) -> None:
         for field, value in (
             ("nemotron_parse_invoke_url", "http://parse:8000/v1/chat/completions"),
@@ -35,6 +53,42 @@ class TestExtractParams:
             nemotron_parse_model="nvidia/nemotron-parse",
         )
         assert params.method == "nemotron_parse"
+
+    @pytest.mark.parametrize("endpoint_field", ["nemotron_parse_invoke_url", "invoke_url"])
+    def test_remote_parse_model_is_accepted(self, endpoint_field: str) -> None:
+        params = ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            **{endpoint_field: "http://parse:8000/v1/chat/completions"},
+        )
+
+        assert params.nemotron_parse_model == "nvidia/NVIDIA-Nemotron-Parse-2.0"
+
+    def test_unsupported_local_parse_model_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Local Nemotron Parse supports only") as exc_info:
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            )
+
+        error = str(exc_info.value)
+        assert "nvidia/NVIDIA-Nemotron-Parse-v1.2" in error
+        assert "nvidia/NVIDIA-Nemotron-Parse-2.0" in error
+        assert "nemotron_parse_invoke_url" in error
+
+    @pytest.mark.parametrize(
+        "model",
+        [None, "nvidia/nemotron-parse", "nvidia/nemotron-parse-v1.2"],
+    )
+    def test_mixed_build_and_self_hosted_parse_endpoints_are_rejected(self, model: str | None) -> None:
+        endpoints = "https://integrate.api.nvidia.com/v1/chat/completions," "http://127.0.0.1:8018/v1/chat/completions"
+
+        with pytest.raises(ValidationError, match="cannot mix NVIDIA Build and self-hosted"):
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_invoke_url=endpoints,
+                nemotron_parse_model=model,
+            )
 
     def test_graphic_elements_controls_are_removed(self) -> None:
         assert "use_graphic_elements" not in ExtractParams.model_fields

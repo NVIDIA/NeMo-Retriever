@@ -148,13 +148,20 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     fills, ffmpeg's I/O thread blocks on ``write(2)``, and its ``-threads N``
     workers spin (=> 99% CPU, no progress, indefinite hang). Send stderr to a
     tempfile instead — file writes never block, so ffmpeg always makes progress
-    and the call returns. We only read stderr when ``returncode != 0``.
+    and the call returns. Disconnect stdin as well so ffmpeg cannot read from or
+    be stopped while accessing an interactive parent terminal. We only read
+    stderr when ``returncode != 0``.
     """
     if not is_ffmpeg_available():
         raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'", required=FFMPEG_DEPENDENCIES))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
-        result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
+        result = subprocess.run(
+            args,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_buf,
+        )
         if result.returncode != 0:
             stderr_buf.seek(0)
             err = stderr_buf.read()

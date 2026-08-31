@@ -25,6 +25,10 @@ from pydantic import (
 )
 
 from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+    validate_nemotron_parse_endpoint_list,
+)
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
@@ -516,7 +520,13 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options
-    method: str = "pdfium"
+    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
+        default="pdfium",
+        description=(
+            "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
+            "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
+        ),
+    )
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
     # OCR. Safe to disable for text-only ingests.
     use_page_elements: bool = True
@@ -575,6 +585,18 @@ class ExtractParams(_ParamsModel):
                 "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
                 "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
             )
+        if self.method == "nemotron_parse":
+            parse_endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
+            if (
+                not parse_endpoints
+                and self.nemotron_parse_model is not None
+                and self.nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+            ):
+                raise ValueError(
+                    f"Local Nemotron Parse supports only `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` in this release; "
+                    f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
+                    "to use a compatible remote model."
+                )
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
             enabled = [name for name, on in consumers if on]
@@ -592,6 +614,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_revision: Optional[str] = None
     embed_model_provider_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
@@ -988,7 +1011,12 @@ class CaptionParams(LLMInferenceParams):
     hf_cache_dir: Optional[str] = None
     context_text_max_chars: int = 0
     tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.5
+    gpu_memory_utilization: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Fraction of GPU memory reserved for local vLLM captioning; defaults to the model profile.",
+    )
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
 

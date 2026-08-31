@@ -103,6 +103,8 @@ imagePullSecrets:
   - name: default-dockercfg-xxxxx   # replace with your SA secret (section below)
 ```
 
+When `ngcImagePullSecret.name` is empty and NIM Operator CRs are enabled, set a non-empty `nimOperator.<key>.image.pullSecrets` for each enabled NIM (or keep the chart-wide name and use the "Both NGC NIMs..." pattern below). An empty global name with empty per-NIM `pullSecrets` fails chart render.
+
 **Both NGC NIMs and an internal-registry service image** — list every secret the pods need:
 
 ```yaml
@@ -190,7 +192,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set persistence.enabled=false \
   --set retrieverResults.enabled=false \
   --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
-  --set service.image.tag=26.5.0
+  --set service.image.tag=26.8.1
 ```
 
 Verify pods:
@@ -212,7 +214,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set ngcImagePullSecret.create=false \
   --set ngcApiSecret.create=false \
   --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
-  --set service.image.tag=26.5.0
+  --set service.image.tag=26.8.1
 ```
 
 After install, confirm workloads reach Ready before you run ingest:

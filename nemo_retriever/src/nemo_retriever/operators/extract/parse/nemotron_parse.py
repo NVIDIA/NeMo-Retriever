@@ -38,6 +38,7 @@ from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completions_images
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.params.utils import validate_nemotron_parse_endpoint_list
 
 try:
     from PIL import Image
@@ -186,18 +187,12 @@ def _resolve_nemotron_parse_contract(
 ) -> _ResolvedNemotronParseContract:
     """Resolve the internal request/response contract for a chat endpoint."""
 
-    invoke_urls = [part.strip() for part in str(invoke_url or "").split(",") if part.strip()]
+    invoke_urls = validate_nemotron_parse_endpoint_list(invoke_url)
     if not invoke_urls:
         raise ValueError("Nemotron Parse invoke_url is required.")
 
     build_endpoints = [_is_nvidia_build_endpoint(url) for url in invoke_urls]
     explicit_model = str(model_name or "").strip()
-    if not explicit_model and any(build_endpoints) and not all(build_endpoints):
-        raise ValueError(
-            "Nemotron Parse endpoint lists cannot mix NVIDIA Build and self-hosted endpoints "
-            "unless `nemotron_parse_model` is set explicitly."
-        )
-
     resolved_model = explicit_model or (
         NEMOTRON_PARSE_HOSTED_MODEL if all(build_endpoints) else NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
     )
@@ -326,8 +321,10 @@ def nemotron_parse_pages(
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("nemotron_parse_pages currently only supports pandas.DataFrame input.")
 
-    invoke_url = (invoke_url or kwargs.get("nemotron_parse_invoke_url") or "").strip()
+    invoke_url = str(invoke_url or "").strip() or str(kwargs.get("nemotron_parse_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
+    if use_remote:
+        validate_nemotron_parse_endpoint_list(invoke_url)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
 
@@ -528,8 +525,9 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or "").strip()
+        self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
+        validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -627,8 +625,11 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
-        self._invoke_url = (nemotron_parse_invoke_url or invoke_url or self.DEFAULT_INVOKE_URL).strip()
+        self._invoke_url = (
+            str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
+        )
         self._nemotron_parse_model = nemotron_parse_model
+        validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._task_prompt = str(task_prompt)
@@ -696,7 +697,9 @@ class NemotronParseActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         kwargs = operator_kwargs or {}
-        return bool(str(kwargs.get("nemotron_parse_invoke_url") or kwargs.get("invoke_url") or "").strip())
+        return bool(
+            str(kwargs.get("nemotron_parse_invoke_url") or "").strip() or str(kwargs.get("invoke_url") or "").strip()
+        )
 
     def __init__(
         self,

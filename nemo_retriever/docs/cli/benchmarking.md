@@ -1,33 +1,10 @@
 # Benchmarking with the Retriever CLI
 
-Retriever has two development benchmarking surfaces:
-
-| Goal | Command | Documentation |
-| --- | --- | --- |
-| End-to-end ingest, query, and retrieval evaluation | `retriever harness` | [Retriever Harness](../../harness/README.md) |
-| Throughput for one internal pipeline stage | `retriever benchmark` | [Stage micro-benchmarks](#stage-micro-benchmarks) |
-
-For product workflows on your own inputs, use `retriever ingest` and
-`retriever query` instead.
-
-## End-to-End Benchmarks
-
-The harness owns registered datasets, repeatable runfiles, metric gates, and
-stable artifacts. Start with:
-
-```bash
-retriever harness list --runsets
-retriever harness show jp20_beir
-```
-
-Then choose the execution guide:
-
-- [Local and batch library runs](../../harness/docs/library.md)
-- [Existing-service and managed-Helm runs](../../harness/docs/service.md)
-- [Recurring workstation nightly](../../../ops/retriever-nightly/README.md)
-
-Agentic BEIR evaluation is documented under
-[library harness runs](../../harness/docs/library.md#evaluate-agentic-retrieval).
+End-to-end experiments are maintained in the [NeMo Retriever Benchmark (NRB)
+repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+The product CLI retains internal stage micro-benchmarks for focused development
+measurements. For product workflows on your own inputs, use
+`retriever ingest` and `retriever query`.
 
 ## Stage Micro-Benchmarks
 
@@ -45,14 +22,14 @@ retriever benchmark ocr --help
 retriever benchmark all --help
 ```
 
-Example:
+The following example extracts from a directory of PDF files that you supply.
 
 ```bash
-retriever benchmark extract ./data/pdf_corpus \
+retriever benchmark extract /path/to/your/pdfs \
   --pdf-extract-batch-size 8 \
   --pdf-extract-actors 4
 ```
 
 Stage commands report rows per second, or chunk rows per second for audio. They
-do not produce the harness artifact contract and should not be used as retrieval
+do not produce the NRB artifact contract and should not be used as retrieval
 quality evidence.

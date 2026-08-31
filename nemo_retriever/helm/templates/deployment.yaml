@@ -9,15 +9,19 @@
       key: {{ $secret.key | default "api_key" | quote }}
       optional: {{ $secret.optional | default false }}
 {{- else if and $root.Values.nims.enabled $root.Values.nimOperator.answer_llm.enabled -}}
+{{- $answerSecrets := dict "context" $root "key" "answer_llm" "cfg" $root.Values.nimOperator.answer_llm -}}
 - name: NEMO_RETRIEVER_LLM_API_KEY
   valueFrom:
     secretKeyRef:
-      name: {{ $root.Values.nimOperator.answer_llm.authSecret | quote }}
+      name: {{ include "nemo-retriever.nimAuthSecret" $answerSecrets | quote }}
       key: "NGC_API_KEY"
       optional: false
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
+{{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
+{{- $scopeTokenSecret := .Values.serviceConfig.auth.scopeTokenSecret -}}
+{{- $scopeTokenMountPath := "/var/run/secrets/nemo-retriever/auth" -}}
 {{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
 {{- fail "split mode requires topology.gateway.replicas=1 (process-local scheduler)" -}}
 {{- end -}}
@@ -107,6 +111,20 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            - name: RETRIEVER_SERVICE_VERSION
+              value: {{ include "nemo-retriever.runtime.image.tag" . | quote }}
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if $scopeTokenSecret.name }}
+            - name: NRL_SCOPE_TOKEN_FILE
+              value: {{ printf "%s/scope-tokens.json" $scopeTokenMountPath | quote }}
+            {{- end }}
             {{- if .Values.retrieverResults.enabled }}
             - name: NEMO_RETRIEVER_RESULTS_DIR
               value: {{ .Values.retrieverResults.mountPath | quote }}
@@ -164,6 +182,11 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- if $scopeTokenSecret.name }}
+            - name: scope-token
+              mountPath: {{ $scopeTokenMountPath | quote }}
+              readOnly: true
+            {{- end }}
             {{- with $svc.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -185,6 +208,15 @@ spec:
             name: {{ include "nemo-retriever.configMapName" . }}
         - name: tmp
           emptyDir: {}
+        {{- if $scopeTokenSecret.name }}
+        - name: scope-token
+          secret:
+            secretName: {{ $scopeTokenSecret.name | quote }}
+            defaultMode: 288
+            items:
+              - key: {{ $scopeTokenSecret.key | quote }}
+                path: scope-tokens.json
+        {{- end }}
         {{- if .Values.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
@@ -255,14 +287,14 @@ spec:
             - sh
             - -c
             - |
-              GATEWAY="{{ include "nemo-retriever.role.fullname" (dict "context" $ "role" "gateway") }}"
+              GATEWAY="{{ include "nemo-retriever.gateway.startupServiceName" $ }}"
               PORT="{{ $.Values.networkService.port }}"
               echo "Waiting for gateway at ${GATEWAY}:${PORT} ..."
-              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/health" >/dev/null 2>&1; do
-                echo "  gateway not ready — retrying in 3s"
+              until wget -qO- --timeout=3 "http://${GATEWAY}:${PORT}/v1/live" >/dev/null 2>&1; do
+                echo "  gateway not live — retrying in 3s"
                 sleep 3
               done
-              echo "Gateway is healthy — starting worker"
+              echo "Gateway is live — starting worker"
       {{- end }}
       containers:
         - name: nemo-retriever
@@ -281,6 +313,20 @@ spec:
           env:
             - name: NEMO_RETRIEVER_SERVICE_CONFIG
               value: /etc/nemo-retriever/retriever-service.yaml
+            - name: RETRIEVER_SERVICE_VERSION
+              value: {{ include "nemo-retriever.runtime.image.tag" $ | quote }}
+            {{- if $internalAuth.enabled }}
+            - name: NRL_INTERNAL_VDB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $internalAuth.existingSecret.name | quote }}
+                  key: {{ $internalAuth.existingSecret.key | quote }}
+                  optional: false
+            {{- end }}
+            {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
+            - name: NRL_SCOPE_TOKEN_FILE
+              value: {{ printf "%s/scope-tokens.json" $scopeTokenMountPath | quote }}
+            {{- end }}
             {{- if $.Values.retrieverResults.enabled }}
             - name: NEMO_RETRIEVER_RESULTS_TTL_SECONDS
               value: {{ $.Values.retrieverResults.ttlSeconds | quote }}
@@ -347,6 +393,11 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
+            - name: scope-token
+              mountPath: {{ $scopeTokenMountPath | quote }}
+              readOnly: true
+            {{- end }}
           {{- if $svc.startupProbe.enabled }}
           startupProbe:
             {{- omit $svc.startupProbe "enabled" | toYaml | nindent 12 }}
@@ -368,6 +419,15 @@ spec:
             {{- if eq $role "gateway" }}
             sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
             {{- end }}
+        {{- if and $scopeTokenSecret.name (or (eq $role "gateway") (not $internalAuth.enabled)) }}
+        - name: scope-token
+          secret:
+            secretName: {{ $scopeTokenSecret.name | quote }}
+            defaultMode: 288
+            items:
+              - key: {{ $scopeTokenSecret.key | quote }}
+                path: scope-tokens.json
+        {{- end }}
         {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
         - name: data
           persistentVolumeClaim:

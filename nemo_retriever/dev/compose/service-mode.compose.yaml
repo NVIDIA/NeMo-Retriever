@@ -18,10 +18,11 @@ x-nim-environment: &nim-environment
   NGC_API_KEY: ${NGC_API_KEY:-}
   NIM_ENABLE_OTEL: ${NIM_OTEL_ENABLED:-false}
   NIM_OTEL_TRACES_EXPORTER: otlp
-  NIM_OTEL_METRICS_EXPORTER: console
+  NIM_OTEL_METRICS_EXPORTER: otlp
   NIM_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
   TRITON_OTEL_URL: http://otel-collector:4318/v1/traces
   TRITON_OTEL_RATE: "1"
+  OTEL_METRIC_EXPORT_INTERVAL: "5000"
 x-nim-service: &nim-service
   runtime: nvidia
   shm_size: ${NIM_SHM_SIZE:-16gb}
@@ -47,12 +48,14 @@ services:
       NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:-}
       NEMO_RETRIEVER_LLM_API_KEY: ${ANSWER_LLM_API_KEY:-${NGC_API_KEY:-}}
       AUDIO_GRPC_ENDPOINT: ${NIM_AUDIO_GRPC_ENDPOINT:-}
+      AUDIO_FUNCTION_ID: ${AUDIO_FUNCTION_ID:-}
       INSTALL_FFMPEG: ${INSTALL_FFMPEG:-false}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-nemo-retriever-service}
       OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-otlp}
       OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
+      OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-5000}
       OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.namespace=nemo-retriever,service.role=standalone}
@@ -115,8 +118,8 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-page-elements-v3
-      NIM_ENGINE_MODEL_PATH: ${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model-store}/page-elements
-    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model-store}"]
+      NIM_ENGINE_MODEL_PATH: ${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model}/page-elements
+    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_PAGE_ELEMENTS_GPU_ID:-0}"]}]}}}
@@ -137,8 +140,8 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-table-structure-v1
-      NIM_ENGINE_MODEL_PATH: ${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model-store}/table-structure
-    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model-store}"]
+      NIM_ENGINE_MODEL_PATH: ${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model}/table-structure
+    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_TABLE_STRUCTURE_GPU_ID:-1}"]}]}}}
@@ -159,9 +162,9 @@ services:
       NIM_PIPELINE_MAX_BATCH_SIZE: "1"
       NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
       NIM_ENGINE_MODEL_NAME: nvidia/nemotron-ocr-v2
-      NIM_ENGINE_MODEL_PATH: ${NIM_OCR_CACHE_PATH:-/model-store}/ocr
+      NIM_ENGINE_MODEL_PATH: ${NIM_OCR_CACHE_PATH:-/model}/ocr
       NIM_ENGINE_MODEL_VARIANT: multilingual
-    volumes: ["nim_ocr_cache:${NIM_OCR_CACHE_PATH:-/model-store}"]
+    volumes: ["nim_ocr_cache:${NIM_OCR_CACHE_PATH:-/model}"]
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_OCR_GPU_ID:-2}"]}]}}}
@@ -201,7 +204,7 @@ services:
   nim-caption:
     <<: *nim-service
     profiles: [nim-caption]
-    image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-1.7.0-variant}
+    image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-2.0.4-variant}
     ports: ["${NIM_CAPTION_HOST_PORT:-8007}:8000"]
     environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-3-nano-omni-30b-a3b-reasoning, NIM_TRITON_LOG_VERBOSE: "1"}
     volumes: ["nim_caption_cache:${NIM_CAPTION_CACHE_PATH:-/opt/nim/.cache}"]
@@ -279,9 +282,9 @@ configs:
         file: "/var/lib/nemo-retriever/retriever-service.log"
         format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
       nim_endpoints:
-        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-http://nim-page-elements:8000/v1/page-elements}"
-        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-http://nim-table-structure:8000/v1/table-structure}"
-        ocr_invoke_url: "${NIM_OCR_URL-http://nim-ocr:8000/v1/ocr}"
+        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3}"
+        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1}"
+        ocr_invoke_url: "${NIM_OCR_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2}"
         embed_invoke_url: "${NIM_EMBED_URL-https://integrate.api.nvidia.com/v1/embeddings}"
         embed_model_name: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
         caption_invoke_url: ${NIM_CAPTION_URL:-null}

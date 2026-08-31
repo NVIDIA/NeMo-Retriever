@@ -61,6 +61,10 @@ Use the NVCR authentication described above before pulling a self-hosted NIM.
 Keep `NGC_API_KEY` exported so it is also available to the NIM containers. The
 hosted-only stack does not require `NGC_API_KEY` at runtime.
 
+Routing is selected when Compose renders the configuration: self-hosted mode
+requires both the `nims-core` preset and profile, and it does not fail over to
+hosted endpoints if a local NIM becomes unavailable.
+
 Start the four core extraction/retrieval NIM services with their checked-in internal
 endpoint wiring:
 
@@ -95,6 +99,8 @@ docker compose \
   --profile nim-caption --profile nim-answer --profile nim-audio \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
+
+The `nim-caption` profile defaults to `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`. Set `NIM_CAPTION_IMAGE` or `NIM_CAPTION_TAG` only when you need a different registry or image tag.
 
 Reranker and Parse need only `--profile nim-reranker` or
 `--profile nim-parse`. They are lifecycle/API-only and intentionally are not

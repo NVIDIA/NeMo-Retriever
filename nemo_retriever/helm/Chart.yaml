@@ -9,7 +9,7 @@ description: |
   remote NIM endpoints (object detection, OCR, VLM embed).
 
   In-cluster NIMs are provisioned via NVIDIA NIM Operator custom
-  resources (NIMService, with NIMCache where configured; apps.nvidia.com/v1alpha1). The
+  resources (NIMCache + NIMService, apps.nvidia.com/v1alpha1). The
   templates short-circuit when the operator CRDs are absent, so the
   chart degrades gracefully into "external NIM URLs only" mode.
 
@@ -18,8 +18,8 @@ description: |
   work and status history.
 
 type: application
-version: "26.5.0"
-appVersion: "26.5.0"
+version: "26.8.1"
+appVersion: "26.8.1"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/NVIDIA/NeMo-Retriever
 sources:

@@ -18,6 +18,5 @@ For advanced scenarios, use these guides and notebooks:
 
 - [Build a Custom Vector Database Operator](building_vdb_operator.ipynb)
 - [Try Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
-- [Evaluate BO767 retrieval with the Retriever harness](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.md)
 - [Multimodal RAG with LangChain](langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](llama_index_multimodal_rag.ipynb)
