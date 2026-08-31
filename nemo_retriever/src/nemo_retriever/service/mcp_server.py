@@ -25,7 +25,7 @@ import httpx
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from nemo_retriever.service.config import ServiceConfig
+from nemo_retriever.service.config import MCPQueryMethods, ServiceConfig
 from nemo_retriever.service.query_schema import QueryFormat
 
 logger = logging.getLogger(__name__)
@@ -77,9 +77,11 @@ class ServiceMCPSettings:
     auth_header_name: str = "Authorization"
     max_concurrency: int = 8
     request_timeout_s: float = 60.0
+    agentic_request_timeout_s: float = 1800.0
     ingest_timeout_s: float = 1800.0
     poll_interval_s: float = 2.0
     enable_write_tools: bool = True
+    query_methods: MCPQueryMethods = "classic"
 
     @property
     def normalized_base_url(self) -> str:
@@ -91,6 +93,29 @@ class ServiceMCPSettings:
         if not token:
             return {}
         return {self.auth_header_name: f"Bearer {token}"}
+
+    @property
+    def enable_classic_query(self) -> bool:
+        return self.query_methods in ("classic", "all")
+
+    @property
+    def enable_agentic_query(self) -> bool:
+        return self.query_methods in ("agentic", "all")
+
+
+def _effective_query_methods(
+    configured: MCPQueryMethods,
+    *,
+    agentic_enabled: bool,
+) -> MCPQueryMethods:
+    """Drop agentic MCP tools when agentic retrieval is not configured."""
+    if agentic_enabled:
+        return configured
+    if configured == "agentic":
+        return "classic"
+    if configured == "all":
+        return "classic"
+    return configured
 
 
 def settings_from_service_config(config: ServiceConfig) -> ServiceMCPSettings:
@@ -111,9 +136,14 @@ def settings_from_service_config(config: ServiceConfig) -> ServiceMCPSettings:
         auth_header_name=config.auth.header_name,
         max_concurrency=mcp_cfg.max_concurrency,
         request_timeout_s=mcp_cfg.request_timeout_s,
+        agentic_request_timeout_s=config.agentic.request_timeout_s,
         ingest_timeout_s=mcp_cfg.ingest_timeout_s,
         poll_interval_s=mcp_cfg.poll_interval_s,
         enable_write_tools=mcp_cfg.enable_write_tools,
+        query_methods=_effective_query_methods(
+            mcp_cfg.query_methods,
+            agentic_enabled=config.agentic.enabled,
+        ),
     )
 
 
@@ -201,14 +231,43 @@ class ServiceMCPClient:
         *,
         top_k: int = 5,
         format: QueryFormat = "hits",
+        rerank: bool = False,
+        rerank_top_k: int | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = dict(payload or {})
-        body.setdefault("query", query)
-        body.setdefault("top_k", top_k)
-        body.setdefault("format", format)
+        # Typed tool arguments are authoritative; payload is only for additional
+        # service options such as filters. In particular, it must not enable
+        # reranking when the explicit rerank argument is false.
+        for key in ("query", "top_k", "format", "agentic", "rerank", "rerank_top_k"):
+            body.pop(key, None)
+        body.update({"query": query, "top_k": top_k, "format": format})
+        if rerank:
+            body["rerank"] = True
+        if rerank_top_k is not None:
+            body["rerank_top_k"] = rerank_top_k
         async with self._client() as client:
             resp = await client.post("/v1/query", json=body)
+        self._raise_for_status(resp)
+        return dict(self._json_or_text(resp))
+
+    async def agentic_query(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        """Call ``POST /v1/query`` with ``agentic=true`` (long timeout)."""
+        async with self._client(timeout_s=self._settings.agentic_request_timeout_s) as client:
+            resp = await client.post(
+                "/v1/query",
+                json={
+                    "query": query,
+                    "top_k": top_k,
+                    "format": "hits",
+                    "agentic": True,
+                },
+            )
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
@@ -448,7 +507,8 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         instructions=(
             "Use these tools to interact with a running NVIDIA NeMo Retriever "
             "service. Ingest documents, check job status, query the configured "
-            "VectorDB, and ask the configured answer-generation endpoint."
+            "VectorDB, run agentic retrieval when configured, and ask the "
+            "configured answer-generation endpoint."
         ),
     )
 
@@ -486,21 +546,49 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     async def get_document(job_id: str, document_id: str) -> dict[str, Any]:
         return await service.get_document(job_id, document_id)
 
-    @mcp.tool(
-        name="query",
-        description=(
-            "Search ingested documents through the service VectorDB endpoint. "
-            "format='hits' (default) returns raw retrieval hits; format='evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
-        ),
-    )
-    async def query(
-        query: str,
-        top_k: int = 5,
-        format: QueryFormat = "hits",
-        payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return await service.query(query, top_k=top_k, format=format, payload=payload)
+    if settings.enable_classic_query:
+
+        @mcp.tool(
+            name="query",
+            description=(
+                "Search ingested documents through the service VectorDB endpoint. "
+                "format='hits' (default) returns raw retrieval hits; format='evidence' "
+                "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
+                "Retrieval (dense vs hybrid) is auto-detected from the table's own indexes. "
+                "Set rerank=true to rerank candidates through the configured service endpoint."
+            ),
+        )
+        async def query(
+            query: str,
+            top_k: int = 5,
+            format: QueryFormat = "hits",
+            rerank: bool = False,
+            rerank_top_k: int | None = None,
+            payload: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            return await service.query(
+                query,
+                top_k=top_k,
+                format=format,
+                rerank=rerank,
+                rerank_top_k=rerank_top_k,
+                payload=payload,
+            )
+
+    if settings.enable_agentic_query:
+
+        @mcp.tool(
+            name="agentic_query",
+            description=(
+                "Run the configured agentic (ReAct) retrieval workflow over ingested "
+                "documents via POST /v1/query with agentic=true. Returns the standard "
+                "hits envelope with the same chunk-level fields as classic retrieval, "
+                "plus top-level doc_id, rank, and result_source for the selecting "
+                "stage; rank and result_source also remain under metadata for compatibility."
+            ),
+        )
+        async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:
+            return await service.agentic_query(query, top_k=top_k)
 
     @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(

@@ -5,8 +5,28 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Any, Mapping
+
+from nemo_retriever.harness.contracts import (
+    EXIT_ARTIFACT_WRITE_FAILURE,
+    FailurePayload,
+    HarnessRunError,
+)
+
+
+def artifact_write_error(exc: BaseException) -> HarnessRunError:
+    return HarnessRunError(
+        EXIT_ARTIFACT_WRITE_FAILURE,
+        FailurePayload(
+            failed_phase="write_artifacts",
+            failure_reason="artifact_write_failed",
+            retryable=False,
+            message=f"{type(exc).__name__}: {exc}",
+        ),
+    )
 
 
 def jsonable(value: Any) -> Any:
@@ -14,8 +34,29 @@ def jsonable(value: Any) -> Any:
 
 
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(jsonable(payload), indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    temporary_path: Path | None = None
+    try:
+        rendered = json.dumps(jsonable(payload), indent=2, sort_keys=False) + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(rendered)
+        assert temporary_path is not None
+        os.replace(temporary_path, path)
+    except Exception as exc:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise artifact_write_error(exc) from exc
 
 
 def read_json_object(path: Path) -> dict[str, Any]:

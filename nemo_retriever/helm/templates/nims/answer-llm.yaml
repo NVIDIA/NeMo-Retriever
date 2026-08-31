@@ -1,6 +1,7 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.answer_llm.enabled true) -}}
 {{- $cfg := .Values.nimOperator.answer_llm -}}
 {{- $name := $cfg.nimServiceName -}}
+{{- $nimSecrets := dict "context" $ "key" "answer_llm" "cfg" $cfg -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -10,8 +11,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
-      pullSecret: {{ if $cfg.image.pullSecrets }}{{ index $cfg.image.pullSecrets 0 | quote }}{{ else }}{{ fail "nimOperator.answer_llm.image.pullSecrets must not be empty" }}{{ end }}
-      authSecret: {{ $cfg.authSecret | quote }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "answer_llm") | nindent 6 }}
   storage:
     pvc:
@@ -19,6 +20,10 @@ spec:
       storageClass: {{ $cfg.storage.pvc.storageClass | quote }}
       size: {{ $cfg.storage.pvc.size }}
       volumeAccessMode: {{ $cfg.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml $cfg.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml $cfg.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -30,8 +35,8 @@ spec:
     tag: {{ $cfg.image.tag }}
     pullPolicy: {{ $cfg.image.pullPolicy }}
     pullSecrets:
-{{ toYaml $cfg.image.pullSecrets | indent 6 }}
-  authSecret: {{ $cfg.authSecret | quote }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: {{ $name }}
@@ -52,6 +57,6 @@ spec:
     - name: NGC_API_KEY
       valueFrom:
         secretKeyRef:
-          name: {{ $cfg.authSecret | quote }}
+          name: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
           key: NGC_API_KEY
 {{- end }}

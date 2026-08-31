@@ -4,7 +4,7 @@
 
 """Regression tests for SDK/service version-mismatch handling.
 
-These tests pin the customer-facing failure mode reported in 26.05-RC2:
+These tests pin the customer-facing failure mode reported in 26.08.1:
 a Python SDK wheel whose ``RetrieverServiceClient`` targets the new
 job-scoped ingest API (``POST /v1/ingest/job`` +
 ``POST /v1/ingest/job/{job_id}/document`` +
@@ -47,12 +47,13 @@ import httpx
 import pytest
 
 from nemo_retriever.service.client import (
+    DocumentTracker,
+    InMemoryUpload,
     RetrieverServiceClient,
     RetrieverServiceCompatibilityError,
     _compat_error_message,
     _is_api_mismatch_status,
 )
-
 
 # ----------------------------------------------------------------------
 # Helpers: drive _create_job and _upload_one directly against MockTransport
@@ -139,7 +140,7 @@ def test_compat_error_message_clips_long_body() -> None:
 def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
     """The very first SDK call ⇒ clear compat error, not silent empty result.
 
-    Reproduces the 26.05-RC2 customer scenario: ``POST /v1/ingest/job``
+    Reproduces the 26.08.1 customer scenario: ``POST /v1/ingest/job``
     on a service image that does not advertise that route. Before this
     fix the client surfaced a generic ``httpx.HTTPStatusError`` (which
     callers often catch+log+continue), so the documented service-mode
@@ -153,7 +154,7 @@ def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
         if status == 410:
             return httpx.Response(
                 410,
-                json={"detail": "POST /v1/ingest was removed in 26.05"},
+                json={"detail": "POST /v1/ingest was removed in 26.08.1"},
             )
         return httpx.Response(404)
 
@@ -174,13 +175,13 @@ def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
     assert request_paths == ["/v1/ingest/job"], request_paths
 
 
-def test_create_job_500_still_raises_generic_http_status_error() -> None:
+def test_create_job_500_raises_typed_service_error() -> None:
     """A real server error must NOT be misreported as a version mismatch.
 
     If the deployed service is the right version but transiently broken
     (500/503/etc.) the SDK should surface the existing
-    :class:`httpx.HTTPStatusError` so retry/alerting logic in the
-    caller still triggers as before. Mis-coding this as a
+    typed service error so retry/alerting logic can use one SDK error
+    hierarchy. Mis-coding this as a
     ``RetrieverServiceCompatibilityError`` would hide a real outage.
     """
 
@@ -193,7 +194,9 @@ def test_create_job_500_still_raises_generic_http_status_error() -> None:
         async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
             await rc._create_job(client, expected_documents=1)
 
-    with pytest.raises(httpx.HTTPStatusError) as ei:
+    from nemo_retriever.service.errors import RetrieverServiceError
+
+    with pytest.raises(RetrieverServiceError) as ei:
         _run_async(_call())
     assert "HTTP 500" in str(ei.value)
 
@@ -242,9 +245,125 @@ def test_stream_job_created_event_includes_trace_id(monkeypatch: pytest.MonkeyPa
     }
 
 
+def test_sse_keepalive_after_uploads_falls_back_to_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missed terminal SSE event cannot block a completed ingestion forever."""
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    pending = {"doc-1"}
+    uploads_done = asyncio.Event()
+    uploads_done.set()
+    tracker = DocumentTracker()
+    fallback_calls: list[set[str]] = []
+
+    class FakeResponse:
+        status_code = 200
+
+        async def aiter_lines(self):
+            yield ": keepalive"
+
+    class FakeStream:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class FakeClient:
+        def stream(self, *_args, **_kwargs):
+            return FakeStream()
+
+    async def fallback(_client, current, _tracker, _on_event):
+        fallback_calls.append(set(current))
+        current.clear()
+
+    monkeypatch.setattr(rc, "_bulk_poll_fallback", fallback)
+    _run_async(
+        rc._consume_sse(
+            FakeClient(),
+            pending,
+            uploads_done,
+            tracker,
+            job_id="JOB-1",
+        )
+    )
+    assert fallback_calls == [{"doc-1"}]
+    assert pending == set()
+
+
+def test_materialized_ingest_tracks_attempt_id_but_reports_stable_document_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Status tracking uses the attempt id returned by the job upload route."""
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    source = tmp_path / "doc.txt"
+    source.write_text("attempt id regression", encoding="utf-8")
+    submitted: list[tuple[str, str]] = []
+
+    async def create_job(*_args, **_kwargs):
+        return SimpleNamespace(job_id="JOB-1", trace_id=None)
+
+    async def upload_one(*_args, **_kwargs):
+        return {"document_id": "stable-1", "attempt_id": "attempt-1"}
+
+    async def consume_sse(_client, pending, uploads_done, tracker, **_kwargs):
+        await uploads_done.wait()
+        assert pending == {"attempt-1"}
+        tracker.mark_completed("attempt-1", {"id": "attempt-1", "status": "completed"})
+        pending.clear()
+
+    monkeypatch.setattr(rc, "_create_job", create_job)
+    monkeypatch.setattr(rc, "_upload_one", upload_one)
+    monkeypatch.setattr(rc, "_consume_sse", consume_sse)
+
+    results = _run_async(
+        rc.ingest_documents(
+            [source],
+            show_progress=False,
+            on_file_submitted=lambda filename, doc_id: submitted.append((filename, doc_id)),
+        )
+    )
+    assert submitted == [("doc.txt", "stable-1")]
+    assert results == [{"id": "attempt-1", "status": "completed"}]
+
+
 # ----------------------------------------------------------------------
 # _upload_one — guards the mid-rollout case (new gateway, stale worker)
 # ----------------------------------------------------------------------
+
+
+def test_upload_one_sends_inline_text_from_memory_with_classification_metadata() -> None:
+    requests: list[httpx.Request] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(202, json={"document_id": "doc-inline", "job_id": "JOB-1"})
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+    source = InMemoryUpload(
+        filename="inline://00000003",
+        content="café".encode(),
+        content_type="text/plain; charset=utf-8",
+        classification_filename="inline-00000003.txt",
+    )
+
+    async def _call() -> dict[str, object]:
+        async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
+            return await rc._upload_one(
+                client,
+                source,
+                job_id="JOB-1",
+                pipeline_spec={"extraction_mode": "text", "stage_order": ["extract"]},
+            )
+
+    assert _run_async(_call())["document_id"] == "doc-inline"
+    body = requests[0].content
+    assert b'filename="inline://00000003"' in body
+    assert "café".encode() in body
+    assert b'"filename": "inline-00000003.txt"' in body
+    assert b'"extraction_mode": "text"' in body
 
 
 def test_upload_one_raises_compat_error_on_404(tmp_path: Path) -> None:
@@ -283,7 +402,7 @@ def test_upload_one_410_surfaces_replacement_routes(tmp_path: Path) -> None:
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             410,
-            json={"detail": "POST /v1/ingest was removed in 26.05"},
+            json={"detail": "POST /v1/ingest was removed in 26.08.1"},
         )
 
     rc = RetrieverServiceClient(base_url="http://nrl:7670")

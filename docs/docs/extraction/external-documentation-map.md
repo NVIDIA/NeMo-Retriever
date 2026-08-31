@@ -23,11 +23,11 @@ Several procedures in the NeMo Retriever documentation navigation point to the [
 
 | Topic | Canonical location | Surface | Owns |
 |-------|-------------------|---------|------|
-| Library quickstart and package source | [nemo_retriever/](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever) | `github-readme` | Install, package layout, first code examples |
-| Helm chart (Kubernetes) | [nemo_retriever/helm/README.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) | `github-readme` | Chart values, NIM enablement, deploy procedures |
-| OpenShift deployment | [nemo_retriever/helm/openshift.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/openshift.md) | `github-readme` | OpenShift-specific Helm configuration |
-| Docker service image | [nemo_retriever/docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) | `github-readme` | Service container build and run |
-| CLI reference | [nemo_retriever/docs/cli](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) | `github-cli-docs` | All `retriever` subcommands and flags |
-| Graph and custom stages | [nemo_retriever graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph) | `github-readme` | Custom pipeline stages and UDF-style operations |
+| Library quickstart and package source | [nemo_retriever/](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever) | `github-readme` | Install, package layout, first code examples |
+| Helm chart (Kubernetes) | [nemo_retriever/helm/README.md](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) | `github-readme` | Chart values, NIM enablement, deploy procedures |
+| OpenShift deployment | [nemo_retriever/helm/openshift.md](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/openshift.md) | `github-readme` | OpenShift-specific Helm configuration |
+| Docker service image | [nemo_retriever/docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docker.md) | `github-readme` | Service container build and run |
+| CLI reference | [nemo_retriever/docs/cli](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli) | `github-cli-docs` | All `retriever` subcommands and flags |
+| Graph and custom stages | [nemo_retriever graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph) | `github-readme` | Custom pipeline stages and UDF-style operations |
 
 For published extraction guides that stay on docs.nvidia.com, start from [Start here](getting-started-about.md).

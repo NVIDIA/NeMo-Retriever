@@ -13,14 +13,15 @@ from nemo_retriever.common.params.models import EmbedParams
 from nemo_retriever.common.params.models import ExtractParams
 from nemo_retriever.common.params.models import GpuAllocationParams
 from nemo_retriever.common.params.models import HtmlChunkParams
-from nemo_retriever.common.params.models import InfographicParams
 from nemo_retriever.common.params.models import IngestExecuteParams
 from nemo_retriever.common.params.models import IngestorCreateParams
 from nemo_retriever.common.params.models import IngestorRunMode
 from nemo_retriever.common.params.models import LanceDbParams
 from nemo_retriever.common.params.models import LLMInferenceParams
 from nemo_retriever.common.params.models import LLMRemoteClientParams
+from nemo_retriever.common.params.models import LLMSamplingOverrides
 from nemo_retriever.common.params.models import ModelRuntimeParams
+from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.params.models import OcrParams
 from nemo_retriever.common.params.models import PageElementsParams
 from nemo_retriever.common.params.models import PdfSplitParams
@@ -30,6 +31,7 @@ from nemo_retriever.common.params.models import StoreParams
 from nemo_retriever.common.params.models import TabularExtractParams
 from nemo_retriever.common.params.models import TableParams
 from nemo_retriever.common.params.models import TextChunkParams
+from nemo_retriever.common.params.models import TextGenerationParams
 from nemo_retriever.common.params.models import MetaJoinKey
 from nemo_retriever.common.params.models import VdbUploadParams
 from nemo_retriever.common.params.models import VideoFrameParams
@@ -51,14 +53,15 @@ __all__ = [
     "ExtractParams",
     "GpuAllocationParams",
     "HtmlChunkParams",
-    "InfographicParams",
     "IngestExecuteParams",
     "IngestorCreateParams",
     "IngestorRunMode",
     "LanceDbParams",
     "LLMInferenceParams",
     "LLMRemoteClientParams",
+    "LLMSamplingOverrides",
     "ModelRuntimeParams",
+    "NO_API_KEY",
     "OcrParams",
     "PageElementsParams",
     "PdfSplitParams",
@@ -69,6 +72,7 @@ __all__ = [
     "TabularExtractParams",
     "TableParams",
     "TextChunkParams",
+    "TextGenerationParams",
     "MetaJoinKey",
     "VdbUploadParams",
     "VideoFrameParams",

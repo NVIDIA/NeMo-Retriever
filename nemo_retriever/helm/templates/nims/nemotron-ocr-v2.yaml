@@ -1,5 +1,6 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.ocr.enabled true) -}}
 {{- $name := .Values.nimOperator.ocr.nimServiceName | default "nemotron-ocr-v2" -}}
+{{- $nimSecrets := dict "context" $ "key" "ocr" "cfg" .Values.nimOperator.ocr -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -9,8 +10,8 @@ spec:
   source:
     ngc:
       modelPuller: "{{ .Values.nimOperator.ocr.image.repository }}:{{ .Values.nimOperator.ocr.image.tag }}"
-      pullSecret: "{{ index .Values.nimOperator.ocr.image.pullSecrets 0 }}"
-      authSecret: {{ .Values.nimOperator.ocr.authSecret }}
+      pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
+      authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "ocr") | nindent 6 }}
   storage:
     pvc:
@@ -18,6 +19,10 @@ spec:
       storageClass: {{ .Values.nimOperator.ocr.storage.pvc.storageClass | quote }}
       size: {{ .Values.nimOperator.ocr.storage.pvc.size }}
       volumeAccessMode: {{ .Values.nimOperator.ocr.storage.pvc.volumeAccessMode }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.ocr.nodeSelector | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.ocr.tolerations | indent 4 }}
 ---
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
@@ -29,8 +34,8 @@ spec:
     tag: {{ .Values.nimOperator.ocr.image.tag | toString | quote }}
     pullPolicy: {{ .Values.nimOperator.ocr.image.pullPolicy }}
     pullSecrets:
-{{ toYaml .Values.nimOperator.ocr.image.pullSecrets | indent 6 }}
-  authSecret: {{ .Values.nimOperator.ocr.authSecret }}
+{{ include "nemo-retriever.nimPullSecrets" $nimSecrets | indent 6 }}
+  authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
   storage:
     nimCache:
       name: {{ $name }}

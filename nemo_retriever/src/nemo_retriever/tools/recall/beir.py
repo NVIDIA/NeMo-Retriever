@@ -779,20 +779,42 @@ def build_beir_run_from_hits(
     if doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
         raise ValueError(f"Unsupported doc_id_field: {doc_id_field}")
 
-    run: dict[str, dict[str, float]] = {}
-    for query_id, hits in zip(query_ids, raw_hits):
+    ranked_doc_ids: list[list[str]] = []
+    for hits in raw_hits:
         ordered_doc_ids: list[str] = []
         seen_doc_ids: set[str] = set()
-
         for hit in hits:
             doc_id = _extract_doc_id_from_hit(dict(hit), doc_id_field=doc_id_field)
             if not doc_id or doc_id in seen_doc_ids:
                 continue
             seen_doc_ids.add(doc_id)
             ordered_doc_ids.append(doc_id)
+        ranked_doc_ids.append(ordered_doc_ids)
 
-        ranked_scores = {doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)}
-        run[str(query_id)] = ranked_scores
+    return build_beir_run_from_ranked_doc_ids(query_ids, ranked_doc_ids)
+
+
+def build_beir_run_from_ranked_doc_ids(
+    query_ids: Sequence[str],
+    ranked_doc_ids: Sequence[Sequence[str]],
+) -> dict[str, dict[str, float]]:
+    """Convert ranked document IDs into BEIR/pytrec_eval run format."""
+
+    if len(query_ids) != len(ranked_doc_ids):
+        raise ValueError("query_ids and ranked_doc_ids must have the same length")
+
+    run: dict[str, dict[str, float]] = {str(query_id): {} for query_id in query_ids}
+    for query_id, doc_ids in zip(query_ids, ranked_doc_ids):
+        ordered_doc_ids: list[str] = []
+        seen_doc_ids: set[str] = set()
+        for doc_id in doc_ids:
+            normalized_doc_id = str(doc_id).strip()
+            if not normalized_doc_id or normalized_doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(normalized_doc_id)
+            ordered_doc_ids.append(normalized_doc_id)
+
+        run[str(query_id)] = {doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)}
 
     return run
 

@@ -56,8 +56,8 @@ _DENYLIST_KEY_SUBSTRINGS: tuple[str, ...] = (
     "page_elements_invoke_url",
     "ocr_invoke_url",
     "table_structure_invoke_url",
-    "graphic_elements_invoke_url",
     "nemotron_parse_invoke_url",
+    "nemotron_parse_model",
     "profile_name",
 )
 
@@ -84,7 +84,6 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
         "use_page_elements",
         "use_table_structure",
         "table_output_format",
-        "use_graphic_elements",
         "dpi",
         "image_format",
         "jpeg_quality",
@@ -617,6 +616,8 @@ def validate_pipeline_spec(
         and spec.split_config is None
         and spec.pdf_split is None
         and not spec.stage_order
+        and not spec.return_embeddings
+        and not spec.return_images
     )
     if result_schema_only:
         return spec

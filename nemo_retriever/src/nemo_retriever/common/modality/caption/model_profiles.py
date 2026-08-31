@@ -24,6 +24,12 @@ OMNI_FP8_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4_MODEL_ID = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
+# Canonical defaults for caption call sites. Keep local and remote defaults
+# separate because hosted/NIM endpoints use the API model ID, while direct
+# vLLM execution loads the Hugging Face BF16 checkpoint.
+DEFAULT_LOCAL_CAPTION_MODEL_ID = OMNI_BF16_MODEL_ID
+DEFAULT_REMOTE_CAPTION_MODEL_ID = OMNI_REMOTE_MODEL_ID
+
 _NANO_BF16_REMOTE_MODEL_ID = NANO_REMOTE_MODEL_ID
 _NANO_FP8_REMOTE_MODEL_ID = f"{NANO_REMOTE_MODEL_ID}-fp8"
 _NANO_NVFP4_QAD_REMOTE_MODEL_ID = f"{NANO_REMOTE_MODEL_ID}-nvfp4-qad"
@@ -54,8 +60,11 @@ class CaptionModelProfile:
     local_request_extras: Mapping[str, Any] = field(default_factory=dict)
     remote_request_extras: Mapping[str, Any] = field(default_factory=dict)
     local_engine_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    local_gpu_memory_utilization: float = 0.5
 
     def __post_init__(self) -> None:
+        if not 0 < self.local_gpu_memory_utilization <= 1:
+            raise ValueError("local_gpu_memory_utilization must be greater than 0 and no greater than 1")
         object.__setattr__(self, "local_request_extras", _freeze_metadata(self.local_request_extras))
         object.__setattr__(self, "remote_request_extras", _freeze_metadata(self.remote_request_extras))
         object.__setattr__(self, "local_engine_kwargs", _freeze_metadata(self.local_engine_kwargs))
@@ -268,6 +277,9 @@ _OMNI_BF16_PROFILE = CaptionModelProfile(
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,
     local_engine_kwargs=_BF16_ENGINE_KWARGS,
+    # The 62 GiB BF16 checkpoint needs a high vLLM reservation to leave KV
+    # cache capacity on the supported 80 GiB local GPU configuration.
+    local_gpu_memory_utilization=0.95,
 )
 _OMNI_FP8_PROFILE = CaptionModelProfile(
     family="nemotron-3-nano-omni",
@@ -380,6 +392,8 @@ __all__ = [
     "CaptionCapabilities",
     "CaptionModelProfile",
     "CaptionTarget",
+    "DEFAULT_LOCAL_CAPTION_MODEL_ID",
+    "DEFAULT_REMOTE_CAPTION_MODEL_ID",
     "NANO_BF16_MODEL_ID",
     "NANO_FP8_MODEL_ID",
     "NANO_NVFP4_QAD_MODEL_ID",

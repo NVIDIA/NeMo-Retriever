@@ -173,4 +173,17 @@ def get_version() -> str:
     return get_version_info()["version"]
 
 
+def get_service_api_version() -> str:
+    """Return the version string exposed by the Retriever Service OpenAPI document.
+
+    Prefer an explicit service override so container and Helm deployments can
+    report the running image or release tag. Otherwise fall back to the package
+    version used by the CLI and library.
+    """
+    override = (os.getenv("RETRIEVER_SERVICE_VERSION") or "").strip()
+    if override:
+        return override
+    return get_version()
+
+
 __version__ = _installed_version() or get_build_version()

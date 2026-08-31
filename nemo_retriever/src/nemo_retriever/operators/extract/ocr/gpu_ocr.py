@@ -27,15 +27,17 @@ class OCRActor(AbstractOperator, GPUOperator):
             warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
         self.ocr_kwargs = dict(ocr_kwargs)
-        invoke_url = str(self.ocr_kwargs.get("ocr_invoke_url") or self.ocr_kwargs.get("invoke_url") or "").strip()
-        if invoke_url and "invoke_url" not in self.ocr_kwargs:
+        invoke_url = (
+            str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
+            or str(self.ocr_kwargs.get("invoke_url") or "").strip()
+        )
+        if invoke_url:
             self.ocr_kwargs["invoke_url"] = invoke_url
 
         self.ocr_kwargs["extract_text"] = bool(self.ocr_kwargs.get("extract_text", False))
         self.ocr_kwargs["extract_tables"] = bool(self.ocr_kwargs.get("extract_tables", False))
         self.ocr_kwargs["extract_charts"] = bool(self.ocr_kwargs.get("extract_charts", False))
         self.ocr_kwargs["extract_infographics"] = bool(self.ocr_kwargs.get("extract_infographics", False))
-        self.ocr_kwargs["use_graphic_elements"] = bool(self.ocr_kwargs.get("use_graphic_elements", False))
         self.ocr_kwargs["use_table_structure"] = bool(self.ocr_kwargs.get("use_table_structure", False))
         self.ocr_kwargs["request_timeout_s"] = float(self.ocr_kwargs.get("request_timeout_s", 120.0))
         self.ocr_kwargs["inference_batch_size"] = int(self.ocr_kwargs.get("inference_batch_size", 8))

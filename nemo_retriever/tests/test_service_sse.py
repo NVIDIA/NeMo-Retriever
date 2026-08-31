@@ -41,6 +41,7 @@ from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AuthConfig,
     PipelineOverridesConfig,
     PipelinePoolConfig,
     ServiceConfig,
@@ -72,6 +73,7 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
 
     cfg = ServiceConfig(
         mode="standalone",
+        auth=AuthConfig(allow_unscoped_dev=True),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         pipeline_overrides=PipelineOverridesConfig(),
     )
@@ -122,7 +124,7 @@ def test_legacy_ingest_upload_route_returns_410_with_migration_body(
     Older SDK builds upload through this path.  Without an explicit
     handler FastAPI returns a body-less 404 and the SDK surfaces an
     empty result — the customer-facing regression captured in the
-    26.05-RC2 release-integration report.  The 410 body must name the
+    26.08.1 release-integration report.  The 410 body must name the
     replacement pair (``/v1/ingest/job`` + ``/v1/ingest/job/{job_id}/document``).
     """
     # Body is intentionally empty — the route should reject the request

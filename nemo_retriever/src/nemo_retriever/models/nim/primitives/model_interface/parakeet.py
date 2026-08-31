@@ -414,8 +414,11 @@ def process_transcription_response(response):
     for word in words_list:
         # Mark the start of a segment if not already set.
         if segment_start is None:
-            segment_start = word.start_time
-        segment_end = word.end_time
+            # Riva WordInfo timestamps are milliseconds. Normalize both
+            # boundaries here so a small negative boundary offset cannot be
+            # mistaken for a seconds-valued timestamp downstream.
+            segment_start = float(word.start_time) / 1000.0
+        segment_end = float(word.end_time) / 1000.0
         current_words.append(word.word)
 
         # End the segment when a word ends with punctuation.

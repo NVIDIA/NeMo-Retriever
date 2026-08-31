@@ -3,19 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Standalone text embedding helper for retriever-local pandas DataFrames.
+Text embedding helper for NeMo Retriever pandas DataFrames.
 
-Goal:
-- Mirror (as closely as practical) the batching/runner logic from
-  `nemo_retriever.api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
-  but adapt it to the **retriever-local** DataFrame structure used by
-  `nemo_retriever.text_embed.text_embed.embed_text_1b_v2`.
-
-Key differences vs the API transform:
-- This module operates on a simple pandas.DataFrame that typically contains:
+This module owns the batching and runner logic used by the graph pipeline. It
+operates on a pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- Uses ``nemo_retriever.api`` for shared HTTP embedding URL normalization (with pandas/httpx).
+It uses the shared HTTP embedding URL normalization helpers with pandas/httpx.
 
 Usage:
 
@@ -43,35 +37,48 @@ out_df, _info = create_text_embeddings_for_df(
 from __future__ import annotations
 
 import logging
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
-from nemo_retriever.common.api.util.string_processing import ensure_openai_embeddings_http_url
 
-from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+from nemo_retriever.common.api.util.string_processing import (
+    ensure_openai_embeddings_http_url,
+    prepend_model_provider_prefix,
+)
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL
 
 logger = logging.getLogger(__name__)
 
-# Keep HTTP client logging quiet by default (parity with API transform).
+# Keep HTTP client logging quiet by default.
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
 
 EmbeddingCallable = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 
+_RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_DEFAULT_HTTP_MAX_RETRIES = 5
+_DEFAULT_HTTP_MAX_429_RETRIES = 3
+_MAX_HTTP_RETRY_DELAY_S = 30.0
+_MAX_HTTP_ERROR_BODY_CHARS = 2_000
+
 
 @dataclass(slots=True)
 class TextEmbeddingConfig:
     """
-    Minimal config surface mirroring the API's TextEmbeddingSchema fields used by the transform.
+    Configuration for DataFrame text embedding.
     """
 
     # Remote / NIM-like settings
     api_key: Optional[str] = None
     embedding_nim_endpoint: Optional[str] = None  # e.g. "http://host:8000/v1"
     embedding_model: str = _DEFAULT_EMBED_MODEL
+    embedding_model_provider_prefix: Optional[str] = None
     encoding_format: str = "float"  # OpenAI-compatible embeddings often accept "float"
     input_type: str = "passage"
     truncate: str = "END"
@@ -91,7 +98,7 @@ class TextEmbeddingConfig:
 
 
 # ------------------------------------------------------------------------------
-# Batch Processing Utilities (copied from API transform with minimal edits)
+# Batch processing utilities
 # ------------------------------------------------------------------------------
 
 
@@ -99,8 +106,7 @@ def _batch_generator(iterable: Iterable[Any], batch_size: int = 10) -> Iterable[
     """
     Yield list batches from any iterable.
 
-    The API transform assumes sized/sliceable inputs; for robustness we also accept
-    generators/iterators by materializing them once.
+    Accept generators and iterators by materializing them once.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be > 0")
@@ -129,7 +135,7 @@ def _generate_batches(prompts: Iterable[str], batch_size: int = 100) -> List[Lis
 
 def _text_from_row(row: pd.Series, *, text_column: str) -> Optional[str]:
     """
-    Extract text from a row with small fallbacks (mirrors `nemo_retriever.text_embed.text_embed`).
+    Extract text from a row with small fallbacks for graph-ingest inputs.
     """
     v = row.get(text_column)
     if isinstance(v, str) and v.strip():
@@ -293,8 +299,12 @@ def _http_embed_openai_compat(
     encoding_format: str,
     input_type: str,
     truncate: str,
+    modalities: Optional[List[str]] = None,
+    model_provider_prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
+    max_retries: int = _DEFAULT_HTTP_MAX_RETRIES,
+    max_429_retries: int = _DEFAULT_HTTP_MAX_429_RETRIES,
 ) -> List[Optional[List[float]]]:
     """
     Best-effort HTTP embeddings call using an OpenAI-compatible schema.
@@ -308,6 +318,7 @@ def _http_embed_openai_compat(
         raise RuntimeError("Remote embedding requested but `httpx` is not installed.") from e
 
     url = _normalize_embeddings_endpoint(_pick_embed_endpoint(endpoint_url))
+    model_name = prepend_model_provider_prefix(model_name, model_provider_prefix) or model_name
     headers: Dict[str, str] = {"accept": "application/json", "content-type": "application/json"}
     token = (api_key or "").strip()
     if token:
@@ -324,11 +335,55 @@ def _http_embed_openai_compat(
     }
     if dimensions is not None:
         payload["dimensions"] = int(dimensions)
+    if modalities:
+        if len(modalities) != len(prompts):
+            raise ValueError("modalities must contain one value per embedding input")
+        normalized_modalities = [str(modality) for modality in modalities]
+        payload["modality"] = (
+            normalized_modalities[0] if len(set(normalized_modalities)) == 1 else normalized_modalities
+        )
 
     with httpx.Client(timeout=float(timeout_s)) as client:
-        resp = client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        for attempt in range(max(0, int(max_retries)) + 1):
+            try:
+                resp = client.post(url, headers=headers, json=payload)
+            except httpx.TransportError:
+                if attempt >= max(0, int(max_retries)):
+                    raise
+                delay_s = _http_retry_delay_s(attempt)
+                logger.warning(
+                    "Embedding request transport failure; retrying in %.1fs (attempt %d/%d)",
+                    delay_s,
+                    attempt + 1,
+                    max(0, int(max_retries)),
+                )
+                time.sleep(delay_s)
+                continue
+
+            status_code = int(resp.status_code)
+            retry_limit = max(0, int(max_429_retries if status_code == 429 else max_retries))
+            if status_code in _RETRYABLE_HTTP_STATUS_CODES and attempt < retry_limit:
+                delay_s = _http_retry_delay_s(attempt, retry_after=resp.headers.get("Retry-After"))
+                logger.warning(
+                    "Embedding endpoint returned HTTP %d; retrying in %.1fs (attempt %d/%d)",
+                    status_code,
+                    delay_s,
+                    attempt + 1,
+                    retry_limit,
+                )
+                time.sleep(delay_s)
+                continue
+
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body = resp.text.strip()
+                if len(body) > _MAX_HTTP_ERROR_BODY_CHARS:
+                    body = body[:_MAX_HTTP_ERROR_BODY_CHARS] + "... [truncated]"
+                detail = f"; response body: {body}" if body else ""
+                raise RuntimeError(f"Embedding endpoint returned HTTP {status_code}{detail}") from exc
+            data = resp.json()
+            break
 
     # Parse embeddings.
     items = data.get("data") if isinstance(data, dict) else None
@@ -348,11 +403,27 @@ def _http_embed_openai_compat(
     return [by_index.get(i) for i in range(len(prompts))]
 
 
+def _http_retry_delay_s(attempt: int, *, retry_after: Optional[str] = None) -> float:
+    """Return a bounded retry delay, honoring numeric or HTTP-date Retry-After values."""
+    if retry_after:
+        try:
+            return min(_MAX_HTTP_RETRY_DELAY_S, max(0.0, float(retry_after)))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(retry_after)
+                return min(_MAX_HTTP_RETRY_DELAY_S, max(0.0, retry_at.timestamp() - time.time()))
+            except (TypeError, ValueError, OverflowError):
+                pass
+    ceiling_s = min(_MAX_HTTP_RETRY_DELAY_S, float(2 ** max(0, int(attempt))))
+    return random.uniform(0.0, ceiling_s)
+
+
 def _make_async_request(
     prompts: List[str],
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -362,13 +433,13 @@ def _make_async_request(
     timeout_s: float = 600.0,
 ) -> dict:
     """
-    Mirrors the API transform's request wrapper, but uses HTTP OpenAI-compatible embeddings.
+    Send an HTTP OpenAI-compatible embedding request.
 
     Notes:
     - `input_type` and `truncate` are sent as top-level JSON fields, matching the effective
       request body produced by the OpenAI Python client when using `extra_body={...}`.
     """
-    _ = (filter_errors, modalities)  # reserved for parity/future support
+    _ = filter_errors  # reserved for parity/future support
 
     response: Dict[str, Any] = {}
     try:
@@ -377,9 +448,11 @@ def _make_async_request(
             api_key=api_key,
             endpoint_url=str(embedding_nim_endpoint),
             model_name=str(embedding_model),
+            model_provider_prefix=embedding_model_provider_prefix,
             encoding_format=str(encoding_format),
             input_type=str(input_type),
             truncate=str(truncate),
+            modalities=modalities,
             dimensions=dimensions,
             timeout_s=timeout_s,
         )
@@ -399,6 +472,7 @@ def _async_request_handler(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -420,6 +494,7 @@ def _async_request_handler(
                 api_key=api_key or None,
                 embedding_nim_endpoint=str(embedding_nim_endpoint),
                 embedding_model=str(embedding_model),
+                embedding_model_provider_prefix=embedding_model_provider_prefix,
                 encoding_format=str(encoding_format),
                 input_type=str(input_type),
                 truncate=str(truncate),
@@ -440,6 +515,7 @@ def _async_runner(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -454,6 +530,7 @@ def _async_runner(
         api_key,
         embedding_nim_endpoint,
         embedding_model,
+        embedding_model_provider_prefix,
         encoding_format,
         input_type,
         truncate,
@@ -533,7 +610,7 @@ def _add_embeddings_retriever_df(
 
 
 # ------------------------------------------------------------------------------
-# Public API (mirrors the API transform's surface, but for retriever-local df schema)
+# Public API
 # ------------------------------------------------------------------------------
 
 
@@ -554,7 +631,7 @@ def create_text_embeddings_for_df(
         - `text` (or provide `transform_config.text_column`)
         - `metadata` (optional dict; created if missing when writing embeddings)
     task_config:
-        Controls runtime behavior. Keys (compatible with the API transform):
+        Controls runtime behavior. Supported keys:
         - **api_key**: optional str
         - **endpoint_url**: optional str; if set, remote HTTP embeddings are used
         - **model_name**: optional str
@@ -574,12 +651,17 @@ def create_text_embeddings_for_df(
     if transform_config is None:
         transform_config = TextEmbeddingConfig()
 
-    # Allow task_config to explicitly override values with None by checking key presence (API parity).
+    # Allow task_config to explicitly override values with None by checking key presence.
     api_key = task_config["api_key"] if "api_key" in task_config else transform_config.api_key
     endpoint_url = (
         task_config["endpoint_url"] if "endpoint_url" in task_config else transform_config.embedding_nim_endpoint
     )
     model_name = task_config["model_name"] if "model_name" in task_config else transform_config.embedding_model
+    model_provider_prefix = (
+        task_config["model_provider_prefix"]
+        if "model_provider_prefix" in task_config
+        else task_config.get("embed_model_provider_prefix", transform_config.embedding_model_provider_prefix)
+    )
     dimensions = task_config["dimensions"] if "dimensions" in task_config else transform_config.dimensions
 
     endpoint_url = endpoint_url.strip() if isinstance(endpoint_url, str) else endpoint_url
@@ -650,32 +732,39 @@ def create_text_embeddings_for_df(
                     _format_image_input_string(img_b64)
                     for img_b64 in df_content.loc[valid_content_mask, "_content"].tolist()
                 ]
+                filtered_modalities = ["image"] * len(filtered_content_list)
             else:  # text_image
                 filtered_content_list = []
+                filtered_modalities = []
                 for _, r in df_content.loc[valid_content_mask].iterrows():
                     text = _text_from_row(r, text_column=str(transform_config.text_column)) or ""
                     image = _image_from_row(r) or ""
                     if image and text.strip():
                         filtered_content_list.append(_format_text_image_pair_input_string(text, image))
+                        filtered_modalities.append("text_image")
                     elif image:
                         # Image without text — send as image-only to avoid
                         # "Text part must be non-empty for text_image modality" errors.
                         filtered_content_list.append(_format_image_input_string(image))
+                        filtered_modalities.append("image")
                     else:
                         filtered_content_list.append(text)
+                        filtered_modalities.append("text")
             filtered_content_batches = _generate_batches(
                 filtered_content_list, batch_size=int(transform_config.batch_size)
             )
+            modality_batches = _generate_batches(filtered_modalities, batch_size=int(transform_config.batch_size))
             content_embeddings = _async_runner(
                 filtered_content_batches,
                 api_key,
                 str(endpoint_url),
                 str(model_name),
+                model_provider_prefix,
                 str(transform_config.encoding_format),
                 str(transform_config.input_type),
                 str(transform_config.truncate),
                 False,
-                modalities=None,
+                modalities=modality_batches,
                 dimensions=dimensions,
                 max_concurrent=nim_http_max_concurrent,
                 timeout_s=request_timeout_s,
@@ -693,11 +782,12 @@ def create_text_embeddings_for_df(
                     api_key,
                     str(endpoint_url),
                     str(model_name),
+                    model_provider_prefix,
                     str(transform_config.encoding_format),
                     str(transform_config.input_type),
                     str(transform_config.truncate),
                     False,
-                    modalities=None,
+                    modalities=[["text"] * len(batch) for batch in filtered_content_batches],
                     dimensions=dimensions,
                     max_concurrent=nim_http_max_concurrent,
                     timeout_s=request_timeout_s,

@@ -48,6 +48,27 @@ def test_transport_preserves_column_layout_and_strips_bulky_payloads() -> None:
     assert record["images"][0] == {"image_b64": None, "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4]}
 
 
+def test_transport_can_return_legacy_bulk_payloads_when_requested() -> None:
+    base64_image = "a" * 600
+    embedding = [float(i) for i in range(64)]
+    embedding_array = __import__("numpy").array(embedding)
+    df = pd.DataFrame(
+        {
+            "page_image": [{"image_b64": base64_image, "stored_image_uri": "file:///stored/page.png"}],
+            "images": [[{"image_b64": base64_image}]],
+            "text_embeddings_1b_v2": [{"embedding": embedding}],
+            "metadata": [{"embedding": embedding_array}],
+        }
+    )
+
+    record = dataframe_to_transport_records(df, return_embeddings=True, return_images=True)[0]
+
+    assert record["page_image"]["image_b64"] == base64_image
+    assert record["images"][0]["image_b64"] == base64_image
+    assert record["text_embeddings_1b_v2"] == {"embedding": embedding}
+    assert record["metadata"] == {"embedding": embedding}
+
+
 def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
     rows = [{"image_b64": f"raw-{idx}", "label": "image"} for idx in range(21)]
     df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
@@ -55,6 +76,16 @@ def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
     record = dataframe_to_transport_records(df)[0]
 
     assert record["images"] == "<list len=21>"
+
+
+def test_transport_preserves_long_nested_image_lists_when_requested() -> None:
+    rows = [{"image_b64": "a" * 600, "label": "image"} for _ in range(21)]
+    df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
+
+    record = dataframe_to_transport_records(df, return_images=True)[0]
+
+    assert len(record["images"]) == 21
+    assert record["images"][0]["image_b64"] == "a" * 600
 
 
 def test_transport_compact_document_rows_drop_legacy_metadata_and_bbox() -> None:
@@ -140,6 +171,16 @@ def test_sanitize_result_data_accepts_compact_schema() -> None:
     assert _sanitize_result_data(df, result_schema="compact") == dataframe_to_transport_records(
         df,
         result_schema="compact",
+    )
+
+
+def test_sanitize_result_data_forwards_legacy_payload_flags() -> None:
+    df = pd.DataFrame({"metadata": [{"embedding": [0.1]}], "page_image": [{"image_b64": "raw"}]})
+
+    assert _sanitize_result_data(df, return_embeddings=True, return_images=True) == dataframe_to_transport_records(
+        df,
+        return_embeddings=True,
+        return_images=True,
     )
 
 

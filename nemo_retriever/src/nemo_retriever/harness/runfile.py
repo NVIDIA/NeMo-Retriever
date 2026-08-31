@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from nemo_retriever.harness.benchmark_registry import get_benchmark
 from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload, HarnessRunError
 
 _ALLOWED_RUNFILE_KEYS = {
@@ -141,6 +142,10 @@ def load_runfile(path: Path) -> RunFileRequest:
         raise _invalid("Runfile must set 'benchmark' to a registered benchmark name.")
     if "benchmark" in payload and "base" in payload and payload["benchmark"] != payload["base"]:
         raise _invalid("Runfile cannot set conflicting 'benchmark' and 'base' values.")
+    try:
+        get_benchmark(benchmark)
+    except KeyError as exc:
+        raise _invalid(f"Runfile references unknown benchmark {benchmark!r}.") from exc
 
     dry_run = payload.get("dry_run")
     if dry_run is not None and not isinstance(dry_run, bool):

@@ -40,8 +40,10 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
-        self._ocr_invoke_url = (ocr_invoke_url or "").strip()
+        self._table_structure_invoke_url = (
+            str(table_structure_invoke_url or "").strip() or str(invoke_url or "").strip()
+        )
+        self._ocr_invoke_url = str(ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         self._table_output_format = table_output_format

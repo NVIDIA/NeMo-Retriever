@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
+
 from nemo_retriever.service.config import (
     LocalEmbedConfig,
     LocalModelsConfig,
@@ -27,6 +29,7 @@ def test_build_embed_params_from_nim_config() -> None:
     nim = NimEndpointsConfig(
         embed_invoke_url="http://embed-nim/v1/embeddings",
         embed_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_model_provider_prefix="nvidia",
         api_key="k",
     )
     ep = build_embed_params(nim, LocalModelsConfig(enabled=True))
@@ -34,6 +37,7 @@ def test_build_embed_params_from_nim_config() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
     assert ep.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert ep.embed_model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert ep.embed_model_provider_prefix == "nvidia"
     assert ep.api_key == "k"
 
 
@@ -66,11 +70,10 @@ def test_build_embed_params_nim_url_wins_over_local() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
 
 
-def test_build_extract_params_local_enables_structure_stages() -> None:
+def test_build_extract_params_local_enables_table_structure() -> None:
     local = LocalModelsConfig(enabled=True)
     ep = build_extract_params(NimEndpointsConfig(), local)
     assert ep.use_table_structure is True
-    assert ep.use_graphic_elements is True
     assert ep.ocr_version == "v2"
     assert ep.page_elements_invoke_url is None
 
@@ -83,6 +86,32 @@ def test_build_extract_params_nim_url_wins_over_local_flags() -> None:
     assert ep.use_table_structure is True
 
 
+def test_build_extract_params_from_nemotron_parse_nim_config() -> None:
+    nim = NimEndpointsConfig(
+        nemotron_parse_invoke_url="http://parse-nim/v1/chat/completions",
+        nemotron_parse_model="nvidia/nemotron-parse-v1.2",
+        api_key="k",
+    )
+    ep = build_extract_params(nim, LocalModelsConfig())
+    assert ep.method == "nemotron_parse"
+    assert ep.nemotron_parse_invoke_url == "http://parse-nim/v1/chat/completions"
+    assert ep.nemotron_parse_model == "nvidia/nemotron-parse-v1.2"
+    assert ep.api_key == "k"
+
+
+def test_nemotron_parse_model_requires_endpoint() -> None:
+    with pytest.raises(ValueError, match="nemotron_parse_model requires"):
+        NimEndpointsConfig(nemotron_parse_model="nvidia/nemotron-parse-v1.2")
+
+
+def test_build_extract_params_accepts_nemotron_parse_endpoint_only() -> None:
+    nim = NimEndpointsConfig(nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions")
+    ep = build_extract_params(nim, LocalModelsConfig())
+    assert ep.method == "nemotron_parse"
+    assert ep.nemotron_parse_invoke_url == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert ep.nemotron_parse_model is None
+
+
 def test_build_asr_params_local_when_enabled() -> None:
     local = LocalModelsConfig(enabled=True)
     asr = build_asr_params(NimEndpointsConfig(), local)
@@ -90,12 +119,35 @@ def test_build_asr_params_local_when_enabled() -> None:
     assert asr.audio_endpoints == (None, None)
 
 
-def test_build_asr_params_remote_grpc_wins() -> None:
+def test_build_asr_params_remote_grpc_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "hosted-function-id")
+    monkeypatch.setenv("NVIDIA_API_KEY", "environment-key")
     nim = NimEndpointsConfig(audio_grpc_endpoint="parakeet-nim:50051", api_key="k")
     asr = build_asr_params(nim, LocalModelsConfig(enabled=True))
     assert asr is not None
     assert asr.audio_endpoints == ("parakeet-nim:50051", None)
     assert asr.auth_token == "k"
+    assert asr.function_id == "hosted-function-id"
+
+
+def test_build_asr_params_remote_uses_environment_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "environment-key")
+    nim = NimEndpointsConfig(audio_grpc_endpoint="grpc.nvcf.nvidia.com:443")
+
+    asr = build_asr_params(nim)
+
+    assert asr is not None
+    assert asr.auth_token == "environment-key"
+
+
+def test_build_asr_params_ignores_blank_function_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "  ")
+    nim = NimEndpointsConfig(audio_grpc_endpoint="parakeet-nim:50051")
+
+    asr = build_asr_params(nim)
+
+    assert asr is not None
+    assert asr.function_id is None
 
 
 def test_embed_params_enabled_detects_local_model_name() -> None:

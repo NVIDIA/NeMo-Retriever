@@ -7,7 +7,7 @@ LLM-as-judge scoring -- a from-scratch port of ragas' ``AnswerAccuracy``.
 
 ``LLMJudge`` reproduces the dual-judge logic of ragas'
 :class:`ragas.metrics.collections.AnswerAccuracy` directly on
-:class:`~nemo_retriever.llm.clients.litellm.LiteLLMClient`, with no ragas /
+:class:`~nemo_retriever.models.llm.clients.litellm.LiteLLMClient`, with no ragas /
 instructor / openai dependency:
 
 * Two paraphrased judge prompts (verbatim from ragas), each rating the answer
@@ -224,10 +224,10 @@ class LLMJudge:
 
     Configuration is split into two Pydantic objects:
 
-    * ``transport``: :class:`~nemo_retriever.params.LLMRemoteClientParams` owns
+    * ``transport``: :class:`~nemo_retriever.common.params.LLMRemoteClientParams` owns
       the endpoint, api_key, retries, and timeout. ``num_retries`` is reused as
       the per-judge attempt budget for obtaining a valid ``0/2/4`` rating.
-    * ``sampling``: :class:`~nemo_retriever.params.LLMInferenceParams` owns
+    * ``sampling``: :class:`~nemo_retriever.common.params.LLMInferenceParams` owns
       ``temperature`` / ``top_p`` / ``max_tokens``. Defaults to
       ``temperature=0.1, max_tokens=4096`` for judge consistency.
 

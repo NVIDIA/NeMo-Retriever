@@ -1,67 +1,19 @@
-# Benchmarking with the `retriever` CLI
+# Benchmarking with the Retriever CLI
 
-`retriever benchmark` and `retriever harness` are development and experimental subcommands
-with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
+End-to-end experiments are maintained in the [NeMo Retriever Benchmark (NRB)
+repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+The product CLI retains internal stage micro-benchmarks for focused development
+measurements. For product workflows on your own inputs, use
+`retriever ingest` and `retriever query`.
 
-This page covers benchmark workflows for NeMo Retriever Library. See also
-`docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
-[`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
-notes on `retriever harness`.
+## Stage Micro-Benchmarks
 
-Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
-per-stage micro-benchmarks.
-
-## Harness (development / experimental)
-
-Run from the repository root (or any directory; pass `--config` if needed). Uses
-`--dataset` and `--preset` against `nemo_retriever/harness/test_configs.yaml`.
+`retriever benchmark` measures individual actors rather than an end-to-end
+Retriever result. It remains callable for development compatibility but is
+hidden from root help.
 
 ```bash
-# Named dataset from nemo_retriever/harness/test_configs.yaml
-retriever harness run --dataset bo767 --preset PE_GE_OCR_TE_DENSE
-
-# Default active profile (jp20 + single_gpu in test_configs.yaml)
-retriever harness run --dataset jp20
-
-# Custom directory on disk
-retriever harness run --dataset /path/to/your/data
-
-# Override a single config key
-retriever harness run --dataset bo767 --override run_mode=inprocess
-```
-
-Related commands:
-
-```bash
-retriever harness --help       # run, sweep, nightly, summary, compare, portal
-retriever harness run --help
-retriever harness sweep --help
-retriever harness nightly --help
-retriever harness summary --help
-retriever harness compare --help
-```
-
-Sweep and nightly examples:
-
-```bash
-retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
-retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
-```
-
-### Image storage
-
-For normal ingest, configure image persistence on `retriever ingest` with
-`--store-images-uri <uri>` (local path or fsspec URI). The harness does not
-configure store directly; `retriever pipeline run --store-images-uri <uri>`
-remains available for pipeline-specific compatibility workflows. Stored assets
-follow `--embed-granularity` (page vs element images).
-
-## Per-stage micro-benchmarks
-
-Stage throughput benchmarks on the main CLI (no full harness required):
-
-```bash
-retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
+retriever benchmark --help
 retriever benchmark split --help
 retriever benchmark extract --help
 retriever benchmark audio-extract --help
@@ -70,22 +22,14 @@ retriever benchmark ocr --help
 retriever benchmark all --help
 ```
 
-Example — PDF extraction actor:
+The following example extracts from a directory of PDF files that you supply.
 
 ```bash
-retriever benchmark extract ./data/pdf_corpus \
+retriever benchmark extract /path/to/your/pdfs \
   --pdf-extract-batch-size 8 \
   --pdf-extract-actors 4
 ```
 
-Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
-
-## Notes
-
-- **Configuration:** `retriever harness` uses `--dataset` / `--preset` /
-  `--override KEY=VALUE` against
-  `nemo_retriever/harness/test_configs.yaml`.
-- **Launcher:** for internal benchmarking, `retriever harness run …` is the
-  benchmark orchestration entry point (development / experimental; no guarantees).
-- **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
-  covers per-stage throughput rather than full harness orchestration.
+Stage commands report rows per second, or chunk rows per second for audio. They
+do not produce the NRB artifact contract and should not be used as retrieval
+quality evidence.

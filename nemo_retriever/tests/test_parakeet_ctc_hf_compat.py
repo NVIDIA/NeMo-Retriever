@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from nemo_retriever.models.hf_model_registry import get_hf_revision
+
 MODEL_ID = os.environ.get("PARAKEET_CTC_MODEL_ID", "nvidia/parakeet-ctc-1.1b")
+MODEL_REVISION = get_hf_revision(MODEL_ID, strict=False)
 DEFAULT_AUDIO_PATH = "/datasets/nv-ingest/audio_retrieval_data_mp3/How_to_Convert_a_Word_Document_to_PDF_Dropbox.mp3"
 AUDIO_PATH = Path(os.environ.get("PARAKEET_CTC_TEST_AUDIO", DEFAULT_AUDIO_PATH))
 DEFAULT_EXPECTED_PHRASES = (
@@ -44,13 +47,14 @@ def test_parakeet_ctc_hf_transcribes_single_audio_file() -> None:
     if not AUDIO_PATH.exists():
         pytest.skip(f"Test audio file does not exist: {AUDIO_PATH}")
     device_map = "cuda" if torch.cuda.is_available() else "cpu"
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
+    processor = AutoProcessor.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
     model = None
     inputs = None
     output_ids = None
     try:
         model = AutoModelForCTC.from_pretrained(
             MODEL_ID,
+            revision=MODEL_REVISION,
             torch_dtype="auto",
             device_map=device_map,
         )

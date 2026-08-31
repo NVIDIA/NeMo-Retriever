@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, SecretStr, field_validator
 
-from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.common.params import LLMRemoteClientParams, RemoteInvokeParams, StoreParams
 from nemo_retriever.graph.graph_pipeline_registry import (
     GraphBlueprint,
     GraphDiff,
+    GraphSerializationError,
     GraphPipelineRegistry,
     _PlaceholderOperator,
     _import_class,
@@ -48,6 +49,8 @@ from nemo_retriever.graph.graph_pipeline_registry import (
     walk_nodes,
 )
 
+from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 # ---------------------------------------------------------------------------
 # Operator stubs (mirrors test_pipeline_graph.py conventions)
@@ -99,6 +102,160 @@ class AppendOp(AbstractOperator):
         return data
 
 
+class PathOp(AbstractOperator):
+    def __init__(self, some_path: Path) -> None:
+        super().__init__(some_path=some_path)
+        self.some_path = some_path
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class ApiKeyOp(AbstractOperator):
+    def __init__(self, api_key: str | None = None) -> None:
+        super().__init__(api_key=api_key)
+        self.api_key = api_key
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class StoreParamsOp(AbstractOperator):
+    def __init__(self, params: StoreParams) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class CredentialReferenceParams(BaseModel):
+    api_key: str | None = None
+
+    def _api_key_env_reference(self, field_name: str) -> str | None:
+        return "os.environ/OPENAI_API_KEY" if field_name == "api_key" else None
+
+
+class CredentialReferenceOp(AbstractOperator):
+    def __init__(self, params: CredentialReferenceParams) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class RemoteParamsOp(AbstractOperator):
+    def __init__(self, params: RemoteInvokeParams) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class TypedValuesOp(AbstractOperator):
+    def __init__(self, values: dict[str, Any]) -> None:
+        super().__init__(values=values)
+        self.values = values
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class LeakyConstructorOp(AbstractOperator):
+    def __init__(self, value: str) -> None:
+        raise RuntimeError(f"constructor rejected {value}")
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class LeakyValidationParams(BaseModel):
+    value: str
+
+    @field_validator("value")
+    @classmethod
+    def reject_value(cls, value: str) -> str:
+        raise ValueError(f"validation rejected {value}")
+
+
+class ValidationParamsOp(AbstractOperator):
+    def __init__(self, params: LeakyValidationParams) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class ParamsContainer(BaseModel):
+    children: dict[str, LLMRemoteClientParams]
+
+
+class ParamsContainerOp(AbstractOperator):
+    def __init__(self, params: ParamsContainer) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
 # ---------------------------------------------------------------------------
 # Helpers for building test graphs
 # ---------------------------------------------------------------------------
@@ -126,6 +283,35 @@ def _multi_root_graph() -> Graph:
     g.add_root(Node(AddOp(10), name="R1"))
     g.add_root(Node(MulOp(5), name="R2"))
     return g
+
+
+def _single_node_v2_payload(operator_class: type, operator_kwargs: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "format_version": 2,
+        "roots": ["node_0"],
+        "nodes": {
+            "node_0": {
+                "name": "Test",
+                "operator_class": _qualified_name(operator_class),
+                "operator_kwargs": operator_kwargs,
+                "children": [],
+            }
+        },
+    }
+
+
+def _shared_child_graph() -> Graph:
+    root = Node(AddOp(1), name="Root")
+    left = Node(MulOp(2), name="Left")
+    right = Node(MulOp(3), name="Right")
+    shared = Node(AppendOp("_shared"), name="Shared")
+    root.add_child(left)
+    root.add_child(right)
+    left.add_child(shared)
+    right.add_child(shared)
+    graph = Graph()
+    graph.add_root(root)
+    return graph
 
 
 # =====================================================================
@@ -167,10 +353,9 @@ class TestSafeSerialize:
         assert _safe_serialize_value(42) == 42
         assert _safe_serialize_value("hello") == "hello"
 
-    def test_non_serializable_becomes_repr(self):
-        result = _safe_serialize_value(object())
-        assert isinstance(result, str)
-        assert "object" in result
+    def test_non_serializable_raises_instead_of_becoming_repr(self):
+        with pytest.raises(GraphSerializationError, match="unsupported value"):
+            _safe_serialize_value(object())
 
 
 # =====================================================================
@@ -644,7 +829,7 @@ class TestSerializeDeserialize:
         assert "metadata" in data
         assert data["metadata"]["node_count"] == 3
         assert data["metadata"]["max_depth"] == 2
-        assert "serialized_at" in data["metadata"]
+        assert "serialized_at" not in data["metadata"]
 
     def test_kwargs_preserved(self):
         original = _linear_graph()
@@ -668,6 +853,155 @@ class TestSerializeDeserialize:
         restored = deserialize_graph(serialize_graph(original))
         result = diff_graphs(original, restored)
         assert result.identical is True
+
+
+class TestNormalizedDagFormat:
+    def test_uses_node_ids_and_preserves_shared_identity(self):
+        graph = _shared_child_graph()
+        payload = serialize_graph(graph)
+
+        assert payload["roots"] == ["node_0"]
+        assert list(payload["nodes"]) == ["node_0", "node_1", "node_2", "node_3"]
+        assert payload["nodes"]["node_1"]["children"] == ["node_2"]
+        assert payload["nodes"]["node_3"]["children"] == ["node_2"]
+
+        restored = deserialize_graph(payload)
+        left, right = restored.roots[0].children
+        assert left.children[0] is right.children[0]
+        assert node_count(restored) == 4
+
+    def test_serialization_is_deterministic(self):
+        graph = _shared_child_graph()
+        first = serialize_graph(graph)
+        second = serialize_graph(graph)
+
+        assert first == second
+        assert json.dumps(first, separators=(",", ":")) == json.dumps(second, separators=(",", ":"))
+
+    def test_saved_json_bytes_are_deterministic(self, tmp_path):
+        graph = _shared_child_graph()
+        first = save_graph(graph, tmp_path / "first.json")
+        second = save_graph(graph, tmp_path / "second.json")
+
+        assert first.read_bytes() == second.read_bytes()
+
+    def test_multiple_roots_round_trip(self):
+        restored = deserialize_graph(serialize_graph(_multi_root_graph()))
+        assert [root.name for root in restored.roots] == ["R1", "R2"]
+
+    def test_serialize_rejects_cycle(self):
+        first = Node(AddOp(1), name="First")
+        second = Node(MulOp(2), name="Second")
+        first.add_child(second)
+        second.add_child(first)
+        graph = Graph()
+        graph.add_root(first)
+
+        with pytest.raises(GraphSerializationError, match="cycle detected"):
+            serialize_graph(graph)
+
+    def test_deserialize_rejects_cycle(self):
+        payload = serialize_graph(_linear_graph())
+        payload["nodes"]["node_2"]["children"] = ["node_0"]
+        with pytest.raises(GraphSerializationError, match="cycle detected"):
+            deserialize_graph(payload)
+
+    def test_deserialize_rejects_missing_reference(self):
+        payload = serialize_graph(_linear_graph())
+        payload["nodes"]["node_0"]["children"] = ["missing"]
+        with pytest.raises(GraphSerializationError, match="unknown node ID 'missing'"):
+            deserialize_graph(payload)
+
+    def test_deserialize_rejects_unreachable_record(self):
+        payload = serialize_graph(_linear_graph())
+        payload["nodes"]["orphan"] = {
+            "name": "Orphan",
+            "operator_class": _qualified_name(AddOp),
+            "operator_kwargs": {"value": 1},
+            "children": [],
+        }
+        with pytest.raises(GraphSerializationError, match="unreachable node IDs"):
+            deserialize_graph(payload)
+
+    def test_serialize_rejects_duplicate_edges_and_roots(self):
+        root = Node(AddOp(1), name="Root")
+        child = Node(MulOp(2), name="Child")
+        root.add_child(child)
+        root.add_child(child)
+        graph = Graph()
+        graph.add_root(root)
+        with pytest.raises(GraphSerializationError, match="duplicate child"):
+            serialize_graph(graph)
+
+        fresh_root = Node(AddOp(1), name="Root")
+        graph = Graph()
+        graph.roots.extend([fresh_root, fresh_root])
+        with pytest.raises(GraphSerializationError, match="duplicate root"):
+            serialize_graph(graph)
+
+    def test_serialize_rejects_non_operator_class_override(self):
+        node = Node(AddOp(1), operator_class=dict)
+        graph = Graph()
+        graph.add_root(node)
+        with pytest.raises(GraphSerializationError, match="AbstractOperator class"):
+            serialize_graph(graph)
+
+    def test_deserialize_rejects_duplicate_edges_and_roots(self):
+        payload = serialize_graph(_linear_graph())
+        payload["nodes"]["node_0"]["children"] = ["node_1", "node_1"]
+        with pytest.raises(GraphSerializationError, match="duplicate child"):
+            deserialize_graph(payload)
+
+        payload = serialize_graph(_multi_root_graph())
+        payload["roots"].append(payload["roots"][0])
+        with pytest.raises(GraphSerializationError, match="duplicate root"):
+            deserialize_graph(payload)
+
+    def test_load_rejects_duplicate_node_ids_in_json(self, tmp_path):
+        path = tmp_path / "duplicates.json"
+        path.write_text('{"format_version":2,"roots":[],"nodes":{"node_0":{},"node_0":{}}}')
+        with pytest.raises(GraphSerializationError, match="duplicate JSON object key"):
+            load_graph(path)
+
+    def test_draft_nested_v2_is_rejected(self):
+        payload = {
+            "format_version": 2,
+            "roots": [
+                {
+                    "name": "Test",
+                    "operator_class": _qualified_name(AddOp),
+                    "operator_kwargs": {"value": 1},
+                    "children": [],
+                }
+            ],
+        }
+        with pytest.raises(GraphSerializationError, match="missing required top-level"):
+            deserialize_graph(payload)
+
+    def test_rejects_unknown_top_level_fields_and_inconsistent_metadata(self):
+        payload = serialize_graph(_linear_graph())
+        payload["unexpected"] = True
+        with pytest.raises(GraphSerializationError, match="unknown top-level"):
+            deserialize_graph(payload)
+
+        payload = serialize_graph(_linear_graph())
+        payload["metadata"]["node_count"] = 999
+        with pytest.raises(GraphSerializationError, match="metadata.node_count"):
+            deserialize_graph(payload)
+
+    def test_rejects_malformed_typed_envelope(self):
+        payload = _single_node_v2_payload(
+            ApiKeyOp,
+            {
+                "api_key": {
+                    "__secret_no_auth__": "",
+                    "unexpected": "MUST-NOT-LEAK",
+                }
+            },
+        )
+        with pytest.raises(GraphSerializationError, match="malformed no-auth") as exc_info:
+            deserialize_graph(payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
 
 
 class TestSaveLoadGraph:
@@ -733,23 +1067,38 @@ class TestPlaceholderOperator:
             op.process("data")
 
 
+class TestTypedValueSerialization:
+    def test_v2_round_trip_preserves_supported_value_types(self):
+        values = {
+            "path": Path("/tmp/example"),
+            "tuple": ("a", 1),
+            "set": {"b", "a"},
+            "frozenset": frozenset({"c", "d"}),
+            "type": MulOp,
+            "callable": len,
+        }
+        graph = Graph()
+        graph.add_root(TypedValuesOp(values))
+
+        restored = deserialize_graph(serialize_graph(graph)).roots[0].operator.values
+
+        assert restored["path"] == Path("/tmp/example")
+        assert restored["tuple"] == ("a", 1)
+        assert restored["set"] == {"a", "b"}
+        assert restored["frozenset"] == frozenset({"c", "d"})
+        assert restored["type"] is MulOp
+        assert restored["callable"] is len
+
+
 class TestSpecialValueSerialization:
     def test_path_round_trip(self, tmp_path):
-        node = Node(AddOp(1), name="Test")
-        node.operator_kwargs["some_path"] = Path("/usr/local/bin")
-        data = serialize_graph(Graph())
-        data["roots"] = [
-            {
-                "name": "Test",
-                "operator_class": _qualified_name(AddOp),
-                "operator_kwargs": {"value": 1, "some_path": {"__path__": "/usr/local/bin"}},
-                "children": [],
-            }
-        ]
-        restored = deserialize_graph(data)
+        graph = Graph()
+        graph.add_root(PathOp(Path("/usr/local/bin")))
+        restored = deserialize_graph(serialize_graph(graph))
         kw = restored.roots[0].operator_kwargs
         assert isinstance(kw["some_path"], Path)
         assert str(kw["some_path"]) == "/usr/local/bin"
+        assert restored.roots[0].operator.some_path == Path("/usr/local/bin")
 
     def test_set_round_trip(self):
         data = {
@@ -757,7 +1106,10 @@ class TestSpecialValueSerialization:
                 {
                     "name": "Test",
                     "operator_class": _qualified_name(AddOp),
-                    "operator_kwargs": {"value": 1, "tags": {"__set__": ["a", "b", "c"]}},
+                    "operator_kwargs": {
+                        "value": 1,
+                        "tags": {"__set__": ["a", "b", "c"]},
+                    },
                     "children": [],
                 }
             ]
@@ -771,7 +1123,10 @@ class TestSpecialValueSerialization:
                 {
                     "name": "Test",
                     "operator_class": _qualified_name(AddOp),
-                    "operator_kwargs": {"value": 1, "cls": {"__type_ref__": _qualified_name(MulOp)}},
+                    "operator_kwargs": {
+                        "value": 1,
+                        "cls": {"__type_ref__": _qualified_name(MulOp)},
+                    },
                     "children": [],
                 }
             ]
@@ -1071,6 +1426,9 @@ class TestRegistrySerialization:
         assert "blueprint" in data
         assert data["blueprint"]["description"] == "single test"
 
+        restored = load_graph(path)
+        assert node_count(restored) == 3
+
     def test_load_graph_single(self, tmp_path):
         reg = GraphPipelineRegistry()
         reg.register_graph("orig", _linear_graph, description="for load")
@@ -1109,6 +1467,43 @@ class TestRegistrySerialization:
         reg.save_graph("x", path)
         with pytest.raises(ValueError, match="already registered"):
             reg.load_graph(path, name="x", overwrite=False)
+
+    def test_load_graph_validates_constructor_before_registration(self, tmp_path):
+        payload = _single_node_v2_payload(
+            LeakyConstructorOp,
+            {"value": "MUST-NOT-LEAK"},
+        )
+        payload["blueprint"] = {"name": "invalid"}
+        path = tmp_path / "invalid.json"
+        path.write_text(json.dumps(payload))
+
+        registry = GraphPipelineRegistry()
+        with pytest.raises(GraphSerializationError, match="failed to construct") as exc_info:
+            registry.load_graph(path)
+
+        assert len(registry) == 0
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+        assert exc_info.value.__cause__ is None
+        assert exc_info.value.__context__ is None
+
+    def test_load_all_validates_atomically_before_registration(self, tmp_path):
+        source = GraphPipelineRegistry()
+        source.register_graph("valid", _linear_graph)
+        source.register_graph("invalid", _fan_out_graph)
+        path = tmp_path / "all.json"
+        source.save_all(path)
+
+        payload = json.loads(path.read_text())
+        invalid_graph = payload["graphs"]["invalid"]
+        root_id = invalid_graph["roots"][0]
+        invalid_graph["nodes"][root_id]["children"] = ["missing"]
+        path.write_text(json.dumps(payload))
+
+        registry = GraphPipelineRegistry()
+        with pytest.raises(GraphSerializationError, match="unknown node ID"):
+            registry.load_all(path)
+
+        assert len(registry) == 0
 
     def test_blueprint_metadata_preserved(self, tmp_path):
         reg = GraphPipelineRegistry()
@@ -1200,3 +1595,396 @@ class TestEdgeCases:
         assert callable(my_factory)
         assert my_factory() is not None
         assert isinstance(my_factory(), Graph)
+
+
+class TestVersionlessV1Compatibility:
+    @pytest.mark.parametrize("explicit_version", [False, True])
+    def test_concrete_operator_reconstructs_and_executes(self, explicit_version):
+        payload = {
+            "roots": [
+                {
+                    "name": "LegacyAdd",
+                    "operator_class": _qualified_name(AddOp),
+                    "operator_kwargs": {"value": 7},
+                    "children": [],
+                }
+            ]
+        }
+        if explicit_version:
+            payload["format_version"] = 1
+
+        restored = deserialize_graph(payload)
+
+        assert type(restored.roots[0].operator) is AddOp
+        assert restored.roots[0].operator.value == 7
+        assert restored.execute(5) == [12]
+
+
+class TestLegacyRegistryCompatibility:
+    def test_v1_graph_may_be_named_format_version(self, tmp_path):
+        payload = {
+            "format_version": {
+                "roots": [],
+                "metadata": {},
+                "blueprint": {
+                    "name": "format_version",
+                    "description": "legacy graph name",
+                },
+            },
+        }
+        path = tmp_path / "legacy-registry.json"
+        path.write_text(json.dumps(payload))
+
+        registry = GraphPipelineRegistry()
+        loaded = registry.load_all(path)
+
+        assert loaded == ["format_version"]
+        assert registry.build("format_version").roots == []
+
+
+class TestGraphSerializationSecurity:
+    def test_auto_resolved_params_preserve_exact_environment_provenance(self, monkeypatch):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.setenv("NGC_API_KEY", "DRIVER-KEY")
+        params = RemoteInvokeParams(api_key=None)
+        graph = Graph()
+        graph.add_root(RemoteParamsOp(params))
+
+        payload = serialize_graph(graph)
+        encoded = json.dumps(payload)
+        assert "DRIVER-KEY" not in encoded
+        assert "os.environ/NGC_API_KEY" in encoded
+
+        monkeypatch.setenv("NGC_API_KEY", "WORKER-KEY")
+        restored = deserialize_graph(payload).roots[0].operator.params
+
+        assert restored.api_key == "WORKER-KEY"
+        assert restored._api_key_env_reference("api_key") == "os.environ/NGC_API_KEY"
+
+    def test_model_credential_provenance_preserves_provider_reference(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "NVIDIA-WORKER-KEY")
+        params = CredentialReferenceParams(api_key="OPENAI-DRIVER-KEY")
+        graph = Graph()
+        graph.add_root(CredentialReferenceOp(params))
+
+        payload = serialize_graph(graph)
+        encoded = json.dumps(payload)
+        restored = deserialize_graph(payload).roots[0].operator.params
+
+        assert "OPENAI-DRIVER-KEY" not in encoded
+        assert "NVIDIA-WORKER-KEY" not in encoded
+        assert "os.environ/OPENAI_API_KEY" in encoded
+        assert restored.api_key == "os.environ/OPENAI_API_KEY"
+
+    @pytest.mark.parametrize(
+        "reference",
+        [
+            "os.environ/",
+            "os.environ/1INVALID",
+            "os.environ/INVALID-NAME",
+            "os.environ/INVALID NAME",
+        ],
+    )
+    def test_invalid_environment_reference_is_rejected(self, reference):
+        graph = Graph()
+        graph.add_root(ApiKeyOp(reference))
+        with pytest.raises(GraphSerializationError, match="invalid environment reference"):
+            serialize_graph(graph)
+
+    def test_no_auth_marker_round_trips(self):
+        graph = Graph()
+        graph.add_root(ApiKeyOp(""))
+        payload = serialize_graph(graph)
+        restored = deserialize_graph(payload).roots[0].operator
+
+        assert "__secret_no_auth__" in json.dumps(payload)
+        assert restored.api_key == ""
+
+    def test_v2_payload_rejects_literal_api_key_without_echoing_it(self):
+        payload = _single_node_v2_payload(
+            ApiKeyOp,
+            {"api_key": "MUST-NOT-LEAK"},
+        )
+        with pytest.raises(GraphSerializationError, match="cannot be persisted literally") as exc_info:
+            deserialize_graph(payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    def test_v2_reader_rejects_non_string_api_key_without_echoing_it(self):
+        payload = _single_node_v2_payload(
+            ApiKeyOp,
+            {"api_key": ["MUST-NOT-LEAK"]},
+        )
+        with pytest.raises(GraphSerializationError, match="invalid encoded API-key") as exc_info:
+            deserialize_graph(payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "secret_field",
+        [
+            "authorization",
+            "authorizationHeader",
+            "cookieHeader",
+            "credentialFile",
+            "key",
+        ],
+    )
+    def test_v2_reader_rejects_nested_storage_secrets(self, secret_field):
+        payload = _single_node_v2_payload(
+            TypedValuesOp,
+            {
+                "values": {
+                    "__mapping__": {
+                        "storage_options": {
+                            "__mapping__": {
+                                secret_field: "MUST-NOT-LEAK",
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        with pytest.raises(GraphSerializationError, match="serialized secret fields must be empty") as exc_info:
+            deserialize_graph(payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    def test_safe_storage_options_round_trip(self):
+        params = StoreParams(
+            storage_uri="s3://bucket/prefix",
+            storage_options={
+                "anon": True,
+                "region_name": "us-west-2",
+                "endpoint_url": "https://storage.example.test",
+                "timeout": 30,
+            },
+        )
+        graph = Graph()
+        graph.add_root(StoreParamsOp(params))
+        restored = deserialize_graph(serialize_graph(graph)).roots[0].operator.params
+
+        assert restored.storage_options == params.storage_options
+
+    @pytest.mark.parametrize(
+        "secret_field",
+        [
+            "authorization",
+            "authorizationHeader",
+            "password",
+            "refresh_token",
+            "secret",
+            "key",
+            "access-key",
+            "aws_access_key_id",
+            "account_key",
+            "cookie",
+            "cookie_header",
+            "cookieHeader",
+            "bearer",
+            "credential",
+            "credential_file",
+            "credentialFile",
+        ],
+    )
+    def test_nested_storage_option_secrets_are_rejected(self, secret_field):
+        graph = Graph()
+        graph.add_root(
+            StoreParamsOp(
+                StoreParams(
+                    storage_uri="s3://bucket/prefix",
+                    storage_options={"inner": {secret_field: "MUST-NOT-LEAK"}},
+                )
+            )
+        )
+        with pytest.raises(GraphSerializationError, match="non-rehydratable secret field") as exc_info:
+            serialize_graph(graph)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+        assert f"storage_options.inner.{secret_field}" in str(exc_info.value)
+
+    def test_storage_diagnostics_redact_contextual_key(self):
+        node = Node(
+            AddOp(1),
+            name="Diagnostic",
+            operator_kwargs={
+                "storage_options": {
+                    "anon": True,
+                    "key": "MUST-NOT-LEAK",
+                }
+            },
+        )
+        rendered = format_node_details(node)
+
+        assert "MUST-NOT-LEAK" not in rendered
+        assert "'anon': True" in rendered
+        assert "'key': '***'" in rendered
+
+    @pytest.mark.parametrize(
+        "empty_container",
+        [{}, [], (), set(), frozenset()],
+    )
+    def test_empty_secret_containers_are_rejected_before_json_encoding(self, empty_container):
+        with pytest.raises(GraphSerializationError, match="non-rehydratable secret field"):
+            _safe_serialize_value({"password": empty_container})
+
+    def test_unknown_mapping_key_error_never_calls_repr(self):
+        class DangerousKey:
+            def __hash__(self) -> int:
+                return 1
+
+            def __repr__(self) -> str:
+                raise AssertionError("repr must not be called")
+
+        with pytest.raises(GraphSerializationError, match="DangerousKey"):
+            _safe_serialize_value({DangerousKey(): "value"})
+
+    def test_secret_emptiness_check_never_invokes_custom_equality(self):
+        class DangerousSecret:
+            def __eq__(self, other: object) -> bool:
+                raise RuntimeError("MUST-NOT-LEAK")
+
+            def __repr__(self) -> str:
+                return "MUST-NOT-LEAK"
+
+        with pytest.raises(GraphSerializationError, match="non-rehydratable secret field") as exc_info:
+            _safe_serialize_value({"password": DangerousSecret()})
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    def test_dataframe_is_rejected_with_a_type_only_error(self):
+        import pandas as pd
+
+        with pytest.raises(GraphSerializationError, match="pandas.core.frame.DataFrame") as exc_info:
+            _safe_serialize_value(pd.DataFrame({"secret": ["MUST-NOT-LEAK"]}))
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    def test_secret_str_is_rejected_without_revealing_value(self):
+        with pytest.raises(GraphSerializationError, match="unsupported value") as exc_info:
+            _safe_serialize_value({"label": SecretStr("MUST-NOT-LEAK")})
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+
+    def test_diagnostics_use_type_only_for_unknown_objects(self):
+        class DangerousValue:
+            def __repr__(self) -> str:
+                return "MUST-NOT-LEAK"
+
+        node = Node(
+            AddOp(1),
+            name="Diagnostic",
+            operator_kwargs={"value": 1, "opaque": DangerousValue()},
+        )
+        rendered = format_node_details(node)
+
+        assert "MUST-NOT-LEAK" not in rendered
+        assert "DangerousValue" in rendered
+
+    def test_diff_never_calls_repr_when_equality_raises(self):
+        class DangerousValue:
+            def __eq__(self, other: object) -> bool:
+                raise RuntimeError("comparison failed")
+
+            def __repr__(self) -> str:
+                raise AssertionError("repr must not be called")
+
+        graph_a = Graph()
+        graph_a.add_root(Node(AddOp(1), operator_kwargs={"opaque": DangerousValue()}))
+        graph_b = Graph()
+        graph_b.add_root(Node(AddOp(1), operator_kwargs={"opaque": DangerousValue()}))
+
+        result = diff_graphs(graph_a, graph_b)
+        rendered = result.format()
+
+        assert result.identical is False
+        assert "DangerousValue" in rendered
+
+    def test_constructor_and_model_validation_errors_are_sanitized(self):
+        constructor_payload = _single_node_v2_payload(
+            LeakyConstructorOp,
+            {"value": "MUST-NOT-LEAK"},
+        )
+        with pytest.raises(GraphSerializationError, match="builtins.RuntimeError") as exc_info:
+            deserialize_graph(constructor_payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+        assert exc_info.value.__cause__ is None
+        assert exc_info.value.__context__ is None
+
+        model_payload = _single_node_v2_payload(
+            ValidationParamsOp,
+            {
+                "params": {
+                    "__pydantic_model__": _qualified_name(LeakyValidationParams),
+                    "fields": {"value": "MUST-NOT-LEAK"},
+                    "fields_set": ["value"],
+                }
+            },
+        )
+        with pytest.raises(GraphSerializationError, match="pydantic_core.*ValidationError") as exc_info:
+            deserialize_graph(model_payload)
+        assert "MUST-NOT-LEAK" not in str(exc_info.value)
+        assert exc_info.value.__cause__ is None
+        assert exc_info.value.__context__ is None
+
+
+class TestTypedCodecRegressions:
+    def test_nested_model_container_preserves_no_auth(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "ENV-SECRET")
+        child = LLMRemoteClientParams(
+            model="model",
+            api_key="",
+        )
+        container = ParamsContainer(children={"child": child})
+        graph = Graph()
+        graph.add_root(ParamsContainerOp(container))
+
+        payload = serialize_graph(graph)
+        encoded = json.dumps(payload)
+        restored = deserialize_graph(payload)
+        restored_child = restored.roots[0].operator.params.children["child"]
+
+        assert "ENV-SECRET" not in encoded
+        assert "__secret_no_auth__" in encoded
+        assert restored_child.api_key is None
+        assert restored_child._uses_no_api_key("api_key")
+
+    def test_function_local_pydantic_model_is_rejected(self):
+        class LocalModel(BaseModel):
+            value: int
+
+        with pytest.raises(
+            GraphSerializationError,
+            match="Pydantic model .* is not rehydratable",
+        ):
+            _safe_serialize_value(LocalModel(value=1))
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["refresh_token", "owner_token", "apiKey", "accessToken"],
+    )
+    def test_common_token_and_camel_case_secrets_are_rejected(self, field_name):
+        with pytest.raises(
+            GraphSerializationError,
+            match="non-rehydratable secret field|opaque mapping",
+        ):
+            _safe_serialize_value(
+                {field_name: "MUST-NOT-LEAK"},
+            )
+
+    def test_flat_operator_api_key_requires_reference_and_resolves_at_use(self, monkeypatch):
+        from nemo_retriever.operators.graph_ops.subquery_operator import (
+            SubQueryGeneratorOperator,
+        )
+
+        literal_graph = Graph()
+        literal_graph.add_root(SubQueryGeneratorOperator(llm_model="model", api_key="ORIGINAL"))
+        with pytest.raises(GraphSerializationError, match="cannot be persisted literally") as exc_info:
+            serialize_graph(literal_graph)
+        assert "ORIGINAL" not in str(exc_info.value)
+
+        monkeypatch.setenv("CUSTOM_LLM_KEY", "CUSTOM-WORKER-KEY")
+        reference = "os.environ/CUSTOM_LLM_KEY"
+        referenced_graph = Graph()
+        referenced_graph.add_root(SubQueryGeneratorOperator(llm_model="model", api_key=reference))
+        payload = serialize_graph(referenced_graph)
+        encoded = json.dumps(payload)
+        restored = deserialize_graph(payload).roots[0].operator
+
+        assert reference in encoded
+        assert "CUSTOM-WORKER-KEY" not in encoded
+        assert restored._api_key == reference
+        assert restored._resolve_api_key() == "CUSTOM-WORKER-KEY"

@@ -16,6 +16,7 @@ from nemo_retriever.common.params import PdfSplitParams
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.graph.executor import call_pandas_function_on_arrow
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 try:
@@ -225,4 +226,8 @@ def split_pdf(pdf_ds: Any, params: PdfSplitParams | None = None) -> Any:
         raise ImportError("split_pdf() requires Ray Data (`ray`).") from e
 
     # Note: returning a Dataset here creates the new dataset representing pages.
-    return pdf_ds.map_batches(PDFSplitActor(split_params=params), batch_format="pandas")
+    return pdf_ds.map_batches(
+        call_pandas_function_on_arrow,
+        batch_format="pyarrow",
+        fn_kwargs={"fn": PDFSplitActor(split_params=params)},
+    )

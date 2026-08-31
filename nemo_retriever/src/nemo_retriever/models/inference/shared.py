@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params.utils import normalize_embed_kwargs
 
 
 def _to_bool(v: object, default: bool = False) -> bool:
@@ -22,6 +23,4 @@ def build_embed_kwargs(params: EmbedParams) -> dict[str, object]:
         **params.model_dump(mode="python", exclude={"runtime", "batch_tuning"}, exclude_none=True),
         **params.runtime.model_dump(mode="python", exclude_none=True),
     }
-    if "embedding_endpoint" not in kwargs and kwargs.get("embed_invoke_url"):
-        kwargs["embedding_endpoint"] = kwargs.get("embed_invoke_url")
-    return kwargs
+    return normalize_embed_kwargs(kwargs)

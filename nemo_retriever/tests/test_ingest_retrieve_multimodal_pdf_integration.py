@@ -35,7 +35,6 @@ def _remote_nim_config_from_env() -> dict | None:
     return {
         "page_elements_invoke_url": page_url,
         "ocr_invoke_url": _env_strip("OCR_INVOKE_URL"),
-        "graphic_elements_invoke_url": _env_strip("GRAPHIC_ELEMENTS_INVOKE_URL"),
         "table_structure_invoke_url": _env_strip("TABLE_STRUCTURE_INVOKE_URL"),
     }
 

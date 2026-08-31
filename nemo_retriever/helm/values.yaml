@@ -20,23 +20,21 @@ fullnameOverride: ""
 
 # -----------------------------------------------------------------------------
 # NGC pull + API secrets (consumed by the service Deployment AND every
-# operator-managed NIMService).
+# operator-managed NIMCache / NIMService).
 # -----------------------------------------------------------------------------
 # The NIM Operator references its image pull secret and NGC auth secret by
-# **name only** — those names are hard-coded into each NIMCache/NIMService
-# template (`ngc-secret` and `ngc-api` by default, matching upstream NIM
-# Operator examples). Set `create: true` to have this chart provision the
-# secrets, or `create: false` + an externally managed Secret with the same
-# name.
+# **name only**. These chart-wide names are the defaults for every rendered
+# NIMCache / NIMService unless a per-NIM override is set (see
+# `nimOperator.<key>.image.pullSecrets` / `nimOperator.<key>.authSecret`).
+# Set `create: true` to have this chart provision the secrets, or
+# `create: false` + an externally managed Secret with the same name.
 #
 # Additional pre-existing pull secrets can be listed under `imagePullSecrets`
-# at the bottom of this section.
+# at the bottom of this section (Pods only — not NIM CRs).
 ngcImagePullSecret:
   create: false
-  # Name used by every Pod's `imagePullSecrets` and by each NIMService's
-  # `image.pullSecrets`. Keep at "ngc-secret" unless you have a strong
-  # reason to rename — every per-model template references this name by
-  # default.
+  # Name used by every Pod's `imagePullSecrets` and, when per-NIM
+  # `image.pullSecrets` is empty, by each NIMCache / NIMService pull secret.
   name: "ngc-secret"
   registry: "nvcr.io"
   username: "$oauthtoken"
@@ -49,8 +47,9 @@ ngcImagePullSecret:
 
 ngcApiSecret:
   create: false
-  # Name used as the NIMCache/NIMService `authSecret` and as the source for
-  # the service container's NGC_API_KEY / NVIDIA_API_KEY env vars.
+  # Name used as the NIMCache/NIMService `authSecret` (when per-NIM
+  # `authSecret` is empty) and as the source for the service container's
+  # NGC_API_KEY / NVIDIA_API_KEY env vars.
   name: "ngc-api"
   # NGC API key. Both `NGC_API_KEY` and `NGC_CLI_API_KEY` keys are
   # populated with this value so NIM containers and ad-hoc CLI users
@@ -72,7 +71,7 @@ service:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
     repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.5.0"
+    tag: "26.8.1"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -85,9 +84,8 @@ service:
     tag: ""
     pullPolicy: ""
 
-  # Number of pod replicas. Must stay at 1 while persistence is SQLite-backed
-  # (RWO PVC + single writer). Bumping this requires switching to a shared
-  # database (Postgres support is on the roadmap).
+  # Number of standalone pod replicas. Keep at 1 because job and scheduler
+  # state are process-local.
   replicas: 1
 
   # Pod-level scheduling controls.
@@ -149,12 +147,12 @@ service:
     count: 0
     productClass: ""
 
-  # Liveness, readiness, and startup probes.  All use the dedicated
-  # GET /v1/health endpoint which returns {"status":"ok"} with no auth.
+  # Startup and liveness use the shallow, unauthenticated GET /v1/live
+  # endpoint. Readiness uses the deep, unauthenticated GET /v1/health endpoint.
   livenessProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 30
     periodSeconds: 30
@@ -174,7 +172,7 @@ service:
   startupProbe:
     enabled: true
     httpGet:
-      path: /v1/health
+      path: /v1/live
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -188,7 +186,7 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
-  # OpenTelemetry env defaults for the retriever service container.
+  # OpenTelemetry defaults for the retriever service container. The chart exports metrics every 5 seconds by default; override through service.otel.env.
   otel:
     enabled: true
     serviceName: nemo-retriever-service
@@ -210,6 +208,7 @@ service:
 # =============================================================================
 networkService:
   type: NodePort
+  # Kubernetes Service port, including chart-generated Service-DNS URLs.
   port: 7670
   # Optional: override the targetPort name. Should match container port name.
   targetPort: http
@@ -267,7 +266,7 @@ topology:
     # Horizontal Pod Autoscaler — realtime
     # -------------------------------------------------------------------
     # The HPA combines three independent signals (any can be disabled):
-    #   • queueDepthRatio       — pool fill (0..1), via prometheus-adapter
+    #   • queueBacklog          — gateway backlog per replica
     #   • processingLatencyP95  — 95th-percentile pipeline duration (s)
     #   • cpu                   — utilization fallback, plain Resource metric
     #
@@ -286,12 +285,10 @@ topology:
       minReplicas: 1
       maxReplicas: 8
       metrics:
-        queueDepthRatio:
+        queueBacklog:
           enabled: true
-          # AverageValue across replicas — scale up when per-replica
-          # queue fill exceeds 0.5 (50%). Quantity strings are passed
-          # verbatim to the HPA; `500m` == 0.5 in k8s quantity notation.
-          target: "500m"
+          # AverageValue across replicas; one pod normally has 24 slots.
+          target: "24"
         processingLatencyP95:
           enabled: true
           # Seconds of per-item p95 latency that triggers scale-up.
@@ -345,7 +342,7 @@ topology:
     # Batch HPA tuning differs from realtime: a deeper queue is normal
     # (we *want* batching), and replicas usually carry expensive GPUs
     # that we'd rather not churn. So:
-    #   • Higher queueDepthRatio target (allow steady-state fill)
+    #   • Higher queueBacklog target (allow steady-state fill)
     #   • Higher p95 latency target (batch jobs can legitimately take
     #     minutes per item)
     #   • Longer scaleDown stabilization window (no GPU thrash)
@@ -354,9 +351,9 @@ topology:
       minReplicas: 1
       maxReplicas: 4
       metrics:
-        queueDepthRatio:
+        queueBacklog:
           enabled: true
-          target: "700m"   # 70% — batch runs hot by design
+          target: "48"
         processingLatencyP95:
           enabled: true
           targetSeconds: "120"
@@ -408,7 +405,9 @@ topology:
   # ---------------------------------------------------------------------------
   # Deploys an in-cluster OpenTelemetry Collector for traces, metrics, and logs.
   # Disable with `topology.otel.enabled: false`.  The collector exposes OTLP
-  # gRPC (4317) and OTLP HTTP (4318) receivers by default.
+  # gRPC (4317) and OTLP HTTP (4318) receivers, plus a Prometheus metrics
+  # endpoint (8889), by default. The chart-managed Prometheus exporter uses
+  # `ports.prometheus` and exports metrics received through the OTLP receiver.
   otel:
     enabled: true
     image:
@@ -532,6 +531,7 @@ topology:
 serviceConfig:
   server:
     host: "0.0.0.0"
+    # Retriever process listener and named container port.
     port: 7670
 
   logging:
@@ -547,7 +547,25 @@ serviceConfig:
     pageElementsInvokeUrl: ""
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
+    # Optional Nemotron Parse chat-completions endpoint. When the
+    # operator-managed Parse NIM is enabled, its in-cluster URL is used
+    # unless this explicit endpoint is set.
+    nemotronParseInvokeUrl: ""
+    # Optional model override. Leave empty to infer the hosted
+    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    nemotronParseModel: ""
     embedInvokeUrl: ""
+    # Optional remote reranker used by POST /v1/query with rerank=true.
+    # Auto-wired from the in-cluster Service when
+    # `nimOperator.rerankqa.enabled=true` (and the NIM Operator CRDs are
+    # present). Set explicitly to point at a hosted or external ranking
+    # endpoint (e.g. http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking).
+    rerankInvokeUrl: ""
+    # Model identifier passed to the remote rerank endpoint. Auto-set to
+    # nvidia/llama-nemotron-rerank-vl-1b-v2 whenever a rerank URL is
+    # resolved from the operator-managed VL reranker. Override when
+    # pointing at a different ranking SKU.
+    rerankModelName: ""
     # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
     # Omni). Auto-wired from the in-cluster Service when
     # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
@@ -560,8 +578,9 @@ serviceConfig:
     # the operator-managed Omni NIM is enabled. Override to point at a
     # different VLM SKU.
     captionModelName: ""
-    # gRPC endpoint for the Parakeet ASR NIM (e.g. "parakeet-nim:50051").
+    # gRPC endpoint for the Parakeet ASR NIM (e.g. "audio:50051").
     # Required for audio/video ingestion in service mode (without torch).
+    # Not auto-wired when nimOperator.audio is enabled; set explicitly.
     audioGrpcEndpoint: ""
 
   # In-pod Hugging Face models (alternative to nimEndpoints above).
@@ -577,7 +596,6 @@ serviceConfig:
     extract:
       enabled: true
       useTableStructure: true
-      useGraphicElements: true
       ocrVersion: v2
       ocrLang: ""
     embed:
@@ -594,6 +612,8 @@ serviceConfig:
     path: "/mcp"
     baseUrl: ""
     enableWriteTools: true
+    # classic | agentic | all — which retrieval MCP tools to register.
+    queryMethods: classic
     maxConcurrency: 8
     requestTimeoutS: 60.0
     ingestTimeoutS: 1800.0
@@ -638,6 +658,20 @@ serviceConfig:
     # portable no-reasoning controls.
     reasoningEnabled: true
 
+  # Agentic (ReAct) retrieval exposed as POST /v1/query with agentic=true and the
+  # agentic_query MCP tool. The LLM runs inside the vectordb pod because that
+  # pod owns the LanceDB volume.
+  agentic:
+    enabled: false
+    llmModel: ""
+    invokeUrl: ""
+    reasoningEffort: high
+    backendTopK: 20
+    reactMaxSteps: 50
+    textTruncation: 0
+    temperature: 0.0
+    requestTimeoutS: 1800.0
+
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.
   # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
@@ -647,10 +681,26 @@ serviceConfig:
     batchWorkers: 48
     batchQueueSize: 8192
 
+  workQueue:
+    spoolDirectory: /tmp/nemo-retriever-work
+    spoolLimitBytes: 21474836480
+    claimTimeoutS: 30.0
+    leaseTtlS: 60.0
+    heartbeatIntervalS: 20.0
+    maxDeliveryAttempts: 3
+    # Cluster-wide budgets; do not infer these from worker replica counts.
+    maxActiveLeases:
+      realtime: 8
+      batch: 48
+
   resources:
     maxMemoryMb: null
     maxCpuCores: null
     gpuDevices: []
+    maxUploadBytes: 500000000
+
+  sidecarStore:
+    maxPayloadBytes: 33554432
 
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
@@ -659,14 +709,46 @@ serviceConfig:
     enabled: true
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
+    # auto creates hybrid storage when fresh and preserves existing physical indexes.
+    # Use hybrid explicitly to upgrade an existing dense table by adding FTS.
+    indexMode: "auto"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
+    embedModelProviderPrefix: ""
+    # How long a worker waits for the VectorDB pod to acknowledge a record
+    # write. A write that is not acknowledged fails the document, so raise
+    # this on slow storage rather than accepting unacknowledged writes.
+    writeTimeoutSeconds: 300
+    # Optional service-internal authentication. When enabled, Retriever and
+    # VectorDB pods read the same existing Secret key. In split topology, the
+    # gateway also uses this credential for restricted gateway-to-worker
+    # handoffs and pull-worker work claims. Public bearer credentials are
+    # never forwarded to workers. Required in topology.mode=split when
+    # auth.scopeTokenSecret.name is set.
+    internalAuth:
+      enabled: false
+      existingSecret:
+        name: ""
+        key: token
 
-  # Optional bearer-token authentication. When apiToken is set, every
-  # request must carry "Authorization: Bearer <token>".
+  # Public bearer-token authentication. Production deployments should mount
+  # a Secret-backed scope-token JSON file. It is disabled by default so a
+  # standalone deployment accepts gateway requests without a bearer token. In
+  # split topology, the public token file mounts only on the gateway; pair it
+  # with vectordb.internalAuth so workers can claim internal work.
+  # Inline apiToken is retained only as an explicitly enabled insecure
+  # development fallback.
   auth:
+    enabled: false
     apiToken: null
+    allowInsecureInlineApiToken: false
+    defaultScope: "default"
+    allowUnscopedDev: false
+    scopeTokenSecret:
+      name: ""
+      key: scope-tokens.json
     headerName: "Authorization"
     bypassPaths:
+      - "/v1/live"
       - "/v1/health"
       - "/docs"
       - "/openapi.json"
@@ -677,12 +759,22 @@ serviceConfig:
 # Retriever Results volume
 # =============================================================================
 # A PVC mounted at `mountPath` for storing per-job page results as JSON files.
-# The processing pool writes results here and the /v1/ingest/job/{id}/results
-# endpoint reads from this directory instead of SQLite for faster retrieval.
+# The gateway writes worker handoffs here and serves retained rows from this
+# directory instead of retaining bulky rows in process memory.
+# In split mode, only the gateway mounts this claim. Workers hand retained
+# rows back to the gateway after processing, so realtime and batch replicas
+# remain independently schedulable across nodes with ReadWriteOnce storage.
 #
 # Use local/host-path storage for results to avoid network I/O overhead.
+# The default ReadWriteOnce access mode supports the default single gateway;
+# configuring multiple gateway replicas requires storage and job-state
+# coordination beyond the current split-topology contract.
 retrieverResults:
   enabled: true
+  # Immutable result generations and interrupted temporary files are removed
+  # opportunistically after this age. Keep this at least as long as the job
+  # tracker stale and terminal retention windows.
+  ttlSeconds: 28800
   existingClaim: ""
   storageClass: ""
   accessModes:
@@ -692,16 +784,11 @@ retrieverResults:
   annotations: {}
 
 # =============================================================================
-# Persistence (SQLite database + log file)
+# General persistence (logs and other non-scheduler files)
 # =============================================================================
-# A single ReadWriteOnce PVC mounted at `mountPath`. SQLite's WAL mode is
-# enabled in-process, but cross-pod replication is NOT possible — keep
-# `service.replicas` at 1 until a shared DB lands.
-#
-# IMPORTANT: SQLite WAL + spool fsync are latency-sensitive. Use local/
-# host-path backed storage to avoid network I/O penalties (NFS, CephFS, or
-# cloud block storage can add 5-50ms per fsync, severely throttling
-# throughput).
+# A pre-existing ReadWriteOnce PVC mounted at `mountPath`. The gateway scheduler
+# never stores job state or payloads here; its spool is always under the
+# size-limited /tmp emptyDir.
 persistence:
   enabled: true
   # When `existingClaim` is set the chart will skip PVC creation and mount
@@ -736,10 +823,9 @@ ingress:
 # =============================================================================
 # HorizontalPodAutoscaler — standalone mode
 # =============================================================================
-# WARNING: While persistence is SQLite, scaling beyond 1 replica is unsafe
-# (PVC is RWO + single writer). Keep maxReplicas=1 until the shared DB
-# backend is in place. The template is included now so the scaffolding is
-# ready when that day comes.
+# Standalone job and scheduler state are process-local. Keep maxReplicas=1
+# unless an external coordination design is introduced. The template remains
+# available for future coordinated deployments.
 #
 # For split mode (`topology.mode: split`), HPA configuration lives under
 # `topology.realtime.hpa` and `topology.batch.hpa` instead — those pods
@@ -792,7 +878,9 @@ autoscaling:
       # External-metrics API names exposed by the adapter for our two
       # PromQL queries. These are what the HPA `metric.name` field
       # references; the adapter ConfigMap's `name.as` field has to match.
-      queueDepthRatioMetric: "nemo_retriever_pool_queue_depth_ratio_avg"
+      queueBacklogMetric: "nemo_retriever_gateway_work_queue_backlog"
+      # Deprecated for one release; when set, overrides queueBacklogMetric.
+      queueDepthRatioMetric: ""
       processingLatencyP95Metric: "nemo_retriever_pool_processing_duration_p95_seconds"
       # When `rules.create` is true the chart renders a ConfigMap with
       # the PromQL rules below; the operator wires their existing
@@ -809,21 +897,20 @@ autoscaling:
         latencyWindow: "2m"
 
 # =============================================================================
-# Prometheus integration (off by default in standalone, on by default
-# in split mode — see autoEnableInSplitMode below)
+# Prometheus integration (off by default; enable only when the cluster has
+# the ServiceMonitor CRD and Prometheus Operator)
 # =============================================================================
 # When `topology.mode: split` is active, queue-depth-driven autoscaling
 # needs the worker pods' `/metrics` endpoint to be scraped by Prometheus.
-# The `autoEnableInSplitMode: true` default below ensures the
-# ServiceMonitor is rendered automatically in that case, even when the
-# top-level `enabled` flag is left at its (legacy) `false`.
+# Stock `retriever-dev` clusters do not install the ServiceMonitor CRD, so
+# split mode does not render one unless an operator explicitly opts in.
 #
 # Operators on standalone (or operators who scrape via another route —
 # Prometheus Pushgateway, an external agent, OpenTelemetry, etc.) can
 # leave both flags false and no ServiceMonitor will be produced.
 serviceMonitor:
   enabled: false
-  autoEnableInSplitMode: true
+  autoEnableInSplitMode: false
   namespace: ""
   interval: 15s
   scrapeTimeout: 10s
@@ -861,7 +948,7 @@ nims:
 #
 # When auto-resolution is in effect, the chart populates
 # `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
-# (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
+# (e.g. http://nemotron-page-elements-v3:8000/v1/page-elements). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
 # NIMCache resources may carry `helm.sh/resource-policy: keep` so model
@@ -879,8 +966,11 @@ nimOperator:
     keepOnUninstall: true
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
+    # nemotron-object-detection was a short-lived single-NIM chart name; page_elements
+    # and table_structure now share that container image under their legacy names.
     pruneRetiredNimResources:
       - nemotron-ocr-v1
+      - nemotron-object-detection
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -942,15 +1032,16 @@ nimOperator:
     env:
       NIM_ENABLE_OTEL: "true"
       NIM_OTEL_TRACES_EXPORTER: "otlp"
-      NIM_OTEL_METRICS_EXPORTER: "console"
+      NIM_OTEL_METRICS_EXPORTER: "otlp"
       TRITON_OTEL_RATE: "1"
+      OTEL_METRIC_EXPORT_INTERVAL: "5000"
 
   # ---------------------------------------------------------------------------
   # Per-NIM defaults
   # ---------------------------------------------------------------------------
   # Two enablement tiers, matching the docs' "core vs optional" contract
   # (see docs/extraction/deployment-options.md "Core NIMs for the default
-  # extraction pipeline (26.05)"):
+  # extraction pipeline (26.08.1)"):
   #
   #   Core (enabled: true by default, auto-wired into the service config):
   #     - page_elements
@@ -974,26 +1065,30 @@ nimOperator:
   #   * `nimOperator.<key>.enabled: true` — per-NIM toggle below.
   #
   # The optional NIMs sit behind their per-NIM toggles to honor the
-  # "optional and disabled by default" contract in 26.05 — turning them
+  # "optional and disabled by default" contract in 26.08.1 — turning them
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.05)" for the
+  # See helm/README.md "Recommended minimal install (26.08.1)" for the
   # opt-in flags and "Image tag conventions" for what the
-  # ``1.7.0-variant`` Parse / Omni tags mean.
+  # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
 
-  # Page-elements detector (YOLOX-style). Used by the page-element extraction
-  # stage of the ingest pipeline.
+  # Page-element detector. Uses the combined nemotron-object-detection NIM image
+  # but keeps the legacy in-cluster Service name so the retriever pipeline's
+  # page_elements_invoke_url continues to resolve independently.
   page_elements:
     enabled: true
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1020,29 +1115,39 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CPU_THREADS_PRE_PROCESSOR
-        value: "2"
-      - name: NIM_TRITON_CPU_THREADS_POST_PROCESSOR
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
-      - name: OMP_NUM_THREADS
-        value: "2"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-page-elements-v3
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/page-elements
 
-  # Table structure detector. Used by the table extraction stage.
+  # Table structure detector. Uses the same nemotron-object-detection NIM image
+  # as page_elements but keeps the legacy Service name for table_structure_invoke_url.
   table_structure:
     enabled: true
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1069,18 +1174,24 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
         value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-table-structure-v1
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/table-structure
 
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
@@ -1089,11 +1200,14 @@ nimOperator:
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "1.4.0"
+      tag: "2.0.1"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1120,14 +1234,26 @@ nimOperator:
       endpoint: ""
       env: {}
     env:
-      - name: OMP_NUM_THREADS
-        value: "8"
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "1"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-ocr-v2
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/ocr
+      - name: NIM_ENGINE_MODEL_VARIANT
+        value: multilingual
 
   # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
   # the vectordb query path, and multimodal ingest.
@@ -1137,11 +1263,14 @@ nimOperator:
     nimServiceName: llama-nemotron-embed-vl-1b-v2
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "1.12.0"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1174,6 +1303,8 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
       # Optional: enable if your NIM build supports throughput mode for this SKU.
       # - name: NIM_TRITON_PERFORMANCE_MODE
       #   value: throughput
@@ -1207,9 +1338,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
       tag: "2.0.5"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     # Cache only the default BF16 2-GPU profile used by the Super-49B
@@ -1256,13 +1390,19 @@ nimOperator:
 
   # Llama Nemotron rerank VL 1B v2 — multimodal reranking NIM.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08.1 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md L21 and
   # docs/extraction/prerequisites-support-matrix.md L92 / L128). Opt in
   # only when the retrieval pipeline calls a reranker — enabling this NIM
-  # consumes one GPU and ~3.1 GiB of GPU memory at runtime.
+  # consumes one GPU and ~3.1 GiB of GPU memory at runtime. When enabled
+  # (and the NIM Operator CRDs are present), the chart auto-wires
+  # `nim_endpoints.rerank_invoke_url` / `rerank_model_name` into the
+  # rendered retriever-service ConfigMap so `/v1/query` with
+  # `rerank=true` reaches this NIM. Override via
+  # `serviceConfig.nimEndpoints.rerankInvokeUrl` /
+  # `rerankModelName` when pointing at an external ranking endpoint.
   #
-  # IMPORTANT — VL vs text-only: 26.05 documents the **VL** reranker
+  # IMPORTANT — VL vs text-only: 26.08.1 documents the **VL** reranker
   # (``llama-nemotron-rerank-vl-1b-v2``) as the supported NIM so the
   # ingest pipeline can score image + text passages together. The
   # text-only ``llama-nemotron-rerank-1b-v2`` is a different SKU that
@@ -1273,11 +1413,14 @@ nimOperator:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
-      tag: "1.11.0"
+      tag: "2.3.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1311,17 +1454,17 @@ nimOperator:
 
   # Nemotron Parse v1.2. Optional structured document parser.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08.1 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). Opt in only when
   # the pipeline runs `extract_method="nemotron_parse"`; enabling this
   # NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
   # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
   #
   # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
-  # NIM SKU shipped alongside the 26.05 release; the `-variant` suffix
+  # NIM SKU shipped alongside the 26.08.1 release; the `-variant` suffix
   # marks it as the build that ships with the per-GPU TensorRT engine
   # variants required by NIM Operator profile reconciliation, matching
-  # `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` and the row
+  # `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` and the row
   # for Nemotron Parse in
   # docs/extraction/prerequisites-support-matrix.md "Model hardware
   # requirements". Override to a different NGC tag only when validated
@@ -1332,9 +1475,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
       tag: "1.7.0-variant"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1369,7 +1515,7 @@ nimOperator:
   # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning VLM
   # used by the image-captioning stage.
   #
-  # Disabled by default per the 26.05 "optional and disabled by default"
+  # Disabled by default per the 26.08.1 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). This is the
   # canonical caption NIM — once enabled the chart auto-wires
   # `nim_endpoints.caption_invoke_url` + `caption_model_name` into the
@@ -1381,8 +1527,8 @@ nimOperator:
   # Operator from the model profile (override with `kubectl edit
   # nimservice` if necessary).
   #
-  # The default image tag (`1.7.0-variant`) is the Omni NIM SKU shipped
-  # alongside the 26.05 release; the `-variant` suffix marks it as the
+  # The default image tag (`2.0.4-variant`) is the Omni NIM SKU shipped
+  # alongside the 26.08.1 release; the `-variant` suffix marks it as the
   # build that ships with the per-GPU TensorRT engine variants required
   # by NIM Operator profile reconciliation, matching the row for the
   # Omni caption NIM in
@@ -1393,11 +1539,14 @@ nimOperator:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
-      tag: "1.7.0-variant"
+      tag: "2.0.4-variant"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}
@@ -1436,9 +1585,12 @@ nimOperator:
       repository: nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us
       tag: "1.5.0"
       pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
+      # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
+      # chart-wide pull secret name(s) for this NIM only.
+      pullSecrets: []
+    # Empty inherits ngcApiSecret.name. Non-empty REPLACES the chart-wide
+    # auth Secret name for this NIM only.
+    authSecret: ""
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     modelProfile: {}

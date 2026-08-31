@@ -6,21 +6,47 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.adt_vdb import (
+    CollectionWriteContext,
+    CollectionWriteResult,
+    VDB,
+)
+from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
 
 
-class FakeVDB(VDB):
+class _CollectionContractStub(VDB):
+    """Implement required collection methods that these operator tests do not exercise."""
+
+    def _unexpected_collection_operation(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("Unexpected collection operation")
+
+    create_collection = _unexpected_collection_operation
+    get_collection = _unexpected_collection_operation
+    list_collections = _unexpected_collection_operation
+    update_collection = _unexpected_collection_operation
+    delete_collection = _unexpected_collection_operation
+    get_document = _unexpected_collection_operation
+    list_documents = _unexpected_collection_operation
+    delete_document = _unexpected_collection_operation
+    write_collection = _unexpected_collection_operation
+    retrieve_collection = _unexpected_collection_operation
+
+
+class FakeVDB(_CollectionContractStub):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
         self.put_calls: list[tuple[Any, dict[str, Any]]] = []
+        self.write_collection_calls: list[tuple[Any, CollectionWriteContext]] = []
+        self.retrieve_collection_calls: list[tuple[Any, dict[str, Any]]] = []
 
     def create_index(self, **kwargs: Any) -> None:
         return None
@@ -53,6 +79,58 @@ class FakeVDB(VDB):
     def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
         self.put_calls.append((records, dict(kwargs)))
         return {"put": sum(len(b) for b in records)}
+
+    def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
+        self.write_collection_calls.append((records, context))
+        return CollectionWriteResult(written=sum(len(batch) for batch in records), total_rows=7)
+
+    def retrieve_collection(
+        self,
+        vectors: list,
+        *,
+        scope: str,
+        collection_name: str,
+        query_texts: list[str],
+        top_k: int,
+        **kwargs: Any,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        call_kwargs = {
+            "scope": scope,
+            "collection_name": collection_name,
+            "query_texts": query_texts,
+            "top_k": top_k,
+            **kwargs,
+        }
+        self.retrieve_collection_calls.append((vectors, call_kwargs))
+        return [
+            [
+                {
+                    "chunk_id": "chunk-1",
+                    "document_id": "document-1",
+                    "text": "retrieved chunk",
+                    "distance": 0.12,
+                    "filename": "doc-a.pdf",
+                    "page_number": 1,
+                    "content_type": "table",
+                    "source": "doc-a.pdf",
+                    "source_id": "doc-a.pdf",
+                    "stored_image_uri": "file:///tmp/page.png",
+                    "bbox": [0, 0, 1, 1],
+                    "metadata": {},
+                    "physical_table": "private-table",
+                    "lancedb_uri": "/private/vector-store",
+                }
+            ]
+        ], ["dense"]
+
+
+class InvalidCollectionVDB(FakeVDB):
+    def __init__(self, result: Any) -> None:
+        super().__init__()
+        self.result = result
+
+    def retrieve_collection(self, vectors: list, **kwargs: Any) -> Any:
+        return self.result
 
 
 def _graph_rows() -> list[dict[str, Any]]:
@@ -141,6 +219,204 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param({"text": "extracted chunk"}, id="text"),
+        pytest.param({"text": "", "_image_b64": "page-image"}, id="image"),
+    ],
+)
+def test_ingest_operator_rejects_uploadable_dataframe_without_embeddings(row: dict[str, Any]) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame([row])
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_rejects_unembedded_content_when_embedded_row_is_filtered() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {"text": "", "metadata": {"embedding": [0.1]}},
+            {"text": "extracted chunk"},
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="vdb_upload requires embedded records, but no embeddings were found",
+    ):
+        operator.process(data)
+    assert vdb.run_calls == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
+)
+def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
+    text: str,
+) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": text,
+            "document_type": "structured",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "_image_b64": "page-image",
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+            "metadata": {"content_metadata": {"type": "text", "fidelity": "verbatim"}},
+        }
+    ]
+
+    assert operator(data) is data
+
+    record = vdb.run_calls[0][0][0]
+    assert record["document_type"] == "image"
+    assert record["metadata"]["content"] == ""
+    assert record["metadata"]["embedding"] == [0.1] * 2048
+    assert record["metadata"]["content_metadata"] == {
+        "type": "image",
+        "page_number": 7,
+    }
+    assert record["metadata"]["source_metadata"] == {
+        "source_id": "/tmp/scanned.pdf",
+        "source_name": "scanned.pdf",
+    }
+
+
+@pytest.mark.parametrize(
+    "image_payload",
+    [
+        pytest.param(b"page-image", id="bytes"),
+        pytest.param(np.ones((2, 2), dtype=np.uint8), id="numpy"),
+    ],
+)
+def test_ingest_operator_rejects_noncanonical_image_payload_without_truthiness(
+    image_payload: Any,
+) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "_image_b64": image_payload,
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
+    assert vdb.run_calls == []
+
+
+@pytest.mark.parametrize("uri_field", ["_stored_image_uri", "stored_image_uri"])
+def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
+    uri_field: str,
+) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            uri_field: "file:///tmp/scanned-page-7.png",
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    assert operator(data) is data
+    record = vdb.run_calls[0][0][0]
+    assert record["document_type"] == "image"
+    assert record["metadata"]["content_metadata"] == {
+        "type": "image",
+        "page_number": 7,
+        "stored_image_uri": "file:///tmp/scanned-page-7.png",
+        "uploaded_image_uri": "file:///tmp/scanned-page-7.png",
+    }
+
+
+def test_ingest_operator_rejects_nonempty_batch_with_zero_uploadable_records() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "source_id": "/tmp/empty.pdf",
+            "page_number": 1,
+        }
+    ]
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"received 1 row\(s\), but none were uploadable; .*missing searchable text or image backing=1",
+    ):
+        operator(data)
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_reports_upstream_error_counts_without_payloads() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame(
+        [
+            {
+                "text": "",
+                "metadata": {
+                    "source_path": "/tmp/scanned.pdf",
+                    "error": {
+                        "stage": "ocr-nvapi-secret",
+                        "type": "CustomerDocumentText",
+                        "message": "private document content Authorization: Bearer token-secret",
+                    },
+                    "exception": "password=credential-secret",
+                    "traceback": "Traceback containing private customer text",
+                },
+            }
+        ]
+    )
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"reported 3 structured row error\(s\) \(error=1, exception=1, traceback=1\)",
+    ) as exc_info:
+        operator.process(data)
+    rendered = str(exc_info.value)
+    assert "payloads are omitted because they may contain sensitive data" in rendered
+    assert "nvapi-secret" not in rendered
+    assert "CustomerDocumentText" not in rendered
+    assert "private document content" not in rendered
+    assert "token-secret" not in rendered
+    assert "credential-secret" not in rendered
+    assert "private customer text" not in rendered
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_allows_genuinely_empty_dataframe() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = pd.DataFrame()
+
+    assert operator.process(data) is data
+    assert vdb.run_calls == []
+
+
 def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"collection_name": "docs", "model_name": "embedder"})
@@ -165,14 +441,36 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
             }
         ]
     ]
-    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+    assert vdb.retrieval_calls == [
+        (
+            [[0.1, 0.2]],
+            {"collection_name": "docs", "model_name": "embedder", "top_k": 3},
+        )
+    ]
+
+
+def test_retrieve_operator_reads_index_metadata_from_any_vdb() -> None:
+    class MetadataVDB(FakeVDB):
+        def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+            assert kwargs == {"collection_name": "docs"}
+            return {"embedding_model_name": "acme/embed", "retrieval_mode": "dense"}.get(key)
+
+    operator = RetrieveVdbOperator(vdb=MetadataVDB(), vdb_kwargs={"collection_name": "docs"})
+
+    assert operator.get_index_metadata("embedding_model_name") == "acme/embed"
+    assert operator.get_index_metadata("retrieval_mode") == "dense"
 
 
 def test_retrieve_operator_forwards_runtime_query_texts() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(
         vdb=vdb,
-        vdb_kwargs={"collection_name": "docs", "model_name": "embedder", "hybrid": True, "query_texts": ["stale"]},
+        vdb_kwargs={
+            "collection_name": "docs",
+            "model_name": "embedder",
+            "hybrid": True,
+            "query_texts": ["stale"],
+        },
     )
 
     operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
@@ -215,7 +513,12 @@ def test_retrieve_operator_does_not_forward_query_texts_for_dense_retrieval() ->
 
     operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
 
-    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"collection_name": "docs", "model_name": "embedder", "top_k": 3})]
+    assert vdb.retrieval_calls == [
+        (
+            [[0.1, 0.2]],
+            {"collection_name": "docs", "model_name": "embedder", "top_k": 3},
+        )
+    ]
 
 
 def test_constructor_requires_exactly_one_vdb_source() -> None:
@@ -231,7 +534,7 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class _StubPutVDB(VDB):
+class _StubPutVDB(_CollectionContractStub):
     """VDB subclass that intentionally does NOT override ``put``.
 
     Used to exercise the construction-time guard in
@@ -352,3 +655,130 @@ def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
     # Sidecar column merged in alongside the per-row ``page_number``.
     assert merged_content_meta["category"] == "legal"
     assert merged_content_meta["page_number"] == 7
+
+
+def test_ingest_operator_preserves_sidecar_kwargs_for_graph_reconstruction() -> None:
+    meta_df = pd.DataFrame({"source_id": ["/tmp/doc-a.pdf"], "category": ["legal"]})
+    operator = IngestVdbOperator(
+        vdb=FakeVDB(),
+        vdb_kwargs={
+            "meta_dataframe": meta_df,
+            "meta_source_field": "source_id",
+            "meta_fields": ["category"],
+        },
+    )
+
+    reconstructed_kwargs = operator.get_constructor_kwargs()["vdb_kwargs"]
+
+    assert reconstructed_kwargs["meta_dataframe"] is meta_df
+    assert reconstructed_kwargs["meta_source_field"] == "source_id"
+    assert reconstructed_kwargs["meta_fields"] == ["category"]
+
+
+def test_ingest_operator_preserves_canonical_batches_for_collection_write() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.1, 0.2],
+                    "content": "canonical chunk",
+                    "content_metadata": {"page_number": 9},
+                    "source_metadata": {"source_id": "/tmp/canonical.pdf"},
+                },
+            }
+        ]
+    ]
+    context = CollectionWriteContext(
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        document_version="version-1",
+        content_sha256="a" * 64,
+        filename="canonical.pdf",
+        job_id="job-1",
+        operation="replace",
+    )
+
+    result = operator.process(records, collection_context=context)
+
+    assert result == CollectionWriteResult(written=1, total_rows=7)
+    assert vdb.write_collection_calls == [(records, context)]
+    assert vdb.write_collection_calls[0][0] is records
+    assert vdb.run_calls == []
+
+
+def test_ingest_operator_rejects_empty_collection_write() -> None:
+    operator = IngestVdbOperator(vdb=FakeVDB())
+    context = CollectionWriteContext(
+        scope="tenant-a",
+        collection_name="papers",
+        document_id="document-1",
+        document_version="version-1",
+        content_sha256="a" * 64,
+        filename="empty.pdf",
+    )
+
+    with pytest.raises(ValueError, match="at least one canonical VDB record"):
+        operator.process([], collection_context=context)
+
+
+def test_retrieve_operator_dispatches_explicit_collection_context() -> None:
+    vdb = FakeVDB()
+    operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"model_name": "embedder"})
+
+    hits, strategies = operator.process(
+        [[0.1, 0.2]],
+        scope="tenant-a",
+        collection_name="papers",
+        top_k=3,
+        query_texts=["current"],
+    )
+
+    assert strategies == ["dense"]
+    assert hits[0][0]["text"] == "retrieved chunk"
+    assert "physical_table" not in hits[0][0]
+    assert "lancedb_uri" not in hits[0][0]
+    assert vdb.retrieve_collection_calls == [
+        (
+            [[0.1, 0.2]],
+            {
+                "scope": "tenant-a",
+                "collection_name": "papers",
+                "query_texts": ["current"],
+                "top_k": 3,
+                "model_name": "embedder",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        ([], ["dense"]),
+        ([[42]], ["dense"]),
+        ([[{"text": "missing collection identity"}]], ["dense"]),
+        ([[{"chunk_id": "chunk-1"}]], []),
+    ],
+)
+def test_retrieve_operator_rejects_malformed_collection_results(result: Any) -> None:
+    operator = RetrieveVdbOperator(vdb=InvalidCollectionVDB(result))
+
+    with pytest.raises(RetrievalContractError):
+        operator.process(
+            [[0.1, 0.2]],
+            scope="tenant-a",
+            collection_name="papers",
+            query_texts=["query"],
+        )
+
+
+def test_retrieve_operator_rejects_partial_collection_context() -> None:
+    operator = RetrieveVdbOperator(vdb=FakeVDB())
+
+    with pytest.raises(ValueError, match="both scope and collection_name"):
+        operator.process([[0.1, 0.2]], scope="tenant-a")

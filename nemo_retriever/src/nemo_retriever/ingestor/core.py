@@ -16,7 +16,7 @@ Concrete implementations are provided by runmodes:
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.common.params import DedupParams
@@ -102,9 +102,20 @@ class ingestor:
             f"{self.__class__.__name__}.{method_name}() is not implemented yet " f"(run_mode={self.RUN_MODE})."
         )
 
+    def _validate_input_sources(self, inline_texts: Sequence[str] | None) -> None:
+        if self._documents or self._buffers or inline_texts:
+            return
+        raise ValueError(
+            "No input sources configured. Call files(), texts(), or buffers() with at least one source before ingest()."
+        )
+
     def files(self, documents: Union[str, List[str]]) -> "ingestor":
         """Add document paths/URIs for processing."""
         self._not_implemented("files")
+
+    def texts(self, texts: Union[str, Sequence[str]]) -> Self:
+        """Set raw inline text documents for processing."""
+        self._not_implemented("texts")
 
     def buffers(self, buffers: Union[Tuple[str, BytesIO], List[Tuple[str, BytesIO]]]) -> "ingestor":
         """Add in-memory buffers for processing."""

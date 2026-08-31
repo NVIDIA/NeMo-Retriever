@@ -12,7 +12,18 @@ from nemo_retriever.harness.benchmark_specs import BenchmarkSpec, DatasetSpec, R
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
+VIDORE_V3_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 DEFAULT_TABLE_NAME = "nemo-retriever"
+VIDORE_V3_PUBLIC_DATASETS: dict[str, str] = {
+    "vidore_v3_computer_science": "computer science",
+    "vidore_v3_energy": "energy",
+    "vidore_v3_finance_en": "English finance",
+    "vidore_v3_finance_fr": "French finance",
+    "vidore_v3_hr": "human resources",
+    "vidore_v3_industrial": "industrial",
+    "vidore_v3_pharmaceuticals": "pharmaceuticals",
+    "vidore_v3_physics": "physics",
+}
 DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
     "files",
     "pages",
@@ -30,6 +41,18 @@ DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
 
 def _data_path(name: str) -> str:
     return str(Path("data") / name)
+
+
+def _vidore_v3_dataset(name: str, domain: str) -> DatasetSpec:
+    return DatasetSpec(
+        name=name,
+        path=f"/datasets/nv-ingest/vidore_v3/{name}",
+        query_file=None,
+        input_type="pdf",
+        beir_loader="vidore_hf",
+        beir_doc_id_field="pdf_page",
+        description=f"ViDoRe v3 {domain} benchmark slice.",
+    )
 
 
 DATASETS: dict[str, DatasetSpec] = {
@@ -85,15 +108,7 @@ DATASETS: dict[str, DatasetSpec] = {
         beir_doc_id_field="pdf_page",
         description="Earnings consulting multimodal benchmark corpus.",
     ),
-    "vidore_v3_finance_en": DatasetSpec(
-        name="vidore_v3_finance_en",
-        path="/datasets/nv-ingest/vidore_v3/vidore_v3_finance_en",
-        query_file=None,
-        input_type="pdf",
-        beir_loader="vidore_hf",
-        beir_doc_id_field="pdf_page",
-        description="ViDoRe v3 English finance benchmark slice.",
-    ),
+    **{name: _vidore_v3_dataset(name, domain) for name, domain in VIDORE_V3_PUBLIC_DATASETS.items()},
 }
 
 
@@ -117,14 +132,14 @@ def _base_ingest(*, profile: str = "auto") -> dict[str, Any]:
     }
 
 
-def _base_query(*, top_k: int = 10) -> dict[str, Any]:
+def _base_query(*, top_k: int = 10, embed_model_name: str = DEFAULT_EMBED_MODEL) -> dict[str, Any]:
     return {
         "top_k": top_k,
         "candidate_k": None,
         "page_dedup": False,
         "content_types": None,
         "retrieval_mode": "auto",
-        "embed_model_name": DEFAULT_EMBED_MODEL,
+        "embed_model_name": embed_model_name,
         "embed_invoke_url": None,
         "rerank": False,
         "reranker_invoke_url": None,
@@ -143,6 +158,39 @@ def _beir_eval(dataset: DatasetSpec) -> dict[str, Any]:
         "doc_id_field": dataset.beir_doc_id_field,
         "ks": dataset.beir_ks,
     }
+
+
+def _vidore_v3_ingest() -> dict[str, Any]:
+    ingest = _base_ingest(profile="auto")
+    ingest["extract"] = {
+        "extract_infographics": True,
+        "extract_page_as_image": True,
+    }
+    ingest["embed"] = {
+        "embed_model_name": VIDORE_V3_EMBED_MODEL,
+        "embed_modality": "text_image",
+        "embed_granularity": "page",
+    }
+    return ingest
+
+
+def _vidore_v3_benchmark(dataset_name: str) -> BenchmarkSpec:
+    dataset = DATASETS[dataset_name]
+    domain = VIDORE_V3_PUBLIC_DATASETS[dataset_name]
+    domain_tags = ("finance",) if "finance" in domain.lower() else ()
+    return BenchmarkSpec(
+        name=f"{dataset_name}_beir",
+        dataset=dataset_name,
+        ingest=_vidore_v3_ingest(),
+        query=_base_query(top_k=10, embed_model_name=VIDORE_V3_EMBED_MODEL),
+        evaluation={
+            **_beir_eval(dataset),
+            "dataset_name": dataset_name,
+        },
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "vidore", *domain_tags, "pdf"),
+        description=f"ViDoRe v3 {domain} BEIR retrieval benchmark.",
+    )
 
 
 BENCHMARKS: dict[str, BenchmarkSpec] = {
@@ -196,19 +244,7 @@ BENCHMARKS: dict[str, BenchmarkSpec] = {
         tags=("beir", "earnings", "pdf"),
         description="Earnings consulting end-to-end BEIR retrieval benchmark.",
     ),
-    "vidore_v3_finance_en_beir": BenchmarkSpec(
-        name="vidore_v3_finance_en_beir",
-        dataset="vidore_v3_finance_en",
-        ingest=_base_ingest(profile="auto"),
-        query=_base_query(top_k=10),
-        evaluation={
-            **_beir_eval(DATASETS["vidore_v3_finance_en"]),
-            "dataset_name": "vidore_v3_finance_en",
-        },
-        summary_keys=DEFAULT_SUMMARY_KEYS,
-        tags=("beir", "vidore", "finance", "pdf"),
-        description="ViDoRe v3 English finance BEIR retrieval benchmark.",
-    ),
+    **{f"{dataset_name}_beir": _vidore_v3_benchmark(dataset_name) for dataset_name in VIDORE_V3_PUBLIC_DATASETS},
     "bo10k_beir_fast_text": BenchmarkSpec(
         name="bo10k_beir_fast_text",
         dataset="bo10k",
@@ -237,7 +273,13 @@ RUNSETS: dict[str, RunSet] = {
         runs=("jp20_smoke", "jp20_beir"),
         tags=("jp20", "core"),
         description="Small jp20 smoke plus BEIR validation set.",
-    )
+    ),
+    "vidore_v3_all": RunSet(
+        name="vidore_v3_all",
+        runs=tuple(f"{dataset_name}_beir" for dataset_name in VIDORE_V3_PUBLIC_DATASETS),
+        tags=("vidore", "beir", "all"),
+        description="All eight public ViDoRe v3 BEIR retrieval benchmarks.",
+    ),
 }
 
 
