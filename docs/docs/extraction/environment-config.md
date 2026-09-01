@@ -64,7 +64,8 @@ serviceConfig:
 ```
 
 Setting `INGEST_LOG_LEVEL` in the process environment or in Helm `service.env` does not change `logging.level`.
-That variable remains only in legacy example launch scripts, which the current service image and Helm deployment do not use.
+That variable remains in the `examples/launch_libmode_*.py` scripts, the legacy `docker/scripts/entrypoint.sh` service entrypoint, and `.devcontainer/devcontainer.json`.
+The current service image and Helm deployment do not use those paths.
 
 For Ray worker logging, refer to [Configure Ray Logging](ray-logging.md).
 
