@@ -14,9 +14,9 @@ The sections below describe how to configure your machine and Git remotes so you
 
 2. **Add the public key to GitHub** using [Adding a new SSH key to your GitHub account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
 
-### Developer Certificate of Origin (DCO) sign-off
+### Developer Certificate of Origin sign-off
 
-The repository requires a Developer Certificate of Origin (DCO) sign-off on every contributed commit. Sign-off is not the same as GPG commit signing. The `-s` / `--signoff` option adds a `Signed-off-by` trailer. The `-S` / `--gpg-sign` option attaches a cryptographic signature. A valid GPG signature does not add a DCO trailer.
+The repository requires a Developer Certificate of Origin (DCO) sign-off on every contributed commit. Sign-off is not the same as GPG commit signing. The `-s` or `--signoff` option adds a `Signed-off-by` trailer. The `-S` or `--gpg-sign` option attaches a cryptographic signature. A valid GPG signature does not add a DCO trailer.
 
 For the full DCO policy, refer to [Developer Certificate of Origin (DCO)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/CONTRIBUTING.md#developer-certificate-of-origin-dco) in the repository contributing guide.
 
@@ -52,7 +52,7 @@ GPG commit signing is optional unless your organization requires it. Configure i
     git config --global commit.gpgsign true
     ```
 
-4. **Optional. Sign a single commit with GPG, and include DCO sign-off:**
+4. **Optional: Sign a single commit with GPG, and include DCO sign-off:**
 
     ```bash
     git commit --signoff -S -m "your message"
@@ -64,7 +64,7 @@ GPG commit signing is optional unless your organization requires it. Configure i
     git commit --signoff --gpg-sign -m "your message"
     ```
 
-5. **Optional. Skip GPG signing for one commit. Still include DCO sign-off:**
+5. **Optional: Skip GPG signing for one commit. Still include DCO sign-off:**
 
     ```bash
     git commit --signoff --no-gpg-sign -m "Unsigned commit"
