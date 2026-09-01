@@ -7,8 +7,9 @@ managed = true
 package = true
 no-build-package = ["nemotron-ocr"]
 # The complete dependency graph, including `local`, must resolve on both Linux
-# architectures. Windows x64 and macOS x64/ARM64 support only the base install
-# and are validated separately by CI.
+# architectures. Windows x64 and macOS Apple Silicon (arm64) support only the
+# base install and are validated separately by CI. macOS Intel (x86_64) is not
+# supported.
 required-environments = [
   "sys_platform == 'linux' and platform_machine == 'x86_64'",
   "sys_platform == 'linux' and platform_machine == 'aarch64'",
@@ -50,7 +51,11 @@ license-files = ["LICENSE"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
-  "Operating System :: OS Independent",
+  # Not OS Independent: macOS Intel (x86_64) is unsupported because Ray >=2.56.1
+  # has no Intel Mac wheels. Supported: Linux, Windows x64, macOS Apple Silicon.
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
 ]
 dependencies = [
   # Core orchestration and framework
