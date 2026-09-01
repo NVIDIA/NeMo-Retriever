@@ -231,6 +231,7 @@ test_results/
 sweep_results/
 artifacts/
 nemo_retriever/artifacts/
+agentic-traces/
 
 # Ignore cursor rules
 .cursor
