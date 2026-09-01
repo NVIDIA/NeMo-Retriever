@@ -14,7 +14,29 @@ The sections below describe how to configure your machine and Git remotes so you
 
 2. **Add the public key to GitHub** using [Adding a new SSH key to your GitHub account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
 
+### Developer Certificate of Origin (DCO) sign-off
+
+The repository requires a Developer Certificate of Origin (DCO) sign-off on every contributed commit. Sign-off is not the same as GPG commit signing. The `-s` / `--signoff` option adds a `Signed-off-by` trailer. The `-S` / `--gpg-sign` option attaches a cryptographic signature. A valid GPG signature does not add a DCO trailer.
+
+For the full DCO policy, refer to [Developer Certificate of Origin (DCO)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/CONTRIBUTING.md#developer-certificate-of-origin-dco) in the repository contributing guide.
+
+To sign off a commit, include `--signoff` (or `-s`) when you create the commit:
+
+```bash
+git commit --signoff -m "your message"
+```
+
+Git appends a trailer that matches your `user.name` and `user.email` configuration:
+
+```text
+Signed-off-by: Your Name <your@email.com>
+```
+
+Use `--signoff` on every commit that you contribute, including GPG-signed commits and commits that skip GPG signing.
+
 ### Commit signing for GitHub (one time for each computer)
+
+GPG commit signing is optional unless your organization requires it. Configure it independently of DCO sign-off.
 
 1. **Create a GPG key** following [Generating a new GPG key](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key).
 
@@ -24,29 +46,31 @@ The sections below describe how to configure your machine and Git remotes so you
     git config --global user.signingkey YOUR_KEY_ID
     ```
 
-3. **Sign every commit by default (recommended if your org requires signed commits):**
+3. **Sign every commit by default (recommended if your organization requires signed commits):**
 
     ```bash
     git config --global commit.gpgsign true
     ```
 
-4. **Optional — sign a single commit:**
+4. **Optional. Sign a single commit with GPG, and include DCO sign-off:**
 
     ```bash
-    git commit -S -m "your message"
+    git commit --signoff -S -m "your message"
     ```
 
     or
 
     ```bash
-    git commit --gpg-sign -m "your message"
+    git commit --signoff --gpg-sign -m "your message"
     ```
 
-5. **Optional — skip signing for one commit:**
+5. **Optional. Skip GPG signing for one commit. Still include DCO sign-off:**
 
     ```bash
-    git commit --no-gpg-sign -m "Unsigned commit"
+    git commit --signoff --no-gpg-sign -m "Unsigned commit"
     ```
+
+    The `--no-gpg-sign` option skips the GPG signature only. It does not skip the required DCO `--signoff`.
 
 ---
 
