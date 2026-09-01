@@ -69,6 +69,7 @@ The following options apply only with `--agentic`. For the full flag list, refer
 | `--agentic-local-tensor-parallel-size` | `1` | vLLM `tensor_parallel_size` for the in-process agent LLM. Set to `2` for local `super-49b`. Ignored when `--agentic-invoke-url` is set. |
 | `--agentic-react-max-steps` | `50` | Maximum ReAct loop iterations. |
 | `--agentic-reasoning-effort` | `high` | Forwarded on OpenAI-compatible agent LLM calls. Ignored by the local adapter. |
+| `--include-usage` | off | Print an object with `hits` and provider-reported LLM `usage` instead of the default hits list. |
 
 Embedding credentials use `NVIDIA_API_KEY` or `NGC_API_KEY` when you call a remote embedding endpoint. The CLI also reuses `--embed-invoke-url`, `--top-k`, `--lancedb-uri`, and `--table-name` from standard retrieval.
 
@@ -221,6 +222,12 @@ The `ingest_documents` MCP tool accepts either paths visible to the MCP server p
 
 ## Result contract { #result-contract }
 
+Every agentic Retriever run writes a lightweight Agent Trajectory Interchange
+Format (ATIF) JSON trajectory under `./agentic-traces` by default. The
+trajectory bounds observation content to keep the file lightweight. These
+traces are not added to HTTP responses. If a trace cannot be persisted,
+retrieval continues and emits a warning.
+
 One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents. Each selected document is rehydrated from the retrieval hop that returned it. CLI and service output then use different JSON shapes.
 
 CLI `retriever query` without `--agentic` projects each hit to five fields: `modality`, `page_number`, `score`, `source`, and `text`. CLI `retriever query --agentic` does not use that projection. It prints the internal hit dictionary plus these ranking annotations:
@@ -233,7 +240,43 @@ CLI `retriever query` without `--agentic` projects each hit to five fields: `mod
 
 When the agent names a document that no retrieval hop returned, the CLI object contains only `doc_id`, `rank`, and `result_source`. Classic hit keys are absent, not present with null values.
 
-Service `POST /v1/query` with `agentic=true` maps those ranked hits onto the classic hits envelope. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"`. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
+CLI `retriever query --agentic` keeps its default output as a JSON list of those
+hits. Add `--include-usage` to return a JSON object that contains `hits` and
+provider-reported LLM `usage`:
+
+```bash
+retriever query "find documents about parser behavior" \
+  --agentic \
+  --include-usage
+```
+
+```json
+{
+  "hits": [
+    {
+      "doc_id": "parser-guide",
+      "rank": 1,
+      "result_source": "final_results"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1250,
+    "output_tokens": 184,
+    "total_tokens": 1434
+  }
+}
+```
+
+The `usage` object reports the exact token counts returned by the LLM provider.
+It contains `input_tokens`, `output_tokens`, and `total_tokens`. When available,
+`stages` preserves the provider-reported breakdown for the ReAct and
+final-selection calls. When a provider reports uncached, cache-creation, and
+cache-read input separately, `input_tokens` includes all three counters. If the
+provider does not report usage, the response sets `usage` to `null`.
+`--include-usage` applies only to agentic queries. Classic `retriever query`
+output is unchanged.
+
+Service `POST /v1/query` with `agentic=true` maps those ranked hits onto the classic hits envelope and can include the same optional `usage` object at the response root. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"` and does not add usage metadata. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
 
 When no retrieval hop captured the document, the service envelope fills these classic fields with null: `text`, `source_id`, `path`, `page_number`, `pdf_basename`, and `pdf_page`. `source` falls back to `doc_id`. That null-key behavior applies to service and MCP hits only, not to CLI `--agentic` output.
 
