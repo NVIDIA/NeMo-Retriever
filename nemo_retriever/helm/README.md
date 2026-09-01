@@ -771,6 +771,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | Path                                              | Default | Notes |
 |---------------------------------------------------|---------|-------|
 | `serviceConfig.server.port`                       | `7670`  | Retriever service container listener port. Refer to [Service networking](#service-networking). |
+| `serviceConfig.logging.level`                     | `INFO`  | Retriever service log verbosity, rendered as `logging.level` in the ConfigMap. Typical values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`. Setting `INGEST_LOG_LEVEL` in `service.env` does not change this field. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
@@ -1851,16 +1852,34 @@ topology:
   batch:    { hpa: { enabled: false } }
 ```
 
-Then apply your own `ScaledObject` — example for the realtime pool:
+Then apply your own `ScaledObject` for the realtime pool.
+`spec.scaleTargetRef.name` must match the rendered realtime Deployment
+in the same namespace. For the documented quickstart release `retriever`,
+that Deployment is `retriever-nemo-retriever-realtime`. The chart names
+that Deployment from the Helm fullname plus the `-realtime` suffix, so a
+different release produces a different name. Discover the rendered name
+with the `app.kubernetes.io/instance` and `app.kubernetes.io/component`
+labels:
+
+```bash
+kubectl get deploy \
+  -l app.kubernetes.io/instance=retriever,app.kubernetes.io/component=realtime \
+  -o jsonpath='{.items[0].metadata.name}{"\n"}'
+```
+
+Replace `retriever` in the label selector with your Helm release name.
+Repeat the same pattern for the batch pool with
+`app.kubernetes.io/component=batch`. The following example uses the
+documented quickstart realtime Deployment:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: nemo-retriever-realtime
+  name: retriever-nemo-retriever-realtime
 spec:
   scaleTargetRef:
-    name: nemo-retriever-realtime
+    name: retriever-nemo-retriever-realtime
   minReplicaCount: 2
   maxReplicaCount: 8
   cooldownPeriod: 300
