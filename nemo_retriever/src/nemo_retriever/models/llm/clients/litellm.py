@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any, Optional
 
 from nemo_retriever.common.params.models import (
@@ -27,6 +28,7 @@ from nemo_retriever.models.llm.tasks.rag_answer import (
     _build_rag_prompt as _task_build_rag_prompt,
     _deep_merge_dicts,
 )
+from nemo_retriever.models.llm.text_utils import ThinkTagStreamFilter
 from nemo_retriever.models.llm.types import (
     GenerationResult,
     UnsupportedTextResponseError,
@@ -129,16 +131,15 @@ class LiteLLMClient:
         )
         return cls(transport=transport, sampling=sampling)
 
-    def complete(
+    def _build_call_kwargs(
         self,
         messages: list[dict],
         max_tokens: Optional[int] = None,
         extra_params: Optional[dict[str, Any]] = None,
-    ) -> tuple[str, float]:
-        """Raw litellm completion call. Returns (content_text, latency_s)."""
+    ) -> dict[str, Any]:
+        """Build provider-neutral kwargs shared by sync and streaming completion."""
         validate_llm_extra_params(self.transport.extra_params, source="LLMRemoteClientParams.extra_params")
         validate_llm_extra_params(extra_params, source="GenerationRequest.extra_params")
-        import litellm
 
         sampling_kwargs = self.sampling.to_sampling_kwargs()
         if max_tokens is not None:
@@ -160,6 +161,39 @@ class LiteLLMClient:
             if resolved_api_key:
                 call_kwargs["api_key"] = resolved_api_key
         call_kwargs.update(_deep_merge_dicts(self.transport.extra_params, extra_params or {}))
+        return call_kwargs
+
+    @staticmethod
+    def _delta_from_stream_chunk(chunk: object) -> str | None:
+        """Extract a text delta from one LiteLLM/OpenAI-compatible stream chunk."""
+        choices = _field(chunk, "choices")
+        if not isinstance(choices, (list, tuple)) or not choices:
+            return None
+        choice = choices[0]
+        delta = _field(choice, "delta")
+        if delta is None:
+            message = _field(choice, "message")
+            if message is not None:
+                delta = message
+        if delta is None:
+            return None
+        content = _field(delta, "content")
+        if content is None:
+            return None
+        if not isinstance(content, str) or not content:
+            return None
+        return content
+
+    def complete(
+        self,
+        messages: list[dict],
+        max_tokens: Optional[int] = None,
+        extra_params: Optional[dict[str, Any]] = None,
+    ) -> tuple[str, float]:
+        """Raw litellm completion call. Returns (content_text, latency_s)."""
+        import litellm
+
+        call_kwargs = self._build_call_kwargs(messages, max_tokens, extra_params)
 
         t0 = time.monotonic()
         try:
@@ -200,6 +234,110 @@ class LiteLLMClient:
             raise UnsupportedTextResponseError("provider response content must be plain text")
         content = content.strip()
         return content, latency
+
+    async def stream_complete(
+        self,
+        messages: list[dict],
+        max_tokens: Optional[int] = None,
+        extra_params: Optional[dict[str, Any]] = None,
+    ) -> AsyncIterator[str]:
+        """Yield raw text deltas from ``litellm.acompletion(..., stream=True)``."""
+        import litellm
+
+        call_kwargs = self._build_call_kwargs(messages, max_tokens, extra_params)
+        call_kwargs["stream"] = True
+
+        try:
+            response = await litellm.acompletion(**call_kwargs)
+        except Exception as exc:
+            err = str(exc)
+            if "temperature" in err and "top_p" in err:
+                logger.error(
+                    "Model %s rejected the request because both `temperature` "
+                    "and `top_p` were specified. Some providers (e.g. Bedrock) "
+                    "only accept one. Either remove `top_p` from the model "
+                    "config or set `temperature` to null. Sent: "
+                    "temperature=%s, top_p=%s",
+                    self.transport.model,
+                    call_kwargs.get("temperature"),
+                    call_kwargs.get("top_p"),
+                )
+            raise
+
+        async for chunk in response:
+            delta = self._delta_from_stream_chunk(chunk)
+            if delta is not None:
+                yield delta
+
+    async def stream_generate(
+        self,
+        query: str,
+        chunks: list[str],
+        *,
+        reasoning_enabled: Optional[bool] = None,
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        """Stream visible RAG answer tokens and final generation metadata.
+
+        Yields ``("token", {"delta": str, "index": int})`` events followed by
+        ``("complete", {"answer": str, "latency_s": float, "model": str, "error": str | None})``.
+        """
+        effective_reasoning_enabled = (
+            self.transport.reasoning_enabled if reasoning_enabled is None else reasoning_enabled
+        )
+        task = RagAnswerTask(
+            system_prompt=self.transport.rag_system_prompt,
+            system_prompt_prefix=self.transport.rag_system_prompt_prefix,
+            reasoning_enabled=effective_reasoning_enabled,
+        )
+        request = task.build_request(
+            query=query,
+            chunks=chunks,
+            reasoning_enabled=reasoning_enabled,
+        )
+        think_filter = ThinkTagStreamFilter() if effective_reasoning_enabled is not False else None
+
+        t0 = time.monotonic()
+        ttft_s: float | None = None
+        raw_parts: list[str] = []
+        token_index = 0
+
+        try:
+            async for delta in self.stream_complete(
+                request.messages,
+                max_tokens=request.max_tokens,
+                extra_params=request.extra_params,
+            ):
+                raw_parts.append(delta)
+                visible_deltas = [delta] if think_filter is None else think_filter.feed(delta)
+                for visible in visible_deltas:
+                    if ttft_s is None:
+                        ttft_s = time.monotonic() - t0
+                        yield "metrics", {"ttft_s": ttft_s}
+                    yield "token", {"delta": visible, "index": token_index}
+                    token_index += 1
+        except Exception as exc:
+            yield "complete", {
+                "answer": "",
+                "latency_s": time.monotonic() - t0,
+                "model": self.model,
+                "error": str(exc),
+                "ttft_s": ttft_s,
+            }
+            return
+
+        raw_text = "".join(raw_parts)
+        parsed = task.parse(raw_text)
+        latency_s = time.monotonic() - t0
+        error = None if parsed else task.empty_output_error
+        if ttft_s is not None:
+            yield "metrics", {"ttft_s": ttft_s, "generation_latency_s": latency_s}
+        yield "complete", {
+            "answer": parsed,
+            "latency_s": latency_s,
+            "model": self.model,
+            "error": error,
+            "ttft_s": ttft_s,
+        }
 
     def generate(
         self,
