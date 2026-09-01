@@ -2001,7 +2001,7 @@ In this section, replace `<release>` with the name you passed to
 `helm install`. The default Service names are `<release>-nemo-retriever`,
 `<release>-nemo-retriever-zipkin`, and `<release>-nemo-retriever-otel`.
 If your release name already contains `nemo-retriever`, or if you set
-`fullnameOverride`, copy the Service names from `kubectl get svc`
+`nameOverride` or `fullnameOverride`, copy the Service names from `kubectl get svc`
 instead. Open a job and read the Zipkin lookup key from either
 the JSON body or the `x-trace-id` response header:
 
