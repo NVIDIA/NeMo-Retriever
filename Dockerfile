@@ -87,10 +87,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
     && pip install --no-cache-dir openai
 
+# The keyring package pins the apt source to the repo directory it came from, so
+# it must match the build architecture. Server-class ARM uses "sbsa"; the
+# "arm64" repo is Jetson/Tegra only and has no cuda-toolkit-13-0.
 RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && case "$(dpkg --print-architecture)" in \
+         amd64) CUDA_REPO_ARCH=x86_64 ;; \
+         arm64) CUDA_REPO_ARCH=sbsa ;; \
+         *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+       esac \
+    && wget "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${CUDA_REPO_ARCH}/cuda-keyring_1.1-1_all.deb" \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm -f cuda-keyring_1.1-1_all.deb \
     && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
 
 WORKDIR /workspace
