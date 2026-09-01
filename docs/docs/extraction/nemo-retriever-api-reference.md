@@ -362,7 +362,7 @@ Service-only methods include `split()`, `pdf_split_config()`, `save_to_disk()`, 
 
 `Retriever.answer()` requires an `LLMClient` and returns `AnswerResult`. Pass an `AnswerJudge` only when you also pass `reference`. Those types are documented in [LLM clients, tasks, and results](#llm-clients-tasks-and-results).
 
-`Retriever.pipeline()` returns `RetrieverPipelineBuilder`. `generate()` accepts a `LiteLLMClient` instance or `model=` keyword arguments. `judge()` accepts an `LLMJudge` instance or `model=` keyword arguments.
+`Retriever.pipeline()` returns `RetrieverPipelineBuilder`. `generate()` accepts a `LiteLLMClient` instance or `model=` keyword arguments. `judge()` accepts an `LLMJudge` instance or `model=` keyword arguments. When you include both `.judge()` and `.score()`, call `.judge()` first. `.score()` derives `failure_mode` from the `judge_score` present at that step. A later `.judge()` does not recompute `failure_mode`.
 
 The package exports `nemo_retriever.retriever` as a default `Retriever()` instance. Construct `Retriever` directly when you need a configured object.
 
