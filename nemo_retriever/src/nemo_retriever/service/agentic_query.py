@@ -15,9 +15,9 @@ from nemo_retriever.query.options import (
     QueryRetrievalOptions,
     QueryStorageOptions,
 )
-from nemo_retriever.query.workflow import agentic_query_documents
+from nemo_retriever.query.workflow import agentic_query_documents_with_metadata
 from nemo_retriever.service.config import AgenticConfig
-from nemo_retriever.service.query_schema import QueryResponse, QueryResult
+from nemo_retriever.service.query_schema import AgenticQueryResponse, QueryResult
 
 
 #: Annotations the agentic workflow layers on top of the classic hit fields.
@@ -140,8 +140,8 @@ def run_agentic_query(
     embed_model: str,
     embed_model_provider_prefix: str | None,
     embed_api_key: str,
-) -> QueryResponse:
-    """Execute one agentic retrieval query and return ``QueryResponse`` hits."""
+) -> AgenticQueryResponse:
+    """Execute one agentic retrieval query and return hits plus LLM usage."""
     query_request = build_agentic_query_request(
         query=query,
         top_k=top_k,
@@ -153,8 +153,9 @@ def run_agentic_query(
         embed_model_provider_prefix=embed_model_provider_prefix,
         embed_api_key=embed_api_key,
     )
-    ranked = agentic_query_documents(query_request)
-    return QueryResponse(
-        results=[QueryResult(hits=agentic_ranked_to_hits(ranked))],
+    result = agentic_query_documents_with_metadata(query_request)
+    return AgenticQueryResponse(
+        results=[QueryResult(hits=agentic_ranked_to_hits(result.hits))],
         query_mode="agentic",
+        usage=result.usage or None,
     )

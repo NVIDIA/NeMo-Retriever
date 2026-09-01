@@ -218,6 +218,75 @@ def sum_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Dict[str
     return total
 
 
+def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """Return stable token totals plus the exact provider stage breakdown.
+
+    Usage schemas use both ``prompt_tokens`` / ``completion_tokens`` and
+    ``input_tokens`` / ``output_tokens`` names. Values are copied from the
+    provider aggregate. Separately reported cache-write and cache-read input
+    counters are included in the input total. ``total_tokens`` is only filled
+    by exact addition when both component totals are present.
+    """
+    if not usage_by_stage:
+        return {}
+
+    stages = deepcopy(dict(usage_by_stage))
+
+    def _integer(usage: Mapping[str, Any], *keys: str) -> Optional[int]:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                return int(value)
+        return None
+
+    def _token_count(
+        usage: Mapping[str, Any],
+        aliases: tuple[str, ...],
+        *,
+        additive_keys: tuple[str, ...] = (),
+    ) -> Optional[int]:
+        value = _integer(usage, *aliases)
+        additions = [_integer(usage, key) for key in additive_keys]
+        if not any(addition is not None for addition in additions):
+            return value
+        if value is None:
+            return None
+        return value + sum(addition or 0 for addition in additions)
+
+    input_by_stage: list[int | None] = []
+    output_by_stage: list[int | None] = []
+    total_by_stage: list[int | None] = []
+    for usage in usage_by_stage.values():
+        if not isinstance(usage, Mapping) or not usage:
+            continue
+        stage_input = _token_count(
+            usage,
+            ("input_tokens", "prompt_tokens"),
+            additive_keys=("cache_creation_input_tokens", "cache_read_input_tokens"),
+        )
+        stage_output = _token_count(usage, ("output_tokens", "completion_tokens"))
+        stage_total = _integer(usage, "total_tokens")
+        if stage_total is None and stage_input is not None and stage_output is not None:
+            stage_total = stage_input + stage_output
+        input_by_stage.append(stage_input)
+        output_by_stage.append(stage_output)
+        total_by_stage.append(stage_total)
+
+    def _complete_sum(values: list[int | None]) -> Optional[int]:
+        return (
+            sum(value for value in values if value is not None)
+            if values and all(v is not None for v in values)
+            else None
+        )
+
+    return {
+        "input_tokens": _complete_sum(input_by_stage),
+        "output_tokens": _complete_sum(output_by_stage),
+        "total_tokens": _complete_sum(total_by_stage),
+        "stages": stages,
+    }
+
+
 def coerce_usage_to_dict(usage: Any) -> Optional[Dict[str, Any]]:
     """Best-effort conversion of a provider usage object to a plain dict.
 
