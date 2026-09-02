@@ -160,6 +160,7 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
             "top_k": 2,
             "format": "hits",
             "agentic": True,
+            "include_usage": True,
         },
     }
     assert result["results"][0]["hits"][0]["source"] == "report.pdf"

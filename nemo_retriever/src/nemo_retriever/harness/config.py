@@ -103,7 +103,7 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
-    lancedb_table_name: str = "nv-ingest"
+    lancedb_table_name: str = "nemo-retriever"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"

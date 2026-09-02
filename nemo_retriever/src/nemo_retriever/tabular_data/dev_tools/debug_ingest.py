@@ -69,7 +69,7 @@ VDB_PARAMS = VdbUploadParams(
     vdb_op="lancedb",
     vdb_kwargs={
         "uri": "lancedb",
-        "table_name": "nv-ingest-tabular",
+        "table_name": "nemo-retriever-tabular",
         "overwrite": True,
     },
 )

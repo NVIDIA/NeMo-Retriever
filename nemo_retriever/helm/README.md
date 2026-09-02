@@ -81,6 +81,13 @@ nemo_retriever/helm/
 
 ## Quick start
 
+The examples in this README use the Helm release name `retriever`.
+`nemo-retriever` is the chart name. It is not the release name. When a
+command omits `--namespace`, Helm installs into the current kubectl
+namespace. The [Recommended minimal install](#recommended-minimal-install-26081)
+and [Full teardown](#full-teardown) set `REL` and `NS` explicitly so
+cleanup targets the same release.
+
 ### Persistent storage prerequisite { #persistent-storage-prerequisite }
 
 The default chart creates **seven** PersistentVolumeClaims: three
@@ -460,10 +467,16 @@ Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
 before you install.
 
-Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
+Deploy only the four core NIMs that the retriever service auto-wires
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Set `REL` and
+`NS` to the values you will reuse for upgrade and teardown. Replace
+`NS` if you install into a namespace other than `default`.
 
 ```bash
-helm install retriever ./nemo_retriever/helm \
+REL=retriever
+NS=default
+
+helm install "${REL}" ./nemo_retriever/helm -n "${NS}" --create-namespace \
   --set ngcImagePullSecret.create=true \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
@@ -529,29 +542,118 @@ Helm on uninstall.
 | `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed a NIM). |
 | Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
 | `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
-| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+| `helm uninstall` appears to do nothing | Wrong release name or namespace. The chart name is `nemo-retriever`. The example release name is `retriever`. Confirm with `helm list --all-namespaces`. A missing or failed release (`helm list -n <ns> --all`) can also leave CRs without a release to clean them up. |
 
 To change a NIM image on a later install or upgrade, delete the kept
 `NIMCache` first. Refer to
 [Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
 
-**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+### Full teardown { #full-teardown }
 
-```bash
-NS=retriever
-REL=nemo-retriever
+On a development cluster, remove the Helm release, kept `NIMCache`
+objects, and model PVCs. Set `REL` and `NS` to the same values you used
+at install time. The
+[Recommended minimal install](#recommended-minimal-install-26081) uses
+`REL=retriever` and `NS=default`. If you omitted `--namespace` at
+install time, Helm used the current kubectl namespace. Replace `NS` if
+that namespace is not `default`.
 
-helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+1. Set the release identity and confirm the target:
 
-# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
-kubectl delete nimservice,nimcache -n "${NS}" --all
-# Optional: drop model PVCs if you will re-pull from NGC
-kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
-```
+   ```bash
+   REL=retriever
+   NS=default
+
+   helm list -n "${NS}"
+   kubectl get deployment,nimservice,nimcache -n "${NS}"
+   ```
+
+   If `helm list` shows no matching release, stop. Run
+   `helm list --all-namespaces` and set `REL` and `NS` to the release
+   you intend to remove.
+
+2. Uninstall the release. Do not suppress Helm errors. If Helm reports
+   that the release was not found, correct `REL` and `NS` before you
+   delete NIM resources:
+
+   ```bash
+   helm uninstall "${REL}" -n "${NS}"
+   helm list -n "${NS}" --all
+   ```
+
+3. Delete kept `NIMCache` objects and leftover `NIMService` CRs. Helm
+   leaves **NIMCache** objects when
+   `nimOperator.nimCache.keepOnUninstall` is `true` (the default). Each
+   NIM uses a resource name from the chart, not the Helm release name.
+   The following command deletes every default name this chart can
+   create, including optional NIMs. `--ignore-not-found` skips names
+   you did not install.
+
+   If you overrode `nimOperator.ocr.nimServiceName`,
+   `nimOperator.vlm_embed.nimServiceName`, or
+   `nimOperator.answer_llm.nimServiceName`, replace those three default
+   names with the values you set.
+
+   ```bash
+   kubectl delete nimservice,nimcache -n "${NS}" \
+     nemotron-page-elements-v3 \
+     nemotron-table-structure-v1 \
+     nemotron-ocr-v2 \
+     llama-nemotron-embed-vl-1b-v2 \
+     llama-nemotron-rerank-vl-1b-v2 \
+     nemotron-parse \
+     nemotron-3-nano-omni-30b-a3b-reasoning \
+     audio \
+     answer-llm \
+     --ignore-not-found
+   ```
+
+   List what remains. Delete leftover CRs by the names in that list
+   before you continue. Remaining objects can be renamed caches or
+   resources that another product owns.
+
+   ```bash
+   kubectl get nimservice,nimcache -n "${NS}"
+   ```
+
+   Do not run `kubectl delete nimservice,nimcache -n "${NS}" --all`
+   unless this namespace contains only this install. That command
+   deletes every `NIMService` and `NIMCache` in the namespace, including
+   resources that another release or product owns.
+
+4. Optional: drop model PVCs when you re-pull weights from NGC. Confirm
+   claim names first. Default claim names use a `-pvc` suffix. Include
+   optional NIM claims. If you overrode a `nimServiceName` value, use
+   `<that-name>-pvc` instead of the default claim.
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
+   kubectl delete pvc -n "${NS}" \
+     nemotron-page-elements-v3-pvc \
+     nemotron-table-structure-v1-pvc \
+     nemotron-ocr-v2-pvc \
+     llama-nemotron-embed-vl-1b-v2-pvc \
+     llama-nemotron-rerank-vl-1b-v2-pvc \
+     nemotron-parse-pvc \
+     nemotron-3-nano-omni-30b-a3b-reasoning-pvc \
+     audio-pvc \
+     answer-llm-pvc \
+     --ignore-not-found
+   ```
+
+   List operator PVCs again and delete any leftover claim that belongs
+   to this install:
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
+   ```
 
 **Dev installs** that should not retain caches on uninstall:
 
 ```bash
+REL=retriever
+NS=default
+
 helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
   --set nimOperator.nimCache.keepOnUninstall=false
 ```
@@ -669,6 +771,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | Path                                              | Default | Notes |
 |---------------------------------------------------|---------|-------|
 | `serviceConfig.server.port`                       | `7670`  | Retriever service container listener port. Refer to [Service networking](#service-networking). |
+| `serviceConfig.logging.level`                     | `INFO`  | Retriever service log verbosity, rendered as `logging.level` in the ConfigMap. Typical values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`. Setting `INGEST_LOG_LEVEL` in `service.env` does not change this field. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
@@ -1296,10 +1399,10 @@ The affected NIM is unavailable while the operator re-caches weights.
 
 1. Drain ingest traffic that depends on that NIM.
 2. Confirm the live `modelPuller` value differs from the new
-   `repository:tag`:
+   `repository:tag`. Set `NS` to the namespace of your Helm release:
 
    ```bash
-   NS=retriever
+   NS=default
    CACHE=nemotron-page-elements-v3
 
    kubectl get nimcache "${CACHE}" -n "${NS}" \
@@ -1874,16 +1977,34 @@ topology:
   batch:    { hpa: { enabled: false } }
 ```
 
-Then apply your own `ScaledObject` — example for the realtime pool:
+Then apply your own `ScaledObject` for the realtime pool.
+`spec.scaleTargetRef.name` must match the rendered realtime Deployment
+in the same namespace. For the documented quickstart release `retriever`,
+that Deployment is `retriever-nemo-retriever-realtime`. The chart names
+that Deployment from the Helm fullname plus the `-realtime` suffix, so a
+different release produces a different name. Discover the rendered name
+with the `app.kubernetes.io/instance` and `app.kubernetes.io/component`
+labels:
+
+```bash
+kubectl get deploy \
+  -l app.kubernetes.io/instance=retriever,app.kubernetes.io/component=realtime \
+  -o jsonpath='{.items[0].metadata.name}{"\n"}'
+```
+
+Replace `retriever` in the label selector with your Helm release name.
+Repeat the same pattern for the batch pool with
+`app.kubernetes.io/component=batch`. The following example uses the
+documented quickstart realtime Deployment:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: nemo-retriever-realtime
+  name: retriever-nemo-retriever-realtime
 spec:
   scaleTargetRef:
-    name: nemo-retriever-realtime
+    name: retriever-nemo-retriever-realtime
   minReplicaCount: 2
   maxReplicaCount: 8
   cooldownPeriod: 300
@@ -1999,11 +2120,18 @@ the chart's OpenTelemetry Collector. The Collector exports traces to the
 chart-owned Zipkin service and exposes received metrics in Prometheus format.
 The chart configures a 5-second metric export interval. Set
 `service.otel.enabled=false` or `nimOperator.otel.enabled=false` to opt out by
-surface. Open a job and read the Zipkin lookup key from either the JSON body or
-the `x-trace-id` response header:
+surface.
+
+In this section, replace `<release>` with the name you passed to
+`helm install`. The default Service names are `<release>-nemo-retriever`,
+`<release>-nemo-retriever-zipkin`, and `<release>-nemo-retriever-otel`.
+If your release name already contains `nemo-retriever`, or if you set
+`nameOverride` or `fullnameOverride`, copy the Service names from `kubectl get svc`
+instead. Open a job and read the Zipkin lookup key from either
+the JSON body or the `x-trace-id` response header:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+kubectl port-forward svc/<release>-nemo-retriever 7670:7670
 
 curl -s -D headers.txt -o job.json \
   -X POST http://localhost:7670/v1/ingest/job \
@@ -2017,7 +2145,7 @@ grep -i x-trace-id headers.txt
 Port-forward Zipkin and query the trace directly:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+kubectl port-forward svc/<release>-nemo-retriever-zipkin 9411:9411
 curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 ```
 
