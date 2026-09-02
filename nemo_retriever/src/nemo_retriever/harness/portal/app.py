@@ -806,7 +806,7 @@ async def rerun_run(run_id: int, req: RerunRequest | None = None):
 # Retrieval Playground
 # ---------------------------------------------------------------------------
 
-LANCEDB_TABLE = "nv-ingest"
+LANCEDB_TABLE = "nemo-retriever"
 
 
 def _get_lancedb_uri_for_run(run: dict[str, Any]) -> str | None:
