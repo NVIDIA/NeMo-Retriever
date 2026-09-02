@@ -1305,6 +1305,9 @@ nimOperator:
         value: "1"
       - name: NIM_ENGINE_PRECISION
         value: fp16
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: throughput
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Disabled by default unless noted below;
