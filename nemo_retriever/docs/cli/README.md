@@ -156,7 +156,7 @@ retriever ingest ./data/multimodal_test.pdf \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
@@ -170,7 +170,7 @@ authorizes the hosted embedding URL:
 ```bash
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking \
   --reranker-model-name nvidia/llama-nemotron-rerank-vl-1b-v2 \
   --reranker-api-key-env NVIDIA_API_KEY
