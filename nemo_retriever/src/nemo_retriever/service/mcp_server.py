@@ -266,6 +266,7 @@ class ServiceMCPClient:
                     "top_k": top_k,
                     "format": "hits",
                     "agentic": True,
+                    "include_usage": True,
                 },
             )
         self._raise_for_status(resp)
