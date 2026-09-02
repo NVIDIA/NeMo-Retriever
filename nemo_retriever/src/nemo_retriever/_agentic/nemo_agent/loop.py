@@ -437,14 +437,18 @@ class _BaseAgentLoop:
         if payload is None and state.last_end_attempt is not None:
             # The run ended in error without a valid end call. Fall back to the
             # agent's last (invalid) end-tool attempt so callers still get its
-            # best-effort doc_ids. The run still counts as failed
+            # best-effort answer/doc_ids. The run still counts as failed
             # (``error`` set, ``succeeded`` False).
             payload = state.last_end_attempt
         final_doc_ids: List[str] = []
+        answer: Optional[str] = None
         if payload is not None:
             doc_ids = payload.get("doc_ids")
             if isinstance(doc_ids, list):
                 final_doc_ids = [str(d) for d in doc_ids]
+            ans = payload.get("answer")
+            if isinstance(ans, str):
+                answer = ans
         error_payload: Optional[Dict[str, Any]] = None
         if state.error is not None:
             error_payload = {
@@ -468,6 +472,7 @@ class _BaseAgentLoop:
             logger.warning("Failed to build agentic ATIF trace", exc_info=True)
         return AgentRunResult(
             final_doc_ids=final_doc_ids,
+            answer=answer,
             end_payload=payload,
             error=state.error,
             trajectory=state.message_history,
