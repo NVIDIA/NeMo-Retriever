@@ -118,7 +118,7 @@ def recall_with_main(
     ),
     embedding_api_key: Optional[str] = typer.Option(None, "--embedding-api-key", help="Embedding API key (optional)."),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI (directory path)."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
     vector_column_name: str = typer.Option("vector", "--vector-column", help="Vector column name in the table."),
     local_hf_device: Optional[str] = typer.Option(
         None,
@@ -225,7 +225,7 @@ def run(
     limit: Optional[int] = typer.Option(None, "--limit", min=1, help="Optionally limit number of queries."),
     top_k: int = typer.Option(5, "--top-k", min=1, help="Top-k to print per query."),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI (directory path)."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
     vector_column_name: str = typer.Option("vector", "--vector-column", help="Vector column name in the table."),
     embedding_endpoint: Optional[str] = typer.Option(
         None,

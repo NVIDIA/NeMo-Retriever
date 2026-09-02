@@ -130,6 +130,9 @@ ingestor = (
 )
 ```
 
+Bare `.vdb_upload()` writes to the default LanceDB table `nemo-retriever`.
+Default `Retriever()` and `retriever ingest` use that same table.
+
 ### Ingest inline text
 
 Python callers can pass raw text documents directly to the same text splitting,
@@ -207,9 +210,10 @@ automatically. The explicit `dense`, `hybrid`, and `sparse` modes are advanced
 overrides for experiments or specialized deployments.
 
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
-used in [Run a recall query](#run-a-recall-query) below. With the
-`[local]` extra installed (see setup), defaults point at local-GPU extraction
-and embedding.
+used in [Run a recall query](#run-a-recall-query) below. Python
+`.vdb_upload()` and default `Retriever()` use the same table. With the
+`[local]` extra installed (refer to the setup steps above), defaults point at
+local-GPU extraction and embedding.
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
@@ -264,7 +268,8 @@ dict_keys([1, 2, 3])
 '# Extracted Content\n\n## Page 1\n\nTestingDocument\r\nA s'
 ```
 
-Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
+After ingest, those chunks are in the default LanceDB table `nemo-retriever`.
+You can query them to retrieve semantically relevant chunks for an LLM:
 
 ### Run a recall query
 
@@ -272,7 +277,6 @@ Since the ingestion job automatically populated a lancedb table with all these c
 from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
-  # values used by the retriever ingest example above
   vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
   top_k=5,
   rerank=False
@@ -283,6 +287,9 @@ query = "Given their activities, which animal is responsible for the typos in my
 # you can also submit a list with retriever.queries[...]
 hits = retriever.query(query)
 ```
+
+Default `Retriever()` also reads `lancedb/nemo-retriever`. Pass `vdb_kwargs` only
+when you wrote a different URI or table name.
 
 If you ingested with the remote-NIM recipe above (no local GPU), point the
 `Retriever` at the same embedding endpoint so query vectors are produced by the
@@ -358,8 +365,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
-When you omit `--embed-model-name`, agentic retrieval uses the selected
-table's model.
+The examples below use the default table `nemo-retriever`. When you omit
+`--embed-model-name`, agentic retrieval uses the selected table's model.
 
 By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
 (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
@@ -481,7 +488,7 @@ The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into
 | --- | --- | --- | --- |
 | `Retriever.retrieve(query, top_k=...)` | one query | `RetrievalResult` (`chunks`, `metadata`) | Structured retrieval without an LLM. |
 | `Retriever.answer(query, llm=..., judge=None, reference=None, ...)` | one query | `AnswerResult` (answer + chunks + optional scores) | One-shot RAG -- production/live. |
-| `Retriever.pipeline().generate(...).score().judge(...).run(queries)` | many queries | `pandas.DataFrame` | Batch RAG over the operator graph, each step optional. |
+| `Retriever.pipeline().generate(...).judge(...).score().run(queries)` | many queries | `pandas.DataFrame` | Batch RAG over the operator graph, each step optional. |
 
 Install the LLM client extra:
 ```bash
@@ -493,9 +500,9 @@ The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does no
 read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
 so the same key is forwarded on each request.
 
-Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
-embedding model in `embed_kwargs` must match the one used during ingestion so
-query vectors land in the same embedding space as the stored chunks.
+Single-query live RAG. Point `vdb_kwargs` at the table you ingested. The default
+table is `nemo-retriever` for both Python `.vdb_upload()` and `retriever ingest`.
+The embedding model in `embed_kwargs` must match the model used during ingestion.
 
 ```python
 from nemo_retriever.graph.retriever import Retriever
@@ -553,8 +560,8 @@ Batch RAG over the operator graph -- each builder step is optional:
 df = (
     retriever.pipeline()
     .generate(llm)
-    .score()
     .judge(judge)
+    .score()
     .run(
         queries=["What is RAG?", "What is reranking?"],
         reference=["RAG combines retrieval with generation.", "Reranking re-scores retrieved passages."],
@@ -563,12 +570,14 @@ df = (
 print(df[["query", "answer", "token_f1", "judge_score", "failure_mode"]])
 ```
 
+The pipeline builder runs steps in call order. `.score()` writes `failure_mode` from the `judge_score` present at that step. Call `.judge()` before `.score()` when you want `failure_mode` to reflect the judge result. If `.score()` runs first, a missing `judge_score` is classified as `judge_error`, and a later `.judge()` does not recompute `failure_mode`.
+
 Scoring tiers on `AnswerResult`:
 
 - **Tier 1** (`answer_in_context`) -- whether retrieval surfaced the evidence; requires `reference`.
 - **Tier 2** (`token_f1`, `exact_match`) -- token-level overlap; requires `reference`.
 - **Tier 3** (`judge_score`) -- dual-judge `AnswerAccuracy` LLM-as-judge score (0.0-1.0), ported from ragas onto `litellm`; requires `reference` and `judge`. `judge_reasoning` is always empty (the metric emits only a rating).
-- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`).
+- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `generation_error`, `refused_*`, `thinking_truncated`, `judge_error`).
 
 If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
 

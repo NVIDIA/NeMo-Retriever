@@ -139,8 +139,92 @@ def test_main_ci_uses_single_job_docker_build_and_test():
 
 
 @requires_workflows
+def test_main_ci_builds_and_tests_arm64():
+    workflow = _load_workflow("ci-main.yml")
+
+    job = workflow["jobs"]["docker-build-and-test-arm"]
+    assert job["name"] == "Build & Test Docker (arm64)"
+    assert job["uses"] == REUSABLE_DOCKER_BUILD_AND_TEST
+    assert job["with"] == {
+        "platform": "linux/arm64",
+        "target": "service",
+        "tags": "nrl-service:main-arm64-${{ github.sha }}",
+        "base-image": "ubuntu",
+        "base-image-tag": "jammy-20250415.1",
+        "use-qemu": True,
+        "test-selection": "random",
+        "random-count": "100",
+        "pytest-markers": "not integration",
+        "coverage": False,
+        "runner": "linux-large-disk",
+    }
+
+
+@requires_workflows
+def test_main_ci_publishes_multi_arch_image_only_after_both_arch_tests():
+    workflow = _load_workflow("ci-main.yml")
+    job = workflow["jobs"]["docker-build-and-push"]
+
+    # Publishing a manifest list before the arm64 leg passes would ship an
+    # untested architecture to NGC.
+    assert "docker-build-and-test" in job["needs"]
+    assert "docker-build-and-test-arm" in job["needs"]
+
+    push_step = next(step for step in job["steps"] if step.get("name") == "Build and Push Multi-platform Image")
+    assert push_step["with"]["push"] is True
+    assert push_step["with"]["platforms"] == "linux/amd64,linux/arm64"
+    assert "nrl-service" in push_step["with"]["tags"]
+
+
+@requires_workflows
+def test_scheduled_nightly_publishes_arm64_in_manifest():
+    workflow = _load_workflow("scheduled-nightly.yml")
+    job = workflow["jobs"]["docker-build-publish"]
+
+    push_step = next(step for step in job["steps"] if step.get("name") == "Build and Push Multi-platform Image")
+    assert push_step["with"]["push"] is True
+    assert push_step["with"]["platforms"] == "linux/amd64,linux/arm64"
+
+
+@requires_workflows
+def test_arm64_workflow_delegates_to_reusable_docker_build_and_test():
+    workflow = _load_workflow("docker-build-arm.yml")
+    job = workflow["jobs"]["build-and-test"]
+
+    assert job["uses"] == REUSABLE_DOCKER_BUILD_AND_TEST
+    assert job["with"]["platform"] == "linux/arm64"
+    assert job["with"]["use-qemu"] is True
+
+
+@requires_workflows
+def test_workflows_do_not_pass_removed_random_selection_pytest_option():
+    # --random-selection came from the deleted nv-ingest conftest. pytest now
+    # exits with a usage error when a workflow passes it.
+    offenders = [path.name for path in sorted(WORKFLOWS.glob("*.yml")) if "--random-selection" in path.read_text()]
+
+    assert offenders == []
+
+
+@requires_workflows
+def test_dockerfile_selects_cuda_apt_repo_by_architecture():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    # The cuda-keyring package pins apt to the repo directory it came from, so a
+    # hardcoded arch leaves the other architecture without an install candidate.
+    assert "repos/ubuntu2204/x86_64/cuda-keyring" not in dockerfile
+    assert "CUDA_REPO_ARCH=x86_64" in dockerfile
+    assert "CUDA_REPO_ARCH=sbsa" in dockerfile
+
+
+@requires_workflows
 def test_legacy_ghcr_push_publish_workflow_is_removed():
     assert not (WORKFLOWS / "docker-build-publish-retriever.yml").exists()
+
+
+@requires_workflows
+def test_orphaned_split_docker_reusable_workflows_are_removed():
+    assert not (WORKFLOWS / "reusable-docker-build.yml").exists()
+    assert not (WORKFLOWS / "reusable-docker-test.yml").exists()
 
 
 @requires_workflows
