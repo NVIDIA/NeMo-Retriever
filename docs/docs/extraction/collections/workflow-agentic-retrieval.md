@@ -2,7 +2,7 @@
 
 Use this workflow after you have ingested documents into a LanceDB table. Agentic retrieval does not ingest files. It queries the same table, embedding model, and storage flags as one-pass `retriever query`.
 
-**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct) loop: the agent issues several retrieval sub-queries, fuses candidates with reciprocal rank fusion, and selects a final document ranking. **One-pass retrieval** sends a single dense or hybrid query and returns text-enriched chunk hits. For the concept distinction, refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md).
+**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct) loop: the agent issues several retrieval sub-queries, fuses candidates with reciprocal rank fusion, and selects a final document ranking. **One-pass retrieval** sends a single dense or hybrid query and returns text-enriched chunk hits. For the concept distinction, refer to [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md).
 
 ## Query with the CLI { #query-with-the-cli }
 
@@ -54,7 +54,7 @@ retriever query "find documents about parser behavior" \
   --agentic-invoke-url https://integrate.api.nvidia.com/v1/chat/completions
 ```
 
-`--agentic-local-tensor-parallel-size` is ignored when `--agentic-invoke-url` is set. For hosted model IDs, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints). For key setup, refer to [Authentication and API keys](api-keys.md).
+`--agentic-local-tensor-parallel-size` is ignored when `--agentic-invoke-url` is set. For hosted model IDs, refer to [Default NVCF endpoints](../get-started/prerequisites-support-matrix.md#default-nvcf-endpoints). For key setup, refer to [Authentication and API keys](../get-started/api-keys.md).
 
 This self-hosted NIM configuration gap does not apply to NVIDIA-hosted Build endpoints. A Helm-deployed Super-49B NIM rejects tool-call requests until you add the passthrough arguments. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b).
 
@@ -307,11 +307,11 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 
 ## Related Topics { #related-topics }
 
-- [Agentic retrieval (concept)](agentic-retrieval-concept.md)
+- [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md)
 - [Semantic retrieval](vdbs.md#semantic-retrieval)
 - [Metadata and filtering](vdbs.md#metadata-and-filtering)
-- [Evaluate on your data](evaluate-on-your-data.md)
-- [Authentication and API keys](api-keys.md)
+- [Evaluate on your data](../support/evaluate-on-your-data.md)
+- [Authentication and API keys](../get-started/api-keys.md)
 - [CLI reference: Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#agentic-retrieval)
 - [Helm chart README: Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm)
-- [Release notes](releasenotes.md#retrieval-and-rag)
+- [Release notes](../reference/releasenotes.md#retrieval-and-rag)

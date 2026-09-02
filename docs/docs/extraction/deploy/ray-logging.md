@@ -1,6 +1,6 @@
 # Configure Ray Logging
 
-[NeMo Retriever Library](overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for logging. 
+[NeMo Retriever Library](../understand/overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for logging. 
 You can use environment variables for fine-grained control over [Ray's logging behavior](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html). 
 In addition, NeMo Retriever Library provides preset configurations that you can use to quickly update Ray logging behavior.
 
@@ -210,5 +210,5 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 
 ## Related Topics { #related-topics }
 
-- [Environment Variables](environment-config.md)
-- [Retriever Service Log Level](environment-config.md#retriever-service-log-level)
+- [Environment Variables](../reference/environment-config.md)
+- [Retriever Service Log Level](../reference/environment-config.md#retriever-service-log-level)

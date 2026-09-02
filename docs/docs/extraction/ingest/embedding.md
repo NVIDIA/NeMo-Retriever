@@ -4,7 +4,7 @@
 
     You can still use the NeMo Retriever text embedding NIM (OpenAI-compatible embeddings for passage and query vectors) alongside or instead of the multimodal flows on this page. Product and deployment details are in the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html). In library and CLI pipelines, route embedding to that NIM with your configured embed endpoint and model name (refer to the [graph pipeline examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/README.md) for environment-based remote inference).
 
-This documentation describes how to use [NeMo Retriever Library](overview.md) 
+This documentation describes how to use [NeMo Retriever Library](../understand/overview.md) 
 with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).
 
 The **Llama Nemotron Embed VL 1B v2** model is optimized for multimodal question-answering retrieval. 
@@ -19,7 +19,7 @@ The following example provides a strong baseline for retrieval.
 
 - The `embed` method is called with no arguments.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -42,7 +42,7 @@ The following example enables the multimodal model to capture the spatial and st
 - The `embed` method is configured with `embed_modality="text_image"` to embed the extracted tables and charts as images.
 - This configuration is more accurate than text only, with a performance cost.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -73,7 +73,7 @@ enables page-image rendering during extraction, creates one row for each page,
 and embeds the full rendered page image. Either argument alone does not enable
 the complete page-as-image workflow.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -92,6 +92,6 @@ results = ingestor.ingest()
 
 ## Related Topics { #related-topics }
 
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](nemo-retriever-api-reference.md)
+- [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
+- [Troubleshoot Nemo Retriever Extraction](../support/troubleshoot.md)
+- [Use the Python API](../reference/nemo-retriever-api-reference.md)

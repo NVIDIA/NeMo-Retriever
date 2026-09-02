@@ -198,7 +198,7 @@ Document deletion uses the same `if_exists`, HTTP 200 or 202, and
 
 To ingest into a collection, create a job with `collection_name` and
 `operation` `append` (the default), then upload files. Refer to
-[Job](../extraction/concepts.md#job) for the two-step ingest workflow.
+[Job](../extraction/understand/concepts.md#job) for the two-step ingest workflow.
 
 ```bash
 curl -sS -X POST http://localhost:7670/v1/ingest/job \
@@ -213,7 +213,7 @@ To replace one stable document, set `operation` to `replace`,
 ID, then upload one file.
 
 To search a collection, send `POST /v1/query` with `collection_name`. Do not
-send LanceDB table names. Refer to [Workflow: Agentic retrieval](../extraction/workflow-agentic-retrieval.md)
+send LanceDB table names. Refer to [Workflow: Agentic retrieval](../extraction/collections/workflow-agentic-retrieval.md)
 for the query envelope and agentic flag.
 
 ```bash

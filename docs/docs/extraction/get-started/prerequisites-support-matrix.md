@@ -1,12 +1,12 @@
 # Pre-Requisites & Support Matrix
 
-Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage and GPU scheduling if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking, and `/v1/answer` generation) against the guidance on this page.
+Before you begin using [NeMo Retriever Library](../understand/overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage and GPU scheduling if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking, and `/v1/answer` generation) against the guidance on this page.
 
 **Platform summary:** Supported **local GPU inference** requires **Linux** and CUDA 13. For **remote NIM inference**, the base Python package also installs on **Windows x64** and **macOS Apple Silicon (arm64)**; local GPU inference is not supported on those platforms. **macOS Intel (x86_64) is not supported** — `pip`/`uv` installs fail because Ray no longer publishes Intel Mac wheels.
 
 > **Note — NVIDIA AI Enterprise (NVAIE) support**
 >
-> The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE), even though some NIM microservices and models it uses may be individually covered by NVAIE. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
+> The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE), even though some NIM microservices and models it uses may be individually covered by NVAIE. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](../understand/overview.md#nvidia-ai-enterprise-nvaie-support).
 
 ## Software Requirements { #software-requirements }
 
@@ -18,7 +18,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
-  For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
+  For container and Kubernetes guidance, refer to [Audio and video](../ingest/audio-video.md).
 - For PDF extraction with `method="nemotron_parse"`, install the Nemotron Parse
   client dependencies with `uv pip install "nemo-retriever[nemotron-parse]"` (pulls
   `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
@@ -48,7 +48,7 @@ kubectl get pv
 
 If the cluster has no StorageClass and no compatible `Available` persistent volumes, stop and add a binding strategy before you install. `helm install` can report `STATUS: deployed` while every claim remains `Pending`, which leaves the retriever service, VectorDB, and core NIM workloads unschedulable.
 
-For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
+For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](../support/troubleshoot.md#helm-pending-pvcs).
 
 ## Kubernetes Helm GPU scheduling { #kubernetes-helm-gpu-scheduling }
 
@@ -67,7 +67,7 @@ Time-slicing creates logical GPU slots. It does not pin the four independently s
 
 The chart still renders `nvidia.com/gpu: 1` per NIMService unless a per-NIM `resources` block overrides it. Sharing is cluster configuration through the GPU Operator, not a Helm value. Applying `devicePlugin.config.default: "any"` is a cluster-administrator change that oversubscribes every eligible GPU Operator node and can affect unrelated GPU workloads. Time-slicing does not isolate GPU memory. Combined VRAM of the scheduled NIMs must still fit on the physical GPU. MIG is an advanced GPU Operator configuration outside this chart. The chart does not set a MIG strategy, MIG profile, or MIG resource requests.
 
-For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
+For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](../support/troubleshoot.md#helm-pending-gpus).
 
 ## Hardware Requirements { #hardware-requirements }
 
@@ -134,8 +134,8 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-rerank-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Reranking for improved retrieval accuracy | No |
 | `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"`. The Python `ExtractParams` default is `pdfium`; the CLI `auto` profile selects `pdfium_hybrid`. | No |
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | Image captioning when you enable the caption stage. This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation](#answer-generation). | No |
-| `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](audio-video.md) transcription | No |
-| `answer_llm` | [llama-3.3-nemotron-super-49b-v1.5](https://build.nvidia.com/nvidia/llama-3.3-nemotron-super-49b-v1.5) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` | Optional `/v1/answer` generation. The generic slot defaults to Super-49B. You can override it to another OpenAI-compatible LLM or VLM, including Omni. Enabling this key does not configure agentic retrieval. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b). Not part of the default extraction pipeline. | No |
+| `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](../ingest/audio-video.md) transcription | No |
+| `answer_llm` | [llama-3.3-nemotron-super-49b-v1.5](https://build.nvidia.com/nvidia/llama-3.3-nemotron-super-49b-v1.5) | `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` | Optional `/v1/answer` generation. The generic slot defaults to Super-49B. You can override it to another OpenAI-compatible LLM or VLM, including Omni. Enabling this key does not configure agentic retrieval. Refer to [Self-hosted Helm Super-49B](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b). Not part of the default extraction pipeline. | No |
 
 The `page_elements` and `table_structure` services share the combined `nemotron-object-detection:2.0.1` image and select distinct models. For air-gapped, mirrored, or allowlisted deployments, pull that image once. Do not treat the older standalone `nemotron-page-elements-v3` or `nemotron-table-structure-v1` container images as the current Helm defaults.
 
@@ -169,7 +169,7 @@ Setting `nimOperator.rerankqa.enabled=true` without `serviceConfig.nimEndpoints.
 
 ### Default NVCF endpoints { #default-nvcf-endpoints }
 
-When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-hosted-nims) from the Python library or CLI, these are the default remote endpoints the library uses when you do not set invoke URLs. Self-hosted Helm NIMs use in-cluster service URLs instead (refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack)).
+When you call [NVIDIA-hosted NIMs](../deploy/deployment-options.md#when-to-use-nvidia-hosted-nims) from the Python library or CLI, these are the default remote endpoints the library uses when you do not set invoke URLs. Self-hosted Helm NIMs use in-cluster service URLs instead (refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack)).
 
 | NIM | Default hosted endpoint | Notes |
 |-----|-------------------------|-------|
@@ -180,8 +180,8 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
 | nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted Parse v1.2 use different request contracts. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning. Also a supported configurable `/v1/answer` VLM backend when you point `serviceConfig.llm` at this endpoint. Enabling the Omni caption Helm key does not enable `/v1/answer`. |
-| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Default optional `/v1/answer` LLM (Helm `answer_llm`) and a supported OpenAI-compatible agentic RAG model. Helm auto-wires `answer_llm` to `/v1/answer` only. Self-hosted agentic use requires tool-call passthrough arguments and explicit `serviceConfig.agentic` wiring. Hosted Build endpoints do not need that override. Agentic CLI and harness runs default to local in-process vLLM. Refer to [Answer generation](#answer-generation), [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b), and [local in-process vLLM](workflow-agentic-retrieval.md#local-in-process-vllm). |
-| parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
+| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Default optional `/v1/answer` LLM (Helm `answer_llm`) and a supported OpenAI-compatible agentic RAG model. Helm auto-wires `answer_llm` to `/v1/answer` only. Self-hosted agentic use requires tool-call passthrough arguments and explicit `serviceConfig.agentic` wiring. Hosted Build endpoints do not need that override. Agentic CLI and harness runs default to local in-process vLLM. Refer to [Answer generation](#answer-generation), [Self-hosted Helm Super-49B](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b), and [local in-process vLLM](../collections/workflow-agentic-retrieval.md#local-in-process-vllm). |
+| parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](../ingest/audio-video.md#parakeet-hosted-inference-build-nvidia) |
 
 <a id="nemotron-parse-hosted-vs-self-hosted"></a>
 
@@ -195,9 +195,9 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 
     Each endpoint list must contain only hosted Build endpoints or only compatible self-hosted endpoints. The library rejects a list that mixes hosted Build and self-hosted endpoints because one extraction workflow uses one model ID and request contract. Setting `nemotron_parse_model` explicitly does not make a mixed list valid. To use both deployment types, configure separate ingestors or extraction workflows for each endpoint contract.
 
-    For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
+    For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](../support/troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
-For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode).
+For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](../ingest/multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode).
 
 ### Image captioning { #image-captioning }
 
@@ -223,7 +223,7 @@ The supported answer-generation model paths are:
 These are independent Helm slots:
 
 - `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` deploys captioning and auto-wires `nim_endpoints` caption URLs. It does not enable `serviceConfig.llm.enabled`.
-- `nimOperator.answer_llm` deploys the generic answer-generation NIM and auto-wires `/v1/answer`. It defaults to Super-49B. Override its image, model ID, resources, profile, and environment to run Omni or another OpenAI-compatible NIM in that slot. This opt-in does not populate `serviceConfig.agentic` and does not start Super-49B with tool-call parsers. Refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+- `nimOperator.answer_llm` deploys the generic answer-generation NIM and auto-wires `/v1/answer`. It defaults to Super-49B. Override its image, model ID, resources, profile, and environment to run Omni or another OpenAI-compatible NIM in that slot. This opt-in does not populate `serviceConfig.agentic` and does not start Super-49B with tool-call parsers. Refer to [Self-hosted Helm Super-49B](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 
 If you enable caption Omni and the default Super-49B `answer_llm` as separate NIMServices, GPU and disk requirements are additive. If Omni captioning is already running, you can reuse that NIM for `/v1/answer` without deploying Super-49B. Set `serviceConfig.llm.enabled=true`, `serviceConfig.llm.apiBase` to the Omni OpenAI-compatible `/v1` base URL, and `serviceConfig.llm.model` to `openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
 
@@ -254,7 +254,7 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
 
-**B200, H200 NVL, and audio/video extraction:** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR through `nimOperator.audio`) is **not supported on B200**, other Blackwell GPUs, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Refer to footnote ⁴ below.
+**B200, H200 NVL, and audio/video extraction:** The [audio and video](../ingest/audio-video.md) transcription path (self-hosted Parakeet ASR through `nimOperator.audio`) is **not supported on B200**, other Blackwell GPUs, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Refer to footnote ⁴ below.
 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|
@@ -275,7 +275,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ¹ On other supported GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build (no prebuilt profile in the chart image).
 
-⁴ Self-hosted [audio/video extraction](audio-video.md) through Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
+⁴ Self-hosted [audio/video extraction](../ingest/audio-video.md) through Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](../ingest/audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
 ³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`). The same NIM hardware applies when you use Omni as the configurable `/v1/answer` backend. BF16 requires at least 80 GB total GPU memory for this NIM deployment. Refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum. Do not add a second Omni GPU or NIM cache when `/v1/answer` reuses an already running caption Omni endpoint.
 
@@ -289,9 +289,9 @@ and run only the embedder, reranker, and your vector database.
 
 ## Related Topics { #related-topics }
 
-- [Troubleshooting](troubleshoot.md)
-- [Release Notes](releasenotes.md)
-- [Deployment options](deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
+- [Troubleshooting](../support/troubleshoot.md)
+- [Release Notes](../reference/releasenotes.md)
+- [Deployment options](../deploy/deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite)
 - [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite)
