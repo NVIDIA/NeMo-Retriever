@@ -211,3 +211,4 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 ## Related Topics { #related-topics }
 
 - [Environment Variables](environment-config.md)
+- [Retriever Service Log Level](environment-config.md#retriever-service-log-level)

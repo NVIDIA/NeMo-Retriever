@@ -1,55 +1,40 @@
 name: Build NV-Ingest Runtime Image (arm64)
 
 on:
-  # Manual-only: arm64 builds run in scheduled nightly workflow.
+  # Manual-only. Main-branch CI also builds linux/arm64 (QEMU smoke tests)
+  # and pushes a multi-arch nrl-service image to NGC. Nightly does the same
+  # on a schedule.
   workflow_dispatch:
+    inputs:
+      test-selection:
+        description: 'Test selection strategy (random keeps QEMU runtime bounded)'
+        required: false
+        type: choice
+        default: 'random'
+        options:
+          - random
+          - full
 
 jobs:
-  build:
-    runs-on: linux-large-disk
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get current date (yyyy.mm.dd)
-        run: echo "CURRENT_DATE=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-
-      # Set up QEMU emulation for arm64
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      # Set up Docker Buildx, useful for building multi-platform images
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Create HF token file
-        run: |
-          mkdir -p ./scripts/private_local
-          echo "${{ secrets.HF_ACCESS_TOKEN }}" > ./scripts/private_local/hf_token.txt
-
-      # Build the Docker image using the Dockerfile
-      # Github does not allowing access secrets on pull requests. Therefore for this action we use the open source ubuntu
-      # base image and not the one hosted in nvcr.io
-      - name: Build Docker image
-        run: |
-          SECRET_ARG=""
-          if [ -s ./scripts/private_local/hf_token.txt ]; then
-            SECRET_ARG="--secret id=hf_token,src=./scripts/private_local/hf_token.txt"
-          fi
-          docker buildx create --use
-          docker buildx build -f Dockerfile --platform linux/arm64 --load --target service --build-arg GIT_COMMIT=${GITHUB_SHA} --build-arg BASE_IMG=ubuntu --build-arg BASE_IMG_TAG=jammy-20250415.1 --build-arg DOWNLOAD_DEFAULT_TOKENIZER=True $SECRET_ARG -t nrl-service:latest .
-
-      - name: Cleanup HF token file
-        if: always()
-        run: rm -f ./scripts/private_local/hf_token.txt
-
-      # Only test a random subset (see --random-selection) because running pytest with QEMU emulation can be very slow.
-      - name: Run Pytest inside Docker container
-        run: |
-          docker run --platform=linux/arm64 nrl-service:latest bash -lc "set -euo pipefail; source /opt/retriever_runtime/bin/activate; uv pip install -e './nemo_retriever[all,dev]' && uv pip install pytest; python -m pytest -rs -m 'not integration' --random-selection 100 nemo_retriever/tests"
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-report
-          path: coverage.xml
+  # Delegates to the shared reusable workflow so the arm64 build and test
+  # commands cannot drift from the amd64 legs.
+  #
+  # This job has no NGC login, so it builds from the open source ubuntu base
+  # image rather than the nvcr.io base image used by nightly and release.
+  build-and-test:
+    name: Build & Test Docker (arm64)
+    uses: ./.github/workflows/reusable-docker-build-and-test.yml
+    with:
+      platform: 'linux/arm64'
+      target: 'service'
+      tags: 'nrl-service:arm64-${{ github.sha }}'
+      base-image: 'ubuntu'
+      base-image-tag: 'jammy-20250415.1'
+      use-qemu: true
+      test-selection: ${{ inputs.test-selection }}
+      random-count: '100'
+      pytest-markers: 'not integration'
+      coverage: false
+      runner: 'linux-large-disk'
+    secrets:
+      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}

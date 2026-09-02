@@ -282,6 +282,40 @@ Agentic retrieval reuses the same `--top-k`, `--lancedb-uri`, `--table-name`,
 Agentic retrieval uses the selected table's model automatically when
 `--embed-model-name` is omitted.
 
+The default `retriever query --agentic` output remains a JSON hits list. Add
+`--include-usage` to print a JSON object with `hits` and exact provider-reported
+LLM usage:
+
+```bash
+retriever query "how does the ingestion pipeline handle tables?" \
+  --agentic \
+  --include-usage
+```
+
+```json
+{
+  "hits": [
+    {
+      "doc_id": "ingestion-guide",
+      "rank": 1,
+      "result_source": "final_results"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1250,
+    "output_tokens": 184,
+    "total_tokens": 1434
+  }
+}
+```
+
+The `usage` object can also include `stages`, which preserves the
+provider-reported breakdown for the ReAct and final-selection calls. When a
+provider reports uncached, cache-creation, and cache-read input separately,
+`input_tokens` includes all three counters. The output sets `usage` to `null`
+when the LLM provider does not report it. This flag applies only with
+`--agentic`; classic query behavior and output are unchanged.
+
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:
 
@@ -325,6 +359,8 @@ Agentic-only knobs (apply only with `--agentic`):
   calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
   non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
   endpoints allow up to `1.0`.
+- `--include-usage` (default: off) — replace the default hits-list output with
+  an object that contains `hits` and provider-reported LLM `usage`.
 
 <!-- --8<-- [end:quickstart] -->
 
