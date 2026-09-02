@@ -224,8 +224,10 @@ def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Di
     Usage schemas use both ``prompt_tokens`` / ``completion_tokens`` and
     ``input_tokens`` / ``output_tokens`` names. Values are copied from the
     provider aggregate. Separately reported cache-write and cache-read input
-    counters are included in the input total. ``total_tokens`` is only filled
-    by exact addition when both component totals are present.
+    counters are included in the input total. ``cache_tokens`` sums observed
+    provider-reported cache reads; cache creation remains available only in the
+    stage breakdown because it has different pricing semantics. ``total_tokens``
+    is only filled by exact addition when both component totals are present.
     """
     if not usage_by_stage:
         return {}
@@ -254,6 +256,7 @@ def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Di
         return value + sum(addition or 0 for addition in additions)
 
     input_by_stage: list[int | None] = []
+    cache_by_stage: list[int | None] = []
     output_by_stage: list[int | None] = []
     total_by_stage: list[int | None] = []
     for usage in usage_by_stage.values():
@@ -264,11 +267,25 @@ def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Di
             ("input_tokens", "prompt_tokens"),
             additive_keys=("cache_creation_input_tokens", "cache_read_input_tokens"),
         )
+        stage_cache = _integer(
+            usage,
+            "cached_tokens",
+            "cached_input_tokens",
+            "cache_read_input_tokens",
+        )
+        if stage_cache is None:
+            for details_key in ("prompt_tokens_details", "input_tokens_details"):
+                details = usage.get(details_key)
+                if isinstance(details, Mapping):
+                    stage_cache = _integer(details, "cached_tokens")
+                    if stage_cache is not None:
+                        break
         stage_output = _token_count(usage, ("output_tokens", "completion_tokens"))
         stage_total = _integer(usage, "total_tokens")
         if stage_total is None and stage_input is not None and stage_output is not None:
             stage_total = stage_input + stage_output
         input_by_stage.append(stage_input)
+        cache_by_stage.append(stage_cache)
         output_by_stage.append(stage_output)
         total_by_stage.append(stage_total)
 
@@ -279,8 +296,13 @@ def normalize_usage_breakdown(usage_by_stage: Optional[Mapping[str, Any]]) -> Di
             else None
         )
 
+    def _observed_sum(values: list[int | None]) -> Optional[int]:
+        observed = [value for value in values if value is not None]
+        return sum(observed) if observed else None
+
     return {
         "input_tokens": _complete_sum(input_by_stage),
+        "cache_tokens": _observed_sum(cache_by_stage),
         "output_tokens": _complete_sum(output_by_stage),
         "total_tokens": _complete_sum(total_by_stage),
         "stages": stages,

@@ -93,6 +93,7 @@ def test_run_agentic_query_includes_provider_usage() -> None:
 
     usage = {
         "input_tokens": 12,
+        "cache_tokens": 4,
         "output_tokens": 5,
         "total_tokens": 17,
         "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
@@ -247,6 +248,7 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
         query_mode="agentic",
         usage={
             "input_tokens": 120,
+            "cache_tokens": 40,
             "output_tokens": 30,
             "total_tokens": 150,
             "stages": {},
@@ -283,6 +285,7 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
         "query_mode": "agentic",
         "usage": {
             "input_tokens": 120,
+            "cache_tokens": 40,
             "output_tokens": 30,
             "total_tokens": 150,
             "stages": {},

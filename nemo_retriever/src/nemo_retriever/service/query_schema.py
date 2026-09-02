@@ -109,6 +109,11 @@ class AgenticTokenUsage(BaseModel):
     """Provider-reported LLM usage for one agentic retrieval query."""
 
     input_tokens: int | None = Field(default=None, ge=0)
+    cache_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Observed provider-reported cache-read input tokens.",
+    )
     output_tokens: int | None = Field(default=None, ge=0)
     total_tokens: int | None = Field(default=None, ge=0)
     stages: dict[str, dict[str, Any]] = Field(default_factory=dict)

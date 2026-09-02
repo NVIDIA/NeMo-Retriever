@@ -261,6 +261,7 @@ retriever query "find documents about parser behavior" \
   ],
   "usage": {
     "input_tokens": 1250,
+    "cache_tokens": 400,
     "output_tokens": 184,
     "total_tokens": 1434
   }
@@ -268,11 +269,14 @@ retriever query "find documents about parser behavior" \
 ```
 
 The `usage` object reports the exact token counts returned by the LLM provider.
-It contains `input_tokens`, `output_tokens`, and `total_tokens`. When available,
-`stages` preserves the provider-reported breakdown for the ReAct and
-final-selection calls. When a provider reports uncached, cache-creation, and
-cache-read input separately, `input_tokens` includes all three counters. If the
-provider does not report usage, the response sets `usage` to `null`.
+It contains `input_tokens`, observed cache-read `cache_tokens`, `output_tokens`,
+and `total_tokens`. `cache_tokens` is `null` when no stage reports cache usage.
+When available, `stages` preserves the provider-reported breakdown for the
+ReAct and final-selection calls, including cache-creation counters. When a
+provider reports uncached, cache-creation, and cache-read input separately,
+`input_tokens` includes all three counters. Cache tokens are therefore not
+added again when calculating `total_tokens`. If the provider does not report
+usage, the response sets `usage` to `null`.
 `--include-usage` applies only to agentic queries. Classic `retriever query`
 output is unchanged.
 

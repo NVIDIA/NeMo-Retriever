@@ -460,6 +460,7 @@ def test_root_query_agentic_include_usage_emits_envelope(monkeypatch) -> None:
 
     usage = {
         "input_tokens": 12,
+        "cache_tokens": 4,
         "output_tokens": 5,
         "total_tokens": 17,
         "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
