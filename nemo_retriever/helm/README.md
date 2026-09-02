@@ -1995,11 +1995,18 @@ the chart's OpenTelemetry Collector. The Collector exports traces to the
 chart-owned Zipkin service and exposes received metrics in Prometheus format.
 The chart configures a 5-second metric export interval. Set
 `service.otel.enabled=false` or `nimOperator.otel.enabled=false` to opt out by
-surface. Open a job and read the Zipkin lookup key from either the JSON body or
-the `x-trace-id` response header:
+surface.
+
+In this section, replace `<release>` with the name you passed to
+`helm install`. The default Service names are `<release>-nemo-retriever`,
+`<release>-nemo-retriever-zipkin`, and `<release>-nemo-retriever-otel`.
+If your release name already contains `nemo-retriever`, or if you set
+`nameOverride` or `fullnameOverride`, copy the Service names from `kubectl get svc`
+instead. Open a job and read the Zipkin lookup key from either
+the JSON body or the `x-trace-id` response header:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+kubectl port-forward svc/<release>-nemo-retriever 7670:7670
 
 curl -s -D headers.txt -o job.json \
   -X POST http://localhost:7670/v1/ingest/job \
@@ -2013,7 +2020,7 @@ grep -i x-trace-id headers.txt
 Port-forward Zipkin and query the trace directly:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+kubectl port-forward svc/<release>-nemo-retriever-zipkin 9411:9411
 curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 ```
 

@@ -266,6 +266,8 @@ Version 2 graph files preserve shared-node DAG identity and reject cycles. Const
 API keys are never written into graph JSON. Use an explicit environment reference in persisted configuration:
 
 ```python
+from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
+
 QAGenerationOperator(
     model="openai/gpt-4o-mini",
     api_key="os.environ/OPENAI_API_KEY",
