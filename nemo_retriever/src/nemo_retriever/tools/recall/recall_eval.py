@@ -48,7 +48,7 @@ class RecallEvaluatorActor:
             str, Param(label="Evaluation Mode", choices=["audio_recall", "beir"])
         ] = "audio_recall",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
-        lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
+        lancedb_table: Annotated[str, Param(label="Table Name")] = "nemo-retriever",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
         embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
         recall_required: Annotated[bool, Param(label="Recall Required")] = True,

@@ -7,6 +7,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Overview](#overview)
 - [LanceDB Overview](#why-lancedb)
 - [Upload to LanceDB](#upload-to-lancedb)
+    - [Direct LanceDB ingest and retrieval](#direct-lancedb-ingest-and-retrieval)
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
 - [LanceDB deployment characteristics](#lancedb-deployment-characteristics)
@@ -34,8 +35,11 @@ It does not store the embeddings for images.
 
 NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)) and through the public `retriever ingest` CLI.
 
+- **Python SDK ingest** (`.vdb_upload()` on `create_ingestor(...)`) persists embeddings to LanceDB with default URI `lancedb` and default table `nemo-retriever`. Default `Retriever()` queries that same table.
 - **Local and batch CLI ingest** (`retriever ingest`, `retriever ingest local`, `retriever ingest batch`) persist embeddings to LanceDB (default URI `lancedb`, table `nemo-retriever`).
 - **Service CLI ingest** (`retriever ingest service`) writes to service-configured storage.
+
+The Python SDK and the local CLI share the same LanceDB default table. Pass an explicit URI and table name at ingest and at query time only when you need a non-default location.
 
 For supported modes and target storage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
@@ -54,6 +58,9 @@ result = (
     .ingest()
 )
 ```
+
+Bare `.vdb_upload()` writes to table `nemo-retriever`. Default `Retriever()`
+queries that table.
 
 You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. If extracted content reaches `.vdb_upload()` without embeddings, `.ingest()` raises `ValueError`. An extraction that produces no content completes without uploading records.
 
@@ -75,7 +82,7 @@ LanceDB uses the `LanceDB` operator class from the client library. You can confi
 
 ### CLI
 
-The following command runs local ingest into the default LanceDB table:
+The following command runs local ingest into the default LanceDB table `nemo-retriever`:
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf
@@ -89,22 +96,69 @@ Use `--lancedb-uri` and `--table-name` on the local and batch commands when you 
 
 For URI, table name, and other parameters, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
-You can also construct a `LanceDB` instance and call `run` and `retrieval` directly:
+### Direct LanceDB ingest and retrieval { #direct-lancedb-ingest-and-retrieval }
+
+You can also construct a `LanceDB` instance and call `run` and `retrieval` directly. This is the optional low-level path. Prefer `.vdb_upload()` for typical ingest.
+
+Graph ingest returns a pandas `DataFrame` of flat rows. Use the following input shapes:
+
+- `LanceDB.run()` expects nested client record batches: a `list` of batches, and each batch is a `list` of record dictionaries. Convert graph or `DataFrame` rows with `to_client_vdb_records()` before you call `run()`.
+- `LanceDB.run()` does not accept the graph `DataFrame` or a flat `list` of dictionaries from `DataFrame.to_dict("records")`.
+- `LanceDB.retrieval()` takes precomputed query vectors. Pass a `list` of embedding vectors whose length matches `vector_dim`. For query strings, use [`Retriever.query`](nemo-retriever-api-reference.md).
+- `IngestVdbOperator` accepts the same flat `DataFrame` or graph rows. It converts them with `to_client_vdb_records()` and then calls `run()`.
+
+The following example uses a two-dimensional fixture so you can copy it without a GPU or embedding NIM:
+
+- Replace `graph_rows` with your `.ingest()` `DataFrame` when you already have embeddings.
+- Set `vector_dim` to your embedding length. The `LanceDB` default `vector_dim` is 2048.
+- The fixture sets `create_index=False` so the one-row table is written without building the default `IVF_HNSW_SQ` index. Default ingest builds that index.
+
+For the ingestion contract, refer to the [Vector DB operators and LanceDB README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/README.md#ingestvdboperator-ingestion).
+
+Copy this example to write one row and retrieve at least one hit.
 
 ```python
-from nemo_retriever.common.vdb.lancedb import LanceDB
+import pandas as pd
 
-vdb = LanceDB(
-    uri="./lancedb_data",    # Path to LanceDB database directory
-    table_name="nemo-retriever",  # Table name
-    index_type="IVF_HNSW_SQ",  # Index type (default)
+from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.records import to_client_vdb_records
+from nemo_retriever.operators.vdb import IngestVdbOperator
+
+# Graph ingest rows after extract and embed. Substitute your .ingest() DataFrame.
+graph_rows = pd.DataFrame(
+    [
+        {
+            "text": "hello from graph",
+            "text_embeddings_1b_v2": {"embedding": [1.0, 0.0]},
+            "path": "graph.pdf",
+            "page_number": 2,
+            "metadata": {},
+        }
+    ]
 )
 
-# Ingest
-vdb.run(results)
+vdb = LanceDB(
+    uri="./lancedb_data",
+    table_name="nemo-retriever",
+    vector_dim=2,
+    create_index=False,
+)
 
-# Retrieve with precomputed query vectors
+records = to_client_vdb_records(graph_rows)
+vdb.run(records)
+
+queries = [[1.0, 0.0]]
 docs = vdb.retrieval(queries, top_k=10)
+
+operator = IngestVdbOperator(
+    vdb=LanceDB(
+        uri="./lancedb_data_operator",
+        table_name="nemo-retriever",
+        vector_dim=2,
+        create_index=False,
+    )
+)
+operator(graph_rows)
 ```
 
 Query ingested tables with `LanceDB.retrieval()` (precomputed vectors) or with [`Retriever.query`](nemo-retriever-api-reference.md) (embeds the query string for you). Optional `where` predicates and client-side filters are documented under [Metadata and filtering](#metadata-and-filtering).

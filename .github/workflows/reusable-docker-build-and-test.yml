@@ -261,11 +261,17 @@ jobs:
             CMD="set -euo pipefail; source /opt/retriever_runtime/bin/activate; uv pip install -e \"./nemo_retriever[all,dev]\" && uv pip install pytest pytest-cov && python -m pytest -m \"$MARKERS\" $COV_ARGS nemo_retriever/tests"
           else
             N="${{ inputs.random-count }}"
+            # Read node IDs into an array instead of word-splitting the file, so
+            # a parametrized ID containing whitespace cannot corrupt the run.
+            # An empty selection must fail loudly: passing no node IDs would
+            # silently collect the whole suite, which never finishes under QEMU.
             CMD="set -euo pipefail; \
               source /opt/retriever_runtime/bin/activate; \
               uv pip install -e \"./nemo_retriever[all,dev]\" && uv pip install pytest pytest-cov; \
               python -m pytest --collect-only -q $TEST_PATHS | grep '::' | shuf -n \"$N\" > /tmp/selected-tests.txt; \
-              python -m pytest -rs -m \"$MARKERS\" $COV_ARGS \$(cat /tmp/selected-tests.txt)"
+              SELECTED=(); while IFS= read -r t; do SELECTED+=(\"\$t\"); done < /tmp/selected-tests.txt; \
+              if [ \${#SELECTED[@]} -eq 0 ]; then echo 'No tests were selected' >&2; exit 1; fi; \
+              python -m pytest -rs -m \"$MARKERS\" $COV_ARGS \"\${SELECTED[@]}\""
           fi
 
           if [ "${{ inputs.coverage }}" = "true" ]; then

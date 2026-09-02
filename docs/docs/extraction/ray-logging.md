@@ -164,3 +164,4 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 - [Environment Variables](environment-config.md)
 - [Python API guide](nemo-retriever-api-reference.md)
 - [CLI ingest options](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md)
+- [Retriever Service Log Level](environment-config.md#retriever-service-log-level)

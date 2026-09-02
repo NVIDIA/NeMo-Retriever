@@ -36,7 +36,7 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
         self,
         *,
         uri: str = "/var/lib/nemo-retriever/lancedb",
-        table_name: str = "nv-ingest",
+        table_name: str = "nemo-retriever",
         hybrid: bool = False,
         embedding_column: str = "text_embeddings_1b_v2",
         embedding_key: str = "embedding",
