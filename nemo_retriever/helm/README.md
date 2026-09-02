@@ -793,8 +793,8 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.agentic.llmModel`                   | `""` | Chat model used by the inner agentic retrieval loop. Required when `invokeUrl` is set. Use the NIM-advertised ID (for Super-49B, `nvidia/llama-3.3-nemotron-super-49b-v1.5`), not the LiteLLM `openai/` prefix. |
 | `serviceConfig.agentic.invokeUrl`                  | `""` | OpenAI-compatible chat completions endpoint used by agentic retrieval. Not auto-populated from `answer_llm`. For the in-cluster Super-49B NIM, set `http://answer-llm:8000/v1/chat/completions`. |
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
-| `serviceConfig.mcp.enabled`                       | `false` | Mounts FastMCP at `serviceConfig.mcp.path`. The bundled non-Helm `retriever-service.yaml` defaults to `true`; the chart defaults to `false` and returns HTTP `404` at `/mcp` until you opt in. Refer to [MCP HTTP endpoint](#mcp-http-endpoint). |
-| `serviceConfig.mcp.path`                          | `/mcp` | HTTP mount path for the FastMCP app. |
+| `serviceConfig.mcp.enabled`                       | `false` | Mounts FastMCP at `serviceConfig.mcp.path`. The bundled non-Helm `retriever-service.yaml` defaults to `true`; the chart defaults to `false` and returns HTTP `404` at that path until you opt in. Refer to [MCP HTTP endpoint](#mcp-http-endpoint). |
+| `serviceConfig.mcp.path`                          | `/mcp` | HTTP mount path for the FastMCP app. Remote agents must connect to this path. |
 | `serviceConfig.mcp.queryMethods`                  | `classic` | Retrieval tools to register: `classic` (`query` only), `agentic` (`agentic_query` only), or `all` (both). Agentic tools also require `serviceConfig.agentic.enabled=true`. |
 | `serviceConfig.mcp.enableWriteTools`              | `true` | When `true`, registers the `ingest_documents` MCP tool. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
@@ -1087,15 +1087,17 @@ For other self-hosted OpenAI-compatible NIMs, enable automatic tool
 choice and the parser that model requires. The `llama3_json` parser
 is the verified Super-49B setting.
 
-The chart leaves the `/mcp` HTTP mount disabled. Refer to
+The chart leaves the MCP HTTP mount disabled. Refer to
 [MCP HTTP endpoint](#mcp-http-endpoint).
 
 #### MCP HTTP endpoint { #mcp-http-endpoint }
 
 The Helm chart sets `serviceConfig.mcp.enabled` to `false`. A
-chart-rendered service does not mount `/mcp`, so remote MCP agents
-receive HTTP `404` until you opt in. The bundled non-Helm
-`retriever-service.yaml` still sets `mcp.enabled` to `true`.
+chart-rendered service does not mount the MCP endpoint, so remote
+MCP agents receive HTTP `404` until you opt in. The default path is
+`/mcp`. If you set `serviceConfig.mcp.path`, agents must use that
+path. The bundled non-Helm `retriever-service.yaml` still sets
+`mcp.enabled` to `true`.
 
 Enable the mount:
 
