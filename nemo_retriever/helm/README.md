@@ -441,7 +441,7 @@ NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
 Parakeet `audio` ASR NIM) is **disabled by default** to honor the
 "optional and disabled by default" contract in
 [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md);
-refer to [Recommended minimal install](#recommended-minimal-install-2608)
+refer to [Recommended minimal install](#recommended-minimal-install-26082)
 for the opt-in `--set` flags that turn any of them on.
 
 ```bash
@@ -452,7 +452,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.08.1) { #recommended-minimal-install-26081 }
+### Recommended minimal install (26.08.2) { #recommended-minimal-install-26082 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
@@ -488,6 +488,13 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/table-structure` |
 | `nimOperator.ocr` | `nemotron-ocr-v2` | `/v1/ocr` |
 | `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
+
+In chart `26.08.2`, the default environment lists for `page_elements`,
+`table_structure`, and `ocr` no longer set `NIM_SERVER_MODE`,
+`NIM_SERVER_MAX_WAIT_MS`, or `NIM_PIPELINE_MAX_BATCH_SIZE`. These NIMs use
+their image defaults for those settings. To set any of these values, provide a
+complete `nimOperator.<key>.env` list because Helm replaces, rather than
+merges, environment-variable lists.
 
 ### Query reranking (optional)
 
@@ -598,7 +605,7 @@ serviceConfig:
 
 Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
 
-Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-26082).
 
 After you set those values, complete the following steps:
 
@@ -1021,7 +1028,7 @@ gated on three conditions ALL holding:
 > [Query-time reranking](#query-time-reranking)); other optional NIMs
 > still need an explicit serviceConfig hook (for example
 > `audioGrpcEndpoint` for Parakeet ASR). For minimal installs, prefer the
-> [minimal install](#recommended-minimal-install-2608) overrides.
+> [minimal install](#recommended-minimal-install-26082) overrides.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
 

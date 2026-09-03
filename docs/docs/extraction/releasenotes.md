@@ -2,6 +2,15 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
+## 26.08.2 Helm Chart Patch { #release-26082 }
+
+The 26.08.2 Helm chart no longer sets `NIM_SERVER_MODE`,
+`NIM_SERVER_MAX_WAIT_MS`, or `NIM_PIPELINE_MAX_BATCH_SIZE` for the default
+Page Elements, Table Structure, and OCR NIMs. Those NIMs use their image
+defaults for these settings. If you need to override one of them, set the
+complete `nimOperator.<key>.env` list because Helm replaces environment-variable
+lists rather than merging them.
+
 ## 26.08.1 Release Notes (26.8.1) { #release-26081 }
 
 NVIDIA® NeMo Retriever Library version 26.08.1 includes a shared text-generation task API, configurable large language model (LLM) settings, grounded answer-generation model paths, agentic retrieval, and updated Helm NIM defaults. It builds on the graph ingest, multimodal extraction, and Helm-first deployment foundation.
