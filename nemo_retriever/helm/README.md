@@ -81,6 +81,13 @@ nemo_retriever/helm/
 
 ## Quick start
 
+The examples in this README use the Helm release name `retriever`.
+`nemo-retriever` is the chart name. It is not the release name. When a
+command omits `--namespace`, Helm installs into the current kubectl
+namespace. The [Recommended minimal install](#recommended-minimal-install-26081)
+and [Full teardown](#full-teardown) set `REL` and `NS` explicitly so
+cleanup targets the same release.
+
 ### Persistent storage prerequisite { #persistent-storage-prerequisite }
 
 The default chart creates **seven** PersistentVolumeClaims: three
@@ -460,10 +467,16 @@ Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
 before you install.
 
-Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
+Deploy only the four core NIMs that the retriever service auto-wires
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Set `REL` and
+`NS` to the values you will reuse for upgrade and teardown. Replace
+`NS` if you install into a namespace other than `default`.
 
 ```bash
-helm install retriever ./nemo_retriever/helm \
+REL=retriever
+NS=default
+
+helm install "${REL}" ./nemo_retriever/helm -n "${NS}" --create-namespace \
   --set ngcImagePullSecret.create=true \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
@@ -529,29 +542,118 @@ Helm on uninstall.
 | `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed a NIM). |
 | Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
 | `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
-| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+| `helm uninstall` appears to do nothing | Wrong release name or namespace. The chart name is `nemo-retriever`. The example release name is `retriever`. Confirm with `helm list --all-namespaces`. A missing or failed release (`helm list -n <ns> --all`) can also leave CRs without a release to clean them up. |
 
 To change a NIM image on a later install or upgrade, delete the kept
 `NIMCache` first. Refer to
 [Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag).
 
-**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+### Full teardown { #full-teardown }
 
-```bash
-NS=retriever
-REL=nemo-retriever
+On a development cluster, remove the Helm release, kept `NIMCache`
+objects, and model PVCs. Set `REL` and `NS` to the same values you used
+at install time. The
+[Recommended minimal install](#recommended-minimal-install-26081) uses
+`REL=retriever` and `NS=default`. If you omitted `--namespace` at
+install time, Helm used the current kubectl namespace. Replace `NS` if
+that namespace is not `default`.
 
-helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+1. Set the release identity and confirm the target:
 
-# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
-kubectl delete nimservice,nimcache -n "${NS}" --all
-# Optional: drop model PVCs if you will re-pull from NGC
-kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
-```
+   ```bash
+   REL=retriever
+   NS=default
+
+   helm list -n "${NS}"
+   kubectl get deployment,nimservice,nimcache -n "${NS}"
+   ```
+
+   If `helm list` shows no matching release, stop. Run
+   `helm list --all-namespaces` and set `REL` and `NS` to the release
+   you intend to remove.
+
+2. Uninstall the release. Do not suppress Helm errors. If Helm reports
+   that the release was not found, correct `REL` and `NS` before you
+   delete NIM resources:
+
+   ```bash
+   helm uninstall "${REL}" -n "${NS}"
+   helm list -n "${NS}" --all
+   ```
+
+3. Delete kept `NIMCache` objects and leftover `NIMService` CRs. Helm
+   leaves **NIMCache** objects when
+   `nimOperator.nimCache.keepOnUninstall` is `true` (the default). Each
+   NIM uses a resource name from the chart, not the Helm release name.
+   The following command deletes every default name this chart can
+   create, including optional NIMs. `--ignore-not-found` skips names
+   you did not install.
+
+   If you overrode `nimOperator.ocr.nimServiceName`,
+   `nimOperator.vlm_embed.nimServiceName`, or
+   `nimOperator.answer_llm.nimServiceName`, replace those three default
+   names with the values you set.
+
+   ```bash
+   kubectl delete nimservice,nimcache -n "${NS}" \
+     nemotron-page-elements-v3 \
+     nemotron-table-structure-v1 \
+     nemotron-ocr-v2 \
+     llama-nemotron-embed-vl-1b-v2 \
+     llama-nemotron-rerank-vl-1b-v2 \
+     nemotron-parse \
+     nemotron-3-nano-omni-30b-a3b-reasoning \
+     audio \
+     answer-llm \
+     --ignore-not-found
+   ```
+
+   List what remains. Delete leftover CRs by the names in that list
+   before you continue. Remaining objects can be renamed caches or
+   resources that another product owns.
+
+   ```bash
+   kubectl get nimservice,nimcache -n "${NS}"
+   ```
+
+   Do not run `kubectl delete nimservice,nimcache -n "${NS}" --all`
+   unless this namespace contains only this install. That command
+   deletes every `NIMService` and `NIMCache` in the namespace, including
+   resources that another release or product owns.
+
+4. Optional: drop model PVCs when you re-pull weights from NGC. Confirm
+   claim names first. Default claim names use a `-pvc` suffix. Include
+   optional NIM claims. If you overrode a `nimServiceName` value, use
+   `<that-name>-pvc` instead of the default claim.
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
+   kubectl delete pvc -n "${NS}" \
+     nemotron-page-elements-v3-pvc \
+     nemotron-table-structure-v1-pvc \
+     nemotron-ocr-v2-pvc \
+     llama-nemotron-embed-vl-1b-v2-pvc \
+     llama-nemotron-rerank-vl-1b-v2-pvc \
+     nemotron-parse-pvc \
+     nemotron-3-nano-omni-30b-a3b-reasoning-pvc \
+     audio-pvc \
+     answer-llm-pvc \
+     --ignore-not-found
+   ```
+
+   List operator PVCs again and delete any leftover claim that belongs
+   to this install:
+
+   ```bash
+   kubectl get pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator'
+   ```
 
 **Dev installs** that should not retain caches on uninstall:
 
 ```bash
+REL=retriever
+NS=default
+
 helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
   --set nimOperator.nimCache.keepOnUninstall=false
 ```
@@ -669,6 +771,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | Path                                              | Default | Notes |
 |---------------------------------------------------|---------|-------|
 | `serviceConfig.server.port`                       | `7670`  | Retriever service container listener port. Refer to [Service networking](#service-networking). |
+| `serviceConfig.logging.level`                     | `INFO`  | Retriever service log verbosity, rendered as `logging.level` in the ConfigMap. Typical values are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`. Setting `INGEST_LOG_LEVEL` in `service.env` does not change this field. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
@@ -686,10 +789,14 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.llm.model`                           | `""` | Optional explicit LiteLLM model id. Leave empty to inherit `nimOperator.answer_llm.model` when using the operator-managed answer LLM; set it for external endpoints. |
 | `serviceConfig.llm.ragSystemPromptPrefix`           | `""` | Optional explicit RAG prompt prefix. Leave empty unless an endpoint needs model-specific prompt directives. |
 | `serviceConfig.llm.reasoningEnabled`               | `true` | Request-level reasoning toggle for `/v1/answer`. Defaults to true for external OpenAI-compatible providers; set false for Nemotron endpoints that should receive portable no-reasoning controls. |
-| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true` and the additive `agentic_query` MCP tool. Not auto-enabled by `nimOperator.answer_llm`. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). |
+| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true`. The `agentic_query` MCP tool also requires this flag, plus `serviceConfig.mcp.enabled=true`. Not auto-enabled by `nimOperator.answer_llm`. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). |
 | `serviceConfig.agentic.llmModel`                   | `""` | Chat model used by the inner agentic retrieval loop. Required when `invokeUrl` is set. Use the NIM-advertised ID (for Super-49B, `nvidia/llama-3.3-nemotron-super-49b-v1.5`), not the LiteLLM `openai/` prefix. |
 | `serviceConfig.agentic.invokeUrl`                  | `""` | OpenAI-compatible chat completions endpoint used by agentic retrieval. Not auto-populated from `answer_llm`. For the in-cluster Super-49B NIM, set `http://answer-llm:8000/v1/chat/completions`. |
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
+| `serviceConfig.mcp.enabled`                       | `false` | Mounts FastMCP at `serviceConfig.mcp.path`. The bundled non-Helm `retriever-service.yaml` defaults to `true`; the chart defaults to `false` and returns HTTP `404` at that path until you opt in. Refer to [MCP HTTP endpoint](#mcp-http-endpoint). |
+| `serviceConfig.mcp.path`                          | `/mcp` | HTTP mount path for the FastMCP app. Remote agents must connect to this path. |
+| `serviceConfig.mcp.queryMethods`                  | `classic` | Retrieval tools to register: `classic` (`query` only), `agentic` (`agentic_query` only), or `all` (both). Agentic tools also require `serviceConfig.agentic.enabled=true`. |
+| `serviceConfig.mcp.enableWriteTools`              | `true` | When `true`, registers the `ingest_documents` MCP tool. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
@@ -820,6 +927,131 @@ is set, the service also mounts `nimOperator.answer_llm.authSecret` as
 `NEMO_RETRIEVER_LLM_API_KEY`; OpenAI-compatible clients require a
 credential value even for in-cluster NIM endpoints, and the key is never
 rendered into the ConfigMap.
+
+##### Call POST /v1/answer { #call-v1-answer }
+
+After the answer LLM NIM is Ready, send answer requests to the retriever
+gateway. The endpoint retrieves VectorDB chunks and generates a grounded
+answer. Index at least one document and wait until that ingest job
+succeeds before you call `/v1/answer`.
+
+Reach the gateway on `networkService.port` (default `7670`). For a first
+request against the default standalone release named `retriever`,
+port-forward the Service and set `SERVICE_URL`:
+
+```bash
+kubectl port-forward -n <namespace> svc/retriever-nemo-retriever 7670:7670
+export SERVICE_URL=http://127.0.0.1:7670
+```
+
+In split topology, port-forward `svc/retriever-nemo-retriever-gateway`
+instead. You can also use the assigned NodePort (chart default `30670`)
+or the Ingress host. Send `/v1/answer` to the gateway. Realtime and
+batch worker pods return HTTP `404` for this route.
+
+Ingest through that same gateway URL:
+
+```bash
+retriever ingest service /path/to/document.pdf \
+  --service-url "${SERVICE_URL}"
+```
+
+Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when public
+gateway authentication is enabled. Refer to
+[Ingest through a Retriever service](../docs/cli/README.md#ingest-through-a-retriever-service).
+
+Public gateway authentication is off by default
+(`serviceConfig.auth.enabled=false`). Omit the `Authorization` header
+in that case. When you enable public authentication, send
+`Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}` and `X-NRL-Scope`
+with a workspace scope that the token is allowed to use. Refer to
+[Secrets](#secrets).
+
+The following table lists the `POST /v1/answer` JSON fields.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `query` | string | yes | | Question to answer from retrieved chunks. |
+| `top_k` | integer | no | `5` | Number of VectorDB chunks to retrieve. Valid range is 1 through 1000. |
+| `include_chunks` | boolean | no | `false` | When `true`, the response includes retrieved chunk texts. |
+| `include_metadata` | boolean | no | `false` | When `true`, the response includes per-chunk metadata aligned with `chunks`. |
+| `reasoning_enabled` | boolean or null | no | `null` | Per-request reasoning override. When omitted, the service uses `serviceConfig.llm.reasoningEnabled`. |
+| `reference` | string or null | no | `null` | Optional ground-truth answer for scoring. |
+| `judge` | boolean | no | `false` | When `true`, run LLM-as-judge scoring. `judge` requires `reference`. The gateway returns HTTP `422` when `judge` is `true` and `reference` is omitted. |
+
+The only required field is `query`. The following example is a minimal
+request:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "What does the indexed document say?"}'
+```
+
+The following example sets optional retrieval and reasoning fields.
+Include the `Authorization` and `X-NRL-Scope` headers only when public
+gateway authentication is enabled:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}" \
+  -H "X-NRL-Scope: ${NRL_SCOPE}" \
+  -d '{
+    "query": "What does the indexed document say?",
+    "top_k": 5,
+    "include_chunks": true,
+    "include_metadata": true,
+    "reasoning_enabled": true
+  }'
+```
+
+A successful HTTP `200` response includes `query`, `answer`, `model`,
+`latency_s`, and `chunk_count`. `chunks` and `metadata` are `null`
+unless you set `include_chunks` or `include_metadata`. `error` is
+`null` on HTTP `200`. Generation failures return HTTP `502`. The
+gateway returns HTTP `404` when VectorDB or the answer LLM is not
+enabled.
+
+The following example is a representative HTTP `200` body when
+`include_chunks` and `include_metadata` are `true`:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "answer": "The indexed document describes the retrieval workflow.",
+  "model": "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+  "latency_s": 1.24,
+  "chunk_count": 1,
+  "chunks": [
+    "This document describes the retrieval workflow."
+  ],
+  "metadata": [
+    {
+      "source": "example.pdf",
+      "page_number": 1
+    }
+  ],
+  "error": null
+}
+```
+
+When you send `reference`, the response also includes scoring fields
+such as `token_f1`, `exact_match`, `answer_in_context`, and
+`failure_mode`. When you send `judge` with `reference`, the response
+also includes `judge_score`. The following request body enables judge
+scoring:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "reference": "The indexed document describes the retrieval workflow.",
+  "judge": true
+}
+```
+
+The gateway publishes the live request schema at `/docs` and
+`/openapi.json`.
 
 For example, to try Nemotron 3 Nano as the answer LLM on an A100 80GB
 node, override the operator-managed slot instead of adding a second
@@ -979,6 +1211,56 @@ service request, and MCP notes, refer to
 For other self-hosted OpenAI-compatible NIMs, enable automatic tool
 choice and the parser that model requires. The `llama3_json` parser
 is the verified Super-49B setting.
+
+The chart leaves the MCP HTTP mount disabled. Refer to
+[MCP HTTP endpoint](#mcp-http-endpoint).
+
+#### MCP HTTP endpoint { #mcp-http-endpoint }
+
+The Helm chart sets `serviceConfig.mcp.enabled` to `false`. A
+chart-rendered service does not mount the MCP endpoint, so remote
+MCP agents receive HTTP `404` until you opt in. The default path is
+`/mcp`. If you set `serviceConfig.mcp.path`, agents must use that
+path. The bundled non-Helm `retriever-service.yaml` still sets
+`mcp.enabled` to `true`.
+
+Enable the mount:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true
+```
+
+`serviceConfig.mcp.queryMethods` is `classic` by default (`query`
+only). Set `agentic` or `all` to register `agentic_query`. That tool
+is omitted unless you also set
+`--set serviceConfig.agentic.enabled=true` and configure
+`serviceConfig.agentic.llmModel` plus
+`serviceConfig.agentic.invokeUrl`.
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true \
+  --set serviceConfig.mcp.queryMethods=all \
+  --set serviceConfig.agentic.enabled=true \
+  --set serviceConfig.agentic.llmModel=nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set serviceConfig.agentic.invokeUrl=http://answer-llm:8000/v1/chat/completions
+```
+
+Confirm the rendered ConfigMap before you rely on the endpoint:
+
+```bash
+helm template retriever ./nemo_retriever/helm \
+  --set serviceConfig.vectordb.enabled=false \
+  --set serviceConfig.mcp.enabled=true \
+  | sed -n '/^    mcp:/,/^    llm:/p'
+```
+
+The block must show `enabled: true`. The stdio command
+`retriever service mcp-stdio` talks to the REST API and does not
+require this Helm flag. For remote-agent URL, query-method flags, and
+stdio usage, refer to
+[Query with MCP](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/workflow-agentic-retrieval.md#query-with-mcp).
 
 ### NIM Operator sub-stack
 
@@ -1171,10 +1453,10 @@ The affected NIM is unavailable while the operator re-caches weights.
 
 1. Drain ingest traffic that depends on that NIM.
 2. Confirm the live `modelPuller` value differs from the new
-   `repository:tag`:
+   `repository:tag`. Set `NS` to the namespace of your Helm release:
 
    ```bash
-   NS=retriever
+   NS=default
    CACHE=nemotron-page-elements-v3
 
    kubectl get nimcache "${CACHE}" -n "${NS}" \
@@ -1749,16 +2031,34 @@ topology:
   batch:    { hpa: { enabled: false } }
 ```
 
-Then apply your own `ScaledObject` — example for the realtime pool:
+Then apply your own `ScaledObject` for the realtime pool.
+`spec.scaleTargetRef.name` must match the rendered realtime Deployment
+in the same namespace. For the documented quickstart release `retriever`,
+that Deployment is `retriever-nemo-retriever-realtime`. The chart names
+that Deployment from the Helm fullname plus the `-realtime` suffix, so a
+different release produces a different name. Discover the rendered name
+with the `app.kubernetes.io/instance` and `app.kubernetes.io/component`
+labels:
+
+```bash
+kubectl get deploy \
+  -l app.kubernetes.io/instance=retriever,app.kubernetes.io/component=realtime \
+  -o jsonpath='{.items[0].metadata.name}{"\n"}'
+```
+
+Replace `retriever` in the label selector with your Helm release name.
+Repeat the same pattern for the batch pool with
+`app.kubernetes.io/component=batch`. The following example uses the
+documented quickstart realtime Deployment:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: nemo-retriever-realtime
+  name: retriever-nemo-retriever-realtime
 spec:
   scaleTargetRef:
-    name: nemo-retriever-realtime
+    name: retriever-nemo-retriever-realtime
   minReplicaCount: 2
   maxReplicaCount: 8
   cooldownPeriod: 300
@@ -1874,11 +2174,18 @@ the chart's OpenTelemetry Collector. The Collector exports traces to the
 chart-owned Zipkin service and exposes received metrics in Prometheus format.
 The chart configures a 5-second metric export interval. Set
 `service.otel.enabled=false` or `nimOperator.otel.enabled=false` to opt out by
-surface. Open a job and read the Zipkin lookup key from either the JSON body or
-the `x-trace-id` response header:
+surface.
+
+In this section, replace `<release>` with the name you passed to
+`helm install`. The default Service names are `<release>-nemo-retriever`,
+`<release>-nemo-retriever-zipkin`, and `<release>-nemo-retriever-otel`.
+If your release name already contains `nemo-retriever`, or if you set
+`nameOverride` or `fullnameOverride`, copy the Service names from `kubectl get svc`
+instead. Open a job and read the Zipkin lookup key from either
+the JSON body or the `x-trace-id` response header:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+kubectl port-forward svc/<release>-nemo-retriever 7670:7670
 
 curl -s -D headers.txt -o job.json \
   -X POST http://localhost:7670/v1/ingest/job \
@@ -1892,7 +2199,7 @@ grep -i x-trace-id headers.txt
 Port-forward Zipkin and query the trace directly:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+kubectl port-forward svc/<release>-nemo-retriever-zipkin 9411:9411
 curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 ```
 

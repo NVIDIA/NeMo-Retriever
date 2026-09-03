@@ -82,6 +82,8 @@ By default, local ingest auto-detects supported input formats and writes to
 explicit high-level options when a task needs behavior beyond the current ingest
 defaults.
 
+Python `.vdb_upload()` and default `Retriever()` use the same table.
+
 The plain `retriever query` examples below apply to local and batch ingest output
 written to LanceDB. Use `retriever query service` to query a Retriever service.
 
@@ -154,7 +156,7 @@ retriever ingest ./data/multimodal_test.pdf \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
@@ -168,7 +170,7 @@ authorizes the hosted embedding URL:
 ```bash
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking \
   --reranker-model-name nvidia/llama-nemotron-rerank-vl-1b-v2 \
   --reranker-api-key-env NVIDIA_API_KEY
@@ -376,7 +378,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
 | `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. `fast-text` selects `pdfium` and disables Page Elements, image, table, and chart extraction for text-only PDFs. |
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
-| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
+| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
