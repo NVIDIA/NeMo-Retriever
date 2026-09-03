@@ -10,6 +10,8 @@ For local inference, the default `vllm` backend resolves that logical ID as foll
 
 The BF16 and NVFP4 checkpoints share an embedding space. Validate retrieval quality on representative data before you change the precision used by an existing index.
 
+The previous default, `nvidia/llama-nemotron-embed-vl-1b-v2`, does not share this embedding space. Before upgrading a persistent LanceDB index, back it up and follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain the old model or rebuild and re-ingest with the new default.
+
 Helm deploys `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`. The NIM selects a supported NVFP4 or BF16 engine automatically. For NIM product details, refer to the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html).
 
 ## Example with Default Text-Based Embedding { #example-with-default-text-based-embedding }

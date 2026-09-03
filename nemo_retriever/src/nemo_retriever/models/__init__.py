@@ -68,7 +68,20 @@ def _cuda_supports_native_nvfp4() -> bool:
 
 
 def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
-    """Resolve the logical default to a backend- and GPU-compatible HF checkpoint."""
+    """Resolve an embedding model to a backend-compatible checkpoint.
+
+    Args:
+        model_name: Logical embedding model name or alias. An omitted or empty
+            value uses the default embedding model.
+        backend: Normalized local inference backend, such as ``"vllm"`` or
+            ``"hf"``.
+
+    Returns:
+        The resolved Hugging Face checkpoint identifier. The logical Nemotron 3
+        default resolves to NVFP4 for vLLM when every visible CUDA device has
+        native NVFP4 support, and to BF16 otherwise. Other model identifiers
+        are returned after alias resolution.
+    """
     resolved = resolve_embed_model(model_name)
     if resolved != NEMOTRON_3_EMBED_MODEL:
         return resolved

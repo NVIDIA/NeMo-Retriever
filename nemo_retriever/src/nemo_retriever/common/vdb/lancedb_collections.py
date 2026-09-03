@@ -62,6 +62,41 @@ _DOCUMENTS_TABLE = "_nrl_documents"
 _CATALOG_SCHEMA_VERSION = 2
 _CATALOG_SCAN_LIMIT = 100_000
 _NATIVE_SCORE_FIELDS = frozenset({"_distance", "_score"})
+_EMBEDDING_MODEL_METADATA_KEY = b"nemo_retriever.embedding_model_name"
+
+
+def _with_embedding_model_metadata(schema: pa.Schema, model_name: str | None) -> pa.Schema:
+    """Attach the configured embedding identity to a collection table schema."""
+    if not model_name:
+        return schema
+    metadata = dict(schema.metadata or {})
+    metadata[_EMBEDDING_MODEL_METADATA_KEY] = model_name.encode("utf-8")
+    return schema.with_metadata(metadata)
+
+
+def _validate_embedding_model(table: Any, configured_model: str | None, *, table_name: str) -> None:
+    """Reject collection access when its vector space cannot be verified."""
+    if not configured_model:
+        return
+    schema = table.schema() if callable(table.schema) else table.schema
+    stored_value = (schema.metadata or {}).get(_EMBEDDING_MODEL_METADATA_KEY)
+    if not stored_value:
+        raise VDBInvalidRequest(
+            f"Existing LanceDB collection table {table_name!r} does not record its embedding model, "
+            "so query compatibility cannot be verified. Rebuild and re-ingest the collection with "
+            "the configured embedding model."
+        )
+
+    from nemo_retriever.models import resolve_embed_model
+
+    stored_model = resolve_embed_model(stored_value.decode("utf-8", errors="replace").strip())
+    expected_model = resolve_embed_model(configured_model)
+    if stored_model != expected_model:
+        raise VDBInvalidRequest(
+            f"Existing LanceDB collection table {table_name!r} uses embedding model {stored_model!r}, "
+            f"but the VectorDB service is configured for {expected_model!r}. Use the index model or "
+            "rebuild and re-ingest the collection with the configured model."
+        )
 
 
 def _now() -> str:
@@ -845,7 +880,10 @@ class LanceDBCollectionStore:
                     vector_dim = infer_vector_dim(rows)
                     if vector_dim == 0:
                         raise VDBInvalidRequest("Cannot infer vector dimension from collection records")
-                    schema = lancedb_schema(vector_dim=vector_dim, collection_managed=True)
+                    schema = _with_embedding_model_metadata(
+                        lancedb_schema(vector_dim=vector_dim, collection_managed=True),
+                        self._backend.embedding_model_name,
+                    )
                     table = create_or_append_lancedb_table(
                         self._db,
                         table_name,
@@ -861,6 +899,11 @@ class LanceDBCollectionStore:
                     )
                 else:
                     table = table or self._db.open_table(table_name)
+                    _validate_embedding_model(
+                        table,
+                        self._backend.embedding_model_name,
+                        table_name=table_name,
+                    )
                     if context.operation is IngestOperation.REPLACE:
                         predicate = f"document_id = {_quoted(context.document_id)}"
                         (
@@ -921,6 +964,11 @@ class LanceDBCollectionStore:
             table_name = self._resolved_table(scope, collection_name)
             if not self._has_table(table_name):
                 return ([[] for _ in vectors], ["dense"])
+            _validate_embedding_model(
+                self._open_table(table_name),
+                self._backend.embedding_model_name,
+                table_name=table_name,
+            )
             capabilities = self._table_capabilities(table_name)
             self._resolve_effective_retrieval_mode(table_name, capabilities)
             retrieval_kwargs: dict[str, Any] = {

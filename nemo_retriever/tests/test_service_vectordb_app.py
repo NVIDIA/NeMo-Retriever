@@ -444,11 +444,97 @@ def test_unsupported_collection_retrieval_returns_501_without_legacy_fallback() 
     assert backend.legacy_retrieval_calls == 0
 
 
+def _embedding_records() -> list[list[dict[str, Any]]]:
+    return [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [1.0, 0.0],
+                    "content": "hello",
+                    "content_metadata": {"page_number": 1},
+                    "source_metadata": {"source_name": "doc.pdf"},
+                },
+            }
+        ]
+    ]
+
+
+def test_production_vdb_records_embedding_model_on_new_table(tmp_path) -> None:
+    model = "nvidia/nemotron-3-embed-1b"
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="fresh",
+        expiration_cleanup_enabled=True,
+        embed_model=model,
+    )
+
+    backend.run(_embedding_records())
+
+    assert backend.get_index_metadata("embedding_model_name") == model
+
+
+def test_production_vdb_rejects_untagged_existing_table(tmp_path) -> None:
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="untagged",
+        vector_dim=2,
+        build_index=False,
+    ).run(_embedding_records())
+
+    with pytest.raises(ValueError, match="does not record its embedding model"):
+        vectordb_module._production_vdb(
+            lancedb_uri=str(tmp_path),
+            table_name="untagged",
+            expiration_cleanup_enabled=True,
+            embed_model="nvidia/nemotron-3-embed-1b",
+        )
+
+
+def test_production_vdb_rejects_existing_table_model_mismatch(tmp_path) -> None:
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="old-model",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    ).run(_embedding_records())
+
+    with pytest.raises(ValueError, match="uses embedding model.*llama-nemotron.*configured for.*nemotron-3"):
+        vectordb_module._production_vdb(
+            lancedb_uri=str(tmp_path),
+            table_name="old-model",
+            expiration_cleanup_enabled=True,
+            embed_model="nvidia/nemotron-3-embed-1b",
+        )
+
+
+def test_production_vdb_accepts_existing_table_model_match(tmp_path) -> None:
+    model = "nvidia/nemotron-3-embed-1b"
+    LanceDB(
+        uri=str(tmp_path),
+        table_name="matching-model",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name=model,
+    ).run(_embedding_records())
+
+    backend = vectordb_module._production_vdb(
+        lancedb_uri=str(tmp_path),
+        table_name="matching-model",
+        expiration_cleanup_enabled=True,
+        embed_model=model,
+    )
+
+    assert isinstance(backend, LanceDB)
+
+
 def test_production_vdb_defaults_to_hybrid_without_vector_index_build(tmp_path) -> None:
     backend = vectordb_module._production_vdb(
         lancedb_uri=str(tmp_path),
         table_name="hybrid",
         expiration_cleanup_enabled=True,
+        embed_model="nvidia/nemotron-3-embed-1b",
     )
     assert isinstance(backend, LanceDB)
     assert backend.build_index is False
@@ -463,6 +549,7 @@ def test_production_vdb_dense_mode_preserves_legacy_service_write_without_index_
         lancedb_uri=str(tmp_path),
         table_name="legacy",
         expiration_cleanup_enabled=True,
+        embed_model="nvidia/nemotron-3-embed-1b",
         index_mode="dense",
     )
     assert isinstance(backend, LanceDB)

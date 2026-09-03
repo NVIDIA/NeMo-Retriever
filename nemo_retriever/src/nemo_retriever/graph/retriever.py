@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model, resolve_embed_model_spec
+from nemo_retriever.models import (
+    NEMOTRON_3_EMBED_MODEL,
+    VL_RERANK_MODEL,
+    resolve_embed_model,
+    resolve_embed_model_spec,
+)
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -108,22 +113,30 @@ class Retriever:
         from nemo_retriever.common.params import EmbedParams
 
         base: dict[str, Any] = {
-            "model_name": VL_EMBED_MODEL,
-            "embed_model_name": VL_EMBED_MODEL,
+            "model_name": NEMOTRON_3_EMBED_MODEL,
+            "embed_model_name": NEMOTRON_3_EMBED_MODEL,
             "input_type": "query",
             "text_column": "text",
             "inference_batch_size": 32,
             "embed_inference_batch_size": 32,
-            "local_ingest_embed_backend": "hf",
+            "local_ingest_embed_backend": "vllm",
         }
         overrides = {**dict(self.embed_kwargs or {}), **dict(extra or {})}
         merged = {**base, **overrides}
         endpoint = str(merged.get("embedding_endpoint") or merged.get("embed_invoke_url") or "").strip()
-        if self.run_mode == "local" and not endpoint and overrides.get("local_ingest_embed_backend") is None:
+        if (
+            self.run_mode == "local"
+            and not endpoint
+            and "local_ingest_embed_backend" in overrides
+            and overrides["local_ingest_embed_backend"] is None
+        ):
             model_id = str(merged.get("embed_model_name") or merged.get("model_name") or "").strip()
-            spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
-            merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
-            merged["embed_model_revision"] = spec.revision
+            if resolve_embed_model(model_id) == NEMOTRON_3_EMBED_MODEL:
+                merged["local_ingest_embed_backend"] = "vllm"
+            else:
+                spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
+                merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
+                merged["embed_model_revision"] = spec.revision
         if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:
             merged["local_ingest_embed_backend"] = normalize_backend(
                 str(merged["local_ingest_embed_backend"]),
@@ -460,16 +473,18 @@ class Retriever:
                 resolved_explicit_model = resolve_embed_model(explicit_model)
                 resolved_index_model = resolve_embed_model(index_model)
                 if resolved_explicit_model != resolved_index_model:
-                    logger.warning(
-                        "The explicitly configured query embedding model %r differs from the model %r "
-                        "recorded on the index. Results may be unreliable because different embedding "
-                        "models can use incompatible vector spaces. Use the index model or rebuild the "
-                        "index with the query model. Continuing with the explicitly configured model.",
-                        resolved_explicit_model,
-                        resolved_index_model,
+                    raise ValueError(
+                        f"Query embedding model {resolved_explicit_model!r} does not match model "
+                        f"{resolved_index_model!r} recorded on the index. Use the index model or rebuild "
+                        "the index with the configured query model."
                     )
 
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
+        if lancedb_mode is not None and lancedb_mode[0] != "sparse" and not index_model:
+            raise ValueError(
+                "The existing LanceDB table does not record its embedding model, so query compatibility "
+                "cannot be verified. Rebuild the table with the configured embedding model before querying."
+            )
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
         if lancedb_mode is not None:

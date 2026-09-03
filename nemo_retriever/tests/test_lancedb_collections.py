@@ -401,6 +401,75 @@ def test_collection_updates_preserve_replace_or_clear_expiration_window(tmp_path
     assert cleared.expires_at is None
 
 
+def test_collection_table_records_and_validates_embedding_model(tmp_path):
+    uri = str(tmp_path / "lancedb")
+    model = "nvidia/nemotron-3-embed-1b"
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name=model,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    backend.write_collection(_records(), context=_context())
+    physical_table = backend._get_collection_store()._resolved_table("workspace-a", "collection-a")
+    table = lancedb.connect(uri).open_table(physical_table)
+    schema = table.schema() if callable(table.schema) else table.schema
+
+    assert schema.metadata[b"nemo_retriever.embedding_model_name"] == model.encode()
+
+    restarted = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    )
+    with pytest.raises(VDBInvalidRequest, match="uses embedding model.*nemotron-3"):
+        restarted.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=["query"],
+            top_k=1,
+        )
+
+
+def test_collection_query_rejects_untagged_existing_table(tmp_path):
+    uri = str(tmp_path / "lancedb")
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    backend.write_collection(_records(), context=_context())
+
+    restarted = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/nemotron-3-embed-1b",
+    )
+    with pytest.raises(VDBInvalidRequest, match="does not record its embedding model"):
+        restarted.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=["query"],
+            top_k=1,
+        )
+
+
 def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):
     uri = str(tmp_path / "lancedb")
     backend = LanceDB(
