@@ -26,7 +26,7 @@ class LanceDBConfig:
     """
 
     uri: str = "lancedb"
-    table_name: str = "nv-ingest"
+    table_name: str = "nemo-retriever"
     overwrite: bool = True
 
     # Optional index creation (recommended for recall/search runs).

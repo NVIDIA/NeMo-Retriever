@@ -147,7 +147,7 @@ serviceConfig:
 
 `invokeUrl` uses the in-cluster Super-49B service. Change the hostname if you override `nimOperator.answer_llm.nimServiceName`. `llmModel` is the model ID advertised by the NIM, not the LiteLLM `openai/` prefix used by `serviceConfig.llm.model`.
 
-If you register MCP retrieval tools, set `serviceConfig.mcp.queryMethods` to `agentic` or `all` as well. Agentic MCP tools are omitted unless `serviceConfig.agentic.enabled` is true.
+If you register MCP retrieval tools, also set `serviceConfig.mcp.enabled=true` and set `serviceConfig.mcp.queryMethods` to `agentic` or `all`. Helm leaves MCP disabled by default. Agentic MCP tools are omitted unless `serviceConfig.agentic.enabled` is true. Refer to [Enable MCP on Helm](#enable-mcp-on-helm).
 
 For other self-hosted OpenAI-compatible NIMs, enable automatic tool choice and the parser that model requires. The `llama3_json` parser is the verified Super-49B setting.
 
@@ -194,14 +194,16 @@ When service auth is enabled, send `Authorization: Bearer <token>` (`NEMO_RETRIE
 
 ## Query with MCP { #query-with-mcp }
 
-`retriever service start` mounts a FastMCP HTTP endpoint at `/mcp` by default. Model Context Protocol (MCP) agents can use that endpoint to call the running service for health checks, pipeline introspection, document ingestion, job status, VectorDB query, agentic retrieval, and answer generation. If service auth is enabled, the MCP endpoint uses the same bearer-token middleware as the REST API.
+`retriever service start` mounts a FastMCP HTTP endpoint when `mcp.enabled` is true. The default mount path is `/mcp`. Set `mcp.path`, or Helm `serviceConfig.mcp.path`, to use a different path. The bundled non-Helm `retriever-service.yaml` sets `mcp.enabled` to `true` by default. Model Context Protocol (MCP) agents can use that endpoint to call the running service for health checks, pipeline introspection, document ingestion, job status, VectorDB query, agentic retrieval, and answer generation. If service auth is enabled, the MCP endpoint uses the same bearer-token middleware as the REST API.
+
+The Helm chart does not enable that mount. `serviceConfig.mcp.enabled` is `false`, so a chart-rendered service returns HTTP `404` at the MCP path until you opt in. Refer to [Enable MCP on Helm](#enable-mcp-on-helm).
 
 Plain and agentic retrieval share `POST /v1/query` and the same hits response envelope. They are separate MCP tools so agents can choose explicitly:
 
 - `query` calls `POST /v1/query` with `agentic=false` for one-pass dense or hybrid retrieval.
 - `agentic_query` calls `POST /v1/query` with `agentic=true` and runs the ReAct retrieval workflow. It is added to MCP when `agentic.enabled` is true.
 
-Use `--query-methods classic` (default), `agentic`, or `all` to choose which retrieval tools the MCP server registers. Mounted `/mcp` uses the same knob through `mcp.query_methods` in the service config. Agentic tools are omitted unless `agentic.enabled` is also true.
+Use `--query-methods classic` (default), `agentic`, or `all` to choose which retrieval tools the MCP server registers. The mounted MCP endpoint uses the same knob through `mcp.query_methods` in the service config. Agentic tools are omitted unless `agentic.enabled` is also true.
 
 For local stdio-based agents, run the MCP server as a shim that points at an existing retriever service:
 
@@ -211,14 +213,50 @@ retriever service mcp-stdio \
   --query-methods agentic \
   --api-token "$NEMO_RETRIEVER_API_TOKEN"
 ```
-
-For remote agents, expose the retriever service URL and configure the agent to connect to:
+For remote agents, expose the retriever service URL and configure the agent to connect to the MCP mount path. The default is:
 
 ```text
 https://<retriever-service-host>/mcp
 ```
 
+If you set `mcp.path` or Helm `serviceConfig.mcp.path`, use that configured path instead of `/mcp`. Helm does not mount the path until you set `serviceConfig.mcp.enabled=true`. Refer to [Enable MCP on Helm](#enable-mcp-on-helm).
+
 The `ingest_documents` MCP tool accepts either paths visible to the MCP server process or inline `content_base64` document bytes. Use inline base64 for remote agents whose local files are not present on the service host.
+
+### Enable MCP on Helm { #enable-mcp-on-helm }
+
+The supported Helm chart renders `mcp.enabled: false`. Remote agents that connect to the MCP path receive HTTP `404` unless you enable the mount. The default path is `/mcp`. If you set `serviceConfig.mcp.path`, agents must use that path.
+
+Add the following flag to your chart install:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true
+```
+
+`serviceConfig.mcp.queryMethods` selects which retrieval tools FastMCP registers: `classic` (default, `query` only), `agentic` (`agentic_query` only), or `all` (both). The `agentic_query` tool is omitted unless `serviceConfig.agentic.enabled` is also `true`. Enable both when remote agents must call agentic retrieval:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true \
+  --set serviceConfig.mcp.queryMethods=all \
+  --set serviceConfig.agentic.enabled=true \
+  --set serviceConfig.agentic.llmModel=nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set serviceConfig.agentic.invokeUrl=http://answer-llm:8000/v1/chat/completions
+```
+
+The agentic `--set` values still require a remote chat-completions endpoint. For self-hosted Super-49B, also add the tool-call passthrough arguments in [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b).
+
+Confirm the rendered ConfigMap before you rely on the endpoint:
+
+```bash
+helm template retriever ./nemo_retriever/helm \
+  --set serviceConfig.vectordb.enabled=false \
+  --set serviceConfig.mcp.enabled=true \
+  | sed -n '/^    mcp:/,/^    llm:/p'
+```
+
+The block must show `enabled: true`. For chart keys, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml) in the Helm chart README.
 
 ## Result contract { #result-contract }
 
@@ -302,6 +340,7 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 - Local CLI and harness runs need a CUDA GPU host and the `[local]` extra. `super-49b` needs two visible GPUs and `--agentic-local-tensor-parallel-size 2`.
 - Retriever Service agentic queries require a remote chat-completions URL, a remote embedding endpoint, and matching credentials in the process environment.
 - The default Helm `answer_llm` Super-49B NIM is limited to `POST /v1/answer` until you add the tool-call passthrough arguments. Enabling `nimOperator.answer_llm` does not configure `serviceConfig.agentic`.
+- Helm leaves `serviceConfig.mcp.enabled` at `false`. Remote MCP agents require `--set serviceConfig.mcp.enabled=true` and must use the configured mount path, which defaults to `/mcp`. Refer to [Enable MCP on Helm](#enable-mcp-on-helm).
 - Agentic ranking is document-level. Rehydrated hits include chunk `text` when a retrieval hop returned the document. Otherwise load the source document by `doc_id`.
 - Service agentic queries accept a single query string, `format=hits` only, and cannot combine `rerank=true` on the same `/v1/query` request. On the CLI, `--rerank` applies to each agent retrieve hop.
 
@@ -314,4 +353,5 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 - [Authentication and API keys](api-keys.md)
 - [CLI reference: Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#agentic-retrieval)
 - [Helm chart README: Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm)
+- [Helm chart README: Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml)
 - [Release notes](releasenotes.md#retrieval-and-rag)

@@ -44,7 +44,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: main
+          # Schedule always publishes from default-branch main. workflow_dispatch
+          # uses the selected ref so a PR branch can be built and pushed to NGC.
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx

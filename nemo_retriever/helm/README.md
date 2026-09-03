@@ -789,10 +789,14 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.llm.model`                           | `""` | Optional explicit LiteLLM model id. Leave empty to inherit `nimOperator.answer_llm.model` when using the operator-managed answer LLM; set it for external endpoints. |
 | `serviceConfig.llm.ragSystemPromptPrefix`           | `""` | Optional explicit RAG prompt prefix. Leave empty unless an endpoint needs model-specific prompt directives. |
 | `serviceConfig.llm.reasoningEnabled`               | `true` | Request-level reasoning toggle for `/v1/answer`. Defaults to true for external OpenAI-compatible providers; set false for Nemotron endpoints that should receive portable no-reasoning controls. |
-| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true` and the additive `agentic_query` MCP tool. Not auto-enabled by `nimOperator.answer_llm`. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). |
+| `serviceConfig.agentic.enabled`                    | `false` | Enables `POST /v1/query` with `agentic=true`. The `agentic_query` MCP tool also requires this flag, plus `serviceConfig.mcp.enabled=true`. Not auto-enabled by `nimOperator.answer_llm`. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). |
 | `serviceConfig.agentic.llmModel`                   | `""` | Chat model used by the inner agentic retrieval loop. Required when `invokeUrl` is set. Use the NIM-advertised ID (for Super-49B, `nvidia/llama-3.3-nemotron-super-49b-v1.5`), not the LiteLLM `openai/` prefix. |
 | `serviceConfig.agentic.invokeUrl`                  | `""` | OpenAI-compatible chat completions endpoint used by agentic retrieval. Not auto-populated from `answer_llm`. For the in-cluster Super-49B NIM, set `http://answer-llm:8000/v1/chat/completions`. |
 | `serviceConfig.agentic.requestTimeoutS`            | `1800` | Gateway and MCP timeout for the multi-step agentic retrieval call. |
+| `serviceConfig.mcp.enabled`                       | `false` | Mounts FastMCP at `serviceConfig.mcp.path`. The bundled non-Helm `retriever-service.yaml` defaults to `true`; the chart defaults to `false` and returns HTTP `404` at that path until you opt in. Refer to [MCP HTTP endpoint](#mcp-http-endpoint). |
+| `serviceConfig.mcp.path`                          | `/mcp` | HTTP mount path for the FastMCP app. Remote agents must connect to this path. |
+| `serviceConfig.mcp.queryMethods`                  | `classic` | Retrieval tools to register: `classic` (`query` only), `agentic` (`agentic_query` only), or `all` (both). Agentic tools also require `serviceConfig.agentic.enabled=true`. |
+| `serviceConfig.mcp.enableWriteTools`              | `true` | When `true`, registers the `ingest_documents` MCP tool. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
@@ -923,6 +927,131 @@ is set, the service also mounts `nimOperator.answer_llm.authSecret` as
 `NEMO_RETRIEVER_LLM_API_KEY`; OpenAI-compatible clients require a
 credential value even for in-cluster NIM endpoints, and the key is never
 rendered into the ConfigMap.
+
+##### Call POST /v1/answer { #call-v1-answer }
+
+After the answer LLM NIM is Ready, send answer requests to the retriever
+gateway. The endpoint retrieves VectorDB chunks and generates a grounded
+answer. Index at least one document and wait until that ingest job
+succeeds before you call `/v1/answer`.
+
+Reach the gateway on `networkService.port` (default `7670`). For a first
+request against the default standalone release named `retriever`,
+port-forward the Service and set `SERVICE_URL`:
+
+```bash
+kubectl port-forward -n <namespace> svc/retriever-nemo-retriever 7670:7670
+export SERVICE_URL=http://127.0.0.1:7670
+```
+
+In split topology, port-forward `svc/retriever-nemo-retriever-gateway`
+instead. You can also use the assigned NodePort (chart default `30670`)
+or the Ingress host. Send `/v1/answer` to the gateway. Realtime and
+batch worker pods return HTTP `404` for this route.
+
+Ingest through that same gateway URL:
+
+```bash
+retriever ingest service /path/to/document.pdf \
+  --service-url "${SERVICE_URL}"
+```
+
+Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when public
+gateway authentication is enabled. Refer to
+[Ingest through a Retriever service](../docs/cli/README.md#ingest-through-a-retriever-service).
+
+Public gateway authentication is off by default
+(`serviceConfig.auth.enabled=false`). Omit the `Authorization` header
+in that case. When you enable public authentication, send
+`Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}` and `X-NRL-Scope`
+with a workspace scope that the token is allowed to use. Refer to
+[Secrets](#secrets).
+
+The following table lists the `POST /v1/answer` JSON fields.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `query` | string | yes | | Question to answer from retrieved chunks. |
+| `top_k` | integer | no | `5` | Number of VectorDB chunks to retrieve. Valid range is 1 through 1000. |
+| `include_chunks` | boolean | no | `false` | When `true`, the response includes retrieved chunk texts. |
+| `include_metadata` | boolean | no | `false` | When `true`, the response includes per-chunk metadata aligned with `chunks`. |
+| `reasoning_enabled` | boolean or null | no | `null` | Per-request reasoning override. When omitted, the service uses `serviceConfig.llm.reasoningEnabled`. |
+| `reference` | string or null | no | `null` | Optional ground-truth answer for scoring. |
+| `judge` | boolean | no | `false` | When `true`, run LLM-as-judge scoring. `judge` requires `reference`. The gateway returns HTTP `422` when `judge` is `true` and `reference` is omitted. |
+
+The only required field is `query`. The following example is a minimal
+request:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "What does the indexed document say?"}'
+```
+
+The following example sets optional retrieval and reasoning fields.
+Include the `Authorization` and `X-NRL-Scope` headers only when public
+gateway authentication is enabled:
+
+```bash
+curl -sS -X POST "${SERVICE_URL}/v1/answer" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer ${NEMO_RETRIEVER_API_TOKEN}" \
+  -H "X-NRL-Scope: ${NRL_SCOPE}" \
+  -d '{
+    "query": "What does the indexed document say?",
+    "top_k": 5,
+    "include_chunks": true,
+    "include_metadata": true,
+    "reasoning_enabled": true
+  }'
+```
+
+A successful HTTP `200` response includes `query`, `answer`, `model`,
+`latency_s`, and `chunk_count`. `chunks` and `metadata` are `null`
+unless you set `include_chunks` or `include_metadata`. `error` is
+`null` on HTTP `200`. Generation failures return HTTP `502`. The
+gateway returns HTTP `404` when VectorDB or the answer LLM is not
+enabled.
+
+The following example is a representative HTTP `200` body when
+`include_chunks` and `include_metadata` are `true`:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "answer": "The indexed document describes the retrieval workflow.",
+  "model": "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+  "latency_s": 1.24,
+  "chunk_count": 1,
+  "chunks": [
+    "This document describes the retrieval workflow."
+  ],
+  "metadata": [
+    {
+      "source": "example.pdf",
+      "page_number": 1
+    }
+  ],
+  "error": null
+}
+```
+
+When you send `reference`, the response also includes scoring fields
+such as `token_f1`, `exact_match`, `answer_in_context`, and
+`failure_mode`. When you send `judge` with `reference`, the response
+also includes `judge_score`. The following request body enables judge
+scoring:
+
+```json
+{
+  "query": "What does the indexed document say?",
+  "reference": "The indexed document describes the retrieval workflow.",
+  "judge": true
+}
+```
+
+The gateway publishes the live request schema at `/docs` and
+`/openapi.json`.
 
 For example, to try Nemotron 3 Nano as the answer LLM on an A100 80GB
 node, override the operator-managed slot instead of adding a second
@@ -1082,6 +1211,56 @@ service request, and MCP notes, refer to
 For other self-hosted OpenAI-compatible NIMs, enable automatic tool
 choice and the parser that model requires. The `llama3_json` parser
 is the verified Super-49B setting.
+
+The chart leaves the MCP HTTP mount disabled. Refer to
+[MCP HTTP endpoint](#mcp-http-endpoint).
+
+#### MCP HTTP endpoint { #mcp-http-endpoint }
+
+The Helm chart sets `serviceConfig.mcp.enabled` to `false`. A
+chart-rendered service does not mount the MCP endpoint, so remote
+MCP agents receive HTTP `404` until you opt in. The default path is
+`/mcp`. If you set `serviceConfig.mcp.path`, agents must use that
+path. The bundled non-Helm `retriever-service.yaml` still sets
+`mcp.enabled` to `true`.
+
+Enable the mount:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true
+```
+
+`serviceConfig.mcp.queryMethods` is `classic` by default (`query`
+only). Set `agentic` or `all` to register `agentic_query`. That tool
+is omitted unless you also set
+`--set serviceConfig.agentic.enabled=true` and configure
+`serviceConfig.agentic.llmModel` plus
+`serviceConfig.agentic.invokeUrl`.
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set serviceConfig.mcp.enabled=true \
+  --set serviceConfig.mcp.queryMethods=all \
+  --set serviceConfig.agentic.enabled=true \
+  --set serviceConfig.agentic.llmModel=nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --set serviceConfig.agentic.invokeUrl=http://answer-llm:8000/v1/chat/completions
+```
+
+Confirm the rendered ConfigMap before you rely on the endpoint:
+
+```bash
+helm template retriever ./nemo_retriever/helm \
+  --set serviceConfig.vectordb.enabled=false \
+  --set serviceConfig.mcp.enabled=true \
+  | sed -n '/^    mcp:/,/^    llm:/p'
+```
+
+The block must show `enabled: true`. The stdio command
+`retriever service mcp-stdio` talks to the REST API and does not
+require this Helm flag. For remote-agent URL, query-method flags, and
+stdio usage, refer to
+[Query with MCP](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/workflow-agentic-retrieval.md#query-with-mcp).
 
 ### NIM Operator sub-stack
 
@@ -1995,11 +2174,18 @@ the chart's OpenTelemetry Collector. The Collector exports traces to the
 chart-owned Zipkin service and exposes received metrics in Prometheus format.
 The chart configures a 5-second metric export interval. Set
 `service.otel.enabled=false` or `nimOperator.otel.enabled=false` to opt out by
-surface. Open a job and read the Zipkin lookup key from either the JSON body or
-the `x-trace-id` response header:
+surface.
+
+In this section, replace `<release>` with the name you passed to
+`helm install`. The default Service names are `<release>-nemo-retriever`,
+`<release>-nemo-retriever-zipkin`, and `<release>-nemo-retriever-otel`.
+If your release name already contains `nemo-retriever`, or if you set
+`nameOverride` or `fullnameOverride`, copy the Service names from `kubectl get svc`
+instead. Open a job and read the Zipkin lookup key from either
+the JSON body or the `x-trace-id` response header:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+kubectl port-forward svc/<release>-nemo-retriever 7670:7670
 
 curl -s -D headers.txt -o job.json \
   -X POST http://localhost:7670/v1/ingest/job \
@@ -2013,7 +2199,7 @@ grep -i x-trace-id headers.txt
 Port-forward Zipkin and query the trace directly:
 
 ```bash
-kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+kubectl port-forward svc/<release>-nemo-retriever-zipkin 9411:9411
 curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
 ```
 
