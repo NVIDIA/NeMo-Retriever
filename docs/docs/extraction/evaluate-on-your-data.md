@@ -4,7 +4,17 @@ Retrieval and ingestion performance **depend on your documents**, hardware, and 
 
 ## Benchmarking and baselines { #benchmarking-and-baselines }
 
-Use this page as the baseline for methodology and expectations. Use [Operational tuning](#operational-tuning) below to observe production-like runs.
+Use this page as the baseline for methodology and expectations. Use [Accuracy metrics](#accuracy-metrics) when you compare retrieval quality. Use [Operational tuning](#operational-tuning) below to observe production-like runs.
+
+## Accuracy metrics { #accuracy-metrics }
+
+When you measure retrieval accuracy, report both `Recall@5` and `NDCG@10` (normalized discounted cumulative gain at 10). NeMo Retriever Library end-to-end retrieval benchmarks report both metrics.
+
+`Recall@5` remains the primary accuracy metric. It is the fraction of relevant items that appear in the top five retrieved results.
+
+`NDCG@10` accounts for the rank of relevant results, not only whether those results appear in the list. Most popular public retrieval benchmarks use `NDCG@10` as their comparison metric. `Recall@5` can vary more across queries than `NDCG@10`.
+
+Use both metrics when you compare published NeMo Retriever Library numbers to public leaderboards. Use both metrics when you evaluate retrieval on your own labeled queries. Do not treat a single cutoff as the full accuracy picture.
 
 ## Throughput and dataset effects { #throughput-and-dataset-effects }
 
