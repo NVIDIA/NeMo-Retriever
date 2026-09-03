@@ -1,6 +1,6 @@
 # Configure Ray Logging
 
-[NeMo Retriever Library](../understand/overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for batch ingest.
+[NeMo Retriever Library](../about/overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for batch ingest.
 You can set Ray environment variables for fine-grained control over [Ray's logging behavior](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html).
 To control whether worker logs appear in the driver process, use `--ray-log-to-driver` or `ray_log_to_driver`.
 

@@ -1,6 +1,6 @@
 # Vector databases
 
-Use this documentation to learn how [NeMo Retriever Library](../understand/overview.md) stores extracted embeddings and uploads data to vector databases.
+Use this documentation to learn how [NeMo Retriever Library](../about/overview.md) stores extracted embeddings and uploads data to vector databases.
 
 ## On this page { #on-this-page }
 
@@ -170,11 +170,11 @@ To use a custom operator, pass a `VDB` instance as `vdb` to `IngestVdbOperator` 
 Semantic retrieval uses dense embeddings to find content that is similar in meaning to a query. In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
 - [Metadata and filtering](#metadata-and-filtering) for custom metadata at ingest and filtered retrieval
-- [Concepts](../understand/concepts.md) for broader pipeline and search patterns
+- [Concepts](../about/concepts.md) for broader pipeline and search patterns
 - [Use the NeMo Retriever Library Python API](../reference/nemo-retriever-api-reference.md) for `Retriever.query` and `LanceDB.retrieval` parameters
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for the LLM-driven ReAct query path over the same LanceDB table
 
-**Evaluation** — For evaluation and metrics, refer to [Evaluate on your data](../support/evaluate-on-your-data.md).
+**Evaluation** — For evaluation and metrics, refer to [Evaluate on your data](../troubleshooting/evaluate-on-your-data.md).
 
 ## Metadata and filtering { #metadata-and-filtering }
 
@@ -200,7 +200,7 @@ NeMo Retriever Library does not provide connections to other data sources.
 
 ## Vector database partners { #vector-database-partners }
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as the shipped backend. This section lists that backend and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, refer to [Chunking](../understand/concepts.md#chunking).
+NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as the shipped backend. This section lists that backend and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, refer to [Chunking](../about/concepts.md#chunking).
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
@@ -249,4 +249,4 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 - [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli)
 - [Store Extracted Images](../reference/nemo-retriever-api-reference.md)
 - [Environment Variables](../reference/environment-config.md)
-- [Troubleshoot NeMo Retriever Extraction](../support/troubleshoot.md)
+- [Troubleshoot NeMo Retriever Extraction](../troubleshooting/troubleshoot.md)

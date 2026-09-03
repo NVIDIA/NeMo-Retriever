@@ -1,6 +1,6 @@
 # Release Notes for NeMo Retriever Library
 
-This documentation contains the release notes for [NeMo Retriever Library](../understand/overview.md).
+This documentation contains the release notes for [NeMo Retriever Library](../about/overview.md).
 
 ## 26.08.1 Release Notes (26.8.1) { #release-26081 }
 
@@ -21,14 +21,14 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 - Legacy `nv-ingest` and compatibility pipeline CLI code paths are removed. Use `retriever ingest` and the graph stage registry.
 - Self-hosted Parakeet on Helm requires both `nimOperator.audio.enabled=true` and `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`. Enabling the audio NIM alone does not wire the service ASR endpoint.
 - Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
-- A document whose VectorDB write is not acknowledged now fails instead of reporting `completed` with a positive row count. Earlier builds failed only collection-managed writes and logged a legacy fixed-table failure as a warning. The worker acknowledgement timeout is configurable through `serviceConfig.vectordb.writeTimeoutSeconds` (rendered as `vectordb.write_timeout_s`) and defaults to 300 seconds. Refer to [Ingest fails with a VectorDB write error](../support/troubleshoot.md#vectordb-write-not-acknowledged).
+- A document whose VectorDB write is not acknowledged now fails instead of reporting `completed` with a positive row count. Earlier builds failed only collection-managed writes and logged a legacy fixed-table failure as a warning. The worker acknowledgement timeout is configurable through `serviceConfig.vectordb.writeTimeoutSeconds` (rendered as `vectordb.write_timeout_s`) and defaults to 300 seconds. Refer to [Ingest fails with a VectorDB write error](../troubleshooting/troubleshoot.md#vectordb-write-not-acknowledged).
 - Retriever Service OpenAPI `info.version` no longer reports a stale package-version value. The service reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
 
 ### Text generation and LLM configuration { #text-generation-and-llm-configuration }
 
-- 26.08.1 includes a shared one-request-per-row text-generation abstraction: `TextGenerationTask` plus `TextGenerationOperator`. `GenericGenerationOperator` accepts a validated custom prompt. Refer to [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation).
+- 26.08.1 includes a shared one-request-per-row text-generation abstraction: `TextGenerationTask` plus `TextGenerationOperator`. `GenericGenerationOperator` accepts a validated custom prompt. Refer to [One-shot text generation](../reference/nemo-retriever-api-reference.md#one-shot-text-generation).
 - `SummarizeTask` inherits from `TextGenerationTask`. `SummarizationOperator` provides the built-in summarization behavior with the default prompt or a custom prompt.
-- Configure those operators with `TextGenerationParams.from_kwargs(...)`. Supported fields include `model`, `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `extra_params`, `num_retries`, `timeout`, `prompt`, `system_prompt`, `rag_system_prompt`, `rag_system_prompt_prefix`, `reasoning_enabled`, and `max_workers`. Refer to [TextGenerationParams configuration](nemo-retriever-api-reference.md#textgenerationparams-configuration).
+- Configure those operators with `TextGenerationParams.from_kwargs(...)`. Supported fields include `model`, `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `extra_params`, `num_retries`, `timeout`, `prompt`, `system_prompt`, `rag_system_prompt`, `rag_system_prompt_prefix`, `reasoning_enabled`, and `max_workers`. Refer to [TextGenerationParams configuration](../reference/nemo-retriever-api-reference.md#textgenerationparams-configuration).
 
 ### Answer generation { #answer-generation }
 
@@ -37,7 +37,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Agentic retrieval { #agentic-retrieval }
 
-- Agentic retrieval is available in 26.08.1. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md).
+- Agentic retrieval is available in 26.08.1. An LLM agent issues multiple searches, fuses candidates, and returns a document-level ranking. The CLI, Python query workflow, REST, and MCP surfaces share this path. Refer to [Agentic retrieval (concept)](../about/agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md).
 - `retriever query --agentic` runs that ReAct loop over the same LanceDB table as one-pass retrieval. Local CLI and harness runs default to in-process vLLM (`nemotron-8b`). Remote OpenAI-compatible NIM or NVIDIA-hosted endpoints use `--agentic-invoke-url`.
 - Retriever Service exposes agentic retrieval on `POST /v1/query` with `agentic=true` and an `agentic_query` MCP tool when `agentic.enabled` is true. Service mode requires a remote OpenAI-compatible LLM endpoint. Agentic remains opt-in through `serviceConfig.agentic.enabled`.
 - The Helm `answer_llm` Super-49B NIM auto-wires `/v1/answer` only. Self-hosted agentic retrieval against that NIM requires `--enable-auto-tool-choice --tool-call-parser llama3_json` on `NIM_PASSTHROUGH_ARGS` and explicit `serviceConfig.agentic` wiring. Refer to [Self-hosted Helm Super-49B](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
@@ -105,8 +105,8 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 - LanceDB retrieval-mode autodetection and persisted embedding identity for automatic local queries.
 - Local queries warn when an explicit embedding model differs from the model recorded on the LanceDB table. The query continues with the explicit override so intentional model overrides remain available.
 - Dense image-only VDB records are retained where applicable.
-- Scope-isolated collection and document catalog APIs (`/v1/collections`) create, list, get, update, and delete collections and committed documents without exposing LanceDB table names. Ingest and replace use `POST /v1/ingest/job` with `collection_name`. Retrieval uses `POST /v1/query` with `collection_name`. Refer to [Collection management API](../../reference/collection-management-api.md).
-- Fixed an issue where concurrent ingests into one VectorDB pod could report success minutes before the rows were durable or queryable. Each write now commits its rows independently, and index maintenance runs in a separate serialized phase where concurrent writers share one coalesced rebuild. An index-readiness wait that expires logs a warning and leaves the committed rows queryable instead of failing the write. Refer to [LanceDB index creation fails during concurrent Helm ingestion](../support/troubleshoot.md#lancedb-concurrent-index-creation).
+- Scope-isolated collection and document catalog APIs (`/v1/collections`) create, list, get, update, and delete collections and committed documents without exposing LanceDB table names. Ingest and replace use `POST /v1/ingest/job` with `collection_name`. Retrieval uses `POST /v1/query` with `collection_name`. Refer to [Collection management API](../reference/collection-management-api.md).
+- Fixed an issue where concurrent ingests into one VectorDB pod could report success minutes before the rows were durable or queryable. Each write now commits its rows independently, and index maintenance runs in a separate serialized phase where concurrent writers share one coalesced rebuild. An index-readiness wait that expires logs a warning and leaves the committed rows queryable instead of failing the write. Refer to [LanceDB index creation fails during concurrent Helm ingestion](../troubleshooting/troubleshoot.md#lancedb-concurrent-index-creation).
 
 ### Packaging and platform { #packaging-and-platform }
 
@@ -119,8 +119,8 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Documentation { #documentation }
 
-- Published [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage.
-- Published [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation) for `TextGenerationTask`, `GenericGenerationOperator`, `SummarizationOperator`, and `TextGenerationParams`.
+- Published [Agentic retrieval (concept)](../about/agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage.
+- Published [One-shot text generation](../reference/nemo-retriever-api-reference.md#one-shot-text-generation) for `TextGenerationTask`, `GenericGenerationOperator`, `SummarizationOperator`, and `TextGenerationParams`.
 - Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](../get-started/prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Current foundational capabilities { #current-foundational-capabilities }
@@ -168,7 +168,7 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
 - [Answer generation](../get-started/prerequisites-support-matrix.md#answer-generation)
-- [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation)
+- [One-shot text generation](../reference/nemo-retriever-api-reference.md#one-shot-text-generation)
 - [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md)
 - [Deployment options](../deploy/deployment-options.md)
 - [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)

@@ -15,11 +15,11 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 
 ## Supported file types and formats { #supported-file-types-and-formats }
 
-NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [NeMo Retriever Library Overview](../understand/overview.md) under **NeMo Retriever Library supports the following file types**.
+NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [NeMo Retriever Library Overview](../about/overview.md) under **NeMo Retriever Library supports the following file types**.
 
 **Related**
 
-- [Troubleshoot](../support/troubleshoot.md) for format-specific issues
+- [Troubleshoot](../troubleshooting/troubleshoot.md) for format-specific issues
 - [Speech and audio](audio-video.md)
 
 ## Text and layout extraction { #text-and-layout-extraction }
@@ -31,9 +31,9 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 
 **Related**
 
-- [NeMo Retriever Library Overview](../understand/overview.md)
+- [NeMo Retriever Library Overview](../about/overview.md)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
-- [Chunking](../understand/concepts.md#chunking)
+- [Chunking](../about/concepts.md#chunking)
 
 ## Tables { #tables }
 
@@ -41,7 +41,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 **Related**
 
-- [NeMo Retriever Library Overview](../understand/overview.md) for artifact classification
+- [NeMo Retriever Library Overview](../about/overview.md) for artifact classification
 - [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing
 - [Metadata reference](../reference/content-metadata.md)
 
@@ -66,7 +66,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 **Related**
 
-- [NeMo Retriever Library Overview](../understand/overview.md)
+- [NeMo Retriever Library Overview](../about/overview.md)
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
 - [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
 
@@ -126,7 +126,7 @@ Extracted objects follow the schema and field descriptions in the [Metadata refe
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 
-Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must keep inline payloads under that cap. Hosted Page Elements does not accept NVCF Asset API references. For limits, plus `dpi` and `render_mode` tuning, refer to [Hosted Page Elements NIM image size limits](../support/troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must keep inline payloads under that cap. Hosted Page Elements does not accept NVCF Asset API references. For limits, plus `dpi` and `render_mode` tuning, refer to [Hosted Page Elements NIM image size limits](../troubleshooting/troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 Image payload limits are separate from the throughput metrics in the rest of this section.
 

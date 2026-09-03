@@ -2,7 +2,7 @@
 
 Use this workflow after you have ingested documents into a LanceDB table. Agentic retrieval does not ingest files. It queries the same table, embedding model, and storage flags as one-pass `retriever query`.
 
-**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct) loop: the agent issues several retrieval sub-queries, fuses candidates with reciprocal rank fusion, and selects a final document ranking. **One-pass retrieval** sends a single dense or hybrid query and returns text-enriched chunk hits. For the concept distinction, refer to [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md).
+**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct) loop: the agent issues several retrieval sub-queries, fuses candidates with reciprocal rank fusion, and selects a final document ranking. **One-pass retrieval** sends a single dense or hybrid query and returns text-enriched chunk hits. For the concept distinction, refer to [Agentic retrieval (concept)](../about/agentic-retrieval-concept.md).
 
 ## Query with the CLI { #query-with-the-cli }
 
@@ -350,12 +350,12 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 
 ## Related Topics { #related-topics }
 
-- [Agentic retrieval (concept)](../understand/agentic-retrieval-concept.md)
+- [Agentic retrieval (concept)](../about/agentic-retrieval-concept.md)
 - [Semantic retrieval](vdbs.md#semantic-retrieval)
 - [Metadata and filtering](vdbs.md#metadata-and-filtering)
-- [Evaluate on your data](../support/evaluate-on-your-data.md)
+- [Evaluate on your data](../troubleshooting/evaluate-on-your-data.md)
 - [Authentication and API keys](../get-started/api-keys.md)
 - [CLI reference: Agentic retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#agentic-retrieval)
 - [Helm chart README: Agentic retrieval (self-hosted Super-49B)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#agentic-retrieval-llm)
 - [Helm chart README: Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml)
-- [Release notes](../reference/releasenotes.md#retrieval-and-rag)
+- [Release notes](../about/releasenotes.md#retrieval-and-rag)

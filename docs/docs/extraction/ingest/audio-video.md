@@ -8,7 +8,7 @@ For air-gapped or disconnected deployments, refer to [Air-gapped and disconnecte
 
 ## Speech and audio extraction { #speech-and-audio-extraction }
 
-This documentation describes two ways to run [NeMo Retriever Library](../understand/overview.md) with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files:
+This documentation describes two ways to run [NeMo Retriever Library](../about/overview.md) with the [parakeet-1-1b-ctc-en-us ASR NIM microservice](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) (`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us`) to extract speech from audio files:
 
 - Run the NIM locally on your cluster with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - Use NVIDIA Cloud Functions (NVCF) endpoints for cloud-based inference
@@ -16,9 +16,9 @@ This documentation describes two ways to run [NeMo Retriever Library](../underst
 Supported file types for speech extraction today:
 
 - `mp3`, `wav`
-- `mp4`, `mov`, `mkv`, `avi` — common video containers; the audio track is transcribed (same extensions as in [NeMo Retriever Library Overview](../understand/overview.md))
+- `mp4`, `mov`, `mkv`, `avi` — common video containers; the audio track is transcribed (same extensions as in [NeMo Retriever Library Overview](../about/overview.md))
 
-[NeMo Retriever Library](../understand/overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings through the NeMo Retriever embedding path.
+[NeMo Retriever Library](../about/overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings through the NeMo Retriever embedding path.
 
 Before running audio extraction from Python with either self-hosted or hosted Parakeet, install the multimedia extra so the Parakeet ASR client can decode and resample audio:
 
@@ -145,7 +145,7 @@ For video assets, NeMo Retriever Library can combine audio or speech processing 
 
 For OCR-oriented extract methods on scanned or image-heavy content, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [text and layout extraction](multimodal-extraction.md#text-and-layout-extraction), and [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing.
 
-Container formats and early-access video types are listed under [supported file types and formats](multimodal-extraction.md#supported-file-types-and-formats) (refer to [NeMo Retriever Library Overview](../understand/overview.md) for the full list).
+Container formats and early-access video types are listed under [supported file types and formats](multimodal-extraction.md#supported-file-types-and-formats) (refer to [NeMo Retriever Library Overview](../about/overview.md) for the full list).
 
 For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).
 
@@ -153,6 +153,6 @@ For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDI
 
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
 - [Optional Helm NIMs](../get-started/prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)
-- [Troubleshoot NeMo Retriever extraction](../support/troubleshoot.md)
+- [Troubleshoot NeMo Retriever extraction](../troubleshooting/troubleshoot.md)
 - [Use the Python API](../reference/nemo-retriever-api-reference.md)
-- [Chunking](../understand/concepts.md#chunking) (includes audio and video segmenting defaults)
+- [Chunking](../about/concepts.md#chunking) (includes audio and video segmenting defaults)

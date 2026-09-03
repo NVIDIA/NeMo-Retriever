@@ -19,8 +19,8 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 
 1. [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
 2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](../get-started/prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](../get-started/prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling). When you change a NIM image repository or tag on an existing release, delete the `NIMCache` before you upgrade. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
-3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](../get-started/getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
-4. [Environment variables](../reference/environment-config.md) and [Troubleshoot](../support/troubleshoot.md) as needed
+3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](../get-started/index.md) — use alongside the NeMo Retriever chart README for your release
+4. [Environment variables](../reference/environment-config.md) and [Troubleshoot](../troubleshooting/troubleshoot.md) as needed
 
 The Helm chart uses `GET /v1/live` for startup and liveness probes and
 `GET /v1/health` for readiness. Both endpoints are unauthenticated. In split
@@ -56,9 +56,9 @@ For audio and video extraction in Kubernetes, refer to [Audio and video](../inge
 
 ### I am tuning performance or cost
 
-1. [Evaluation and performance](../support/evaluate-on-your-data.md)
+1. [Evaluation and performance](../troubleshooting/evaluate-on-your-data.md)
 2. [Throughput is dataset-dependent](../ingest/multimodal-extraction.md#extraction-limitations-and-quality)
-3. [Evaluate on your data](../support/evaluate-on-your-data.md)
+3. [Evaluate on your data](../troubleshooting/evaluate-on-your-data.md)
 
 ## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
 
@@ -99,6 +99,6 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](../ge
 **Related**
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment)
-- [About getting started](../get-started/getting-started-about.md) (prerequisites through first deployment)
+- [About getting started](../get-started/index.md) (prerequisites through first deployment)
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
 - [Audio and video](../ingest/audio-video.md)

@@ -166,7 +166,7 @@ except GraphIngestionError as exc:
 
 For a support-oriented mapping of extraction paths, error signals, corrective
 actions, and escalation criteria, refer to
-[Python API error triage](../support/troubleshoot.md#python-api-error-triage).
+[Python API error triage](../troubleshooting/troubleshoot.md#python-api-error-triage).
 
 !!! note "Version-specific behavior"
 

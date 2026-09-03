@@ -25,7 +25,7 @@ The following table maps common needs to the right section:
 
 Most customization does not require new code. Chain tasks on `create_ingestor(...)` and pass keyword arguments to control extraction, chunking, embedding, and storage—for example `method`, chunking and splitting options on `.extract()`, `embed_modality` on `.embed()`, and `vdb_op` / `vdb_kwargs` on `.vdb_upload()`.
 
-For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md). For chunking behavior and pipeline concepts, refer to [Concepts](../understand/concepts.md).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md). For chunking behavior and pipeline concepts, refer to [Concepts](../about/concepts.md).
 
 ## User-defined functions (UDFs) { #user-defined-functions-udfs }
 
@@ -60,7 +60,7 @@ Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and other
 
 ## Related Topics { #related-topics }
 
-- [Concepts — Pipeline and tasks](../understand/concepts.md#pipeline-and-tasks)
+- [Concepts — Pipeline and tasks](../about/concepts.md#pipeline-and-tasks)
 - [Vector databases](../collections/vdbs.md)
 - [Multimodal embeddings (VLM)](../ingest/embedding.md)
 - [Python API guide](../reference/nemo-retriever-api-reference.md)

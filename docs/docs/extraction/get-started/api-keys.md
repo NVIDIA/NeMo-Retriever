@@ -25,7 +25,7 @@ The SDK and CLI do not load a `.env` file automatically. For a full list of rela
 
 For `LiteLLMClient` and `LLMJudge` with a `nvidia_nim/...` model, pass `api_key="os.environ/NVIDIA_API_KEY"`. LiteLLM does not read `NVIDIA_API_KEY` for that provider.
 
-Hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) cap inline base64 image payloads at about 180,000 characters (roughly 180 KB). This key authorizes those hosted inference calls. For size limits and what to do when an image exceeds the cap, refer to [Hosted Page Elements NIM image size limits](../support/troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) cap inline base64 image payloads at about 180,000 characters (roughly 180 KB). This key authorizes those hosted inference calls. For size limits and what to do when an image exceeds the cap, refer to [Hosted Page Elements NIM image size limits](../troubleshooting/troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 !!! note
 

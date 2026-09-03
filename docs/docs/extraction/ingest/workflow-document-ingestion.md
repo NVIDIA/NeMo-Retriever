@@ -12,7 +12,7 @@ Follow these steps:
 2. **Use parallel PDF handling.** The default ingest path splits large PDFs before Ray processing; refer to [API guide — PDF pre-splitting](../reference/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest).
 3. **Tune extraction for your content.** Refer to [Multimodal extraction](multimodal-extraction.md) for formats, [text and layout](multimodal-extraction.md#text-and-layout-extraction), [tables](multimodal-extraction.md#tables), [OCR](multimodal-extraction.md#ocr-and-scanned-documents), and related subsections on that page.
 
-Pipeline concepts and stage overview appear in [Key concepts](../understand/concepts.md). Default chunking behavior is summarized under [Chunking](../understand/concepts.md#chunking).
+Pipeline concepts and stage overview appear in [Key concepts](../about/concepts.md). Default chunking behavior is summarized under [Chunking](../about/concepts.md#chunking).
 
 `create_ingestor(run_mode="inprocess")` and `create_ingestor(run_mode="batch")` return a `GraphIngestor`. That object chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. `create_ingestor(run_mode="service")` returns a `ServiceIngestor` for a remote Retriever service. Refer to the [Python API guide](../reference/nemo-retriever-api-reference.md#public-ingestion-factory) for the factory contract.
 
@@ -49,4 +49,4 @@ result = ingestor.ingest()  # ``pandas.DataFrame`` (``batch`` and ``inprocess``)
 
 Run the above with your working directory at the repository root (so `data/multimodal_test.pdf` resolves), or adjust `documents` to the absolute path of the test PDF.
 
-**Next:** [Semantic retrieval](../collections/vdbs.md#semantic-retrieval) when serving queries (also refer to [Evaluate on your data](../support/evaluate-on-your-data.md) for reranking and quality checks).
+**Next:** [Semantic retrieval](../collections/vdbs.md#semantic-retrieval) when serving queries (also refer to [Evaluate on your data](../troubleshooting/evaluate-on-your-data.md) for reranking and quality checks).

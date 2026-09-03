@@ -18,7 +18,7 @@ Default tasks target strong recall; customize behavior with task keyword argumen
 
 ## Collection { #collection }
 
-A **collection** is a scoped logical container for ingested documents on the Retriever service. The public catalog contract is REST `/v1/collections` on the published gateway. Python applications can use `RetrieverServiceClient`, which wraps those endpoints. Ingest and retrieval use `/v1/ingest/job` and `/v1/query` with `collection_name`. Callers do not supply LanceDB table names. Refer to [Collection management API](../../reference/collection-management-api.md).
+A **collection** is a scoped logical container for ingested documents on the Retriever service. The public catalog contract is REST `/v1/collections` on the published gateway. Python applications can use `RetrieverServiceClient`, which wraps those endpoints. Ingest and retrieval use `/v1/ingest/job` and `/v1/query` with `collection_name`. Callers do not supply LanceDB table names. Refer to [Collection management API](../reference/collection-management-api.md).
 
 ## Pipeline and tasks { #pipeline-and-tasks }
 

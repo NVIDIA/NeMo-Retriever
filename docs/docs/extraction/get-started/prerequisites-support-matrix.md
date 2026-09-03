@@ -1,12 +1,12 @@
 # Pre-Requisites & Support Matrix
 
-Before you begin using [NeMo Retriever Library](../understand/overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage and GPU scheduling if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking, and `/v1/answer` generation) against the guidance on this page.
+Before you begin using [NeMo Retriever Library](../about/overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage and GPU scheduling if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking, and `/v1/answer` generation) against the guidance on this page.
 
 **Platform summary:** Supported **local GPU inference** requires **Linux** and CUDA 13. For **remote NIM inference**, the base Python package also installs on **Windows x64** and **macOS Apple Silicon (arm64)**; local GPU inference is not supported on those platforms. **macOS Intel (x86_64) is not supported** — `pip`/`uv` installs fail because Ray no longer publishes Intel Mac wheels.
 
 > **Note — NVIDIA AI Enterprise (NVAIE) support**
 >
-> The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE), even though some NIM microservices and models it uses may be individually covered by NVAIE. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](../understand/overview.md#nvidia-ai-enterprise-nvaie-support).
+> The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE), even though some NIM microservices and models it uses may be individually covered by NVAIE. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](../about/overview.md#nvidia-ai-enterprise-nvaie-support).
 
 ## Software Requirements { #software-requirements }
 
@@ -48,7 +48,7 @@ kubectl get pv
 
 If the cluster has no StorageClass and no compatible `Available` persistent volumes, stop and add a binding strategy before you install. `helm install` can report `STATUS: deployed` while every claim remains `Pending`, which leaves the retriever service, VectorDB, and core NIM workloads unschedulable.
 
-For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](../support/troubleshoot.md#helm-pending-pvcs).
+For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](../troubleshooting/troubleshoot.md#helm-pending-pvcs).
 
 ## Kubernetes Helm GPU scheduling { #kubernetes-helm-gpu-scheduling }
 
@@ -67,7 +67,7 @@ Time-slicing creates logical GPU slots. It does not pin the four independently s
 
 The chart still renders `nvidia.com/gpu: 1` per NIMService unless a per-NIM `resources` block overrides it. Sharing is cluster configuration through the GPU Operator, not a Helm value. Applying `devicePlugin.config.default: "any"` is a cluster-administrator change that oversubscribes every eligible GPU Operator node and can affect unrelated GPU workloads. Time-slicing does not isolate GPU memory. Combined VRAM of the scheduled NIMs must still fit on the physical GPU. MIG is an advanced GPU Operator configuration outside this chart. The chart does not set a MIG strategy, MIG profile, or MIG resource requests.
 
-For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](../support/troubleshoot.md#helm-pending-gpus).
+For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](../troubleshooting/troubleshoot.md#helm-pending-gpus).
 
 ## Hardware Requirements { #hardware-requirements }
 
@@ -195,7 +195,7 @@ When you call [NVIDIA-hosted NIMs](../deploy/deployment-options.md#when-to-use-n
 
     Each endpoint list must contain only hosted Build endpoints or only compatible self-hosted endpoints. The library rejects a list that mixes hosted Build and self-hosted endpoints because one extraction workflow uses one model ID and request contract. Setting `nemotron_parse_model` explicitly does not make a mixed list valid. To use both deployment types, configure separate ingestors or extraction workflows for each endpoint contract.
 
-    For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](../support/troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
+    For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](../troubleshooting/troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
 For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](../ingest/multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode).
 
@@ -289,8 +289,8 @@ and run only the embedder, reranker, and your vector database.
 
 ## Related Topics { #related-topics }
 
-- [Troubleshooting](../support/troubleshoot.md)
-- [Release Notes](../reference/releasenotes.md)
+- [Troubleshooting](../troubleshooting/troubleshoot.md)
+- [Release Notes](../about/releasenotes.md)
 - [Deployment options](../deploy/deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite)

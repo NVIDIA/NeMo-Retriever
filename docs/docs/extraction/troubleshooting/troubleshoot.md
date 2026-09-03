@@ -1,6 +1,6 @@
 # Troubleshoot NeMo Retriever Library
 
-Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](../understand/overview.md).
+Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](../about/overview.md).
 
 ## Python API error triage { #python-api-error-triage }
 
@@ -300,7 +300,7 @@ For local GPU inference with Nemotron Parse, combine extras:
 pip install "nemo-retriever[local,nemotron-parse]"
 ```
 
-Also refer to [NeMo Retriever Library Overview](../understand/overview.md) and [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md#software-requirements).
+Also refer to [NeMo Retriever Library Overview](../about/overview.md) and [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files { #extract-method-nemotron-parse-doesnt-support-image-files }
 
@@ -647,4 +647,4 @@ For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super
 - [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
-- [About getting started](../get-started/getting-started-about.md) (prerequisites and deployment)
+- [About getting started](../get-started/index.md) (prerequisites and deployment)
