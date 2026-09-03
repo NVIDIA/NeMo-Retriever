@@ -107,6 +107,7 @@ nav:
       - "Starter kits": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
   - "10. Evaluation & benchmarks":
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
+      - "Evaluate the Retriever skill": extraction/eval-retriever-skill.md
   - "11. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.

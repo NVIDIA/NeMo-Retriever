@@ -2,6 +2,8 @@
 
 Retrieval and ingestion performance **depend on your documents**, hardware, and pipeline settings. Use the following when measuring quality and throughput on **your** datasets.
 
+To prove that a coding agent can use the `/nemo-retriever` skill on a small query set, and to investigate traces when Claude or Codex baselines look better, refer to [Evaluate the Retriever skill with coding agents](eval-retriever-skill.md). That workflow is development and experimental. It does not replace the corpus guidance on this page.
+
 ## Benchmarking and baselines { #benchmarking-and-baselines }
 
 Use this page as the baseline for methodology and expectations. Use [Operational tuning](#operational-tuning) below to observe production-like runs.
