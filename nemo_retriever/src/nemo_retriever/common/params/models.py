@@ -459,7 +459,7 @@ class AudioVisualFuseParams(_ParamsModel):
 
 class LanceDbParams(_ParamsModel):
     lancedb_uri: str = "lancedb"
-    table_name: str = "nv-ingest"
+    table_name: str = "nemo-retriever"
     overwrite: bool = True
     create_index: bool = True
     index_type: str = "IVF_HNSW_SQ"

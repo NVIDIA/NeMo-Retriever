@@ -143,7 +143,7 @@ class FileRetriever:
         cls,
         qa_pairs: list[dict],
         lancedb_uri: str = "lancedb",
-        lancedb_table: str = "nv-ingest",
+        lancedb_table: str = "nemo-retriever",
         embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
         top_k: int = 5,
         page_index: dict[str, dict[str, str]] | None = None,
