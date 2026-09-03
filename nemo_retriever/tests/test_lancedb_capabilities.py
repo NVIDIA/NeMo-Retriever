@@ -39,7 +39,8 @@ def _create_vector_table(
             pa.field("metadata", pa.string()),
             pa.field("source", pa.string()),
             pa.field("id", pa.string()),
-        ]
+        ],
+        metadata={b"nemo_retriever.embedding_model_name": b"nvidia/nemotron-3-embed-1b"},
     )
     rows = [
         {
