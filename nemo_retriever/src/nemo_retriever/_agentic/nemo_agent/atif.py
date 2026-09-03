@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
+from .llm.usage import cache_read_tokens, usage_integer
 from nemo_retriever.version import __version__
 
 logger = logging.getLogger(__name__)
@@ -232,23 +233,19 @@ def _atif_metrics(raw_usage: Any) -> Dict[str, Any]:
     if not isinstance(raw_usage, Mapping) or not raw_usage:
         return {}
 
-    prompt = _integer(raw_usage, "prompt_tokens")
+    prompt = usage_integer(raw_usage, "prompt_tokens")
     if prompt is None:
-        prompt = _integer(raw_usage, "input_tokens")
+        prompt = usage_integer(raw_usage, "input_tokens")
         if prompt is not None:
             prompt += sum(
                 value or 0
                 for value in (
-                    _integer(raw_usage, "cache_creation_input_tokens"),
-                    _integer(raw_usage, "cache_read_input_tokens"),
+                    usage_integer(raw_usage, "cache_creation_input_tokens"),
+                    usage_integer(raw_usage, "cache_read_input_tokens"),
                 )
             )
-    completion = _integer(raw_usage, "completion_tokens", "output_tokens")
-    cached = _integer(raw_usage, "cached_tokens", "cached_input_tokens", "cache_read_input_tokens")
-    if cached is None:
-        prompt_details = raw_usage.get("prompt_tokens_details")
-        if isinstance(prompt_details, Mapping):
-            cached = _integer(prompt_details, "cached_tokens")
+    completion = usage_integer(raw_usage, "completion_tokens", "output_tokens")
+    cached = cache_read_tokens(raw_usage)
     metrics: Dict[str, Any] = {}
     if prompt is not None:
         metrics["prompt_tokens"] = prompt
@@ -258,14 +255,6 @@ def _atif_metrics(raw_usage: Any) -> Dict[str, Any]:
         metrics["cached_tokens"] = cached
     metrics["extra"] = {"provider_usage": dict(raw_usage)}
     return metrics
-
-
-def _integer(values: Mapping[str, Any], *keys: str) -> Optional[int]:
-    for key in keys:
-        value = values.get(key)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return int(value)
-    return None
 
 
 def _insert_bootstrap_retrieval(
@@ -331,15 +320,15 @@ def _final_metrics(steps: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     for step in steps:
         metrics = step.get("metrics")
         if isinstance(metrics, Mapping):
-            value = _integer(metrics, "prompt_tokens")
+            value = usage_integer(metrics, "prompt_tokens")
             if value is not None:
                 prompt += value
                 has_prompt = True
-            value = _integer(metrics, "completion_tokens")
+            value = usage_integer(metrics, "completion_tokens")
             if value is not None:
                 completion += value
                 has_completion = True
-            value = _integer(metrics, "cached_tokens")
+            value = usage_integer(metrics, "cached_tokens")
             if value is not None:
                 cached += value
                 has_cached = True
