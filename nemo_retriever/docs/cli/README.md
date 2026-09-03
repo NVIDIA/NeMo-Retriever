@@ -156,7 +156,7 @@ retriever ingest ./data/multimodal_test.pdf \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
 ```
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
@@ -170,7 +170,7 @@ authorizes the hosted embedding URL:
 ```bash
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking \
   --reranker-model-name nvidia/llama-nemotron-rerank-vl-1b-v2 \
   --reranker-api-key-env NVIDIA_API_KEY
@@ -305,18 +305,21 @@ retriever query "how does the ingestion pipeline handle tables?" \
   ],
   "usage": {
     "input_tokens": 1250,
+    "cache_tokens": 400,
     "output_tokens": 184,
     "total_tokens": 1434
   }
 }
 ```
 
-The `usage` object can also include `stages`, which preserves the
-provider-reported breakdown for the ReAct and final-selection calls. When a
-provider reports uncached, cache-creation, and cache-read input separately,
-`input_tokens` includes all three counters. The output sets `usage` to `null`
-when the LLM provider does not report it. This flag applies only with
-`--agentic`; classic query behavior and output are unchanged.
+The `usage` object reports observed cache reads as `cache_tokens` and can also
+include `stages`, which preserves the provider-reported breakdown for the ReAct
+and final-selection calls, including cache creation. When a provider reports
+uncached, cache-creation, and cache-read input separately, `input_tokens`
+includes all three counters; cache is not added again to `total_tokens`.
+`cache_tokens` is `null` when no stage reports cache usage. The output sets
+`usage` to `null` when the LLM provider does not report it. This flag applies
+only with `--agentic`; classic query behavior and output are unchanged.
 
 **How it works.** Each agentic query runs `Query -> ReActAgentOperator -> (RRF
 fusion) -> SelectionAgentOperator -> ranked results`:

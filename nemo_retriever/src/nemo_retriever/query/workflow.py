@@ -36,11 +36,11 @@ class AgenticQueryDocumentsResult:
     hits:
         Ranked agentic document hits in the root query output shape.
     usage:
-        Normalized usage with ``input_tokens``, ``output_tokens``,
-        ``total_tokens``, and the original provider breakdown under ``stages``.
-        Token totals are integers or ``None`` when the provider did not report
-        enough information for an exact total. The mapping is empty when no
-        provider usage was reported.
+        Normalized usage with ``input_tokens``, observed cache-read
+        ``cache_tokens``, ``output_tokens``, ``total_tokens``, and the original
+        provider breakdown under ``stages``. Token totals are integers or
+        ``None`` when the provider did not report enough information for an
+        exact total. The mapping is empty when no provider usage was reported.
     """
 
     hits: list[dict[str, Any]]
