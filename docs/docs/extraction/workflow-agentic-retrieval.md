@@ -213,9 +213,6 @@ retriever service mcp-stdio \
   --query-methods agentic \
   --api-token "$NEMO_RETRIEVER_API_TOKEN"
 ```
-
-The stdio shim calls the service REST API. It does not require `mcp.enabled` on the service.
-
 For remote agents, expose the retriever service URL and configure the agent to connect to the MCP mount path. The default is:
 
 ```text
