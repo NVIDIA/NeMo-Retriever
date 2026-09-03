@@ -346,6 +346,38 @@ service = create_ingestor(run_mode="service", base_url="http://localhost:7670")
 
 Service-only methods include `split()`, `pdf_split_config()`, `save_to_disk()`, `ingest_stream()`, `aingest_stream()`, and `cancel()`. `cancel()` is part of the public class. It currently raises `NotImplementedError` because the service does not expose a cancel endpoint.
 
+#### Choose a service result schema { #service-result-schema }
+
+`ServiceIngestor.ingest()` returns result rows in the `legacy` schema by
+default. You can pass `result_schema="compact"` to use the compact schema.
+The schemas return text and embeddings as follows.
+
+| Schema | Text | Embeddings |
+| --- | --- | --- |
+| `legacy` | The `text` and `content` columns preserve their complete strings. Other values continue to use transport sanitization. | Pass `return_embeddings=True` to preserve embedding payloads in their legacy columns and nested fields. |
+| `compact` | The top-level `text` field preserves the complete extracted text. | Pass `return_embeddings=True` to add a top-level `embedding` field when the source row contains an embedding. |
+
+The default `return_embeddings=False` omits the top-level `embedding` field
+from compact rows. This default keeps the compact response shape and payload
+size unchanged. Raw image payloads remain available only in legacy rows when
+you pass `return_images=True`.
+
+The following example requests compact rows with their embeddings.
+
+```python
+from nemo_retriever import create_ingestor
+
+result = (
+    create_ingestor(run_mode="service", base_url="http://localhost:7670")
+    .texts(["Text to embed and return."])
+    .embed()
+    .ingest(result_schema="compact", return_embeddings=True)
+)
+
+for row in result.dataframe.to_dict(orient="records"):
+    print(row["text"], row.get("embedding"))
+```
+
 ::: nemo_retriever.service.service_ingestor.ServiceIngestor
     options:
       heading_level: 4

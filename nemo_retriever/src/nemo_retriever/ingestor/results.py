@@ -21,6 +21,7 @@ import numpy as np
 ResultSchema = Literal["legacy", "compact"]
 
 _MAX_STR_LEN = 500
+_TEXT_FIELD_NAMES = frozenset({"text", "content"})
 _RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
 _EMBEDDING_FIELD_NAMES = frozenset({"embedding", "embeddings"})
 _EMBEDDING_PAYLOAD_COLUMNS = frozenset({"text_embeddings_1b_v2"})
@@ -127,6 +128,8 @@ def _sanitize_result_value(
     them in service results dominates memory use. Keep the surrounding
     keys/columns stable and null only the bulky payload values.
     """
+    if key in _TEXT_FIELD_NAMES and isinstance(val, str):
+        return val
     if key in _RAW_IMAGE_FIELD_NAMES:
         return _sanitize_returned_payload(val) if return_images else None
     if key in _EMBEDDING_FIELD_NAMES:
@@ -328,6 +331,16 @@ def _extract_stored_image_uri(row: dict[str, Any]) -> str | None:
     return _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"), page_uri)
 
 
+def _extract_embedding(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
+    embedding = metadata.get("embedding")
+    if embedding is None:
+        payload = row.get("text_embeddings_1b_v2")
+        embedding = payload.get("embedding") if isinstance(payload, dict) else payload
+    if _is_missing(embedding):
+        return None
+    return _sanitize_returned_payload(embedding)
+
+
 def _compact_error(value: Any) -> Any:
     if _is_missing(value):
         return None
@@ -341,7 +354,7 @@ def _compact_error(value: Any) -> Any:
     return sanitize_cell_value(value)
 
 
-def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
+def compact_result_record(row: dict[str, Any], *, return_embeddings: bool = False) -> dict[str, Any]:
     """Project a full pipeline row into the compact public result shape."""
     metadata = _mapping(row.get("metadata"))
     element_type = _extract_element_type(row, metadata)
@@ -371,6 +384,11 @@ def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
     if stored_image_uri is not None:
         record["stored_image_uri"] = stored_image_uri
 
+    if return_embeddings:
+        embedding = _extract_embedding(row, metadata)
+        if embedding is not None:
+            record["embedding"] = embedding
+
     error = _compact_error(row.get("error") if "error" in row else metadata.get("error"))
     if error is not None:
         record["error"] = error
@@ -393,7 +411,8 @@ def dataframe_to_transport_records(
 
     ``result_schema="compact"`` returns the future compact public schema:
     extracted text, source provenance, element type, page number or media
-    timings, optional stored-image URIs, and optional errors.
+    timings, optional stored-image URIs, optional embeddings, and optional
+    errors.
     """
     import pandas as pd
 
@@ -403,7 +422,7 @@ def dataframe_to_transport_records(
         raise TypeError(f"expected pandas.DataFrame, got {type(df).__name__}")
     records = df.to_dict(orient="records")
     if result_schema == "compact":
-        return [compact_result_record(row) for row in records]
+        return [compact_result_record(row, return_embeddings=return_embeddings) for row in records]
     return [
         {
             k: _sanitize_result_value(
