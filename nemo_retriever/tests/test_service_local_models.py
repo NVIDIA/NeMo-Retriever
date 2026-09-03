@@ -177,6 +177,7 @@ def test_service_config_loads_local_models_from_dict() -> None:
     )
     assert cfg.local_models.enabled is True
     assert cfg.local_models.embed.local_ingest_embed_backend == "vllm"
+    assert cfg.local_models.embed.model_name == "nvidia/nemotron-3-embed-1b"
 
 
 def test_local_models_caps_pipeline_workers() -> None:

@@ -64,11 +64,11 @@ class LlamaNemotronEmbed1BV2Embedder:
     def _ensure_loaded(self) -> None:
         if self._llm is not None:
             return
-        from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+        from nemo_retriever.models import resolve_local_embed_model
         from nemo_retriever.models.inference.vllm import create_vllm_llm
 
         configure_global_hf_cache_base(self.hf_cache_dir)
-        model_id = self.model_id or _DEFAULT_EMBED_MODEL
+        model_id = resolve_local_embed_model(self.model_id, backend="vllm")
         max_model_len = int(self.max_length) if int(self.max_length) > 0 else None
         self._llm = create_vllm_llm(
             str(model_id),

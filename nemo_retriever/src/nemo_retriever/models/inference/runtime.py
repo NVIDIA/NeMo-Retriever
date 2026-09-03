@@ -14,7 +14,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 from nemo_retriever.models.nim.error_reporter import report_error
-from nemo_retriever.models import VL_EMBED_MODEL, resolve_embed_model
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 from nemo_retriever.models.inference.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
@@ -76,7 +76,7 @@ def _embed_group(
         truncate="END",
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
-        embedding_model=resolved_model_name or VL_EMBED_MODEL,
+        embedding_model=resolved_model_name or _DEFAULT_EMBED_MODEL,
         embedding_model_provider_prefix=embed_model_provider_prefix,
         embed_modality=group_modality,
         nim_http_max_concurrent=max(1, int(nim_http_max_concurrent)),

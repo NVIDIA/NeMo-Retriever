@@ -3,7 +3,7 @@
 A Kubernetes Helm chart for running the **service** mode of
 [`nemo-retriever`](../README.md): a FastAPI document ingestion server that
 streams uploads through a set of NVIDIA NIM microservices
-(object detection, OCR, VLM embed by default) and exposes
+(object detection, OCR, and text embedding by default) and exposes
 result + status APIs over HTTP / SSE.
 
 Use **Helm** (this chart and/or the **additional Library charts** documented in the
@@ -70,7 +70,7 @@ nemo_retriever/helm/
         ├── nemotron-page-elements-v3.yaml    # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService
-        ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
+        ├── nemotron-3-embed-1b.yaml             # NIMCache + NIMService (text embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
@@ -129,7 +129,7 @@ The following table lists the default claims for a release named
 | `nemotron-page-elements-v3-pvc` | `25Gi` | `nimOperator.page_elements.storage.pvc.storageClass` |
 | `nemotron-table-structure-v1-pvc` | `25Gi` | `nimOperator.table_structure.storage.pvc.storageClass` |
 | `nemotron-ocr-v2-pvc` | `25Gi` | `nimOperator.ocr.storage.pvc.storageClass` |
-| `llama-nemotron-embed-vl-1b-v2-pvc` | `50Gi` | `nimOperator.vlm_embed.storage.pvc.storageClass` |
+| `nemotron-3-embed-1b-pvc` | `50Gi` | `nimOperator.vlm_embed.storage.pvc.storageClass` |
 
 When `nims.enabled=false`, the four NIMCache claims are not created.
 The three chart-managed claims still are, unless you disable those
@@ -169,8 +169,8 @@ to [Helm install succeeds but PersistentVolumeClaims stay Pending](https://githu
 
 The [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements)
 table lists **Total GPUs: 1** for Core Features because the four
-default NIMs together use about 4.8 GiB of GPU memory and can
-co-reside on one A10G or better GPU. That figure is VRAM capacity.
+default NIMs can co-reside on one A10G or better GPU with supported
+profiles. That figure is VRAM capacity.
 It is not the number of exclusive Kubernetes GPU requests this chart
 makes.
 
@@ -502,7 +502,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 | `nimOperator.page_elements` | `nemotron-page-elements-v3` | `/v1/page-elements` |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/table-structure` |
 | `nimOperator.ocr` | `nemotron-ocr-v2` | `/v1/ocr` |
-| `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
+| `nimOperator.vlm_embed`       | `nemotron-3-embed-1b` | `/v1/embeddings` |
 
 ### Query reranking (optional)
 
@@ -599,7 +599,7 @@ that namespace is not `default`.
      nemotron-page-elements-v3 \
      nemotron-table-structure-v1 \
      nemotron-ocr-v2 \
-     llama-nemotron-embed-vl-1b-v2 \
+     nemotron-3-embed-1b \
      llama-nemotron-rerank-vl-1b-v2 \
      nemotron-parse \
      nemotron-3-nano-omni-30b-a3b-reasoning \
@@ -632,7 +632,7 @@ that namespace is not `default`.
      nemotron-page-elements-v3-pvc \
      nemotron-table-structure-v1-pvc \
      nemotron-ocr-v2-pvc \
-     llama-nemotron-embed-vl-1b-v2-pvc \
+     nemotron-3-embed-1b-pvc \
      llama-nemotron-rerank-vl-1b-v2-pvc \
      nemotron-parse-pvc \
      nemotron-3-nano-omni-30b-a3b-reasoning-pvc \
@@ -800,7 +800,7 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
-| `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
+| `serviceConfig.vectordb.embedModel`               | `nvidia/nemotron-3-embed-1b` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
 | `serviceConfig.vectordb.writeTimeoutSeconds`      | `300` | Rendered as `vectordb.write_timeout_s`. How long a worker waits for the vectordb Pod to acknowledge a record write. A write that is not acknowledged fails the document, so raise this value on slow storage. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures). |
 
@@ -1279,10 +1279,10 @@ gated on three conditions ALL holding:
 | `nimOperator.<page_elements|table_structure>.image` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` | Both services use the combined image but select distinct models. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
 | `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` | Default OCR NIM image. |
-| `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
-| `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
-| `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` | Default VLM embed NIM image. |
-| `nimOperator.vlm_embed.env` | `NIM_HTTP_API_PORT=8000`, `NIM_TRITON_LOG_VERBOSE=1`, `OMP_NUM_THREADS=1`, `NIM_ENGINE_PRECISION=fp16` | Environment for the default VLM embed NIM. Overrides replace the complete list. |
+| `nimOperator.vlm_embed.enabled`        | `true`  | Text embedding NIM (also used by the vectordb Pod). |
+| `nimOperator.vlm_embed.nimServiceName` | `nemotron-3-embed-1b` | NIMService / in-cluster DNS name. |
+| `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2` | Default text embed NIM image. |
+| `nimOperator.vlm_embed.env` | `NIM_HTTP_API_PORT=8000`, `NIM_TRITON_LOG_VERBOSE=1`, `OMP_NUM_THREADS=1`, `NIM_ENGINE_COUNT=1` | Environment for the default text embed NIM. Overrides replace the complete list. `NIM_PERFORMANCE_MODE=1` is optional. |
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional). Set `true` to opt in — refer to [Query-time reranking](#query-time-reranking). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
@@ -1303,6 +1303,27 @@ gated on three conditions ALL holding:
 | `nimOperator.<key>.modelProfile`       | `{}`    | Per-NIM NIMCache GPU/profile filter. Non-empty values REPLACE the chart-wide default (no merge). Refer to [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.expose.service.port` | `8000` (9000 for audio) | HTTP port. |
 | `nimOperator.<key>.expose.service.grpcPort` | `8001` (50051 for audio) | gRPC port. |
+
+The embed NIM leaves performance mode disabled by default. To enable it on a
+supported deployment, copy the complete `nimOperator.vlm_embed.env` list from
+`values.yaml` into your values file. Then uncomment the optional setting:
+
+```yaml
+nimOperator:
+  vlm_embed:
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
+```
 
 > The four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
 > are enabled and auto-wired by default. Optional NIMs stay off until
@@ -1445,7 +1466,7 @@ Optional NIMs follow the same immutable-`modelPuller` rule.
 | `nimOperator.page_elements` | `nemotron-page-elements-v3` |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` |
 | `nimOperator.ocr` | `nimOperator.ocr.nimServiceName` (`nemotron-ocr-v2`) |
-| `nimOperator.vlm_embed` | `nimOperator.vlm_embed.nimServiceName` (`llama-nemotron-embed-vl-1b-v2`) |
+| `nimOperator.vlm_embed` | `nimOperator.vlm_embed.nimServiceName` (`nemotron-3-embed-1b`) |
 
 **Before you change a repository or tag** on an existing release,
 complete the following steps for every NIM whose image changes.
@@ -1835,7 +1856,7 @@ document callbacks even though only one root cause occurred.
 | Remote embed HTTP calls | **600 s** (10 min) | Service image (`EmbedParams.request_timeout_s`); not a Helm value today. |
 | Gateway → realtime/batch proxy | **300 s** | Rendered `gateway.timeout_s` in `retriever-service.yaml` (split topology). |
 | Worker → vectordb record write | **300 s** | `serviceConfig.vectordb.writeTimeoutSeconds`, rendered as `vectordb.write_timeout_s` in `retriever-service.yaml`. |
-| VLM embed model name | `serviceConfig.vectordb.embedModel` | Also copied into worker `nim_endpoints.embed_model_name` in the ConfigMap. |
+| Embed model name | `serviceConfig.vectordb.embedModel` | Also copied into worker `nim_endpoints.embed_model_name` in the ConfigMap. |
 
 Symptoms to look for in pod logs:
 
@@ -1856,7 +1877,7 @@ The **gateway** pod usually only logs `status=failed` callbacks; diagnose on
 **1. Lower batch worker concurrency (first step).**
 
 The default `serviceConfig.pipeline.batchWorkers` is `48`, which can saturate
-a single in-cluster VLM embed NIM. If you see embed timeouts or pool crashes,
+a single in-cluster embed NIM. If you see embed timeouts or pool crashes,
 reduce batch parallelism to **16** and redeploy:
 
 ```bash
@@ -1874,8 +1895,8 @@ ingest shows the same timeout pattern.
 **2. Confirm embed wiring.**
 
 Ensure `nim_endpoints.embed_model_name` in the mounted config matches the
-VLM embed NIM SKU (`serviceConfig.vectordb.embedModel`, default
-`nvidia/llama-nemotron-embed-vl-1b-v2`). A model mismatch produces
+embed NIM SKU (`serviceConfig.vectordb.embedModel`, default
+`nvidia/nemotron-3-embed-1b`). A model mismatch produces
 HTTP 404 on `/v1/embeddings`, not a timeout, but is worth ruling out when
 debugging failed ingests.
 
@@ -2305,7 +2326,7 @@ your release tag). Defaults below match
 | Page Elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` |
 | Table Structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` |
-| VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` |
+| Text embed | `vlm_embed` | `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption or configurable answer VLM (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |

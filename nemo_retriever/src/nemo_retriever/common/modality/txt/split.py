@@ -17,11 +17,11 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from nemo_retriever.common.inline_text import is_inline_text_source
 from nemo_retriever.common.params import TextChunkParams
-from nemo_retriever.models import VL_EMBED_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_BF16_MODEL
 
 from .tokenizer_provider import ChunkTokenizer, load_chunk_tokenizer
 
-DEFAULT_TOKENIZER_MODEL_ID = VL_EMBED_MODEL
+DEFAULT_TOKENIZER_MODEL_ID = NEMOTRON_3_EMBED_BF16_MODEL
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 

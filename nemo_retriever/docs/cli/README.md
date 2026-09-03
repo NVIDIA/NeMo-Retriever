@@ -58,6 +58,10 @@ the `[local]` extra before you run the default `retriever ingest` or
 pip install "nemo-retriever[local]"
 ```
 
+The default logical embedding model is `nvidia/nemotron-3-embed-1b`, and the default local backend is vLLM. NeMo Retriever Library selects `nvidia/Nemotron-3-Embed-1B-NVFP4` when every visible CUDA device has compute capability 10.0 or later. It selects `nvidia/Nemotron-3-Embed-1B-BF16` on older GPUs, unknown devices, or systems without visible CUDA devices. If you explicitly set `--local-ingest-embed-backend hf`, the logical model resolves to the BF16 checkpoint because NVFP4 requires vLLM.
+
+Nemotron 3 Embed 1B is text-only. To embed images or combined text and images, explicitly set `--embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2` and select the matching modality.
+
 If you installed the base package for Remote NIM with no local GPU, keep that
 install and pass `--embed-invoke-url` instead. Refer to
 [Route ingest to hosted or self-hosted NIM endpoints](#route-ingest-to-hosted-or-self-hosted-nim-endpoints).
@@ -156,7 +160,7 @@ retriever ingest ./data/multimodal_test.pdf \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
+  --embed-model-name nvidia/nemotron-3-embed-1b
 ```
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
@@ -170,7 +174,7 @@ authorizes the hosted embedding URL:
 ```bash
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
-  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
+  --embed-model-name nvidia/nemotron-3-embed-1b \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking \
   --reranker-model-name nvidia/llama-nemotron-rerank-vl-1b-v2 \
   --reranker-api-key-env NVIDIA_API_KEY
@@ -212,18 +216,29 @@ Page deduplication and content-type filtering are applied after vector
 retrieval, preserving retriever ranking order and truncating the final output to
 `--top-k`. Local and batch ingest record the canonical embedding model on the
 LanceDB table, and non-service query uses that model automatically. Use
-`--embed-model-name` only as an explicit override or when querying a legacy or
-third-party table without model metadata. If the explicit model differs from
-the model recorded on the table, the query logs a warning that names both
-models and continues with the explicit override. Confirm that the models use a
-compatible vector space before you trust the relevance results. Endpoint URLs
-and provider prefixes remain runtime configuration, so continue to pass
+`--embed-model-name` only as an explicit override. A dense or hybrid query
+rejects the request if that override differs from the model recorded on the
+table. It also rejects a legacy or third-party table without model metadata,
+because the query cannot verify its embedding space. Sparse queries are exempt
+because they do not create dense query vectors. Endpoint URLs and provider
+prefixes remain runtime configuration, so continue to pass
 `--embed-invoke-url` and `--embed-model-provider-prefix` when the selected model
 must be routed remotely.
 For example, a table can store the canonical model
-`nvidia/llama-nemotron-embed-vl-1b-v2` while a LiteLLM-routed request uses
-`nvidia/nvidia/llama-nemotron-embed-vl-1b-v2`. The endpoint and routing prefix
+`nvidia/nemotron-3-embed-1b` while a LiteLLM-routed request uses
+`nvidia/nemotron-3-embed-1b`. The endpoint and routing prefix
 are intentionally not persisted on the table.
+
+The default embedding model changed from
+`nvidia/llama-nemotron-embed-vl-1b-v2` to `nvidia/nemotron-3-embed-1b`. Before
+you migrate a persistent table, back up its LanceDB directory and retain the
+original corpus. To adopt the new default for a CLI-managed table, re-ingest the
+complete corpus with the same URI and table name and pass `--overwrite`
+explicitly. Do not use `--append` to mix embeddings from the two models. You can
+continue to query a tagged old table with its recorded model, but an untagged
+dense or hybrid table must be rebuilt. For service deployments, rebuild persisted
+legacy and collection tables before access or configure the service with the old
+index model. Refer to [Keep the embedding model aligned](../../../docs/docs/extraction/vdbs.md#lancedb-embedding-model-compatibility).
 
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
@@ -381,6 +396,8 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
+| `--embed-model-name` | `nvidia/nemotron-3-embed-1b` | Logical default embedding model. Local vLLM resolves it to the NVFP4 checkpoint on Blackwell and BF16 otherwise. |
+| `--local-ingest-embed-backend` | `vllm` | Local embedding backend. Explicit `hf` use resolves the logical default to the BF16 checkpoint. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
@@ -439,8 +456,7 @@ Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
 
 ```bash
 retriever ingest /path/to/your/pdfs \
-  --profile fast-text \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --profile fast-text
 ```
 
 ### Dense Nemotron embedding checkpoints

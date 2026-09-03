@@ -600,8 +600,8 @@ serviceConfig:
       ocrLang: ""
     embed:
       enabled: true
-      modelName: nvidia/llama-nemotron-embed-vl-1b-v2
-      localIngestEmbedBackend: hf
+      modelName: nvidia/nemotron-3-embed-1b
+      localIngestEmbedBackend: vllm
       gpuMemoryUtilization: 0.45
     asr:
       enabled: true
@@ -712,7 +712,7 @@ serviceConfig:
     # auto creates hybrid storage when fresh and preserves existing physical indexes.
     # Use hybrid explicitly to upgrade an existing dense table by adding FTS.
     indexMode: "auto"
-    embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
+    embedModel: "nvidia/nemotron-3-embed-1b"
     embedModelProviderPrefix: ""
     # How long a worker waits for the VectorDB pod to acknowledge a record
     # write. A write that is not acknowledged fails the document, so raise
@@ -1255,15 +1255,15 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_VARIANT
         value: multilingual
 
-  # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
-  # the vectordb query path, and multimodal ingest.
+  # Nemotron 3 Embed 1B. Used by the text embedding stage and
+  # the vectordb query path.
   vlm_embed:
     enabled: true
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: llama-nemotron-embed-vl-1b-v2
+    nimServiceName: nemotron-3-embed-1b
     image:
-      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.3.0"
+      repository: nvcr.io/nim/nvidia/nemotron-3-embed-1b
+      tag: "2.2.2"
       pullPolicy: IfNotPresent
       # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
       # chart-wide pull secret name(s) for this NIM only.
@@ -1303,11 +1303,11 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      - name: NIM_ENGINE_PRECISION
-        value: fp16
+      - name: NIM_ENGINE_COUNT
+        value: "1"
       # Optional: enable if your NIM build supports throughput mode for this SKU.
-      # - name: NIM_TRITON_PERFORMANCE_MODE
-      #   value: throughput
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Disabled by default unless noted below;

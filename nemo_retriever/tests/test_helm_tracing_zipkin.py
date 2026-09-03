@@ -25,7 +25,7 @@ POD_OTEL_ENABLED = SERVICE_OTEL_ENABLED + NIM_OTEL_ENABLED
 
 NIMSERVICE_NAMES = {
     "audio",
-    "llama-nemotron-embed-vl-1b-v2",
+    "nemotron-3-embed-1b",
     "llama-nemotron-rerank-vl-1b-v2",
     "nemotron-3-nano-omni-30b-a3b-reasoning",
     "nemotron-page-elements-v3",
