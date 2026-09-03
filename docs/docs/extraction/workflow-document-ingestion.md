@@ -1,3 +1,29 @@
+---
+title: "Ingest documents into a searchable collection"
+content_type: how-to
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - ingestion
+  - extraction
+  - embedding
+  - vector-storage
+technologies:
+  - python
+  - cli
+  - lancedb
+  - ray
+prerequisites:
+  - extraction/overview.md
+  - extraction/concepts.md
+  - extraction/api-keys.md
+  - extraction/deployment-options.md
+duration_minutes: 25
+surface: published-docs
+status: published
+---
+
 # Workflow: Ingest documents into a searchable VDB collection
 
 This page covers extracting content from documents and turning that content into a searchable vector collection in one place so you can scroll and search (for example with Ctrl+F) instead of jumping across multiple short workflow stubs.

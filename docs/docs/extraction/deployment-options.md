@@ -1,3 +1,25 @@
+---
+title: "Deployment options"
+content_type: how-to
+audience: intermediate
+journey_stage: try
+product: nemo-retriever-library
+features:
+  - deployment
+technologies:
+  - python
+  - helm-kubernetes
+  - docker
+  - nim-hosted
+  - nim-self-hosted
+prerequisites:
+  - extraction/overview.md
+  - extraction/prerequisites-support-matrix.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Deployment options
 
 Use this page to compare how you run NeMo Retriever — including when to use [NVIDIA-hosted NIMs](https://build.nvidia.com/) versus self-hosting on your own infrastructure.
@@ -19,7 +41,7 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md). Chart sources are in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm) on GitHub. Before you install, confirm persistent-volume binding and four allocatable GPU slots across eligible nodes, or GPU sharing, for the four default NIMServices. Refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling). When you change a NIM image repository or tag on an existing release, delete the `NIMCache` before you upgrade. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
-3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
+3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [Start here](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
 The Helm chart uses `GET /v1/live` for startup and liveness probes and
@@ -99,6 +121,6 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prere
 **Related**
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment)
-- [About getting started](getting-started-about.md) (prerequisites through first deployment)
+- [Start here](getting-started-about.md) (prerequisites through first deployment)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Audio and video](audio-video.md)
