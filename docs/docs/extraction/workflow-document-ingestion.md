@@ -8,7 +8,7 @@ Document ingestion is the step where NeMo Retriever Library reads your files (PD
 
 Follow these steps:
 
-1. **Choose how you call the library.** Use the [Python API](nemo-retriever-api-reference.md) or [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli) from application code, or run a deployment (for example [NeMo Retriever Library on GitHub](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever), [Deployment options](deployment-options.md), or [Quickstart: Kubernetes (Helm)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)) and send jobs over the network. Runnable examples appear in [Choose how you call the library](#choose-how-you-call-the-library) below.
+1. **Choose how you call the library.** Use the [Python API](nemo-retriever-api-reference.md) or [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/docs/cli) from application code, or run a deployment (for example [NeMo Retriever Library on GitHub](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever), [Deployment options](deployment-options.md), or [Quickstart: Kubernetes (Helm)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md)) and send jobs over the network. Runnable examples appear in [Choose how you call the library](#choose-how-you-call-the-library) below.
 2. **Use parallel PDF handling.** The default ingest path splits large PDFs before Ray processing; refer to [API guide — PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest).
 3. **Tune extraction for your content.** Refer to [Multimodal extraction](multimodal-extraction.md) for formats, [text and layout](multimodal-extraction.md#text-and-layout-extraction), [tables](multimodal-extraction.md#tables), [OCR](multimodal-extraction.md#ocr-and-scanned-documents), and related subsections on that page.
 
@@ -20,11 +20,11 @@ The Python example below stops after `.embed()` so you can inspect chunks first;
 
 ## Choose how you call the library { #choose-how-you-call-the-library }
 
-The following examples match the [NeMo Retriever Library README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/README.md). They assume a checkout of the [NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever) repository and the `batch` run mode with local GPU inference unless you configure remote NIMs.
+The following examples match the [NeMo Retriever Library README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/README.md). They assume a checkout of the [NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever) repository and the `batch` run mode with local GPU inference unless you configure remote NIMs.
 
 ### Ingest a test PDF (Python)
 
-The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below chains `.extract()` and `.embed()` only so you can inspect embedded chunks before indexing. To upload in the same run, append `.vdb_upload(...)` before `.ingest()` (parameter details in the [Python API guide](nemo-retriever-api-reference.md)).
+The [test PDF](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/data/multimodal_test.pdf) contains text, tables, charts, and images. The pipeline below chains `.extract()` and `.embed()` only so you can inspect embedded chunks before indexing. To upload in the same run, append `.vdb_upload(...)` before `.ingest()` (parameter details in the [Python API guide](nemo-retriever-api-reference.md)).
 
 ```python
 from nemo_retriever import create_ingestor
