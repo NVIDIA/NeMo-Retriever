@@ -232,8 +232,10 @@ from the error message. In this example, that value is `3`.
 **Helm:** The default chart deploys `nemotron-3-embed-1b:2.2.2`
 as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
 on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
-keep the default entries. The following example keeps those defaults and
-adds the batch-size variable:
+keep the default entries. The following example keeps those defaults, leaves
+the optional performance mode disabled, and adds the batch-size variable.
+Uncomment `NIM_PERFORMANCE_MODE` only if your NIM build supports it for this
+SKU:
 
 ```yaml
 nimOperator:
@@ -245,10 +247,11 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      - name: NIM_PERFORMANCE_MODE
-        value: "1"
       - name: NIM_ENGINE_COUNT
         value: "1"
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
       - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "3"
 ```

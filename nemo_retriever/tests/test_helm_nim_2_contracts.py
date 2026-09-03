@@ -75,6 +75,12 @@ def test_extraction_nims_select_distinct_native_models() -> None:
     assert ocr_env["NIM_ENGINE_MODEL_VARIANT"] == "multilingual"
 
 
+def test_embed_performance_mode_is_documented_as_optional() -> None:
+    values = (CHART / "values.yaml").read_text()
+    assert '# - name: NIM_PERFORMANCE_MODE\n      #   value: "1"' in values
+    assert "NIM_TRITON_PERFORMANCE_MODE" not in values
+
+
 def test_default_embed_nim_uses_nemotron_3_auto_precision() -> None:
     documents = _render()
     service = _find(documents, "NIMService", "nemotron-3-embed-1b")
@@ -86,7 +92,7 @@ def test_default_embed_nim_uses_nemotron_3_auto_precision() -> None:
     }
     env = {item["name"]: item.get("value") for item in service["spec"]["env"]}
     assert env["NIM_ENGINE_COUNT"] == "1"
-    assert env["NIM_PERFORMANCE_MODE"] == "1"
+    assert "NIM_PERFORMANCE_MODE" not in env
     assert "NIM_ENGINE_PRECISION" not in env
     assert "NIM_TRITON_PERFORMANCE_MODE" not in env
 
