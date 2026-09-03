@@ -159,7 +159,19 @@ def test_building_vdb_operator_notebook_creates_a_concrete_vdb() -> None:
 
     pytest.importorskip("duckdb")
 
-    notebook = _repo_root() / "examples/building_vdb_operator.ipynb"
+    repo_root = _repo_root()
+    notebook = next(
+        (
+            candidate
+            for candidate in (
+                repo_root / "examples/building_vdb_operator.ipynb",
+                repo_root / "nemo_retriever/examples/building_vdb_operator.ipynb",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    assert notebook is not None, "Expected building_vdb_operator.ipynb in the repository checkout."
     cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
     class_source = next(
         "".join(cell["source"])
