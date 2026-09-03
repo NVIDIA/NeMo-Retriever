@@ -44,9 +44,10 @@ class AgentError:
 class AgentRunResult:
     """Everything one agent run produces.
 
-    ``final_doc_ids`` and ``answer`` are conveniences extracted from
-    ``end_payload`` (its ``doc_ids`` / ``answer`` keys); which one is filled
-    follows the agent's mode. On a successful run ``end_payload`` is the full
+    ``final_doc_ids``, ``answer`` and ``citations`` are conveniences
+    extracted from ``end_payload``; which are filled follows the agent's mode.
+    ``citations`` separates ``[]`` (the model reported no supporting document)
+    from ``None`` (it never gave a usable list). On a successful run ``end_payload`` is the full
     *validated* end-tool arguments. When a run FAILS without ever making a
     valid end call, it falls back to the agent's last invalid end attempt (a
     lenient best-effort subset) so callers still get the model's final intent;
@@ -60,6 +61,7 @@ class AgentRunResult:
 
     final_doc_ids: List[str] = field(default_factory=list)
     answer: Optional[str] = None
+    citations: Optional[List[str]] = None
     end_payload: Optional[Dict[str, Any]] = None
     error: Optional[AgentError] = None
     trajectory: List[Dict[str, Any]] = field(default_factory=list)

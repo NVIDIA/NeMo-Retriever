@@ -442,6 +442,7 @@ class _BaseAgentLoop:
             payload = state.last_end_attempt
         final_doc_ids: List[str] = []
         answer: Optional[str] = None
+        citations: Optional[List[str]] = None
         if payload is not None:
             doc_ids = payload.get("doc_ids")
             if isinstance(doc_ids, list):
@@ -449,6 +450,9 @@ class _BaseAgentLoop:
             ans = payload.get("answer")
             if isinstance(ans, str):
                 answer = ans
+            cites = payload.get("citations")
+            if isinstance(cites, list):
+                citations = [str(c) for c in cites]
         error_payload: Optional[Dict[str, Any]] = None
         if state.error is not None:
             error_payload = {
@@ -473,6 +477,7 @@ class _BaseAgentLoop:
         return AgentRunResult(
             final_doc_ids=final_doc_ids,
             answer=answer,
+            citations=citations,
             end_payload=payload,
             error=state.error,
             trajectory=state.message_history,

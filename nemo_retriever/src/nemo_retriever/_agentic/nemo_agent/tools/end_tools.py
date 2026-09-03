@@ -59,8 +59,9 @@ class BaseEndTool(BaseTool):
         A fallback only: when a run ends in error without ever making a valid
         end call, the agent's last invalid attempt still carries the model's
         intended output. Returns a lenient subset — a non-empty ``doc_ids``
-        list of strings and/or a non-empty ``answer`` string, plus a non-blank
-        ``message`` — or ``None`` when nothing usable was supplied. The strict
+        list of strings and/or a non-empty ``answer`` string, plus non-empty
+        ``citations`` and a non-blank ``message`` — or ``None`` when nothing
+        usable was supplied. The strict
         contract lives in :meth:`_validate_payload`; this never raises and is
         deliberately generic (each end tool only ever supplies its own keys).
         """
@@ -75,6 +76,11 @@ class BaseEndTool(BaseTool):
         # ``message`` with no doc_ids/answer carries nothing usable.
         if not out:
             return None
+        citations = kwargs.get("citations")
+        if isinstance(citations, list):
+            cited = [c.strip() for c in citations if isinstance(c, str) and c.strip()]
+            if cited:
+                out["citations"] = cited
         message = kwargs.get("message")
         if isinstance(message, str) and message.strip():
             out["message"] = message
@@ -189,8 +195,9 @@ The successful_search field should be set to true if you believed you have found
 class LogAnswer(BaseEndTool):
     """Ends an answer-mode run: the agent writes its final answer here.
 
-    ``answer`` is the text that gets evaluated; ``message`` (when enabled) is
-    diagnostic context only.
+    ``answer`` is the text that gets evaluated and ``citations`` the doc IDs
+    supporting it — sources go there, not inline in the answer text.
+    ``message`` (when enabled) is diagnostic context only.
     """
 
     def __init__(self, include_msg: bool = True):
@@ -203,7 +210,9 @@ class LogAnswer(BaseEndTool):
 
 Use this tool when you have carefully considered the candidate documents and are ready to generate the answer to the query.
 
-The answer argument is the final answer that will be saved and evaluated. It must contain the complete response to the query, including all requested entities, numbers, units, dates, categories, and other information necessary to answer the query."""
+The answer argument is the final answer that will be saved and evaluated. It must contain the complete response to the query, including all requested entities, numbers, units, dates, categories, and other information necessary to answer the query.
+
+The citations argument reports the documents that support the answer. Give the document IDs exactly as they appear in the retrieval results, and include only documents you actually relied on."""
 
         if self.include_msg:
             desc += """\n\nThe message argument is diagnostic context for why the answer is supported. Do not put any essential answer facts only in message."""
@@ -216,12 +225,23 @@ The answer argument is the final answer that will be saved and evaluated. It mus
                 ),
             }
         required.append("answer")
+        required.append("citations")
         properties["answer"] = {
             "type": "string",
             "description": (
                 "The complete final answer to the query, based only on the provided documents. Include "
                 "all requested items, numbers, units, dates, categories, and explanations needed to "
-                "fully answer the query."
+                "fully answer the query. Do not put document IDs or bracketed citations in this text; "
+                "report sources in the `citations` argument instead."
+            ),
+        }
+        properties["citations"] = {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "IDs of the retrieved documents that support the answer. "
+                "Include only documents you actually used. Pass an empty list only when no retrieved "
+                "document supports the answer."
             ),
         }
 
@@ -241,7 +261,7 @@ The answer argument is the final answer that will be saved and evaluated. It mus
     def _spec(self) -> dict:
         return self.spec_dict
 
-    def _validate_payload(self, answer: str, message: Optional[str] = None) -> Dict[str, Any]:
+    def _validate_payload(self, answer: str, citations: List[str], message: Optional[str] = None) -> Dict[str, Any]:
         if self.include_msg:
             if message is None:
                 raise TypeError("The `message` argument is required.")
@@ -251,7 +271,18 @@ The answer argument is the final answer that will be saved and evaluated. It mus
             raise TypeError(f"The `answer` argument must be a string. Got `{type(answer)}` type.")
         if not answer.strip():
             raise ToolError("`answer` cannot be empty. You must provide a complete, non-empty answer to the query.")
-        payload: Dict[str, Any] = {"answer": answer}
+        # `citations` has no default, so omitting it raises TypeError here rather than
+        # ending the run: the agent sees the error and gets another chance at its sources.
+        if not isinstance(citations, list):
+            raise TypeError(f"The `citations` argument must be a list. Got `{type(citations)}` type.")
+        if not all(isinstance(c, str) for c in citations):
+            raise TypeError("Items in `citations` must be of type string (i.e., python's `str` type).")
+        cited: List[str] = []
+        for c in citations:
+            c = c.strip()
+            if c and c not in cited:
+                cited.append(c)
+        payload: Dict[str, Any] = {"answer": answer, "citations": cited}
         if message is not None:
             payload["message"] = message
         return payload
