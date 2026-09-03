@@ -18,7 +18,13 @@ In batch mode, NeMo Retriever Library sizes unspecified Ray actor pools from Ray
 
 For filesystem inputs, the library reserves CPU capacity for each Ray Data `ReadBinary` source task before it sizes actor pools. This reservation lets the input stage start instead of being blocked by persistent extraction actors. Inputs that are already Ray datasets, such as inline text rows, do not require this reservation.
 
-If you set `BatchTuningParams` worker counts or direct `node_overrides`, those requests and required source-task reservations must fit the available Ray CPU and GPU budget. The library validates the final plan before submitting work and raises an error when it is infeasible. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity before retrying.
+When ingestion combines multiple extraction datasets, preflight also reserves 1 CPU for schema-normalization work. This keeps actor pools from occupying all CPU capacity before the datasets have compatible schemas.
+
+Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
+
+If you set `BatchTuningParams` worker counts or direct `node_overrides`, those requests and required task reservations must fit the available Ray CPU and GPU budget. The library validates the final plan before submitting work and raises an error when it is infeasible. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity before retrying.
+
+For a direct Ray actor-pool tuple, such as `(minimum, maximum)` or `(minimum, maximum, initial)`, validation uses `maximum` as the requested pool size.
 
 ### Override worker counts
 
