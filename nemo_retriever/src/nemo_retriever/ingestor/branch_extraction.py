@@ -152,7 +152,7 @@ class ExtractionBranchExecutor:
             source_cpu_reservation=0,
         )
         if hasattr(cluster_resources, "available_cpu_count"):
-            normalization_cpus = float(len(branch_inputs)) if len(branch_inputs) > 1 else 0.0
+            normalization_cpus = 1.0 if len(branch_inputs) > 1 else 0.0
             preflight_executors(
                 [*branch_executors, post_executor],
                 cluster_resources,
