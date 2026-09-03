@@ -276,17 +276,59 @@ class Retriever:
             self._lancedb_capabilities_cache[key] = caps
         return caps
 
+    def _graph_lancedb_retrieve_operator(self) -> RetrieveVdbOperator | None:
+        """Return the LanceDB retrieval operator from a caller-owned graph, if present."""
+        if self.graph is None:
+            return None
+
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        roots = getattr(self.graph, "roots", None)
+        if not isinstance(roots, list):
+            return None
+
+        pending = list(roots)
+        visited: set[int] = set()
+        while pending:
+            node = pending.pop()
+            if id(node) in visited:
+                continue
+            visited.add(id(node))
+            operator = getattr(node, "operator", None)
+            if isinstance(operator, RetrieveVdbOperator) and isinstance(getattr(operator, "_vdb", None), LanceDB):
+                return operator
+            children = getattr(node, "children", None)
+            if isinstance(children, list):
+                pending.extend(children)
+        return None
+
     def _resolve_lancedb_query_mode(
         self,
         runtime_vdb_kwargs: Optional[dict[str, Any]],
     ) -> tuple[str, LanceTableCapabilities, str, str, bool] | None:
-        if self.graph is not None:
+        graph_operator = self._graph_lancedb_retrieve_operator()
+        if self.graph is not None and graph_operator is None:
             return None
 
-        lancedb_kwargs = dict(self.vdb_kwargs or {})
+        lancedb_kwargs = (
+            {"vdb": graph_operator._vdb, "vdb_kwargs": dict(graph_operator._vdb_kwargs)}
+            if graph_operator is not None
+            else dict(self.vdb_kwargs or {})
+        )
         if "vdb" in lancedb_kwargs:
-            return None
-        if "vdb_op" in lancedb_kwargs:
+            from nemo_retriever.common.vdb.lancedb import LanceDB
+
+            vdb = lancedb_kwargs["vdb"]
+            if not isinstance(vdb, LanceDB):
+                return None
+            nested_kwargs = dict(lancedb_kwargs.get("vdb_kwargs") or {})
+            lancedb_kwargs = {
+                "uri": vdb.uri,
+                "table_name": vdb.table_name,
+                "hybrid": vdb.hybrid,
+                **nested_kwargs,
+            }
+        elif "vdb_op" in lancedb_kwargs:
             if str(lancedb_kwargs.get("vdb_op") or "").strip().lower() != "lancedb":
                 return None
             lancedb_kwargs = dict(lancedb_kwargs.get("vdb_kwargs") or {})
@@ -467,6 +509,9 @@ class Retriever:
         )
         if self.graph is None:
             metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
+        else:
+            metadata_reader = self._graph_lancedb_retrieve_operator()
+        if metadata_reader is not None:
             index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
             index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
             if explicit_model and index_model:
