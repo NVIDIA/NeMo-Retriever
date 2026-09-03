@@ -285,7 +285,7 @@ class Retriever:
             or lancedb_kwargs.get("lancedb_uri")
             or "lancedb"
         )
-        table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nv-ingest")
+        table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nemo-retriever")
         caps = self._inspect_lancedb_capabilities(uri, table_name)
 
         mode_override = str(lancedb_kwargs.get("retrieval_mode") or "auto").strip().lower()

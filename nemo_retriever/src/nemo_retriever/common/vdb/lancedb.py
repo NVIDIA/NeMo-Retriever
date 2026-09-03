@@ -586,7 +586,7 @@ class LanceDB(VDB):
         self,
         uri: str | None = None,
         overwrite: bool = True,
-        table_name: str = "nv-ingest",
+        table_name: str = "nemo-retriever",
         index_type: str = "IVF_HNSW_SQ",
         metric: str = "l2",
         num_partitions: int = 16,
@@ -1019,7 +1019,7 @@ class LanceDB(VDB):
             return None
         return value.decode("utf-8", errors="replace").strip() or None
 
-    def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
+    def create_index(self, records=None, table_name: str = "nemo-retriever", **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.
 
         Validates per-row vector shape (when ``validate_vector_length`` is set

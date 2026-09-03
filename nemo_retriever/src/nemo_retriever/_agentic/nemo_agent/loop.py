@@ -32,6 +32,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set,
 
 from pydantic import BaseModel, ConfigDict
 
+from .atif import build_atif_trajectory, llm_trace_record
 from .cache_propagation import PropagationPacer
 from .llm import (
     BaseLLMBackend,
@@ -162,6 +163,7 @@ class _RunState:
     retrieval_log: List[Dict[str, Any]] = field(default_factory=list)
     extra_data: Dict[str, Any] = field(default_factory=dict)
     extra_response_infos: List[Dict[str, Any]] = field(default_factory=list)
+    llm_trace_records: List[Dict[str, Any]] = field(default_factory=list)
     last_reasoning: Optional[str] = None
     last_raw_io: Optional[Tuple[int, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]] = None
     end_payload: Optional[Dict[str, Any]] = None
@@ -272,6 +274,7 @@ class _BaseAgentLoop:
         if result.reasoning is not None:
             message["__reasoning__"] = result.reasoning  # backends strip __-prefixed keys
         state.message_history.append(message)
+        state.llm_trace_records.append(llm_trace_record(result.usage))
 
     async def _process_tool_calls(self, state: _RunState) -> bool:
         """Execute the last assistant message's tool calls; True when the run ended."""
@@ -442,6 +445,27 @@ class _BaseAgentLoop:
             doc_ids = payload.get("doc_ids")
             if isinstance(doc_ids, list):
                 final_doc_ids = [str(d) for d in doc_ids]
+        error_payload: Optional[Dict[str, Any]] = None
+        if state.error is not None:
+            error_payload = {
+                "category": state.error.category,
+                "message": state.error.message,
+                "exception_class": state.error.exception_class,
+            }
+        atif_trace: Optional[Dict[str, Any]] = None
+        try:
+            atif_trace = build_atif_trajectory(
+                query=state.query,
+                query_id=get_query_id(),
+                stage=state.stage,
+                model_name=str(self.llm.config.model),
+                message_history=state.message_history,
+                llm_records=state.llm_trace_records,
+                retrieval_log=state.retrieval_log,
+                error=error_payload,
+            )
+        except Exception:
+            logger.warning("Failed to build agentic ATIF trace", exc_info=True)
         return AgentRunResult(
             final_doc_ids=final_doc_ids,
             end_payload=payload,
@@ -449,6 +473,7 @@ class _BaseAgentLoop:
             trajectory=state.message_history,
             retrieval_log=state.retrieval_log,
             extra_data=state.extra_data,
+            atif_trace=atif_trace,
         )
 
 
