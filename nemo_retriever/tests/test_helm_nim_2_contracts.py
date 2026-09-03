@@ -66,7 +66,7 @@ def test_extraction_nims_select_distinct_native_models() -> None:
         assert env["NIM_ENGINE_MODEL_PATH"] == model_path
         assert env["NIM_PERFORMANCE_MODE"] == "1"
         assert env["NIM_ENGINE_COUNT"] == "1"
-        assert env["NIM_PIPELINE_MAX_BATCH_SIZE"] == "1"
+        assert "NIM_PIPELINE_MAX_BATCH_SIZE" not in env
         assert "NIM_TRITON_MAX_BATCH_SIZE" not in env
 
     ocr_env = {
