@@ -49,10 +49,10 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
-        from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+        from nemo_retriever.models import NEMOTRON_3_EMBED_BF16_MODEL
         from transformers import AutoModel, AutoTokenizer
 
-        model_id = self.model_id or _DEFAULT_EMBED_MODEL
+        model_id = self.model_id or NEMOTRON_3_EMBED_BF16_MODEL
         dev = torch.device(self.device or ("cuda" if torch.cuda.is_available() else "cpu"))
         hf_cache_dir = configure_global_hf_cache_base(self.hf_cache_dir)
         _revision = resolve_embed_model_revision(model_id, self.revision)

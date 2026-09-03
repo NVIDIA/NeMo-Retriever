@@ -80,8 +80,8 @@ local_models:
     ocr_lang: null
   embed:
     enabled: true
-    model_name: nvidia/llama-nemotron-embed-vl-1b-v2
-    local_ingest_embed_backend: hf
+    model_name: nvidia/nemotron-3-embed-1b
+    local_ingest_embed_backend: vllm
     gpu_memory_utilization: 0.45
   asr:
     enabled: true
@@ -165,7 +165,7 @@ vectordb:
   max_concurrent_queries: 4
   lancedb_uri: "/data/vectordb"
   table_name: "nemo_retriever"
-  embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"
+  embed_model: "nvidia/nemotron-3-embed-1b"
   embed_model_provider_prefix: null
   # /v1/query auto-detects retrieval from the table's own indexes: a table with
   # both a vector column and an FTS/BM25 index runs hybrid, a vector-only table

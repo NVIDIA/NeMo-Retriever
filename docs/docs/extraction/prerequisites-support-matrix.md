@@ -52,7 +52,7 @@ For claim names, Helm value paths, and example `--set` flags, refer to [Persiste
 
 ## Kubernetes Helm GPU scheduling { #kubernetes-helm-gpu-scheduling }
 
-The [model hardware requirements](#model-hardware-requirements) **Total GPUs** row for Core Features is combined GPU memory co-residency. The four default NIMs together use about 4.8 GiB and can co-reside on one A10G or better GPU.
+The [model hardware requirements](#model-hardware-requirements) **Total GPUs** row for Core Features describes combined GPU memory co-residency. The four default NIMs can co-reside on one A10G or better GPU with supported profiles.
 
 The default Helm chart does not pack those NIMs onto one Kubernetes GPU request. It creates four independent `NIMService` workloads (`page_elements`, `table_structure`, `ocr`, and `vlm_embed`). Each replica requests `nvidia.com/gpu: 1` through `nimOperator.nimServiceGpuLimit` (default `1`).
 
@@ -109,7 +109,7 @@ Ensure your deployment environment meets these specifications before running the
 
 ## Core and Advanced Pipeline Features { #core-and-advanced-pipeline-features }
 
-The NeMo Retriever Library extraction core pipeline features have a combined GPU memory footprint that fits on a single A10G or better GPU (about 4.8 GiB). That figure is model capacity. It is not a Kubernetes scheduling guarantee.
+The NeMo Retriever Library extraction core pipeline features have a combined GPU memory footprint that fits on a single A10G or better GPU with supported profiles. That figure is model capacity. It is not a Kubernetes scheduling guarantee.
 
 The default Helm chart creates four independent NIMService workloads. Each requests `nvidia.com/gpu: 1`. On a conventional Kubernetes GPU cluster without MIG, time-slicing, or another sharing mechanism, you need **four allocatable GPU slots across eligible nodes**. To run all four core NIMs on one physical GPU, configure GPU sharing on a single-GPU target node before you install, and pin the four NIMServices to that node. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
@@ -130,7 +130,7 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `page_elements` | [nemotron-page-elements-v3](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` | Page layout and element detection | Yes |
 | `table_structure` | [nemotron-table-structure-v1](https://build.nvidia.com/nvidia/nemotron-table-structure-v1) | `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1` | Table structure extraction | Yes |
 | `ocr` | [nemotron-ocr-v2](https://build.nvidia.com/nvidia/nemotron-ocr-v2) | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` | Image OCR | Yes |
-| `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0` | Multimodal (VL) embedding | Yes |
+| `vlm_embed` | [nemotron-3-embed-1b](https://build.nvidia.com/nvidia/nemotron-3-embed-1b) | `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2` | Text embedding | Yes |
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-rerank-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Reranking for improved retrieval accuracy | No |
 | `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"`. The Python `ExtractParams` default is `pdfium`; the CLI `auto` profile selects `pdfium_hybrid`. | No |
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | Image captioning when you enable the caption stage. This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation](#answer-generation). | No |
@@ -143,7 +143,7 @@ For self-hosted NIM GPU memory by SKU and precision, refer to the following prod
 
 - [Object detection supported hardware and memory footprint](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#supported-hardware-and-memory-footprint) covers `page_elements` and `table_structure`.
 - [Image OCR supported hardware and memory footprint](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html#supported-hardware-and-memory-footprint) covers `ocr`.
-- [Embedding NIM memory footprint](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/support-matrix.html#memory-footprint) covers `embed` (`llama-nemotron-embed-vl-1b-v2`).
+- [Embedding NIM memory footprint](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/support-matrix.html#memory-footprint) covers `vlm_embed` (`nemotron-3-embed-1b`).
 - [Reranking NIM memory footprint](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/support-matrix.html#memory-footprint) covers `rerank` (`llama-nemotron-rerank-vl-1b-v2`).
 
 ### Configure query reranking with Helm { #configure-query-reranking-with-helm }
@@ -176,7 +176,7 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | nemotron-page-elements-v3 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3` | Core layout detection |
 | nemotron-table-structure-v1 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1` | Core table structure |
 | nemotron-ocr-v2 | `https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2` | Chart default OCR SKU; library CPU actors default to this URL when no OCR invoke URL is set. **Local OCR language selectors (`--ocr-lang`, API `ocr_lang`) are not sent on remote requests** — hosted OCR v2 uses its own language behavior |
-| llama-nemotron-embed-vl-1b-v2 | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/llama-nemotron-embed-vl-1b-v2` | Core multimodal embedding |
+| nemotron-3-embed-1b | `https://integrate.api.nvidia.com/v1/embeddings` with model ID `nvidia/nemotron-3-embed-1b` | Core text embedding |
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
 | nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted Parse v1.2 use different request contracts. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning. Also a supported configurable `/v1/answer` VLM backend when you point `serviceConfig.llm` at this endpoint. Enabling the Omni caption Helm key does not enable `/v1/answer`. |
@@ -259,7 +259,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|
 | GPU | — | Memory | 96GB | 180GB | 141GB | 80GB | 80GB | 40GB | 24GB | 48GB | 32GB GDDR7 (GB203) |
-| Core Features | ~4.8 GiB combined: embed VL 1b ~3.1 GiB; page-elements ~0.41 GiB; table-structure ~0.81 GiB; OCR ~0.51 GiB | Total GPUs⁵ | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
+| Core Features | Model footprint depends on the embedding precision and NIM profiles. Refer to the linked NIM memory tables. | Total GPUs⁵ | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
 | Core Features | — | Total Disk Space | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB |
 | Audio/video extraction (parakeet-1-1b-ctc-en-us) | ~4.0 GiB (`model.safetensors`; the repo also ships `parakeet-ctc-1.1b.nemo` of similar size—use one format to avoid roughly doubling disk use) | Additional Dedicated GPUs | Not supported⁴ | Not supported⁴ | Not supported⁴ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | Not supported⁴ |
 | | — | Additional Disk Space | Not supported⁴ | Not supported⁴ | Not supported⁴ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | Not supported⁴ |

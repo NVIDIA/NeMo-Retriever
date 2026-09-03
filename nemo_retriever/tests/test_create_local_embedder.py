@@ -103,22 +103,26 @@ def local_checkpoint(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# create_local_embedder — default model (VL, since _DEFAULT_EMBED_MODEL is VL)
+# create_local_embedder — Nemotron 3 default profile
 # ---------------------------------------------------------------------------
 
 
-def test_default_returns_vl_vllm_embedder(_patch_embedders):
-    _, _, _, fake_vl_vllm = _patch_embedders
+def test_default_returns_bf16_text_vllm_embedder(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     result = create_local_embedder()
-    fake_vl_vllm.assert_called_once()
-    assert result is fake_vl_vllm.return_value
+    fake_text_vllm.assert_called_once()
+    assert fake_text_vllm.call_args.kwargs["model_id"] == "nvidia/Nemotron-3-Embed-1B-BF16"
+    assert result is fake_text_vllm.return_value
 
 
-def test_none_model_name_returns_vl_embedder(_patch_embedders):
-    _, _, _, fake_vl_vllm = _patch_embedders
+def test_default_uses_nvfp4_on_native_hardware(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: True)
     result = create_local_embedder(None)
-    fake_vl_vllm.assert_called_once()
-    assert result is fake_vl_vllm.return_value
+    fake_text_vllm.assert_called_once()
+    assert fake_text_vllm.call_args.kwargs["model_id"] == "nvidia/Nemotron-3-Embed-1B-NVFP4"
+    assert result is fake_text_vllm.return_value
 
 
 def test_alias_resolved_to_text_embedder(_patch_embedders):
@@ -132,7 +136,7 @@ def test_alias_resolved_to_text_embedder(_patch_embedders):
 @pytest.mark.parametrize(
     ("model_name", "expected"),
     [
-        pytest.param(None, True, id="default"),
+        pytest.param(None, False, id="default"),
         pytest.param("llama-3.2-nemoretriever-1b-vlm-embed-v1", True, id="legacy-vl-alias"),
         pytest.param("nvidia/llama-nemotron-embed-1b-v2", False, id="text"),
     ],
@@ -141,29 +145,32 @@ def test_is_vl_embed_model_preserves_legacy_contract(model_name, expected):
     assert is_vl_embed_model(model_name) is expected
 
 
-def test_default_model_explicit_vllm_backend(_patch_embedders):
-    _, _, _, fake_vl_vllm = _patch_embedders
+def test_default_model_explicit_vllm_backend(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     result = create_local_embedder(backend="vllm")
-    fake_vl_vllm.assert_called_once()
-    assert result is fake_vl_vllm.return_value
+    fake_text_vllm.assert_called_once()
+    assert result is fake_text_vllm.return_value
 
 
-def test_default_model_hf_backend_returns_hf_embedder(_patch_embedders):
-    _, _, fake_vl_hf, _ = _patch_embedders
+def test_default_model_hf_backend_returns_bf16_text_embedder(_patch_embedders):
+    _, fake_text_hf, _, _ = _patch_embedders
     result = create_local_embedder(backend="hf")
-    fake_vl_hf.assert_called_once()
-    assert result is fake_vl_hf.return_value
+    fake_text_hf.assert_called_once()
+    assert fake_text_hf.call_args.kwargs["model_id"] == "nvidia/Nemotron-3-Embed-1B-BF16"
+    assert result is fake_text_hf.return_value
 
 
-def test_kwargs_forwarded_to_default_vllm_embedder(_patch_embedders):
-    _, _, _, fake_vl_vllm = _patch_embedders
+def test_kwargs_forwarded_to_default_vllm_embedder(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     create_local_embedder(
         device="cuda:1",
         hf_cache_dir="/tmp/cache",
         gpu_memory_utilization=0.6,
         normalize=False,
     )
-    kw = fake_vl_vllm.call_args.kwargs
+    kw = fake_text_vllm.call_args.kwargs
     assert kw["device"] == "cuda:1"
     assert kw["hf_cache_dir"] == "/tmp/cache"
     assert kw["gpu_memory_utilization"] == 0.6
@@ -171,16 +178,16 @@ def test_kwargs_forwarded_to_default_vllm_embedder(_patch_embedders):
 
 
 def test_kwargs_forwarded_to_default_hf_embedder(_patch_embedders):
-    _, _, fake_vl_hf, _ = _patch_embedders
+    _, fake_text_hf, _, _ = _patch_embedders
     create_local_embedder(
         backend="hf",
         device="cuda:0",
         hf_cache_dir="/models",
     )
-    kw = fake_vl_hf.call_args.kwargs
+    kw = fake_text_hf.call_args.kwargs
     assert kw["device"] == "cuda:0"
     assert kw["hf_cache_dir"] == "/models"
-    assert kw["model_id"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert kw["model_id"] == "nvidia/Nemotron-3-Embed-1B-BF16"
 
 
 def test_unknown_model_passes_through(_patch_embedders):
@@ -260,25 +267,27 @@ def test_invalid_backend_raises_for_vl(_patch_embedders):
 # ---------------------------------------------------------------------------
 
 
-def test_query_embedder_defaults_to_hf(_patch_embedders):
-    _, _, fake_vl_hf, _ = _patch_embedders
+def test_query_embedder_defaults_to_vllm(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     result = create_local_query_embedder()
-    fake_vl_hf.assert_called_once()
-    assert result is fake_vl_hf.return_value
+    fake_text_vllm.assert_called_once()
+    assert result is fake_text_vllm.return_value
 
 
 def test_query_embedder_explicit_hf(_patch_embedders):
-    _, _, fake_vl_hf, _ = _patch_embedders
+    _, fake_text_hf, _, _ = _patch_embedders
     result = create_local_query_embedder(backend="hf")
-    fake_vl_hf.assert_called_once()
-    assert result is fake_vl_hf.return_value
+    fake_text_hf.assert_called_once()
+    assert result is fake_text_hf.return_value
 
 
-def test_query_embedder_vllm_uses_vllm_embedder(_patch_embedders):
-    _, _, _, fake_vl_vllm = _patch_embedders
+def test_query_embedder_vllm_uses_vllm_embedder(monkeypatch, _patch_embedders):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     result = create_local_query_embedder(backend="vllm")
-    fake_vl_vllm.assert_called_once()
-    assert result is fake_vl_vllm.return_value
+    fake_text_vllm.assert_called_once()
+    assert result is fake_text_vllm.return_value
 
 
 def test_query_embedder_invalid_backend_raises(_patch_embedders):

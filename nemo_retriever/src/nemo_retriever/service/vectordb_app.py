@@ -158,7 +158,7 @@ class VectorDBState:
         embed_api_key: str,
         embed_model_provider_prefix: str | None = None,
         local_embed: bool = False,
-        local_embed_backend: str = "hf",
+        local_embed_backend: str = "vllm",
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
@@ -283,12 +283,12 @@ def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
     embed_endpoint: str = "",
-    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
+    embed_model: str = "nvidia/nemotron-3-embed-1b",
     embed_model_provider_prefix: str | None = None,
     embed_api_key: str = "",
     *,
     local_embed: bool = False,
-    local_embed_backend: str = "hf",
+    local_embed_backend: str = "vllm",
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
@@ -847,7 +847,7 @@ def main() -> None:
         help="Fresh-table index mode; auto creates hybrid and preserves existing table capabilities.",
     )
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
-    parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
+    parser.add_argument("--embed-model", default="nvidia/nemotron-3-embed-1b")
     parser.add_argument(
         "--embed-model-provider-prefix",
         default="",
@@ -887,9 +887,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--local-embed-backend",
-        default="hf",
+        default="vllm",
         choices=("hf", "vllm"),
-        help="Backend for --local-embed (default: hf).",
+        help="Backend for --local-embed (default: vllm).",
     )
     parser.add_argument("--hf-cache-dir", default="", help="Hugging Face model cache directory")
     parser.add_argument(

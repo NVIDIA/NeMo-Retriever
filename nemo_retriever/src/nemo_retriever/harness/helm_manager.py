@@ -32,7 +32,7 @@ class HelmServiceManager:
         "nemotron-page-elements-v3",
         "nemotron-table-structure-v1",
         "nemotron-ocr-v2",
-        "llama-nemotron-embed-vl-1b-v2",
+        "nemotron-3-embed-1b",
         "llama-nemotron-rerank-1b-v2",
         "nemotron-parse",
         "nemotron-3-nano-omni-30b-a3b-reasoning",

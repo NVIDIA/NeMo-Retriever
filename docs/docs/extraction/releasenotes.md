@@ -14,7 +14,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 - Nemotron OCR v2 is now the default OCR engine for local Hugging Face and hosted CPU actors. For Helm NIM deployments, Nemotron OCR v2 is the default. The previous release kept Helm on OCR v1. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) for the chart image repository and tag.
 - Helm replaces separate page-elements and table-structure NIMs with the combined `nemotron-object-detection:2.0.1` image. Development Compose uses the same combined object-detection image and OCR v2, but still defaults to `2.0.0` tags unless you override `NIM_*_TAG`.
-- Helm default VL embed and VL rerank NIM images bump to `2.3.0`. The previous release used `1.12.0` and `1.11.0`. Development Compose still defaults to `1.12.0` and `1.11.0` unless you override `NIM_EMBED_TAG` and `NIM_RERANK_TAG`.
+- Helm changes its default embedding NIM from Llama Nemotron Embed VL 1B v2 to `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`. The new default is text-only. The optional VL reranker remains on `2.3.0`. Development Compose uses the same Nemotron 3 Embed 1B image and logical model ID. Its optional VL reranker remains on the existing image unless you override `NIM_RERANK_TAG`.
 - Default VLM image captioning is Nemotron 3 Nano Omni for local and hosted paths. Chart-classified PDF regions remain on the layout and OCR path.
 - Hosted Nemotron Parse and self-hosted Nemotron Parse use distinct HTTP contracts. Select the matching client path for your endpoint.
 - macOS Intel (x86_64) is no longer supported for package installs. Use Apple Silicon (arm64) macOS, Windows x64, or Linux. Refer to [Packaging and platform](#packaging-and-platform).
@@ -46,18 +46,19 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
 
 - Nemotron OCR v2 is unified across library, hosted, and Helm defaults. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration) for the chart image.
-- Local OCR crop batching runs across page rows for throughput. Helm extraction NIMs (OCR and object detection) enable performance mode by default. The VL embed NIM does not.
+- Local OCR crop batching runs across page rows for throughput. Helm extraction NIMs, including the default embed NIM, enable performance mode by default. The embed NIM sets `NIM_PERFORMANCE_MODE=1` and `NIM_ENGINE_COUNT=1`.
 - 26.08.1 Helm default and optional NIM images that affect mirroring, allowlisting, and troubleshooting include the following:
     - Combined object detection for page elements and table structure: `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1`
     - Image OCR: `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`
-    - VL embedding: `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:2.3.0`
+    - Text embedding: `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`
     - VL reranking (optional): `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0`
     - Optional Omni caption and configurable answer VLM: `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`
     - Optional answer-generation LLM: `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`
-- Optional Nemotron-3-Embed-1B is available in 26.08.1. It is not enabled by default and is not a Helm NIM.
-    - Optional NIM: `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`
-    - Optional Hugging Face checkpoint: `nvidia/Nemotron-3-Embed-1B-BF16` (revision `9e0b24858b1195815ecb1188ffa1b73bcea7b30a`)
-- The CLI lists `nvidia/Nemotron-3-Embed-1B-BF16` among tested official local checkpoints. For local Hugging Face inference, pass `--embed-model-name nvidia/Nemotron-3-Embed-1B-BF16`. For a self-hosted or hosted embedding NIM, pass `--embed-invoke-url` with `--embed-model-name`. Refer to [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints) for local checkpoint usage. Refer to [Route ingest to hosted or self-hosted NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#route-ingest-to-hosted-or-self-hosted-nim-endpoints) and the text-only embedding NIM note in [Multimodal embeddings](embedding.md) for external endpoints.
+- Nemotron 3 Embed 1B is the default text embedder. The logical model ID is `nvidia/nemotron-3-embed-1b`.
+    - Helm NIM: `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`. The NIM selects a supported NVFP4 or BF16 engine.
+    - Local vLLM: `nvidia/Nemotron-3-Embed-1B-NVFP4` when every visible CUDA device has compute capability 10.0 or later; `nvidia/Nemotron-3-Embed-1B-BF16` otherwise.
+    - Local Hugging Face: `nvidia/Nemotron-3-Embed-1B-BF16`.
+- The new default is text-only. Explicitly select `nvidia/llama-nemotron-embed-vl-1b-v2` when you need image or text-and-image embeddings. Refer to [Embeddings](embedding.md) and [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints).
 - The `page_elements` and `table_structure` services share the combined object-detection image and select distinct models. Pull that image once for air-gapped or allowlisted deployments.
 - Nemotron 3 Nano Omni is the canonical caption model. It is opt-in on Helm and has a larger GPU footprint than Nano caption profiles.
 - Nemotron Parse endpoint wiring is available in service extraction workers, with documented hosted versus self-hosted contract selection.
@@ -115,7 +116,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Helm chart { #helm-chart }
 
-- The Helm chart under `nemo_retriever/helm/` defaults to OCR v2, the combined object-detection NIM, and VL embedder 2.3.0. Optional NIMs include VL rerank 2.3.0, Omni `2.0.4-variant`, Nemotron Parse, and the Super-49B `answer_llm` slot. Nemotron-3-Embed-1B is optional and is not a chart NIM. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Models, OCR, and NIM artifacts](#models-ocr-and-captioning).
+- The Helm chart under `nemo_retriever/helm/` defaults to OCR v2, the combined object-detection NIM, and Nemotron 3 Embed 1B `2.2.2`. Optional NIMs include VL rerank `2.3.0`, Omni `2.0.4-variant`, Nemotron Parse, and the Super-49B `answer_llm` slot. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Models, OCR, and NIM artifacts](#models-ocr-and-captioning).
 
 ### Documentation { #documentation }
 

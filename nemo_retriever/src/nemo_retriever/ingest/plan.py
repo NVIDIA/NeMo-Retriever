@@ -45,7 +45,7 @@ from nemo_retriever.ingest.index_mode import (
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
-from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 IngestRunModeValue = Literal["inprocess", "batch"]
@@ -648,7 +648,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
 
     embedding_model_name = None if resolved_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
     embedding_model_revision = None
-    if embedding_model_name is not None and not str(embed.embed_invoke_url or "").strip():
+    if (
+        embedding_model_name is not None
+        and embedding_model_name != NEMOTRON_3_EMBED_MODEL
+        and not str(embed.embed_invoke_url or "").strip()
+    ):
         embedding_model_revision = resolve_embed_model_revision(embedding_model_name, None)
     embed_runtime_model_name = (
         embedding_model_name

@@ -15,6 +15,9 @@ from nemo_retriever.models.embed_model_spec import (
 if TYPE_CHECKING:
     from nemo_retriever.models.model import BaseModel
 
+NEMOTRON_3_EMBED_MODEL = "nvidia/nemotron-3-embed-1b"
+NEMOTRON_3_EMBED_BF16_MODEL = "nvidia/Nemotron-3-Embed-1B-BF16"
+NEMOTRON_3_EMBED_NVFP4_MODEL = "nvidia/Nemotron-3-Embed-1B-NVFP4"
 VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 
@@ -25,19 +28,20 @@ _VL_RERANK_MODEL_IDS = frozenset(
     }
 )
 
-# Short name → full HF repo ID.
+# Short name to canonical model ID.
 _EMBED_MODEL_ALIASES: dict[str, str] = {
+    "nemotron-3-embed-1b": NEMOTRON_3_EMBED_MODEL,
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
     "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
     "llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
     "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
 }
 
-_DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+_DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 
 
 def resolve_embed_model(model_name: str | None) -> str:
-    """Resolve a model name/alias to a full HF repo ID.
+    """Resolve a model name or alias to its canonical ID.
 
     Returns ``_DEFAULT_EMBED_MODEL`` when *model_name* is ``None`` or empty.
     """
@@ -49,6 +53,28 @@ def resolve_embed_model(model_name: str | None) -> str:
 def is_vl_embed_model(model_name: str | None) -> bool:
     """Return True when a legacy model ID or alias names the default VL embedder."""
     return resolve_embed_model(model_name) == VL_EMBED_MODEL
+
+
+def _cuda_supports_native_nvfp4() -> bool:
+    """Return whether every visible CUDA device has native NVFP4 support."""
+    try:
+        import torch
+
+        if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+            return False
+        return all(torch.cuda.get_device_capability(index)[0] >= 10 for index in range(torch.cuda.device_count()))
+    except (ImportError, RuntimeError, AssertionError):
+        return False
+
+
+def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
+    """Resolve the logical default to a backend- and GPU-compatible HF checkpoint."""
+    resolved = resolve_embed_model(model_name)
+    if resolved != NEMOTRON_3_EMBED_MODEL:
+        return resolved
+    if backend == "vllm" and _cuda_supports_native_nvfp4():
+        return NEMOTRON_3_EMBED_NVFP4_MODEL
+    return NEMOTRON_3_EMBED_BF16_MODEL
 
 
 def is_vl_rerank_model(model_name: str | None) -> bool:
@@ -100,7 +126,7 @@ def create_local_embedder(
     if b not in ("vllm", "hf"):
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
 
-    model_id = resolve_embed_model(model_name)
+    model_id = resolve_local_embed_model(model_name, backend=b)
     spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=hf_cache_dir)
     validate_embed_model_backend(spec, b)
 
@@ -191,7 +217,7 @@ def normalize_backend(value: str | None, valid: frozenset[str], *, field_name: s
 def create_local_query_embedder(
     model_name: str | None = None,
     *,
-    backend: str = "hf",
+    backend: str = "vllm",
     device: str | None = None,
     hf_cache_dir: str | None = None,
     gpu_memory_utilization: float = 0.45,
@@ -204,7 +230,7 @@ def create_local_query_embedder(
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
-    *backend* must be ``"hf"`` (default) or ``"vllm"``.
+    *backend* must be ``"vllm"`` (default) or ``"hf"``.
 
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
@@ -212,7 +238,7 @@ def create_local_query_embedder(
     Model architecture and quantization requirements are resolved from the
     checkpoint config; see :func:`create_local_embedder`.
     """
-    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
+    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="vllm")
 
     return create_local_embedder(
         model_name,
