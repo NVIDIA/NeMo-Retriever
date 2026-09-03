@@ -55,7 +55,7 @@ NeMo Retriever Library supports the following file types:
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
-- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md)
-- [Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/README.md)
+- [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
+- [Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)
 - [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag))
-- For integration pathways, refer to [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/README.md).
+- For integration pathways, refer to [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md).

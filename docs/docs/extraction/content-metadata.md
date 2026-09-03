@@ -289,7 +289,7 @@ The following enums are used by this schema:
 
 The following is an example JSON representation of metadata. 
 This is an example only, and does not contain the full metadata.
-For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/data/multimodal_test.json).
+For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/data/multimodal_test.json).
 
 ```json
 {

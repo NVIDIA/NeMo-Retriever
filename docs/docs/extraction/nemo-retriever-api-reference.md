@@ -181,7 +181,7 @@ actions, and escalation criteria, refer to
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
 
-To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
+To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
 
 **Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs are split automatically on the default graph ingest path without client-side configuration.
 

@@ -41,7 +41,7 @@ NeMo Retriever Library supports uploading data through `.vdb_upload()` on `creat
 
 The Python SDK and the local CLI share the same LanceDB default table. Pass an explicit URI and table name at ingest and at query time only when you need a non-default location.
 
-For supported modes and target storage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/docs/cli).
+For supported modes and target storage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
 `.vdb_upload()` does not generate embeddings. For dense SDK ingestion, include `.embed()` in the pipeline:
 
@@ -88,7 +88,7 @@ The following command runs local ingest into the default LanceDB table `nemo-ret
 retriever ingest ./data/multimodal_test.pdf
 ```
 
-Use `--lancedb-uri` and `--table-name` on the local and batch commands when you need a non-default LanceDB location. For modes and flags, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/docs/cli).
+Use `--lancedb-uri` and `--table-name` on the local and batch commands when you need a non-default LanceDB location. For modes and flags, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
 ### Programmatic API (Python)
 
@@ -113,7 +113,7 @@ The following example uses a two-dimensional fixture so you can copy it without 
 - Set `vector_dim` to your embedding length. The `LanceDB` default `vector_dim` is 2048.
 - The fixture sets `create_index=False` so the one-row table is written without building the default `IVF_HNSW_SQ` index. Default ingest builds that index.
 
-For the ingestion contract, refer to the [Vector DB operators and LanceDB README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb/README.md#ingestvdboperator-ingestion).
+For the ingestion contract, refer to the [Vector DB operators and LanceDB README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/README.md#ingestvdboperator-ingestion).
 
 Copy this example to write one row and retrieve at least one hit.
 
@@ -163,7 +163,7 @@ operator(graph_rows)
 
 Query ingested tables with `LanceDB.retrieval()` (precomputed vectors) or with [`Retriever.query`](nemo-retriever-api-reference.md) (embeds the query string for you). Optional `where` predicates and client-side filters are documented under [Metadata and filtering](#metadata-and-filtering).
 
-To use a custom operator, pass a `VDB` instance as `vdb` to `IngestVdbOperator` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/building_vdb_operator.ipynb)).
+To use a custom operator, pass a `VDB` instance as `vdb` to `IngestVdbOperator` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb)).
 
 ## Semantic retrieval { #semantic-retrieval }
 
@@ -178,7 +178,7 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 
 ## Metadata and filtering { #metadata-and-filtering }
 
-Refer to the [metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) for an end-to-end example of adding custom metadata fields to your documents and filtering retrieval results with that metadata.
+Refer to the [metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) for an end-to-end example of adding custom metadata fields to your documents and filtering retrieval results with that metadata.
 
 ## LanceDB deployment characteristics { #lancedb-deployment-characteristics }
 
@@ -204,19 +204,19 @@ NeMo Retriever Library integrates with vector databases used for RAG collections
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
-NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships one first-party backend:
+NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships one first-party backend:
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
-| **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — default `vdb_op` is `"lancedb"`. |
+| **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — default `vdb_op` is `"lancedb"`. |
 
 `GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb).
 
-To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/building_vdb_operator.ipynb)).
+To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb)).
 
 ### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 
-Some deployments use a different vector store than the default LanceDB path on this page—for example the [NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html) (Docker Compose or Helm) or a partner package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
+Some deployments use a different vector store than the default LanceDB path on this page—for example the [NVIDIA RAG Blueprint](https://docs.nvidia.com/rag/latest/index.html) (Docker Compose or Helm) or a partner package that subclasses the same [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface. Use the following public references when you wire those stacks to ingestion and retrieval:
 
 | Vector store | Where to configure or implement |
 |--------------|--------------------------------|
@@ -228,7 +228,7 @@ Testing and release cadence for these integrations follow the owning project (RA
 
 ### More information (embeddings & custom `VDB`) { #vector-database-partners-more-info }
 
-- [Metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) and the package [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb#metadata-filtering)
+- [Metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) and the package [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb#metadata-filtering)
 - [Multimodal embeddings (VLM)](embedding.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NVIDIA NIM catalog](https://build.nvidia.com/) for embedding and retrieval-related NIMs
@@ -237,16 +237,16 @@ Testing and release cadence for these integrations follow the owning project (RA
 
     NVIDIA documents and validates the first-party LanceDB operator for this library. If you integrate a different vector store, you are responsible for testing and maintaining that integration.
 
-To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/examples/building_vdb_operator.ipynb). For an overview of all customization paths (UDFs, graph pipelines, and embeddings), refer to [Customize & extend](customize-extend.md).
+To implement a custom operator, follow the `VDB` abstract interface described in [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb). For an overview of all customization paths (UDFs, graph pipelines, and embeddings), refer to [Customize & extend](customize-extend.md).
 
 ## Related Topics { #related-topics }
 
 - [Metadata and filtering](#metadata-and-filtering)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Customize & extend](customize-extend.md)
-- [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/src/nemo_retriever/common/vdb)
+- [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
-- [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.2/nemo_retriever/docs/cli)
+- [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
 - [Environment Variables](environment-config.md)
 - [Troubleshoot NeMo Retriever Extraction](troubleshoot.md)

@@ -2,7 +2,7 @@
 
 !!! note "Text-only NeMo Retriever embedding NIM"
 
-    You can still use the NeMo Retriever text embedding NIM (OpenAI-compatible embeddings for passage and query vectors) alongside or instead of the multimodal flows on this page. Product and deployment details are in the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html). In library and CLI pipelines, route embedding to that NIM with your configured embed endpoint and model name (refer to the [graph pipeline examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/README.md) for environment-based remote inference).
+    You can still use the NeMo Retriever text embedding NIM (OpenAI-compatible embeddings for passage and query vectors) alongside or instead of the multimodal flows on this page. Product and deployment details are in the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html). In library and CLI pipelines, route embedding to that NIM with your configured embed endpoint and model name (refer to the [graph pipeline examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/README.md) for environment-based remote inference).
 
 This documentation describes how to use [NeMo Retriever Library](overview.md) 
 with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).

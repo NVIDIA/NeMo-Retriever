@@ -48,7 +48,7 @@ kubectl get pv
 
 If the cluster has no StorageClass and no compatible `Available` persistent volumes, stop and add a binding strategy before you install. `helm install` can report `STATUS: deployed` while every claim remains `Pending`, which leaves the retriever service, VectorDB, and core NIM workloads unschedulable.
 
-For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
+For claim names, Helm value paths, and example `--set` flags, refer to [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite) in the Helm chart README. For Helm success with Pending claims, refer to [Helm install succeeds but PersistentVolumeClaims stay Pending](troubleshoot.md#helm-pending-pvcs).
 
 ## Kubernetes Helm GPU scheduling { #kubernetes-helm-gpu-scheduling }
 
@@ -67,7 +67,7 @@ Time-slicing creates logical GPU slots. It does not pin the four independently s
 
 The chart still renders `nvidia.com/gpu: 1` per NIMService unless a per-NIM `resources` block overrides it. Sharing is cluster configuration through the GPU Operator, not a Helm value. Applying `devicePlugin.config.default: "any"` is a cluster-administrator change that oversubscribes every eligible GPU Operator node and can affect unrelated GPU workloads. Time-slicing does not isolate GPU memory. Combined VRAM of the scheduled NIMs must still fit on the physical GPU. MIG is an advanced GPU Operator configuration outside this chart. The chart does not set a MIG strategy, MIG profile, or MIG resource requests.
 
-For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
+For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflight commands, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite) in the Helm chart README. For pods that stay `Pending` on `nvidia.com/gpu`, refer to [Core NIM pods stay Pending for GPU](troubleshoot.md#helm-pending-gpus).
 
 ## Hardware Requirements { #hardware-requirements }
 
@@ -123,7 +123,7 @@ Optional advanced features (audio and video transcription, Nemotron Parse, Omni 
 >
 > A NIM or model listed in the default and optional NIM rows in the table below might be supported under NVIDIA AI Enterprise (NVAIE) as an individual product. That support does **not** cover its use through NeMo Retriever Library or extend to the library, its container image, its Helm chart, or the end-to-end extraction workflow.
 
-The production Helm chart reconciles NIM microservices through `nimOperator.<key>.enabled`. Four core NIMs are **enabled by default** and auto-wired into the retriever service; optional NIMs reconcile only when you opt in. For chart keys, image overrides, and enablement, refer to the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#nim-operator-sub-stack) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#recommended-minimal-install-26082).
+The production Helm chart reconciles NIM microservices through `nimOperator.<key>.enabled`. Four core NIMs are **enabled by default** and auto-wired into the retriever service; optional NIMs reconcile only when you opt in. For chart keys, image overrides, and enablement, refer to the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#recommended-minimal-install-26082).
 
 | Helm flag | NIM | Default image (`repository:tag`) | Role | Enabled by default |
 |-----------|-----|----------------------------------|------|--------------------|
@@ -169,7 +169,7 @@ Setting `nimOperator.rerankqa.enabled=true` without `serviceConfig.nimEndpoints.
 
 ### Default NVCF endpoints { #default-nvcf-endpoints }
 
-When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-hosted-nims) from the Python library or CLI, these are the default remote endpoints the library uses when you do not set invoke URLs. Self-hosted Helm NIMs use in-cluster service URLs instead (refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#nim-operator-sub-stack)).
+When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-hosted-nims) from the Python library or CLI, these are the default remote endpoints the library uses when you do not set invoke URLs. Self-hosted Helm NIMs use in-cluster service URLs instead (refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack)).
 
 | NIM | Default hosted endpoint | Notes |
 |-----|-------------------------|-------|
@@ -197,7 +197,7 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 
     For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
-For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/docs/cli/README.md#ocr-language-mode).
+For local Hugging Face OCR language mode (`multi` vs `english`), Helm OCR image overrides, and local model install, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration), and [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode).
 
 ### Image captioning { #image-captioning }
 
@@ -236,7 +236,7 @@ The default Super-49B NIMService is **in addition to** the four core NIMs. It is
 
 The [model hardware requirements](#model-hardware-requirements) table lists GPU SKUs that can run that default Super-49B profile. A100 40GB, A10G, L40S, and RTX PRO 4500 Blackwell are not supported for the default BF16 TP2 profile. The [NVIDIA NIM for Large Language Models support matrix](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html) includes other Super-49B profiles with a different tensor-parallel size or precision. Those profiles require Helm `resources`, `modelProfile`, and `env` overrides. They are not the chart default.
 
-For enablement flags, Omni reuse, and image overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#answer-generation-llm) in the Helm chart README. For other Super-49B NIM profiles, refer to the [NVIDIA NIM for Large Language Models support matrix](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html).
+For enablement flags, Omni reuse, and image overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm) in the Helm chart README. For other Super-49B NIM profiles, refer to the [NVIDIA NIM for Large Language Models support matrix](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html).
 
 Omni hardware for answer generation matches the Omni caption rows in the table below. Size a dedicated Omni `answer_llm` deployment from those rows. Do not add a second Omni GPU or cache when you reuse an already running caption Omni endpoint.
 
@@ -292,9 +292,9 @@ and run only the embedder, reranker, and your vector database.
 - [Troubleshooting](troubleshoot.md)
 - [Release Notes](releasenotes.md)
 - [Deployment options](deployment-options.md) (local Python, hosted NIMs, and Kubernetes)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md)
-- [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#persistent-storage-prerequisite)
-- [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
+- [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite)
+- [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite)
 - [NVIDIA NIM for Object Detection (supported hardware and memory footprint)](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#supported-hardware-and-memory-footprint)
 - [NVIDIA NIM for Image OCR (supported hardware and memory footprint)](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/support-matrix.html#supported-hardware-and-memory-footprint)
 - [NVIDIA NeMo Retriever Embedding NIM (memory footprint)](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/support-matrix.html#memory-footprint)
@@ -302,4 +302,4 @@ and run only the embedder, reranker, and your vector database.
 - [NVIDIA NIM for Vision Language Models (support matrix)](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html)
 - [NVIDIA NIM for Large Language Models (support matrix)](https://docs.nvidia.com/nim/large-language-models/latest/support-matrix.html)
 - [NVIDIA Speech NIM Microservices (support matrix)](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html)
-- [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#answer-generation-llm)
+- [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm)
