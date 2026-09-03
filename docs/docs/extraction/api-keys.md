@@ -1,3 +1,19 @@
+---
+title: "Set up authentication and API keys"
+content_type: how-to
+audience: beginner
+journey_stage: try
+product: nemo-retriever-library
+features:
+  - authentication
+technologies: []
+prerequisites:
+  - extraction/overview.md
+duration_minutes: 10
+surface: published-docs
+status: published
+---
+
 # Authentication and API keys
 
 NeMo Retriever uses different credentials depending on what you are doing:

@@ -1,3 +1,23 @@
+---
+title: "Ingest audio and video"
+content_type: how-to
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - audio-video
+  - extraction
+technologies:
+  - python
+  - ffmpeg
+prerequisites:
+  - extraction/deployment-options.md
+  - extraction/prerequisites-support-matrix.md
+duration_minutes: 25
+surface: published-docs
+status: published
+---
+
 # Audio and video ingestion
 
 Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.

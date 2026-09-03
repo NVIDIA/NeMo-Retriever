@@ -1,3 +1,21 @@
+---
+title: "NeMo Retriever API reference"
+content_type: reference
+audience: advanced
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - configuration
+  - customization
+technologies:
+  - python
+prerequisites:
+  - extraction/concepts.md
+  - extraction/workflow-document-ingestion.md
+surface: published-docs
+status: published
+---
+
 # NeMo Retriever API Reference
 
 This page is the public Python SDK contract for NeMo Retriever Library. The generated signatures document `create_ingestor()` and the concrete objects it returns. They also document `Retriever` query and answer helpers, generation operators, and parameter models.

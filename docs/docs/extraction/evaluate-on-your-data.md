@@ -1,3 +1,19 @@
+---
+title: "Evaluate on your data"
+content_type: explanation
+audience: intermediate
+journey_stage: scale
+product: nemo-retriever-library
+features:
+  - evaluation
+technologies: []
+prerequisites:
+  - extraction/multimodal-extraction.md
+duration_minutes: 10
+surface: published-docs
+status: published
+---
+
 # Evaluate on your data
 
 Retrieval and ingestion performance **depend on your documents**, hardware, and pipeline settings. Use the following when measuring quality and throughput on **your** datasets.

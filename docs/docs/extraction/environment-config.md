@@ -1,3 +1,18 @@
+---
+title: "Environment variables"
+content_type: reference
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - configuration
+technologies: []
+prerequisites:
+  - extraction/deployment-options.md
+surface: published-docs
+status: published
+---
+
 # Environment Variables for NeMo Retriever Library
 
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).

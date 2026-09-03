@@ -1,3 +1,22 @@
+---
+title: "Embed multimodal content"
+content_type: how-to
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - embedding
+technologies:
+  - python
+  - nim
+prerequisites:
+  - extraction/multimodal-extraction.md
+  - extraction/api-keys.md
+duration_minutes: 20
+surface: published-docs
+status: published
+---
+
 # Use Multimodal Embedding with NeMo Retriever Library
 
 !!! note "Text-only NeMo Retriever embedding NIM"
