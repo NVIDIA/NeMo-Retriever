@@ -336,6 +336,11 @@ def _extract_embedding(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
     if embedding is None:
         payload = row.get("text_embeddings_1b_v2")
         embedding = payload.get("embedding") if isinstance(payload, dict) else payload
+    if embedding is None:
+        for payload in row.values():
+            if isinstance(payload, dict) and payload.get("embedding") is not None:
+                embedding = payload["embedding"]
+                break
     if _is_missing(embedding):
         return None
     return _sanitize_returned_payload(embedding)
@@ -355,7 +360,20 @@ def _compact_error(value: Any) -> Any:
 
 
 def compact_result_record(row: dict[str, Any], *, return_embeddings: bool = False) -> dict[str, Any]:
-    """Project a full pipeline row into the compact public result shape."""
+    """Project a full pipeline row into the compact public result shape.
+
+    Parameters
+    ----------
+    row
+        Full pipeline result row to project.
+    return_embeddings
+        Include a normalized top-level embedding when the row contains one.
+
+    Returns
+    -------
+    dict[str, Any]
+        Compact public result record.
+    """
     metadata = _mapping(row.get("metadata"))
     element_type = _extract_element_type(row, metadata)
     start, end = _extract_time_bounds(row, metadata)

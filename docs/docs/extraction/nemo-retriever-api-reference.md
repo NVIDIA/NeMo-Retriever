@@ -359,8 +359,10 @@ The schemas return text and embeddings as follows.
 
 The default `return_embeddings=False` omits the top-level `embedding` field
 from compact rows. This default keeps the compact response shape and payload
-size unchanged. Raw image payloads remain available only in legacy rows when
-you pass `return_images=True`.
+size unchanged. When you configure `EmbedParams.output_column`, compact rows
+read the embedding from that column and normalize it to the top-level
+`embedding` field. Raw image payloads remain available only in legacy rows
+when you pass `return_images=True`.
 
 The following example requests compact rows with their embeddings.
 

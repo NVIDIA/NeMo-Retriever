@@ -198,6 +198,20 @@ def test_transport_compact_rows_return_payload_embedding_when_requested() -> Non
     assert record["embedding"] == [0.3, 0.4]
 
 
+def test_transport_compact_rows_return_configured_column_embedding_when_requested() -> None:
+    df = pd.DataFrame(
+        {
+            "path": ["/a.pdf"],
+            "text": ["hello"],
+            "custom_embeddings": [{"embedding": [0.5, 0.6]}],
+        }
+    )
+
+    record = dataframe_to_transport_records(df, result_schema="compact", return_embeddings=True)[0]
+
+    assert record["embedding"] == [0.5, 0.6]
+
+
 def test_round_trip_matches_inprocess_column_layout() -> None:
     df = pd.DataFrame(
         {
