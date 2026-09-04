@@ -203,11 +203,14 @@ def test_transport_compact_rows_return_configured_column_embedding_when_requeste
         {
             "path": ["/a.pdf"],
             "text": ["hello"],
+            "earlier_payload": [{"embedding": [9.0, 9.0]}],
             "custom_embeddings": [{"embedding": [0.5, 0.6]}],
         }
     )
 
-    record = dataframe_to_transport_records(df, result_schema="compact", return_embeddings=True)[0]
+    record = dataframe_to_transport_records(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
+    )[0]
 
     assert record["embedding"] == [0.5, 0.6]
 
@@ -241,12 +244,18 @@ def test_sanitize_result_data_accepts_compact_schema() -> None:
 
 
 def test_sanitize_result_data_forwards_compact_embedding_flag() -> None:
-    df = pd.DataFrame({"text": ["x"], "metadata": [{"embedding": [0.1]}]})
+    df = pd.DataFrame(
+        {
+            "text": ["x"],
+            "earlier_payload": [{"embedding": [9.0]}],
+            "custom_embeddings": [{"embedding": [0.1]}],
+        }
+    )
 
-    assert _sanitize_result_data(df, result_schema="compact", return_embeddings=True) == dataframe_to_transport_records(
-        df,
-        result_schema="compact",
-        return_embeddings=True,
+    assert _sanitize_result_data(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
+    ) == dataframe_to_transport_records(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
     )
 
 

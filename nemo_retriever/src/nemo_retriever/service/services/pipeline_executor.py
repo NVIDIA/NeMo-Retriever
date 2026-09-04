@@ -96,6 +96,7 @@ def _sanitize_result_data(
     result_schema: str = "legacy",
     return_embeddings: bool = False,
     return_images: bool = False,
+    embedding_column: str | None = None,
 ) -> list[dict[str, Any]]:
     """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
@@ -109,6 +110,7 @@ def _sanitize_result_data(
         df,
         result_schema=result_schema,
         return_embeddings=return_embeddings,
+        embedding_column=embedding_column,
         return_images=return_images,
     )
 
@@ -786,6 +788,8 @@ def _run_pipeline_in_process(
                 caption_params_dict,
                 asr_params_dict,
             )
+            effective_embed_params = getattr(ingestor, "_embed_params", None)
+            embedding_column = getattr(effective_embed_params, "output_column", None)
 
             result_df = ingestor.ingest()
             _merge_document_metadata(
@@ -833,6 +837,7 @@ def _run_pipeline_in_process(
         result_df,
         result_schema=result_schema,
         return_embeddings=bool(result_options.get("return_embeddings", False)),
+        embedding_column=embedding_column,
         return_images=bool(result_options.get("return_images", False)),
     )
     return row_count, result_data, elapsed

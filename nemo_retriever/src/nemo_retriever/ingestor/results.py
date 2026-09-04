@@ -20,6 +20,7 @@ import numpy as np
 
 ResultSchema = Literal["legacy", "compact"]
 
+_DEFAULT_EMBEDDING_COLUMN = "text_embeddings_1b_v2"
 _MAX_STR_LEN = 500
 _TEXT_FIELD_NAMES = frozenset({"text", "content"})
 _RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
@@ -331,16 +332,11 @@ def _extract_stored_image_uri(row: dict[str, Any]) -> str | None:
     return _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"), page_uri)
 
 
-def _extract_embedding(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
-    embedding = metadata.get("embedding")
+def _extract_embedding(row: dict[str, Any], metadata: dict[str, Any], *, embedding_column: str) -> Any:
+    payload = row.get(embedding_column)
+    embedding = payload.get("embedding") if isinstance(payload, dict) else payload
     if embedding is None:
-        payload = row.get("text_embeddings_1b_v2")
-        embedding = payload.get("embedding") if isinstance(payload, dict) else payload
-    if embedding is None:
-        for payload in row.values():
-            if isinstance(payload, dict) and payload.get("embedding") is not None:
-                embedding = payload["embedding"]
-                break
+        embedding = metadata.get("embedding")
     if _is_missing(embedding):
         return None
     return _sanitize_returned_payload(embedding)
@@ -359,7 +355,12 @@ def _compact_error(value: Any) -> Any:
     return sanitize_cell_value(value)
 
 
-def compact_result_record(row: dict[str, Any], *, return_embeddings: bool = False) -> dict[str, Any]:
+def compact_result_record(
+    row: dict[str, Any],
+    *,
+    return_embeddings: bool = False,
+    embedding_column: str = _DEFAULT_EMBEDDING_COLUMN,
+) -> dict[str, Any]:
     """Project a full pipeline row into the compact public result shape.
 
     Parameters
@@ -368,6 +369,8 @@ def compact_result_record(row: dict[str, Any], *, return_embeddings: bool = Fals
         Full pipeline result row to project.
     return_embeddings
         Include a normalized top-level embedding when the row contains one.
+    embedding_column
+        Pipeline result column containing the embedding payload.
 
     Returns
     -------
@@ -403,7 +406,7 @@ def compact_result_record(row: dict[str, Any], *, return_embeddings: bool = Fals
         record["stored_image_uri"] = stored_image_uri
 
     if return_embeddings:
-        embedding = _extract_embedding(row, metadata)
+        embedding = _extract_embedding(row, metadata, embedding_column=embedding_column)
         if embedding is not None:
             record["embedding"] = embedding
 
@@ -420,6 +423,7 @@ def dataframe_to_transport_records(
     result_schema: ResultSchema = "legacy",
     return_embeddings: bool = False,
     return_images: bool = False,
+    embedding_column: str | None = None,
 ) -> list[dict[str, Any]]:
     """Serialize a pipeline DataFrame to JSON-safe row dicts.
 
@@ -440,7 +444,14 @@ def dataframe_to_transport_records(
         raise TypeError(f"expected pandas.DataFrame, got {type(df).__name__}")
     records = df.to_dict(orient="records")
     if result_schema == "compact":
-        return [compact_result_record(row, return_embeddings=return_embeddings) for row in records]
+        return [
+            compact_result_record(
+                row,
+                return_embeddings=return_embeddings,
+                embedding_column=embedding_column or _DEFAULT_EMBEDDING_COLUMN,
+            )
+            for row in records
+        ]
     return [
         {
             k: _sanitize_result_value(
