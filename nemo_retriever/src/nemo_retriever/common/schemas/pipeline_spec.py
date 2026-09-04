@@ -92,7 +92,7 @@ class PipelineSpec(RichModel):
     )
     return_embeddings: bool = Field(
         default=False,
-        description="Include embedding payload values in legacy transport rows.",
+        description="Include embedding payload values in transport rows.",
     )
     return_images: bool = Field(
         default=False,

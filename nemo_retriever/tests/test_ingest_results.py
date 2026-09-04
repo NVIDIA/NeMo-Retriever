@@ -69,6 +69,85 @@ def test_transport_can_return_legacy_bulk_payloads_when_requested() -> None:
     assert record["metadata"] == {"embedding": embedding}
 
 
+def test_transport_preserves_all_legacy_string_values() -> None:
+    long_text = "text " * 200
+    long_content = "content " * 100
+    long_incidental_value = "x" * 600
+    df = pd.DataFrame(
+        {
+            "text": [long_text],
+            "metadata": [{"content": long_content, "note": long_incidental_value}],
+        }
+    )
+
+    record = dataframe_to_transport_records(df)[0]
+
+    assert record["text"] == long_text
+    assert record["metadata"]["content"] == long_content
+    assert record["metadata"]["note"] == long_incidental_value
+
+
+def test_transport_preserves_text_across_element_types() -> None:
+    long_text = "element text " * 100
+    element_types = (
+        "text",
+        "table",
+        "table_caption",
+        "chart",
+        "chart_caption",
+        "infographic",
+        "infographic_caption",
+        "images",
+        "image_caption",
+        "audio",
+        "video",
+        "video_frame",
+    )
+    df = pd.DataFrame(
+        {
+            "text": [long_text] * len(element_types),
+            "_content_type": list(element_types),
+            "custom_embeddings": [{"embedding": [float(index)]} for index in range(len(element_types))],
+        }
+    )
+
+    legacy_records = dataframe_to_transport_records(df)
+    compact_records = dataframe_to_transport_records(
+        df,
+        result_schema="compact",
+        return_embeddings=True,
+        embedding_column="custom_embeddings",
+    )
+
+    assert all(record["text"] == long_text for record in legacy_records)
+    assert all(record["text"] == long_text for record in compact_records)
+    assert [record["embedding"] for record in compact_records] == [
+        [float(index)] for index in range(len(element_types))
+    ]
+
+
+def test_transport_preserves_long_nested_structured_text_collections() -> None:
+    long_text = "nested text " * 100
+    content_columns = ("table", "chart", "infographic", "images")
+    items = [
+        {
+            "text": long_text,
+            "caption": long_text,
+            "image_b64": "raw-image",
+        }
+        for _ in range(21)
+    ]
+    df = pd.DataFrame({column: [items] for column in content_columns})
+
+    record = dataframe_to_transport_records(df)[0]
+
+    for column in content_columns:
+        assert len(record[column]) == 21
+        assert record[column][0]["text"] == long_text
+        assert record[column][0]["caption"] == long_text
+        assert record[column][0]["image_b64"] is None
+
+
 def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
     rows = [{"image_b64": f"raw-{idx}", "label": "image"} for idx in range(21)]
     df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
@@ -146,6 +225,57 @@ def test_transport_compact_media_rows_return_timings() -> None:
     ]
 
 
+def test_transport_compact_rows_return_metadata_embedding_when_requested() -> None:
+    embedding = __import__("numpy").array([0.1, 0.2])
+    df = pd.DataFrame(
+        {
+            "path": ["/a.pdf"],
+            "text": ["hello"],
+            "metadata": [{"embedding": embedding}],
+        }
+    )
+
+    assert dataframe_to_transport_records(df, result_schema="compact", return_embeddings=True) == [
+        {
+            "text": "hello",
+            "source_id": "/a.pdf",
+            "element_type": "text",
+            "embedding": [0.1, 0.2],
+        }
+    ]
+
+
+def test_transport_compact_rows_return_payload_embedding_when_requested() -> None:
+    df = pd.DataFrame(
+        {
+            "path": ["/a.pdf"],
+            "text": ["hello"],
+            "text_embeddings_1b_v2": [{"embedding": (0.3, 0.4)}],
+        }
+    )
+
+    record = dataframe_to_transport_records(df, result_schema="compact", return_embeddings=True)[0]
+
+    assert record["embedding"] == [0.3, 0.4]
+
+
+def test_transport_compact_rows_return_configured_column_embedding_when_requested() -> None:
+    df = pd.DataFrame(
+        {
+            "path": ["/a.pdf"],
+            "text": ["hello"],
+            "earlier_payload": [{"embedding": [9.0, 9.0]}],
+            "custom_embeddings": [{"embedding": [0.5, 0.6]}],
+        }
+    )
+
+    record = dataframe_to_transport_records(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
+    )[0]
+
+    assert record["embedding"] == [0.5, 0.6]
+
+
 def test_round_trip_matches_inprocess_column_layout() -> None:
     df = pd.DataFrame(
         {
@@ -171,6 +301,22 @@ def test_sanitize_result_data_accepts_compact_schema() -> None:
     assert _sanitize_result_data(df, result_schema="compact") == dataframe_to_transport_records(
         df,
         result_schema="compact",
+    )
+
+
+def test_sanitize_result_data_forwards_compact_embedding_flag() -> None:
+    df = pd.DataFrame(
+        {
+            "text": ["x"],
+            "earlier_payload": [{"embedding": [9.0]}],
+            "custom_embeddings": [{"embedding": [0.1]}],
+        }
+    )
+
+    assert _sanitize_result_data(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
+    ) == dataframe_to_transport_records(
+        df, result_schema="compact", return_embeddings=True, embedding_column="custom_embeddings"
     )
 
 

@@ -20,7 +20,9 @@ import numpy as np
 
 ResultSchema = Literal["legacy", "compact"]
 
+_DEFAULT_EMBEDDING_COLUMN = "text_embeddings_1b_v2"
 _MAX_STR_LEN = 500
+_TEXT_FIELD_NAMES = frozenset({"caption", "content", "text"})
 _RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
 _EMBEDDING_FIELD_NAMES = frozenset({"embedding", "embeddings"})
 _EMBEDDING_PAYLOAD_COLUMNS = frozenset({"text_embeddings_1b_v2"})
@@ -113,6 +115,17 @@ def _contains_requested_payload(val: Any, *, return_embeddings: bool, return_ima
     return False
 
 
+def _contains_full_text(val: Any) -> bool:
+    if isinstance(val, dict):
+        return any(
+            (str(key) in _TEXT_FIELD_NAMES and isinstance(nested, str)) or _contains_full_text(nested)
+            for key, nested in val.items()
+        )
+    if isinstance(val, (list, tuple)):
+        return any(_contains_full_text(item) for item in val)
+    return False
+
+
 def _sanitize_result_value(
     key: str,
     val: Any,
@@ -135,6 +148,8 @@ def _sanitize_result_value(
         return None
     if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
         return _sanitize_returned_payload(val)
+    if isinstance(val, str):
+        return val
     if isinstance(val, dict):
         return {
             str(k): _sanitize_result_value(
@@ -155,7 +170,9 @@ def _sanitize_result_value(
             )
             for item in val
         ]
-        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+        if _contains_full_text(val) or _contains_requested_payload(
+            val, return_embeddings=return_embeddings, return_images=return_images
+        ):
             return sanitized
         return sanitize_cell_value(sanitized)
     if isinstance(val, tuple):
@@ -168,7 +185,9 @@ def _sanitize_result_value(
             )
             for item in val
         ]
-        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+        if _contains_full_text(val) or _contains_requested_payload(
+            val, return_embeddings=return_embeddings, return_images=return_images
+        ):
             return sanitized
         return sanitize_cell_value(sanitized)
     return sanitize_cell_value(val)
@@ -328,6 +347,16 @@ def _extract_stored_image_uri(row: dict[str, Any]) -> str | None:
     return _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"), page_uri)
 
 
+def _extract_embedding(row: dict[str, Any], metadata: dict[str, Any], *, embedding_column: str) -> Any:
+    payload = row.get(embedding_column)
+    embedding = payload.get("embedding") if isinstance(payload, dict) else payload
+    if embedding is None:
+        embedding = metadata.get("embedding")
+    if _is_missing(embedding):
+        return None
+    return _sanitize_returned_payload(embedding)
+
+
 def _compact_error(value: Any) -> Any:
     if _is_missing(value):
         return None
@@ -341,8 +370,28 @@ def _compact_error(value: Any) -> Any:
     return sanitize_cell_value(value)
 
 
-def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
-    """Project a full pipeline row into the compact public result shape."""
+def compact_result_record(
+    row: dict[str, Any],
+    *,
+    return_embeddings: bool = False,
+    embedding_column: str = _DEFAULT_EMBEDDING_COLUMN,
+) -> dict[str, Any]:
+    """Project a full pipeline row into the compact public result shape.
+
+    Parameters
+    ----------
+    row
+        Full pipeline result row to project.
+    return_embeddings
+        Include a normalized top-level embedding when the row contains one.
+    embedding_column
+        Pipeline result column containing the embedding payload.
+
+    Returns
+    -------
+    dict[str, Any]
+        Compact public result record.
+    """
     metadata = _mapping(row.get("metadata"))
     element_type = _extract_element_type(row, metadata)
     start, end = _extract_time_bounds(row, metadata)
@@ -371,6 +420,11 @@ def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
     if stored_image_uri is not None:
         record["stored_image_uri"] = stored_image_uri
 
+    if return_embeddings:
+        embedding = _extract_embedding(row, metadata, embedding_column=embedding_column)
+        if embedding is not None:
+            record["embedding"] = embedding
+
     error = _compact_error(row.get("error") if "error" in row else metadata.get("error"))
     if error is not None:
         record["error"] = error
@@ -384,16 +438,19 @@ def dataframe_to_transport_records(
     result_schema: ResultSchema = "legacy",
     return_embeddings: bool = False,
     return_images: bool = False,
+    embedding_column: str | None = None,
 ) -> list[dict[str, Any]]:
     """Serialize a pipeline DataFrame to JSON-safe row dicts.
 
-    ``result_schema="legacy"`` retains all columns so the reconstructed
-    frame matches ``GraphIngestor.ingest()`` output; by default raw image
-    and embedding payload values are nulled before transport.
+    ``result_schema="legacy"`` retains all columns and complete string
+    values so the reconstructed frame matches ``GraphIngestor.ingest()``
+    output; by default raw image and embedding payload values are nulled
+    before transport.
 
     ``result_schema="compact"`` returns the future compact public schema:
     extracted text, source provenance, element type, page number or media
-    timings, optional stored-image URIs, and optional errors.
+    timings, optional stored-image URIs, optional embeddings, and optional
+    errors.
     """
     import pandas as pd
 
@@ -403,7 +460,14 @@ def dataframe_to_transport_records(
         raise TypeError(f"expected pandas.DataFrame, got {type(df).__name__}")
     records = df.to_dict(orient="records")
     if result_schema == "compact":
-        return [compact_result_record(row) for row in records]
+        return [
+            compact_result_record(
+                row,
+                return_embeddings=return_embeddings,
+                embedding_column=embedding_column or _DEFAULT_EMBEDDING_COLUMN,
+            )
+            for row in records
+        ]
     return [
         {
             k: _sanitize_result_value(
