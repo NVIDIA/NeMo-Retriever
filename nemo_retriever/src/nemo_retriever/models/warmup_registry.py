@@ -16,9 +16,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from nemo_retriever.models.local_embedder_spec import LocalEmbedderSpec
+
 logger = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, Any] = {}
+_IDENTITIES: dict[str, LocalEmbedderSpec] = {}
 _WARMED = False
 
 
@@ -27,15 +30,19 @@ def is_warmup_active() -> bool:
     return _WARMED
 
 
-def get_warmed_model(key: str) -> Any | None:
-    """Return a pre-loaded model for *key*, or ``None`` when not warmed."""
-    return _REGISTRY.get(key)
+def get_warmed_model(key: str, *, expected_identity: Any | None = None) -> Any | None:
+    """Return a pre-loaded model when its identity matches the request."""
+    model = _REGISTRY.get(key)
+    if model is not None and expected_identity is not None and _IDENTITIES.get(key) != expected_identity:
+        return None
+    return model
 
 
 def clear_warmed_models() -> None:
     """Reset registry state (for tests)."""
     global _WARMED
     _REGISTRY.clear()
+    _IDENTITIES.clear()
     _WARMED = False
 
 
@@ -63,18 +70,7 @@ def build_warmup_spec(
         kwargs = build_embed_kwargs(EmbedParams(**embed_params_dict))
         endpoint = str(kwargs.get("embedding_endpoint") or kwargs.get("embed_invoke_url") or "").strip()
         if not endpoint and (kwargs.get("model_name") or kwargs.get("embed_model_name")):
-            embed_spec = {
-                "model_name": kwargs.get("embed_model_name") or kwargs.get("model_name"),
-                "backend": kwargs.get("local_ingest_embed_backend") or "hf",
-                "device": kwargs.get("local_hf_device") or kwargs.get("device"),
-                "hf_cache_dir": kwargs.get("hf_cache_dir"),
-                "gpu_memory_utilization": float(kwargs.get("gpu_memory_utilization", 0.45)),
-                "enforce_eager": bool(kwargs.get("enforce_eager", False)),
-                "dimensions": kwargs.get("dimensions"),
-                "normalize": bool(kwargs.get("normalize", True)),
-                "max_length": int(kwargs.get("max_length", 8192)),
-                "query_max_length": int(kwargs.get("query_max_length", 128)),
-            }
+            embed_spec = LocalEmbedderSpec.from_config(kwargs).as_dict()
 
     asr_local = False
     if asr_params_dict is not None:
@@ -138,26 +134,12 @@ def warm_local_models(spec: dict[str, Any]) -> None:
 
     embed_spec = spec.get("embed")
     if embed_spec:
-        from nemo_retriever.models import create_local_embedder
-
-        backend = str(embed_spec.get("backend") or "hf").strip().lower()
-        hf_cache = str(embed_spec["hf_cache_dir"]) if embed_spec.get("hf_cache_dir") else None
-        hf_device = str(embed_spec["device"]) if embed_spec.get("device") else None
-        logger.info("Warming local model: embed (backend=%s)", backend)
-        embedder = create_local_embedder(
-            embed_spec.get("model_name"),
-            backend=backend,
-            device=hf_device,
-            hf_cache_dir=hf_cache,
-            gpu_memory_utilization=float(embed_spec.get("gpu_memory_utilization", 0.45)),
-            enforce_eager=bool(embed_spec.get("enforce_eager", False)),
-            dimensions=embed_spec.get("dimensions"),
-            normalize=bool(embed_spec.get("normalize", True)),
-            max_length=int(embed_spec.get("max_length", 8192)),
-            query_max_length=int(embed_spec.get("query_max_length", 128)),
-        )
-        _preload_local_embedder(embedder, backend)
+        resolved_embed_spec = LocalEmbedderSpec.from_config(embed_spec)
+        logger.info("Warming local model: embed (backend=%s)", resolved_embed_spec.backend)
+        embedder = resolved_embed_spec.create()
+        _preload_local_embedder(embedder, resolved_embed_spec.backend)
         _REGISTRY["embed"] = embedder
+        _IDENTITIES["embed"] = resolved_embed_spec
 
     if spec.get("asr"):
         from nemo_retriever.models.local import ParakeetCTC1B1ASR

@@ -5,15 +5,15 @@
 from __future__ import annotations
 
 import numpy as np
-from ray.data.extensions import TensorArray
 import pytest
-from pydantic import ValidationError
-
 from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.vdb.records import (
+    VdbUploadError,
     normalize_retrieval_results,
     to_client_vdb_records,
 )
+from pydantic import ValidationError
+from ray.data.extensions import TensorArray
 
 
 def _normalize_one(hit: dict) -> dict:
@@ -135,8 +135,8 @@ def test_canonical_record_batches_pass_through_without_reconversion() -> None:
         pytest.param([[]], [], id="single-empty-batch"),
         pytest.param([[], []], [], id="multiple-empty-batches"),
         pytest.param(
-            [[], [{"metadata": {"content": "canonical"}}], []],
-            [[{"metadata": {"content": "canonical"}}]],
+            [[], [{"metadata": {"content": "canonical", "embedding": [0.1, 0.2]}}], []],
+            [[{"metadata": {"content": "canonical", "embedding": [0.1, 0.2]}}]],
             id="mixed",
         ),
     ],
@@ -166,6 +166,15 @@ def test_graph_record_conversion_preserves_service_provenance() -> None:
                 "metadata": {
                     "chunk_index": 4,
                     "chunk_count": 9,
+                    "embedding_split": {
+                        "content": "table content",
+                        "parent_id": "parent-1",
+                        "chunk_id": "child-2",
+                        "chunk_index": 2,
+                        "chunk_count": 3,
+                        "start_token": 200,
+                        "end_token": 400,
+                    },
                     "segment_start_seconds": 1.5,
                     "frame_timestamp_seconds": 2.5,
                     "content_metadata": {"page_number": 1},
@@ -180,6 +189,15 @@ def test_graph_record_conversion_preserves_service_provenance() -> None:
     assert metadata["source_metadata"] == {
         "source_id": "/tmp/source.pdf",
         "source_name": "source.pdf",
+    }
+    assert metadata["embedding_split"] == {
+        "content": "table content",
+        "parent_id": "parent-1",
+        "chunk_id": "child-2",
+        "chunk_index": 2,
+        "chunk_count": 3,
+        "start_token": 200,
+        "end_token": 400,
     }
     assert metadata["content_metadata"] == {
         "page_number": 7,
@@ -250,6 +268,173 @@ def test_graph_record_conversion_normalizes_ray_tensor_embedding() -> None:
     records = to_client_vdb_records([{"text": "embedded content", "metadata": {"embedding": embedding}}])
 
     assert records[0][0]["metadata"]["embedding"] == [0.1, 0.2]
+
+
+def test_dense_record_conversion_rejects_partial_embedding_coverage() -> None:
+    rows = [
+        {"text": "embedded", "metadata": {"embedding": [0.1, 0.2]}},
+        {
+            "text": "failed",
+            "metadata": {"embedding": None},
+            "text_embeddings_1b_v2": {
+                "embedding": None,
+                "error": {"stage": "embed", "type": "ValueError", "message": "invalid input"},
+            },
+        },
+    ]
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"refusing a partial write.*input rows=2.*uploadable rows=1.*missing embedding=1",
+    ):
+        to_client_vdb_records(rows)
+
+
+def test_dense_record_conversion_rejects_runtime_failure_empty_vectors() -> None:
+    rows = [
+        {
+            "text": "failed before",
+            "text_embeddings_1b_v2": {
+                "embedding": [],
+                "error": "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause",
+            },
+        },
+        {
+            "text": "failed after",
+            "text_embeddings_1b_v2": {
+                "embedding": [],
+                "error": "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause",
+            },
+        },
+    ]
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"none were uploadable",
+    ):
+        to_client_vdb_records(rows)
+
+
+def test_dense_record_conversion_rejects_partial_canonical_embedding_coverage() -> None:
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "content": "embedded child",
+                    "embedding": [0.1, 0.2],
+                    "embedding_split": {"chunk_id": "child-0", "content": "embedded child"},
+                },
+            },
+            {
+                "document_type": "text",
+                "metadata": {
+                    "content": "missing child",
+                    "embedding": [],
+                    "embedding_split": {"chunk_id": "child-1", "content": "missing child"},
+                },
+            },
+        ]
+    ]
+
+    with pytest.raises(VdbUploadError, match=r"canonical records.*missing embeddings"):
+        to_client_vdb_records(records)
+
+
+def test_dense_record_conversion_preserves_whitespace_only_embedding_child() -> None:
+    rows = [
+        {"text": "embedded", "metadata": {"embedding": [0.1, 0.2]}},
+        {
+            "text": "  ",
+            "metadata": {
+                "embedding": [0.3, 0.4],
+                "embedding_split": {
+                    "content": "  ",
+                    "parent_id": "parent",
+                    "chunk_id": "child-1",
+                    "chunk_index": 1,
+                    "chunk_count": 2,
+                    "start_token": 8187,
+                    "end_token": 8188,
+                },
+            },
+        },
+    ]
+
+    records = to_client_vdb_records(rows)
+
+    assert len(records[0]) == 2
+    assert records[0][1]["metadata"]["content"] == "  "
+
+
+def test_dense_record_conversion_rejects_missing_whitespace_only_child_embedding() -> None:
+    rows = [
+        {"text": "embedded", "metadata": {"embedding": [0.1, 0.2]}},
+        {
+            "text": "  ",
+            "metadata": {
+                "embedding": None,
+                "embedding_split": {
+                    "content": "  ",
+                    "parent_id": "parent",
+                    "chunk_id": "child-1",
+                    "chunk_index": 1,
+                    "chunk_count": 2,
+                    "start_token": 8187,
+                    "end_token": 8188,
+                },
+            },
+        },
+    ]
+
+    with pytest.raises(
+        VdbUploadError,
+        match=r"refusing a partial write.*input rows=2.*uploadable rows=1.*missing embedding=1",
+    ):
+        to_client_vdb_records(rows)
+
+
+def test_canonical_record_rejects_missing_whitespace_only_child_embedding() -> None:
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "content": "  ",
+                    "embedding_split": {
+                        "content": "  ",
+                        "parent_id": "parent",
+                        "chunk_id": "child-1",
+                        "chunk_index": 1,
+                        "chunk_count": 2,
+                        "start_token": 8187,
+                        "end_token": 8188,
+                    },
+                },
+            }
+        ]
+    ]
+
+    with pytest.raises(VdbUploadError, match=r"canonical records.*missing embeddings"):
+        to_client_vdb_records(records)
+
+
+def test_dense_record_conversion_ignores_inherited_page_uri_without_searchable_content() -> None:
+    rows = [
+        {"text": "embedded", "metadata": {"embedding": [0.1, 0.2]}},
+        {
+            "_content_type": "table_caption",
+            "_stored_image_uri": "s3://artifacts/page.png",
+            "page_image": {"stored_image_uri": "s3://artifacts/page.png"},
+            "metadata": {},
+        },
+    ]
+
+    records = to_client_vdb_records(rows)
+
+    assert len(records) == 1
+    assert len(records[0]) == 1
+    assert records[0][0]["metadata"]["content"] == "embedded"
 
 
 def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:

@@ -33,6 +33,56 @@ ingestor = (
 results = ingestor.ingest()
 ```
 
+## Text inputs that exceed the model limit { #text-input-overflow }
+
+Before it embeds text, NeMo Retriever Library checks the complete formatted
+input against the embedding model's token limit. The check includes the model's
+document or query prefix and special tokens. The default configured runtime
+limit is 8,192 tokens. If the checkpoint declares a smaller supported limit,
+the checkpoint limit takes precedence.
+
+For a registered revision-pinned model, an explicitly revision-pinned model,
+or a local checkpoint, the library loads the tokenizer and prompt configuration
+for that exact model version. If the text does not fit, the library splits it
+into deterministic contiguous token ranges that fit. This split does not
+truncate text and occurs before either local or remote embedding.
+If the exact tokenizer, selected prompt prefix, or checkpoint-supported token
+limit is unavailable, embedding stage setup fails before inference rather than
+guessing an admission policy.
+
+Each split row preserves the source, page, element, bounding box, and existing
+document chunk metadata from its parent. The library adds one
+`metadata["embedding_split"]` mapping so you can identify and order the
+embedding-specific children:
+
+- `parent_id` identifies the parent content and provenance.
+- `chunk_id` identifies one deterministic child.
+- `chunk_index` and `chunk_count` describe the child order.
+- `start_token` and `end_token` describe the source token range.
+- `content` preserves the child's exact text, including whitespace.
+
+The returned `DataFrame` can therefore contain more rows than the embedding
+stage received. Existing fields such as `chunk_index` and the physical page
+number keep their original meaning.
+
+Local and remote embedding use the same prepared rows. When this client-side
+policy is active for a remote endpoint, the request uses `truncate="NONE"` so
+the endpoint cannot silently replace the client decision. If a backend still
+rejects a prepared batch, the library reports a batch failure rather than
+guessing from an HTTP status or exception that one document is invalid. The VDB
+boundary refuses a mixed partial write when searchable rows are missing
+embeddings.
+
+For an unpinned custom remote model, the library does not guess its tokenizer
+or input limit. Embedding stage setup fails with an actionable error. Use a
+registered model, a local checkpoint, or an immutable model revision so the
+library can enforce deterministic client-side admission.
+
+The embedding stage records per-row counts in
+`embedding_v1_counts_by_label`. When a batch contains an overlength or failed
+row, it also logs a summary with `input_rows`, `output_rows`, `overlength`,
+`split`, `split_children`, `truncated`, `failed`, `embedded`, and `unembedded`.
+The deterministic split policy reports `truncated=0`.
 
 ## Example with Embedding Structured Elements as Text + Images { #example-with-embedding-structured-elements-as-text-images }
 

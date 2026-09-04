@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.models.inference.embedding_input import ensure_embedding_input_policy_for_batch
+from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
+from nemo_retriever.models.inference.shared import build_embed_kwargs
+from nemo_retriever.models.local_embedder_spec import LocalEmbedderSpec
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
-from nemo_retriever.common.params import EmbedParams
-from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
-from nemo_retriever.models.inference.shared import build_embed_kwargs, _to_bool
 
 
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
@@ -36,41 +38,27 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             self._model = None
             return
 
-        ingest_backend = (self._kwargs.get("local_ingest_embed_backend") or "vllm").strip().lower()
-        hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
+        local_spec = LocalEmbedderSpec.from_config(self._kwargs)
+        self._kwargs["model_name"] = local_spec.model_name
+        self._kwargs["embed_model_revision"] = local_spec.revision
+        self._kwargs["max_length"] = local_spec.max_length
+        self._kwargs["query_max_length"] = local_spec.query_max_length
+        self._kwargs["_embedding_prefix_if_missing"] = local_spec.prefix_if_missing
 
-        from nemo_retriever.models import create_local_embedder
         from nemo_retriever.models.warmup_registry import get_warmed_model
 
-        warmed = get_warmed_model("embed")
+        warmed = get_warmed_model("embed", expected_identity=local_spec)
         if warmed is not None:
             self._model = warmed
             return
 
-        hf_device = None
-        if self._kwargs.get("local_hf_device"):
-            hf_device = str(self._kwargs["local_hf_device"])
-        elif self._kwargs.get("device"):
-            hf_device = str(self._kwargs["device"])
-
-        self._model = create_local_embedder(
-            self._kwargs.get("embed_model_name") or self._kwargs.get("model_name"),
-            backend=ingest_backend,
-            device=hf_device,
-            hf_cache_dir=hf_cache,
-            gpu_memory_utilization=float(self._kwargs.get("gpu_memory_utilization", 0.45)),
-            enforce_eager=_to_bool(self._kwargs.get("enforce_eager"), default=False),
-            dimensions=self._kwargs.get("dimensions"),
-            normalize=bool(self._kwargs.get("normalize", True)),
-            max_length=int(self._kwargs.get("max_length", 8192)),
-            query_max_length=int(self._kwargs.get("query_max_length", 128)),
-            revision=self._kwargs.get("embed_model_revision"),
-        )
+        self._model = local_spec.create()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
+        ensure_embedding_input_policy_for_batch(self._kwargs, data)
         return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
