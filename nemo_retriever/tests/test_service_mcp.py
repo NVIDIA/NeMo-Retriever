@@ -135,6 +135,7 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
                 ],
                 "usage": {
                     "input_tokens": 120,
+                    "cache_tokens": 40,
                     "output_tokens": 30,
                     "total_tokens": 150,
                     "stages": {},
@@ -164,6 +165,7 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
         },
     }
     assert result["results"][0]["hits"][0]["source"] == "report.pdf"
+    assert result["usage"]["cache_tokens"] == 40
     assert result["usage"]["total_tokens"] == 150
 
 
