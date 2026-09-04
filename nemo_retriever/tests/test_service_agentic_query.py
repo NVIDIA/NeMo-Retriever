@@ -16,6 +16,7 @@ from nemo_retriever.service.app import create_app
 from nemo_retriever.service.agentic_query import (
     agentic_ranked_to_hits,
     build_agentic_query_request,
+    run_agentic_query,
 )
 from nemo_retriever.service.config import (
     AgenticConfig,
@@ -26,9 +27,9 @@ from nemo_retriever.service.config import (
     VectorDbConfig,
 )
 from nemo_retriever.service.query_schema import (
+    AgenticQueryResponse,
     MAX_AGENTIC_QUERY_CHARS,
     QueryRequest,
-    QueryResponse,
     QueryResult,
 )
 from nemo_retriever.service.vectordb_app import VectorDBState, create_vectordb_app
@@ -85,6 +86,45 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
     assert request.agentic.invoke_url == "https://llm.example/v1/chat/completions"
     assert request.agentic.backend_top_k == 25
     assert request.agentic.react_max_steps == 7
+
+
+def test_run_agentic_query_includes_provider_usage() -> None:
+    from nemo_retriever.query.workflow import AgenticQueryDocumentsResult
+
+    usage = {
+        "input_tokens": 12,
+        "cache_tokens": 4,
+        "output_tokens": 5,
+        "total_tokens": 17,
+        "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
+    }
+    workflow_result = AgenticQueryDocumentsResult(
+        hits=[{"doc_id": "report_7", "rank": 1, "result_source": "final_results"}],
+        usage=usage,
+    )
+
+    with patch(
+        "nemo_retriever.service.agentic_query.agentic_query_documents_with_metadata",
+        return_value=workflow_result,
+    ):
+        response = run_agentic_query(
+            query="revenue trend",
+            top_k=1,
+            config=AgenticConfig(
+                enabled=True,
+                llm_model="model",
+                invoke_url="https://llm.example/v1/chat/completions",
+            ),
+            lancedb_uri="/indexes/finance",
+            table_name="finance",
+            embed_endpoint="https://embed.example/v1/embeddings",
+            embed_model="embed-model",
+            embed_model_provider_prefix=None,
+            embed_api_key="",
+        )
+
+    assert response.usage is not None
+    assert response.usage.model_dump() == usage
 
 
 def test_agentic_ranked_to_hits_keeps_rehydrated_classic_fields() -> None:
@@ -187,7 +227,7 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
             invoke_url="https://llm.example/v1/chat/completions",
         ),
     )
-    expected = QueryResponse(
+    expected = AgenticQueryResponse(
         results=[
             QueryResult(
                 hits=agentic_ranked_to_hits(
@@ -206,6 +246,13 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
             )
         ],
         query_mode="agentic",
+        usage={
+            "input_tokens": 120,
+            "cache_tokens": 40,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "stages": {},
+        },
     )
 
     with (
@@ -236,6 +283,13 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
             }
         ],
         "query_mode": "agentic",
+        "usage": {
+            "input_tokens": 120,
+            "cache_tokens": 40,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "stages": {},
+        },
     }
     assert run_query.call_args.kwargs["query"] == "revenue trend"
     assert run_query.call_args.kwargs["top_k"] == 3
@@ -307,7 +361,7 @@ def test_agentic_query_slots_are_bounded_and_released_by_the_worker(tmp_path) ->
             invoke_url="https://llm.example/v1/chat/completions",
         ),
     )
-    expected = QueryResponse(results=[QueryResult(hits=[])], query_mode="agentic")
+    expected = AgenticQueryResponse(results=[QueryResult(hits=[])])
 
     with (
         patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),

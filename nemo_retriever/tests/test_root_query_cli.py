@@ -455,6 +455,53 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     ]
 
 
+def test_root_query_agentic_include_usage_emits_envelope(monkeypatch) -> None:
+    from nemo_retriever.query.workflow import AgenticQueryDocumentsResult
+
+    usage = {
+        "input_tokens": 12,
+        "cache_tokens": 4,
+        "output_tokens": 5,
+        "total_tokens": 17,
+        "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
+    }
+    monkeypatch.setattr(
+        query_cli_app,
+        "query_agentic_documents_with_metadata",
+        lambda _request: AgenticQueryDocumentsResult(
+            hits=[{"doc_id": "a.pdf", "rank": 1, "result_source": "final_results"}],
+            usage=usage,
+        ),
+    )
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "how does ingest work?",
+            "--agentic",
+            "--include-usage",
+            "--agentic-llm-model",
+            "model",
+            "--agentic-invoke-url",
+            "https://llm.example/v1/chat/completions",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "hits": [{"doc_id": "a.pdf", "rank": 1, "result_source": "final_results"}],
+        "usage": usage,
+    }
+
+
+def test_root_query_include_usage_requires_agentic() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "hello", "--include-usage"])
+
+    assert result.exit_code == 1
+    assert "--include-usage requires --agentic" in result.output
+
+
 def test_root_query_agentic_rejects_candidate_k_below_top_k() -> None:
     result = RUNNER.invoke(
         cli_main.app,

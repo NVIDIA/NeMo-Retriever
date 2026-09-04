@@ -263,7 +263,7 @@ def get_sql_tool_response_top_k(
     retriever = Retriever(
         vdb_kwargs={
             "vdb_op": "lancedb",
-            "vdb_kwargs": {"table_name": "nv-ingest-tabular"},
+            "vdb_kwargs": {"table_name": "nemo-retriever-tabular"},
         },
         embed_kwargs=embed_kw,
         top_k=top_k,

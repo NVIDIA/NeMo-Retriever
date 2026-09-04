@@ -40,7 +40,7 @@ class BEIREvaluatorActor:
     def __init__(
         self,
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
-        lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
+        lancedb_table: Annotated[str, Param(label="Table Name")] = "nemo-retriever",
         embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
         beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
         beir_dataset_name: Annotated[

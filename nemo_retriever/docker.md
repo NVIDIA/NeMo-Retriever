@@ -2,6 +2,8 @@
 
 This page covers the standalone Docker image for the NeMo Retriever service. For production-scale service and NIM deployment, use the Helm chart in [`helm/README.md`](helm/README.md) and the published NeMo Retriever Library install procedures.
 
+Published `nrl-service` tags (release, dated development images from main-branch CI, and nightly) are multi-architecture images for `linux/amd64` and `linux/arm64`. `docker pull` selects the variant that matches the host. A local `docker build` without `--platform` produces the architecture of the machine that runs the build.
+
 ## Build The Service Image
 
 Run from the repository root:
