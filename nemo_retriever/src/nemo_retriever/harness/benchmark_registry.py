@@ -24,6 +24,13 @@ VIDORE_V3_PUBLIC_DATASETS: dict[str, str] = {
     "vidore_v3_pharmaceuticals": "pharmaceuticals",
     "vidore_v3_physics": "physics",
 }
+VIDORE_V3_ENGLISH_DATASETS: tuple[str, ...] = (
+    "vidore_v3_computer_science",
+    "vidore_v3_finance_en",
+    "vidore_v3_hr",
+    "vidore_v3_industrial",
+    "vidore_v3_pharmaceuticals",
+)
 DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
     "files",
     "pages",
@@ -279,6 +286,12 @@ RUNSETS: dict[str, RunSet] = {
         runs=tuple(f"{dataset_name}_beir" for dataset_name in VIDORE_V3_PUBLIC_DATASETS),
         tags=("vidore", "beir", "all"),
         description="All eight public ViDoRe v3 BEIR retrieval benchmarks.",
+    ),
+    "vidore_v3_english": RunSet(
+        name="vidore_v3_english",
+        runs=tuple(f"{dataset_name}_beir" for dataset_name in VIDORE_V3_ENGLISH_DATASETS),
+        tags=("vidore", "beir", "english"),
+        description="Five English ViDoRe v3 BEIR retrieval benchmarks.",
     ),
 }
 

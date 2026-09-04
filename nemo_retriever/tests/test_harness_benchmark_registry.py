@@ -106,3 +106,22 @@ def test_vidore_v3_all_runset_contains_every_public_dataset() -> None:
     runset = get_runset("vidore_v3_all")
 
     assert runset.runs == tuple(f"{name}_beir" for name in VIDORE_V3_PUBLIC_DATASETS)
+
+
+def test_vidore_v3_english_runset_contains_only_requested_datasets() -> None:
+    runset = get_runset("vidore_v3_english")
+
+    assert runset.runs == (
+        "vidore_v3_computer_science_beir",
+        "vidore_v3_finance_en_beir",
+        "vidore_v3_hr_beir",
+        "vidore_v3_industrial_beir",
+        "vidore_v3_pharmaceuticals_beir",
+    )
+    assert set(runset.runs).isdisjoint(
+        {
+            "vidore_v3_energy_beir",
+            "vidore_v3_finance_fr_beir",
+            "vidore_v3_physics_beir",
+        }
+    )
