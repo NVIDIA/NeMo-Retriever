@@ -19,12 +19,6 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Install Guide](references/install.md) <br>
-- [Setup Guide](references/setup.md) <br>
-- [Query Guide](references/query.md) <br>
-- [Troubleshooting](references/troubleshooting.md) <br>
-- [CLI: ingest](references/cli/ingest.md) <br>
-- [CLI: query](references/cli/query.md) <br>
 - [NeMo Retriever Library Documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) <br>
 
 
