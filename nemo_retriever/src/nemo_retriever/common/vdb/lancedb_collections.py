@@ -364,7 +364,7 @@ class LanceDBCollectionStore:
             index_columns = (
                 ("scope", "name", "status", "expires_at")
                 if name == _COLLECTIONS_TABLE
-                else ("scope", "collection_name", "document_id", "status")
+                else ("scope", "collection_name", "document_id", "status", "recovery_state")
             )
             for column in index_columns:
                 table.create_scalar_index(column, replace=True)
@@ -1236,7 +1236,11 @@ class LanceDBCollectionStore:
             _COLLECTIONS_TABLE,
             columns=["status", "expires_at", "delete_started_at"],
         )
-        documents = self._rows(_DOCUMENTS_TABLE, columns=["recovery_state", "updated_at"])
+        documents = self._rows(
+            _DOCUMENTS_TABLE,
+            "recovery_state != ''",
+            columns=["updated_at"],
+        )
         active = sum(row.get("status") == "active" for row in collections)
         deleting = sum(row.get("status") == "deleting" for row in collections)
         expired = sum(
@@ -1247,7 +1251,7 @@ class LanceDBCollectionStore:
             if row.get("status") == "deleting" and row.get("delete_started_at"):
                 pending_times.append(datetime.fromisoformat(str(row["delete_started_at"])))
         for row in documents:
-            if row.get("recovery_state") and row.get("updated_at"):
+            if row.get("updated_at"):
                 pending_times.append(datetime.fromisoformat(str(row["updated_at"])))
         oldest_age = max(((now - started).total_seconds() for started in pending_times), default=0.0)
         return {
