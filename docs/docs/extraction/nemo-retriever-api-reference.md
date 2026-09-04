@@ -354,8 +354,13 @@ The schemas return text and embeddings as follows.
 
 | Schema | Text | Embeddings |
 | --- | --- | --- |
-| `legacy` | The `text` and `content` columns preserve their complete strings. Other values continue to use transport sanitization. | Pass `return_embeddings=True` to preserve embedding payloads in their legacy columns and nested fields. |
+| `legacy` | Ordinary string values are not truncated. | Pass `return_embeddings=True` to preserve embedding payloads in their legacy columns and nested fields. |
 | `compact` | The top-level `text` field preserves the complete extracted text. | Pass `return_embeddings=True` to add a top-level `embedding` field when the source row contains an embedding. |
+
+For legacy rows, the service preserves extracted text and string-valued
+metadata in full, including returned strings nested in table, chart,
+infographic, and image results. Raw images and embeddings remain opt-in.
+Arrays, binary values, and oversized non-text collections remain summarized.
 
 The default `return_embeddings=False` omits the top-level `embedding` field
 from compact rows. This default keeps the compact response shape and payload

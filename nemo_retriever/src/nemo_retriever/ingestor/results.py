@@ -22,7 +22,7 @@ ResultSchema = Literal["legacy", "compact"]
 
 _DEFAULT_EMBEDDING_COLUMN = "text_embeddings_1b_v2"
 _MAX_STR_LEN = 500
-_TEXT_FIELD_NAMES = frozenset({"text", "content"})
+_TEXT_FIELD_NAMES = frozenset({"caption", "content", "text"})
 _RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
 _EMBEDDING_FIELD_NAMES = frozenset({"embedding", "embeddings"})
 _EMBEDDING_PAYLOAD_COLUMNS = frozenset({"text_embeddings_1b_v2"})
@@ -115,6 +115,17 @@ def _contains_requested_payload(val: Any, *, return_embeddings: bool, return_ima
     return False
 
 
+def _contains_full_text(val: Any) -> bool:
+    if isinstance(val, dict):
+        return any(
+            (str(key) in _TEXT_FIELD_NAMES and isinstance(nested, str)) or _contains_full_text(nested)
+            for key, nested in val.items()
+        )
+    if isinstance(val, (list, tuple)):
+        return any(_contains_full_text(item) for item in val)
+    return False
+
+
 def _sanitize_result_value(
     key: str,
     val: Any,
@@ -129,8 +140,6 @@ def _sanitize_result_value(
     them in service results dominates memory use. Keep the surrounding
     keys/columns stable and null only the bulky payload values.
     """
-    if key in _TEXT_FIELD_NAMES and isinstance(val, str):
-        return val
     if key in _RAW_IMAGE_FIELD_NAMES:
         return _sanitize_returned_payload(val) if return_images else None
     if key in _EMBEDDING_FIELD_NAMES:
@@ -139,6 +148,8 @@ def _sanitize_result_value(
         return None
     if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
         return _sanitize_returned_payload(val)
+    if isinstance(val, str):
+        return val
     if isinstance(val, dict):
         return {
             str(k): _sanitize_result_value(
@@ -159,7 +170,9 @@ def _sanitize_result_value(
             )
             for item in val
         ]
-        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+        if _contains_full_text(val) or _contains_requested_payload(
+            val, return_embeddings=return_embeddings, return_images=return_images
+        ):
             return sanitized
         return sanitize_cell_value(sanitized)
     if isinstance(val, tuple):
@@ -172,7 +185,9 @@ def _sanitize_result_value(
             )
             for item in val
         ]
-        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+        if _contains_full_text(val) or _contains_requested_payload(
+            val, return_embeddings=return_embeddings, return_images=return_images
+        ):
             return sanitized
         return sanitize_cell_value(sanitized)
     return sanitize_cell_value(val)
@@ -427,9 +442,10 @@ def dataframe_to_transport_records(
 ) -> list[dict[str, Any]]:
     """Serialize a pipeline DataFrame to JSON-safe row dicts.
 
-    ``result_schema="legacy"`` retains all columns so the reconstructed
-    frame matches ``GraphIngestor.ingest()`` output; by default raw image
-    and embedding payload values are nulled before transport.
+    ``result_schema="legacy"`` retains all columns and complete string
+    values so the reconstructed frame matches ``GraphIngestor.ingest()``
+    output; by default raw image and embedding payload values are nulled
+    before transport.
 
     ``result_schema="compact"`` returns the future compact public schema:
     extracted text, source provenance, element type, page number or media

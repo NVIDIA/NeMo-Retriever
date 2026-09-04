@@ -69,7 +69,7 @@ def test_transport_can_return_legacy_bulk_payloads_when_requested() -> None:
     assert record["metadata"] == {"embedding": embedding}
 
 
-def test_transport_preserves_full_legacy_text_and_content() -> None:
+def test_transport_preserves_all_legacy_string_values() -> None:
     long_text = "text " * 200
     long_content = "content " * 100
     long_incidental_value = "x" * 600
@@ -84,7 +84,68 @@ def test_transport_preserves_full_legacy_text_and_content() -> None:
 
     assert record["text"] == long_text
     assert record["metadata"]["content"] == long_content
-    assert record["metadata"]["note"] == long_incidental_value[:500] + "…[600 chars total]"
+    assert record["metadata"]["note"] == long_incidental_value
+
+
+def test_transport_preserves_text_across_element_types() -> None:
+    long_text = "element text " * 100
+    element_types = (
+        "text",
+        "table",
+        "table_caption",
+        "chart",
+        "chart_caption",
+        "infographic",
+        "infographic_caption",
+        "images",
+        "image_caption",
+        "audio",
+        "video",
+        "video_frame",
+    )
+    df = pd.DataFrame(
+        {
+            "text": [long_text] * len(element_types),
+            "_content_type": list(element_types),
+            "custom_embeddings": [{"embedding": [float(index)]} for index in range(len(element_types))],
+        }
+    )
+
+    legacy_records = dataframe_to_transport_records(df)
+    compact_records = dataframe_to_transport_records(
+        df,
+        result_schema="compact",
+        return_embeddings=True,
+        embedding_column="custom_embeddings",
+    )
+
+    assert all(record["text"] == long_text for record in legacy_records)
+    assert all(record["text"] == long_text for record in compact_records)
+    assert [record["embedding"] for record in compact_records] == [
+        [float(index)] for index in range(len(element_types))
+    ]
+
+
+def test_transport_preserves_long_nested_structured_text_collections() -> None:
+    long_text = "nested text " * 100
+    content_columns = ("table", "chart", "infographic", "images")
+    items = [
+        {
+            "text": long_text,
+            "caption": long_text,
+            "image_b64": "raw-image",
+        }
+        for _ in range(21)
+    ]
+    df = pd.DataFrame({column: [items] for column in content_columns})
+
+    record = dataframe_to_transport_records(df)[0]
+
+    for column in content_columns:
+        assert len(record[column]) == 21
+        assert record[column][0]["text"] == long_text
+        assert record[column][0]["caption"] == long_text
+        assert record[column][0]["image_b64"] is None
 
 
 def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
