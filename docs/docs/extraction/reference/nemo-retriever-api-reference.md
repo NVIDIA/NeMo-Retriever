@@ -166,7 +166,7 @@ except GraphIngestionError as exc:
 
 For a support-oriented mapping of extraction paths, error signals, corrective
 actions, and escalation criteria, refer to
-[Python API error triage](troubleshoot.md#python-api-error-triage).
+[Python API error triage](../troubleshooting/troubleshoot.md#python-api-error-triage).
 
 !!! note "Version-specific behavior"
 
@@ -274,7 +274,7 @@ QAGenerationOperator(
 )
 ```
 
-For LiteLLM `nvidia_nim/...` models, including the default `LiteLLMClient` and `LLMJudge` models, use `os.environ/NVIDIA_API_KEY`. Refer to [Authentication and API keys](api-keys.md#credential-references-in-persisted-graphs).
+For LiteLLM `nvidia_nim/...` models, including the default `LiteLLMClient` and `LLMJudge` models, use `os.environ/NVIDIA_API_KEY`. Refer to [Authentication and API keys](../get-started/api-keys.md#credential-references-in-persisted-graphs).
 
 Serializing a graph containing a literal API key fails with a contextual error instead of guessing which provider credential should be used on a worker.
 

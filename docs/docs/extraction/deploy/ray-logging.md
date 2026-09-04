@@ -1,6 +1,6 @@
 # Configure Ray Logging
 
-[NeMo Retriever Library](overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for batch ingest.
+[NeMo Retriever Library](../about/overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for batch ingest.
 You can set Ray environment variables for fine-grained control over [Ray's logging behavior](https://docs.ray.io/en/latest/ray-observability/user-guides/configure-logging.html).
 To control whether worker logs appear in the driver process, use `--ray-log-to-driver` or `ray_log_to_driver`.
 
@@ -161,7 +161,7 @@ export RAY_LOGGING_ROTATE_BACKUP_COUNT=9
 
 ## Related Topics { #related-topics }
 
-- [Environment Variables](environment-config.md)
-- [Python API guide](nemo-retriever-api-reference.md)
+- [Environment Variables](../reference/environment-config.md)
+- [Python API guide](../reference/nemo-retriever-api-reference.md)
 - [CLI ingest options](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md)
-- [Retriever Service Log Level](environment-config.md#retriever-service-log-level)
+- [Retriever Service Log Level](../reference/environment-config.md#retriever-service-log-level)

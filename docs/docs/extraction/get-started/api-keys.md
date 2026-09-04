@@ -21,11 +21,11 @@ export NVIDIA_API_KEY="nvapi-..."
 
 On Windows PowerShell you can use `$env:NVIDIA_API_KEY = "nvapi-..."`.
 
-The SDK and CLI do not load a `.env` file automatically. For a full list of related variables and how to source a `.env` file into the shell, refer to [Environment configuration variables](environment-config.md).
+The SDK and CLI do not load a `.env` file automatically. For a full list of related variables and how to source a `.env` file into the shell, refer to [Environment configuration variables](../reference/environment-config.md).
 
 For `LiteLLMClient` and `LLMJudge` with a `nvidia_nim/...` model, pass `api_key="os.environ/NVIDIA_API_KEY"`. LiteLLM does not read `NVIDIA_API_KEY` for that provider.
 
-Hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) cap inline base64 image payloads at about 180,000 characters (roughly 180 KB). This key authorizes those hosted inference calls. For size limits and what to do when an image exceeds the cap, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted object-detection NIMs (Page Elements, Table Structure, Graphic Elements) cap inline base64 image payloads at about 180,000 characters (roughly 180 KB). This key authorizes those hosted inference calls. For size limits and what to do when an image exceeds the cap, refer to [Hosted Page Elements NIM image size limits](../troubleshooting/troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 !!! note
 
@@ -45,7 +45,7 @@ For LiteLLM `nvidia_nim/...` models, use `os.environ/NVIDIA_API_KEY`. The worker
 
 Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
 
-For how persisted graphs store credential references, refer to [Persisted graphs are trusted configuration](nemo-retriever-api-reference.md#persisted-graphs-are-trusted-configuration) in the Python API guide.
+For how persisted graphs store credential references, refer to [Persisted graphs are trusted configuration](../reference/nemo-retriever-api-reference.md#persisted-graphs-are-trusted-configuration) in the Python API guide.
 
 ## NGC personal key (Helm and `nvcr.io`) { #ngc-personal-key }
 
@@ -62,7 +62,7 @@ When you create an NGC key, select the following for **Services Included**.
 
     Early Access participants must also select **Private Registry**.
 
-![Generate Personal Key](images/generate_personal_key.png)
+![Generate Personal Key](../images/generate_personal_key.png)
 
 After you copy the key, set it in your environment. The Helm example below reads `$NGC_API_KEY`. If that variable is empty, Helm fails because `ngcImagePullSecret.password` is required when `create=true`.
 

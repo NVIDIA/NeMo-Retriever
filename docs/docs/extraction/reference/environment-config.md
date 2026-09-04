@@ -1,6 +1,6 @@
 # Environment Variables for NeMo Retriever Library
 
-The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
+The following are the environment variables that you can use to configure [NeMo Retriever Library](../about/overview.md).
 Set them in the process environment before you run the public SDK or the `retriever` CLI. The SDK and CLI do not load a working-directory `.env` file automatically.
 
 If you keep values in a `.env` file, source that file into the current shell first:
@@ -11,14 +11,14 @@ source .env
 set +a
 ```
 
-On Windows PowerShell, set the variables in the session, for example `$env:NVIDIA_API_KEY = "nvapi-..."`. Refer to [Authentication and API keys](api-keys.md).
+On Windows PowerShell, set the variables in the session, for example `$env:NVIDIA_API_KEY = "nvapi-..."`. Refer to [Authentication and API keys](../get-started/api-keys.md).
 
 
 ## General Environment Variables { #general-environment-variables }
 
 | Name                             | Example                        | Description                                                           |
 |----------------------------------|--------------------------------|-----------------------------------------------------------------------|
-| `HF_ACCESS_TOKEN`                | -                                                         | A token for Hugging Face Hub downloads when your runtime needs one. The default chunking tokenizer is public; refer to [Token-based splitting](concepts.md#token-based-splitting) for container caching and offline behavior. |
+| `HF_ACCESS_TOKEN`                | -                                                         | A token for Hugging Face Hub downloads when your runtime needs one. The default chunking tokenizer is public; refer to [Token-based splitting](../about/concepts.md#token-based-splitting) for container caching and offline behavior. |
 | `NVIDIA_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized build.nvidia.com API key, used to interact with NVIDIA-hosted NIMs. Create through build.nvidia.com or through [NGC](https://org.ngc.nvidia.com/setup/api-keys). |
 | `NGC_API_KEY`                | —                                                          | The key that NIM microservices in the cluster use to access NGC resources. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4317` <br/>                       | The endpoint for the OpenTelemetry exporter, used for sending telemetry data. |
@@ -67,11 +67,11 @@ Setting `INGEST_LOG_LEVEL` in the process environment or in Helm `service.env` d
 That variable remains in the `examples/launch_libmode_*.py` scripts, the legacy `docker/scripts/entrypoint.sh` service entrypoint, and `.devcontainer/devcontainer.json`.
 The current service image and Helm deployment do not use those paths.
 
-For Ray worker logging, refer to [Configure Ray Logging](ray-logging.md).
+For Ray worker logging, refer to [Configure Ray Logging](../deploy/ray-logging.md).
 
 
 ## Related Topics { #related-topics }
 
-- [Configure Ray Logging](ray-logging.md)
-- [Authentication and API keys](api-keys.md)
+- [Configure Ray Logging](../deploy/ray-logging.md)
+- [Authentication and API keys](../get-started/api-keys.md)
 - [Python API guide](nemo-retriever-api-reference.md)
