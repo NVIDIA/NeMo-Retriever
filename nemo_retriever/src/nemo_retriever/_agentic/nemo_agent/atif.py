@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from .llm.usage import cache_read_tokens, usage_integer
-from nemo_retriever.version import __version__
+
+# make _agentic module independent of NRL
+try:
+    from nemo_retriever.version import __version__
+except:
+    __version__ = "0.0.0"
 
 logger = logging.getLogger(__name__)
 
