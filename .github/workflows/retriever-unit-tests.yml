@@ -8,6 +8,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   retriever-unit-tests:
     name: Run Retriever Unit Tests

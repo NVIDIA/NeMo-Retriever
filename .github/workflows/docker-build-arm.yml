@@ -15,6 +15,9 @@ on:
           - random
           - full
 
+permissions:
+  contents: read
+
 jobs:
   # Delegates to the shared reusable workflow so the arm64 build and test
   # commands cannot drift from the amd64 legs.
