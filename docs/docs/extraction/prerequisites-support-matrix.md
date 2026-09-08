@@ -1,3 +1,25 @@
+---
+title: "Pre-requisites and support matrix"
+content_type: reference
+audience: intermediate
+journey_stage: try
+product: nemo-retriever-library
+features:
+  - deployment
+  - ingestion
+  - extraction
+technologies:
+  - python
+  - cuda
+  - helm
+  - docker
+prerequisites:
+  - extraction/overview.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Pre-Requisites & Support Matrix
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, Kubernetes persistent storage and GPU scheduling if you use Helm, and advanced features you plan to enable (audio and video, Nemotron Parse, VLM image captioning, reranking, and `/v1/answer` generation) against the guidance on this page.

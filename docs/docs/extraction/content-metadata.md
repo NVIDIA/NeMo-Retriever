@@ -1,3 +1,18 @@
+---
+title: "Metadata reference"
+content_type: reference
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - metadata-schema
+technologies: []
+prerequisites:
+  - extraction/multimodal-extraction.md
+surface: published-docs
+status: published
+---
+
 # Metadata Reference for NeMo Retriever Library
 
 This documentation contains the reference for the metadata used in [NeMo Retriever Library](overview.md). 
