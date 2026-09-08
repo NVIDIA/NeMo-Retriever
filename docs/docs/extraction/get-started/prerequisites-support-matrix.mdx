@@ -73,7 +73,7 @@ For the time-slicing ConfigMap, ClusterPolicy patch, node placement, and preflig
 
 <a id="hardware-requirements"></a>
 ## Hardware Requirements
-The full ingestion pipeline is designed to consume significant CPU and memory resources to achieve maximal parallelism. 
+The full ingestion pipeline is designed to consume significant CPU and memory resources to achieve maximal parallelism.
 Resource usage scales up to the limits of your deployed system.
 
 For per-feature GPU memory, disk, and co-residency rules, refer to [Model hardware requirements](#model-hardware-requirements) below.
@@ -286,8 +286,8 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ⁵ **Total GPUs** is combined VRAM co-residency for the four core models. The default Helm chart still requests `nvidia.com/gpu: 1` per NIMService. Without GPU sharing, plan for four allocatable GPU slots across eligible nodes. Refer to [Kubernetes Helm GPU scheduling](#kubernetes-helm-gpu-scheduling).
 
-\* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
-To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
+\* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline.
+To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices
 and run only the embedder, reranker, and your vector database.
 
 <a id="related-topics"></a>
