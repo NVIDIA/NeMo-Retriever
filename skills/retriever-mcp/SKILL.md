@@ -25,8 +25,9 @@ available; an empty MCP resource list is expected.
 - Start with `top_k=5` and `format="hits"`. Request more only when the first
   successful response does not contain enough evidence to answer the task.
 - Read evidence hits from the tool response and ground your answer in them.
-- Preserve `doc_id` and page numbers from MCP hit metadata when the task
-  requests citations or structured output.
+- Preserve available document identifiers such as `document_id`, `source_id`,
+  or `pdf_basename`, along with page numbers, when the task requests citations
+  or structured output.
 - If `query` fails, inspect the error and retry with corrected parameters or a
   shorter equivalent query. If it still fails, report the error before using
   another retrieval method.
