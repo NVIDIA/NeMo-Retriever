@@ -1,6 +1,6 @@
 # Troubleshoot NeMo Retriever Library
 
-Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](overview.md).
+Use this documentation to troubleshoot issues that arise when you use [NeMo Retriever Library](../about/overview.md).
 
 ## Python API error triage { #python-api-error-triage }
 
@@ -51,7 +51,7 @@ inspect row columns and service logs directly.
 
 | Signal | Typical meaning | L1/L2 response |
 | --- | --- | --- |
-| `ValueError` or Pydantic validation error before execution | An unsupported run mode, parameter value, protocol, or parameter combination | Compare the call with the current [Python API reference](nemo-retriever-api-reference.md). Remove unknown parameters and reproduce with the smallest valid pipeline. |
+| `ValueError` or Pydantic validation error before execution | An unsupported run mode, parameter value, protocol, or parameter combination | Compare the call with the current [Python API reference](../reference/nemo-retriever-api-reference.md). Remove unknown parameters and reproduce with the smallest valid pipeline. |
 | `ImportError`, `ModuleNotFoundError`, or a missing-dependency `RuntimeError` | The selected local extraction path requires a package or executable that is not installed | Install the documented package extra or system dependency. Confirm that the Python environment running the worker, not only the client shell, contains it. |
 | `GraphIngestionError` with no HTTP status | The named remote stage returned a row-level error, its error payload omitted a status, or the endpoint was unreachable | Check DNS, routing, TLS, the endpoint URL, and the NIM readiness endpoint from the worker or service pod. Inspect `exc.records` after removing secrets and document content. |
 | HTTP `401` or `403` from a NIM | Missing, expired, or unauthorized credentials | Verify `NVIDIA_API_KEY`, `NGC_API_KEY`, or the stage-specific credential in the environment that makes the request. Do not attach API keys to a support case. |
@@ -64,7 +64,7 @@ inspect row columns and service logs directly.
 | A per-document entry in `ServiceIngestResult.failures` | Upload or pipeline processing failed after a service job was created | Correlate the document ID with the job ID and service logs. Other documents in the same result can still have succeeded. |
 | Successful ingest with fewer rows than inputs (caption or ASR enabled) | Caption inference failed before row collection, or ASR dropped failed rows and logged warnings | Re-run with logging enabled. For caption, verify endpoint credentials and payload limits. For ASR, verify gRPC endpoint, `function_id`, and `NVIDIA_API_KEY`. |
 | OOM, worker exit, or pod restart | Host or GPU resources were exhausted, or an orchestrator terminated the worker | Reduce batch size or concurrency, use smaller document groups, and inspect host, Ray, Kubernetes, and NIM resource telemetry. |
-| `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides, including required Ray Data source capacity for filesystem inputs, exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](performance_guide.md). |
+| `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides, including required Ray Data source capacity for filesystem inputs, exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](../deploy/performance_guide.md). |
 
 The service can retry some transient transport, `429`, and `5xx` failures.
 Report the final status returned after retries, not an intermediate warning.
@@ -157,7 +157,7 @@ VideoFrameActor requires media dependencies; missing: ffprobe.
 The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
 `ffmpeg` or `ffprobe` binaries the pipeline executes.
 
-For air-gapped or locked-down clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For air-gapped or locked-down clusters, refer to [Air-gapped and disconnected deployment](../deploy/deployment-options.md#air-gapped-deployment).
 
 **Connected environments:**
 
@@ -208,7 +208,7 @@ To reduce memory pressure, try one or more of the following:
 
 - Process documents in smaller batches instead of submitting the entire corpus in one job.
 - Route outputs to a sink (for example, `.vdb_upload(...)`, `.webhook(...)`, or `.store(...)`) so results are written out instead of held in memory until the job finishes.
-- In `run_mode="service"`, pass `return_results=False` to `.ingest(...)` when you do not need the full result payload returned to the client. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+- In `run_mode="service"`, pass `return_results=False` to `.ingest(...)` when you do not need the full result payload returned to the client. For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md).
 - Increase available host or pod memory for the ingest workload.
 
 
@@ -300,7 +300,7 @@ For local GPU inference with Nemotron Parse, combine extras:
 pip install "nemo-retriever[local,nemotron-parse]"
 ```
 
-Also refer to [NeMo Retriever Library Overview](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
+Also refer to [NeMo Retriever Library Overview](../about/overview.md) and [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files { #extract-method-nemotron-parse-doesnt-support-image-files }
 
@@ -319,7 +319,7 @@ This can occur when you send a versioned self-hosted model (for example `nvidia/
 
 To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` only to a compatible self-hosted chat endpoint.
 
-Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](../get-started/prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
@@ -351,7 +351,7 @@ When you route extraction to hosted Page Elements NIM URLs (for example `page_el
 
     The library downscales payloads to **512,000** characters before HTTP calls to object-detection NIMs. Hosted endpoints still reject inline base64 above **180,000** characters. Treat the lower hosted cap as the effective limit when `page_elements_invoke_url` points at `ai.api.nvidia.com`.
 
-If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams` and keep `render_mode="fit_to_model"`. For very large standalone image inputs, preprocess the files before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams` and keep `render_mode="fit_to_model"`. For very large standalone image inputs, preprocess the files before ingest. For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md).
 
 ### Direct Page Elements NIM API calls
 
@@ -372,7 +372,7 @@ Use this form only when `len(base64_image) < 180_000`. If the encoded image is l
 
 Do not send `"url": "data:image/png;asset_id,<assetId>"`. Hosted Page Elements rejects that encoding with HTTP 422.
 
-Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
+Hosted calls require the same [`NVIDIA_API_KEY`](../get-started/api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
 
 Supported formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
@@ -522,7 +522,7 @@ Complete the following checks:
 3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
 4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
 
-For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](../get-started/prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
 ## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
 
@@ -542,7 +542,7 @@ Complete the following checks:
 3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
 
-For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](../get-started/prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 
 ## Split topology Helm install or upgrade times out with Deployments not ready { #helm-split-topology-startup-deadlock }
 
@@ -635,16 +635,16 @@ The CLI then exits with `Agentic retrieval failed (llm_call_failed)`.
 
 The Helm `answer_llm` Super-49B NIM is not tool-call ready by default. Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. NVIDIA-hosted Build endpoints do not need this change. `POST /v1/answer` is a separate path and does not require tool calling.
 
-For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super-49B](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 
 ## Related Topics { #related-topics }
 
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
-- [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
-- [Deployment options](deployment-options.md)
+- [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
+- [Kubernetes Helm Storage Requirements](../get-started/prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
+- [Kubernetes Helm GPU scheduling](../get-started/prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
+- [Deployment options](../deploy/deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
-- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
-- [About getting started](getting-started-about.md) (prerequisites and deployment)
+- [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
+- [About getting started](../get-started/index.md) (prerequisites and deployment)

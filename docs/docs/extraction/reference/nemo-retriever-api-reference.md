@@ -166,7 +166,7 @@ except GraphIngestionError as exc:
 
 For a support-oriented mapping of extraction paths, error signals, corrective
 actions, and escalation criteria, refer to
-[Python API error triage](troubleshoot.md#python-api-error-triage).
+[Python API error triage](../troubleshooting/troubleshoot.md#python-api-error-triage).
 
 !!! note "Version-specific behavior"
 
@@ -274,7 +274,7 @@ QAGenerationOperator(
 )
 ```
 
-For LiteLLM `nvidia_nim/...` models, including the default `LiteLLMClient` and `LLMJudge` models, use `os.environ/NVIDIA_API_KEY`. Refer to [Authentication and API keys](api-keys.md#credential-references-in-persisted-graphs).
+For LiteLLM `nvidia_nim/...` models, including the default `LiteLLMClient` and `LLMJudge` models, use `os.environ/NVIDIA_API_KEY`. Refer to [Authentication and API keys](../get-started/api-keys.md#credential-references-in-persisted-graphs).
 
 Serializing a graph containing a literal API key fails with a contextual error instead of guessing which provider credential should be used on a worker.
 
@@ -345,6 +345,45 @@ service = create_ingestor(run_mode="service", base_url="http://localhost:7670")
 `create_ingestor(run_mode="service")` returns `ServiceIngestor`. Import the class from `nemo_retriever.service.service_ingestor`. `ingest()` returns `ServiceIngestResult`.
 
 Service-only methods include `split()`, `pdf_split_config()`, `save_to_disk()`, `ingest_stream()`, `aingest_stream()`, and `cancel()`. `cancel()` is part of the public class. It currently raises `NotImplementedError` because the service does not expose a cancel endpoint.
+
+#### Choose a service result schema { #service-result-schema }
+
+`ServiceIngestor.ingest()` returns result rows in the `legacy` schema by
+default. You can pass `result_schema="compact"` to use the compact schema.
+The schemas return text and embeddings as follows.
+
+| Schema | Text | Embeddings |
+| --- | --- | --- |
+| `legacy` | Ordinary string values are not truncated. | Pass `return_embeddings=True` to preserve embedding payloads in their legacy columns and nested fields. |
+| `compact` | The top-level `text` field preserves the complete extracted text. | Pass `return_embeddings=True` to add a top-level `embedding` field when the source row contains an embedding. |
+
+For legacy rows, the service preserves extracted text and string-valued
+metadata in full, including returned strings nested in table, chart,
+infographic, and image results. Raw images and embeddings remain opt-in.
+Arrays, binary values, and oversized non-text collections remain summarized.
+
+The default `return_embeddings=False` omits the top-level `embedding` field
+from compact rows. This default keeps the compact response shape and payload
+size unchanged. When you configure `EmbedParams.output_column`, compact rows
+read the embedding from that column and normalize it to the top-level
+`embedding` field. Raw image payloads remain available only in legacy rows
+when you pass `return_images=True`.
+
+The following example requests compact rows with their embeddings.
+
+```python
+from nemo_retriever import create_ingestor
+
+result = (
+    create_ingestor(run_mode="service", base_url="http://localhost:7670")
+    .texts(["Text to embed and return."])
+    .embed()
+    .ingest(result_schema="compact", return_embeddings=True)
+)
+
+for row in result.dataframe.to_dict(orient="records"):
+    print(row["text"], row.get("embedding"))
+```
 
 ::: nemo_retriever.service.service_ingestor.ServiceIngestor
     options:
