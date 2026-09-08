@@ -1119,13 +1119,7 @@ nimOperator:
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_SERVER_MODE
-        value: latency
-      - name: NIM_SERVER_MAX_WAIT_MS
-        value: "0"
       - name: NIM_ENGINE_COUNT
-        value: "1"
-      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
       - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
         value: ngc
@@ -1178,13 +1172,7 @@ nimOperator:
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_SERVER_MODE
-        value: latency
-      - name: NIM_SERVER_MAX_WAIT_MS
-        value: "0"
       - name: NIM_ENGINE_COUNT
-        value: "1"
-      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
       - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
         value: ngc
@@ -1238,13 +1226,7 @@ nimOperator:
         value: "0.0.0.0:8000"
       - name: NIM_PERFORMANCE_MODE
         value: "1"
-      - name: NIM_SERVER_MODE
-        value: latency
-      - name: NIM_SERVER_MAX_WAIT_MS
-        value: "0"
       - name: NIM_ENGINE_COUNT
-        value: "1"
-      - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "1"
       - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
         value: ngc

@@ -53,6 +53,7 @@ _MD_BLOCKS = _iter_markdown_python_blocks()
 _PUBLIC_RETRIEVER_DOCS = (
     "README.md",
     "docs/docs/extraction/vdbs.md",
+    "examples/building_vdb_operator.ipynb",
     "examples/nemo_retriever_retriever_query_metadata_filter.ipynb",
     "nemo_retriever/README.md",
     "nemo_retriever/docs/cli/README.md",
@@ -150,6 +151,49 @@ def test_public_retriever_examples_do_not_use_unsupported_constructor_kwargs() -
             violations.append(f"{block_id}: {', '.join(sorted(set(unsupported_kwargs)))}")
 
     assert not violations, "Unsupported kwargs in public direct Retriever(...) examples:\n" + "\n".join(violations)
+
+
+def test_building_vdb_operator_notebook_creates_a_concrete_vdb() -> None:
+    """The notebook's DuckDB example implements the current :class:`VDB` contract."""
+    from nemo_retriever.common.vdb.adt_vdb import VDB
+
+    pytest.importorskip("duckdb")
+
+    repo_root = _repo_root()
+    notebook = next(
+        (
+            candidate
+            for candidate in (
+                repo_root / "examples/building_vdb_operator.ipynb",
+                repo_root / "nemo_retriever/examples/building_vdb_operator.ipynb",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if notebook is None:
+        pytest.skip("The package-only image does not include notebook examples.")
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    class_source = next(
+        "".join(cell["source"])
+        for cell in cells
+        if cell["cell_type"] == "code" and "class DuckDBVDB(VDB):" in "".join(cell["source"])
+    )
+    smoke_test_source = next(
+        "".join(cell["source"])
+        for cell in cells
+        if cell["cell_type"] == "code" and "vdb = DuckDBVDB(vector_dim=3)" in "".join(cell["source"])
+    )
+    namespace: dict[str, Any] = {}
+    exec(class_source, namespace)
+    exec(smoke_test_source, namespace)
+    vdb = namespace["vdb"]
+    hits = namespace["hits"]
+
+    assert isinstance(vdb, VDB)
+    assert not type(vdb).__abstractmethods__
+    assert [[hit["chunk_id"] for hit in query_hits] for query_hits in hits] == [["intro"]]
+    assert "vector" not in hits[0][0]
 
 
 def test_graph_readme_smallest_example() -> None:
