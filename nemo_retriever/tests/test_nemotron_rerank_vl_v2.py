@@ -162,17 +162,48 @@ class TestNemotronRerankVLV2VLLMScore:
         assert docs[1] == "Paris is..."
 
     def test_score_pairs_text_only(self, reranker):
+        from nemo_retriever.models.local.nemotron_rerank_vl_v2 import SCORE_TEMPLATE
+
         out1 = MagicMock()
         out1.outputs.score = 1.0
         out2 = MagicMock()
         out2.outputs.score = 2.0
 
-        reranker._llm.score.side_effect = [[out1], [out2]]
+        reranker._llm.score.return_value = [out1, out2]
 
         scores = reranker.score_pairs([("q1", "d1"), ("q2", "d2")])
 
         assert scores == [1.0, 2.0]
-        assert reranker._llm.score.call_count == 2
+        reranker._llm.score.assert_called_once_with(
+            ["q1", "q2"],
+            ["d1", "d2"],
+            use_tqdm=False,
+            chat_template=SCORE_TEMPLATE,
+        )
+
+    def test_score_pairs_batches_multimodal_inputs(self, reranker):
+        from nemo_retriever.models.local.nemotron_rerank_vl_v2 import SCORE_TEMPLATE
+
+        outputs = [MagicMock(), MagicMock(), MagicMock()]
+        for index, output in enumerate(outputs):
+            output.outputs.score = float(index)
+        reranker._llm.score.return_value = outputs
+
+        scores = reranker.score_pairs(
+            [("q1", "d1"), ("q1", "d2"), ("q2", "d3")],
+            images_b64=["image-1", None, "image-3"],
+        )
+
+        assert scores == [0.0, 1.0, 2.0]
+        query_inputs, doc_inputs = reranker._llm.score.call_args.args
+        assert query_inputs == ["q1", "q1", "q2"]
+        assert doc_inputs[0]["content"][0]["image_url"]["url"].endswith("image-1")
+        assert doc_inputs[1] == "d2"
+        assert doc_inputs[2]["content"][0]["image_url"]["url"].endswith("image-3")
+        assert reranker._llm.score.call_args.kwargs == {
+            "use_tqdm": False,
+            "chat_template": SCORE_TEMPLATE,
+        }
 
     def test_score_chat_template_passed(self, reranker):
         from nemo_retriever.models.local.nemotron_rerank_vl_v2 import SCORE_TEMPLATE

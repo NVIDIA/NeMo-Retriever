@@ -297,27 +297,20 @@ class NemotronRerankVLV2VLLM(BaseModel):
         if not pairs:
             return []
 
-        # Group consecutive pairs by query so each (query, [docs...]) goes to
-        # vLLM in a single batched score() call instead of one round-trip per pair.
-        scores: List[float] = [0.0] * len(pairs)
-        i = 0
-        while i < len(pairs):
-            q = pairs[i][0]
-            j = i
-            doc_inputs: list[Any] = []
-            while j < len(pairs) and pairs[j][0] == q:
-                _, d = pairs[j]
-                img = images_b64[j] if (images_b64 is not None and j < len(images_b64)) else None
-                d = self._truncate_doc_text(q, d, has_image=bool(img))
-                doc_inputs.append(self._build_document(d, img))
-                j += 1
-            outputs = self._llm.score(
-                q,
-                doc_inputs,
-                chat_template=SCORE_TEMPLATE,
-            )
-            for k, out in enumerate(outputs):
-                scores[i + k] = out.outputs.score
-            i = j
+        query_inputs: list[str] = []
+        doc_inputs: list[Any] = []
+        for index, (query, document) in enumerate(pairs):
+            image = images_b64[index] if images_b64 is not None and index < len(images_b64) else None
+            document = self._truncate_doc_text(query, document, has_image=bool(image))
+            query_inputs.append(query)
+            doc_inputs.append(self._build_document(document, image))
 
-        return scores
+        # vLLM schedules this aligned N-to-N list within its memory limit. A single
+        # call lets it combine candidates from multiple queries in one engine queue.
+        outputs = self._llm.score(
+            query_inputs,
+            doc_inputs,
+            use_tqdm=False,
+            chat_template=SCORE_TEMPLATE,
+        )
+        return [output.outputs.score for output in outputs]
