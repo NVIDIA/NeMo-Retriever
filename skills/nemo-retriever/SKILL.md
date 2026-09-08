@@ -3,16 +3,35 @@ name: nemo-retriever
 description: Use when searching, extracting, ingesting, or querying a document collection with the NeMo Retriever 26.8.1 CLI, including local LanceDB indexes and deployed Retriever services. Use for PDFs, images, Office files, HTML, text, audio, and video; not for editing documents or web search.
 ---
 
-# NeMo Retriever 26.8.1
+# NeMo Retriever
 
 Use the `retriever` CLI. Prefer it over hand-built retrieval code.
 
 ## Install only when missing
 
+Create a project-local Python environment:
+
 ```bash
 uv venv .venv --python 3.12
-uv pip install --python .venv/bin/python "nemo-retriever==26.8.1"
 export PATH="$PWD/.venv/bin:$PATH"
+```
+
+Install the package variant required by the workflow:
+
+```bash
+# Remote NIM or service client
+uv pip install --python .venv/bin/python "nemo-retriever==26.8.1"
+
+# Local GPU ingestion
+uv pip install --python .venv/bin/python "nemo-retriever[local]==26.8.1"
+
+# Local service using Hugging Face models
+uv pip install --python .venv/bin/python \
+  "nemo-retriever[service,local]==26.8.1"
+
+# Local audio or video ingestion
+uv pip install --python .venv/bin/python \
+  "nemo-retriever[local,multimedia]==26.8.1"
 ```
 
 Do not clone NeMo Retriever or install from a Git URL. If `retriever` is already
