@@ -97,6 +97,10 @@ class VDB(ABC):
     The reference implementation is `LanceDB` (see `lancedb.py`). For an
     overview of how `IngestVdbOperator` and `RetrieveVdbOperator` consume
     this interface, see the package README.
+
+    Service applications may invoke independent backend methods concurrently
+    from worker threads. Implementations must synchronize shared mutable state
+    and any backend operations that cannot safely overlap.
     """
 
     @abstractmethod

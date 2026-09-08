@@ -720,6 +720,72 @@ def test_reconciliation_filters_recoverable_documents_before_scan_limit(tmp_path
     )
 
 
+def test_health_filters_recoverable_documents_before_scan_limit(tmp_path, monkeypatch):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(
+        _records(text="completed", vector=[1.0, 0.0]),
+        context=_context(document_id="document-completed"),
+    )
+    store = backend._get_collection_store()
+    _fail_document_finalize(monkeypatch, store)
+    with pytest.raises(RuntimeError, match="injected catalog finalize failure"):
+        backend.write_collection(
+            _records(text="pending", vector=[0.0, 1.0]),
+            context=_context(document_id="document-pending"),
+        )
+    monkeypatch.setattr(collections_module, "_CATALOG_SCAN_LIMIT", 1)
+    original_rows = store._rows
+
+    def require_recovery_filter(table_name, where=None, columns=None):
+        if table_name == "_nrl_documents":
+            assert where == "recovery_state != ''"
+            assert columns == ["updated_at"]
+        return original_rows(table_name, where, columns)
+
+    monkeypatch.setattr(store, "_rows", require_recovery_filter)
+
+    health = backend.health()
+
+    assert health["cleanup"]["pending"] == 1
+    assert health["cleanup"]["oldest_age_seconds"] >= 0
+
+
+def test_catalog_restart_adds_recovery_index_without_rewriting_documents(tmp_path):
+    backend = _backend_with_collection(tmp_path)
+    backend.write_collection(_records(), context=_context())
+    store = backend._get_collection_store()
+    documents = store._open_table("_nrl_documents")
+
+    def recovery_index(table):
+        return next(
+            (
+                index
+                for index in table.list_indices()
+                if "recovery_state" in {str(column) for column in (index.columns or [])}
+            ),
+            None,
+        )
+
+    documents.checkout_latest()
+    before = documents.search().to_list()
+    index = recovery_index(documents)
+    assert index is not None
+    documents.drop_index(index.name)
+    assert recovery_index(documents) is None
+
+    restarted = LanceDB(
+        uri=str(tmp_path / "lancedb"),
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+    restarted.get_collection(scope="workspace-a", collection_name="collection-a")
+    restarted_documents = restarted._get_collection_store()._open_table("_nrl_documents")
+
+    assert restarted_documents.search().to_list() == before
+    assert recovery_index(restarted_documents) is not None
+
+
 def test_reconciliation_filters_expired_collections_before_scan_limit(tmp_path, monkeypatch):
     backend = _backend_with_collection(tmp_path)
     backend.create_collection(

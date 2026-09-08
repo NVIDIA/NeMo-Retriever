@@ -436,7 +436,7 @@ def create_vectordb_app(
 
     @app.middleware("http")
     async def require_internal_credential(request: Request, call_next):
-        if request.url.path == "/v1/health" or not required_internal_token:
+        if request.url.path in {"/v1/health", "/v1/live"} or not required_internal_token:
             return await call_next(request)
         supplied = request.headers.get("X-NRL-Internal-Token", "")
         if not supplied or not hmac.compare_digest(supplied, required_internal_token):
@@ -446,10 +446,15 @@ def create_vectordb_app(
             )
         return await call_next(request)
 
+    @app.get("/v1/live", tags=["system"])
+    async def live() -> dict[str, str]:
+        """Return ``{"status": "ok"}`` when the VectorDB process can answer HTTP requests."""
+        return {"status": "ok"}
+
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         current = state
-        backend_health = _safe_backend_health(current)
+        backend_health = await asyncio.to_thread(_safe_backend_health, current)
         if backend_health is None:
             raise HTTPException(503, "VectorDB backend is unavailable")
         return {
@@ -466,7 +471,7 @@ def create_vectordb_app(
         from prometheus_client import CollectorRegistry, Gauge, generate_latest
 
         registry = CollectorRegistry()
-        backend_health = _safe_backend_health(state) or {}
+        backend_health = await asyncio.to_thread(_safe_backend_health, state) or {}
         collections = backend_health.get("collections") or {}
         cleanup = backend_health.get("cleanup") or {}
         reconciliation = backend_health.get("reconciliation") or {}
@@ -543,7 +548,7 @@ def create_vectordb_app(
         )
         if isinstance(result, CollectionWriteResult):
             return WriteResponse(written=result.written, total_rows=result.total_rows)
-        backend_health = current.vdb.health()
+        backend_health = await asyncio.to_thread(current.vdb.health)
         return WriteResponse(
             written=sum(len(batch) for batch in req.records),
             total_rows=int(backend_health.get("total_rows", 0)),
@@ -712,7 +717,7 @@ def create_vectordb_app(
 
         backend_health: dict[str, Any] = {}
         if req.collection_name is None:
-            backend_health = current.vdb.health()
+            backend_health = await asyncio.to_thread(current.vdb.health)
             if backend_health.get("table_exists") is False:
                 raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
 
@@ -780,7 +785,7 @@ def create_vectordb_app(
             )
         if current.embed_mode != "remote":
             raise HTTPException(501, "Agentic service queries require a remote embedding endpoint.")
-        if not current.table_exists:
+        if not await asyncio.to_thread(lambda: current.table_exists):
             raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
         if req.top_k > agentic_config.backend_top_k:
             raise VDBInvalidRequest(
