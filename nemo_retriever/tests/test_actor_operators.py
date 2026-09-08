@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 
@@ -862,6 +861,13 @@ class TestHtmlSplitActor:
 # 12. _BatchEmbedActor
 # ---------------------------------------------------------------------------
 class TestBatchEmbedActor:
+    @pytest.fixture(autouse=True)
+    def _stub_input_policy(self, monkeypatch):
+        monkeypatch.setattr(
+            "nemo_retriever.operators.embed.cpu_operator.ensure_embedding_input_policy_for_batch",
+            lambda kwargs, frame: None,
+        )
+
     def _make(self):
         from nemo_retriever.common.params import EmbedParams
         from nemo_retriever.operators.embed.operators import _BatchEmbedActor

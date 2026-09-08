@@ -7,8 +7,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import pytest
 from packaging.requirements import Requirement
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,6 +35,17 @@ def test_core_dependencies_include_tokenizer_stack() -> None:
 
     assert "tokenizers" in names
     assert "huggingface-hub" in names
+
+
+def test_service_images_precache_all_embedding_input_admission_assets() -> None:
+    dockerfile_path = PROJECT_ROOT.parent / "Dockerfile"
+    if not dockerfile_path.is_file():
+        pytest.skip("repository Dockerfile is not installed in the runtime image")
+
+    dockerfile = dockerfile_path.read_text(encoding="utf-8")
+
+    assert dockerfile.count("resolve_embedding_input_policy(DEFAULT_TOKENIZER_MODEL_ID") == 2
+    assert dockerfile.count("configured_max_tokens=8192, input_type='passage'") == 2
 
 
 def test_platform_classifiers_describe_supported_operating_systems() -> None:

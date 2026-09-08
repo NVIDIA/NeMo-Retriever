@@ -88,8 +88,9 @@ def create_local_embedder(
     forwarded for compatibility but deprecated and ignored (vLLM placement is
     process-level); passing it emits ``DeprecationWarning``.
 
-    Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
-    ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
+    The requested text limits are capped at the checkpoint-declared maximum
+    before construction. Backend-specific runtime options are ignored by
+    loaders that do not support them.
 
     Local checkpoints and compatible Hub fine-tunes are routed from their
     immutable config. Compatibility requires a supported dense Nemotron
@@ -103,6 +104,10 @@ def create_local_embedder(
     model_id = resolve_embed_model(model_name)
     spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=hf_cache_dir)
     validate_embed_model_backend(spec, b)
+    effective_max_length = min(int(max_length), spec.max_input_tokens) if spec.max_input_tokens else int(max_length)
+    effective_query_max_length = (
+        min(int(query_max_length), spec.max_input_tokens) if spec.max_input_tokens else int(query_max_length)
+    )
 
     if spec.family == "vl":
         if b == "hf":
@@ -116,6 +121,7 @@ def create_local_embedder(
                 model_id=model_id,
                 revision=spec.revision,
                 output_dimension=spec.output_dimension,
+                max_length=effective_max_length,
             )
 
         from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
@@ -144,8 +150,8 @@ def create_local_embedder(
             device=device,
             hf_cache_dir=hf_cache_dir,
             normalize=normalize,
-            max_length=int(max_length),
-            query_max_length=int(query_max_length),
+            max_length=effective_max_length,
+            query_max_length=effective_query_max_length,
             model_id=model_id,
             revision=spec.revision,
             query_prefix=spec.query_prefix,
@@ -164,7 +170,7 @@ def create_local_embedder(
         enforce_eager=enforce_eager,
         dimensions=dimensions,
         normalize=normalize,
-        max_length=int(max_length),
+        max_length=effective_max_length,
         revision=spec.revision,
         query_prefix=spec.query_prefix,
         document_prefix=spec.document_prefix,

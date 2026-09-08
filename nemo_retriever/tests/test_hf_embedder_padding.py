@@ -75,6 +75,15 @@ def test_hf_query_embedder_warns_when_query_truncated(caplog) -> None:
     assert "Truncating 1/1 HF query embeddings to query_max_length=3 tokens" in caplog.text
 
 
+def test_hf_query_embedder_preserves_blank_input_cardinality() -> None:
+    embedder, tokenizer = _make_loaded_embedder()
+
+    result = embedder.embed_queries(["question", " "], batch_size=8)
+
+    assert result.shape == (2, 2)
+    assert tokenizer.calls[0]["texts"] == ["query: question", "query:  "]
+
+
 def test_hf_passage_embedder_keeps_dynamic_padding() -> None:
     embedder, tokenizer = _make_loaded_embedder()
 
@@ -82,6 +91,23 @@ def test_hf_passage_embedder_keeps_dynamic_padding() -> None:
 
     assert [call["padding"] for call in tokenizer.calls] == [True, True]
     assert [call["max_length"] for call in tokenizer.calls] == [8192, 8192]
+
+
+def test_hf_passage_embedder_preserves_blank_input_cardinality() -> None:
+    embedder, tokenizer = _make_loaded_embedder()
+
+    result = embedder.embed(["content", " "], batch_size=8)
+
+    assert result.shape == (2, 2)
+    assert tokenizer.calls[0]["texts"] == ["passage: content", "passage:  "]
+
+
+def test_hf_passage_embedder_preserves_literal_prefixed_source_text() -> None:
+    embedder, tokenizer = _make_loaded_embedder()
+
+    embedder.embed(["passage: source text"], batch_size=8)
+
+    assert tokenizer.calls[0]["texts"] == ["passage: source text"]
 
 
 class _FakeTextModel:

@@ -8,11 +8,10 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-
 from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.operators.operator_archetype import ArchetypeOperator
-from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 
 # ---------------------------------------------------------------------------
@@ -23,14 +22,14 @@ class TestGPUOperatorFlag:
         assert isinstance(GPUOperator(), GPUOperator)
 
     def test_gpu_operators_have_flag(self):
-        from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionGPUActor
-        from nemo_retriever.operators.extract.table.table_detection import TableStructureGPUActor
-        from nemo_retriever.operators.extract.ocr.ocr import OCRGPUActor
-        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
         from nemo_retriever.operators.embed.operators import _BatchEmbedGPUActor
-        from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
-        from nemo_retriever.operators.rerank import NemotronRerankGPUActor
         from nemo_retriever.operators.embed.text_embed import TextEmbedGPUActor
+        from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
+        from nemo_retriever.operators.extract.ocr.ocr import OCRGPUActor
+        from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionGPUActor
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
+        from nemo_retriever.operators.extract.table.table_detection import TableStructureGPUActor
+        from nemo_retriever.operators.rerank import NemotronRerankGPUActor
 
         assert issubclass(PageElementDetectionGPUActor, GPUOperator)
         assert issubclass(TableStructureGPUActor, GPUOperator)
@@ -53,14 +52,14 @@ class TestCPUOperatorFlag:
 
     def test_cpu_operators_have_flag(self):
         from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionCPUActor
-        from nemo_retriever.operators.extract.pdf.split import PDFSplitCPUActor
-        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionCPUActor
-        from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor, TxtSplitCPUActor
-        from nemo_retriever.operators.extract.image.ray_data import ImageLoadCPUActor
-        from nemo_retriever.operators.extract.html.ray_data import HtmlSplitCPUActor
-        from nemo_retriever.operators.graph_ops.content_operators import ExplodeContentActor
         from nemo_retriever.operators.extract.audio.asr_actor import ASRCPUActor
         from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
+        from nemo_retriever.operators.extract.html.ray_data import HtmlSplitCPUActor
+        from nemo_retriever.operators.extract.image.ray_data import ImageLoadCPUActor
+        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionCPUActor
+        from nemo_retriever.operators.extract.pdf.split import PDFSplitCPUActor
+        from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor, TxtSplitCPUActor
+        from nemo_retriever.operators.graph_ops.content_operators import ExplodeContentActor
         from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         assert issubclass(DocToPdfConversionCPUActor, CPUOperator)
@@ -97,13 +96,13 @@ class TestCPUOperatorFlag:
 
     def test_all_operators_are_abstract_operator(self):
         from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
+        from nemo_retriever.operators.embed.text_embed import TextEmbedActor
         from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
         from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
         from nemo_retriever.operators.extract.caption.caption import CaptionActor
-        from nemo_retriever.operators.rerank import NemotronRerankActor
-        from nemo_retriever.operators.embed.text_embed import TextEmbedActor
-        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
         from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         assert issubclass(DocToPdfConversionActor, AbstractOperator)
         assert issubclass(ASRActor, AbstractOperator)
@@ -306,6 +305,13 @@ class TestNemotronParseCPUActor:
 
 
 class TestBatchEmbedCPUActor:
+    @pytest.fixture(autouse=True)
+    def _stub_input_policy(self, monkeypatch):
+        monkeypatch.setattr(
+            "nemo_retriever.operators.embed.cpu_operator.ensure_embedding_input_policy_for_batch",
+            lambda kwargs, frame: None,
+        )
+
     def _make_params(self):
         from nemo_retriever.common.params import EmbedParams
 
@@ -319,8 +325,8 @@ class TestBatchEmbedCPUActor:
 
     @patch("nemo_retriever.operators.embed.cpu_operator.probe_endpoint")
     def test_uses_default_invoke_url(self, mock_probe):
-        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
         from nemo_retriever.common.params import EmbedParams
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
 
         actor = _BatchEmbedCPUActor(
             params=EmbedParams(
@@ -341,9 +347,9 @@ class TestBatchEmbedCPUActor:
         )
 
     def test_default_hosted_endpoint_requires_api_key(self):
-        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
         from nemo_retriever.common.params import EmbedParams
         from nemo_retriever.common.params.models import NO_API_KEY
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
 
         with pytest.raises(RuntimeError, match="CPU-only ingest.*NVIDIA_API_KEY"):
             _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model", api_key=NO_API_KEY))

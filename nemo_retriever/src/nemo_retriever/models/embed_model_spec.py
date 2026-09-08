@@ -26,6 +26,7 @@ _DEFAULT_QUERY_PREFIX = "query: "
 _DEFAULT_DOCUMENT_PREFIX = "passage: "
 _MODEL_CONFIG_FILENAME = "config.json"
 _PROMPT_CONFIG_FILENAME = "config_sentence_transformers.json"
+_SENTENCE_CONFIG_FILENAME = "sentence_bert_config.json"
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -41,6 +42,9 @@ class EmbedModelSpec:
     document_prefix: str
     quantization: str | None = None
     requires_vllm: bool = False
+    max_input_tokens: int | None = None
+    query_prefix_declared: bool = False
+    document_prefix_declared: bool = False
 
 
 def _read_config(path: Path, *, model_id: str) -> dict[str, Any]:
@@ -119,15 +123,23 @@ def _local_prompt_config(model_id: str, config_path: Path) -> dict[str, Any] | N
     return _read_config(path, model_id=model_id) if path.is_file() else None
 
 
-def _prompt_prefixes(config: dict[str, Any] | None) -> tuple[str, str]:
+def _local_sentence_config(model_id: str, config_path: Path) -> dict[str, Any] | None:
+    """Read Sentence Transformers input metadata beside a local checkpoint."""
+    path = config_path.with_name(_SENTENCE_CONFIG_FILENAME)
+    return _read_config(path, model_id=model_id) if path.is_file() else None
+
+
+def _prompt_prefixes(config: dict[str, Any] | None) -> tuple[str, str, bool, bool]:
     prompts = config.get("prompts") if isinstance(config, dict) else None
     if not isinstance(prompts, dict):
-        return _DEFAULT_QUERY_PREFIX, _DEFAULT_DOCUMENT_PREFIX
+        return _DEFAULT_QUERY_PREFIX, _DEFAULT_DOCUMENT_PREFIX, False, False
+    query_declared = "query" in prompts
+    document_declared = "document" in prompts
     query = prompts.get("query", _DEFAULT_QUERY_PREFIX)
     document = prompts.get("document", _DEFAULT_DOCUMENT_PREFIX)
     if not isinstance(query, str) or not isinstance(document, str):
         raise ValueError("Sentence Transformers query and document prompts must be strings.")
-    return query, document
+    return query, document, query_declared, document_declared
 
 
 def _spec_from_config(
@@ -135,6 +147,7 @@ def _spec_from_config(
     revision: str | None,
     config: dict[str, Any],
     prompt_config: dict[str, Any] | None = None,
+    sentence_config: dict[str, Any] | None = None,
 ) -> EmbedModelSpec:
     model_type = str(config.get("model_type") or "").strip()
     profile = _MODEL_PROFILES.get(model_type)
@@ -183,7 +196,17 @@ def _spec_from_config(
         if quant_method == "modelopt":
             requires_vllm = True
 
-    query_prefix, document_prefix = _prompt_prefixes(prompt_config)
+    query_prefix, document_prefix, query_prefix_declared, document_prefix_declared = _prompt_prefixes(prompt_config)
+
+    max_input_tokens = sentence_config.get("max_seq_length") if isinstance(sentence_config, dict) else None
+    if max_input_tokens is None and family == "vl":
+        max_input_tokens = config.get("p_max_length")
+    if max_input_tokens is not None:
+        if isinstance(max_input_tokens, bool) or not isinstance(max_input_tokens, int) or max_input_tokens <= 0:
+            raise ValueError(
+                f"Embedding model {model_id!r} has invalid supported input limit {max_input_tokens!r}; "
+                "expected a positive integer."
+            )
 
     return EmbedModelSpec(
         model_id=model_id,
@@ -192,6 +215,9 @@ def _spec_from_config(
         output_dimension=dimension,
         query_prefix=query_prefix,
         document_prefix=document_prefix,
+        max_input_tokens=max_input_tokens,
+        query_prefix_declared=query_prefix_declared,
+        document_prefix_declared=document_prefix_declared,
         quantization=quantization,
         requires_vllm=requires_vllm,
     )
@@ -222,6 +248,7 @@ def resolve_embed_model_spec(
             None,
             _read_config(local_config, model_id=model_id),
             _local_prompt_config(model_id, local_config),
+            _local_sentence_config(model_id, local_config),
         )
 
     resolved_revision = _hub_revision(model_id, revision)
@@ -229,7 +256,10 @@ def resolve_embed_model_spec(
     prompt_config = _hub_json(
         model_id, _PROMPT_CONFIG_FILENAME, resolved_revision, hf_cache_dir=hf_cache_dir, optional=True
     )
-    return _spec_from_config(model_id, resolved_revision, config, prompt_config)
+    sentence_config = _hub_json(
+        model_id, _SENTENCE_CONFIG_FILENAME, resolved_revision, hf_cache_dir=hf_cache_dir, optional=True
+    )
+    return _spec_from_config(model_id, resolved_revision, config, prompt_config, sentence_config)
 
 
 def resolve_embed_model_revision(model_id: str, revision: str | None) -> str | None:

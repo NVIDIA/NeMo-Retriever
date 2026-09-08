@@ -19,6 +19,8 @@ import logging
 import os
 from typing import Any, List, Optional
 
+from nemo_retriever.common.schemas.embedding import format_embedding_input
+
 logger = logging.getLogger(__name__)
 
 VLLM_DTYPE = "bfloat16"
@@ -262,7 +264,7 @@ def embed_with_vllm_llm(
     pooling_params = _pooling_params_for_normalize(normalize)
 
     if prefix:
-        prompts = [str(prefix) + p for p in prompts]
+        prompts = [format_embedding_input(prompt, prefix) for prompt in prompts]
     if not prompts:
         return []
 

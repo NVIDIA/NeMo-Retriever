@@ -8,13 +8,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.operators.cpu_operator import CPUOperator
-from nemo_retriever.models.nim.probe import probe_endpoint
-from nemo_retriever.common.params import EmbedParams
 from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.models.inference.embedding_input import ensure_embedding_input_policy_for_batch
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 from nemo_retriever.models.inference.shared import build_embed_kwargs
+from nemo_retriever.models.nim.probe import probe_endpoint
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 
 
 class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
@@ -65,6 +66,7 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
+        ensure_embedding_input_policy_for_batch(self._kwargs, data)
         return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
