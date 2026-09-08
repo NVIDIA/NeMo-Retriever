@@ -509,21 +509,29 @@ def test_production_vdb_rejects_existing_table_model_mismatch(tmp_path) -> None:
         )
 
 
-def test_production_vdb_accepts_existing_table_model_match(tmp_path) -> None:
-    model = "nvidia/nemotron-3-embed-1b"
+@pytest.mark.parametrize(
+    "stored_model",
+    [
+        "nvidia/nemotron-3-embed-1b",
+        "nvidia/Nemotron-3-Embed-1B-BF16",
+        "nvidia/Nemotron-3-Embed-1B-NVFP4",
+    ],
+)
+def test_production_vdb_accepts_existing_table_model_match(stored_model: str, tmp_path) -> None:
+    configured_model = "nvidia/nemotron-3-embed-1b"
     LanceDB(
         uri=str(tmp_path),
         table_name="matching-model",
         vector_dim=2,
         build_index=False,
-        embedding_model_name=model,
+        embedding_model_name=stored_model,
     ).run(_embedding_records())
 
     backend = vectordb_module._production_vdb(
         lancedb_uri=str(tmp_path),
         table_name="matching-model",
         expiration_cleanup_enabled=True,
-        embed_model=model,
+        embed_model=configured_model,
     )
 
     assert isinstance(backend, LanceDB)

@@ -31,6 +31,8 @@ _VL_RERANK_MODEL_IDS = frozenset(
 # Short name to canonical model ID.
 _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nemotron-3-embed-1b": NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_BF16_MODEL: NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_NVFP4_MODEL: NEMOTRON_3_EMBED_MODEL,
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
     "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
     "llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,

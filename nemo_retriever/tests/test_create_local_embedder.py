@@ -15,9 +15,13 @@ import pytest
 
 from nemo_retriever.models import (
     EmbedModelSpec,
+    NEMOTRON_3_EMBED_BF16_MODEL,
+    NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_NVFP4_MODEL,
     create_local_embedder,
     create_local_query_embedder,
     is_vl_embed_model,
+    resolve_embed_model,
 )
 
 
@@ -100,6 +104,14 @@ def local_checkpoint(tmp_path):
         return tmp_path
 
     return create
+
+
+@pytest.mark.parametrize(
+    "checkpoint_model",
+    [NEMOTRON_3_EMBED_BF16_MODEL, NEMOTRON_3_EMBED_NVFP4_MODEL],
+)
+def test_precision_checkpoints_share_logical_model_identity(checkpoint_model: str) -> None:
+    assert resolve_embed_model(checkpoint_model) == NEMOTRON_3_EMBED_MODEL
 
 
 # ---------------------------------------------------------------------------

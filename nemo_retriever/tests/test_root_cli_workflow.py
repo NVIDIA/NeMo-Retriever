@@ -28,6 +28,7 @@ import nemo_retriever.cli.ingest.graph_commands as ingest_cli_graph
 import nemo_retriever.cli.ingest.shared as ingest_cli_shared
 import nemo_retriever.cli.shared as cli_shared
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -1063,6 +1064,7 @@ def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyP
     assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "input formats, not commands" in result.output
     assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
+    assert NEMOTRON_3_EMBED_MODEL in result.output
     assert "retriever ingest batch --help" in result.output
     assert "retriever ingest service --help" in result.output
     for option in (

@@ -532,8 +532,9 @@ print(f"{result.latency_s:.2f}s on {result.model}")
 ```
 
 Local-GPU shortcut: if you ingested with default `retriever ingest` flags
-(`[local]` extra installed), drop `embed_kwargs` to reuse
-the bundled `VL_EMBED_MODEL`.
+(`[local]` extra installed), omit `embed_kwargs`. The `Retriever` reads the
+logical `nvidia/nemotron-3-embed-1b` model from the LanceDB table metadata and
+resolves it to a checkpoint that supports the local GPU.
 
 Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python

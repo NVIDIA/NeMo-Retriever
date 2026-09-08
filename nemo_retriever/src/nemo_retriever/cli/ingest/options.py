@@ -18,9 +18,9 @@ from nemo_retriever.ingest.plan import (
     OcrVersionValue,
     TableOutputFormatValue,
 )
-from nemo_retriever.models import VL_EMBED_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 
-DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 DEFAULT_CAPTION_MODEL = CaptionParams().model_name
 
 DocumentsArgument = Annotated[

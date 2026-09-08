@@ -13,7 +13,7 @@ import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
@@ -967,9 +967,9 @@ def test_root_query_local_help_describes_model_resolution() -> None:
 
     assert result.exit_code == 0
     assert "Embedding model: read from the selected table" in result.output
-    assert "legacy tables" in result.output
-    assert "fall back" in result.output
-    assert VL_EMBED_MODEL in result.output
+    assert "without embedding-model metadata must be rebuilt" in result.output
+    assert "fall back" not in result.output
+    assert query_cli_app.opts.DEFAULT_EMBED_MODEL == NEMOTRON_3_EMBED_MODEL
     assert "Default local reranker model" in result.output
     assert VL_RERANK_MODEL in result.output
 

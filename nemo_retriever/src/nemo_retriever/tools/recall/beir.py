@@ -172,7 +172,7 @@ class BeirConfig:
     reranker_batch_size: int = 32
     local_reranker_backend: str = "vllm"
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
-    local_query_embed_backend: str = "hf"
+    local_query_embed_backend: str = "vllm"
     #: When set, queries are sent to this service URL (POST /v1/query) instead of local LanceDB.
     service_url: str | None = None
     service_api_token: str | None = None
@@ -194,7 +194,7 @@ class BeirConfig:
                 self.local_query_embed_backend,
                 _LOCAL_QUERY_BACKENDS,
                 field_name="local_query_embed_backend",
-                default="hf",
+                default="vllm",
             ),
         )
         object.__setattr__(

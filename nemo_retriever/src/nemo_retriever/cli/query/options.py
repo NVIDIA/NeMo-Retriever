@@ -9,9 +9,9 @@ from typing import Annotated
 import typer
 
 from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 
-DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
 
 # Advertised in --agentic-llm-client help; sourced from the registry so a newly
@@ -76,8 +76,8 @@ EmbedModelNameOption = Annotated[
         "--embed-model-name",
         envvar="EMBED_MODEL_NAME",
         help=(
-            "Embedding model override. When omitted, use the model recorded on the selected table, "
-            f"then fall back to {DEFAULT_EMBED_MODEL} for a legacy table without metadata."
+            "Embedding model override. When omitted, use the model recorded on the selected table. "
+            "Dense and hybrid tables without embedding-model metadata must be rebuilt before querying."
         ),
     ),
 ]

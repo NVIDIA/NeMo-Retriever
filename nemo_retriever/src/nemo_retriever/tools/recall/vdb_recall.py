@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import typer
 import pandas as pd  # noqa: F401
 from rich.console import Console
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 
 from nemo_retriever.tools.recall.core import (  # noqa: F401
     RecallConfig,
@@ -59,7 +60,7 @@ def _coerce_endpoint_str(v: Optional[str]) -> Optional[str]:
 
 
 def _normalize_local_query_embed_backend(value: str) -> str:
-    raw = (value or "hf").strip().lower()
+    raw = (value or "vllm").strip().lower()
     if raw not in ("hf", "vllm"):
         raise typer.BadParameter("local query embed backend must be 'hf' or 'vllm', " f"got {value!r}")
     return raw
@@ -98,7 +99,7 @@ def recall_with_main(
         help=(
             "Embedding endpoint (http(s) URL or host:port for gRPC). "
             "If omitted, you may specify --embedding-http-endpoint/--embedding-grpc-endpoint instead; "
-            "if no endpoints are provided, falls back to local HF embeddings."
+            "if no endpoints are provided, falls back to local embeddings (vLLM by default)."
         ),
     ),
     embedding_http_endpoint: Optional[str] = typer.Option(
@@ -112,7 +113,7 @@ def recall_with_main(
         help="gRPC embedding endpoint (e.g. 'localhost:8013').",
     ),
     embedding_model: str = typer.Option(
-        "nvidia/llama-nemotron-embed-1b-v2",
+        NEMOTRON_3_EMBED_MODEL,
         "--embedding-model",
         help="Embedding model name.",
     ),
@@ -123,7 +124,7 @@ def recall_with_main(
     local_hf_device: Optional[str] = typer.Option(
         None,
         "--local-hf-device",
-        help="Device for local HF embeddings when endpoints are missing (e.g. 'cuda', 'cpu', 'cuda:0').",
+        help="Device for local HF embeddings when --local-query-embed-backend is hf (e.g. 'cuda', 'cpu', 'cuda:0').",
     ),
     local_hf_cache_dir: Optional[Path] = typer.Option(
         None,
@@ -139,11 +140,11 @@ def recall_with_main(
         help="Batch size for local HF embedding inference.",
     ),
     local_query_embed_backend: str = typer.Option(
-        "hf",
+        "vllm",
         "--local-query-embed-backend",
         help=(
-            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
-            "'vllm' uses the local vLLM path."
+            "When no remote embedding endpoint is set: 'vllm' (default) uses the local vLLM path; "
+            "'hf' uses HuggingFace."
         ),
     ),
 ) -> None:
@@ -233,7 +234,7 @@ def run(
         help=(
             "Embedding endpoint (http(s) URL or host:port for gRPC). "
             "If omitted, you may specify --embedding-http-endpoint/--embedding-grpc-endpoint instead; "
-            "if no endpoints are provided, recall falls back to local HF embeddings."
+            "if no endpoints are provided, recall falls back to local embeddings (vLLM by default)."
         ),
     ),
     embedding_http_endpoint: Optional[str] = typer.Option(
@@ -247,7 +248,7 @@ def run(
         help="gRPC embedding endpoint (e.g. 'localhost:8013').",
     ),
     embedding_model: str = typer.Option(
-        "nvidia/llama-nemotron-embed-1b-v2",
+        NEMOTRON_3_EMBED_MODEL,
         "--embedding-model",
         help="Embedding model name.",
     ),
@@ -255,7 +256,7 @@ def run(
     local_hf_device: Optional[str] = typer.Option(
         None,
         "--local-hf-device",
-        help="Device for local HF embeddings when endpoints are missing (e.g. 'cuda', 'cpu', 'cuda:0').",
+        help="Device for local HF embeddings when --local-query-embed-backend is hf (e.g. 'cuda', 'cpu', 'cuda:0').",
     ),
     local_hf_cache_dir: Optional[Path] = typer.Option(
         None,
@@ -271,11 +272,11 @@ def run(
         help="Batch size for local HF embedding inference.",
     ),
     local_query_embed_backend: str = typer.Option(
-        "hf",
+        "vllm",
         "--local-query-embed-backend",
         help=(
-            "When no remote embedding endpoint is set: 'hf' (default) uses HuggingFace; "
-            "'vllm' uses the local vLLM path."
+            "When no remote embedding endpoint is set: 'vllm' (default) uses the local vLLM path; "
+            "'hf' uses HuggingFace."
         ),
     ),
     print_hits: bool = typer.Option(True, "--print-hits/--no-print-hits", help="Print top-k hits per query."),

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from nemo_retriever.graph.designer import Param, designer_component
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 from nemo_retriever.harness.config import VALID_BEIR_DOC_ID_FIELDS, VALID_BEIR_LOADERS
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ class RecallEvaluatorActor:
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nemo-retriever",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
-        embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
+        embedding_model: Annotated[str, Param(label="Embedding Model")] = NEMOTRON_3_EMBED_MODEL,
         recall_required: Annotated[bool, Param(label="Recall Required")] = True,
         match_mode: Annotated[str, Param(label="Match Mode", choices=["audio_segment"])] = "audio_segment",
         recall_adapter: Annotated[str, Param(label="Recall Adapter", choices=["none"])] = "none",
