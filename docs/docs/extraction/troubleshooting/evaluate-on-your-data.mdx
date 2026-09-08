@@ -1,0 +1,19 @@
+---
+title: "Evaluate on your data"
+description: ""
+---
+Retrieval and ingestion performance **depend on your documents**, hardware, and pipeline settings. Use the following when measuring quality and throughput on **your** datasets.
+
+<a id="benchmarking-and-baselines"></a>
+## Benchmarking and baselines
+Use this page as the baseline for methodology and expectations. Use [Operational tuning](#operational-tuning) below to observe production-like runs.
+
+<a id="throughput-and-dataset-effects"></a>
+## Throughput and dataset effects
+Read [Throughput is dataset-dependent](/ingest/multimodal-extraction#extraction-limitations-and-quality) for why raw numbers from generic benchmarks may not match your corpus (layout complexity, file types, image density, and so on).
+
+<a id="operational-tuning"></a>
+## Operational tuning
+- [Ray and distributed ingest](/deploy/ray-logging)
+- [Pre-Requisites & Support Matrix](/get-started/prerequisites-support-matrix) for supported configurations
+- [Troubleshoot NeMo Retriever Library](/troubleshooting/troubleshoot) when results or performance diverge from expectations
