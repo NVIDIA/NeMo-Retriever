@@ -17,12 +17,7 @@ Reference links to the main license file in the GitHub repository:
 
 The authoritative third-party list for this repository is [THIRD_PARTY_LICENSES.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/THIRD_PARTY_LICENSES.md). Contents:
 
-This project uses the following third-party components:
-
-## Llama 3.2
-
-- **License**: [Llama 3.2 Community License Agreement](https://huggingface.co/meta-llama/Llama-3.2-1B/blob/main/LICENSE.txt)
-- **Copyright**: © Meta Platforms, Inc. All Rights Reserved.
+--8<-- "../THIRD_PARTY_LICENSES.md:3"
 
 ## NVIDIA NIM container images
 
