@@ -1,5 +1,5 @@
 navigation:
-  - section: "1. About"
+  - section: About
     slug: about
     path: ../../docs/extraction/about/index.mdx
     contents:
@@ -15,7 +15,7 @@ navigation:
       - page: "Release notes"
         slug: releasenotes
         path: ../../docs/extraction/about/releasenotes.mdx
-  - section: "2. Get started"
+  - section: Get started
     slug: get-started
     path: ../../docs/extraction/get-started/index.mdx
     contents:
@@ -30,7 +30,7 @@ navigation:
         path: ../../docs/extraction/get-started/retriever-cli-quickstart.mdx
       - link: "Quickstart: NeMo Retriever Library"
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever
-  - section: "3. Ingest and extract content"
+  - section: Ingest and extract content
     slug: ingest
     path: ../../docs/extraction/ingest/index.mdx
     contents:
@@ -46,7 +46,7 @@ navigation:
       - page: "Multimodal embeddings (VLM)"
         slug: embedding
         path: ../../docs/extraction/ingest/embedding.mdx
-  - section: "4. Search and manage collections"
+  - section: Search and manage collections
     slug: collections
     path: ../../docs/extraction/collections/index.mdx
     contents:
@@ -58,7 +58,7 @@ navigation:
         path: ../../docs/extraction/collections/workflow-agentic-retrieval.mdx
       - link: "Collection management API"
         href: /reference/collection-management-api
-  - section: "5. Deploy and operate"
+  - section: Deploy and operate
     slug: deploy
     path: ../../docs/extraction/deploy/index.mdx
     contents:
@@ -77,14 +77,14 @@ navigation:
       - page: "Batch resource sizing"
         slug: performance-guide
         path: ../../docs/extraction/deploy/performance_guide.mdx
-  - section: "6. Customize and extend"
+  - section: Customize and extend
     slug: customize
     path: ../../docs/extraction/customize/index.mdx
     contents:
       - page: "Customize & extend"
         slug: customize-extend
         path: ../../docs/extraction/customize/customize-extend.mdx
-  - section: "7. Reference"
+  - section: Reference
     slug: reference
     path: ../../docs/extraction/reference/index.mdx
     contents:
@@ -102,7 +102,7 @@ navigation:
       - page: "Metadata reference"
         slug: content-metadata
         path: ../../docs/extraction/reference/content-metadata.mdx
-  - section: "8. Troubleshooting"
+  - section: Troubleshooting
     slug: troubleshooting
     path: ../../docs/extraction/troubleshooting/index.mdx
     contents:
@@ -115,7 +115,7 @@ navigation:
       - page: "FAQ"
         slug: faq
         path: ../../docs/extraction/troubleshooting/faq.mdx
-  - section: "9. Resources"
+  - section: Resources
     slug: resources
     path: ../../docs/extraction/resources/index.mdx
     contents:
