@@ -160,8 +160,8 @@ class ServiceIngestResult(list):
         ``GET /v1/ingest/status/{document_id}``, concatenated in upload
         order. The current default ``result_schema="legacy"`` preserves
         the same column layout as ``GraphIngestor.ingest()`` in
-        ``inprocess`` / ``batch`` run modes, with bulky raw image and
-        embedding values stripped from cells before transport. Pass
+        ``inprocess`` / ``batch`` run modes. It preserves full text and strips
+        bulky raw image and embedding values from cells before transport. Pass
         ``result_schema="compact"`` to opt into the future compact schema.
         ``None`` when ``return_results=False``.
     """
@@ -1166,10 +1166,13 @@ class ServiceIngestor(ingestor):
             DataFrame column layout with bulky values stripped and emits
             a deprecation warning when result rows are retained.
             ``"compact"`` opts into the future compact row schema.
-        return_embeddings, return_images
-            When using legacy result rows, include embedding vectors and
-            raw image payloads instead of stripping them from transport
-            cells. Defaults remain ``False`` to avoid large responses.
+        return_embeddings
+            Include embedding vectors in legacy or compact result rows.
+            Defaults to ``False`` to avoid large responses.
+        return_images
+            When using legacy result rows, include raw image payloads instead
+            of stripping them from transport cells. Defaults to ``False`` to
+            avoid large responses.
 
         Returns
         -------
