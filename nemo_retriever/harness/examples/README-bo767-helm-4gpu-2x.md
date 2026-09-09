@@ -92,13 +92,13 @@ uv run --project nemo_retriever retriever-harness run-helm \
 
 ## Verify the deployment and result
 
-Before ingest starts, confirm that eight core NIM pods are Ready and each
-requests one GPU slot.
+While the `run-helm` command is running, use a second terminal to confirm that
+eight core NIM pods are Ready and each requests one GPU slot before ingestion
+starts.
 
 ```bash
 kubectl -n "$HELM_NAMESPACE" get pods
 kubectl -n "$HELM_NAMESPACE" get nimservice
-```
 
 After completion, inspect `session_summary.json` and retain every child
 `results.json`, `environment.json`, `resolved_benchmark.json`, `ingest_plan.json`,
