@@ -1,0 +1,30 @@
+# Managed Helm target for the 4-physical-GPU BO767 text-only qualification.
+# It creates two replicas of each core NIMService, for eight GPU-requesting
+# NIM pods. Configure GPU Operator time slicing with two slots per physical
+# GPU before running. Keep credentials out of this file.
+helm_chart: nvstaging/nemo-retriever
+helm_chart_version: "26.08.2"
+service_image_repository: nvcr.io/nvidia/nemo-microservices/nrl-service
+service_image_tag: "26.08.1"
+helm_release: nemo-retriever-bo767-vl-text-2608-4gpu-2x
+helm_namespace: nemo-retriever-bo767-vl-text-2608-4gpu-2x
+helm_values_file: ../helm-profiles/core.yaml
+helm_timeout: 1800
+readiness_timeout: 1800
+helm_service_local_port: 17670
+helm_bin: helm
+kubectl_bin: kubectl
+helm_sudo: false
+kubectl_sudo: false
+helm_set:
+  ngcImagePullSecret.create: false
+  ngcImagePullSecret.name: ngc-secret
+  ngcApiSecret.create: false
+  ngcApiSecret.name: ngc-api
+  serviceConfig.vectordb.embedModel: nvidia/llama-nemotron-embed-vl-1b-v2
+  serviceConfig.vectordb.indexMode: hybrid
+  serviceConfig.vectordb.tableName: bo767_vl_text_hybrid_2608_4gpu_2x
+  nimOperator.page_elements.replicas: 2
+  nimOperator.table_structure.replicas: 2
+  nimOperator.ocr.replicas: 2
+  nimOperator.vlm_embed.replicas: 2

@@ -1,0 +1,20 @@
+# Advertise two schedulable NVIDIA GPU slots for every physical GPU on a node.
+# Apply this ConfigMap in the namespace that contains the NVIDIA GPU Operator
+# ClusterPolicy. This is commonly `gpu-operator`.
+#
+# This setting does not isolate GPU memory or guarantee physical-GPU placement.
+# Verify that the combined VRAM of the two colocated NIM workloads fits.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nemo-retriever-time-slicing-2x
+data:
+  any: |-
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+          - name: nvidia.com/gpu
+            replicas: 2
