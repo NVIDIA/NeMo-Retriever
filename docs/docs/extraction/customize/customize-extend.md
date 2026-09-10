@@ -62,5 +62,5 @@ Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and other
 
 - [Concepts — Pipeline and tasks](../about/concepts.md#pipeline-and-tasks)
 - [Vector databases](../collections/vdbs.md)
-- [Multimodal embeddings (VLM)](../ingest/embedding.md)
+- [Embeddings](../ingest/embedding.md)
 - [Python API guide](../reference/nemo-retriever-api-reference.md)
