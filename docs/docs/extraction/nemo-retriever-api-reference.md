@@ -259,6 +259,45 @@ QAGenerationOperator(
 
 Serializing a graph containing a literal API key fails with a contextual error instead of guessing which provider credential should be used on a worker.
 
+## Service result schemas { #service-result-schema }
+
+`ServiceIngestor.ingest()` returns result rows in the `legacy` schema by
+default. You can pass `result_schema="compact"` to use the compact schema.
+The schemas return text and embeddings as follows.
+
+| Schema | Text | Embeddings |
+| --- | --- | --- |
+| `legacy` | Ordinary string values are not truncated. | Pass `return_embeddings=True` to preserve embedding payloads in their legacy columns and nested fields. |
+| `compact` | The top-level `text` field preserves the complete extracted text. | Pass `return_embeddings=True` to add a top-level `embedding` field when the source row contains an embedding. |
+
+For legacy rows, the service preserves extracted text and string-valued
+metadata in full, including returned strings nested in table, chart,
+infographic, and image results. Raw images and embeddings remain opt-in.
+Arrays, binary values, and oversized non-text collections remain summarized.
+
+The default `return_embeddings=False` omits the top-level `embedding` field
+from compact rows. This default keeps the compact response shape and payload
+size unchanged. When you configure `EmbedParams.output_column`, compact rows
+read the embedding from that column and normalize it to the top-level
+`embedding` field. Raw image payloads remain available only in legacy rows
+when you pass `return_images=True`.
+
+The following example requests compact rows with their embeddings.
+
+```python
+from nemo_retriever import create_ingestor
+
+result = (
+    create_ingestor(run_mode="service", base_url="http://localhost:7670")
+    .texts(["Text to embed and return."])
+    .embed()
+    .ingest(result_schema="compact", return_embeddings=True)
+)
+
+for row in result.dataframe.to_dict(orient="records"):
+    print(row["text"], row.get("embedding"))
+```
+
 
 ::: nemo_retriever.ingestor
     options:
