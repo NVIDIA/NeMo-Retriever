@@ -1,6 +1,6 @@
 # Metadata Reference for NeMo Retriever Library
 
-This documentation contains the reference for the metadata used in [NeMo Retriever Library](overview.md). 
+This documentation contains the reference for the metadata used in [NeMo Retriever Library](../about/overview.md).
 The definitions used in this documentation are the following:
 
 - **Source** — The file that is ingested, and from which content and metadata is extracted.
