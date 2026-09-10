@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import lancedb
@@ -128,6 +129,9 @@ def test_quoted_query_supports_fts_index_without_positions() -> None:
             return [{"text": "Revenue grew 12% year over year."}]
 
     class FakeTable:
+        tags = SimpleNamespace(list=lambda: {})
+        schema = SimpleNamespace(metadata=None)
+
         def search(self, **_kwargs):
             return FakeQuery()
 

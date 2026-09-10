@@ -6,25 +6,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, VDB
+from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, UnsupportedVDBOperation, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
-
-from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.common.vdb.records import (
+    _iter_client_vdb_records,
     normalize_retrieval_results,
     to_client_vdb_records,
     validate_collection_retrieval_results,
 )
 from nemo_retriever.common.vdb.sidecar_metadata import (
+    _apply_sidecar_metadata_to_client_record,
     apply_sidecar_metadata_to_client_batches,
     build_sidecar_lookup,
     materialize_sidecar_dataframe,
     split_sidecar_from_vdb_kwargs,
 )
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 
 def _construct_vdb(
@@ -39,6 +41,13 @@ def _construct_vdb(
         raise ValueError("Either vdb or vdb_op is required.")
 
     return vdb if vdb is not None else get_vdb_op_cls(str(vdb_op))(**dict(vdb_kwargs or {}))
+
+
+def _iter_batch_rows(batches: Iterable[pd.DataFrame]) -> Iterator[dict[str, Any]]:
+    """Yield graph rows from the executor's retained pandas batches."""
+
+    for batch in batches:
+        yield from batch.to_dict(orient="records")
 
 
 def _coerce_embedding_vector(value: Any) -> list[float] | None:
@@ -117,7 +126,11 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=merged)
+        super().__init__(
+            vdb=vdb,
+            vdb_op=vdb_op,
+            vdb_kwargs=merged,
+        )
         self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
         self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
@@ -154,6 +167,46 @@ class IngestVdbOperator(AbstractOperator):
         if records and any(batch for batch in records):
             self._vdb.run(records)
         return data
+
+    def _supports_stream_ingest(self) -> bool:
+        """Return whether the configured VDB opts into canonical record streaming."""
+
+        return self._vdb.supports_stream_ingest
+
+    def _stream_ingest(self, batches: Iterable[pd.DataFrame]) -> None:
+        """Lazily convert executor batches and delegate one backend stream."""
+
+        if not self._supports_stream_ingest():
+            raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
+
+        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(_iter_batch_rows(batches))
+        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
+            undecorated_records = records
+
+            def with_sidecar() -> Iterator[dict[str, Any]]:
+                for record in undecorated_records:
+                    yield _apply_sidecar_metadata_to_client_record(
+                        record,
+                        lookup=self._sidecar_lookup,
+                        meta_fields=self._sidecar_spec["meta_fields"],
+                        join_key=self._sidecar_spec["meta_join_key"],
+                    )
+
+            records = with_sidecar()
+
+        record_stream = records
+        exhausted = False
+
+        def required_records() -> Iterator[dict[str, Any]]:
+            nonlocal exhausted
+            yield from record_stream
+            exhausted = True
+
+        self._vdb.stream_ingest(required_records())
+        if not exhausted:
+            raise RuntimeError(
+                f"{type(self._vdb).__name__}.stream_ingest() returned before consuming the record stream"
+            )
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -211,6 +264,11 @@ class PutVdbOperator(IngestVdbOperator):
         if records and any(batch for batch in records):
             self._vdb.put(records, table_name=self._table_name, key=self._key)
         return data
+
+    def _supports_stream_ingest(self) -> bool:
+        """Keep update-only put semantics on the historical global-batch path."""
+
+        return False
 
 
 class RetrieveVdbOperator(AbstractOperator):

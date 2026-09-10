@@ -14,9 +14,9 @@ both halves of the pipeline:
   that combine dense and lexical evidence may also receive aligned
   `query_texts` as execution-only retrieval context.
 
-Methods accept `**kwargs` so backend-specific options (e.g. LanceDB's
-`where` predicate for metadata filtering, refinement factors,
-hybrid-search flags) flow through without changing the ABC.
+Methods that need backend-specific execution options accept `**kwargs` so
+options such as LanceDB's metadata predicate, refinement factors, and hybrid
+search flags can flow through without changing the ABC.
 
 See `nemo_retriever/vdb/README.md` for the concrete `LanceDB` backend and
 the `IngestVdbOperator` / `RetrieveVdbOperator` wrappers, including the
@@ -24,6 +24,7 @@ metadata-filtering section and its reference notebook.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,7 +98,12 @@ class VDB(ABC):
     The reference implementation is `LanceDB` (see `lancedb.py`). For an
     overview of how `IngestVdbOperator` and `RetrieveVdbOperator` consume
     this interface, see the package README.
+
+    Set ``supports_stream_ingest`` to ``True`` when overriding
+    :meth:`stream_ingest`; otherwise ingestion continues through :meth:`run`.
     """
+
+    supports_stream_ingest: bool = False
 
     @abstractmethod
     def __init__(self, **kwargs):
@@ -422,6 +428,33 @@ class VDB(ABC):
     def health(self) -> dict[str, Any]:
         """Return optional backend-specific operational health details."""
         return {}
+
+    def stream_ingest(self, records: Iterable[dict[str, Any]]) -> None:
+        """Ingest a lazy stream of canonical NRL record dictionaries.
+
+        This optional capability lets a backend own its bounded write lifecycle.
+        Backends that do not opt in retain the legacy global-batch ``run`` path.
+
+        Parameters
+        ----------
+        records
+            Single-pass iterable of canonical record dictionaries. Implementations
+            must consume it synchronously, exactly once, and to exhaustion without
+            retaining it.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement streaming ingestion.
+        """
+        raise UnsupportedVDBOperation(
+            f"{type(self).__name__} does not implement stream_ingest(); "
+            "streaming ingestion is not supported by this VDB backend."
+        )
 
     @abstractmethod
     def run(self, records):
