@@ -1,0 +1,90 @@
+instances:
+  - url: nv-ingest.docs.buildwithfern.com/nemo/retriever
+    custom-domain: docs.nvidia.com/nemo/retriever
+    multi-source: true
+
+
+title: NeMo Retriever
+
+global-theme: nvidia
+
+logo:
+  href: /nightly/about
+  right-text: NeMo Retriever
+
+navbar-links:
+  - type: github
+    value: https://github.com/NVIDIA/NeMo-Retriever
+
+experimental:
+  mdx-components:
+    - ./components
+
+versions:
+  - display-name: nightly
+    path: versions/nightly.yml
+    slug: nightly
+
+redirects:
+  - source: "/index.html"
+    destination: "/nightly/about"
+  - source: "/index"
+    destination: "/nightly/about"
+  - source: "/:version/extraction/agentic-retrieval-concept"
+    destination: "/:version/about/agentic-retrieval-concept"
+  - source: "/:version/extraction/concepts"
+    destination: "/:version/about/concepts"
+  - source: "/:version/extraction/overview"
+    destination: "/:version/about/overview"
+  - source: "/:version/extraction/releasenotes"
+    destination: "/:version/about/releasenotes"
+  - source: "/:version/extraction/api-keys"
+    destination: "/:version/get-started/api-keys"
+  - source: "/:version/extraction/getting-started-about"
+    destination: "/:version/get-started"
+  - source: "/:version/extraction/prerequisites-support-matrix"
+    destination: "/:version/get-started/prerequisites-support-matrix"
+  - source: "/:version/reference/retriever-cli-quickstart"
+    destination: "/:version/get-started/retriever-cli-quickstart"
+  - source: "/:version/extraction/audio-video"
+    destination: "/:version/ingest/audio-video"
+  - source: "/:version/extraction/embedding"
+    destination: "/:version/ingest/embedding"
+  - source: "/:version/extraction/multimodal-extraction"
+    destination: "/:version/ingest/multimodal-extraction"
+  - source: "/:version/extraction/workflow-document-ingestion"
+    destination: "/:version/ingest/workflow-document-ingestion"
+  - source: "/:version/extraction/vdbs"
+    destination: "/:version/collections/vdbs"
+  - source: "/:version/extraction/workflow-agentic-retrieval"
+    destination: "/:version/collections/workflow-agentic-retrieval"
+  - source: "/:version/extraction/customize-extend"
+    destination: "/:version/customize/customize-extend"
+  - source: "/:version/extraction/deployment-options"
+    destination: "/:version/deploy/deployment-options"
+  - source: "/:version/extraction/performance_guide"
+    destination: "/:version/deploy/performance-guide"
+  - source: "/:version/extraction/ray-logging"
+    destination: "/:version/deploy/ray-logging"
+  - source: "/:version/extraction/collection-management-api"
+    destination: "/:version/reference/collection-management-api"
+  - source: "/:version/extraction/content-metadata"
+    destination: "/:version/reference/content-metadata"
+  - source: "/:version/extraction/environment-config"
+    destination: "/:version/reference/environment-config"
+  - source: "/:version/extraction/nemo-retriever-api-reference"
+    destination: "/:version/reference/nemo-retriever-api-reference"
+  - source: "/:version/extraction/contributing"
+    destination: "/:version/resources/contributing"
+  - source: "/:version/extraction/evaluate-on-your-data"
+    destination: "/:version/troubleshooting/evaluate-on-your-data"
+  - source: "/:version/extraction/faq"
+    destination: "/:version/troubleshooting/faq"
+  - source: "/:version/extraction/troubleshoot"
+    destination: "/:version/troubleshooting/troubleshoot"
+  - source: "/nightly/:path*/index.html"
+    destination: "/nightly/:path*"
+  - source: "/:path*/index.html"
+    destination: "/:path*"
+  - source: "/:path*.html"
+    destination: "/:path*"
