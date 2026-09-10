@@ -89,7 +89,7 @@ nav:
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/ingest/workflow-document-ingestion.md
       - "Workflow: Audio & video ingestion": extraction/ingest/audio-video.md
       - Multimodal extraction: extraction/ingest/multimodal-extraction.md
-      - "Multimodal embeddings (VLM)": extraction/ingest/embedding.md
+      - Embeddings: extraction/ingest/embedding.md
   - Search and manage collections:
       - "About collections": extraction/collections/index.md
       - "Vector databases": extraction/collections/vdbs.md

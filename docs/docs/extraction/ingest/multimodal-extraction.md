@@ -68,7 +68,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 - [NeMo Retriever Library Overview](../about/overview.md)
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
-- [Multimodal embeddings (VLM)](embedding.md) when you treat graphics as images for embedding
+- [Embeddings](embedding.md) when you treat graphics as images for embedding
 
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
@@ -116,7 +116,7 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 **Related**
 
-- [Multimodal embeddings (VLM)](embedding.md)
+- [Embeddings](embedding.md)
 - [Metadata reference](../reference/content-metadata.md)
 - [Image captioning](../get-started/prerequisites-support-matrix.md#image-captioning)
 

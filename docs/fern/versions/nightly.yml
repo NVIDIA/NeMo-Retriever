@@ -43,7 +43,7 @@ navigation:
       - page: "Multimodal extraction"
         slug: multimodal-extraction
         path: ../../docs/extraction/ingest/multimodal-extraction.mdx
-      - page: "Multimodal embeddings (VLM)"
+      - page: "Embeddings"
         slug: embedding
         path: ../../docs/extraction/ingest/embedding.mdx
   - section: Search and manage collections
