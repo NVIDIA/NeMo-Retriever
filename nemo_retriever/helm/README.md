@@ -54,6 +54,8 @@ nemo_retriever/helm/
 ├── README.md            <-- this file
 ├── openshift.md         <-- OpenShift restricted-v2 install guide
 ├── .helmignore
+├── examples/
+│   └── values-b200-4gpu-bo767.yaml       # measured four-B200 BO767 profile
 └── templates/
     ├── _helpers.tpl
     ├── NOTES.txt
@@ -318,6 +320,105 @@ if you manage ResourceClaims outside the chart.
 If `helm install` already succeeded and NIM pods stay `Pending` on
 `nvidia.com/gpu`, refer to
 [Core NIM pods stay Pending for GPU](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#helm-pending-gpus).
+
+### Measured four-B200 BO767 profile { #measured-four-b200-bo767-profile }
+
+Use [`examples/values-b200-4gpu-bo767.yaml`](./examples/values-b200-4gpu-bo767.yaml)
+to reproduce the best four-physical-GPU BO767 configuration measured with the
+26.08.1 chart. The profile pins the tested service and NIM images. It deploys
+three embed replicas, three OCR replicas, one page-elements replica, and one
+table-structure replica. OCR and object-detection NIMs use a maximum pipeline
+batch size of `8`. The embed NIM uses FP16 precision.
+
+On four NVIDIA B200 GPUs, this configuration processed 54,730 BO767 pages at
+92.790 pages per second. Recall@5 was 0.860747, Recall@10 was 0.907164, and
+nDCG@10 was 0.755657. These measurements describe the tested workload and
+hardware. They are not general performance guarantees.
+
+The target node must advertise two time-sliced `nvidia.com/gpu` resources per
+physical GPU and use the NVIDIA device plugin's `packed` allocation policy.
+The final placement must contain the following physical GPU pairs:
+
+| Physical GPU | NIM workloads |
+| --- | --- |
+| 1 | Embed and OCR |
+| 2 | Embed and OCR |
+| 3 | Embed and OCR |
+| 4 | Page elements and table structure |
+
+The final values file cannot select a physical GPU UUID. A single Helm install
+can therefore produce a slower `embed+embed`, `embed+OCR`, and `OCR+OCR`
+placement. Stage the replicas to fill one packed GPU at a time.
+
+Start with one embed and one OCR replica while page elements and table
+structure are disabled:
+
+```bash
+REL=retriever
+NS=nemo-retriever
+PROFILE=./nemo_retriever/helm/examples/values-b200-4gpu-bo767.yaml
+
+helm upgrade --install "${REL}" ./nemo_retriever/helm \
+  -n "${NS}" --create-namespace \
+  -f "${PROFILE}" \
+  --set nimOperator.page_elements.enabled=false \
+  --set nimOperator.table_structure.enabled=false \
+  --set nimOperator.ocr.replicas=1 \
+  --set nimOperator.vlm_embed.replicas=1
+
+kubectl wait -n "${NS}" --for=jsonpath='{.status.state}'=Ready \
+  nimservice/llama-nemotron-embed-vl-1b-v2 nimservice/nemotron-ocr-v2 \
+  --timeout=30m
+```
+
+Add each subsequent embed replica before its matching OCR replica. Wait for
+each Deployment so the packed allocator fills the next physical GPU pair:
+
+```bash
+for REPLICAS in 2 3; do
+  kubectl patch nimservice llama-nemotron-embed-vl-1b-v2 -n "${NS}" \
+    --type merge -p "{\"spec\":{\"replicas\":${REPLICAS}}}"
+  kubectl rollout status deployment/llama-nemotron-embed-vl-1b-v2 \
+    -n "${NS}" --timeout=10m
+
+  kubectl patch nimservice nemotron-ocr-v2 -n "${NS}" \
+    --type merge -p "{\"spec\":{\"replicas\":${REPLICAS}}}"
+  kubectl rollout status deployment/nemotron-ocr-v2 \
+    -n "${NS}" --timeout=10m
+done
+```
+
+Apply the final profile to enable page elements and table structure. Wait for
+the four NIMServices and the retriever service before sending traffic:
+
+```bash
+helm upgrade "${REL}" ./nemo_retriever/helm -n "${NS}" -f "${PROFILE}"
+
+kubectl wait -n "${NS}" --for=jsonpath='{.status.state}'=Ready \
+  nimservice/llama-nemotron-embed-vl-1b-v2 \
+  nimservice/nemotron-ocr-v2 \
+  nimservice/nemotron-page-elements-v3 \
+  nimservice/nemotron-table-structure-v1 \
+  --timeout=30m
+kubectl rollout status deployment/"${REL}"-nemo-retriever \
+  -n "${NS}" --timeout=10m
+```
+
+Verify placement by grouping the visible UUID reported by each runtime NIM
+pod. Continue only when each physical UUID has the expected pair:
+
+```bash
+for POD in $(kubectl get pods -n "${NS}" -o name | grep -E \
+  'llama-nemotron-embed-vl|nemotron-ocr-v2-|nemotron-page-elements-v3-|nemotron-table-structure-v1-' \
+  | grep -v -- '-job-'); do
+  printf '%s ' "${POD}"
+  kubectl exec -n "${NS}" "${POD}" -- \
+    nvidia-smi --query-gpu=uuid --format=csv,noheader
+done | sort -k2,2 -k1,1
+```
+
+This profile targets BO767 PDF ingestion. `service.installFfmpeg` remains
+`false`. Enable FFmpeg separately for audio or video workflows.
 
 ### 1. Service image { #1-service-image }
 
