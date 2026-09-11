@@ -6,7 +6,8 @@ license: Apache-2.0
 
 # NeMo Retriever
 
-Use the `retriever` CLI. Prefer it over hand-built retrieval code.
+Use the `retriever` CLI. Prefer it over hand-built retrieval
+code.
 
 ## Install only when missing
 

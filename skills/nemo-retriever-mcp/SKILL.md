@@ -6,8 +6,8 @@ license: Apache-2.0
 
 # NeMo Retriever MCP
 
-Use the NeMo Retriever MCP tools exposed under `retriever` instead of the
-`retriever` CLI.
+Use the NeMo Retriever MCP tools exposed under `retriever` instead
+of the `retriever` CLI.
 
 The server exposes MCP tools, not MCP resources. Do not call
 `list_mcp_resources` to discover documents or decide whether Retriever is
