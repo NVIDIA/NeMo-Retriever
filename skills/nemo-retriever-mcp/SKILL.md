@@ -1,9 +1,9 @@
 ---
-name: retriever-mcp
+name: nemo-retriever-mcp
 description: Use when a task needs to search or add documents through NeMo Retriever MCP.
 ---
 
-# Retriever MCP
+# NeMo Retriever MCP
 
 Use the NeMo Retriever MCP tools exposed under `retriever` instead of the
 `retriever` CLI.
