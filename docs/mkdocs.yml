@@ -109,21 +109,18 @@ nav:
   - Reference:
       - "About reference content": extraction/reference/index.md
       - "API guide": extraction/reference/nemo-retriever-api-reference.md
-      - "Collection management API": extraction/reference/collection-management-api.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
       - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
       - Environment variables: extraction/reference/environment-config.md
       - "Metadata reference": extraction/reference/content-metadata.md
-  - Troubleshooting:
-      - "About evaluation and troubleshooting": extraction/troubleshooting/index.md
-      - "Evaluate on your own documents": extraction/troubleshooting/evaluate-on-your-data.md
-      - Troubleshooting: extraction/troubleshooting/troubleshoot.md
-      - FAQ: extraction/troubleshooting/faq.md
-  - Resources:
-      - "About resources": extraction/resources/index.md
       - Contributing: extraction/resources/contributing.md
       - "Starter kits": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
       - "OSS licences": license.md
+  - Troubleshooting:
+      - "About evaluation and troubleshooting": extraction/troubleshooting/index.md
+      - "Evaluate on your own documents": extraction/troubleshooting/evaluate-on-your-data.md
+      - Troubleshoot: extraction/troubleshooting/troubleshoot.md
+      - FAQ: extraction/troubleshooting/faq.md
 
 plugins:
   - search
@@ -207,6 +204,7 @@ plugins:
         extraction/concepts.md: extraction/about/concepts.md
         extraction/content-metadata.md: extraction/reference/content-metadata.md
         extraction/contributing.md: extraction/resources/contributing.md
+        extraction/resources/index.md: extraction/reference/index.md
         extraction/customize-extend.md: extraction/customize/customize-extend.md
         extraction/deployment-options.md: extraction/deploy/deployment-options.md
         extraction/embedding.md: extraction/ingest/embedding.md
@@ -264,6 +262,7 @@ exclude_docs: |
   extraction/releasenotes-nv-ingest.md
   extraction/workflow-build-searchable-collection.md
   extraction/vector-db-partners.md
+  extraction/resources/index.md
 
 extra:
   generator: false

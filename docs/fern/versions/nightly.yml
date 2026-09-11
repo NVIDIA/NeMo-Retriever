@@ -56,8 +56,9 @@ navigation:
       - page: "Workflow: Agentic retrieval"
         slug: workflow-agentic-retrieval
         path: ../../docs/extraction/collections/workflow-agentic-retrieval.mdx
-      - link: "Collection management API"
-        href: /reference/collection-management-api
+      - page: "Collection management API"
+        slug: collection-management-api
+        path: ../../docs/extraction/reference/collection-management-api.mdx
   - section: Deploy and operate
     slug: deploy
     path: ../../docs/extraction/deploy/index.mdx
@@ -91,9 +92,6 @@ navigation:
       - page: "API guide"
         slug: nemo-retriever-api-reference
         path: ../../docs/extraction/reference/nemo-retriever-api-reference.mdx
-      - page: "Collection management API"
-        slug: collection-management-api
-        path: ../../docs/extraction/reference/collection-management-api.mdx
       - link: "CLI reference"
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
       - page: "Environment variables"
@@ -102,23 +100,6 @@ navigation:
       - page: "Metadata reference"
         slug: content-metadata
         path: ../../docs/extraction/reference/content-metadata.mdx
-  - section: Troubleshooting
-    slug: troubleshooting
-    path: ../../docs/extraction/troubleshooting/index.mdx
-    contents:
-      - page: "Evaluate on your own documents"
-        slug: evaluate-on-your-data
-        path: ../../docs/extraction/troubleshooting/evaluate-on-your-data.mdx
-      - page: "Troubleshooting"
-        slug: troubleshoot
-        path: ../../docs/extraction/troubleshooting/troubleshoot.mdx
-      - page: "FAQ"
-        slug: faq
-        path: ../../docs/extraction/troubleshooting/faq.mdx
-  - section: Resources
-    slug: resources
-    path: ../../docs/extraction/resources/index.mdx
-    contents:
       - page: "Contributing"
         slug: contributing
         path: ../../docs/extraction/resources/contributing.mdx
@@ -127,3 +108,16 @@ navigation:
       - page: "OSS licences"
         slug: license
         path: ../../docs/license.mdx
+  - section: Troubleshooting
+    slug: troubleshooting
+    path: ../../docs/extraction/troubleshooting/index.mdx
+    contents:
+      - page: "Evaluate on your own documents"
+        slug: evaluate-on-your-data
+        path: ../../docs/extraction/troubleshooting/evaluate-on-your-data.mdx
+      - page: Troubleshoot
+        slug: troubleshoot
+        path: ../../docs/extraction/troubleshooting/troubleshoot.mdx
+      - page: "FAQ"
+        slug: faq
+        path: ../../docs/extraction/troubleshooting/faq.mdx
