@@ -5,7 +5,7 @@ Use this section to store extracted content, query indexed data, and manage coll
 ## Choose a topic
 
 - [Vector databases](vdbs.md) covers upload, semantic retrieval, reranking, and metadata filtering with LanceDB.
-- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) explains the agentic query workflow across the CLI, service, REST, and Model Context Protocol interfaces.
+- [Add agentic retrieval](workflow-agentic-retrieval.md) explains the agentic query workflow across the CLI, service, REST, and Model Context Protocol interfaces.
 - [Collection management API](../reference/collection-management-api.md) documents collection and document lifecycle endpoints.
 
 ## Next steps

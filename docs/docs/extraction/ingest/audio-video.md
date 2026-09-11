@@ -1,4 +1,4 @@
-# Workflow: Audio and video ingestion
+# Audio and video ingestion
 
 Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.
 
