@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to search existing document collections and ingest new documents through NeMo Retriever MCP tools, enabling retrieval-augmented generation workflows with citation support. <br>
+Developers and engineers who need to search existing document collections or ingest new documents through NeMo Retriever MCP tools for retrieval-augmented generation workflows. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -26,13 +26,12 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [NeMo Retriever Library Documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) <br>
-- [Agentic Retrieval Concept](docs/docs/extraction/agentic-retrieval-concept.md) <br>
-- [Workflow: Agentic Retrieval](docs/docs/extraction/workflow-agentic-retrieval.md) <br>
+- [NeMo Retriever GitHub Repository](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, API Calls] <br>
-**Output Format:** [Markdown with citations] <br>
+**Output Type(s):** [API Calls, Analysis] <br>
+**Output Format:** [Markdown with structured retrieval hits] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -43,23 +42,23 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-4 evaluation tasks (3 positive, 1 negative), each with 3 attempts per task in isolated sandbox pods. <br>
+4 evaluation tasks (3 positive, 1 negative) with 3 attempts per task in isolated sandbox pods. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
-- Security: Is it safe to use? Checks for unsafe operations, secret leakage, and unauthorized access. <br>
-- Correctness: Is the answer correct? Measures final-answer correctness against the reference answer. <br>
-- Discoverability: Was the right skill loaded when needed? Checks whether the expected skill was selected and the workflow executed. <br>
-- Effectiveness: Did the skill help complete the task? Equal-weight mean of goal completion and expected workflow adherence. <br>
-- Efficiency: Did it avoid wasted tool calls and token usage? 50% tool-call productivity and 50% token efficiency. <br>
+- Security: Whether the skill is safe to use: checks for unsafe operations, secret leakage, and unauthorized access. <br>
+- Correctness: Whether the final answer is correct against the reference answer. <br>
+- Discoverability: Whether the right skill was selected, decoys were avoided, and the workflow executed. <br>
+- Effectiveness: Whether the skill helped complete the user's goal (50% goal completion + 50% expected workflow adherence). <br>
+- Efficiency: Whether the skill avoided wasted tool calls and token usage (50% tool-call productivity + 50% token efficiency). <br>
 
 Underlying evaluation signals used in this run: <br>
-- `security`: Unsafe operations, secret leakage, and unauthorized access. <br>
-- `skill_execution`: Whether the expected skill was selected, decoys were avoided, and the workflow executed. <br>
+- `security`: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
 - `accuracy`: Final-answer correctness against the reference answer. <br>
+- `skill_execution`: Whether the expected skill was selected, decoys were avoided, and the workflow executed. <br>
 - `goal_accuracy`: Whether the user's goal was achieved. <br>
 - `behavior_check`: Whether the expected workflow behavior was followed. <br>
-- `skill_efficiency`: Tool-call productivity (routing scored under Discoverability, not Efficiency). <br>
+- `skill_efficiency`: Tool-call productivity scored under Efficiency. <br>
 - `token_efficiency`: Actual uncached prompt plus completion token usage. <br>
 
 
@@ -67,15 +66,15 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 72.2% | 58.6% |
-| Security | 93.8% → 100.0% (+6.2 points) | 45.0% → 66.7% (+21.7 points) |
-| Correctness | 15.0% → 50.0% (+35.0 points) | 16.0% → 33.3% (+17.3 points) |
-| Discoverability | 83.3% | 67.0% |
-| Effectiveness | 39.3% → 49.1% (+9.8 points) | 28.5% → 38.5% (+10.0 points) |
-| Efficiency | 78.4% | 87.3% |
+| Overall | 77.6% | 62.3% |
+| Security | 100.0% → 100.0% (±0.0 points) | 35.0% → 66.7% (+31.7 points) |
+| Correctness | 15.0% → 60.0% (+45.0 points) | 28.0% → 50.0% (+22.0 points) |
+| Discoverability | 90.0% | 74.6% |
+| Effectiveness | 39.3% → 63.4% (+24.1 points) | 32.3% → 38.5% (+6.2 points) |
+| Efficiency | 74.3% | 81.9% |
 
 ## Skill Version(s): <br>
-cbf66a11 (source: git SHA, committed 2026-09-11) <br>
+a141c5bc (source: git SHA, committed 2026-09-11) <br>
 
 ## Ethical Considerations: <br>
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications. When downloaded or used in accordance with our terms of service, developers should work with their internal team to ensure this skill meets requirements for the relevant industry and use case and addresses unforeseen product misuse. <br>

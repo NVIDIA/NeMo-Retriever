@@ -33,12 +33,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 72.2% — baseline ran, but no comparable score was available; uplift unavailable | 58.6% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 93.8% → 100.0% (+6.2 points) | 45.0% → 66.7% (+21.7 points) |
-| Correctness | 15.0% → 50.0% (+35.0 points) | 16.0% → 33.3% (+17.3 points) |
-| Discoverability | 83.3% — baseline ran, but no comparable score was available; uplift unavailable | 67.0% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 39.3% → 49.1% (+9.8 points) | 28.5% → 38.5% (+10.0 points) |
-| Efficiency | 78.4% — baseline ran, but no comparable score was available; uplift unavailable | 87.3% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 77.6% — baseline ran, but no comparable score was available; uplift unavailable | 62.3% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 100.0% → 100.0% (±0.0 points) | 35.0% → 66.7% (+31.7 points) |
+| Correctness | 15.0% → 60.0% (+45.0 points) | 28.0% → 50.0% (+22.0 points) |
+| Discoverability | 90.0% — baseline ran, but no comparable score was available; uplift unavailable | 74.6% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 39.3% → 63.4% (+24.1 points) | 32.3% → 38.5% (+6.2 points) |
+| Efficiency | 74.3% — baseline ran, but no comparable score was available; uplift unavailable | 81.9% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -52,17 +52,17 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 1,030,397 | 842,236 | N/A | N/A | skill 4/4; base 8/8 |
-| claude-code | nemo-retriever-mcp-001 | 222,851 | 150,058 | N/A | N/A | skill 1/1; base 3/3 |
-| claude-code | nemo-retriever-mcp-002 | 335,918 | 468,999 | N/A | N/A | skill 1/1; base 3/3 |
-| claude-code | nemo-retriever-mcp-003 | 441,908 | 193,466 | +248,442 | +128.42% | skill 1/1; base 1/1 |
-| claude-code | nemo-retriever-mcp-004 | 29,720 | 29,713 | +7 | +0.02% | skill 1/1; base 1/1 |
-| codex | All cases | 1,830,441 | 4,324,169 | N/A | N/A | skill 6/6; base 10/10 |
-| codex | nemo-retriever-mcp-001 | 100,586 | 651,633 | N/A | N/A | skill 1/1; base 3/3 |
-| codex | nemo-retriever-mcp-002 | 116,753 | 1,681,774 | N/A | N/A | skill 1/1; base 3/3 |
-| codex | nemo-retriever-mcp-003 | 1,599,505 | 1,977,214 | -377,709 | -19.10% | skill 3/3; base 3/3 |
-| codex | nemo-retriever-mcp-004 | 13,597 | 13,548 | +49 | +0.36% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 2,860,838 | 5,166,405 | N/A | N/A | skill 10/10; base 18/18 |
+| claude-code | All cases | 946,356 | 769,992 | N/A | N/A | skill 4/4; base 8/8 |
+| claude-code | nemo-retriever-mcp-001 | 353,531 | 89,716 | N/A | N/A | skill 1/1; base 3/3 |
+| claude-code | nemo-retriever-mcp-002 | 271,894 | 464,168 | N/A | N/A | skill 1/1; base 3/3 |
+| claude-code | nemo-retriever-mcp-003 | 291,132 | 186,376 | +104,756 | +56.21% | skill 1/1; base 1/1 |
+| claude-code | nemo-retriever-mcp-004 | 29,799 | 29,732 | +67 | +0.23% | skill 1/1; base 1/1 |
+| codex | All cases | 2,205,547 | 5,160,656 | N/A | N/A | skill 6/6; base 10/10 |
+| codex | nemo-retriever-mcp-001 | 316,305 | 821,518 | N/A | N/A | skill 1/1; base 3/3 |
+| codex | nemo-retriever-mcp-002 | 71,648 | 1,988,447 | N/A | N/A | skill 1/1; base 3/3 |
+| codex | nemo-retriever-mcp-003 | 1,803,971 | 2,337,144 | -533,173 | -22.81% | skill 3/3; base 3/3 |
+| codex | nemo-retriever-mcp-004 | 13,623 | 13,547 | +76 | +0.56% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 3,151,903 | 5,930,648 | N/A | N/A | skill 10/10; base 18/18 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 
