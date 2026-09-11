@@ -1,0 +1,149 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Measured BO767 throughput profile for four physical NVIDIA B200 GPUs.
+#
+# This profile reproduces the NIM versions and settings tested with the
+# NeMo Retriever 26.08.1 chart. The target node must expose two time-sliced
+# nvidia.com/gpu resources per physical GPU with the device plugin's packed
+# allocation policy. Apply the staged rollout in the chart README to obtain
+# three embed+OCR pairs and one page-elements+table-structure pair.
+
+service:
+  image:
+    repository: nvcr.io/nvidia/nemo-microservices/nrl-service
+    tag: "26.08.1"
+  # BO767 is a PDF workload. Audio and video require FFmpeg.
+  installFfmpeg: false
+
+topology:
+  mode: standalone
+  otel:
+    enabled: false
+
+serviceConfig:
+  vectordb:
+    enabled: true
+    embedModel: nvidia/llama-nemotron-embed-vl-1b-v2
+    indexMode: hybrid
+
+nims:
+  enabled: true
+
+nimOperator:
+  page_elements:
+    enabled: true
+    replicas: 1
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.1"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    env:
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "1"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "8"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-page-elements-v3
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/page-elements
+
+  table_structure:
+    enabled: true
+    replicas: 1
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.1"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    env:
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "1"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "8"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-table-structure-v1
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/table-structure
+
+  ocr:
+    enabled: true
+    replicas: 3
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
+      tag: "2.0.1"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    env:
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_PERFORMANCE_MODE
+        value: "1"
+      - name: NIM_SERVER_MODE
+        value: latency
+      - name: NIM_SERVER_MAX_WAIT_MS
+        value: "0"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "8"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_ENGINE_MODEL_NAME
+        value: nvidia/nemotron-ocr-v2
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/ocr
+      - name: NIM_ENGINE_MODEL_VARIANT
+        value: multilingual
+
+  vlm_embed:
+    enabled: true
+    nimServiceName: llama-nemotron-embed-vl-1b-v2
+    replicas: 3
+    image:
+      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
+      tag: "2.3.0"
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_ENGINE_PRECISION
+        value: fp16
+
+  rerankqa:
+    enabled: false
+  nemotron_parse:
+    enabled: false
+  nemotron_3_nano_omni_30b_a3b_reasoning:
+    enabled: false
+  answer_llm:
+    enabled: false
+  audio:
+    enabled: false
