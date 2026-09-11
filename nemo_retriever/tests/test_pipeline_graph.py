@@ -1162,6 +1162,44 @@ class TestRayDataExecutor:
             <= 4
         )
 
+    def test_shared_preflight_admits_file_and_inline_workers_with_normalization(self):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        file_executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 4, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+            source_cpu_reservation=1,
+        )
+        inline_executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 4, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=4, gpu_count=0)
+        preflight_executors(
+            [file_executor, inline_executor],
+            ClusterResources(total_resources=resources, available_resources=resources),
+            reserved_cpus=1,
+        )
+
+        assert file_executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 1
+        assert inline_executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 1
+
+    def test_preflight_rejects_infeasible_two_element_actor_pool_tuple(self):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": (1, 4), "num_cpus": 1}},
+        )
+
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            executor._preflight_resources(executor._linearize(graph), available_cpus=1, available_gpus=0)
+
     def test_preflight_counts_implicit_gpu_operator_reservation(self):
         graph = Graph()
         graph.add_root(GPUAdaptiveAddOperator())
