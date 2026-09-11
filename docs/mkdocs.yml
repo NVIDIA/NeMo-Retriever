@@ -75,21 +75,21 @@ nav:
   - About:
       - "About NeMo Retriever Library": extraction/about/index.md
       - "NeMo Retriever Library Overview": extraction/about/overview.md
-      - Key concepts: extraction/about/concepts.md
+      - Concepts: extraction/about/concepts.md
       - "Agentic retrieval (concept)": extraction/about/agentic-retrieval-concept.md
-      - Release notes: extraction/about/releasenotes.md
+      - "Release Notes for NeMo Retriever Library": extraction/about/releasenotes.md
   - Get started:
       - "About getting started": extraction/get-started/index.md
       - "Pre-Requisites & Support Matrix": extraction/get-started/prerequisites-support-matrix.md
       - "Authentication and API keys": extraction/get-started/api-keys.md
       - "Quickstart: retriever CLI": extraction/get-started/retriever-cli-quickstart.md
-      - "Quickstart: NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever
+      - "Quick Start for NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever
   - Ingest and extract content:
       - "About ingestion and extraction": extraction/ingest/index.md
       - "Workflow: Ingest documents into a searchable VDB collection": extraction/ingest/workflow-document-ingestion.md
-      - "Workflow: Audio & video ingestion": extraction/ingest/audio-video.md
+      - "Workflow: Audio and video ingestion": extraction/ingest/audio-video.md
       - Multimodal extraction: extraction/ingest/multimodal-extraction.md
-      - Embeddings: extraction/ingest/embedding.md
+      - "Use Embedding with NeMo Retriever Library": extraction/ingest/embedding.md
   - Search and manage collections:
       - "About collections": extraction/collections/index.md
       - "Vector databases": extraction/collections/vdbs.md
@@ -97,33 +97,33 @@ nav:
       - "Collection management API": extraction/reference/collection-management-api.md
   - Deploy and operate:
       - "About deployment and operations": extraction/deploy/index.md
-      - "Compare deployment options": extraction/deploy/deployment-options.md
-      - "OpenShift deployment (Helm)": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/openshift.md
-      - "Helm chart (Kubernetes)": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm
-      - "Docker service image": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docker.md
-      - "Ray and distributed ingest": extraction/deploy/ray-logging.md
-      - "Batch resource sizing": extraction/deploy/performance_guide.md
+      - "Deployment options": extraction/deploy/deployment-options.md
+      - "OpenShift deployment": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/openshift.md
+      - "nemo-retriever Helm chart": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm
+      - "Docker Service Image": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docker.md
+      - "Configure Ray Logging": extraction/deploy/ray-logging.md
+      - "Performance Guide": extraction/deploy/performance_guide.md
   - Customize and extend:
       - "About customization": extraction/customize/index.md
       - "Customize & extend": extraction/customize/customize-extend.md
   - Reference:
       - "About reference content": extraction/reference/index.md
-      - "API guide": extraction/reference/nemo-retriever-api-reference.md
+      - "NeMo Retriever API Reference": extraction/reference/nemo-retriever-api-reference.md
       - "Collection management API": extraction/reference/collection-management-api.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
-      - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
-      - Environment variables: extraction/reference/environment-config.md
-      - "Metadata reference": extraction/reference/content-metadata.md
+      - "Retriever CLI": https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
+      - "Environment Variables for NeMo Retriever Library": extraction/reference/environment-config.md
+      - "Metadata Reference for NeMo Retriever Library": extraction/reference/content-metadata.md
   - Troubleshooting:
       - "About evaluation and troubleshooting": extraction/troubleshooting/index.md
-      - "Evaluate on your own documents": extraction/troubleshooting/evaluate-on-your-data.md
-      - Troubleshooting: extraction/troubleshooting/troubleshoot.md
-      - FAQ: extraction/troubleshooting/faq.md
+      - "Evaluate on your data": extraction/troubleshooting/evaluate-on-your-data.md
+      - "Troubleshoot NeMo Retriever Library": extraction/troubleshooting/troubleshoot.md
+      - "Frequently Asked Questions for NeMo Retriever Library": extraction/troubleshooting/faq.md
   - Resources:
       - "About resources": extraction/resources/index.md
-      - Contributing: extraction/resources/contributing.md
-      - "Starter kits": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
-      - "OSS licences": license.md
+      - "Contributing to NeMo Retriever Library": extraction/resources/contributing.md
+      - "Starter Kits for NeMo Retriever Library": https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
+      - License: license.md
 
 plugins:
   - search

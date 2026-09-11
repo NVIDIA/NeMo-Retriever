@@ -12,6 +12,6 @@ Read [Throughput is dataset-dependent](../ingest/multimodal-extraction.md#extrac
 
 ## Operational tuning { #operational-tuning }
 
-- [Ray and distributed ingest](../deploy/ray-logging.md)
+- [Configure Ray Logging](../deploy/ray-logging.md)
 - [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md) for supported configurations
 - [Troubleshoot](troubleshoot.md) when results or performance diverge from expectations
