@@ -9,9 +9,6 @@ Use this section to look up public APIs, environment variables, metadata fields,
 - [Environment variables](environment-config.md) lists supported runtime configuration variables.
 - [Metadata reference](content-metadata.md) describes extraction output fields and schemas.
 - [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli) documents `retriever` commands and options.
-- [Contributing](../resources/contributing.md) explains repository setup and contribution requirements.
-- [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md) provide runnable examples and notebooks.
-- [OSS licences](../../license.md) lists open-source licenses for this project.
 
 ## Next steps
 
