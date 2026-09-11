@@ -78,6 +78,11 @@ env:
   FW_CI_TEMPLATES_REF: 563a769458cf1428194be49cb4de575b72d739e8
   DOCS_SITE_URL_BASE: https://docs.nvidia.com/nemo/retriever
   S3_TARGET_PATH: developer/docs/nemo/retriever
+  # Manual ECCU SOP flushes docs.nvidia.com directory /nemo/retriever. publish-docs
+  # flushes the S3 object prefix (developer/docs/nemo/retriever), which does not
+  # evict the cached HTML served at the public URL path.
+  AKAMAI_ECCU_TARGET_PATH: nemo/retriever
+  DOCS_PUBLISH_PROBE_MARKER: (ATIF) JSON trajectory
   ARTIFACT_NAME: nrl-docs-nvidia-site
 
 jobs:
@@ -250,3 +255,66 @@ jobs:
           S3_ROOT="${S3_TARGET_ROOT%/}"
           DEST="${S3_ROOT}/${{ env.S3_TARGET_PATH }}/index.html"
           aws s3 cp --quiet nemo-retriever-src/docs/publish/index.html "${DEST}"
+
+      - name: Install Akamai ECCU flush dependencies
+        if: needs.resolve.outputs.dry_run == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base xsltproc jq
+          python -m pip install --upgrade pip
+          python -m pip install httpie edgegrid
+
+      - name: Flush Akamai cache for docs.nvidia.com URL path
+        if: needs.resolve.outputs.dry_run == 'false'
+        env:
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+          AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
+          AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
+          AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
+          AKAMAI_ECCU_TARGET_PATH: ${{ env.AKAMAI_ECCU_TARGET_PATH }}
+          EMAILS_CSV: ${{ needs.resolve.outputs.emails_csv }}
+        run: |
+          set -euo pipefail
+          XSLT_TEMPLATE="FW-CI-templates/.github/actions/publish-docs/akamai-eccu-flush.xslt"
+          EDGERC_TEMPLATE="FW-CI-templates/.github/actions/publish-docs/edgerc.template"
+
+          xsltproc --stringparam target-path "${AKAMAI_ECCU_TARGET_PATH}" "${XSLT_TEMPLATE}" "${XSLT_TEMPLATE}" \
+            | sed 's/xmlns:match="x"/xmlns:match="x" /' > /tmp/nrl-retriever-flush.xml
+          cat /tmp/nrl-retriever-flush.xml
+
+          echo -n "${EMAILS_CSV}" | jq -Rc 'split(",")' > /tmp/nrl-retriever-flush-emails.json
+          envsubst < "${EDGERC_TEMPLATE}" > ~/.edgerc
+
+          http --ignore-stdin --auth-type edgerc -a default: POST \
+            "https://${AKAMAI_HOST}/eccu-api/v1/requests" \
+            metadata=@/tmp/nrl-retriever-flush.xml \
+            propertyName=docs.nvidia.com \
+            propertyNameExactMatch=true \
+            propertyType=HOST_HEADER \
+            requestName="nemo-retriever-docs-url-path-${{ github.run_id }}" \
+            statusUpdateEmails:=@/tmp/nrl-retriever-flush-emails.json
+
+          rm -f ~/.edgerc
+
+      - name: Checkout verification script
+        if: needs.resolve.outputs.dry_run == 'false'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: nemo-retriever-verify
+          sparse-checkout: docs/scripts/verify_docs_nvidia_publish.py
+
+      - name: Verify docs.nvidia.com canonical URLs
+        if: needs.resolve.outputs.dry_run == 'false'
+        env:
+          DOCS_VERSION: ${{ needs.resolve.outputs.docs_version }}
+          DOCS_SITE_URL_BASE: ${{ env.DOCS_SITE_URL_BASE }}
+          DOCS_PUBLISH_PROBE_MARKER: ${{ env.DOCS_PUBLISH_PROBE_MARKER }}
+          GITHUB_RUN_STARTED_AT: ${{ github.run_started_at }}
+        run: |
+          python nemo-retriever-verify/docs/scripts/verify_docs_nvidia_publish.py \
+            --url "${DOCS_SITE_URL_BASE}/${DOCS_VERSION}/extraction/workflow-agentic-retrieval/" \
+            --url "${DOCS_SITE_URL_BASE}/latest/extraction/workflow-agentic-retrieval/" \
+            --marker "${DOCS_PUBLISH_PROBE_MARKER}" \
+            --min-last-modified-utc "${GITHUB_RUN_STARTED_AT}" \
+            --retry-seconds 2400 \
+            --retry-interval-seconds 60
