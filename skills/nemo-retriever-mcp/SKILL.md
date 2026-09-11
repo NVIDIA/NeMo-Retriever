@@ -1,6 +1,7 @@
 ---
 name: nemo-retriever-mcp
 description: Use when a task needs to search or add documents through NeMo Retriever MCP.
+license: Apache-2.0
 ---
 
 # NeMo Retriever MCP
