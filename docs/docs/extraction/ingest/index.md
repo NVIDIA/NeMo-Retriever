@@ -4,10 +4,10 @@ Use this section to ingest documents and media, extract multimodal content, and 
 
 ## Choose a workflow
 
-- [Ingest documents into a searchable collection](workflow-document-ingestion.md) provides an end-to-end ingestion workflow.
-- [Ingest audio and video](audio-video.md) explains media extraction and speech processing.
-- [Extract multimodal content](multimodal-extraction.md) covers text, tables, charts, images, and optical character recognition.
-- [Create embeddings](embedding.md) explains text and image embedding options.
+- [Workflow: Ingest documents into a searchable VDB collection](workflow-document-ingestion.md) provides an end-to-end ingestion workflow.
+- [Workflow: Audio and video ingestion](audio-video.md) explains media extraction and speech processing.
+- [Multimodal extraction](multimodal-extraction.md) covers text, tables, charts, images, and optical character recognition.
+- [Use Embedding with NeMo Retriever Library](embedding.md) explains text and image embedding options.
 
 ## Next steps
 

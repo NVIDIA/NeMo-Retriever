@@ -4,10 +4,10 @@ Use this section to understand what NeMo Retriever Library does, how its pipelin
 
 ## Choose a topic
 
-- [NeMo Retriever Library overview](overview.md) introduces supported content, extraction, and deployment modes.
-- [Key concepts](concepts.md) explains jobs, pipelines, tasks, chunking, embeddings, and retrieval.
-- [Agentic retrieval](agentic-retrieval-concept.md) compares iterative agent-driven retrieval with one-pass retrieval.
-- [Release notes](releasenotes.md) describes changes in each release.
+- [NeMo Retriever Library Overview](overview.md) introduces supported content, extraction, and deployment modes.
+- [Concepts](concepts.md) explains jobs, pipelines, tasks, chunking, embeddings, and retrieval.
+- [Agentic retrieval (concept)](agentic-retrieval-concept.md) compares iterative agent-driven retrieval with one-pass retrieval.
+- [Release Notes for NeMo Retriever Library](releasenotes.md) describes changes in each release.
 
 ## Next steps
 

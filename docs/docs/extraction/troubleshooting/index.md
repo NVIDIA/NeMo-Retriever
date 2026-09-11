@@ -6,7 +6,7 @@ Use this section to evaluate retrieval quality, diagnose failures, and find answ
 
 - [Evaluate on your data](evaluate-on-your-data.md) explains retrieval quality checks and evaluation workflows.
 - [Troubleshoot NeMo Retriever Library](troubleshoot.md) provides symptoms, causes, and corrective actions.
-- [Frequently asked questions](faq.md) answers common product and configuration questions.
+- [Frequently Asked Questions for NeMo Retriever Library](faq.md) answers common product and configuration questions.
 
 ## Next steps
 
