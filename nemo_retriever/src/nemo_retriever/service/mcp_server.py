@@ -552,10 +552,10 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         @mcp.tool(
             name="query",
             description=(
-                "For a given query, search over a collection of documents (or document pages if multi-page) and return the top-k most relevant hits. "
-                "format='hits' (default) returns raw retrieval hits; format='evidence' "
-                "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
-                "Set rerank=true to rerank candidates through the configured service endpoint."
+                "For a given query, search over a collection of documents (or document pages if multi-page) and return "
+                "the top-k most relevant hits. format='hits' (default) returns raw retrieval hits; format='evidence' "
+                "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. Set rerank=true to rerank "
+                "candidates through the configured service endpoint."
             ),
         )
         async def query(
@@ -580,10 +580,12 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         @mcp.tool(
             name="agentic_query",
             description=(
-                "A smart, high-level retrieval tool that understands complex queries. "
-                "For a given query, it searches over a collection of documents (or document pages if multi-page) and returns the top-k most relevant hits. "
-                "Internally, this tool uses a smart AI agent that reasons about a given query, if needed, decomposes the query, explores the corpus from different angles, "
-                "considers different types of evidence, adapts its search based on available evidence, aggregates its discoveries, and returns the most relevant items to the query that it has found."
+                "A smart, high-level retrieval tool that understands complex queries. For a given query, it searches "
+                "over a collection of documents (or document pages if multi-page) and returns the top-k most relevant "
+                "hits. Internally, this tool uses a smart AI agent that reasons about a given query, if needed, "
+                "decomposes the query, explores the corpus from different angles, considers different types of "
+                "evidence, adapts its search based on available evidence, aggregates its discoveries, and returns the "
+                "most relevant items to the query that it has found."
             ),
         )
         async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:
