@@ -10,4 +10,4 @@ Use this section to evaluate retrieval quality, diagnose failures, and find answ
 
 ## Next steps
 
-If you cannot resolve an issue, refer to [Contributing](../resources/contributing.md) or the [Reference](../reference/index.md) section for contribution and community links.
+If you cannot resolve an issue, refer to [Resources](../resources/index.md) for contribution and community links.

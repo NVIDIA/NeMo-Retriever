@@ -100,14 +100,6 @@ navigation:
       - page: "Metadata reference"
         slug: content-metadata
         path: ../../docs/extraction/reference/content-metadata.mdx
-      - page: "Contributing"
-        slug: contributing
-        path: ../../docs/extraction/resources/contributing.mdx
-      - link: "Starter kits"
-        href: https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
-      - page: "OSS licences"
-        slug: license
-        path: ../../docs/license.mdx
   - section: Troubleshooting
     slug: troubleshooting
     path: ../../docs/extraction/troubleshooting/index.mdx
@@ -121,3 +113,15 @@ navigation:
       - page: "FAQ"
         slug: faq
         path: ../../docs/extraction/troubleshooting/faq.mdx
+  - section: Resources
+    slug: resources
+    path: ../../docs/extraction/resources/index.mdx
+    contents:
+      - page: "Contributing"
+        slug: contributing
+        path: ../../docs/extraction/resources/contributing.mdx
+      - link: "Starter kits"
+        href: https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
+      - page: "OSS licences"
+        slug: license
+        path: ../../docs/license.mdx
