@@ -936,22 +936,27 @@ class TestCallableLLMBackend:
 
 
 class TestAgentConfigMode:
-    """``mode`` is retained as the extension point but only ``select`` is implemented."""
+    """``select`` and ``answer`` are the supported modes; anything else is rejected."""
 
     def test_select_mode_is_accepted(self):
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         assert AgentConfig(mode="select").mode == "select"
 
+    def test_answer_mode_is_accepted(self):
+        from nemo_retriever._agentic.nemo_agent import AgentConfig
+
+        assert AgentConfig(mode="answer").mode == "answer"
+
     def test_mode_defaults_to_select(self):
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         assert AgentConfig().mode == "select"
 
-    def test_answer_mode_is_rejected(self):
+    def test_unknown_mode_is_rejected(self):
         from pydantic import ValidationError
 
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         with pytest.raises(ValidationError):
-            AgentConfig(mode="answer")
+            AgentConfig(mode="summarize")
