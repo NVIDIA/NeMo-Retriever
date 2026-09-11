@@ -12,7 +12,7 @@ Follow these steps:
 2. **Use parallel PDF handling.** The default ingest path splits large PDFs before Ray processing; refer to [API guide — PDF pre-splitting](../reference/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest).
 3. **Tune extraction for your content.** Refer to [Multimodal extraction](multimodal-extraction.md) for formats, [text and layout](multimodal-extraction.md#text-and-layout-extraction), [tables](multimodal-extraction.md#tables), [OCR](multimodal-extraction.md#ocr-and-scanned-documents), and related subsections on that page.
 
-Pipeline concepts and stage overview appear in [Concepts](../about/concepts.md). Default chunking behavior is summarized under [Chunking](../about/concepts.md#chunking).
+Pipeline concepts and stage overview appear in [Key concepts](../about/concepts.md). Default chunking behavior is summarized under [Chunking](../about/concepts.md#chunking).
 
 `create_ingestor(run_mode="inprocess")` and `create_ingestor(run_mode="batch")` return a `GraphIngestor`. That object chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. `create_ingestor(run_mode="service")` returns a `ServiceIngestor` for a remote Retriever service. Refer to the [Python API guide](../reference/nemo-retriever-api-reference.md#public-ingestion-factory) for the factory contract.
 

@@ -3,16 +3,16 @@ navigation:
     slug: about
     path: ../../docs/extraction/about/index.mdx
     contents:
-      - page: "NeMo Retriever Library Overview"
+      - page: Overview
         slug: overview
         path: ../../docs/extraction/about/overview.mdx
-      - page: "Concepts"
+      - page: "Key concepts"
         slug: concepts
         path: ../../docs/extraction/about/concepts.mdx
       - page: "Agentic retrieval (concept)"
         slug: agentic-retrieval-concept
         path: ../../docs/extraction/about/agentic-retrieval-concept.mdx
-      - page: "Release Notes for NeMo Retriever Library"
+      - page: "Release notes"
         slug: releasenotes
         path: ../../docs/extraction/about/releasenotes.mdx
   - section: Get started
@@ -28,7 +28,7 @@ navigation:
       - page: "Quickstart: retriever CLI"
         slug: retriever-cli-quickstart
         path: ../../docs/extraction/get-started/retriever-cli-quickstart.mdx
-      - link: "Quick Start for NeMo Retriever Library"
+      - link: "Quickstart: NeMo Retriever Library"
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever
   - section: Ingest and extract content
     slug: ingest
@@ -37,13 +37,13 @@ navigation:
       - page: "Workflow: Ingest documents into a searchable VDB collection"
         slug: workflow-document-ingestion
         path: ../../docs/extraction/ingest/workflow-document-ingestion.mdx
-      - page: "Workflow: Audio and video ingestion"
+      - page: "Workflow: Audio & video ingestion"
         slug: audio-video
         path: ../../docs/extraction/ingest/audio-video.mdx
       - page: "Multimodal extraction"
         slug: multimodal-extraction
         path: ../../docs/extraction/ingest/multimodal-extraction.mdx
-      - page: "Use Embedding with NeMo Retriever Library"
+      - page: "Embeddings"
         slug: embedding
         path: ../../docs/extraction/ingest/embedding.mdx
   - section: Search and manage collections
@@ -62,19 +62,19 @@ navigation:
     slug: deploy
     path: ../../docs/extraction/deploy/index.mdx
     contents:
-      - page: "Deployment options"
+      - page: "Compare deployment options"
         slug: deployment-options
         path: ../../docs/extraction/deploy/deployment-options.mdx
-      - link: "OpenShift deployment"
+      - link: "OpenShift deployment (Helm)"
         href: https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/openshift.md
-      - link: "nemo-retriever Helm chart"
+      - link: "Helm chart (Kubernetes)"
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/helm
-      - link: "Docker Service Image"
+      - link: "Docker service image"
         href: https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docker.md
-      - page: "Configure Ray Logging"
+      - page: "Ray and distributed ingest"
         slug: ray-logging
         path: ../../docs/extraction/deploy/ray-logging.mdx
-      - page: "Performance Guide"
+      - page: "Batch resource sizing"
         slug: performance-guide
         path: ../../docs/extraction/deploy/performance_guide.mdx
   - section: Customize and extend
@@ -88,42 +88,42 @@ navigation:
     slug: reference
     path: ../../docs/extraction/reference/index.mdx
     contents:
-      - page: "NeMo Retriever API Reference"
+      - page: "API guide"
         slug: nemo-retriever-api-reference
         path: ../../docs/extraction/reference/nemo-retriever-api-reference.mdx
       - page: "Collection management API"
         slug: collection-management-api
         path: ../../docs/extraction/reference/collection-management-api.mdx
-      - link: "Retriever CLI"
+      - link: "CLI reference"
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
-      - page: "Environment Variables for NeMo Retriever Library"
+      - page: "Environment variables"
         slug: environment-config
         path: ../../docs/extraction/reference/environment-config.mdx
-      - page: "Metadata Reference for NeMo Retriever Library"
+      - page: "Metadata reference"
         slug: content-metadata
         path: ../../docs/extraction/reference/content-metadata.mdx
   - section: Troubleshooting
     slug: troubleshooting
     path: ../../docs/extraction/troubleshooting/index.mdx
     contents:
-      - page: "Evaluate on your data"
+      - page: "Evaluate on your own documents"
         slug: evaluate-on-your-data
         path: ../../docs/extraction/troubleshooting/evaluate-on-your-data.mdx
-      - page: "Troubleshoot NeMo Retriever Library"
+      - page: "Troubleshooting"
         slug: troubleshoot
         path: ../../docs/extraction/troubleshooting/troubleshoot.mdx
-      - page: "Frequently Asked Questions for NeMo Retriever Library"
+      - page: "FAQ"
         slug: faq
         path: ../../docs/extraction/troubleshooting/faq.mdx
   - section: Resources
     slug: resources
     path: ../../docs/extraction/resources/index.mdx
     contents:
-      - page: "Contributing to NeMo Retriever Library"
+      - page: "Contributing"
         slug: contributing
         path: ../../docs/extraction/resources/contributing.mdx
-      - link: "Starter Kits for NeMo Retriever Library"
+      - link: "Starter kits"
         href: https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md
-      - page: "License"
+      - page: "OSS licences"
         slug: license
         path: ../../docs/license.mdx
