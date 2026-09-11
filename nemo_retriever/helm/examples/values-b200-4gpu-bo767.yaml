@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Measured BO767 throughput profile for four physical NVIDIA B200 GPUs.
 #
 # This profile reproduces the NIM versions and settings tested with the

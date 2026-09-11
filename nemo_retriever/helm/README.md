@@ -337,6 +337,9 @@ hardware. They are not general performance guarantees.
 
 The target node must advertise two time-sliced `nvidia.com/gpu` resources per
 physical GPU and use the NVIDIA device plugin's `packed` allocation policy.
+Set `TARGET_NODE` to that node's `kubernetes.io/hostname` label. The commands
+below pass the target as a node selector for all four NIMs, which prevents
+Kubernetes from scheduling any replica on another eligible GPU node.
 The final placement must contain the following physical GPU pairs:
 
 | Physical GPU | NIM workloads |
@@ -357,10 +360,21 @@ structure are disabled:
 REL=retriever
 NS=nemo-retriever
 PROFILE=./nemo_retriever/helm/examples/values-b200-4gpu-bo767.yaml
+TARGET_NODE=b200-node-name
+NODE_SELECTOR_ARGS=(
+  "--set-string=nimOperator.page_elements.nodeSelector.kubernetes\\.io/hostname=${TARGET_NODE}"
+  "--set-string=nimOperator.table_structure.nodeSelector.kubernetes\\.io/hostname=${TARGET_NODE}"
+  "--set-string=nimOperator.ocr.nodeSelector.kubernetes\\.io/hostname=${TARGET_NODE}"
+  "--set-string=nimOperator.vlm_embed.nodeSelector.kubernetes\\.io/hostname=${TARGET_NODE}"
+)
+
+kubectl get node "${TARGET_NODE}" \
+  -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\\.com/gpu
 
 helm upgrade --install "${REL}" ./nemo_retriever/helm \
   -n "${NS}" --create-namespace \
   -f "${PROFILE}" \
+  "${NODE_SELECTOR_ARGS[@]}" \
   --set nimOperator.page_elements.enabled=false \
   --set nimOperator.table_structure.enabled=false \
   --set nimOperator.ocr.replicas=1 \
@@ -375,16 +389,35 @@ Add each subsequent embed replica before its matching OCR replica. Wait for
 each Deployment so the packed allocator fills the next physical GPU pair:
 
 ```bash
+set -euo pipefail
+
+wait_for_deployment_replicas() {
+  local deployment="$1"
+  local replicas="$2"
+  local generation
+
+  kubectl wait deployment/"${deployment}" -n "${NS}" \
+    --for=jsonpath='{.spec.replicas}'="${replicas}" --timeout=10m || return 1
+  generation="$(kubectl get deployment/"${deployment}" -n "${NS}" \
+    -o jsonpath='{.metadata.generation}')" || return 1
+  kubectl wait deployment/"${deployment}" -n "${NS}" \
+    --for=jsonpath='{.status.observedGeneration}'="${generation}" --timeout=10m || return 1
+  kubectl wait deployment/"${deployment}" -n "${NS}" \
+    --for=jsonpath='{.status.updatedReplicas}'="${replicas}" --timeout=10m || return 1
+  kubectl wait deployment/"${deployment}" -n "${NS}" \
+    --for=jsonpath='{.status.readyReplicas}'="${replicas}" --timeout=10m
+}
+
 for REPLICAS in 2 3; do
   kubectl patch nimservice llama-nemotron-embed-vl-1b-v2 -n "${NS}" \
     --type merge -p "{\"spec\":{\"replicas\":${REPLICAS}}}"
-  kubectl rollout status deployment/llama-nemotron-embed-vl-1b-v2 \
-    -n "${NS}" --timeout=10m
+  wait_for_deployment_replicas llama-nemotron-embed-vl-1b-v2 "${REPLICAS}" \
+    || exit 1
 
   kubectl patch nimservice nemotron-ocr-v2 -n "${NS}" \
     --type merge -p "{\"spec\":{\"replicas\":${REPLICAS}}}"
-  kubectl rollout status deployment/nemotron-ocr-v2 \
-    -n "${NS}" --timeout=10m
+  wait_for_deployment_replicas nemotron-ocr-v2 "${REPLICAS}" \
+    || exit 1
 done
 ```
 
@@ -392,7 +425,8 @@ Apply the final profile to enable page elements and table structure. Wait for
 the four NIMServices and the retriever service before sending traffic:
 
 ```bash
-helm upgrade "${REL}" ./nemo_retriever/helm -n "${NS}" -f "${PROFILE}"
+helm upgrade "${REL}" ./nemo_retriever/helm -n "${NS}" -f "${PROFILE}" \
+  "${NODE_SELECTOR_ARGS[@]}"
 
 kubectl wait -n "${NS}" --for=jsonpath='{.status.state}'=Ready \
   nimservice/llama-nemotron-embed-vl-1b-v2 \
@@ -416,6 +450,51 @@ for POD in $(kubectl get pods -n "${NS}" -o name | grep -E \
     nvidia-smi --query-gpu=uuid --format=csv,noheader
 done | sort -k2,2 -k1,1
 ```
+
+#### Reproduce the measured BO767 run
+
+The measured run used
+[`harness/runfiles/bo767_vl_text_hybrid_beir_service.json`](../harness/runfiles/bo767_vl_text_hybrid_beir_service.json).
+The runfile selects text embedding at element granularity and automatic
+retrieval. The resolved benchmark disables captioning, deduplication,
+chunking, page deduplication, and reranking. It queries the top 10 results and
+sets `overwrite=true`, which replaces the target table before ingestion.
+
+Create a dataset-paths file that points to the SSD copy of the corpus. The
+measured machine used the following file:
+
+```yaml
+schema_version: 1
+datasets:
+  bo767:
+    path: /raid/jperez/data/bo767
+    query_file: /raid/jperez/nemo_retriever/data/bo767_query_gt.csv
+```
+
+In one terminal, forward the deployed service port:
+
+```bash
+kubectl port-forward -n "${NS}" \
+  service/"${REL}"-nemo-retriever 17671:7670
+```
+
+From the repository root in another terminal, run the same harness command
+used for the measurement:
+
+```bash
+uv run --project nemo_retriever retriever-harness run-files \
+  --output-dir /raid/jperez/nemo_retriever_runs/bo767_scale_260801_embed3_ocr3_4gpu_balanced_batch8/results \
+  --session-name bo767_scale_260801_embed3_ocr3_4gpu_balanced_batch8 \
+  --mode service \
+  --service-endpoint http://localhost:17671 \
+  --dataset-paths /raid/jperez/nemo_retriever_runs/bo767_scale_260801_embed3_ocr3_4gpu_balanced_batch8/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/bo767_vl_text_hybrid_beir_service.json
+```
+
+The timed run started after the service and all four NIMServices were ready.
+The NIM containers and model caches were warm, but the corpus did not receive
+an untimed ingestion warmup pass. Use a new output directory and update the
+machine-local paths when you reproduce the run elsewhere.
 
 This profile targets BO767 PDF ingestion. `service.installFfmpeg` remains
 `false`. Enable FFmpeg separately for audio or video workflows.
