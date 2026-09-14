@@ -84,7 +84,7 @@ nemo_retriever/helm/
 The examples in this README use the Helm release name `retriever`.
 `nemo-retriever` is the chart name. It is not the release name. When a
 command omits `--namespace`, Helm installs into the current kubectl
-namespace. The [Recommended minimal install](#recommended-minimal-install-26081)
+namespace. The [Recommended minimal install](#recommended-minimal-install-2682)
 and [Full teardown](#full-teardown) set `REL` and `NS` explicitly so
 cleanup targets the same release.
 
@@ -331,7 +331,7 @@ If `helm install` already succeeded and NIM pods stay `Pending` on
 The chart defaults to the image published to NGC:
 
 ```
-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
+nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2
 ```
 
 Release-published tags of that image are multi-architecture (`linux/amd64` and `linux/arm64`). Kubernetes pulls the variant that matches the node.
@@ -450,7 +450,7 @@ NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
 Parakeet `audio` ASR NIM) is **disabled by default** to honor the
 "optional and disabled by default" contract in
 [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md);
-refer to [Recommended minimal install](#recommended-minimal-install-2608)
+refer to [Recommended minimal install](#recommended-minimal-install-2682)
 for the opt-in `--set` flags that turn any of them on.
 
 ```bash
@@ -461,7 +461,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.08.1) { #recommended-minimal-install-26081 }
+### Recommended minimal install (26.8.2) { #recommended-minimal-install-2682 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
@@ -481,7 +481,7 @@ helm install "${REL}" ./nemo_retriever/helm -n "${NS}" --create-namespace \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set service.image.tag=26.8.1
+  --set service.image.tag=26.8.2
 ```
 
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
@@ -553,7 +553,7 @@ To change a NIM image on a later install or upgrade, delete the kept
 On a development cluster, remove the Helm release, kept `NIMCache`
 objects, and model PVCs. Set `REL` and `NS` to the same values you used
 at install time. The
-[Recommended minimal install](#recommended-minimal-install-26081) uses
+[Recommended minimal install](#recommended-minimal-install-2682) uses
 `REL=retriever` and `NS=default`. If you omitted `--namespace` at
 install time, Helm used the current kubectl namespace. Replace `NS` if
 that namespace is not `default`.
@@ -670,7 +670,7 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
+| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
 
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
@@ -701,7 +701,7 @@ serviceConfig:
 
 Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
 
-Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2682).
 
 After you set those values, complete the following steps:
 
@@ -1258,7 +1258,7 @@ gated on three conditions ALL holding:
 > [Query-time reranking](#query-time-reranking)); other optional NIMs
 > still need an explicit serviceConfig hook (for example
 > `audioGrpcEndpoint` for Parakeet ASR). For minimal installs, prefer the
-> [minimal install](#recommended-minimal-install-2608) overrides.
+> [minimal install](#recommended-minimal-install-2682) overrides.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
 
