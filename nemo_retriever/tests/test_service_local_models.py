@@ -9,12 +9,14 @@ from nemo_retriever.service.config import (
     NimEndpointsConfig,
     PipelinePoolConfig,
     ServiceConfig,
+    VectorDbConfig,
 )
 from nemo_retriever.service.services.pipeline_executor import (
     _embed_params_enabled,
     _resolve_embed_params,
     build_asr_params,
     build_embed_params,
+    _resolve_extract_params,
     build_extract_params,
 )
 
@@ -74,6 +76,7 @@ def test_build_extract_params_local_enables_table_structure() -> None:
     local = LocalModelsConfig(enabled=True)
     ep = build_extract_params(NimEndpointsConfig(), local)
     assert ep.use_table_structure is True
+    assert ep.method == "pdfium_hybrid"
     assert ep.ocr_version == "v2"
     assert ep.page_elements_invoke_url is None
 
@@ -196,3 +199,50 @@ def test_local_models_respects_higher_process_pool_cap() -> None:
     )
     assert cfg.pipeline.realtime_workers == 2
     assert cfg.pipeline.batch_workers == 2
+
+
+def test_build_extract_params_uses_pdfium_without_ocr() -> None:
+    ep = build_extract_params(NimEndpointsConfig(), LocalModelsConfig())
+
+    assert ep.method == "pdfium"
+
+
+def test_build_extract_params_uses_pdfium_hybrid_with_remote_ocr() -> None:
+    ep = build_extract_params(
+        NimEndpointsConfig(ocr_invoke_url="http://ocr-nim/v1/ocr"),
+        LocalModelsConfig(),
+    )
+
+    assert ep.method == "pdfium_hybrid"
+
+
+def test_build_extract_params_uses_pdfium_when_local_ocr_is_disabled() -> None:
+    local = LocalModelsConfig(enabled=True)
+    local.extract.enabled = False
+
+    assert build_extract_params(NimEndpointsConfig(), local).method == "pdfium"
+
+
+def test_explicit_extract_method_overrides_service_default() -> None:
+    base = build_extract_params(
+        NimEndpointsConfig(ocr_invoke_url="http://ocr-nim/v1/ocr"),
+        LocalModelsConfig(),
+    ).model_dump(mode="json")
+
+    resolved = _resolve_extract_params(base, {"method": "pdfium"})
+
+    assert resolved.method == "pdfium"
+
+
+def test_vectordb_empty_upload_policy_defaults_to_raise() -> None:
+    assert VectorDbConfig().empty_upload_policy == "raise"
+
+
+@pytest.mark.parametrize("policy", ["raise", "warn"])
+def test_vectordb_empty_upload_policy_accepts_supported_values(policy: str) -> None:
+    assert VectorDbConfig(empty_upload_policy=policy).empty_upload_policy == policy  # type: ignore[arg-type]
+
+
+def test_vectordb_empty_upload_policy_rejects_unknown_values() -> None:
+    with pytest.raises(ValueError, match="Input should be 'raise' or 'warn'"):
+        VectorDbConfig(empty_upload_policy="ignore")  # type: ignore[arg-type]

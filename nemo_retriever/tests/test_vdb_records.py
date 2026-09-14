@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.vdb.records import (
     normalize_retrieval_results,
+    VdbUploadError,
     to_client_vdb_records,
 )
 
@@ -283,3 +284,50 @@ def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:
     assert hit["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
     assert hit["page_number"] == 7
     assert hit["source_id"] == "/tmp/source.pdf"
+
+
+def test_warn_policy_skips_rows_without_searchable_content() -> None:
+    row = {
+        "text": "",
+        "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+        "source_id": "/tmp/empty.pdf",
+    }
+
+    assert to_client_vdb_records([row], empty_upload_policy="warn") == []
+
+
+def test_raise_policy_rejects_rows_without_searchable_content() -> None:
+    row = {
+        "text": "",
+        "text_embeddings_1b_v2": {"embedding": [0.1, 0.2]},
+        "source_id": "/tmp/empty.pdf",
+    }
+
+    with pytest.raises(VdbUploadError, match="missing searchable text or image backing=1"):
+        to_client_vdb_records([row])
+
+
+def test_warn_policy_does_not_suppress_missing_embeddings() -> None:
+    with pytest.raises(VdbUploadError, match="missing embedding=1"):
+        to_client_vdb_records([{"text": "searchable"}], empty_upload_policy="warn")
+
+
+def test_warn_policy_does_not_suppress_upstream_errors() -> None:
+    row = {
+        "text": "",
+        "metadata": {
+            "error": {
+                "stage": "ocr",
+                "type": "RuntimeError",
+                "message": "failed",
+            }
+        },
+    }
+
+    with pytest.raises(VdbUploadError, match="structured row error"):
+        to_client_vdb_records([row], empty_upload_policy="warn")
+
+
+def test_empty_upload_policy_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError, match="empty_upload_policy must be"):
+        to_client_vdb_records([], empty_upload_policy="ignore")  # type: ignore[arg-type]

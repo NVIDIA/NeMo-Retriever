@@ -10,7 +10,7 @@ import json
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import ValidationError
 
@@ -396,7 +396,11 @@ def _raise_for_empty_vdb_conversion(graph_rows: list[dict[str, Any]]) -> None:
     )
 
 
-def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
+def to_client_vdb_records(
+    rows: Any,
+    *,
+    empty_upload_policy: Literal["raise", "warn"] = "raise",
+) -> list[list[dict[str, Any]]]:
     """Convert graph-ingest rows into the nested record shape expected by client VDBs.
 
     Dense rows require an embedding and either nonblank text or concrete image backing.
@@ -406,8 +410,12 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     When at least one row converts, returns ``[batch]`` with a single non-empty inner list
     (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
     Uploadable graph content without an embedding raises ``VdbUploadError`` when
-    no row survives conversion.
+    no row survives conversion. ``empty_upload_policy="warn"`` returns an empty
+    result only for rows that lack searchable text and concrete image backing;
+    callers are responsible for logging the skipped upload.
     """
+    if empty_upload_policy not in {"raise", "warn"}:
+        raise ValueError("empty_upload_policy must be 'raise' or 'warn'")
     if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
         nonempty_batches = [batch for batch in rows if batch]
         return rows if len(nonempty_batches) == len(rows) else nonempty_batches
@@ -420,6 +428,14 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     # would call _client_record_from_graph_row twice per row on large datasets.
     # isinstance(row, dict): plain lists are not normalized like DataFrame rows; skip None/Series/etc.
     inner = [record for row in graph_rows if (record := _client_record_from_graph_row(row)) is not None]
+    if (
+        not inner
+        and graph_rows
+        and empty_upload_policy == "warn"
+        and not any(error for row in graph_rows for error in iter_stage_errors_from_value(row))
+        and not any(_row_has_uploadable_content_without_embedding(row) for row in graph_rows)
+    ):
+        return []
     if not inner and graph_rows:
         _raise_for_empty_vdb_conversion(graph_rows)
     # Preserve legacy contract: no uploadable rows → [], not [[]].

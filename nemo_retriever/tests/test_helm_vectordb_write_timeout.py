@@ -61,3 +61,15 @@ def test_write_timeout_override_is_rendered() -> None:
     config = _render("--set", "serviceConfig.vectordb.writeTimeoutSeconds=900")
 
     assert config["vectordb"]["write_timeout_s"] == 900
+
+
+def test_default_empty_upload_policy_is_rendered() -> None:
+    config = _render()
+
+    assert config["vectordb"]["empty_upload_policy"] == "raise"
+
+
+def test_empty_upload_policy_override_is_rendered() -> None:
+    config = _render("--set", "serviceConfig.vectordb.emptyUploadPolicy=warn")
+
+    assert config["vectordb"]["empty_upload_policy"] == "warn"

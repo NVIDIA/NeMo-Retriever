@@ -296,6 +296,7 @@ def _post_records_to_vectordb(
     job_id: str | None = None,
     internal_api_token: str | None = None,
     timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
+    source_row_count: int | None = None,
 ) -> None:
     """Post canonical NRL record batches to VectorDB and fail the job on rejection.
 
@@ -312,6 +313,11 @@ def _post_records_to_vectordb(
     if not records or not any(records):
         if context.collection_name:
             raise ValueError(f"No vector rows were produced for collection document {filename}")
+        logger.warning(
+            "Skipping VectorDB upload for %s because all %d extracted row(s) lack searchable text or image backing",
+            filename,
+            source_row_count or 0,
+        )
         return
 
     url = vectordb_url.rstrip("/") + "/internal/vectordb/write"
@@ -748,6 +754,7 @@ def _run_pipeline_in_process(
     job_id: str | None = None,
     internal_api_token: str | None = None,
     vectordb_write_timeout_s: float = _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
+    empty_upload_policy: str = "raise",
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -820,7 +827,7 @@ def _run_pipeline_in_process(
         from nemo_retriever.common.vdb.records import to_client_vdb_records
         from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 
-        records = to_client_vdb_records(result_df)
+        records = to_client_vdb_records(result_df, empty_upload_policy=empty_upload_policy)
         _post_records_to_vectordb(
             records,
             vectordb_url,
@@ -829,6 +836,7 @@ def _run_pipeline_in_process(
             job_id=job_id,
             internal_api_token=internal_api_token,
             timeout_s=vectordb_write_timeout_s,
+            source_row_count=row_count,
         )
 
     result_options = pipeline_spec or {}
@@ -923,6 +931,8 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
 
     local = local or _default_local_models_config()
     kwargs: dict[str, Any] = {}
+    if nim.ocr_invoke_url or (local.enabled and local.extract.enabled):
+        kwargs["method"] = "pdfium_hybrid"
     if nim.page_elements_invoke_url:
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
     if nim.ocr_invoke_url:
@@ -1152,6 +1162,7 @@ def _make_work_fn(
                 item.job_id,
                 config.vectordb.internal_api_token,
                 config.vectordb.write_timeout_s,
+                config.vectordb.empty_upload_policy,
             )
         except BrokenProcessPool:
             logger.error(
