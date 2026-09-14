@@ -134,15 +134,21 @@ such as a DNA sequence, errors or unexpected results occur.
 
 ## Can't process malformed input files { #cant-process-malformed-input-files }
 
-When you run a job you might see errors similar to the following:
+Malformed PDFs and images usually produce a row-level error instead of
+aborting the entire job. Inspect `metadata.error` on the returned row, pass
+`return_failures=True`, or use `error_policy="collect"`.
 
-- Failed to process the message
-- Failed to extract image
-- File may be malformed
-- Failed to format paragraph
+- For a malformed PDF, `metadata.error` is an object with `stage`, `type`,
+  `message`, and `traceback` fields. For example:
+  `{"stage": "page_processing", "type": "PdfiumError", "message": "...", "traceback": "..."}`.
+- For a malformed standalone image, `metadata.error` is a string. For example:
+  `UnidentifiedImageError: cannot identify image file`.
 
-These errors can occur when your input file is malformed.
-Verify or fix the format of your input file, and try resubmitting your job.
+Verify or repair the input format and resubmit the job. Do not rely on legacy
+messages such as `Failed to extract image` or `File may be malformed`; current
+NeMo Retriever Library extraction operators do not emit those strings. For
+safe handling examples, refer to
+[Row-level error payloads](nemo-retriever-api-reference.md#row-level-error-payloads).
 
 ## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
