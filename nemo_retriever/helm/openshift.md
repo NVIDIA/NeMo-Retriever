@@ -2,7 +2,7 @@
 
 Use this guide when you install the [NeMo Retriever Helm chart](./README.md) on **OpenShift 4.x** with the default **restricted-v2** Security Context Constraint (SCC).
 
-The overrides in this guide apply to chart-owned workloads: the retriever Service Pod and, with the post-install patch, the VectorDB Pod. They do not change Pods that NVIDIA NIM Operator creates from `NIMService` custom resources.
+The overrides in this guide apply to chart-owned workloads in **standalone** mode (`topology.mode=standalone`, the chart default): the retriever Service Pod and, with the post-install patch, the VectorDB Pod. They do not change split-mode gateway, realtime, or batch containers, and they do not change Pods that NVIDIA NIM Operator creates from `NIMService` custom resources.
 
 For Pod Security Admission (PSA), keep the `restricted` profile in **warn** and **audit** mode when you enable the in-cluster NIM Operator stack. PSA `enforce=restricted` is not supported for Operator-generated NIM Pods. Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted).
 
@@ -24,17 +24,17 @@ The following table describes typical controls on a new OpenShift project.
 | PSA | `pod-security.kubernetes.io/warn=restricted` and often `audit=restricted`. `enforce` can be unset on development clusters |
 | UID assignment | SCC injects `runAsUser` / `fsGroup` from the namespace range (for example `1000750000–1000759999`) |
 
-On clusters with **PSA `enforce=restricted`**, missing container `securityContext` fields become hard rejections, not warnings. That enforcement works for the retriever Service after you apply `service.securityContext` below. It does **not** work for in-cluster NIM Operator Pods. Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted).
+On clusters with **PSA `enforce=restricted`**, missing container `securityContext` fields become hard rejections, not warnings. That enforcement works for the standalone retriever Service (`topology.mode=standalone`) after you apply `service.securityContext` below. Split-mode gateway, realtime, and batch containers do not render `service.securityContext`. It does **not** work for in-cluster NIM Operator Pods. Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted).
 
 ### In-cluster NIM Operator PSA support { #nim-operator-psa-restricted }
 
-The `openshift-restricted.yaml` profile sets a PSA `restricted` container `securityContext` on the retriever Service. With the post-install patch later in this guide, the VectorDB container can use the same baseline. Those chart-owned Pods can run under **restricted-v2**.
+The `openshift-restricted.yaml` profile sets a PSA `restricted` container `securityContext` on the standalone retriever Service. With the post-install patch later in this guide, the VectorDB container can use the same baseline. Those chart-owned Pods can run under **restricted-v2**. Split-mode Deployments (`topology.mode=split`) omit container `securityContext` on the gateway, realtime, and batch containers, so this profile does not make split topology satisfy PSA `enforce=restricted`.
 
 NVIDIA NIM Operator generates NIM Deployments from `NIMService` custom resources. This chart's `NIMService` templates do not render container `securityContext`, `userID`, `groupID`, or `openshift.io/required-scc` fields. NIM Operator 3.1.2 applies its own defaults: `runAsUser: 1000`, `runAsGroup: 2000`, and `fsGroup: 2000`. On OpenShift, those Pods use the **nonroot** SCC rather than **restricted-v2**. The generated containers do not set `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, or `seccompProfile.type: RuntimeDefault`.
 
 The in-cluster NIM Operator example in this guide supports PSA `restricted` in **warn** and **audit** mode only. Do not label the namespace with `pod-security.kubernetes.io/enforce=restricted` while those Operator-managed NIM Pods run in the same namespace. OpenShift then rejects new NIM Pods with violations such as unrestricted capabilities and a missing `seccompProfile`.
 
-If you need PSA `enforce=restricted`, use the [service-only example](#example-install-service-only-no-in-cluster-nims) (`nims.enabled=false`) and run NIMs outside that namespace. For Operator `userID` and `groupID` defaults, refer to [Managing NIM Services](https://docs.nvidia.com/nim-operator/latest/service.html).
+If you need PSA `enforce=restricted`, use the [service-only example](#example-install-service-only-no-in-cluster-nims) (`nims.enabled=false`, `topology.mode=standalone`) and run NIMs outside that namespace. For Operator `userID` and `groupID` defaults, refer to [Managing NIM Services](https://docs.nvidia.com/nim-operator/latest/service.html).
 
 ### Override reference (maps to chart limitations)
 
@@ -51,14 +51,15 @@ The following table maps common OpenShift failures to Helm overrides in this gui
 | `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
 | Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths through `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
 | PSA `enforce=restricted` forbids Operator NIM Pods (`allowPrivilegeEscalation`, unrestricted capabilities, missing `seccompProfile`) | NIM Operator Deployments do not inherit `service.securityContext` | Keep PSA `restricted` at warn and audit for in-cluster NIM Operator, or use the service-only example (`nims.enabled=false`). Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted) |
+| PSA `enforce=restricted` forbids split-mode Service Pods | Split Deployments omit container `securityContext` | Keep `topology.mode=standalone` (the default) for this profile, or keep PSA `restricted` at warn and audit |
 
 ### Recommended value overrides
 
-Save the block below as a local values file (for example `openshift-restricted.yaml`) and pass `-f openshift-restricted.yaml` on every `helm install` / `helm upgrade`. Use this profile for **restricted-v2** namespaces. It covers the retriever Service Pod. When you also enable the in-cluster NIM Operator, keep PSA `restricted` at warn and audit. Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted). Use a prebuilt `ffmpeg` service image when you need [audio and video](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md). Optional NIM environment overrides are in later sections.
+Save the block below as a local values file (for example `openshift-restricted.yaml`) and pass `-f openshift-restricted.yaml` on every `helm install` / `helm upgrade`. Use this profile for **restricted-v2** namespaces. It covers the standalone retriever Service Pod (`topology.mode=standalone`). When you also enable the in-cluster NIM Operator, keep PSA `restricted` at warn and audit. Refer to [In-cluster NIM Operator PSA support](#nim-operator-psa-restricted). Use a prebuilt `ffmpeg` service image when you need [audio and video](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md). Optional NIM environment overrides are in later sections.
 
 ```yaml
-# OpenShift overrides for the retriever Service (restricted-v2).
-# Does not apply to NIM Operator-generated Pods.
+# OpenShift overrides for the standalone retriever Service (restricted-v2).
+# Does not apply to NIM Operator-generated Pods or topology.mode=split.
 # helm install retriever ./nemo_retriever/helm -f openshift-restricted.yaml ...
 
 service:
@@ -84,6 +85,7 @@ serviceConfig:
     enabled: false
 
 topology:
+  mode: standalone
   otel:
     enabled: false
 ```
@@ -277,7 +279,7 @@ The chart's otel-collector Deployment likewise lacks `securityContext` fields. P
 
 Do **not** bind the namespace to **anyuid** SCC or set PSA `enforce=privileged` unless your security team explicitly approves it.
 
-The Service overrides keep the retriever Service, and a patched VectorDB Pod, on **restricted-v2**. They do not make Operator-generated NIM Pods satisfy PSA `enforce=restricted`. If you need PSA `enforce=restricted`, use the service-only example (`nims.enabled=false`) or run NIMs outside the enforced namespace.
+The Service overrides keep the standalone retriever Service, and a patched VectorDB Pod, on **restricted-v2**. They do not make split-mode Service Pods or Operator-generated NIM Pods satisfy PSA `enforce=restricted`. If you need PSA `enforce=restricted`, use the service-only example (`nims.enabled=false`, `topology.mode=standalone`) or run NIMs outside the enforced namespace.
 
 ## Related topics
 
