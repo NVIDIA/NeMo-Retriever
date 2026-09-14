@@ -69,6 +69,28 @@ def test_super_49b_tensor_parallel_uses_safe_vllm_startup(monkeypatch) -> None:
     assert llm_ctor.call_args.kwargs["disable_custom_all_reduce"] is True
 
 
+def test_super_49b_single_gpu_keeps_vllm_defaults(monkeypatch) -> None:
+    from nemo_retriever.models.local import agent_llm
+
+    llm_ctor = MagicMock(return_value=MagicMock())
+    monkeypatch.setitem(
+        sys.modules,
+        "vllm",
+        SimpleNamespace(LLM=llm_ctor, SamplingParams=MagicMock()),
+    )
+    monkeypatch.setattr(agent_llm, "_raise_if_cuda_unavailable", lambda: None)
+
+    agent_llm.VLLMAgentChatLLM(
+        agent_llm.LocalAgentLLMConfig(
+            model_path="super-49b",
+            tensor_parallel_size=1,
+        )
+    )
+
+    assert "enforce_eager" not in llm_ctor.call_args.kwargs
+    assert "disable_custom_all_reduce" not in llm_ctor.call_args.kwargs
+
+
 def test_other_local_agent_profiles_keep_vllm_defaults(monkeypatch) -> None:
     from nemo_retriever.models.local import agent_llm
 
