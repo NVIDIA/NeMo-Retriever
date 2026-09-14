@@ -2,6 +2,10 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
+## Unreleased Helm chart { #unreleased-helm }
+
+The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment).
+
 ## 26.08.2 Helm Chart Patch { #release-26082 }
 
 The 26.08.2 Helm chart no longer sets `NIM_SERVER_MODE`,
