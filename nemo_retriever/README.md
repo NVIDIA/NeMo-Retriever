@@ -165,11 +165,15 @@ memory, so prefer file ingestion when the corpus may exceed the available memory
   uv pip install "nemo-retriever[local,multimedia]"
   ```
 
-Run the batch pipeline script and point it at the directory that contains your PDFs using the following command.
+### Run batch ingest
+
+To ingest a directory of PDFs with Ray-backed batch execution, run the following command.
 
 ```bash
-uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path/to/pdfs
+retriever ingest batch /path/to/pdfs
 ```
+
+For the Python API, build a batch ingestor as shown in [Ingest a test pdf](#ingest-a-test-pdf), then call `.ingest()`:
 
 ```python
 # ingestor.ingest() actually executes the pipeline
