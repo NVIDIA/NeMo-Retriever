@@ -127,7 +127,7 @@ The following foundational capabilities remain current. They are not new 26.08.1
 
 - Text splitting for graph and library ingest uses `.extract(split_config=...)` instead of standalone `.split()` on the graph ingest path. The service ingestor API can still expose `.split()` separately.
 - Direct `Retriever(...)` construction uses `vdb_kwargs`, `embed_kwargs`, and `rerank` instead of flat `lancedb_uri`, `lancedb_table`, `embedder`, `embedding_endpoint`, `local_query_embed_backend`, and `reranker` arguments.
-- For Helm audio and video extraction, set `service.installFfmpeg: true` in `values.yaml` (or pass `--set service.installFfmpeg=true`) when images no longer bundle `ffmpeg` and `ffprobe` by default.
+- Helm `service.installFfmpeg` defaults to `true`. Default installs set `INSTALL_FFMPEG=true` on every service role and can run a privileged FFmpeg package install at container startup. Set `service.installFfmpeg: false` on air-gapped or privilege-restricted clusters, or embed FFmpeg in the service image at build time.
 - `nemo_retriever` requires Python 3.12.
 - Manifest-based ingest routing replaces input-type routing. `retriever ingest` is input-aware for PDF, image, audio, video, text, HTML, DOCX, PPTX, SVG, and related types.
 - `allow_no_gpu` skips the GPU requirement during ingest for CPU-only experimentation.

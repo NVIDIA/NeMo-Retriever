@@ -496,8 +496,9 @@ The NIM containers and model caches were warm, but the corpus did not receive
 an untimed ingestion warmup pass. Use a new output directory and update the
 machine-local paths when you reproduce the run elsewhere.
 
-This profile targets BO767 PDF ingestion. `service.installFfmpeg` remains
-`false`. Enable FFmpeg separately for audio or video workflows.
+This profile targets BO767 PDF ingestion. The profile sets
+`service.installFfmpeg=false` to override the chart default of `true`.
+Enable FFmpeg separately for audio or video workflows.
 
 ### 1. Service image { #1-service-image }
 
@@ -525,24 +526,43 @@ docker build \
 docker push <YOUR_REGISTRY>/nemo-retriever-service:<TAG>
 ```
 
-Audio and video extraction require the `ffmpeg` and `ffprobe` system
-binaries inside the service container. The bundled service image can install
-them at container startup when you set `service.installFfmpeg=true`, which
-sets `INSTALL_FFMPEG=true` for the image entrypoint:
-
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
   --set service.image.repository=<YOUR_REGISTRY>/nemo-retriever-service \
-  --set service.image.tag=<TAG> \
-  --set service.installFfmpeg=true
+  --set service.image.tag=<TAG>
 ```
 
+Audio and video extraction require the `ffmpeg` and `ffprobe` system
+binaries inside the service container. The Helm chart default is
+`service.installFfmpeg=true` in [`values.yaml`](./values.yaml). That value
+sets `INSTALL_FFMPEG=true` for the image entrypoint on every retriever
+service role, including gateway, realtime, and batch when
+`topology.mode=split`.
+
+If those binaries are not already in the image, the entrypoint runs
+`sudo /usr/local/sbin/retriever-install-ffmpeg` before the API starts.
+A locally built image still uses that default unless you override it.
 Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
 when both are configured so the rendered Pod does not contain duplicate
 environment variables.
 
-When `service.installFfmpeg=false` (the default), the service still starts
-normally and processes PDF, image, text and HTML uploads. Audio / video
+Runtime installation uses passwordless `sudo` scoped to installing the
+`ffmpeg` package in the service image. The pod must have network egress to the
+Ubuntu package repositories, a writable root filesystem, and a security policy
+that allows sudo/setuid behavior. Do not set
+`service.securityContext.allowPrivilegeEscalation: false` or
+`service.securityContext.readOnlyRootFilesystem: true` for this path.
+
+On air-gapped, proxy-restricted, read-only, or sudo-restricted clusters,
+disable runtime installation so the API can start:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set service.installFfmpeg=false
+```
+
+When `service.installFfmpeg=false`, the service still starts
+normally and processes PDF, image, text, and HTML uploads. Audio and video
 uploads are rejected up-front with **HTTP 501**:
 
 ```text
@@ -552,21 +572,14 @@ Re-deploy the Helm chart with `--set service.installFfmpeg=true` …
 ```
 
 The retriever-service container also logs a `WARNING` at startup when
-FFmpeg is missing so cluster operators can fix the deployment before
-the first media upload arrives, instead of debugging a Ray worker
+FFmpeg is missing. Use that WARNING to fix the deployment before the
+first media upload arrives. That avoids debugging a Ray worker
 traceback (`RuntimeError: MediaChunkActor requires media dependencies;
 missing: ffmpeg, ffprobe`) after the fact. The same WARNING is emitted
 on every pod (gateway, realtime, batch) because all roles classify
-uploads — flipping `service.installFfmpeg=true` updates them all.
+uploads. The same `service.installFfmpeg` value applies to all of those roles.
 
-Runtime installation uses passwordless `sudo` scoped to installing the
-`ffmpeg` package in the service image. The pod must have network egress to the
-Ubuntu package repositories, a writable root filesystem, and a security policy
-that allows sudo/setuid behavior. Do not set
-`service.securityContext.allowPrivilegeEscalation: false` or
-`service.securityContext.readOnlyRootFilesystem: true` for this path.
-
-For air-gapped or locked-down clusters, see
+For air-gapped or locked-down clusters, refer to
 [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 On a connected staging host you can extend the service image, for example:
 
@@ -655,7 +668,7 @@ helm install retriever ./nemo_retriever/helm \
 > * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
 > * Omni 30B captioner — `--set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
 > * Answer generation LLM — `--set nimOperator.answer_llm.enabled=true`
-> * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service, plus `service.installFfmpeg=true` if your image does not bundle ffmpeg)
+> * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service). The chart default is `service.installFfmpeg=true`. Set `service.installFfmpeg=false` on air-gapped or privilege-restricted clusters and embed ffmpeg in the image at build time.
 >
 > This matches the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and avoids silently pulling ≈ 62 GiB of Omni weights, loading a large two-GPU LLM, or claiming extra dedicated GPUs on a "default" install. Refer to the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table for per-NIM GPU and disk costs.
 
@@ -750,15 +763,17 @@ short list of knobs you'll touch first.
 | `service.image.tag`           | `26.5.0`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
 
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
-| `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
+| `service.installFfmpeg`       | `true`                             | Default Helm installs set `INSTALL_FFMPEG=true` for every service role, including split gateway, realtime, and batch. If FFmpeg is absent, the entrypoint runs a privileged `sudo` apt install before the API starts. Requires network egress, writable root filesystem, and sudo/setuid. Set `false` on air-gapped, proxy-restricted, read-only, or sudo-restricted clusters, or embed `ffmpeg`/`ffprobe` in a custom image at build time. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
 
-For audio and video extraction, set `service.installFfmpeg=true` when your
-cluster allows runtime package installation. **OpenShift restricted-v2** blocks
-that path — use a prebuilt service image instead; refer to [Audio and video on restricted OpenShift](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
-For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
+The chart default is `service.installFfmpeg=true`. Keep that default for audio
+and video extraction when your cluster allows runtime package installation.
+**OpenShift restricted-v2** blocks that path. Use a prebuilt service image
+instead; refer to [Audio and video on restricted OpenShift](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
+For air-gapped clusters, set `service.installFfmpeg=false` and refer to
+[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
 
@@ -784,7 +799,7 @@ After you set those values, complete the following steps:
 
 1. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
 2. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
-3. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
+3. The chart default is `service.installFfmpeg=true`. Keep that default when the retriever service processes audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On air-gapped or privilege-restricted clusters, set `service.installFfmpeg=false` and use a prebuilt service image. On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
 
 The in-cluster gRPC Service name is `audio` on port `50051`. Graph ingest does not read this Helm value. Pass the same endpoint through `ASRParams.audio_endpoints` in Python. Refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
 
@@ -2196,6 +2211,7 @@ helm upgrade --install retriever ./nemo_retriever/helm \
 
 ```yaml
 service:
+  installFfmpeg: false
   image:
     repository: <PRIVATE_REGISTRY>/nemo-retriever-service
     tag: <PINNED_TAG>
@@ -2217,6 +2233,9 @@ nimOperator:
   # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
 ```
 
+- Set `service.installFfmpeg=false` so pods do not attempt a runtime
+  `apt-get` FFmpeg install. Embed `ffmpeg` and `ffprobe` in the mirrored
+  service image at build time if you need audio or video.
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
   (for example `my-private-registry`) when it differs from
   `ngcImagePullSecret.name`. Empty per-NIM `pullSecrets` inherit the

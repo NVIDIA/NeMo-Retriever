@@ -92,7 +92,7 @@ On a staging host with internet access, pull from NGC, retag to your private reg
 
 !!! warning "Audio and video extraction"
 
-    Audio and video workflows require `ffmpeg` and `ffprobe` on `PATH`; runtime package installation is not suitable for air-gapped clusters. Refer to [Audio and video](audio-video.md) and the Helm chart [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment) guide. Skip this if you do not use audio or video.
+    The Helm chart default is `service.installFfmpeg=true`. Runtime package installation is not suitable for air-gapped clusters and can block service startup when FFmpeg is absent. Set `service.installFfmpeg=false` on air-gapped, proxy-restricted, read-only, or sudo-restricted clusters. Embed `ffmpeg` and `ffprobe` in a custom service image at build time when you need audio or video. Refer to [Audio and video](audio-video.md) and the Helm chart [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment) guide.
 
 For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prerequisites-support-matrix.md#image-captioning) NIM and point your pipeline caption endpoint at the in-cluster HTTP URL instead of `integrate.api.nvidia.com` or other hosted APIs.
 
