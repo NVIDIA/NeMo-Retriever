@@ -103,6 +103,36 @@ def create_local_embedder(
 
     model_id = resolve_embed_model(model_name)
     spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=hf_cache_dir)
+    return _create_local_embedder_from_spec(
+        spec,
+        backend=b,
+        device=device,
+        hf_cache_dir=hf_cache_dir,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        dimensions=dimensions,
+        normalize=normalize,
+        max_length=max_length,
+        query_max_length=query_max_length,
+    )
+
+
+def _create_local_embedder_from_spec(
+    spec: EmbedModelSpec,
+    *,
+    backend: str,
+    device: str | None,
+    hf_cache_dir: str | None,
+    gpu_memory_utilization: float,
+    enforce_eager: bool,
+    dimensions: int | None,
+    normalize: bool,
+    max_length: int,
+    query_max_length: int,
+) -> Any:
+    """Construct from already-resolved metadata without another checkpoint lookup."""
+    b = backend
+    model_id = spec.model_id
     validate_embed_model_backend(spec, b)
     effective_max_length = min(int(max_length), spec.max_input_tokens) if spec.max_input_tokens else int(max_length)
     effective_query_max_length = (

@@ -140,6 +140,37 @@ class _LiteralSpecialTokenizer:
         return "".join(parts)
 
 
+@pytest.mark.parametrize("text_dtype", ["object", "string", "category"])
+def test_mixed_split_batch_preserves_column_dtypes_and_neighbors(text_dtype) -> None:
+    source = pd.DataFrame(
+        {
+            "text": pd.Series(["a", "abcdef", "z"], dtype=text_dtype),
+            "label": pd.Categorical(["before", "parent", "after"], ordered=True),
+            "page_number": pd.Series([1, 2, None], dtype="Int64"),
+            "enabled": pd.Series([True, None, False], dtype="boolean"),
+            "source_id": pd.Series(["one", "two", "three"], dtype="string"),
+            "metadata": [{"page": 1}, {"page": 2}, {"page": 3}],
+        }
+    )
+    original = source.copy(deep=True)
+    policy = EmbeddingInputPolicy(tokenizer=_CharacterTokenizer(), max_tokens=4, prefix="")
+
+    result = prepare_embedding_inputs(source, policy=policy).frame
+
+    assert result["text"].tolist() == ["a", "abc", "def", "z"]
+    for column in ["label", "page_number", "enabled", "source_id"]:
+        pd.testing.assert_series_equal(result[column], source.iloc[[0, 1, 1, 2]][column].reset_index(drop=True))
+    if text_dtype == "category":
+        assert isinstance(result["text"].dtype, pd.CategoricalDtype)
+        assert set(source["text"].cat.categories) <= set(result["text"].cat.categories)
+    else:
+        assert result["text"].dtype == source["text"].dtype
+    assert result.iloc[0]["metadata"] == {"page": 1}
+    assert result.iloc[-1]["metadata"] == {"page": 3}
+    assert result.iloc[1]["metadata"]["page"] == result.iloc[2]["metadata"]["page"] == 2
+    pd.testing.assert_frame_equal(source, original)
+
+
 def _write_local_text_policy_metadata(tmp_path, *, prompts=None, max_input_tokens=None) -> None:
     (tmp_path / "config.json").write_text(
         '{"model_type":"llama_bidirec","architectures":["LlamaBidirectionalModel"],'
@@ -616,7 +647,7 @@ def test_query_actor_resolves_the_shared_policy_at_query_max_length(
 
 
 def test_local_actor_does_not_raise_vllm_above_checkpoint_support(monkeypatch) -> None:
-    from nemo_retriever.models import create_local_embedder as create_local_embedder_factory
+    from nemo_retriever.models import _create_local_embedder_from_spec as create_local_embedder_factory
     from nemo_retriever.models.embed_model_spec import EmbedModelSpec
     from nemo_retriever.operators.embed import gpu_operator
 
@@ -632,7 +663,7 @@ def test_local_actor_does_not_raise_vllm_above_checkpoint_support(monkeypatch) -
         query_prefix_declared=True,
         document_prefix_declared=True,
     )
-    monkeypatch.setattr("nemo_retriever.models.create_local_embedder", create_local_embedder)
+    monkeypatch.setattr("nemo_retriever.models._create_local_embedder_from_spec", create_local_embedder)
     monkeypatch.setattr(
         "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec",
         Mock(return_value=checkpoint),

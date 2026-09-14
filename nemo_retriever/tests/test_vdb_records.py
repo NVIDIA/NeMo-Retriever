@@ -20,6 +20,34 @@ def _normalize_one(hit: dict) -> dict:
     return normalize_retrieval_results([[hit]])[0][0]
 
 
+@pytest.mark.parametrize("auxiliary_field", ["chunk", "page_text"])
+@pytest.mark.parametrize("auxiliary_embedding", [None, [0.3, 0.4]])
+def test_vdb_ignores_auxiliary_text_beside_embedded_rows(auxiliary_field, auxiliary_embedding) -> None:
+    rows = [
+        {"text": "valid", "metadata": {"embedding": [0.1, 0.2]}},
+        {auxiliary_field: "auxiliary text", "metadata": {"embedding": auxiliary_embedding}},
+    ]
+
+    records = to_client_vdb_records(rows)[0]
+
+    assert len(records) == 1
+    assert records[0]["metadata"]["content"] == "valid"
+
+
+def test_vdb_content_precedence_ignores_embedding_only_fallbacks() -> None:
+    rows = [
+        {"text": " text ", "content": "content", "metadata": {"content": "metadata"}},
+        {"text": " ", "content": " content ", "metadata": {"content": "metadata"}},
+        {"chunk": "chunk", "page_text": "page", "metadata": {"content": " metadata "}},
+    ]
+    for row in rows:
+        row["metadata"]["embedding"] = [0.1, 0.2]
+
+    records = to_client_vdb_records(rows)[0]
+
+    assert [record["metadata"]["content"] for record in records] == [" text ", " content ", " metadata "]
+
+
 def test_legacy_entity_is_flattened_once_with_top_level_precedence() -> None:
     hit = _normalize_one(
         {

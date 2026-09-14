@@ -70,7 +70,7 @@ def build_warmup_spec(
         kwargs = build_embed_kwargs(EmbedParams(**embed_params_dict))
         endpoint = str(kwargs.get("embedding_endpoint") or kwargs.get("embed_invoke_url") or "").strip()
         if not endpoint and (kwargs.get("model_name") or kwargs.get("embed_model_name")):
-            embed_spec = LocalEmbedderSpec.from_config(kwargs).as_dict()
+            embed_spec = kwargs
 
     asr_local = False
     if asr_params_dict is not None:

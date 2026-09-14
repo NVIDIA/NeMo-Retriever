@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
+
+from nemo_retriever.models.embed_model_spec import EmbedModelSpec
 
 
 def _as_bool(value: Any, *, default: bool) -> bool:
@@ -26,9 +28,7 @@ def _as_bool(value: Any, *, default: bool) -> bool:
 class LocalEmbedderSpec:
     """Immutable checkpoint identity plus every local factory setting."""
 
-    model_name: str
-    revision: str | None
-    family: str
+    checkpoint: EmbedModelSpec
     backend: str
     device: str | None
     hf_cache_dir: str | None
@@ -63,9 +63,7 @@ class LocalEmbedderSpec:
         device = config.get("local_hf_device") or config.get("device")
         dimensions = config.get("dimensions")
         return cls(
-            model_name=checkpoint.model_id,
-            revision=checkpoint.revision,
-            family=checkpoint.family,
+            checkpoint=checkpoint,
             backend=backend,
             device=str(device) if device else None,
             hf_cache_dir=hf_cache_dir,
@@ -78,22 +76,27 @@ class LocalEmbedderSpec:
         )
 
     @property
+    def model_name(self) -> str:
+        """Return the checkpoint's canonical model ID."""
+        return self.checkpoint.model_id
+
+    @property
+    def revision(self) -> str | None:
+        """Return the immutable Hub revision, or None for a local checkpoint."""
+        return self.checkpoint.revision
+
+    @property
     def prefix_if_missing(self) -> bool:
         """Whether the selected backend preserves an already-prefixed source."""
-        return self.backend == "hf" and self.family == "text"
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable warmup specification."""
-        return asdict(self)
+        return self.backend == "hf" and self.checkpoint.family == "text"
 
     def create(self) -> Any:
         """Construct the embedder described by this exact resolved spec."""
-        from nemo_retriever.models import create_local_embedder
+        from nemo_retriever.models import _create_local_embedder_from_spec
 
-        return create_local_embedder(
-            self.model_name,
+        return _create_local_embedder_from_spec(
+            self.checkpoint,
             backend=self.backend,
-            revision=self.revision,
             device=self.device,
             hf_cache_dir=self.hf_cache_dir,
             gpu_memory_utilization=self.gpu_memory_utilization,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from nemo_retriever.models.embed_model_spec import EmbedModelSpec
@@ -47,12 +48,17 @@ def test_build_warmup_spec_full_local_stack() -> None:
         "local_ingest_embed_backend": "hf",
         "runtime": {"device": "cuda:0"},
     }
-    spec = build_warmup_spec(extract, embed, {})
+    with patch(
+        "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec",
+        side_effect=AssertionError("warmup planning must not access checkpoint assets"),
+    ):
+        spec = build_warmup_spec(extract, embed, {})
     assert spec is not None
     assert "page_elements" in spec["stages"]
     assert "ocr" in spec["stages"]
     assert "table_structure" in spec["stages"]
-    assert spec["embed"]["backend"] == "hf"
+    assert spec["embed"]["local_ingest_embed_backend"] == "hf"
+    assert json.loads(json.dumps(spec)) == spec
     assert spec["asr"] is True
 
 
@@ -71,7 +77,10 @@ def test_build_warmup_spec_skips_remote_stages() -> None:
 def test_build_warmup_spec_preserves_embed_model_revision() -> None:
     revision = "a" * 40
 
-    with patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint):
+    with patch(
+        "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec",
+        side_effect=AssertionError("warmup planning must not resolve revisions"),
+    ):
         spec = build_warmup_spec(
             {},
             {
@@ -83,7 +92,7 @@ def test_build_warmup_spec_preserves_embed_model_revision() -> None:
         )
 
     assert spec is not None
-    assert spec["embed"]["revision"] == revision
+    assert spec["embed"]["embed_model_revision"] == revision
 
 
 def test_warmed_identity_uses_resolved_sha_for_a_symbolic_revision() -> None:
@@ -115,7 +124,7 @@ def test_warm_local_models_registers_mock_instances() -> None:
         patch("nemo_retriever.models.local.NemotronOCRV2", return_value=mock_ocr),
         patch("nemo_retriever.models.local.NemotronTableStructureV1"),
         patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint),
-        patch("nemo_retriever.models.create_local_embedder", return_value=mock_embed),
+        patch("nemo_retriever.models._create_local_embedder_from_spec", return_value=mock_embed),
     ):
         warm_local_models(
             {
@@ -132,13 +141,19 @@ def test_warm_local_models_registers_mock_instances() -> None:
     clear_warmed_models()
 
 
-def test_warm_local_models_forwards_embed_model_revision() -> None:
+def test_warm_local_models_resolves_checkpoint_once_and_reuses_it_for_construction() -> None:
     clear_warmed_models()
     revision = "b" * 40
 
     with (
-        patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint),
-        patch("nemo_retriever.models.create_local_embedder") as create_local_embedder,
+        patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint) as resolve,
+        patch(
+            "nemo_retriever.models.resolve_embed_model_spec",
+            side_effect=AssertionError("factory must reuse the worker's resolved checkpoint"),
+        ),
+        patch(
+            "nemo_retriever.models.local.llama_nemotron_embed_1b_v2_hf_embedder.LlamaNemotronEmbed1BV2HFEmbedder"
+        ) as create_local_embedder,
     ):
         warm_local_models(
             {
@@ -151,6 +166,9 @@ def test_warm_local_models_forwards_embed_model_revision() -> None:
         )
 
     assert create_local_embedder.call_args.kwargs["revision"] == revision
+    resolve.assert_called_once()
+    create_local_embedder.assert_called_once()
+    create_local_embedder.return_value._ensure_loaded.assert_called_once()
     clear_warmed_models()
 
 
@@ -162,7 +180,7 @@ def test_gpu_actor_loads_requested_embedder_when_warmed_identity_differs() -> No
     warmed = MagicMock(name="warmed_revision_a")
     with (
         patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint),
-        patch("nemo_retriever.models.create_local_embedder", return_value=warmed),
+        patch("nemo_retriever.models._create_local_embedder_from_spec", return_value=warmed),
     ):
         warm_local_models(
             {
@@ -177,7 +195,9 @@ def test_gpu_actor_loads_requested_embedder_when_warmed_identity_differs() -> No
     requested = MagicMock(name="requested_revision_b")
     with (
         patch("nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", side_effect=_checkpoint),
-        patch("nemo_retriever.models.create_local_embedder", return_value=requested) as create_local_embedder,
+        patch(
+            "nemo_retriever.models._create_local_embedder_from_spec", return_value=requested
+        ) as create_local_embedder,
     ):
         actor = gpu_operator._BatchEmbedActor(
             params=EmbedParams(
@@ -190,7 +210,7 @@ def test_gpu_actor_loads_requested_embedder_when_warmed_identity_differs() -> No
     assert actor._model is requested
     assert actor._model is not warmed
     create_local_embedder.assert_called_once()
-    assert create_local_embedder.call_args.kwargs["revision"] == "b" * 40
+    assert create_local_embedder.call_args.args[0].revision == "b" * 40
 
     clear_warmed_models()
 

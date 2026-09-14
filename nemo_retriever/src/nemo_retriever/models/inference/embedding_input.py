@@ -222,13 +222,10 @@ class EmbeddingInputPolicy:
 
 def _expand_row(
     row: pd.Series,
-    selected: SelectedEmbeddingText | None,
-    plan: EmbeddingSplitPlan | None,
+    selected: SelectedEmbeddingText,
+    plan: EmbeddingSplitPlan,
 ) -> list[dict[str, Any]]:
     row_copy = _deep_copy_row(row)
-    if selected is None or plan is None or not plan.requires_split:
-        return [row_copy]
-
     selected_column, text = selected.column, selected.content
     parent_id = _parent_id(row_copy, text)
     expanded: list[dict[str, Any]] = []
@@ -300,19 +297,45 @@ def prepare_embedding_inputs(
     if not any(plan is not None and plan.requires_split for plan in plans):
         return unchanged()
 
-    prepared: list[dict[str, Any]] = []
+    source_positions: list[int] = []
+    updates: dict[str, dict[int, Any]] = {}
     split_child_positions: set[int] = set()
     split_parent_positions: set[int] = set()
-    for row, selected, plan in zip(rows, selected_inputs, plans):
-        first_output_position = len(prepared)
+    for source_position, (row, selected, plan) in enumerate(zip(rows, selected_inputs, plans)):
+        first_output_position = len(source_positions)
+        if selected is None or plan is None or not plan.requires_split:
+            source_positions.append(source_position)
+            continue
         expanded = _expand_row(row, selected, plan)
-        prepared.extend(expanded)
-        if plan is not None and plan.requires_split:
-            split_parent_positions.add(first_output_position)
-            split_child_positions.update(range(first_output_position, first_output_position + len(expanded)))
+        source_positions.extend([source_position] * len(expanded))
+        changed_columns = {selected.column, "metadata"}
+        if selected.column == "text" and "content" in frame:
+            changed_columns.add("content")
+        for offset, child in enumerate(expanded):
+            for column in changed_columns:
+                updates.setdefault(column, {})[first_output_position + offset] = child[column]
+        split_parent_positions.add(first_output_position)
+        split_child_positions.update(range(first_output_position, first_output_position + len(expanded)))
+
+    # Repeat source rows before changing child content so unrelated columns keep
+    # their exact values and extension dtypes (including nullable and categorical).
+    prepared = frame.iloc[source_positions].copy().reset_index(drop=True)
+    for column, replacements in updates.items():
+        values = prepared[column].tolist() if column in prepared else [None] * len(prepared)
+        for position, value in replacements.items():
+            values[position] = value
+        dtype = prepared[column].dtype if column in prepared else object
+        if column == "metadata":
+            dtype = object
+        elif isinstance(dtype, pd.CategoricalDtype):
+            categories = list(dict.fromkeys([*dtype.categories, *replacements.values()]))
+            dtype = pd.CategoricalDtype(categories, ordered=dtype.ordered)
+        elif not pd.api.types.is_string_dtype(dtype):
+            dtype = object
+        prepared[column] = pd.Series(values, dtype=dtype)
 
     return EmbeddingPreparationResult(
-        frame=pd.DataFrame(prepared).reset_index(drop=True),
+        frame=prepared,
         split_child_positions=frozenset(split_child_positions),
         split_parent_positions=frozenset(split_parent_positions),
     )

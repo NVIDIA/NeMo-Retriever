@@ -35,11 +35,14 @@ results = ingestor.ingest()
 
 ## Text inputs that exceed the model limit { #text-input-overflow }
 
-Before it embeds text, NeMo Retriever Library checks the complete formatted
-input against the embedding model's token limit. The check includes the model's
-document or query prefix and special tokens. The default configured runtime
-limit is 8,192 tokens. If the checkpoint declares a smaller supported limit,
-the checkpoint limit takes precedence.
+For text inputs, including `text_image` inputs without an image, NeMo Retriever
+Library checks the complete formatted input against the embedding model's token
+limit. Image inputs and `text_image` inputs with an image are outside this
+text-splitting policy.
+The check includes the model's document or query prefix and special tokens.
+The default configured limits are 8,192 tokens for passages and 128 tokens for
+queries. If the checkpoint declares a smaller supported limit, the checkpoint
+limit takes precedence.
 
 For a registered revision-pinned model, an explicitly revision-pinned model,
 or a local checkpoint, the library loads the tokenizer and prompt configuration
@@ -65,8 +68,8 @@ The returned `DataFrame` can therefore contain more rows than the embedding
 stage received. Existing fields such as `chunk_index` and the physical page
 number keep their original meaning.
 
-Local and remote embedding use the same prepared rows. When this client-side
-policy is active for a remote endpoint, the request uses `truncate="NONE"` so
+Local and remote text embedding use the same prepared rows. When this client-side
+policy is active for a remote endpoint, text requests use `truncate="NONE"` so
 the endpoint cannot silently replace the client decision. If a backend still
 rejects a prepared batch, the library reports a batch failure rather than
 guessing from an HTTP status or exception that one document is invalid. The VDB

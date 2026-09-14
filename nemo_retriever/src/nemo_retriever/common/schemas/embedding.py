@@ -93,14 +93,14 @@ def embedding_text_input(
     return selected.content.strip()
 
 
-def embedding_record_content(row: Mapping[str, Any], *, text_column: str = "text") -> str | None:
-    """Return exact searchable text without exposing split metadata layout to callers."""
-    selected = select_embedding_text(row, text_column=text_column)
-    if selected is not None:
-        return selected.content
+def embedding_record_content(row: Mapping[str, Any]) -> str | None:
+    """Preserve VDB text selection, with exact content for split children."""
     metadata = row.get("metadata")
-    if isinstance(metadata, Mapping):
-        content = metadata.get("content")
+    split_content = embedding_split_content(metadata)
+    if split_content is not None:
+        return split_content
+    metadata_content = metadata.get("content") if isinstance(metadata, Mapping) else None
+    for content in (row.get("text"), row.get("content"), metadata_content):
         if isinstance(content, str) and content.strip():
             return content
     return None
