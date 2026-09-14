@@ -234,6 +234,15 @@ networkService:
 topology:
   mode: standalone   # "standalone" or "split"
 
+  # Split-mode realtime and batch workers wait for the gateway /v1/live
+  # endpoint in an init container. Override repository/tag/pullPolicy to
+  # retarget a private registry; the default is busybox:1.37.
+  waitForGateway:
+    image:
+      repository: busybox
+      tag: "1.37"
+      pullPolicy: IfNotPresent
+
   gateway:
     replicas: 1
     resources:
