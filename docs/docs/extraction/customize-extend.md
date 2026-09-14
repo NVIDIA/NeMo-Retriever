@@ -12,6 +12,7 @@ The following table maps common needs to the right section:
 | Add a small Python transformation between pipeline stages | [User-defined functions (UDFs)](#user-defined-functions-udfs) |
 | Build or reuse operators stage-by-stage | [Custom graph pipelines](#custom-graph-pipelines) |
 | Store vectors in a backend other than LanceDB | [Custom vector databases](#custom-vector-databases) |
+| Drive ingestion and retrieval from an AI agent (MCP) | [MCP access for agents](workflow-agentic-retrieval.md) |
 
 ## On this page { #on-this-page }
 
@@ -19,6 +20,7 @@ The following table maps common needs to the right section:
 - [User-defined functions (UDFs)](#user-defined-functions-udfs)
 - [Custom graph pipelines](#custom-graph-pipelines)
 - [Custom vector databases](#custom-vector-databases)
+- [MCP access for agents](workflow-agentic-retrieval.md)
 - [Related Topics](#related-topics)
 
 ## Start with task configuration { #start-with-task-configuration }
@@ -57,6 +59,10 @@ To integrate a different vector store, implement the [`VDB`](https://github.com/
 - [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
+
+## MCP access for agents { #mcp-access-for-agents }
+
+For Model Context Protocol (MCP) access, including the HTTP `/mcp` endpoint, `retriever service mcp-stdio`, and the `agentic_query` tool, refer to [Add agentic retrieval](workflow-agentic-retrieval.md).
 
 ## Related Topics { #related-topics }
 
