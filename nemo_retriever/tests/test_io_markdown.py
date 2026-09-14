@@ -146,7 +146,7 @@ def test_to_markdown_rejects_multi_document_results() -> None:
     doc_a = pd.DataFrame([{"page_number": 1, "text": "A"}])
     doc_b = pd.DataFrame([{"page_number": 1, "text": "B"}])
 
-    with pytest.raises(ValueError, match="For DataFrame results, filter rows by path before rendering"):
+    with pytest.raises(ValueError, match="Pass one DataFrame at a time"):
         to_markdown([doc_a, doc_b])
 
 
