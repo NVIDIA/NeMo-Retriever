@@ -52,6 +52,15 @@ def test_build_warmup_spec_skips_remote_stages() -> None:
     assert build_warmup_spec(extract, embed, asr) is None
 
 
+def test_build_warmup_spec_skips_disabled_page_elements() -> None:
+    extract = {
+        "use_page_elements": False,
+        "ocr_invoke_url": "http://ocr-nim/v1/infer",
+    }
+
+    assert build_warmup_spec(extract, None, None) is None
+
+
 def test_warm_local_models_registers_mock_instances() -> None:
     clear_warmed_models()
     mock_page = MagicMock(name="page_elements")

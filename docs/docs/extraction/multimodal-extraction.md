@@ -76,6 +76,8 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 When text extraction is enabled and a page is marked as requiring OCR, the pipeline normally sends valid `text`, `title`, and `header_footer` regions from Page Elements to OCR. If Page Elements produces no valid crop with one of those labels, the pipeline sends the full page to OCR one time and uses readable output as the page text. This fallback preserves searchable text when the only detected region is an infographic or when the eligible region geometry is invalid. It does not create an `infographic` output row or change the `extract_infographics=False` default.
 
+Page Elements is optional when a service deployment provides remote OCR. If the service has no Page Elements endpoint and local extraction is disabled, it does not load a local Page Elements model. Scanned pages use the same full-page OCR fallback directly.
+
 When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 
 **Related**

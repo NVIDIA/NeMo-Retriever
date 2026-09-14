@@ -931,8 +931,13 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
 
     local = local or _default_local_models_config()
     kwargs: dict[str, Any] = {}
-    if nim.ocr_invoke_url or (local.enabled and local.extract.enabled):
+    local_extract_enabled = local.enabled and local.extract.enabled
+    if nim.ocr_invoke_url or local_extract_enabled:
         kwargs["method"] = "pdfium_hybrid"
+    if nim.ocr_invoke_url and not nim.page_elements_invoke_url and not local_extract_enabled:
+        # Remote OCR can use the hybrid path's full-page fallback without
+        # implicitly constructing a disabled local Page Elements model.
+        kwargs["use_page_elements"] = False
     if nim.page_elements_invoke_url:
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
     if nim.ocr_invoke_url:

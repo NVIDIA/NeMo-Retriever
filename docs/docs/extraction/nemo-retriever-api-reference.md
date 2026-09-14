@@ -55,6 +55,10 @@ A bare `ExtractParams()` uses `pdfium`. The CLI `auto` profile uses
 uses `pdfium_hybrid` if its configuration provides a local or remote OCR
 backend and uses `pdfium` otherwise. An explicit request value always wins.
 
+When only remote OCR is available, the service disables Page Elements instead
+of loading a local Page Elements model. Pages that require OCR use the
+full-page OCR fallback.
+
 Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.

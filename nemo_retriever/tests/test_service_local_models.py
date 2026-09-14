@@ -214,6 +214,30 @@ def test_build_extract_params_uses_pdfium_hybrid_with_remote_ocr() -> None:
     )
 
     assert ep.method == "pdfium_hybrid"
+    assert ep.use_page_elements is False
+
+
+def test_build_extract_params_uses_remote_page_elements_when_available() -> None:
+    ep = build_extract_params(
+        NimEndpointsConfig(
+            page_elements_invoke_url="http://page-elements-nim/v1/infer",
+            ocr_invoke_url="http://ocr-nim/v1/ocr",
+        ),
+        LocalModelsConfig(),
+    )
+
+    assert ep.method == "pdfium_hybrid"
+    assert ep.use_page_elements is True
+
+
+def test_build_extract_params_uses_local_page_elements_when_available() -> None:
+    ep = build_extract_params(
+        NimEndpointsConfig(ocr_invoke_url="http://ocr-nim/v1/ocr"),
+        LocalModelsConfig(enabled=True),
+    )
+
+    assert ep.method == "pdfium_hybrid"
+    assert ep.use_page_elements is True
 
 
 def test_build_extract_params_uses_pdfium_when_local_ocr_is_disabled() -> None:

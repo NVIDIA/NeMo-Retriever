@@ -146,6 +146,10 @@ valid `text`, `title`, or `header_footer` crop. This fallback populates page
 text; it does not emit a separate infographic row. Set
 `extract_infographics=True` only when you also need infographic output rows.
 
+For a remote-OCR-only service, Page Elements is not required. If no Page
+Elements endpoint is configured and local extraction is disabled, the service
+uses the full-page OCR fallback without loading a local Page Elements model.
+
 For service-managed VectorDB writes, the default
 `serviceConfig.vectordb.emptyUploadPolicy: raise` marks the affected document
 as failed. If your workflow can accept an unindexed document, set the policy
