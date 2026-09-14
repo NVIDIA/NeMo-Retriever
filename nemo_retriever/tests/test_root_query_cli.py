@@ -20,6 +20,17 @@ cli_main = importlib.import_module("nemo_retriever.cli.main")
 query_cli_app = importlib.import_module("nemo_retriever.cli.query.app")
 
 
+def test_query_cli_hit_uses_hybrid_relevance_score() -> None:
+    hit = {
+        "text": "hybrid result",
+        "source": "doc.pdf",
+        "metadata": {"type": "text"},
+        "_relevance_score": 0.73,
+    }
+
+    assert query_cli_app._query_cli_hit(hit)["score"] == 0.73
+
+
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
