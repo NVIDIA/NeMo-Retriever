@@ -22,10 +22,13 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
-The Helm chart uses `GET /v1/live` for startup and liveness probes and
-`GET /v1/health` for readiness. Both endpoints are unauthenticated. In split
-topology, `/v1/health` returns HTTP `503` when the required realtime or batch
-worker is unavailable, so Kubernetes removes the gateway from Service endpoints.
+The Helm chart uses `GET /v1/live` for startup and liveness probes on the
+retriever and VectorDB services and `GET /v1/health` for readiness. Both
+endpoints are unauthenticated. The VectorDB liveness endpoint performs no
+storage calls, while its readiness endpoint inspects backend and
+collection-catalog health. In split topology, `/v1/health` returns HTTP `503`
+when the required realtime or batch worker is unavailable, so Kubernetes
+removes the gateway from Service endpoints.
 In split topology, the realtime and batch init containers reach `/v1/live`
 through the chart's internal gateway startup Service
 (`<release>-nemo-retriever-gateway-startup`) so a clean install is not blocked
