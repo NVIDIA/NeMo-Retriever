@@ -171,6 +171,7 @@ def test_make_work_fn_continues_when_trace_capture_fails(
             vectordb_url=None,
             internal_api_token=None,
             write_timeout_s=300.0,
+            empty_upload_policy="raise",
         ),
         pipeline=SimpleNamespace(
             realtime_workers=1,

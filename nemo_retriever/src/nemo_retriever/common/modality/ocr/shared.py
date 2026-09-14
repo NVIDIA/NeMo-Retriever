@@ -730,9 +730,7 @@ def _prepare_ocr_rows(
             needs_ocr_for_text = False
             if extract_text:
                 metadata = getattr(row, "metadata", None) or {}
-                needs_ocr_for_text = (
-                    metadata.get("needs_ocr_for_text", False) if isinstance(metadata, dict) else False
-                )
+                needs_ocr_for_text = metadata.get("needs_ocr_for_text", False) if isinstance(metadata, dict) else False
                 if needs_ocr_for_text:
                     row_wanted_labels = wanted_labels | _TEXT_LABELS
 
