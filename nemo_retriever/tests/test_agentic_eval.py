@@ -365,7 +365,12 @@ def test_agentic_query_documents_with_metadata_normalizes_usage():
         ),
         usage={
             "0": {
-                "main_agent": {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15},
+                "main_agent": {
+                    "prompt_tokens": 11,
+                    "completion_tokens": 4,
+                    "total_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 5},
+                },
                 "top1_agent": {"input_tokens": 3, "output_tokens": 2},
             }
         },
@@ -380,6 +385,7 @@ def test_agentic_query_documents_with_metadata_normalizes_usage():
         result = agentic_query_documents_with_metadata(request)
 
     assert result.usage["input_tokens"] == 14
+    assert result.usage["cache_tokens"] == 5
     assert result.usage["output_tokens"] == 6
     assert result.usage["total_tokens"] == 20
     assert set(result.usage["stages"]) == {"main_agent", "top1_agent"}
@@ -406,10 +412,42 @@ def test_normalize_usage_breakdown_includes_split_cache_input_tokens():
 
     assert result == {
         "input_tokens": 550,
+        "cache_tokens": 400,
         "output_tokens": 25,
         "total_tokens": 575,
         "stages": {"main_agent": split_input_usage},
     }
+
+
+def test_normalize_usage_breakdown_sums_observed_nested_cache_reads():
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    usage = {
+        "main_agent": {
+            "prompt_tokens": 120,
+            "completion_tokens": 25,
+            "total_tokens": 145,
+            "prompt_tokens_details": {"cached_tokens": 40},
+        },
+        "selection_agent": {
+            "input_tokens": 30,
+            "output_tokens": 5,
+            "input_tokens_details": {"cached_tokens": 10},
+        },
+        "provider_without_cache_details": {
+            "prompt_tokens": 20,
+            "completion_tokens": 3,
+            "total_tokens": 23,
+        },
+    }
+
+    result = normalize_usage_breakdown(usage)
+
+    assert result["input_tokens"] == 170
+    assert result["cache_tokens"] == 50
+    assert result["output_tokens"] == 33
+    assert result["total_tokens"] == 203
+    assert result["stages"] == usage
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)

@@ -24,7 +24,7 @@ from unittest import SkipTest, TestCase, main
 
 _NIMSERVICE_TEMPLATES: tuple[tuple[str, str], ...] = (
     ("audio.yaml", "audio"),
-    ("llama-nemotron-embed-vl-1b-v2.yaml", "vlm_embed"),
+    ("nemotron-3-embed-1b.yaml", "vlm_embed"),
     ("llama-nemotron-rerank-vl-1b-v2.yaml", "rerankqa"),
     ("nemotron-3-nano-omni-30b-a3b-reasoning.yaml", "nemotron_3_nano_omni_30b_a3b_reasoning"),
     ("nemotron-page-elements-v3.yaml", "page_elements"),

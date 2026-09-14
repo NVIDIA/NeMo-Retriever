@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model, resolve_embed_model_spec
+from nemo_retriever.models import (
+    NEMOTRON_3_EMBED_MODEL,
+    VL_RERANK_MODEL,
+    resolve_embed_model,
+    resolve_embed_model_spec,
+)
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -108,22 +113,30 @@ class Retriever:
         from nemo_retriever.common.params import EmbedParams
 
         base: dict[str, Any] = {
-            "model_name": VL_EMBED_MODEL,
-            "embed_model_name": VL_EMBED_MODEL,
+            "model_name": NEMOTRON_3_EMBED_MODEL,
+            "embed_model_name": NEMOTRON_3_EMBED_MODEL,
             "input_type": "query",
             "text_column": "text",
             "inference_batch_size": 32,
             "embed_inference_batch_size": 32,
-            "local_ingest_embed_backend": "hf",
+            "local_ingest_embed_backend": "vllm",
         }
         overrides = {**dict(self.embed_kwargs or {}), **dict(extra or {})}
         merged = {**base, **overrides}
         endpoint = str(merged.get("embedding_endpoint") or merged.get("embed_invoke_url") or "").strip()
-        if self.run_mode == "local" and not endpoint and overrides.get("local_ingest_embed_backend") is None:
+        if (
+            self.run_mode == "local"
+            and not endpoint
+            and "local_ingest_embed_backend" in overrides
+            and overrides["local_ingest_embed_backend"] is None
+        ):
             model_id = str(merged.get("embed_model_name") or merged.get("model_name") or "").strip()
-            spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
-            merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
-            merged["embed_model_revision"] = spec.revision
+            if resolve_embed_model(model_id) == NEMOTRON_3_EMBED_MODEL:
+                merged["local_ingest_embed_backend"] = "vllm"
+            else:
+                spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
+                merged["local_ingest_embed_backend"] = "vllm" if spec.requires_vllm else "hf"
+                merged["embed_model_revision"] = spec.revision
         if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:
             merged["local_ingest_embed_backend"] = normalize_backend(
                 str(merged["local_ingest_embed_backend"]),
@@ -263,17 +276,59 @@ class Retriever:
             self._lancedb_capabilities_cache[key] = caps
         return caps
 
+    def _graph_lancedb_retrieve_operator(self) -> RetrieveVdbOperator | None:
+        """Return the LanceDB retrieval operator from a caller-owned graph, if present."""
+        if self.graph is None:
+            return None
+
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        roots = getattr(self.graph, "roots", None)
+        if not isinstance(roots, list):
+            return None
+
+        pending = list(roots)
+        visited: set[int] = set()
+        while pending:
+            node = pending.pop()
+            if id(node) in visited:
+                continue
+            visited.add(id(node))
+            operator = getattr(node, "operator", None)
+            if isinstance(operator, RetrieveVdbOperator) and isinstance(getattr(operator, "_vdb", None), LanceDB):
+                return operator
+            children = getattr(node, "children", None)
+            if isinstance(children, list):
+                pending.extend(children)
+        return None
+
     def _resolve_lancedb_query_mode(
         self,
         runtime_vdb_kwargs: Optional[dict[str, Any]],
     ) -> tuple[str, LanceTableCapabilities, str, str, bool] | None:
-        if self.graph is not None:
+        graph_operator = self._graph_lancedb_retrieve_operator()
+        if self.graph is not None and graph_operator is None:
             return None
 
-        lancedb_kwargs = dict(self.vdb_kwargs or {})
+        lancedb_kwargs = (
+            {"vdb": graph_operator._vdb, "vdb_kwargs": dict(graph_operator._vdb_kwargs)}
+            if graph_operator is not None
+            else dict(self.vdb_kwargs or {})
+        )
         if "vdb" in lancedb_kwargs:
-            return None
-        if "vdb_op" in lancedb_kwargs:
+            from nemo_retriever.common.vdb.lancedb import LanceDB
+
+            vdb = lancedb_kwargs["vdb"]
+            if not isinstance(vdb, LanceDB):
+                return None
+            nested_kwargs = dict(lancedb_kwargs.get("vdb_kwargs") or {})
+            lancedb_kwargs = {
+                "uri": vdb.uri,
+                "table_name": vdb.table_name,
+                "hybrid": vdb.hybrid,
+                **nested_kwargs,
+            }
+        elif "vdb_op" in lancedb_kwargs:
             if str(lancedb_kwargs.get("vdb_op") or "").strip().lower() != "lancedb":
                 return None
             lancedb_kwargs = dict(lancedb_kwargs.get("vdb_kwargs") or {})
@@ -454,22 +509,27 @@ class Retriever:
         )
         if self.graph is None:
             metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
+        else:
+            metadata_reader = self._graph_lancedb_retrieve_operator()
+        if metadata_reader is not None:
             index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
             index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
             if explicit_model and index_model:
                 resolved_explicit_model = resolve_embed_model(explicit_model)
                 resolved_index_model = resolve_embed_model(index_model)
                 if resolved_explicit_model != resolved_index_model:
-                    logger.warning(
-                        "The explicitly configured query embedding model %r differs from the model %r "
-                        "recorded on the index. Results may be unreliable because different embedding "
-                        "models can use incompatible vector spaces. Use the index model or rebuild the "
-                        "index with the query model. Continuing with the explicitly configured model.",
-                        resolved_explicit_model,
-                        resolved_index_model,
+                    raise ValueError(
+                        f"Query embedding model {resolved_explicit_model!r} does not match model "
+                        f"{resolved_index_model!r} recorded on the index. Use the index model or rebuild "
+                        "the index with the configured query model."
                     )
 
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
+        if lancedb_mode is not None and lancedb_mode[0] != "sparse" and not index_model:
+            raise ValueError(
+                "The existing LanceDB table does not record its embedding model, so query compatibility "
+                "cannot be verified. Rebuild the table with the configured embedding model before querying."
+            )
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
         if lancedb_mode is not None:

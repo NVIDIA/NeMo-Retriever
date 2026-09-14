@@ -159,13 +159,13 @@ https://pypi.org/project/pdfservices-sdk/
     required if you want to use the Adobe extraction service for PDF decomposition. Please review the
     [license agreement](https://github.com/adobe/pdfservices-python-sdk?tab=License-1-ov-file) for the
     pdfservices-sdk before enabling this option.
-- **Built With Llama**:
+- **Default embedding tokenizer**:
   - **Description**: Published NeMo Retriever service images pre-cache the
     revision-pinned tokenizer for the default embedding model, currently
-    [`nvidia/llama-nemotron-embed-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2),
+    [`nvidia/Nemotron-3-Embed-1B-BF16`](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16),
     so TXT and HTML splitting does not need network access at runtime. The model
-    is governed by the [NVIDIA Open Model License](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/blob/main/LICENSE)
-    and identifies additional Llama 3.2 terms in its model card.
+    is governed by the [OpenMDW License Agreement, version 1.1](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16/blob/main/LICENSE)
+    and identifies the Apache License, Version 2.0, as additional information.
 
     Source builds opt in to the same pinned tokenizer cache with
     `--build-arg DOWNLOAD_DEFAULT_TOKENIZER=True`. The default tokenizer

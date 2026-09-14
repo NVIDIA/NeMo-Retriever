@@ -25,7 +25,7 @@ POD_OTEL_ENABLED = SERVICE_OTEL_ENABLED + NIM_OTEL_ENABLED
 
 NIMSERVICE_NAMES = {
     "audio",
-    "llama-nemotron-embed-vl-1b-v2",
+    "nemotron-3-embed-1b",
     "llama-nemotron-rerank-vl-1b-v2",
     "nemotron-3-nano-omni-30b-a3b-reasoning",
     "nemotron-page-elements-v3",
@@ -775,7 +775,7 @@ def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
         assert chart_managed_names.isdisjoint(values)
 
     page_elements_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
-    assert page_elements_values["NIM_PIPELINE_MAX_BATCH_SIZE"] == "1"
+    assert "NIM_PIPELINE_MAX_BATCH_SIZE" not in page_elements_values
 
 
 def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:

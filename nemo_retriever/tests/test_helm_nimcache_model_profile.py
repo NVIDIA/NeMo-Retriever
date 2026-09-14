@@ -377,13 +377,13 @@ class NimCacheModelProfileTests(TestCase):
             for doc in _iter_nimcache_docs(proc.stdout)
         }
         self.assertEqual(
-            docs.get("llama-nemotron-embed-vl-1b-v2"),
+            docs.get("nemotron-3-embed-1b"),
             {"profiles": [profile_uuid]},
             "vlm_embed NIMCache must carry the per-NIM profile filter.",
         )
         # Every other NIMCache must remain unfiltered.
         for name, model in docs.items():
-            if name == "llama-nemotron-embed-vl-1b-v2":
+            if name == "nemotron-3-embed-1b":
                 continue
             with self.subTest(nimcache=name):
                 self.assertIsNone(

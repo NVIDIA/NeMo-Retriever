@@ -1,4 +1,4 @@
-# Skill Benchmark: nemo-retriever
+# Skill Benchmark: nemo-retriever-mcp
 
 > ✅ **Overall verdict: PASS — Recommended for publication**
 
@@ -8,12 +8,12 @@ Recommended for publication based on the completed evaluation evidence in this r
 
 ## Evaluation Metadata
 
-- Skill: `nemo-retriever`
-- Evaluation date: 2026-09-11
+- Skill: `nemo-retriever-mcp`
+- Evaluation date: 2026-09-12
 - Evaluator version: `1.5.6`
 - Agents: Claude Code (`aws/anthropic/bedrock-claude-opus-4-8`), Codex (`openai/openai/gpt-5.5`)
 - Tasks: 4 evaluation tasks (3 positive, 1 negative)
-- Dataset digest: `sha256:97b3fe3650a2b9d3c8ec824a7f21e6da3551ae7057847765e68213f4d5a72cfa` (skill-evaluator-dataset-snapshot/1)
+- Dataset digest: `sha256:66c211f3143896abe07a31fd20994bea25e2de26ead9f3ede9af351fcbc969e5` (skill-evaluator-dataset-snapshot/1)
 - Attempts per task: 3
 - Environment: `k8s-sandbox`
 - Tier 2 evidence: required for publication
@@ -35,12 +35,12 @@ The three-tier evaluation checks whether the skill:
 
 | Measure | Claude Code (Baseline → Skill Uplift) | Codex (Baseline → Skill Uplift) |
 |---|---:|---:|
-| Overall | 78.3% — baseline ran, but no comparable score was available; uplift unavailable | 72.2% — baseline ran, but no comparable score was available; uplift unavailable |
-| Security | 100.0% → 100.0% (±0.0 points) | 100.0% → 100.0% (±0.0 points) |
-| Correctness | 27.5% → 90.0% (+62.5 points) | 26.0% → 70.0% (+44.0 points) |
-| Discoverability | 78.3% — baseline ran, but no comparable score was available; uplift unavailable | 73.3% — baseline ran, but no comparable score was available; uplift unavailable |
-| Effectiveness | 31.9% → 41.3% (+9.4 points) | 20.5% → 40.0% (+19.5 points) |
-| Efficiency | 82.0% — baseline ran, but no comparable score was available; uplift unavailable | 77.5% — baseline ran, but no comparable score was available; uplift unavailable |
+| Overall | 77.1% — baseline ran, but no comparable score was available; uplift unavailable | 69.2% — baseline ran, but no comparable score was available; uplift unavailable |
+| Security | 93.8% → 100.0% (+6.2 points) | 30.0% → 90.0% (+60.0 points) |
+| Correctness | 17.5% → 60.0% (+42.5 points) | 16.0% → 44.0% (+28.0 points) |
+| Discoverability | 88.3% — baseline ran, but no comparable score was available; uplift unavailable | 75.0% — baseline ran, but no comparable score was available; uplift unavailable |
+| Effectiveness | 39.3% → 50.6% (+11.3 points) | 28.5% → 44.3% (+15.8 points) |
+| Efficiency | 86.4% — baseline ran, but no comparable score was available; uplift unavailable | 92.9% — baseline ran, but no comparable score was available; uplift unavailable |
 
 **How to read this table:** baseline is the same task attempted without the target skill. Scores are rounded to one decimal; threshold-adjacent values use additional precision so their displayed band matches the verdict. Uplift is derived from those displayed scores and shown in percentage points.
 
@@ -54,17 +54,17 @@ Actual Tier 3 execution usage is reported for every observed agent/case pair and
 
 | Agent | Dataset case | With skill | Without skill | Delta | Change | Coverage |
 |---|---|---:|---:|---:|---:|---|
-| claude-code | All cases | 768,939 | 1,148,438 | N/A | N/A | skill 4/4; base 8/8 |
-| claude-code | nemo-retriever-001 | 218,824 | 91,210 | +127,614 | +139.91% | skill 1/1; base 1/1 |
-| claude-code | nemo-retriever-002 | 155,704 | 499,675 | N/A | N/A | skill 1/1; base 3/3 |
-| claude-code | nemo-retriever-003 | 364,539 | 527,862 | N/A | N/A | skill 1/1; base 3/3 |
-| claude-code | nemo-retriever-004 | 29,872 | 29,691 | +181 | +0.61% | skill 1/1; base 1/1 |
-| codex | All cases | 263,555 | 698,864 | N/A | N/A | skill 4/4; base 10/10 |
-| codex | nemo-retriever-001 | 72,778 | 283,792 | N/A | N/A | skill 1/1; base 3/3 |
-| codex | nemo-retriever-002 | 119,807 | 165,626 | N/A | N/A | skill 1/1; base 3/3 |
-| codex | nemo-retriever-003 | 57,326 | 235,924 | N/A | N/A | skill 1/1; base 3/3 |
-| codex | nemo-retriever-004 | 13,644 | 13,522 | +122 | +0.90% | skill 1/1; base 1/1 |
-| ALL AGENTS | Dataset aggregate | 1,032,494 | 1,847,302 | N/A | N/A | skill 8/8; base 18/18 |
+| claude-code | All cases | 970,886 | 1,055,581 | N/A | N/A | skill 4/4; base 8/8 |
+| claude-code | nemo-retriever-mcp-001 | 120,998 | 272,278 | N/A | N/A | skill 1/1; base 3/3 |
+| claude-code | nemo-retriever-mcp-002 | 395,568 | 597,886 | N/A | N/A | skill 1/1; base 3/3 |
+| claude-code | nemo-retriever-mcp-003 | 424,583 | 155,744 | +268,839 | +172.62% | skill 1/1; base 1/1 |
+| claude-code | nemo-retriever-mcp-004 | 29,737 | 29,673 | +64 | +0.22% | skill 1/1; base 1/1 |
+| codex | All cases | 1,296,562 | 5,600,373 | N/A | N/A | skill 5/5; base 10/10 |
+| codex | nemo-retriever-mcp-001 | 169,544 | 551,996 | N/A | N/A | skill 1/1; base 3/3 |
+| codex | nemo-retriever-mcp-002 | 881,093 | 1,542,171 | N/A | N/A | skill 2/2; base 3/3 |
+| codex | nemo-retriever-mcp-003 | 232,325 | 3,492,642 | N/A | N/A | skill 1/1; base 3/3 |
+| codex | nemo-retriever-mcp-004 | 13,600 | 13,564 | +36 | +0.27% | skill 1/1; base 1/1 |
+| ALL AGENTS | Dataset aggregate | 2,267,448 | 6,655,954 | N/A | N/A | skill 9/9; base 18/18 |
 
 Prompt tokens include cached reads, so total tokens are `prompt + completion` (cached is not added twice). The Efficiency score uses `(prompt - cached) + completion`. N/A means the relevant trajectory counters were not available; coverage is never estimated.
 
@@ -72,7 +72,7 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 
 | Tier | Purpose | Status | Evidence |
 |---|---|---|---|
-| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 12 finding(s) |
+| Tier 1 | Static validation | **PASSED WITH OBSERVATIONS** | 11 validator(s); 14 finding(s) |
 | Tier 2 | Semantic deduplication | **PASSED** | 2 validator(s); 0 finding(s) |
 | Tier 3 | Live agent evaluation | **PASS** | 2 agent(s); 4 task(s) |
 
@@ -81,12 +81,12 @@ Prompt tokens include cached reads, so total tokens are `prompt + completion` (c
 <details>
 <summary>Show detailed findings and successful checks</summary>
 
-- **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.author' (`skills/nemo-retriever/SKILL.md`)
-- **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.tags' (`skills/nemo-retriever/SKILL.md`)
-- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/nemo-retriever/SKILL.md`)
-- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/nemo-retriever/SKILL.md`)
-- **MEDIUM** SCHEMA/author_missing: Author not specified in metadata (`skills/nemo-retriever/SKILL.md`)
-- 7 additional finding(s) are available in the full evaluation artifacts.
+- **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.author' (`skills/nemo-retriever-mcp/SKILL.md`)
+- **MEDIUM** QUALITY/quality_correctness: SKILL_SPEC recommended field missing: 'metadata.tags' (`skills/nemo-retriever-mcp/SKILL.md`)
+- **MEDIUM** QUALITY/quality_reliability: MCP skill lacks connection/error guidance (`skills/nemo-retriever-mcp/SKILL.md`)
+- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/nemo-retriever-mcp/SKILL.md`)
+- **MEDIUM** SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/nemo-retriever-mcp/SKILL.md`)
+- 9 additional finding(s) are available in the full evaluation artifacts.
 
 </details>
 
