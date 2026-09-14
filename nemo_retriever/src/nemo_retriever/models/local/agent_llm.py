@@ -155,6 +155,12 @@ class VLLMAgentChatLLM(BaseModel):
             engine_kwargs["max_model_len"] = int(config.max_model_len)
         if config.max_num_seqs is not None:
             engine_kwargs["max_num_seqs"] = int(config.max_num_seqs)
+        if model_path == _SUPER_49B_MODEL_ID and int(config.tensor_parallel_size) > 1:
+            # Super-49B v1.5 fails during CUDA graph warm-up with tensor
+            # parallelism on supported H100 configurations. These are the
+            # equivalent safe native-vLLM startup options.
+            engine_kwargs["enforce_eager"] = True
+            engine_kwargs["disable_custom_all_reduce"] = True
 
         self._sampling_params_cls = SamplingParams
         self._llm: Any | None = LLM(
