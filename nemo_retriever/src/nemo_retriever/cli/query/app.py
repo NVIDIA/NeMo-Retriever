@@ -77,8 +77,10 @@ app = typer.Typer(
 def _query_cli_hit(hit: RetrievalHit, max_text_chars: int | None = None) -> dict[str, object]:
     metadata = hit.get("metadata") or {}
     modality = hit.get("content_type") or metadata.get("type") or "text"
-    if "_score" in hit and hit["_score"] is not None:
-        score: object = hit["_score"]
+    if "_relevance_score" in hit and hit["_relevance_score"] is not None:
+        score: object = hit["_relevance_score"]
+    elif "_score" in hit and hit["_score"] is not None:
+        score = hit["_score"]
     elif "_distance" in hit and hit["_distance"] is not None:
         score = hit["_distance"]
     else:
