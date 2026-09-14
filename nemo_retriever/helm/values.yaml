@@ -1331,6 +1331,11 @@ nimOperator:
     # Cache only the default BF16 2-GPU profile used by the Super-49B
     # default resources. Override this when deploying a different model,
     # profile, or GPU topology.
+    # A single explicit profile in the effective cache configuration also
+    # selects the runtime profile. Empty/filter-only/multiple-profile
+    # configurations preserve automatic runtime selection. An explicit
+    # NIM_MODEL_PROFILE env entry overrides this runtime selection.
+    # Set profiles: [] to remove the bundled pin.
     modelProfile:
       profiles:
         - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"

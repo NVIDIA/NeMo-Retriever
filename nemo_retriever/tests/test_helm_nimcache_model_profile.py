@@ -41,6 +41,7 @@ on ``$PATH``; otherwise they skip cleanly.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -480,6 +481,80 @@ class NimCacheModelProfileTests(TestCase):
                 ngc,
                 f"Default render must not contain a NIMCache model block for `{name}`.",
             )
+
+
+class AnswerLLMRuntimeProfileTests(TestCase):
+    """Bug 6636046: an explicit cache singleton also selects the runtime profile."""
+
+    def test_runtime_profile_matches_effective_cache_configuration(self) -> None:
+        cases = [
+            ("default", {}, _SUPER49B_DEFAULT_PROFILE),
+            ("changed", {"answer_llm.modelProfile.profiles": ["changed-profile"]}, "changed-profile"),
+            ("per_nim_wins", {"modelProfile.profiles": ["global"]}, _SUPER49B_DEFAULT_PROFILE),
+            ("global", {"answer_llm.modelProfile": None, "modelProfile.profiles": ["global"]}, "global"),
+            ("unpinned", {"answer_llm.modelProfile": None}, None),
+            ("empty_profiles", {"answer_llm.modelProfile.profiles": []}, None),
+            ("multiple", {"answer_llm.modelProfile.profiles": ["first", "second"]}, None),
+            (
+                "gpu_only",
+                {
+                    "answer_llm.modelProfile.profiles": None,
+                    "answer_llm.modelProfile.gpus": [{"product": "rtx-pro-6000"}],
+                    "modelProfile.profiles": ["global"],
+                },
+                None,
+            ),
+            (
+                "global_multiple",
+                {
+                    "answer_llm.modelProfile": None,
+                    "modelProfile.profiles": ["first", "second"],
+                },
+                None,
+            ),
+        ]
+        for name, overrides, expected in cases:
+            with self.subTest(name=name):
+                args = ["--set", "nimOperator.answer_llm.enabled=true"]
+                for key, value in overrides.items():
+                    args += ["--set-json", f"nimOperator.{key}={json.dumps(value)}"]
+                proc = _helm_template(args)
+                _assert_helm_ok(self, proc)
+                docs = [d for d in yaml.safe_load_all(proc.stdout) if isinstance(d, dict)]
+                answer = {d["kind"]: d for d in docs if d.get("metadata", {}).get("name") == "answer-llm"}
+                storage = answer["NIMService"]["spec"]["storage"]["nimCache"]
+                if expected is None:
+                    self.assertNotIn("profile", storage)
+                else:
+                    self.assertEqual(storage["profile"], expected)
+                    self.assertEqual(answer["NIMCache"]["spec"]["source"]["ngc"]["model"]["profiles"], [expected])
+
+    def test_explicit_profile_env_preserves_override(self) -> None:
+        for source in (
+            {"value": "custom"},
+            {"value": ""},
+            {
+                "valueFrom": {"configMapKeyRef": {"name": "profile", "key": "id"}},
+            },
+        ):
+            with self.subTest(source=source):
+                env = {"name": "NIM_MODEL_PROFILE", **source}
+                proc = _helm_template(
+                    [
+                        "--set",
+                        "nimOperator.answer_llm.enabled=true",
+                        "--set-json",
+                        f"nimOperator.answer_llm.env={json.dumps([env])}",
+                    ]
+                )
+                _assert_helm_ok(self, proc)
+                service = next(
+                    d
+                    for d in yaml.safe_load_all(proc.stdout)
+                    if isinstance(d, dict) and d.get("kind") == "NIMService" and d["metadata"]["name"] == "answer-llm"
+                )
+                self.assertNotIn("profile", service["spec"]["storage"]["nimCache"])
+                self.assertIn(env, service["spec"]["env"])
 
 
 if __name__ == "__main__":

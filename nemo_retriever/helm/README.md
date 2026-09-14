@@ -1526,12 +1526,30 @@ cache job downloads. The chart exposes this through two values:
 | `nimOperator.modelProfile` | Chart-wide | Applied to every NIMCache that doesn't carry its own override. |
 | `nimOperator.<key>.modelProfile` | Per-NIM | When non-empty, **REPLACES** the chart-wide default (no merge). |
 
-Both default to `{}`. With both empty the chart emits no `model:`
+The chart-wide value defaults to `{}`. The `answer_llm` override pins
+the default Super-49B BF16 TP2 profile; other per-NIM values default to
+`{}`. With both values empty, the chart emits no `model:`
 block and the NIM Operator falls back to its "cache every profile
 applicable to the detected GPUs" default — fine on a single-GPU
 laptop, but on heterogeneous clusters (or any cluster with ≥ 3 NIMs)
 this wastes tens of GiB of PVC storage, NGC bandwidth, and cache-job
 runtime.
+
+For `answer_llm`, a single explicit profile in the effective cache
+configuration also sets `NIMService.spec.storage.nimCache.profile`.
+The default Super-49B service therefore requests the same BF16 TP2
+profile as its cache. A non-empty per-NIM configuration replaces the
+chart-wide configuration for both cache and runtime profile selection.
+With no explicit profile, GPU filters alone, or multiple profiles, the
+chart leaves runtime profile selection automatic.
+
+An explicit `NIM_MODEL_PROFILE` entry in `nimOperator.answer_llm.env`,
+including a `valueFrom` entry, takes precedence: the chart omits the
+generated storage profile. Keep that override consistent with the
+cache configuration to avoid downloading another profile at startup.
+To remove the bundled pin, set `nimOperator.answer_llm.modelProfile.profiles=[]`.
+If you also clear the per-NIM configuration entirely, the chart-wide
+configuration applies.
 
 The mapping is rendered verbatim under `spec.source.ngc.model`, so the
 shape lines up 1:1 with the [NIMCache CRD](https://docs.nvidia.com/nim-operator/latest/reference-nimcache.html).
@@ -1574,7 +1592,7 @@ Tips:
 
 - Run `ngc registry model list-profiles nvcr.io/nim/nvidia/<image>:<tag>` to enumerate the available profiles for any chart-pinned NIM image and pick the smallest profile that matches your GPU.
 - Filter mismatches surface as `NIMCache` events such as `NoCompatibleProfile`; check with `kubectl describe nimcache <name>`.
-- The chart's defaults (`{}`) preserve operator behaviour, so adding `modelProfile` is a strict opt-in — existing releases keep working unchanged.
+- Empty effective cache configurations preserve operator profile discovery. The default `answer_llm` configuration explicitly pins its BF16 TP2 profile.
 
 #### Image tag conventions { #image-tag-conventions }
 
