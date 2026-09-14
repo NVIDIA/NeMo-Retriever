@@ -22,9 +22,9 @@ When ingestion combines multiple extraction datasets, preflight also reserves 1 
 
 Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
 
-If you set `BatchTuningParams` worker counts or direct `node_overrides`, those requests and required task reservations must fit the available Ray CPU and GPU budget. The library validates the final plan before submitting work and raises an error when it is infeasible. Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity before retrying.
+Explicit `BatchTuningParams` worker counts and integer `node_overrides` concurrency values must fit the available Ray CPU and GPU budget, including required task reservations. For an explicit Ray actor-pool tuple, validation uses `minimum` for `(minimum, maximum)` or `initial` for `(minimum, maximum, initial)`. The library preserves the tuple's `maximum` so Ray can grow the pool as capacity becomes available.
 
-For a direct Ray actor-pool tuple, such as `(minimum, maximum)` or `(minimum, maximum, initial)`, validation uses `maximum` as the requested pool size.
+Only automatically derived concurrency can be reduced. A node override that sets `batch_size` or other settings without `concurrency` leaves automatic concurrency sizing enabled. The library raises an error before submitting work if the plan is infeasible. Reduce `*_workers`, per-node concurrency, or a tuple's starting size, or wait for shared-cluster capacity before retrying.
 
 ### Override worker counts
 

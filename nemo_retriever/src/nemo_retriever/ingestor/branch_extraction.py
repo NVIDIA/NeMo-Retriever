@@ -251,7 +251,8 @@ class ExtractionBranchExecutor:
             num_cpus=self.num_cpus,
             num_gpus=self.num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self.node_overrides),
-            auto_concurrency_nodes=auto_concurrency_nodes - set(self.node_overrides),
+            auto_concurrency_nodes=auto_concurrency_nodes
+            - {name for name, override in self.node_overrides.items() if "concurrency" in override},
             source_cpu_reservation=source_cpu_reservation,
         )
 

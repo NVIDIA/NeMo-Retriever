@@ -888,7 +888,7 @@ class GraphIngestor(ingestor):
                     self._store_params,
                     self._caption_params,
                 )
-                - set(self._node_overrides)
+                - {name for name, override in self._node_overrides.items() if "concurrency" in override}
             ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
