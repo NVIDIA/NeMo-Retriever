@@ -481,8 +481,40 @@ def test_agentic_retriever_forwards_candidate_k_per_hop():
     retriever._retrieve_for_agent("later", 25, query_id="q1")
 
     assert retriever._retriever.query_calls == [
-        {"query": "first", "top_k": 10, "candidate_k": 20},
+        {"query": "first", "top_k": 20, "candidate_k": 20},
         {"query": "later", "top_k": 25, "candidate_k": 25},
+    ]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_fills_top_k_after_document_dedup():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=3, candidate_k=6)
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+    ranked_chunks = [
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 1", "_score": 0.9},
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 2", "_score": 0.8},
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 3", "_score": 0.7},
+        {"pdf_page": "doc_2", "text": "doc 2", "_score": 0.6},
+        {"pdf_page": "doc_3", "text": "doc 3", "_score": 0.5},
+        {"pdf_page": "doc_4", "text": "doc 4", "_score": 0.4},
+    ]
+
+    def query(_query, *, top_k=None, candidate_k=None):
+        retriever._retriever.query_calls.append(
+            {"query": _query, "top_k": top_k, "candidate_k": candidate_k}
+        )
+        return ranked_chunks[:top_k]
+
+    retriever._retriever.query = query
+
+    docs = retriever._retrieve_for_agent("find docs", 3, query_id="q1")
+
+    assert [doc["doc_id"] for doc in docs] == ["doc_1", "doc_2", "doc_3"]
+    assert docs[0]["text"] == "doc 1 chunk 1"
+    assert retriever._retriever.query_calls == [
+        {"query": "find docs", "top_k": 6, "candidate_k": 6}
     ]
 
 
