@@ -3,17 +3,10 @@
 # Full-pipeline doc builds run in docs-deploy.yml (CI only, no deploy).
 name: NRL documentation — GitHub Pages
 
+# 26.08.1 patch RC window: do not auto-deploy main to GitHub Pages.
+# The customer RC site and the github.io preview both publish from
+# release/26.08.1. Re-enable push/schedule on main after that RC.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "docs/**"
-      - "nemo_retriever/**"
-      - ".github/workflows/nrl-docs-github-pages.yml"
-  schedule:
-    # Nightly (UTC): pick up doc changes even if no pushes
-    - cron: "0 7 * * *"
   workflow_dispatch:
 
 permissions:
