@@ -280,9 +280,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- if ne $role "gateway" }}
+      {{- $waitForGatewayImage := include "nemo-retriever.waitForGateway.image" $ | fromYaml }}
       initContainers:
         - name: wait-for-gateway
-          image: busybox:1.37
+          image: "{{ get $waitForGatewayImage "repository" }}:{{ get $waitForGatewayImage "tag" }}"
+          imagePullPolicy: {{ get $waitForGatewayImage "pullPolicy" }}
           command:
             - sh
             - -c

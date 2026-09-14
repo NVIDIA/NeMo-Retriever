@@ -283,6 +283,29 @@ nemo-retriever.gateway.startupServiceName
 {{- include "nemo-retriever.suffixedFullname" (dict "context" . "suffix" "-gateway-startup") -}}
 {{- end -}}
 
+{{/*
+nemo-retriever.waitForGateway.image
+  Image used by split-mode realtime and batch wait-for-gateway init containers.
+  Required fields match topology.otel.image / topology.zipkin.image so air-gapped
+  installs can retarget a private registry without editing templates.
+*/}}
+{{- define "nemo-retriever.waitForGateway.image" -}}
+{{- $waitForGateway := .Values.topology.waitForGateway | default dict -}}
+{{- if not (kindIs "map" $waitForGateway) -}}
+{{- fail "topology.waitForGateway must be a map" -}}
+{{- end -}}
+{{- $image := get $waitForGateway "image" -}}
+{{- if not (kindIs "map" $image) -}}
+{{- fail "topology.waitForGateway.image must be a map when topology.mode=split" -}}
+{{- end -}}
+{{- range $fieldName := list "repository" "tag" "pullPolicy" -}}
+{{- if not (get $image $fieldName) -}}
+{{- fail (printf "topology.waitForGateway.image.%s is required when topology.mode=split" $fieldName) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $image -}}
+{{- end -}}
+
 
 {{/*
 =============================================================================
