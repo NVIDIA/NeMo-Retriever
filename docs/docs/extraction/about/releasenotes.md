@@ -102,6 +102,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Multimodal extraction { #multimodal-extraction }
 
+- Fixed an issue where SDK batch ingestion with `extraction_mode="auto"` initialized Page Elements for PDF and image inputs when `use_page_elements=False` or no enabled extraction stage required its output. Page-level image embedding continues to render one full-page image for each PDF page without loading a Page Elements model.
 - Fixed an issue that could cause local Hugging Face batch audio extraction to hang in interactive terminals when FFmpeg inherited the parent process's standard input.
 
 ### Retrieval and RAG { #retrieval-and-rag }

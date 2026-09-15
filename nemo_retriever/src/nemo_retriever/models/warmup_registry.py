@@ -65,7 +65,7 @@ def build_warmup_spec(
         if not endpoint and (kwargs.get("model_name") or kwargs.get("embed_model_name")):
             embed_spec = {
                 "model_name": kwargs.get("embed_model_name") or kwargs.get("model_name"),
-                "backend": kwargs.get("local_ingest_embed_backend") or "hf",
+                "backend": kwargs.get("local_ingest_embed_backend") or "vllm",
                 "device": kwargs.get("local_hf_device") or kwargs.get("device"),
                 "hf_cache_dir": kwargs.get("hf_cache_dir"),
                 "gpu_memory_utilization": float(kwargs.get("gpu_memory_utilization", 0.45)),

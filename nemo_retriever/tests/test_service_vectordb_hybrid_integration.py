@@ -47,6 +47,7 @@ def _backend(tmp_path, *, index_mode: str = "auto") -> LanceDB:
         lancedb_uri=str(tmp_path),
         table_name="nemo_retriever",
         expiration_cleanup_enabled=True,
+        embed_model="nvidia/nemotron-3-embed-1b",
         index_mode=index_mode,
     )
     assert isinstance(backend, LanceDB)

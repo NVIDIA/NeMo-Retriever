@@ -71,7 +71,7 @@ service:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
     repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.8.1"
+    tag: "26.8.2"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -600,8 +600,8 @@ serviceConfig:
       ocrLang: ""
     embed:
       enabled: true
-      modelName: nvidia/llama-nemotron-embed-vl-1b-v2
-      localIngestEmbedBackend: hf
+      modelName: nvidia/nemotron-3-embed-1b
+      localIngestEmbedBackend: vllm
       gpuMemoryUtilization: 0.45
     asr:
       enabled: true
@@ -712,7 +712,7 @@ serviceConfig:
     # auto creates hybrid storage when fresh and preserves existing physical indexes.
     # Use hybrid explicitly to upgrade an existing dense table by adding FTS.
     indexMode: "auto"
-    embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
+    embedModel: "nvidia/nemotron-3-embed-1b"
     embedModelProviderPrefix: ""
     # How long a worker waits for the VectorDB pod to acknowledge a record
     # write. A write that is not acknowledged fails the document, so raise
@@ -1069,7 +1069,7 @@ nimOperator:
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.08.1)" for the
+  # See helm/README.md "Recommended minimal install (26.8.2)" for the
   # opt-in flags and "Image tag conventions" for what the
   # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
@@ -1237,15 +1237,15 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_VARIANT
         value: multilingual
 
-  # Llama Nemotron multimodal (VL) embed 1B v2. Used by the embedding stage,
-  # the vectordb query path, and multimodal ingest.
+  # Nemotron 3 Embed 1B. Used by the text embedding stage and
+  # the vectordb query path.
   vlm_embed:
     enabled: true
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: llama-nemotron-embed-vl-1b-v2
+    nimServiceName: nemotron-3-embed-1b
     image:
-      repository: nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2
-      tag: "2.3.0"
+      repository: nvcr.io/nim/nvidia/nemotron-3-embed-1b
+      tag: "2.2.2"
       pullPolicy: IfNotPresent
       # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
       # chart-wide pull secret name(s) for this NIM only.
@@ -1285,11 +1285,11 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      - name: NIM_ENGINE_PRECISION
-        value: fp16
+      - name: NIM_ENGINE_COUNT
+        value: "1"
       # Optional: enable if your NIM build supports throughput mode for this SKU.
-      # - name: NIM_TRITON_PERFORMANCE_MODE
-      #   value: throughput
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Disabled by default unless noted below;
@@ -1331,6 +1331,11 @@ nimOperator:
     # Cache only the default BF16 2-GPU profile used by the Super-49B
     # default resources. Override this when deploying a different model,
     # profile, or GPU topology.
+    # A single explicit profile in the effective cache configuration also
+    # selects the runtime profile. Empty/filter-only/multiple-profile
+    # configurations preserve automatic runtime selection. An explicit
+    # NIM_MODEL_PROFILE env entry overrides this runtime selection.
+    # Set profiles: [] to remove the bundled pin.
     modelProfile:
       profiles:
         - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
