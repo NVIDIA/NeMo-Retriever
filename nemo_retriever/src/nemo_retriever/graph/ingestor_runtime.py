@@ -839,11 +839,11 @@ def build_graph(
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 ocr_kwargs["api_key"] = extract_params.api_key
-            detect_batch_size = _positive(
+            ocr_batch_size = _positive(
                 getattr(tuning, "ocr_inference_batch_size", None) if tuning is not None else None
-            )
-            if detect_batch_size:
-                ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
+            ) or _positive(getattr(extract_params, "inference_batch_size", None))
+            if ocr_batch_size:
+                ocr_kwargs["inference_batch_size"] = int(ocr_batch_size)
 
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:

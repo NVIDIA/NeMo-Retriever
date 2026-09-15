@@ -55,6 +55,7 @@ chunks = (
             pdf_extract_workers=4,
             page_elements_workers=3,
             ocr_workers=3,
+            ocr_inference_batch_size=8,
         )
     )
     .embed(
@@ -69,6 +70,28 @@ chunks = (
 Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md).
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
+
+## Tune remote OCR request batching
+
+Remote OCR batches cropped regions across the page rows supplied to one OCR actor call. This behavior applies to in-process, batch, and service ingestion with a remote OCR NIM. It preserves page and region output order.
+
+For in-process and batch ingestion, set `BatchTuningParams.ocr_inference_batch_size` through `.extract(batch_tuning=...)` to limit the cropped regions in each OCR HTTP request. This value takes precedence over `ExtractParams.inference_batch_size` for OCR. When you do not set it, OCR uses `ExtractParams.inference_batch_size`, which defaults to `8`.
+
+Set `ExtractParams.remote_retry.remote_max_pool_workers` through `.extract(remote_retry=...)` to cap concurrent remote requests per actor. Each submitted group contains at most `ocr_inference_batch_size * remote_max_pool_workers` cropped regions, using the effective OCR batch size. Requests for different pages can overlap when a group contains multiple requests.
+
+The NIM HTTP client applies the configured retry policy. If a group spans multiple pages and all concurrent failures are HTTP `400`, `413`, or `422`, OCR retries each page separately to isolate input-specific failures. Any authentication failure, exhausted rate-limit retry, transport failure, server error, or invalid response count prevents page-level retries for that group. If a remote request or response processing fails a page, OCR discards that page's results, including results from earlier groups, and reports the page error.
+
+The execution mode determines how page rows reach the OCR actor and how many actors can submit requests.
+
+| Mode | OCR batching and concurrency |
+| --- | --- |
+| `inprocess` | OCR batches across the page rows in the current graph stage, including pages of one PDF. It uses the remote request pool without Ray. |
+| `batch` | In the dedicated PDF graph, Ray supplies page-row batches to OCR actors. `ocr_inference_batch_size` also sets this Ray row-batch size, while `ocr_workers` controls the number of actors. Remote request limits apply separately within each actor. |
+| `service` | Each service worker runs an in-process graph. The whole-document route splits the PDF inside that graph, so OCR can batch across its pages. Service worker counts control concurrent work items. |
+
+In service mode, use `.extract(inference_batch_size=...)` to set the request batch size. The default service policy does not accept client overrides for `batch_tuning` or `remote_retry`. The server controls NIM endpoints and credentials. Across Ray actors or service workers, total request concurrency can exceed the per-actor limit.
+
+A smaller OCR inference batch size creates more, smaller HTTP requests. In Ray batch mode, it also reduces the number of page rows available to each actor call. A larger value creates fewer, larger requests. Benchmark both latency and throughput with representative documents, and monitor NIM GPU memory, HTTP `429` responses, errors, and output counts. Overlapping HTTP requests does not establish concurrent GPU execution; the NIM controls backend queueing and execution.
 
 ## Shared preflight for custom Ray Data graphs
 

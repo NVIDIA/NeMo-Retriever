@@ -499,8 +499,15 @@ class _MultiTypeExtractBase(AbstractOperator):
             ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
         if extract_params.api_key:
             ocr_kwargs["api_key"] = extract_params.api_key
-        if inference_batch_size:
-            ocr_kwargs["inference_batch_size"] = int(inference_batch_size)
+        ocr_batch_size = getattr(tuning, "ocr_inference_batch_size", None) or getattr(
+            extract_params, "inference_batch_size", None
+        )
+        if ocr_batch_size:
+            ocr_kwargs["inference_batch_size"] = int(ocr_batch_size)
+        remote_retry = getattr(extract_params, "remote_retry", None)
+        if remote_retry is not None:
+            for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
+                ocr_kwargs[key] = int(getattr(remote_retry, key))
 
         if any(
             ocr_kwargs.get(key) for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
