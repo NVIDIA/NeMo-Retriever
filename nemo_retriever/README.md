@@ -1,11 +1,11 @@
 # Quick Start for NeMo Retriever Library
 
-NeMo Retriever Library is a retrieval-augmented generation (RAG) ingestion pipeline for documents that can parse text, tables, charts, and infographics. NeMo Retriever Library parses documents, creates embeddings, optionally stores embeddings in LanceDB, and performs recall evaluation.
+NeMo Retriever Library extracts text, tables, charts, and infographics, runs Nemotron embedding and related models, optionally stores vectors in LanceDB, and lets you query and measure retrieval quality. Nemotron models are the models you evaluate and integrate. The library is the evaluation and integration layer. It is not a managed retrieval service or a turnkey enterprise retrieval-augmented generation (RAG) platform.
 
 This quick start guide shows how to run NeMo Retriever Library as a library in local Python processes without containers. Choose one inference path:
 
-- **Local GPU (Linux):** Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your GPU(s). Requires CUDA 13.x and the `[local]` extra.
-- **Remote NIM:** Call build.nvidia.com hosted or self-hosted NeMo Retriever NIM endpoints over the network. The base package installs on Linux, Windows x64, and macOS Apple Silicon (arm64); no local GPU is required. macOS Intel (x86_64) is not supported.
+- **Local GPU (Linux):** Pull and run [Nemotron RAG models from Hugging Face](https://huggingface.co/collections/nvidia/nemotron-rag) on your GPU(s). Requires CUDA 13.x and the `[local]` extra. You do not need to deploy the four default Helm NIMs for this path.
+- **Remote NIM:** Call build.nvidia.com hosted or self-hosted NeMo Retriever NIM endpoints over the network. The base package installs on Linux, Windows x64, and macOS Apple Silicon (arm64); no local GPU is required. macOS Intel (x86_64) is not supported. NIM is supported. It is not required for a local Hugging Face workflow.
 
 The steps below cover environment setup, installation, and a first ingestion run. For Kubernetes or container deployments, refer to [Deployment at a glance](#deployment-at-a-glance) and the [Pre-Requisites & Support Matrix](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/).
 
@@ -13,7 +13,7 @@ The steps below cover environment setup, installation, and a first ingestion run
 
 For Kubernetes deployments, use the **[`nemo_retriever/helm` chart](helm/README.md)** to deploy the retriever **service** and optional in-cluster **NIM** workloads. Published Helm install and upgrade flows for the full extraction stack are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**; use those docs together with the chart README for your release.
 
-For standalone service-image builds and local container runs, see **[`docker.md`](docker.md)**.
+For standalone service-image builds and local container runs, refer to [`docker.md`](docker.md).
 
 ## Prerequisites
 

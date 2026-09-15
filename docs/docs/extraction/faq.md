@@ -8,6 +8,18 @@ No. The NeMo Retriever Library, including its container image and Helm chart art
 
 Some NIM microservices and models that the library calls may be individually covered by NVAIE. That coverage does not extend to the NeMo Retriever Library or its end-to-end extraction workflow. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
 
+## When should I use NeMo Retriever Library versus calling a Nemotron model directly? { #when-to-use-nrl-versus-a-model }
+
+Use NeMo Retriever Library when you need to extract document content, run embedding and retrieval together, inspect intermediate outputs, or measure quality on a corpus with the library query path.
+
+You do not need the library when any of the following is true:
+
+- You only need to call one embedding, reranking, or parsing model from an existing pipeline. Use the Hugging Face checkpoint, NIM endpoint, or framework integration for that model.
+- You already operate a complete ingestion and retrieval pipeline and only need to score that pipeline. Evaluate your pipeline with your own datasets and judgments. Library measurements do not guarantee that your pipeline will match.
+- You need a supported turnkey retrieval platform with production SLAs, operations, security lifecycle, and NVAIE coverage. The library is not that product. Refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
+
+If you already have a retrieval stack and only need extracted rows, refer to [What if I already have a retrieval pipeline?](#use-with-existing-retrieval-pipeline). For quality measurement on your documents, refer to [Evaluate on your data](evaluate-on-your-data.md).
+
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? { #use-with-existing-retrieval-pipeline }
 
 Yes. Use the Python API to extract content, then pass the extracted rows into your existing retrieval stack.
