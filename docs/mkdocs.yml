@@ -152,6 +152,17 @@ plugins:
       redirect_maps:
         index.md: extraction/about/overview.md
         extraction/index.md: extraction/about/overview.md
+        # Section URLs are dividers, not pages. Keep them resolvable for
+        # anyone who saved a section link.
+        extraction/about/index.md: extraction/about/overview.md
+        extraction/get-started/index.md: extraction/get-started/overview.md
+        extraction/ingest/index.md: extraction/ingest/workflow-document-ingestion.md
+        extraction/collections/index.md: extraction/collections/vdbs.md
+        extraction/deploy/index.md: extraction/deploy/deployment-options.md
+        extraction/customize/index.md: extraction/customize/customize-extend.md
+        extraction/reference/index.md: extraction/reference/nemo-retriever-api-reference.md
+        extraction/troubleshooting/index.md: extraction/troubleshooting/troubleshoot.md
+        extraction/resources/index.md: extraction/resources/contributing.md
         # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
         extraction/nv-ingest_cli.md: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli
         extraction/helm.md: extraction/deploy/deployment-options.md
