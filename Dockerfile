@@ -28,6 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libglib2.0-0 \
       sudo \
       wget \
+    && sed -i \
+      -e 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' \
+      -e 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' \
+      -e 's|http://security.ubuntu.com|https://security.ubuntu.com|g' \
+      /etc/apt/sources.list \
     && apt-get clean
 
 # LibreOffice (headless) for docx/pptx -> PDF. GPL source handling per nv-ingest Dockerfile.
@@ -100,7 +105,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && wget "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${CUDA_REPO_ARCH}/cuda-keyring_1.1-1_all.deb" \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && rm -f cuda-keyring_1.1-1_all.deb \
-    && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 --fix-broken install -y \
+    && apt-get -o Acquire::Retries=5 install -y cuda-toolkit-13-0
 
 WORKDIR /workspace
 COPY data data
