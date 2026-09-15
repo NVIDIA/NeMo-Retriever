@@ -1,4 +1,4 @@
-# About getting started
+# Get started overview
 
 This section walks you from **access and prerequisites** through **first deployment** and **hands-on notebooks**.
 
@@ -12,7 +12,3 @@ Typical order:
 The NeMo Retriever Library and its Helm chart are not supported under NVIDIA AI Enterprise (NVAIE). For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](../about/overview.md#nvidia-ai-enterprise-nvaie-support).
 
 If you are new to the product, read [NeMo Retriever Library overview](../about/overview.md) and [Key concepts](../about/concepts.md) under **About** first.
-
-## Next steps
-
-Continue to [Ingest and extract content](../ingest/index.md) to run an ingestion workflow.

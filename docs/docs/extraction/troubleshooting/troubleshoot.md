@@ -648,4 +648,4 @@ For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super
 - [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
-- [About getting started](../get-started/index.md) (prerequisites and deployment)
+- [Get started overview](../get-started/overview.md) (prerequisites and deployment)
