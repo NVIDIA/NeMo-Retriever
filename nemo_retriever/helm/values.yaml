@@ -714,6 +714,11 @@ serviceConfig:
     indexMode: "auto"
     embedModel: "nvidia/nemotron-3-embed-1b"
     embedModelProviderPrefix: ""
+    # How to handle extracted rows that contain neither searchable text nor
+    # concrete image backing. "raise" fails the document; "warn" logs and
+    # skips the service-managed VectorDB write.
+    emptyUploadPolicy: "raise"
+
     # How long a worker waits for the VectorDB pod to acknowledge a record
     # write. A write that is not acknowledged fails the document, so raise
     # this on slow storage rather than accepting unacknowledged writes.

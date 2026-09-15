@@ -1113,3 +1113,23 @@ def test_default_write_timeout_outlasts_the_index_readiness_waits() -> None:
     )
 
     assert worst_case_index_wait_s < _DEFAULT_VECTORDB_WRITE_TIMEOUT_S
+
+
+def test_post_records_to_vectordb_warns_when_empty(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("WARNING"):
+        _post_records_to_vectordb(
+            [],
+            "http://vectordb:7671/",
+            "empty.pdf",
+            context=DocumentWriteContext(),
+            source_row_count=3,
+        )
+
+    assert "Skipping VectorDB upload for empty.pdf because all 3 extracted row(s)" in caplog.text
+
+
+def test_post_records_to_vectordb_keeps_empty_collection_write_strict() -> None:
+    with pytest.raises(ValueError, match="No vector rows were produced for collection document empty.pdf"):
+        _post_records_to_vectordb(
+            [], "http://vectordb:7671/", "empty.pdf", context=DocumentWriteContext(collection_name="papers")
+        )

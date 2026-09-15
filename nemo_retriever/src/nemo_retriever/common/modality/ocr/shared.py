@@ -658,6 +658,7 @@ class _PreparedOCRRow:
     page_image_b64: str
     detections: List[Dict[str, Any]]
     wanted_labels: set[str]
+    needs_ocr_for_text: bool
 
 
 @dataclass(frozen=True)
@@ -726,10 +727,11 @@ def _prepare_ocr_rows(
                 continue
 
             row_wanted_labels = wanted_labels
+            needs_ocr_for_text = False
             if extract_text:
                 metadata = getattr(row, "metadata", None) or {}
-                needs_ocr = metadata.get("needs_ocr_for_text", False) if isinstance(metadata, dict) else False
-                if needs_ocr:
+                needs_ocr_for_text = metadata.get("needs_ocr_for_text", False) if isinstance(metadata, dict) else False
+                if needs_ocr_for_text:
                     row_wanted_labels = wanted_labels | _TEXT_LABELS
 
             prepared_rows.append(
@@ -739,6 +741,7 @@ def _prepare_ocr_rows(
                     page_image_b64=page_image_b64,
                     detections=detections,
                     wanted_labels=row_wanted_labels,
+                    needs_ocr_for_text=needs_ocr_for_text,
                 )
             )
         except BaseException as exc:
@@ -797,6 +800,37 @@ def _remote_crop_shape(crop_b64: str) -> Tuple[int, int]:
         return (0, 0)
 
 
+def _collect_ocr_crops(
+    prepared: _PreparedOCRRow,
+    *,
+    as_b64: bool = False,
+) -> List[Tuple[str, List[float], Any]]:
+    """Collect requested regions, with one full-page fallback for scanned text."""
+
+    crops = _crop_all_from_page(
+        prepared.page_image_b64,
+        prepared.detections,
+        prepared.wanted_labels,
+        as_b64=as_b64,
+    )
+    has_text_crop = any(label_name in _TEXT_LABELS for label_name, _bbox, _crop in crops)
+    if prepared.needs_ocr_for_text and not has_text_crop:
+        crops.extend(
+            _crop_all_from_page(
+                prepared.page_image_b64,
+                [
+                    {
+                        "label_name": "text",
+                        "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+                    }
+                ],
+                {"text"},
+                as_b64=as_b64,
+            )
+        )
+    return crops
+
+
 def _run_remote_ocr(
     prepared_rows: List[_PreparedOCRRow],
     row_results: List[_OCRRowResult],
@@ -814,12 +848,7 @@ def _run_remote_ocr(
     for prepared in prepared_rows:
         row_result = row_results[prepared.row_index]
         try:
-            crops = _crop_all_from_page(
-                prepared.page_image_b64,
-                prepared.detections,
-                prepared.wanted_labels,
-                as_b64=True,
-            )
+            crops = _collect_ocr_crops(prepared, as_b64=True)
             crop_b64s: List[str] = [crop_b64 for _label, _bbox, crop_b64 in crops]
             crop_metadata: List[Tuple[str, List[float]]] = [(label_name, bbox) for label_name, bbox, _crop_b64 in crops]
             if not crop_b64s:
@@ -869,11 +898,7 @@ def _collect_local_crop_jobs(
     jobs_by_merge_level: Dict[str, List[_OCRCropJob]] = {"word": [], "paragraph": []}
     for prepared in prepared_rows:
         try:
-            crops = _crop_all_from_page(
-                prepared.page_image_b64,
-                prepared.detections,
-                prepared.wanted_labels,
-            )
+            crops = _collect_ocr_crops(prepared)
             for label_name, bbox, crop_array in crops:
                 merge_level = "word" if label_name == "table" else "paragraph"
                 jobs_by_merge_level[merge_level].append(

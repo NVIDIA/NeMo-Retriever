@@ -24,7 +24,7 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 
 ## Text and layout extraction { #text-and-layout-extraction }
 
-For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages can use hybrid, OCR-oriented, or Nemotron Parse methods. A bare Python `ExtractParams()` uses `pdfium`, and the CLI `auto` profile uses `pdfium_hybrid`. When a Retriever service request omits `method`, the service uses `pdfium_hybrid` if an OCR backend is available and `pdfium` otherwise. An explicit `method` always overrides this service selection. For supported values such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
 !!! note
     `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse. This path does not produce chart modality rows; for chart detection, refer to [Charts and infographics](#charts-and-infographics).
@@ -47,7 +47,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` is enabled by default. `extract_infographics` is disabled by default; set `extract_infographics=True` when you need separate infographic output rows. Outputs use the same metadata schema as other extracted objects.
 
 !!! important "Chart modality requires the default layout path"
     [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
@@ -73,6 +73,10 @@ For natural-language infographic descriptions, optionally enable [image captioni
 ## OCR and scanned documents { #ocr-and-scanned-documents }
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+
+When text extraction is enabled and a page is marked as requiring OCR, the pipeline normally sends valid `text`, `title`, and `header_footer` regions from Page Elements to OCR. If Page Elements produces no valid crop with one of those labels, the pipeline sends the full page to OCR one time and uses readable output as the page text. This fallback preserves searchable text when the only detected region is an infographic or when the eligible region geometry is invalid. It does not create an `infographic` output row or change the `extract_infographics=False` default.
+
+Page Elements is optional when a service deployment provides remote OCR. If the service has no Page Elements endpoint and local extraction is disabled, it does not load a local Page Elements model. Scanned pages use the same full-page OCR fallback directly.
 
 When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 

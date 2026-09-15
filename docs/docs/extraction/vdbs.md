@@ -63,7 +63,17 @@ result = (
 Bare `.vdb_upload()` writes to table `nemo-retriever`. Default `Retriever()`
 queries that table.
 
-You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. If extracted content reaches `.vdb_upload()` without embeddings, `.ingest()` raises `ValueError`. An extraction that produces no content completes without uploading records.
+You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. If extracted content reaches `.vdb_upload()` without embeddings, `.ingest()` raises an error. A genuinely empty result completes without uploading records. If nonempty extraction output converts to zero uploadable records because every row lacks searchable text and concrete image backing, graph run modes raise `VdbUploadError`.
+
+For a service-managed VectorDB, `serviceConfig.vectordb.emptyUploadPolicy` controls the last case. The default `raise` policy marks the document as failed. Set the policy to `warn` to log a warning, skip the write, and complete the document instead. This option does not suppress upstream structured errors or missing embeddings, and it does not change `.vdb_upload()` behavior in `run_mode="inprocess"` or `run_mode="batch"`.
+
+For example, configure the Retriever service to skip these empty document writes as follows:
+
+```yaml
+serviceConfig:
+  vectordb:
+    emptyUploadPolicy: warn
+```
 
 ## Keep the embedding model aligned { #lancedb-embedding-model-compatibility }
 

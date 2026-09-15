@@ -62,6 +62,7 @@ inspect row columns and service logs directly.
 | HTTP `5xx`, including `503` | The upstream NIM is unavailable, overloaded, not ready, or failed during inference | Check readiness, pod restarts, GPU memory, server logs, and request volume. Retry a minimal input after the NIM is healthy. |
 | Timeout, connection reset, DNS, TLS, or gRPC transport error | The client could not complete transport to the service or NIM | Test connectivity from the process or pod that runs the stage. Verify protocol, port, certificate trust, proxy, and network policy. Preserve the gRPC status and details when present. |
 | A per-document entry in `ServiceIngestResult.failures` | Upload or pipeline processing failed after a service job was created | Correlate the document ID with the job ID and service logs. Other documents in the same result can still have succeeded. |
+| `VdbUploadError` reports that none of the rows were uploadable | Nonempty extraction output contains no embedded row with searchable text or concrete image backing | Confirm the extraction method and OCR configuration. For service-managed VectorDB writes only, use `serviceConfig.vectordb.emptyUploadPolicy: warn` when skipping the document is acceptable. |
 | Successful ingest with fewer rows than inputs (caption or ASR enabled) | Caption inference failed before row collection, or ASR dropped failed rows and logged warnings | Re-run with logging enabled. For caption, verify endpoint credentials and payload limits. For ASR, verify gRPC endpoint, `function_id`, and `NVIDIA_API_KEY`. |
 | OOM, worker exit, or pod restart | Host or GPU resources were exhausted, or an orchestrator terminated the worker | Reduce batch size or concurrency, use smaller document groups, and inspect host, Ray, Kubernetes, and NIM resource telemetry. |
 | `Infeasible Ray CPU/GPU plan` | Explicit worker counts or node overrides, including required Ray Data source capacity for filesystem inputs, exceed resources currently available to Ray. | Reduce `*_workers` or per-node concurrency, or wait for shared-cluster capacity. Refer to the [performance guide](performance_guide.md). |
@@ -125,6 +126,36 @@ is incorrect.
     predates some current enriched diagnostics. Do not assume that a field
     shown in current NeMo Retriever Library output exists in `25.4.2`; include
     the exact old exception and logs when escalating.
+
+## VectorDB upload reports no uploadable rows { #vectordb-no-uploadable-rows }
+
+`vdb_upload` requires an embedding and either searchable text or concrete image
+backing. If extraction returns nonempty rows but none meet that contract, the
+upload fails with a message similar to the following:
+
+```text
+VdbUploadError: vdb_upload received 1 row(s), but none were uploadable;
+rejection reasons: missing searchable text or image backing=1.
+```
+
+For a scanned PDF, this result can mean that `pdfium` found no native text or
+that Page Elements did not produce an eligible OCR text crop. Use
+`method="pdfium_hybrid"` and confirm that an OCR backend is available. The
+hybrid path uses one full-page OCR fallback when a page requires OCR but has no
+valid `text`, `title`, or `header_footer` crop. This fallback populates page
+text; it does not emit a separate infographic row. Set
+`extract_infographics=True` only when you also need infographic output rows.
+
+For a remote-OCR-only service, Page Elements is not required. If no Page
+Elements endpoint is configured and local extraction is disabled, the service
+uses the full-page OCR fallback without loading a local Page Elements model.
+
+For service-managed VectorDB writes, the default
+`serviceConfig.vectordb.emptyUploadPolicy: raise` marks the affected document
+as failed. If your workflow can accept an unindexed document, set the policy
+to `warn`. The service then logs a warning, skips the write, and completes the
+document. The setting does not hide upstream structured errors or missing
+embeddings, and it does not apply to in-process or batch graph uploads.
 
 ## Can't process long, non-language text strings { #cant-process-long-non-language-text-strings }
 

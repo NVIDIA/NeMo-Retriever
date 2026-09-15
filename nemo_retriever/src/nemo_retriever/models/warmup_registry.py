@@ -48,7 +48,7 @@ def build_warmup_spec(
     extract = extract_params_dict or {}
     stages: list[str] = []
 
-    if not str(extract.get("page_elements_invoke_url") or "").strip():
+    if extract.get("use_page_elements", True) and not str(extract.get("page_elements_invoke_url") or "").strip():
         stages.append("page_elements")
     if not str(extract.get("ocr_invoke_url") or "").strip():
         stages.append("ocr")

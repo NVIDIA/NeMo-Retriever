@@ -50,6 +50,15 @@ extraction, use `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The
 new audio pipelines, use [`GraphIngestor.extract_audio()`](#graph-ingestor)
 instead.
 
+A bare `ExtractParams()` uses `pdfium`. The CLI `auto` profile uses
+`pdfium_hybrid`. When a Retriever service request omits `method`, the service
+uses `pdfium_hybrid` if its configuration provides a local or remote OCR
+backend and uses `pdfium` otherwise. An explicit request value always wins.
+
+When only remote OCR is available, the service disables Page Elements instead
+of loading a local Page Elements model. Pages that require OCR use the
+full-page OCR fallback.
+
 Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.
@@ -77,6 +86,24 @@ tuple. When no remote invoke URL is configured, `return_failures=True` scans
 all output columns for row-level error fields so local failures are still
 visible. In service mode, failures are also available from
 `ServiceIngestResult.failures`.
+
+The service-level `serviceConfig.vectordb.emptyUploadPolicy` setting is
+separate from `error_policy`. It controls only a service-managed VectorDB
+write for a document whose extracted rows have no searchable text or concrete
+image backing. It does not change how graph run modes handle row-level NIM
+errors.
+
+### Choose service behavior for an empty upload
+
+`serviceConfig.vectordb.emptyUploadPolicy` accepts `raise` or `warn` and
+defaults to `raise`. With `raise`, the service reports the document as failed
+when nonempty extraction output converts to zero uploadable records because
+the rows lack searchable text and concrete image backing. With `warn`, the
+service logs a warning, skips the VectorDB write, and completes the document.
+
+The `warn` policy does not suppress upstream structured errors or a missing
+embedding. Those conditions continue to fail. It also does not apply to
+`.vdb_upload()` in `run_mode="inprocess"` or `run_mode="batch"`.
 
 ### What the raise error policy covers
 

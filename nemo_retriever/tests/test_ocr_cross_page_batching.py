@@ -10,6 +10,7 @@ import base64
 import io
 from typing import Any
 
+import pytest
 import pandas as pd
 from PIL import Image
 
@@ -416,3 +417,91 @@ def test_local_actor_falls_back_when_batch_result_count_is_wrong() -> None:
         ],
         "errors": [None, None],
     }
+
+
+class _RecordingNIMClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def invoke_image_inference_batches(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.calls.append(kwargs)
+        responses: list[dict[str, Any]] = []
+        for image_b64 in kwargs["image_b64_list"]:
+            with Image.open(io.BytesIO(base64.b64decode(image_b64))) as image:
+                crop_id = int(image.convert("RGB").getpixel((0, 0))[0])
+            responses.append({"text_detections": _ocr_prediction(crop_id)})
+        return responses
+
+
+@pytest.mark.parametrize(
+    "detections",
+    [
+        [],
+        [_detection("infographic-A", "infographic", [0.0, 0.0, 1.0, 1.0])],
+        [_detection("text-A", "text", [0.0, 0.0, 0.0, 0.0])],
+    ],
+)
+def test_local_actor_ocr_falls_back_to_full_page_without_valid_text_crops(
+    detections: list[dict[str, Any]],
+) -> None:
+    model = _RecordingListModel()
+    actor = _local_actor(model, inference_batch_size=2, extract_text=True)
+    page = _page("page-A", 11, detections)
+    page["metadata"] = {"needs_ocr_for_text": True}
+
+    result = actor(pd.DataFrame([page]))
+
+    assert result.at[0, "text"] == "crop-11"
+    assert model.calls == [{"crop_count": 1, "crop_ids": [11], "merge_level": "paragraph"}]
+
+
+def test_local_actor_ocr_does_not_duplicate_valid_text_crop() -> None:
+    model = _RecordingListModel()
+    actor = _local_actor(model, inference_batch_size=2, extract_text=True)
+    page = _page("page-A", 11, [_detection("text-A", "text", [0.0, 0.0, 0.5, 0.5])])
+    page["metadata"] = {"needs_ocr_for_text": True}
+
+    result = actor(pd.DataFrame([page]))
+
+    assert result.at[0, "text"] == "crop-11"
+    assert model.calls == [{"crop_count": 1, "crop_ids": [11], "merge_level": "paragraph"}]
+
+
+def test_local_actor_does_not_ocr_native_text_page() -> None:
+    model = _RecordingListModel()
+    actor = _local_actor(model, inference_batch_size=2, extract_text=True)
+    page = _page(
+        "page-A",
+        11,
+        [_detection("infographic-A", "infographic", [0.0, 0.0, 1.0, 1.0])],
+    )
+    page["text"] = "native text"
+
+    result = actor(pd.DataFrame([page]))
+
+    assert result.at[0, "text"] == "native text"
+    assert model.calls == []
+
+
+@pytest.mark.parametrize(
+    "detections",
+    [
+        [],
+        [_detection("infographic-A", "infographic", [0.0, 0.0, 1.0, 1.0])],
+        [_detection("text-A", "text", [0.0, 0.0, 0.0, 0.0])],
+    ],
+)
+def test_remote_actor_ocr_falls_back_to_full_page_without_valid_text_crops(
+    detections: list[dict[str, Any]],
+) -> None:
+    nim_client = _RecordingNIMClient()
+    actor = _local_actor(None, inference_batch_size=2, extract_text=True)
+    actor.ocr_kwargs["invoke_url"] = "https://example.test/v1/ocr"
+    actor._nim_client = nim_client
+    page = _page("page-A", 11, detections)
+    page["metadata"] = {"needs_ocr_for_text": True}
+
+    result = actor(pd.DataFrame([page]))
+
+    assert result.at[0, "text"] == "crop-11"
+    assert len(nim_client.calls) == 1

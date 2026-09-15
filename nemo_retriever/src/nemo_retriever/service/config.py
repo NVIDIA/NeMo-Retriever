@@ -462,6 +462,10 @@ class VectorDbConfig(RichModel):
         default=None,
         description="Dedicated gateway/worker credential for the VectorDB service.",
     )
+    empty_upload_policy: Literal["raise", "warn"] = Field(
+        default="raise",
+        description="How service-managed VectorDB writes handle rows with no searchable text or image backing.",
+    )
     write_timeout_s: float = Field(
         default=300.0,
         gt=0,

@@ -256,6 +256,7 @@ vectordb:
 {{- end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
   write_timeout_s: {{ .Values.serviceConfig.vectordb.writeTimeoutSeconds | default 300 }}
+  empty_upload_policy: {{ .Values.serviceConfig.vectordb.emptyUploadPolicy | default "raise" | quote }}
 {{- else }}
 vectordb:
   enabled: false
