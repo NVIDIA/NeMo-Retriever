@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -71,40 +70,57 @@ def test_multitype_pdf_graph_forwards_rendering_params(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("modality", ["image", "text_image"])
-def test_sdk_page_image_embedding_materializes_pdf_rasters_and_vectors(monkeypatch, modality: str) -> None:
-    class _FakeVLEmbedder:
-        def embed_images(self, images: list[str], batch_size: int = 8) -> np.ndarray:
-            assert all(isinstance(image, str) and image for image in images)
-            return np.ones((len(images), 2048), dtype=np.float32)
+def test_sdk_auto_page_image_embedding_skips_unused_page_elements(monkeypatch, modality: str) -> None:
+    remote_calls: list[dict[str, object]] = []
 
-        def embed_text_image(self, texts: list[str], images: list[str], batch_size: int = 8) -> np.ndarray:
-            assert all(isinstance(text, str) and text for text in texts)
-            assert all(isinstance(image, str) and image for image in images)
-            return np.ones((len(images), 2048), dtype=np.float32)
+    def _fake_async_runner(prompt_batches, _api_key, endpoint_url, model_name, *_args, **kwargs):
+        prompt_count = sum(len(batch) for batch in prompt_batches)
+        remote_calls.append(
+            {
+                "prompt_batches": prompt_batches,
+                "endpoint_url": endpoint_url,
+                "model_name": model_name,
+                "modalities": kwargs["modalities"],
+            }
+        )
+        return {
+            "embeddings": [[1.0] * 2048 for _ in range(prompt_count)],
+            "info_msgs": [None] * prompt_count,
+        }
+
+    class _UnexpectedPageElementsActor:
+        def __init__(self, **_kwargs) -> None:
+            pytest.fail("Page Elements must not be initialized when it is disabled")
 
     monkeypatch.setattr(
-        "nemo_retriever.models.create_local_embedder",
-        lambda *_args, **_kwargs: _FakeVLEmbedder(),
+        "nemo_retriever.models.inference.main_text_embed._async_runner",
+        _fake_async_runner,
     )
+    monkeypatch.setattr(multi_type_module, "PageElementDetectionActor", _UnexpectedPageElementsActor)
     document = Path(__file__).resolve().parents[2] / "data" / "multimodal_test.pdf"
+    model = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    endpoint = "http://vl-embed.example/v1/embeddings"
 
     result = (
         create_ingestor(run_mode="inprocess", allow_no_gpu=True)
         .files([str(document)])
         .extract(
-            ExtractParams(
+            params=ExtractParams(
+                extract_text=True,
                 extract_images=False,
                 extract_tables=False,
                 extract_charts=False,
+                extract_infographics=False,
                 extract_page_as_image=False,
                 use_page_elements=False,
-            )
+            ),
+            extraction_mode="auto",
         )
         .embed(
-            EmbedParams(
-                model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
-                embed_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
-                local_ingest_embed_backend="hf",
+            params=EmbedParams(
+                model_name=model,
+                embed_model_name=model,
+                embed_invoke_url=endpoint,
                 embed_modality=modality,
                 embed_granularity="page",
             )
@@ -113,6 +129,7 @@ def test_sdk_page_image_embedding_materializes_pdf_rasters_and_vectors(monkeypat
     )
 
     assert len(result) == 3
+    assert result["page_number"].tolist() == [1, 2, 3]
     assert (
         result["page_image"]
         .map(lambda page_image: isinstance(page_image, dict) and bool(page_image.get("image_b64")))
@@ -122,3 +139,15 @@ def test_sdk_page_image_embedding_materializes_pdf_rasters_and_vectors(monkeypat
     assert result["_contains_embeddings"].all()
     assert result["text_embeddings_1b_v2_has_embedding"].all()
     assert (result["text_embeddings_1b_v2_dim"] == 2048).all()
+
+    assert len(remote_calls) == 1
+    remote_call = remote_calls[0]
+    assert remote_call["endpoint_url"] == endpoint
+    assert remote_call["model_name"] == model
+    prompt_batches = remote_call["prompt_batches"]
+    assert isinstance(prompt_batches, list)
+    assert sum(len(batch) for batch in prompt_batches) == 3
+    assert all(isinstance(prompt, str) and prompt for prompt_batch in prompt_batches for prompt in prompt_batch)
+    modalities = remote_call["modalities"]
+    assert isinstance(modalities, list)
+    assert [item for batch in modalities for item in batch] == [modality] * 3

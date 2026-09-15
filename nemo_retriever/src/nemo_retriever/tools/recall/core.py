@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.graph.retriever import Retriever
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ def print_run_summary(
 class RecallConfig:
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
-    query_embedder: str = VL_EMBED_MODEL
+    query_embedder: str = NEMOTRON_3_EMBED_MODEL
     embedding_http_endpoint: Optional[str] = None
     embedding_grpc_endpoint: Optional[str] = None
     embedding_endpoint: Optional[str] = None
@@ -149,10 +149,10 @@ class RecallConfig:
     local_hf_batch_size: int = 32
     local_query_max_length: int = 128
     # When using local query embedding (no HTTP endpoint), select backend for *queries* only.
-    # ``hf`` (default) uses the HF mean-pooled text embedder (see ``LlamaNemotronEmbed1BV2HFEmbedder``);
-    # ``vllm`` uses :func:`~nemo_retriever.model.create_local_embedder`. Ignored when an
+    # ``vllm`` (default) uses the local vLLM text embedder;
+    # ``hf`` uses the HF mean-pooled text embedder. Ignored when an
     # embedding HTTP endpoint is set.
-    local_query_embed_backend: str = "hf"
+    local_query_embed_backend: str = "vllm"
     # Gold/retrieval comparison mode:
     # - pdf_page: compare on "{pdf}_{page}" keys
     # - pdf_only: compare on "{pdf}" document keys
@@ -181,7 +181,7 @@ class RecallConfig:
                 self.local_query_embed_backend,
                 _LOCAL_QUERY_BACKENDS,
                 field_name="local_query_embed_backend",
-                default="hf",
+                default="vllm",
             ),
         )
         object.__setattr__(
@@ -584,7 +584,7 @@ def retrieve_and_score(
     queries = df_query["query"].astype(str).tolist()
     gold = df_query["golden_answer"].astype(str).tolist()
     vdb_inner = dict(cfg.vdb_kwargs or {})
-    query_embedder = str(cfg.query_embedder or VL_EMBED_MODEL)
+    query_embedder = str(cfg.query_embedder or NEMOTRON_3_EMBED_MODEL)
     embedding_endpoint, embedding_use_grpc = _resolve_embedding_endpoint(cfg)
     if embedding_use_grpc:
         raise ValueError(

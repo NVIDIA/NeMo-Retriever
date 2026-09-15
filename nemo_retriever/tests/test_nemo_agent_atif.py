@@ -49,7 +49,7 @@ def test_agent_run_builds_atif_steps_and_token_metrics():
                 "prompt_tokens": 11,
                 "completion_tokens": 7,
                 "total_tokens": 18,
-                "prompt_tokens_details": {"cached_tokens": 4},
+                "input_tokens_details": {"cached_tokens": 4},
             },
         }
 

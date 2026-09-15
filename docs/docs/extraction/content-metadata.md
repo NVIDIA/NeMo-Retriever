@@ -104,15 +104,19 @@ The `MetadataSchema` is the primary container for all metadata. It includes the 
 | `embedding`           | `Optional[List[float]]`               | `None`                 | Optional numerical vector representation (embedding) of the content.                                       |
 | `source_metadata`     | `Optional[SourceMetadataSchema]`      | `None`                 | Metadata about the original source of the content. Refer to [SourceMetadataSchema](#sourcemetadataschema).       |
 | `content_metadata`    | `Optional[ContentMetadataSchema]`     | `None`                 | General metadata about the extracted content itself. Refer to [ContentMetadataSchema](#contentmetadataschema).    |
-| `audio_metadata`      | `Optional[AudioMetadataSchema]`       | `None`                 | Specific metadata for audio content. Automatically set to `None` if `content_metadata.type` is not `AUDIO`. Refer to [AudioMetadataSchema](#audiometadataschema). |
-| `text_metadata`       | `Optional[TextMetadataSchema]`        | `None`                 | Specific metadata for text content. Automatically set to `None` if `content_metadata.type` is not `TEXT`. Refer to [TextMetadataSchema](#textmetadataschema). |
-| `image_metadata`      | `Optional[ImageMetadataSchema]`       | `None`                 | Specific metadata for image content. Automatically set to `None` if `content_metadata.type` is not `IMAGE`. Refer to [ImageMetadataSchema](#imagemetadataschema). |
-| `table_metadata`      | `Optional[TableMetadataSchema]`       | `None`                 | Specific metadata for tabular content. Automatically set to `None` if `content_metadata.type` is not `STRUCTURED`. Refer to [TableMetadataSchema](#tablemetadataschema). |
+| `audio_metadata`      | `Optional[AudioMetadataSchema]`       | `None`                 | Specific metadata for audio content. Automatically set to `None` if `content_metadata.type` is not `audio`. Refer to [AudioMetadataSchema](#audiometadataschema). |
+| `text_metadata`       | `Optional[TextMetadataSchema]`        | `None`                 | Specific metadata for text content. Automatically set to `None` if `content_metadata.type` is not `text`. Refer to [TextMetadataSchema](#textmetadataschema). |
+| `image_metadata`      | `Optional[ImageMetadataSchema]`       | `None`                 | Specific metadata for image content. Automatically set to `None` if `content_metadata.type` is not `image`. Refer to [ImageMetadataSchema](#imagemetadataschema). |
+| `table_metadata`      | `Optional[TableMetadataSchema]`       | `None`                 | Specific metadata for tabular content. Automatically set to `None` if `content_metadata.type` is not `structured`. Refer to [TableMetadataSchema](#tablemetadataschema). |
 | `chart_metadata`      | `Optional[ChartMetadataSchema]`       | `None`                 | Specific metadata for chart content. Refer to [ChartMetadataSchema](#chartmetadataschema).                      |
 | `error_metadata`      | `Optional[ErrorMetadataSchema]`       | `None`                 | Metadata describing any errors encountered during processing. Refer to [ErrorMetadataSchema](#errormetadataschema). |
 | `info_message_metadata` | `Optional[InfoMessageMetadataSchema]` | `None`                 | Informational messages related to the processing. Refer to [InfoMessageMetadataSchema](#infomessagemetadataschema). |
 | `debug_metadata`      | `Optional[Dict[str, Any]]`            | `None`                 | A dictionary for storing any arbitrary debug information.                                                  |
 | `raise_on_failure`    | `bool`                                | `False`                | If `True`, indicates that processing should halt on failure.                                               |
+| `total_pages`         | `Optional[int]`                       | `None`                 | Optional total page count of the source document.                                                          |
+| `original_source_id`  | `Optional[str]`                       | `None`                 | Optional identifier of the source before splitting or chunking.                                            |
+| `original_source_name`| `Optional[str]`                       | `None`                 | Optional name of the source before splitting or chunking.                                                  |
+| `custom_content`      | `Optional[Dict[str, Any]]`            | `None`                 | Optional dictionary for extra fields supplied by callers or user-defined functions.                        |
 
 **Note:** A `model_validator` ensures that type-specific metadata fields (`audio_metadata`, `image_metadata`, `text_metadata`, `table_metadata`) are set to `None` if the `content_metadata.type` does not match the respective content type.
 
@@ -122,29 +126,31 @@ Describes the origin of the ingested content.
 
 | Field             | Type                               | Default Value                     | Description                                                                                             |
 |-------------------|------------------------------------|-----------------------------------|---------------------------------------------------------------------------------------------------------|
-| `source_name`     | `str`                              | *Required*                        | Name of the source (e.g., filename, URL).                                                               |
+| `source_name`     | `str`                              | *Required*                        | Name of the source (for example, filename, URL).                                                               |
 | `source_id`       | `str`                              | *Required*                        | Unique identifier for the source.                                                                       |
-| `source_location` | `str`                              | `""`                              | Physical or logical location of the source (e.g., path, database table).                                |
-| `source_type`     | `Union[DocumentTypeEnum, str]`     | *Required*                        | Type of the source document (e.g., `pdf`, `docx`, `url`). Uses `DocumentTypeEnum`.                      |
+| `source_location` | `str`                              | `""`                              | Physical or logical location of the source (for example, path, database table).                                |
+| `source_type`     | `Union[DocumentTypeEnum, str]`     | *Required*                        | Type of the source document (for example, `pdf`, `docx`). Uses `DocumentTypeEnum` or a string.          |
 | `collection_id`   | `str`                              | `""`                              | Identifier for any collection this source belongs to.                                                   |
 | `date_created`    | `str`                              | `datetime.now().isoformat()`      | ISO 8601 timestamp of when the source was created. Validated to be in ISO 8601 format.                |
 | `last_modified`   | `str`                              | `datetime.now().isoformat()`      | ISO 8601 timestamp of when the source was last modified. Validated to be in ISO 8601 format.           |
 | `summary`         | `str`                              | `""`                              | A brief summary of the source content.                                                                  |
 | `partition_id`    | `int`                              | `-1`                              | Identifier for a partition if the source is part of a larger, partitioned dataset.                      |
 | `access_level`    | `Union[AccessLevelEnum, int]`      | `AccessLevelEnum.UNKNOWN`         | Access level associated with the source. Uses `AccessLevelEnum`.                                        |
+| `custom_content`  | `Optional[Dict[str, Any]]`         | `None`                            | Optional dictionary for extra fields supplied by callers or user-defined functions.                     |
 
 ### `ContentMetadataSchema`
 General metadata about the extracted content.
 
 | Field           | Type                                  | Default Value                     | Description                                                                                                |
 |-----------------|---------------------------------------|-----------------------------------|------------------------------------------------------------------------------------------------------------|
-| `type`          | `ContentTypeEnum`                     | *Required*                        | The type of the extracted content (e.g., `TEXT`, `IMAGE`, `AUDIO`). Uses `ContentTypeEnum`.                |
+| `type`          | `ContentTypeEnum`                     | *Required*                        | The type of the extracted content (for example, `text`, `image`, `audio`). Uses `ContentTypeEnum`.      |
 | `description`   | `str`                                 | `""`                              | A description of the extracted content.                                                                    |
-| `page_number`   | `int`                                 | `-1`                              | Page number from which the content was extracted, if applicable (e.g., for PDFs).                        |
+| `page_number`   | `int`                                 | `-1`                              | Page number from which the content was extracted, if applicable (for example, for PDFs).                        |
 | `hierarchy`     | `ContentHierarchySchema`              | `ContentHierarchySchema()`        | Hierarchical information about the content's location within the source. Refer to [ContentHierarchySchema](#contenthierarchyschema). |
-| `subtype`       | `Union[ContentTypeEnum, str]`         | `""`                              | A more specific subtype for the content (e.g., if `type` is `IMAGE`, `subtype` could be `diagram`).      |
-| `start_time`    | `int`                                 | `-1`                              | Start time in milliseconds for time-based media (e.g., audio, video).                                    |
+| `subtype`       | `Union[ContentTypeEnum, str]`         | `""`                              | A more specific subtype for the content (for example, if `type` is `image`, `subtype` can be a string such as `diagram`).      |
+| `start_time`    | `int`                                 | `-1`                              | Start time in milliseconds for time-based media (for example, audio, video).                                    |
 | `end_time`      | `int`                                 | `-1`                              | End time in milliseconds for time-based media.                                                           |
+| `custom_content`| `Optional[Dict[str, Any]]`            | `None`                            | Optional dictionary for extra fields supplied by callers or user-defined functions.                      |
 
 ### `ContentHierarchySchema`
 Describes the structural location of content within a document.
@@ -153,7 +159,7 @@ Describes the structural location of content within a document.
 |------------------|-----------------------|----------------------------|---------------------------------------------------------------------------------------------------------|
 | `page_count`     | `int`                 | `-1`                       | Total number of pages in the document, if applicable.                                                   |
 | `page`           | `int`                 | `-1`                       | The specific page number where the content resides.                                                       |
-| `block`          | `int`                 | `-1`                       | Identifier for a block of content (e.g., paragraph, section).                                         |
+| `block`          | `int`                 | `-1`                       | Identifier for a block of content (for example, paragraph, section).                                         |
 | `line`           | `int`                 | `-1`                       | Line number within a block, if applicable.                                                              |
 | `span`           | `int`                 | `-1`                       | Span identifier within a line, for finer granularity.                                                   |
 | `nearby_objects` | `NearbyObjectsSchema` | `NearbyObjectsSchema()`    | Information about objects (text, images, structured data) near the current content. Refer to [NearbyObjectsSchema](#nearbyobjectsschema). |
@@ -168,7 +174,7 @@ Container for different types of nearby objects.
 |--------------|------------------------|------------------------------|--------------------------------------------------------------------------|
 | `text`       | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby textual objects. Refer to [NearbyObjectsSubSchema](#nearbyobjectssubschema). |
 | `images`     | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby image objects.                                                    |
-| `structured` | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby structured data objects (e.g., tables).                           |
+| `structured` | `NearbyObjectsSubSchema` | `NearbyObjectsSubSchema()`   | Nearby structured data objects (for example, tables).                           |
 
 <a id="nearbyobjectssubschema"></a>
 
@@ -179,7 +185,7 @@ Describes a list of nearby objects of a specific type.
 | Field     | Type          | Default Value        | Description                                                              |
 |-----------|---------------|----------------------|--------------------------------------------------------------------------|
 | `content` | `List[str]`   | `default_factory=list` | List of content strings for the nearby objects.                            |
-| `bbox`    | `List[tuple]` | `default_factory=list` | List of bounding boxes (e.g., coordinates) for the nearby objects.       |
+| `bbox`    | `List[tuple]` | `default_factory=list` | List of bounding boxes (for example, coordinates) for the nearby objects.       |
 | `type`    | `List[str]`   | `default_factory=list` | List of types for the nearby objects.                                    |
 
 ### `TextMetadataSchema`
@@ -187,28 +193,30 @@ Specific metadata for textual content.
 
 | Field                          | Type                             | Default Value       | Description                                                                                             |
 |--------------------------------|----------------------------------|---------------------|---------------------------------------------------------------------------------------------------------|
-| `text_type`                    | `TextTypeEnum`                   | *Required*          | Type of text (e.g., `document`, `title`, `ocr`). Uses `TextTypeEnum`.                                   |
+| `text_type`                    | `TextTypeEnum`                   | *Required*          | Type of text (for example, `document`, `header`, `body`). Uses `TextTypeEnum`.                          |
 | `summary`                      | `str`                            | `""`                | A summary of this specific text segment.                                                                |
 | `keywords`                     | `Union[str, List[str], Dict]`    | `""`                | Keywords extracted from or associated with the text. Can be a single string, list of strings, or a dictionary. |
 | `language`                     | `LanguageEnum`                   | `"en"`              | Detected or specified language of the text. Uses `LanguageEnum`. Defaults to English.                   |
-| `text_location`                | `tuple`                          | `(0, 0, 0, 0)`      | Bounding box or coordinates of the text within its source (e.g., on a page).                            |
-| `text_location_max_dimensions` | `tuple`                          | `(0, 0, 0, 0)`      | Maximum dimensions of the space where `text_location` is defined (e.g., page width/height).           |
+| `text_location`                | `tuple`                          | `(0, 0, 0, 0)`      | Bounding box or coordinates of the text within its source (for example, on a page).                            |
+| `text_location_max_dimensions` | `tuple`                          | `(0, 0)`            | Maximum dimensions of the space where `text_location` is defined (for example, page width and height). |
+| `custom_content`               | `Optional[Dict[str, Any]]`       | `None`              | Optional dictionary for extra fields supplied by callers or user-defined functions.                     |
 
 ### `ImageMetadataSchema`
 Specific metadata for image content.
 
 | Field                             | Type                               | Default Value              | Description                                                                                             |
 |-----------------------------------|------------------------------------|----------------------------|---------------------------------------------------------------------------------------------------------|
-| `image_type`                      | `Union[DocumentTypeEnum, str]`     | *Required*                 | Type of the image document (e.g., `png`, `jpeg`). Uses `DocumentTypeEnum` or a string.                  |
-| `structured_image_type`           | `ContentTypeEnum`                  | `ContentTypeEnum.NONE`     | If the image represents structured data (e.g., a table or chart), its `ContentTypeEnum`.                |
+| `image_type`                      | `Union[DocumentTypeEnum, str]`     | *Required*                 | Type of the image document (for example, `png`, `jpeg`). Uses `DocumentTypeEnum` or a string.                  |
+| `structured_image_type`           | `ContentTypeEnum`                  | `ContentTypeEnum.NONE`     | If the image represents structured data (for example, a table or chart), its `ContentTypeEnum`.                |
 | `caption`                         | `str`                              | `""`                       | Caption associated with the image.                                                                      |
-| `text`                            | `str`                              | `""`                       | Text extracted from the image (e.g., via OCR).                                                          |
+| `text`                            | `str`                              | `""`                       | Text extracted from the image (for example, using OCR).                                                          |
 | `image_location`                  | `tuple`                            | `(0, 0, 0, 0)`             | Bounding box or coordinates of the image within its source.                                             |
 | `image_location_max_dimensions`   | `tuple`                            | `(0, 0)`                   | Maximum dimensions of the space where `image_location` is defined.                                      |
 | `uploaded_image_url`              | `str`                              | `""`                       | URL of the image if it has been uploaded to a separate storage location.                                |
 | `uploaded_image_uri`              | `str`                              | `""`                       | URI of the stored image when image storage is configured.                                               |
 | `width`                           | `int`                              | `0`                        | Width of the image in pixels. Clamped to be non-negative.                                               |
 | `height`                          | `int`                              | `0`                        | Height of the image in pixels. Clamped to be non-negative.                                              |
+| `custom_content`                  | `Optional[Dict[str, Any]]`         | `None`                     | Optional dictionary for extra fields supplied by callers or user-defined functions.                     |
 
 ### `TableMetadataSchema`
 Specific metadata for tabular content.
@@ -216,12 +224,13 @@ Specific metadata for tabular content.
 | Field                             | Type                                  | Default Value       | Description                                                                                             |
 |-----------------------------------|---------------------------------------|---------------------|---------------------------------------------------------------------------------------------------------|
 | `caption`                         | `str`                                 | `""`                | Caption associated with the table.                                                                      |
-| `table_format`                    | `TableFormatEnum`                     | *Required*          | Format of the table (e.g., `csv`, `html`). Uses `TableFormatEnum`.                                      |
-| `table_content`                   | `str`                                 | `""`                | String representation of the table's content (e.g., CSV string, HTML markup).                           |
+| `table_format`                    | `TableFormatEnum`                     | *Required*          | Format of the table (for example, `html`, `markdown`). Uses `TableFormatEnum`.                          |
+| `table_content`                   | `str`                                 | `""`                | String representation of the table's content (for example, HTML markup).                                |
 | `table_content_format`            | `Union[TableFormatEnum, str]`         | `""`                | Specific format of `table_content`.                                                                     |
 | `table_location`                  | `tuple`                               | `(0, 0, 0, 0)`      | Bounding box or coordinates of the table within its source.                                             |
 | `table_location_max_dimensions`   | `tuple`                               | `(0, 0)`            | Maximum dimensions of the space where `table_location` is defined.                                      |
 | `uploaded_image_uri`              | `str`                                 | `""`                | URI of the stored table image when image storage is configured.                                         |
+| `custom_content`                  | `Optional[Dict[str, Any]]`            | `None`              | Optional dictionary for extra fields supplied by callers or user-defined functions.                     |
 
 ### `ChartMetadataSchema`
 Metadata for table content extracted from charts.
@@ -229,20 +238,22 @@ Metadata for table content extracted from charts.
 | Field                             | Type                                  | Default Value       | Description                                                                                             |
 |-----------------------------------|---------------------------------------|---------------------|---------------------------------------------------------------------------------------------------------|
 | `caption`                         | `str`                                 | `""`                | Caption associated with the chart.                                                                      |
-| `table_format`                    | `TableFormatEnum`                     | *Required*          | Underlying data format of the chart (e.g., data might be in `csv` format). Uses `TableFormatEnum`.      |
+| `table_format`                    | `TableFormatEnum`                     | *Required*          | Underlying data format of the chart (for example, `html`, `markdown`). Uses `TableFormatEnum`.          |
 | `table_content`                   | `str`                                 | `""`                | String representation of the chart's underlying data.                                                   |
 | `table_content_format`            | `Union[TableFormatEnum, str]`         | `""`                | Specific format of `table_content`.                                                                     |
 | `table_location`                  | `tuple`                               | `(0, 0, 0, 0)`      | Bounding box or coordinates of the chart within its source.                                             |
 | `table_location_max_dimensions`   | `tuple`                               | `(0, 0)`            | Maximum dimensions of the space where `table_location` is defined.                                      |
 | `uploaded_image_uri`              | `str`                                 | `""`                | URI of the stored chart image when image storage is configured.                                         |
+| `custom_content`                  | `Optional[Dict[str, Any]]`            | `None`              | Optional dictionary for extra fields supplied by callers or user-defined functions.                     |
 
 ### `AudioMetadataSchema`
 Specific metadata for audio content.
 
 | Field              | Type  | Default Value | Description                                     |
 |--------------------|-------|---------------|-------------------------------------------------|
-| `audio_transcript` | `str` | `""`          | Transcript of the audio content.                |
-| `audio_type`       | `str` | `""`          | Type or format of the audio (e.g., `mp3`, `wav`). |
+| `audio_transcript` | `str`                          | `""`   | Transcript of the audio content.                |
+| `audio_type`       | `str`                          | `""`   | Type or format of the audio (for example, `mp3`, `wav`). |
+| `custom_content`   | `Optional[Dict[str, Any]]`     | `None` | Optional dictionary for extra fields supplied by callers or user-defined functions. |
 
 <a id="errormetadataschema"></a>
 
@@ -253,9 +264,10 @@ Metadata describing errors encountered during processing.
 | Field       | Type           | Default Value | Description                                                              |
 |-------------|----------------|---------------|--------------------------------------------------------------------------|
 | `task`      | `TaskTypeEnum` | *Required*    | The task that was being performed when the error occurred. Uses `TaskTypeEnum`. |
-| `status`    | `StatusEnum`   | *Required*    | The status indicating failure. Uses `StatusEnum`.                          |
+| `status`    | `StatusEnum`   | *Required*    | The status of the task. Uses `StatusEnum` (`ERROR`, `SUCCESS`).            |
 | `source_id` | `str`          | `""`          | Identifier of the source item that caused the error, if applicable.        |
-| `error_msg` | `str`          | *Required*    | The error message.                                                       |
+| `error_msg`      | `str`                          | *Required*    | The error message.                                                       |
+| `custom_content` | `Optional[Dict[str, Any]]`     | `None`        | Optional dictionary for extra fields supplied by callers or user-defined functions. |
 
 <a id="infomessagemetadataschema"></a>
 
@@ -266,39 +278,40 @@ Informational messages related to processing.
 | Field     | Type           | Default Value | Description                                                              |
 |-----------|----------------|---------------|--------------------------------------------------------------------------|
 | `task`    | `TaskTypeEnum` | *Required*    | The task associated with this informational message. Uses `TaskTypeEnum`.  |
-| `status`  | `StatusEnum`   | *Required*    | The status related to this message (e.g., `INFO`, `WARNING`). Uses `StatusEnum`. |
-| `message` | `str`          | *Required*    | The informational message content.                                       |
-| `filter`  | `bool`         | *Required*    | A flag indicating if this message should be used for filtering purposes.   |
+| `status`         | `StatusEnum`                   | *Required*    | The status related to this message. Uses `StatusEnum` (`ERROR`, `SUCCESS`). |
+| `message`        | `str`                          | *Required*    | The informational message content.                                       |
+| `filter`         | `bool`                         | *Required*    | A flag indicating if this message should be used for filtering purposes.   |
+| `custom_content` | `Optional[Dict[str, Any]]`     | `None`        | Optional dictionary for extra fields supplied by callers or user-defined functions. |
 
 
 ## Enums
 
-The following enums are used by this schema:
+The following enums are used by this schema. Member names are the Python identifiers. Serialized JSON values are in parentheses.
 
-*   `AccessLevelEnum` – Defines access levels (e.g., `PUBLIC`, `CONFIDENTIAL`, `UNKNOWN`).
-*   `ContentTypeEnum` – Defines types of content (e.g., `TEXT`, `IMAGE`, `AUDIO`, `STRUCTURED`, `NONE`).
-*   `TextTypeEnum` – Defines types of text (e.g., `DOCUMENT`, `TITLE`, `OCR`, `CAPTION`).
-*   `LanguageEnum` – Defines languages (e.g., `ENGLISH` (`en`), `SPANISH` (`es`)).
-*   `TableFormatEnum` – Defines table formats (e.g., `CSV`, `HTML`, `TEXT`).
-*   `StatusEnum` – Defines processing statuses (e.g., `SUCCESS`, `FAILURE`, `PROCESSING`, `INFO`, `WARNING`).
-*   `DocumentTypeEnum` – Defines types of source documents (e.g., `PDF`, `DOCX`, `TXT`, `URL`, `PNG`, `MP3`).
-*   `TaskTypeEnum` – Defines types of processing tasks (e.g., `EXTRACTION`, `EMBEDDING`, `STORAGE`).
+*   `AccessLevelEnum` – Integer access levels: `UNKNOWN` (`-1`), `LEVEL_1` (`1`), `LEVEL_2` (`2`), `LEVEL_3` (`3`).
+*   `ContentTypeEnum` – Content categories: `AUDIO` (`audio`), `CHART` (`chart`), `EMBEDDING` (`embedding`), `IMAGE` (`image`), `INFOGRAPHIC` (`infographic`), `INFO_MSG` (`info_message`), `NONE` (`none`), `PAGE_IMAGE` (`page_image`), `STRUCTURED` (`structured`), `TABLE` (`table`), `TEXT` (`text`), `UNKNOWN` (`unknown`), `VIDEO` (`video`).
+*   `TextTypeEnum` – Text segment types: `BLOCK` (`block`), `BODY` (`body`), `DOCUMENT` (`document`), `HEADER` (`header`), `LINE` (`line`), `NEARBY_BLOCK` (`nearby_block`), `OTHER` (`other`), `PAGE` (`page`), `SPAN` (`span`).
+*   `LanguageEnum` – Language codes, for example `EN` (`en`) and `ES` (`es`).
+*   `TableFormatEnum` – Table formats: `HTML` (`html`), `IMAGE` (`image`), `LATEX` (`latex`), `MARKDOWN` (`markdown`), `PSEUDO_MARKDOWN` (`pseudo_markdown`), `SIMPLE` (`simple`).
+*   `StatusEnum` – Processing statuses: `ERROR` (`error`), `SUCCESS` (`success`).
+*   `DocumentTypeEnum` – Source file types: `BMP` (`bmp`), `DOCX` (`docx`), `HTML` (`html`), `JPEG` (`jpeg`), `PDF` (`pdf`), `PNG` (`png`), `PPTX` (`pptx`), `SVG` (`svg`), `TIFF` (`tiff`), `TXT` (`text`), `MD` (`text`), `MP3` (`mp3`), `WAV` (`wav`), `MP4` (`mp4`), `MOV` (`mov`), `AVI` (`avi`), `MKV` (`mkv`), `UNKNOWN` (`unknown`). `TXT` and `MD` both serialize as `text`.
+*   `TaskTypeEnum` – Processing tasks: `AUDIO_DATA_EXTRACT` (`audio_data_extract`), `CAPTION` (`caption`), `CHART_DATA_EXTRACT` (`chart_data_extract`), `DEDUP` (`dedup`), `EMBED` (`embed`), `EXTRACT` (`extract`), `FILTER` (`filter`), `INFOGRAPHIC_DATA_EXTRACT` (`infographic_data_extract`), `OCR_DATA_EXTRACT` (`ocr_data_extract`), `SPLIT` (`split`), `STORE_EMBEDDING` (`store_embedding`), `STORE` (`store`), `TABLE_DATA_EXTRACT` (`table_data_extract`), `UDF` (`udf`), `VDB_UPLOAD` (`vdb_upload`).
 
 
 ## Example Metadata
 
-The following is an example JSON representation of metadata. 
-This is an example only, and does not contain the full metadata.
+The following is an abbreviated text row from the linked sample output.
+The embedding vector is omitted.
 For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/data/multimodal_test.json).
 
 ```json
 {
     "document_type": "text",
-    "metadata": 
+    "metadata":
     {
         "content": "TestingDocument...",
         "content_url": "",
-        "source_metadata": 
+        "source_metadata":
         {
             "source_name": "data/multimodal_test.pdf",
             "source_id": "data/multimodal_test.pdf",
@@ -311,33 +324,33 @@ For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Ret
             "partition_id": -1,
             "access_level": 1
         },
-        "content_metadata": 
+        "content_metadata":
         {
-            "type": "structured",
-            "description": "Structured chart extracted from PDF document.",
-            "page_number": 1,
-            "hierarchy": 
+            "type": "text",
+            "description": "Unstructured text from PDF document.",
+            "page_number": 0,
+            "hierarchy":
             {
                 "page_count": 3,
-                "page": 1,
+                "page": 0,
                 "block": -1,
                 "line": -1,
                 "span": -1,
-                "nearby_objects": 
+                "nearby_objects":
                 {
-                    "text": 
+                    "text":
                     {
                         "content": [],
                         "bbox": [],
                         "type": []
                     },
-                    "images": 
+                    "images":
                     {
                         "content": [],
                         "bbox": [],
                         "type": []
                     },
-                    "structured": 
+                    "structured":
                     {
                         "content": [],
                         "bbox": [],
@@ -345,31 +358,30 @@ For the full file, refer to the [data folder](https://github.com/NVIDIA/NeMo-Ret
                     }
                 }
             },
-            "subtype": "chart"
+            "subtype": ""
         },
         "audio_metadata": null,
-        "text_metadata": null,
-        "image_metadata": null,
-        "table_metadata": 
+        "text_metadata":
         {
-            "caption": "",
-            "table_format": "image",
-            "table_content": "Below,is a high-quality picture of some shapes          Picture",
-            "table_content_format": "",
-            "table_location": 
+            "text_type": "page",
+            "summary": "",
+            "keywords": "",
+            "language": "en",
+            "text_location":
             [
-                74,
-                614,
-                728,
-                920
+                -1,
+                -1,
+                -1,
+                -1
             ],
-            "table_location_max_dimensions": 
+            "text_location_max_dimensions":
             [
-                792,
-                1024
-            ],
-            "uploaded_image_uri": ""
+                -1,
+                -1
+            ]
         },
+        "image_metadata": null,
+        "table_metadata": null,
         "chart_metadata": null,
         "error_metadata": null,
         "info_message_metadata": null,
