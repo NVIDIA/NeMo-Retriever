@@ -48,6 +48,7 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
+from nemo_retriever.ingestor.plans import dedup_params_enabled, resolve_effective_dedup_params
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.common.inline_text import (
     inline_text_source_id,
@@ -718,13 +719,58 @@ class GraphIngestor(ingestor):
     # ------------------------------------------------------------------
 
     def dedup(self, params: Optional[DedupParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a dedup stage."""
+        """Record image-deduplication settings.
+
+        Configure both mechanisms as ``False`` to suppress the automatic
+        deduplication otherwise enabled by captioning non-image documents.
+
+        Parameters
+        ----------
+        params
+            Optional image-deduplication parameters. When neither ``params``
+            nor keyword overrides are supplied, both default passes are
+            enabled.
+        **kwargs
+            Field overrides applied after values from ``params``.
+
+        Returns
+        -------
+        GraphIngestor
+            This ingestor instance for fluent chaining.
+
+        Raises
+        ------
+        ValueError
+            If the supplied values do not form valid deduplication parameters.
+        """
         self._dedup_params = _coerce(params, kwargs, default_factory=DedupParams)
         self._record_stage("dedup")
         return self
 
     def caption(self, params: Optional[CaptionParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a caption stage."""
+        """Record a caption stage with automatic document-image deduplication.
+
+        Inputs resolved to image extraction are exempt. Call :meth:`dedup`
+        with both mechanisms disabled to preserve every extracted image crop.
+
+        Parameters
+        ----------
+        params
+            Optional image-captioning parameters. When neither ``params`` nor
+            keyword overrides are supplied, default parameters are used.
+        **kwargs
+            Field overrides applied after values from ``params``.
+
+        Returns
+        -------
+        GraphIngestor
+            This ingestor instance for fluent chaining.
+
+        Raises
+        ------
+        ValueError
+            If the supplied values do not form valid caption parameters.
+        """
         self._caption_params = _resolve_api_key(_coerce(params, kwargs, default_factory=CaptionParams))
         self._record_stage("caption")
         return self
@@ -769,6 +815,10 @@ class GraphIngestor(ingestor):
 
     def ingest(self, params: Any = None, **kwargs: Any) -> Any:
         """Build the operator graph and run it through the configured executor.
+
+        Captioning automatically applies default image deduplication to
+        non-image inputs unless an explicit dedup configuration disables both
+        deduplication passes.
 
         Parameters
         ----------
@@ -815,27 +865,36 @@ class GraphIngestor(ingestor):
         else:
             single_effective = None
 
-        # Auto-enable dedup before captioning so that images overlapping
-        # with table/chart/infographic detections are removed first.
-        # Skip for image-only extraction — the image IS the content.
         image_only = single_effective is not None and single_effective.extraction_mode == "image"
-        if self._caption_params is not None and self._dedup_params is None and not image_only:
-            self._dedup_params = DedupParams()
-            if "dedup" not in self._stage_order:
-                try:
-                    idx = self._stage_order.index("caption")
-                except ValueError:
-                    idx = len(self._stage_order)
-                self._stage_order.insert(idx, "dedup")
+        effective_dedup_params = resolve_effective_dedup_params(
+            self._dedup_params,
+            caption_enabled=self._caption_params is not None,
+            image_only=image_only,
+        )
+        effective_stage_order = list(self._stage_order)
+        if dedup_params_enabled(effective_dedup_params) and "dedup" not in effective_stage_order:
+            try:
+                idx = effective_stage_order.index("caption")
+            except ValueError:
+                idx = len(effective_stage_order)
+            effective_stage_order.insert(idx, "dedup")
 
-        post_extract_order = tuple(s for s in self._stage_order if s != "extract")
+        post_extract_order = tuple(s for s in effective_stage_order if s != "extract")
 
         if execute_branches:
-            result = self._execute_extraction_branches(default_branches, post_extract_order=post_extract_order)
+            result = self._execute_extraction_branches(
+                default_branches,
+                dedup_params=effective_dedup_params,
+                post_extract_order=post_extract_order,
+            )
         else:
             if single_effective is None:
                 raise RuntimeError("Internal error: extraction inputs were not resolved.")
-            result = self._execute_single_graph(single_effective, post_extract_order=post_extract_order)
+            result = self._execute_single_graph(
+                single_effective,
+                dedup_params=effective_dedup_params,
+                post_extract_order=post_extract_order,
+            )
 
         return self._finalize_ingest_result(result, return_failures=return_failures)
 
@@ -843,16 +902,26 @@ class GraphIngestor(ingestor):
         self,
         effective_extraction: ResolvedExtractionInputs,
         *,
+        dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
     ) -> Any:
         if self._run_mode == "batch":
-            return self._execute_single_graph_batch(effective_extraction, post_extract_order=post_extract_order)
-        return self._execute_single_graph_inprocess(effective_extraction, post_extract_order=post_extract_order)
+            return self._execute_single_graph_batch(
+                effective_extraction,
+                dedup_params=dedup_params,
+                post_extract_order=post_extract_order,
+            )
+        return self._execute_single_graph_inprocess(
+            effective_extraction,
+            dedup_params=dedup_params,
+            post_extract_order=post_extract_order,
+        )
 
     def _execute_single_graph_batch(
         self,
         effective_extraction: ResolvedExtractionInputs,
         *,
+        dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
     ) -> Any:
         ray, cluster_resources = self._ensure_batch_runtime()
@@ -869,7 +938,7 @@ class GraphIngestor(ingestor):
             embed_params=self._embed_params,
             split_config=self._split_config,
             caption_params=self._caption_params,
-            dedup_params=self._dedup_params,
+            dedup_params=dedup_params,
             store_params=self._store_params,
             vdb_upload_params=self._vdb_upload_params,
             webhook_params=self._webhook_params,
@@ -911,6 +980,7 @@ class GraphIngestor(ingestor):
         self,
         effective_extraction: ResolvedExtractionInputs,
         *,
+        dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
     ) -> Any:
         graph = build_graph(
@@ -926,7 +996,7 @@ class GraphIngestor(ingestor):
             embed_params=self._embed_params,
             split_config=self._split_config,
             caption_params=self._caption_params,
-            dedup_params=self._dedup_params,
+            dedup_params=dedup_params,
             store_params=self._store_params,
             vdb_upload_params=self._vdb_upload_params,
             webhook_params=self._webhook_params,
@@ -947,6 +1017,7 @@ class GraphIngestor(ingestor):
         self,
         branches: tuple[ExtractionBranchPlan, ...],
         *,
+        dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
     ) -> Any:
         result = ExtractionBranchExecutor(
@@ -966,7 +1037,7 @@ class GraphIngestor(ingestor):
             av_fuse_params=self._av_fuse_params,
             embed_params=self._embed_params,
             caption_params=self._caption_params,
-            dedup_params=self._dedup_params,
+            dedup_params=dedup_params,
             store_params=self._store_params,
             vdb_upload_params=self._vdb_upload_params,
             webhook_params=self._webhook_params,
