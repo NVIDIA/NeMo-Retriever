@@ -47,18 +47,18 @@ For audio and video extraction in Kubernetes, refer to [Audio and video](audio-v
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)
+* [Jupyter Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)
 
 ### I need API details and keys
 
-1. [Get your API key](api-keys.md)
-2. [API reference — PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest) if applicable
+* [Get your API key](api-keys.md)
+* [API reference — PDF pre-splitting](nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest) if applicable
 
 ### I am tuning performance or cost
 
-1. [Evaluation and performance](evaluate-on-your-data.md)
-2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
-3. [Evaluate on your data](evaluate-on-your-data.md)
+* [Evaluation and performance](evaluate-on-your-data.md)
+* [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
+* [Evaluate on your data](evaluate-on-your-data.md)
 
 ## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
 

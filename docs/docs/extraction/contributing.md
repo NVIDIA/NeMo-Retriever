@@ -147,7 +147,7 @@ After setup you typically have **two** working copies: one from your fork (with 
 Decide where the change lands:
 
 - **`main` only**
-- A **release** branch only (for example `release/25.9.0`)
+- A **release** branch only (for example `release/26.08.1`)
 - **Both** `main` and a release branch — commit to `main` first, then [cherry-pick](https://git-scm.com/docs/git-cherry-pick) the commits onto the release branch.
 
 ### Keep your fork and local clone in sync with NVIDIA
