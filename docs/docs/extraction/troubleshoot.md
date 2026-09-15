@@ -150,6 +150,32 @@ NeMo Retriever Library extraction operators do not emit those strings. For
 safe handling examples, refer to
 [Row-level error payloads](nemo-retriever-api-reference.md#row-level-error-payloads).
 
+## Helm service pods fail to start while installing FFmpeg { #helm-service-pods-fail-to-start-while-installing-ffmpeg }
+
+The Helm chart default is `service.installFfmpeg=true`. That value sets
+`INSTALL_FFMPEG=true` on every retriever service role, including gateway,
+realtime, and batch in `topology.mode=split`.
+
+If `ffmpeg` and `ffprobe` are not already in the image, the service entrypoint
+runs `sudo /usr/local/sbin/retriever-install-ffmpeg` before the API starts.
+That path needs package-repository network egress, a writable root filesystem,
+and a security policy that allows the image's scoped sudo use.
+
+In air-gapped, proxy-restricted, read-only, or sudo-restricted clusters, that
+default startup path can fail and the API never starts.
+
+To skip runtime package installation, set the following value:
+
+```yaml
+service:
+  installFfmpeg: false
+```
+
+PDF, image, text, and HTML extraction still start. Audio and video uploads then
+fail with HTTP 501 until you embed `ffmpeg` and `ffprobe` in a custom service
+image at build time. Refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment)
+and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image).
+
 ## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
 When you run audio or video extraction, you might see an error similar to one
@@ -179,7 +205,8 @@ For the bundled service container at runtime:
 docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 ```
 
-For Helm, when package-repo egress and the image security policy allow startup install:
+The Helm chart default is `service.installFfmpeg=true`. Connected clusters
+with package-repo egress already have this value:
 
 ```yaml
 service:
@@ -187,6 +214,7 @@ service:
 ```
 
 This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
+If the service never starts, refer to [Helm service pods fail to start while installing FFmpeg](#helm-service-pods-fail-to-start-while-installing-ffmpeg).
 
 ## Can't start new thread error { #cant-start-new-thread-error }
 
