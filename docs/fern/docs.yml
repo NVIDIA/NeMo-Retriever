@@ -9,7 +9,7 @@ title: NeMo Retriever
 global-theme: nvidia
 
 logo:
-  href: /nightly/about
+  href: /nightly/about/overview
   right-text: NeMo Retriever
 
 navbar-links:
@@ -27,9 +27,9 @@ versions:
 
 redirects:
   - source: "/index.html"
-    destination: "/nightly/about"
+    destination: "/nightly/about/overview"
   - source: "/index"
-    destination: "/nightly/about"
+    destination: "/nightly/about/overview"
   - source: "/:version/extraction/agentic-retrieval-concept"
     destination: "/:version/about/agentic-retrieval-concept"
   - source: "/:version/extraction/concepts"
@@ -41,7 +41,7 @@ redirects:
   - source: "/:version/extraction/api-keys"
     destination: "/:version/get-started/api-keys"
   - source: "/:version/extraction/getting-started-about"
-    destination: "/:version/get-started"
+    destination: "/:version/get-started/overview"
   - source: "/:version/extraction/prerequisites-support-matrix"
     destination: "/:version/get-started/prerequisites-support-matrix"
   - source: "/:version/reference/retriever-cli-quickstart"

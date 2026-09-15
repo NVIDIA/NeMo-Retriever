@@ -1,7 +1,6 @@
 navigation:
-  - section: About
+  - section: About NeMo Retriever Library
     slug: about
-    path: ../../docs/extraction/about/index.mdx
     contents:
       - page: Overview
         slug: overview
@@ -17,8 +16,10 @@ navigation:
         path: ../../docs/extraction/about/releasenotes.mdx
   - section: Get started
     slug: get-started
-    path: ../../docs/extraction/get-started/index.mdx
     contents:
+      - page: Overview
+        slug: overview
+        path: ../../docs/extraction/get-started/overview.mdx
       - page: "Pre-Requisites & Support Matrix"
         slug: prerequisites-support-matrix
         path: ../../docs/extraction/get-started/prerequisites-support-matrix.mdx
@@ -32,7 +33,6 @@ navigation:
         href: https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever
   - section: Ingest and extract content
     slug: ingest
-    path: ../../docs/extraction/ingest/index.mdx
     contents:
       - page: "Workflow: Ingest documents into a searchable VDB collection"
         slug: workflow-document-ingestion
@@ -48,7 +48,6 @@ navigation:
         path: ../../docs/extraction/ingest/embedding.mdx
   - section: Search and manage collections
     slug: collections
-    path: ../../docs/extraction/collections/index.mdx
     contents:
       - page: "Vector databases"
         slug: vdbs
@@ -61,7 +60,6 @@ navigation:
         path: ../../docs/extraction/reference/collection-management-api.mdx
   - section: Deploy and operate
     slug: deploy
-    path: ../../docs/extraction/deploy/index.mdx
     contents:
       - page: "Compare deployment options"
         slug: deployment-options
@@ -80,14 +78,12 @@ navigation:
         path: ../../docs/extraction/deploy/performance_guide.mdx
   - section: Customize and extend
     slug: customize
-    path: ../../docs/extraction/customize/index.mdx
     contents:
       - page: "Customize & extend"
         slug: customize-extend
         path: ../../docs/extraction/customize/customize-extend.mdx
   - section: Reference
     slug: reference
-    path: ../../docs/extraction/reference/index.mdx
     contents:
       - page: "API guide"
         slug: nemo-retriever-api-reference
@@ -102,7 +98,6 @@ navigation:
         path: ../../docs/extraction/reference/content-metadata.mdx
   - section: Troubleshooting
     slug: troubleshooting
-    path: ../../docs/extraction/troubleshooting/index.mdx
     contents:
       - page: "Evaluate on your own documents"
         slug: evaluate-on-your-data
@@ -115,7 +110,6 @@ navigation:
         path: ../../docs/extraction/troubleshooting/faq.mdx
   - section: Resources
     slug: resources
-    path: ../../docs/extraction/resources/index.mdx
     contents:
       - page: "Contributing"
         slug: contributing
