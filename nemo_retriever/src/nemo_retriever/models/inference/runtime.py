@@ -165,10 +165,12 @@ def embed_text_main_text_embed(
     ]
 
     try:
-        if len(modalities) == 1:
-            out_df = _embed_group(
-                prepared_df,
-                group_modality=modalities[0],
+        parts: List[pd.DataFrame] = []
+        for modality in modalities:
+            group_df = prepared_df if len(modalities) == 1 else prepared_df.loc[effective_modalities == modality]
+            part = _embed_group(
+                group_df,
+                group_modality=modality,
                 model=model,
                 endpoint=endpoint,
                 api_key=api_key,
@@ -182,31 +184,8 @@ def embed_text_main_text_embed(
                 request_timeout_s=float(request_timeout_s),
                 truncate="NONE" if endpoint is not None and embedding_input_policy is not None else "END",
             )
-        else:
-            parts: List[pd.DataFrame] = []
-            for modality in modalities:
-                mask = effective_modalities == modality
-                group_df = prepared_df.loc[mask]
-                if group_df.empty:
-                    continue
-                part = _embed_group(
-                    group_df,
-                    group_modality=modality,
-                    model=model,
-                    endpoint=endpoint,
-                    api_key=api_key,
-                    text_column=text_column,
-                    inference_batch_size=inference_batch_size,
-                    output_column=output_column,
-                    resolved_model_name=resolved_model_name,
-                    embed_model_provider_prefix=embed_model_provider_prefix,
-                    nim_http_max_concurrent=nim_http_max_concurrent,
-                    input_type=input_type,
-                    request_timeout_s=float(request_timeout_s),
-                    truncate="NONE" if endpoint is not None and embedding_input_policy is not None else "END",
-                )
-                parts.append(part)
-            out_df = pd.concat(parts).sort_index()
+            parts.append(part)
+        out_df = parts[0] if len(modalities) == 1 else pd.concat(parts).sort_index()
     except Exception as exc:
         try:
             import torch

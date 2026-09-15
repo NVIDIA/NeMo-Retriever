@@ -32,12 +32,6 @@ from nemo_retriever.models.embed_model_spec import resolve_embed_model_spec
 from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 
 
-def _deep_copy_row(row: pd.Series) -> dict[str, Any]:
-    return {
-        key: copy.deepcopy(value) if isinstance(value, (dict, list)) else value for key, value in row.to_dict().items()
-    }
-
-
 def _stable_json(value: Any) -> str:
     def normalize(item: Any) -> Any:
         if isinstance(item, dict):
@@ -220,24 +214,22 @@ class EmbeddingInputPolicy:
         )
 
 
-def _expand_row(
+def _split_row_updates(
     row: pd.Series,
     selected: SelectedEmbeddingText,
     plan: EmbeddingSplitPlan,
 ) -> list[dict[str, Any]]:
-    row_copy = _deep_copy_row(row)
+    """Build only child content and provenance; pandas repeats the source rows."""
     selected_column, text = selected.column, selected.content
-    parent_id = _parent_id(row_copy, text)
-    expanded: list[dict[str, Any]] = []
+    parent_id = _parent_id(row.to_dict(), text)
+    source_metadata = row.get("metadata")
+    updates: list[dict[str, Any]] = []
     for chunk_index, split_child in enumerate(plan.children):
-        child = copy.deepcopy(row_copy)
-        child[selected_column] = split_child.content
-        if selected_column == "text" and "content" in child:
+        child: dict[str, Any] = {selected_column: split_child.content}
+        if selected_column == "text" and "content" in row:
             child["content"] = split_child.content
-        metadata = child.get("metadata")
-        if not isinstance(metadata, dict):
-            metadata = {}
-            child["metadata"] = metadata
+        metadata = copy.deepcopy(source_metadata) if isinstance(source_metadata, dict) else {}
+        child["metadata"] = metadata
         chunk_id = hashlib.sha256(
             f"{parent_id}\0{split_child.start_token}\0{split_child.end_token}".encode("utf-8")
         ).hexdigest()
@@ -252,8 +244,8 @@ def _expand_row(
                 end_token=split_child.end_token,
             )
         )
-        expanded.append(child)
-    return expanded
+        updates.append(child)
+    return updates
 
 
 def prepare_embedding_inputs(
@@ -306,16 +298,13 @@ def prepare_embedding_inputs(
         if selected is None or plan is None or not plan.requires_split:
             source_positions.append(source_position)
             continue
-        expanded = _expand_row(row, selected, plan)
-        source_positions.extend([source_position] * len(expanded))
-        changed_columns = {selected.column, "metadata"}
-        if selected.column == "text" and "content" in frame:
-            changed_columns.add("content")
-        for offset, child in enumerate(expanded):
-            for column in changed_columns:
-                updates.setdefault(column, {})[first_output_position + offset] = child[column]
+        child_updates = _split_row_updates(row, selected, plan)
+        source_positions.extend([source_position] * len(child_updates))
+        for offset, child in enumerate(child_updates):
+            for column, value in child.items():
+                updates.setdefault(column, {})[first_output_position + offset] = value
         split_parent_positions.add(first_output_position)
-        split_child_positions.update(range(first_output_position, first_output_position + len(expanded)))
+        split_child_positions.update(range(first_output_position, first_output_position + len(child_updates)))
 
     # Repeat source rows before changing child content so unrelated columns keep
     # their exact values and extension dtypes (including nullable and categorical).

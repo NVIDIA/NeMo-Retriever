@@ -283,6 +283,11 @@ def test_oversized_middle_row_is_split_below_the_formatted_model_limit(caplog) -
     ) in caplog.text
     assert any(record.levelno == logging.WARNING and "overlength=1" in record.message for record in caplog.records)
 
+    # Child provenance can be updated without mutating its parent or siblings.
+    child_metadata[0]["element"]["type"] = "updated"
+    assert source.loc[1, "metadata"] == {"chunk_index": 4, "element": {"type": "table"}}
+    assert [metadata["element"] for metadata in child_metadata[1:]] == [{"type": "table"}] * 2
+
 
 def test_policy_measures_and_preserves_leading_and_trailing_whitespace() -> None:
     policy = EmbeddingInputPolicy(tokenizer=_CharacterTokenizer(), max_tokens=5, prefix="p")
