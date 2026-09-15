@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -39,6 +40,8 @@ logger = logging.getLogger(__name__)
 # Heuristic GPU fraction for GPUOperator nodes that load a local model.
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
+_STREAM_INGEST_PREFETCH_BATCHES = 1
+_DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 
 
 def _contains_null_arrow_child(data_type: Any) -> bool:
@@ -219,7 +222,12 @@ def preflight_executors(executors: list[Any], cluster_resources: ClusterResource
     available_cpus = cluster_resources.available_cpu_count()
     available_gpus = cluster_resources.available_gpu_count()
     for executor in executors:
-        for node in executor._linearize(resolve_graph(executor.graph, cluster_resources)):
+        nodes = executor._linearize(resolve_graph(executor.graph, cluster_resources))
+        sink_index = executor._stream_ingest_index(nodes)
+        planned_nodes = (
+            [node for index, node in enumerate(nodes) if index != sink_index] if sink_index is not None else nodes
+        )
+        for node in planned_nodes:
             override = executor._node_overrides.get(node.name, {})
             concurrency = override.get("concurrency", 1)
             entries.append(
@@ -553,10 +561,81 @@ class RayDataExecutor(AbstractExecutor):
             node = node.children[0] if node.children else None
         return ordered
 
+    @staticmethod
+    def _stream_ingest_index(nodes: List[Node]) -> int | None:
+        """Return one VDB streaming position, falling back for ambiguous graphs."""
+        from nemo_retriever.operators.vdb import IngestVdbOperator
+
+        positions = [
+            index
+            for index, node in enumerate(nodes)
+            if isinstance(node.operator, IngestVdbOperator) and node.operator._supports_stream_ingest()
+        ]
+        return positions[0] if len(positions) == 1 else None
+
     def ingest(self, data: Any, **kwargs: Any) -> Any:
         """Build, execute, and materialize a Ray Data pipeline from the graph."""
 
-        return ray_dataset_to_pandas(self.build_dataset(data, **kwargs))
+        if kwargs:
+            unsupported = ", ".join(sorted(kwargs))
+            raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
+
+        nodes = self._linearize(self.graph)
+        sink_index = self._stream_ingest_index(nodes)
+        if sink_index is None:
+            return ray_dataset_to_pandas(self.build_dataset(data))
+
+        sink_operator = nodes[sink_index].operator
+        has_downstream_nodes = sink_index + 1 < len(nodes)
+
+        dataset = self._build_dataset(
+            data,
+            segment="before_stream_ingest",
+        )
+
+        terminal_frames: list[pd.DataFrame] = []
+        batch_iterator = iter(
+            dataset.iter_batches(
+                batch_format=None,
+                batch_size=None,
+                prefetch_batches=_STREAM_INGEST_PREFETCH_BATCHES,
+            )
+        )
+
+        def retained_batches() -> Iterator[pd.DataFrame]:
+            for block in batch_iterator:
+                frame = arrow_table_to_pandas(block)
+                terminal_frames.append(frame)
+                yield frame
+
+        try:
+            sink_operator._stream_ingest(retained_batches())
+        finally:
+            close = getattr(batch_iterator, "close", None)
+            if callable(close):
+                close()
+
+        if has_downstream_nodes:
+            import ray.data as rd
+
+            if terminal_frames:
+                continuation_input = rd.from_pandas(terminal_frames)
+            else:
+                schema = dataset.schema()
+                names = getattr(schema, "names", None)
+                continuation_input = rd.from_pandas(pd.DataFrame(columns=list(names) if names is not None else None))
+            downstream = self._build_dataset(
+                continuation_input,
+                segment="after_stream_ingest",
+                input_preserves_pandas_output=True,
+            )
+            return ray_dataset_to_pandas(downstream)
+
+        if terminal_frames:
+            return pd.concat(terminal_frames, ignore_index=True)
+        schema = dataset.schema()
+        names = getattr(schema, "names", None)
+        return pd.DataFrame(columns=list(names) if names is not None else None)
 
     def build_dataset(self, data: Any, **kwargs: Any) -> Any:
         """Build a lazy Ray Data pipeline from the graph.
@@ -572,6 +651,20 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The lazy Ray dataset with all graph stages appended.
         """
+        if kwargs:
+            unsupported = ", ".join(sorted(kwargs))
+            raise TypeError(f"RayDataExecutor.build_dataset() does not accept setting(s): {unsupported}")
+        return self._build_dataset(data)
+
+    def _build_dataset(
+        self,
+        data: Any,
+        *,
+        segment: _DatasetSegment = "all",
+        input_preserves_pandas_output: bool = False,
+    ) -> Any:
+        """Build the complete graph or one private streaming-ingest segment."""
+
         ray = ensure_local_ray_runtime(self._ray_address)
         import ray.data as rd
 
@@ -607,8 +700,15 @@ class RayDataExecutor(AbstractExecutor):
         cluster = self._preflight_cluster_resources or gather_cluster_resources(ray)
         available_gpus = cluster.available_gpu_count()
         resolved_graph = resolve_graph(self.graph, cluster)
-        nodes = self._linearize(resolved_graph)
-        requires_stable_pandas_blocks = _requires_stable_pandas_blocks(nodes)
+        all_nodes = self._linearize(resolved_graph)
+        sink_index = self._stream_ingest_index(all_nodes)
+        if sink_index is not None and segment == "before_stream_ingest":
+            nodes = all_nodes[:sink_index]
+        elif sink_index is not None and segment == "after_stream_ingest":
+            nodes = all_nodes[sink_index + 1 :]
+        else:
+            nodes = all_nodes
+        requires_stable_pandas_blocks = input_preserves_pandas_output or _requires_stable_pandas_blocks(nodes)
 
         if isinstance(data, rd.Dataset):
             ds = rd.Dataset.copy(data, _deep_copy=True) if requires_stable_pandas_blocks else data
@@ -638,7 +738,7 @@ class RayDataExecutor(AbstractExecutor):
                 raise_input_path_not_found(input_paths or [], exc)
         if nodes and not self._resources_preflight_complete:
             self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
-        preserve_pandas_output = False
+        preserve_pandas_output = input_preserves_pandas_output
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
