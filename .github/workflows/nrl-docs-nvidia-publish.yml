@@ -22,7 +22,8 @@
 #
 # Operator steps:
 #   - Merges to release/26.08.1 that touch docs/**, nemo_retriever/**, or this
-#     workflow publish 26.8.1/ and latest/.
+#     workflow publish 26.8.1/ and latest/. Push ignores
+#     NRL_DOCS_PUBLISH_VERSION so a stale repo variable cannot retarget S3.
 #   - Manual: Actions → "NRL documentation — docs.nvidia.com publish"
 #        (run from branch release/26.08.1):
 #        dry-run: false
@@ -110,12 +111,22 @@ jobs:
             echo "::warning::${EVENT_NAME} on ${GITHUB_REF}; forcing dry-run."
           fi
 
-          VERSION="${VERSION_INPUT}"
-          if [[ -z "${VERSION}" ]]; then
-            VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
-          fi
-          if [[ -z "${VERSION}" ]]; then
+          # Push to this branch always publishes 26.8.1. Do not consult
+          # NRL_DOCS_PUBLISH_VERSION here: that repo variable is mutable and
+          # can already point at a later release. Dispatch may still override.
+          if [[ "${EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/release/26.08.1" ]]; then
             VERSION="26.8.1"
+            if [[ -n "${NRL_DOCS_PUBLISH_VERSION_VAR}" && "${NRL_DOCS_PUBLISH_VERSION_VAR}" != "26.8.1" ]]; then
+              echo "::warning::Ignoring NRL_DOCS_PUBLISH_VERSION=${NRL_DOCS_PUBLISH_VERSION_VAR} on release/26.08.1 push; publishing 26.8.1."
+            fi
+          else
+            VERSION="${VERSION_INPUT}"
+            if [[ -z "${VERSION}" ]]; then
+              VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
+            fi
+            if [[ -z "${VERSION}" ]]; then
+              VERSION="26.8.1"
+            fi
           fi
           echo "docs_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "site_url=${{ env.DOCS_SITE_URL_BASE }}/${VERSION}/" >> "$GITHUB_OUTPUT"
