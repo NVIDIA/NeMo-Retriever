@@ -505,7 +505,7 @@ Enable FFmpeg separately for audio or video workflows.
 The chart defaults to the image published to NGC:
 
 ```
-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
+nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2
 ```
 
 Pulling from `nvcr.io` requires an NGC pull secret — either set
@@ -634,7 +634,7 @@ NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
 Parakeet `audio` ASR NIM) is **disabled by default** to honor the
 "optional and disabled by default" contract in
 [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md);
-refer to [Recommended minimal install](#recommended-minimal-install-2608)
+refer to [Recommended minimal install](#recommended-minimal-install-2682)
 for the opt-in `--set` flags that turn any of them on.
 
 ```bash
@@ -645,7 +645,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.08.1) { #recommended-minimal-install-26081 }
+### Recommended minimal install (26.8.2) { #recommended-minimal-install-2682 }
 
 Complete the [persistent storage prerequisite](#persistent-storage-prerequisite)
 and the [GPU scheduling prerequisite](#gpu-scheduling-prerequisite)
@@ -659,7 +659,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set service.image.tag=26.8.1
+  --set service.image.tag=26.8.2
 ```
 
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
@@ -760,7 +760,7 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.5.0`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
+| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
 
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `true`                             | Default Helm installs set `INSTALL_FFMPEG=true` for every service role, including split gateway, realtime, and batch. If FFmpeg is absent, the entrypoint runs a privileged `sudo` apt install before the API starts. Requires network egress, writable root filesystem, and sudo/setuid. Set `false` on air-gapped, proxy-restricted, read-only, or sudo-restricted clusters, or embed `ffmpeg`/`ffprobe` in a custom image at build time. |
@@ -793,7 +793,7 @@ serviceConfig:
 
 Equivalent Helm flags are `--set nimOperator.audio.enabled=true` and `--set serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`.
 
-Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2608).
+Enabling only `nimOperator.audio.enabled=true` renders the Parakeet `NIMCache` and `NIMService`. The ConfigMap still sets `audio_grpc_endpoint` to `null`. The retriever service cannot send ASR traffic until you also set `serviceConfig.nimEndpoints.audioGrpcEndpoint`. Disable other optional NIMs you do not need. Refer to [Recommended minimal install](#recommended-minimal-install-2682).
 
 After you set those values, complete the following steps:
 
@@ -1227,7 +1227,7 @@ gated on three conditions ALL holding:
 > [Query-time reranking](#query-time-reranking)); other optional NIMs
 > still need an explicit serviceConfig hook (for example
 > `audioGrpcEndpoint` for Parakeet ASR). For minimal installs, prefer the
-> [minimal install](#recommended-minimal-install-2608) overrides.
+> [minimal install](#recommended-minimal-install-2682) overrides.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
 
