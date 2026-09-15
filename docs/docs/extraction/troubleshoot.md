@@ -134,15 +134,21 @@ such as a DNA sequence, errors or unexpected results occur.
 
 ## Can't process malformed input files { #cant-process-malformed-input-files }
 
-When you run a job you might see errors similar to the following:
+Malformed PDFs and images usually produce a row-level error instead of
+aborting the entire job. Inspect `metadata.error` on the returned row, pass
+`return_failures=True`, or use `error_policy="collect"`.
 
-- Failed to process the message
-- Failed to extract image
-- File may be malformed
-- Failed to format paragraph
+- For a malformed PDF, `metadata.error` is an object with `stage`, `type`,
+  `message`, and `traceback` fields. For example:
+  `{"stage": "page_processing", "type": "PdfiumError", "message": "...", "traceback": "..."}`.
+- For a malformed standalone image, `metadata.error` is a string. For example:
+  `UnidentifiedImageError: cannot identify image file`.
 
-These errors can occur when your input file is malformed.
-Verify or fix the format of your input file, and try resubmitting your job.
+Verify or repair the input format and resubmit the job. Do not rely on legacy
+messages such as `Failed to extract image` or `File may be malformed`; current
+NeMo Retriever Library extraction operators do not emit those strings. For
+safe handling examples, refer to
+[Row-level error payloads](nemo-retriever-api-reference.md#row-level-error-payloads).
 
 ## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
@@ -229,11 +235,13 @@ Helm process environment does not change NIM startup.
 Configure the embedding NIM container instead. Use the supported maximum
 from the error message. In this example, that value is `3`.
 
-**Helm:** The default chart deploys `llama-nemotron-embed-vl-1b-v2:2.3.0`
+**Helm:** The default chart deploys `nemotron-3-embed-1b:2.2.2`
 as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
 on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
-keep the default entries. The following example keeps those defaults and
-adds the batch-size variable:
+keep the default entries. The following example keeps those defaults, leaves
+the optional performance mode disabled, and adds the batch-size variable.
+Uncomment `NIM_PERFORMANCE_MODE` only if your NIM build supports it for this
+SKU:
 
 ```yaml
 nimOperator:
@@ -245,20 +253,19 @@ nimOperator:
         value: "1"
       - name: OMP_NUM_THREADS
         value: "1"
-      - name: NIM_ENGINE_PRECISION
-        value: fp16
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
       - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "3"
 ```
 
-**Development Compose:** The default `nim-embedding` image tag is `1.12.0`.
-For that image, add `NIM_TRITON_MAX_BATCH_SIZE` to the existing
-`nim-embedding` environment mapping in
-`nemo_retriever/dev/compose/service-mode.compose.yaml`.
-The following example shows the key to add:
+**Development Compose:** The default `nim-embedding` image is also `nemotron-3-embed-1b:2.2.2`. Add `NIM_PIPELINE_MAX_BATCH_SIZE` to its existing environment mapping in `nemo_retriever/dev/compose/service-mode.compose.yaml`:
 
 ```yaml
-NIM_TRITON_MAX_BATCH_SIZE: "3"
+NIM_PIPELINE_MAX_BATCH_SIZE: "3"
 ```
 
 **Library or CLI with a remote NIM:** Set the image-specific batch-size
@@ -538,7 +545,7 @@ Warning  FailedScheduling  default-scheduler  0/1 nodes are available:
 Complete the following checks:
 
 1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
-2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
+2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `nemotron-3-embed-1b`).
 3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
 

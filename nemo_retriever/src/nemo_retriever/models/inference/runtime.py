@@ -16,7 +16,7 @@ from nemo_retriever.common.schemas.embedding import (
     embedding_runtime_modality,
     format_embedding_input,
 )
-from nemo_retriever.models import VL_EMBED_MODEL, resolve_embed_model
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy, prepare_embedding_inputs
 from nemo_retriever.models.inference.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 from nemo_retriever.models.nim.error_reporter import report_error
@@ -82,7 +82,7 @@ def _embed_group(
         truncate=str(truncate),
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
-        embedding_model=resolved_model_name or VL_EMBED_MODEL,
+        embedding_model=resolved_model_name or _DEFAULT_EMBED_MODEL,
         embedding_model_provider_prefix=embed_model_provider_prefix,
         embed_modality=group_modality,
         nim_http_max_concurrent=max(1, int(nim_http_max_concurrent)),

@@ -22,7 +22,7 @@ from nemo_retriever.common.modality.txt.split import (
     DEFAULT_TOKENIZER_MODEL_ID,
     txt_bytes_to_chunks_df,
 )
-from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.models import NEMOTRON_3_EMBED_BF16_MODEL
 
 
 def _write_tokenizer(path: Path) -> None:
@@ -37,7 +37,7 @@ def _write_tokenizer(path: Path) -> None:
 
 
 def test_default_chunk_tokenizer_matches_default_embedding_model() -> None:
-    assert DEFAULT_TOKENIZER_MODEL_ID == resolve_embed_model(None)
+    assert DEFAULT_TOKENIZER_MODEL_ID == NEMOTRON_3_EMBED_BF16_MODEL
 
 
 def test_load_chunk_tokenizer_uses_pinned_artifact(

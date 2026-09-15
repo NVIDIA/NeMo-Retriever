@@ -40,6 +40,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         local_spec = LocalEmbedderSpec.from_config(self._kwargs)
         self._kwargs["model_name"] = local_spec.model_name
+        self._kwargs["embed_model_name"] = local_spec.model_name
         self._kwargs["embed_model_revision"] = local_spec.revision
         self._kwargs["max_length"] = local_spec.max_length
         self._kwargs["query_max_length"] = local_spec.query_max_length

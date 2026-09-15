@@ -8,6 +8,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   retriever-unit-tests:
     name: Run Retriever Unit Tests
@@ -15,6 +18,9 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5

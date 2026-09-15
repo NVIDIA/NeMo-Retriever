@@ -69,10 +69,12 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
 
     raw_score = hit.get("distance")
     if raw_score is None:
+        raw_score = hit.get("_relevance_score")
+    if raw_score is None:
         raw_score = hit.get("_score")
     if raw_score is None:
         raw_score = hit.get("_distance")
-    score = float(raw_score) if raw_score is not None else 0.0
+    score = float(raw_score) if raw_score is not None else None
 
     return {
         "text": hit.get("text", ""),

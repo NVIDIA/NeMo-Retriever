@@ -146,12 +146,24 @@ class GraphIngestionError(RuntimeError):
 
     def __init__(
         self,
-        records: list[Any],
+        records: Any,
         stage_diagnostics: dict[str, _StageDiagnostic] | None = None,
     ) -> None:
-        self.records = records
+        # Exception pickling reconstructs an instance from ``BaseException.args``.
+        # Treat a preformatted message as one record rather than an iterable of
+        # characters so older serialized instances also fail safely.
+        if isinstance(records, str):
+            self.records = [records]
+        elif isinstance(records, (list, tuple)):
+            self.records = list(records)
+        else:
+            self.records = [records]
         self.stage_diagnostics = dict(stage_diagnostics) if stage_diagnostics else {}
-        super().__init__(_format_stage_error_message(records, self.stage_diagnostics))
+        super().__init__(_format_stage_error_message(self.records, self.stage_diagnostics))
+
+    def __reduce__(self) -> tuple[Any, tuple[list[Any], dict[str, _StageDiagnostic]]]:
+        """Reconstruct the exception from structured data across processes."""
+        return type(self), (self.records, self.stage_diagnostics)
 
 
 def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:

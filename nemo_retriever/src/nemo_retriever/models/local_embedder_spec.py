@@ -42,14 +42,16 @@ class LocalEmbedderSpec:
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "LocalEmbedderSpec":
         """Resolve actor or serialized warmup config to one immutable spec."""
-        from nemo_retriever.models import resolve_embed_model
+        from nemo_retriever.models import resolve_local_embed_model
         from nemo_retriever.models.embed_model_spec import resolve_embed_model_spec, validate_embed_model_backend
 
-        model_name = resolve_embed_model(config.get("embed_model_name") or config.get("model_name"))
+        backend = str(config.get("local_ingest_embed_backend") or config.get("backend") or "vllm").strip().lower()
+        model_name = resolve_local_embed_model(
+            config.get("embed_model_name") or config.get("model_name"), backend=backend
+        )
         revision = config.get("embed_model_revision") or config.get("revision")
         cache = config.get("hf_cache_dir")
         hf_cache_dir = str(cache) if cache else None
-        backend = str(config.get("local_ingest_embed_backend") or config.get("backend") or "hf").strip().lower()
         checkpoint = resolve_embed_model_spec(model_name, revision=revision, hf_cache_dir=hf_cache_dir)
         validate_embed_model_backend(checkpoint, backend)
 

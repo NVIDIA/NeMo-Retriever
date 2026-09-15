@@ -515,6 +515,30 @@ def test_policy_resolver_caps_runtime_length_at_checkpoint_support(monkeypatch, 
     assert policy.tokenizer is tokenizer
 
 
+@pytest.mark.parametrize("model_name", [None, "nemotron-3-embed-1b", "nvidia/nemotron-3-embed-1b"])
+def test_default_remote_policy_uses_pinned_nemotron3_checkpoint(model_name) -> None:
+    from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
+    from nemo_retriever.models.inference import embedding_input
+
+    model_id = "nvidia/Nemotron-3-Embed-1B-BF16"
+    checkpoint = Mock(
+        model_id=model_id,
+        revision=HF_MODEL_REVISIONS[model_id],
+        max_input_tokens=8192,
+        document_prefix="passage: ",
+        document_prefix_declared=True,
+    )
+    with (
+        patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint) as resolve,
+        patch.object(embedding_input, "load_chunk_tokenizer") as tokenizer,
+    ):
+        policy = resolve_embedding_input_policy(model_name, configured_max_tokens=8192, input_type="passage")
+
+    assert resolve.call_args.args[0] == model_id
+    tokenizer.assert_called_once_with(model_id, cache_dir=None, revision=HF_MODEL_REVISIONS[model_id])
+    assert policy.prefix == "passage: "
+
+
 def test_policy_resolver_rejects_missing_checkpoint_input_limit(monkeypatch, tmp_path) -> None:
     _write_local_text_policy_metadata(tmp_path, prompts={"query": "query: ", "document": "document: "})
     monkeypatch.setattr(
