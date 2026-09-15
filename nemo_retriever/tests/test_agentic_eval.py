@@ -342,9 +342,7 @@ def test_agentic_retriever_fills_top_k_after_document_dedup():
     ]
 
     def query(_query, *, top_k=None, candidate_k=None):
-        retriever._retriever.query_calls.append(
-            {"query": _query, "top_k": top_k, "candidate_k": candidate_k}
-        )
+        retriever._retriever.query_calls.append({"query": _query, "top_k": top_k, "candidate_k": candidate_k})
         return ranked_chunks[:top_k]
 
     retriever._retriever.query = query
@@ -353,9 +351,7 @@ def test_agentic_retriever_fills_top_k_after_document_dedup():
 
     assert [doc["doc_id"] for doc in docs] == ["doc_1", "doc_2", "doc_3"]
     assert docs[0]["text"] == "doc 1 chunk 1"
-    assert retriever._retriever.query_calls == [
-        {"query": "find docs", "top_k": 6, "candidate_k": 6}
-    ]
+    assert retriever._retriever.query_calls == [{"query": "find docs", "top_k": 6, "candidate_k": 6}]
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)

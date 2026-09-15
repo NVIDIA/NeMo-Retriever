@@ -43,13 +43,17 @@ source-built FFmpeg release. If your workflow depends on exact FFmpeg version
 or codec behavior, verify the package inside the image against those
 requirements.
 
-For Kubernetes deployments with network access to package repositories, set
-`service.installFfmpeg=true` in the
-[Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
-to install ffmpeg/ffprobe at service startup. This runtime path requires
-package-repository network egress, a writable root filesystem, and a security
-policy that allows the image's scoped sudo use. For air-gapped clusters, refer to
-[Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For Kubernetes deployments, the Helm chart default is `service.installFfmpeg=true`.
+That value sets `INSTALL_FFMPEG=true` on every retriever service role, including
+gateway, realtime, and batch in split topology. If `ffmpeg` and `ffprobe` are
+not already in the image, the service entrypoint runs
+`sudo /usr/local/sbin/retriever-install-ffmpeg` before the API starts.
+This runtime path requires package-repository network egress, a writable root
+filesystem, and a security policy that allows the image's scoped sudo use.
+On air-gapped, proxy-restricted, read-only, or sudo-restricted clusters, set
+`service.installFfmpeg=false` and embed the binaries in a custom service image at build time.
+Refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment)
+and the [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image).
 
 !!! important
 
@@ -79,7 +83,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     Enabling only the audio NIM deploys Parakeet and leaves `audio_grpc_endpoint` set to `null`.
 
-2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
+2. Confirm `service.installFfmpeg` for your cluster. Keep the default `true` when runtime package installation is allowed. On air-gapped or privilege-restricted clusters, set `service.installFfmpeg=false` and use a custom service image. Refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
 
 3. After the services are running, interact with the pipeline from Python (refer to the [Python API guide](nemo-retriever-api-reference.md) for parameter details).
 
