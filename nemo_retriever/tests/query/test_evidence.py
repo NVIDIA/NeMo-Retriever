@@ -87,12 +87,15 @@ def test_visual_only_match_is_reported_when_text_evidence_remains() -> None:
     ("score_fields", "expected"),
     [
         ({"distance": 0.17}, 0.17),
+        ({"_relevance_score": 0.92}, 0.92),
         ({"_score": 0.81}, 0.81),
         ({"_distance": 0.24}, 0.24),
-        ({}, 0.0),
+        ({}, None),
     ],
 )
-def test_reachable_ranking_values_are_preserved_in_evidence(score_fields: dict[str, float], expected: float) -> None:
+def test_reachable_ranking_values_are_preserved_in_evidence(
+    score_fields: dict[str, float], expected: float | None
+) -> None:
     result = build_evidence_result(
         [
             {

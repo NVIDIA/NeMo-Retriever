@@ -49,6 +49,24 @@ def test_to_markdown_renders_page_dataframe() -> None:
     assert "### Infographic 1" in markdown
 
 
+def test_to_markdown_renders_one_document_selected_by_path() -> None:
+    results = pd.DataFrame(
+        [
+            {"path": "/tmp/first.txt", "page_number": 1, "text": "First chunk"},
+            {"path": "/tmp/first.txt", "page_number": 1, "text": "Second chunk"},
+            {"path": "/tmp/second.html", "page_number": 1, "text": "Other document"},
+        ]
+    )
+    document_path = results["path"].iloc[0]
+    document_results = results[results["path"] == document_path]
+
+    markdown = to_markdown(document_results)
+
+    assert "First chunk" in markdown
+    assert "Second chunk" in markdown
+    assert "Other document" not in markdown
+
+
 def test_to_markdown_by_page_sorts_pages_and_groups_unknown() -> None:
     pages = to_markdown_by_page(
         [
@@ -128,7 +146,7 @@ def test_to_markdown_rejects_multi_document_results() -> None:
     doc_a = pd.DataFrame([{"page_number": 1, "text": "A"}])
     doc_b = pd.DataFrame([{"page_number": 1, "text": "B"}])
 
-    with pytest.raises(ValueError, match="single document result"):
+    with pytest.raises(ValueError, match="Pass one DataFrame at a time"):
         to_markdown([doc_a, doc_b])
 
 

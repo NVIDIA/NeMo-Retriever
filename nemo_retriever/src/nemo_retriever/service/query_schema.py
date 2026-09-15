@@ -136,7 +136,7 @@ class EvidenceItem(BaseModel):
     locator: Locator
     modality: str
     fidelity: str
-    score: float
+    score: float | None
     citation: str
 
 

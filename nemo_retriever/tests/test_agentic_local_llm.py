@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -43,6 +45,72 @@ def test_local_agent_llm_config_carries_vllm_resource_options() -> None:
     assert cfg.tensor_parallel_size == 2
     assert cfg.max_model_len == 8192
     assert cfg.max_num_seqs == 4
+
+
+def test_super_49b_tensor_parallel_uses_safe_vllm_startup(monkeypatch) -> None:
+    from nemo_retriever.models.local import agent_llm
+
+    llm_ctor = MagicMock(return_value=MagicMock())
+    monkeypatch.setitem(
+        sys.modules,
+        "vllm",
+        SimpleNamespace(LLM=llm_ctor, SamplingParams=MagicMock()),
+    )
+    monkeypatch.setattr(agent_llm, "_raise_if_cuda_unavailable", lambda: None)
+
+    agent_llm.VLLMAgentChatLLM(
+        agent_llm.LocalAgentLLMConfig(
+            model_path="super-49b",
+            tensor_parallel_size=2,
+        )
+    )
+
+    assert llm_ctor.call_args.kwargs["enforce_eager"] is True
+    assert llm_ctor.call_args.kwargs["disable_custom_all_reduce"] is True
+
+
+def test_super_49b_single_gpu_keeps_vllm_defaults(monkeypatch) -> None:
+    from nemo_retriever.models.local import agent_llm
+
+    llm_ctor = MagicMock(return_value=MagicMock())
+    monkeypatch.setitem(
+        sys.modules,
+        "vllm",
+        SimpleNamespace(LLM=llm_ctor, SamplingParams=MagicMock()),
+    )
+    monkeypatch.setattr(agent_llm, "_raise_if_cuda_unavailable", lambda: None)
+
+    agent_llm.VLLMAgentChatLLM(
+        agent_llm.LocalAgentLLMConfig(
+            model_path="super-49b",
+            tensor_parallel_size=1,
+        )
+    )
+
+    assert "enforce_eager" not in llm_ctor.call_args.kwargs
+    assert "disable_custom_all_reduce" not in llm_ctor.call_args.kwargs
+
+
+def test_other_local_agent_profiles_keep_vllm_defaults(monkeypatch) -> None:
+    from nemo_retriever.models.local import agent_llm
+
+    llm_ctor = MagicMock(return_value=MagicMock())
+    monkeypatch.setitem(
+        sys.modules,
+        "vllm",
+        SimpleNamespace(LLM=llm_ctor, SamplingParams=MagicMock()),
+    )
+    monkeypatch.setattr(agent_llm, "_raise_if_cuda_unavailable", lambda: None)
+
+    agent_llm.VLLMAgentChatLLM(
+        agent_llm.LocalAgentLLMConfig(
+            model_path="nemotron-8b",
+            tensor_parallel_size=2,
+        )
+    )
+
+    assert "enforce_eager" not in llm_ctor.call_args.kwargs
+    assert "disable_custom_all_reduce" not in llm_ctor.call_args.kwargs
 
 
 def test_vllm_agent_llm_rejects_unsupported_profile_before_vllm_import() -> None:

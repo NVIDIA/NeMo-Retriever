@@ -525,10 +525,12 @@ class AgenticRetriever:
         """
 
         candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k is not None else None
+        chunk_pool_k = candidate_k if candidate_k is not None else int(top_k)
         with self._lock:
-            hits = self._retriever.query(str(query_text), top_k=int(top_k), candidate_k=candidate_k)
+            hits = self._retriever.query(str(query_text), top_k=chunk_pool_k, candidate_k=candidate_k)
 
         docs: list[dict[str, Any]] = []
+        seen_doc_ids: set[str] = set()
         doc_id_field = getattr(self, "_doc_id_field", None)
         for hit in hits:
             hit_dict = dict(hit)
@@ -539,6 +541,9 @@ class AgenticRetriever:
             )
             if not doc_id:
                 continue
+            if doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
             # Keep the untruncated hit for rehydration; truncation below only
             # bounds what the agent LLM sees. First occurrence per query and
             # doc_id wins.

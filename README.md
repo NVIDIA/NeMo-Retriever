@@ -101,7 +101,7 @@ retriever = Retriever()
 
 query = "Given their activities, which animal is responsible for the typos in my documents?"
 
-# you can also submit a list with retriever.queries[...]
+# you can also submit a list with retriever.queries([...])
 hits = retriever.query(query)
 
 client = OpenAI(
