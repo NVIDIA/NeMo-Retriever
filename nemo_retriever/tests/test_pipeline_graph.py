@@ -1135,6 +1135,34 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="fan-out"):
             RayDataExecutor._linearize(g)
 
+    @pytest.mark.parametrize("available_cpus, expected_cpu_workers", [(4, 1), (6, 3), (10, 7)])
+    def test_single_and_shared_preflight_produce_same_plan(self, available_cpus, expected_cpu_workers):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph() >> CPUAdaptiveAddOperator() >> GPUAdaptiveAddOperator()
+        executors = [
+            RayDataExecutor(
+                graph,
+                node_overrides={
+                    "CPUAdaptiveAddOperator": {"concurrency": 8, "num_cpus": 1},
+                    "GPUAdaptiveAddOperator": {"concurrency": (1, 8, 2), "num_cpus": 1, "num_gpus": 0.5},
+                },
+                auto_concurrency_nodes={"CPUAdaptiveAddOperator", "GPUAdaptiveAddOperator"},
+                source_cpu_reservation=1,
+            )
+            for _ in range(2)
+        ]
+        single, shared = executors
+        resources = Resources(cpu_count=available_cpus, gpu_count=1)
+        single._preflight_resources(single._linearize(graph), available_cpus=available_cpus, available_gpus=1)
+        preflight_executors([shared], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert single._node_overrides == shared._node_overrides
+        assert single._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == expected_cpu_workers
+        assert single._node_overrides["GPUAdaptiveAddOperator"]["concurrency"] == (1, 2, 2)
+        assert not single._resources_preflight_complete
+        assert shared._resources_preflight_complete
+
     def test_shared_preflight_bounds_multiple_lazy_executors(self):
         first_graph = Graph()
         first_graph.add_root(CPUAdaptiveAddOperator())
