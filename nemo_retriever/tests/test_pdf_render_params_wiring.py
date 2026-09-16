@@ -83,7 +83,7 @@ def test_sdk_page_image_embedding_materializes_pdf_rasters_and_vectors(monkeypat
             return np.ones((len(images), 2048), dtype=np.float32)
 
     monkeypatch.setattr(
-        "nemo_retriever.models.create_local_embedder",
+        "nemo_retriever.models._create_local_embedder_from_spec",
         lambda *_args, **_kwargs: _FakeVLEmbedder(),
     )
     document = Path(__file__).resolve().parents[2] / "data" / "multimodal_test.pdf"
