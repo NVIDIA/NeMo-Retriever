@@ -14,6 +14,7 @@ from nemo_retriever.ingestor.branch_extraction import normalize_ray_branch_datas
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.ingest.plan import (
     IngestCaptionOptions,
+    IngestDedupOptions,
     IngestExtractOptions,
     IngestMediaOptions,
     IngestPlanRequest,
@@ -26,7 +27,7 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
-from nemo_retriever.common.params import ASRParams, EmbedParams, ExtractParams
+from nemo_retriever.common.params import ASRParams, DedupParams, EmbedParams, ExtractParams
 
 
 def _resolve_plan(
@@ -37,6 +38,7 @@ def _resolve_plan(
     extract: IngestExtractOptions | None = None,
     media: IngestMediaOptions | None = None,
     caption: IngestCaptionOptions | None = None,
+    dedup: IngestDedupOptions | None = None,
 ):
     return resolve_ingest_plan(
         IngestPlanRequest(
@@ -48,6 +50,7 @@ def _resolve_plan(
             extract=extract or IngestExtractOptions(),
             media=media or IngestMediaOptions(),
             caption=caption or IngestCaptionOptions(),
+            dedup=dedup or IngestDedupOptions(),
         )
     )
 
@@ -265,7 +268,7 @@ def test_ingest_plan_fast_text_allows_extract_images_override(tmp_path) -> None:
     assert plan.extract_params.use_page_elements is False
 
 
-def test_ingest_plan_caption_is_absent_by_default_and_optional(tmp_path) -> None:
+def test_ingest_plan_caption_auto_enables_default_dedup_for_pdf(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     pdf.write_bytes(b"pdf")
 
@@ -282,11 +285,38 @@ def test_ingest_plan_caption_is_absent_by_default_and_optional(tmp_path) -> None
     )
 
     assert default_plan.caption_params is None
+    assert default_plan.dedup_params is None
     assert caption_plan.caption_params is not None
     assert caption_plan.caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
     assert caption_plan.caption_params.model_name == "nvidia/test-vlm"
     assert caption_plan.caption_params.context_text_max_chars == 256
     assert caption_plan.caption_params.caption_infographics is True
+    assert caption_plan.dedup_params == DedupParams()
+    assert caption_plan.dedup_params.iou_threshold == 0.45
+
+
+def test_ingest_plan_caption_does_not_auto_enable_dedup_for_image_only_input(tmp_path) -> None:
+    image = tmp_path / "scan.png"
+    image.write_bytes(b"png")
+
+    plan = _resolve_plan([str(image)], caption=IngestCaptionOptions(enabled=True))
+
+    assert plan.caption_params is not None
+    assert plan.dedup_params is None
+
+
+def test_ingest_plan_preserves_explicit_caption_dedup_opt_out(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = _resolve_plan(
+        [str(pdf)],
+        caption=IngestCaptionOptions(enabled=True),
+        dedup=IngestDedupOptions(enabled=False),
+    )
+
+    assert plan.caption_params is not None
+    assert plan.dedup_params == DedupParams(content_hash=False, bbox_iou=False)
 
 
 def test_ingest_plan_caption_options_require_caption(tmp_path) -> None:

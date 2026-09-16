@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from nemo_retriever.graph.designer import Param, designer_component
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class BEIREvaluatorActor:
         self,
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nemo-retriever",
-        embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
+        embedding_model: Annotated[str, Param(label="Embedding Model")] = NEMOTRON_3_EMBED_MODEL,
         beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
         beir_dataset_name: Annotated[
             str, Param(label="BEIR Dataset Name", placeholder="e.g. vidore_v3_computer_science")

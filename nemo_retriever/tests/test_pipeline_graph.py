@@ -133,6 +133,35 @@ def test_auto_image_page_embedding_enables_page_raster(modality: str) -> None:
     assert operator.extract_params.extract_page_as_image is True
 
 
+def test_auto_remote_page_embedding_without_local_extraction_resolves_to_cpu() -> None:
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+    model = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(
+            extract_text=True,
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            use_page_elements=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(
+            model_name=model,
+            embed_model_name=model,
+            embed_invoke_url="http://embed.example/v1/embeddings",
+            embed_modality="image",
+            embed_granularity="page",
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=1))
+
+    assert resolved.roots[0].operator_class is MultiTypeExtractCPUActor
+
+
 def test_batch_graph_forwards_resolvable_hosted_parse_contract() -> None:
     from nemo_retriever.operators.extract.parse.nemotron_parse import _resolve_nemotron_parse_contract
 
@@ -925,6 +954,53 @@ class TestMultiTypeExtractOperator:
         grouped = {"pdf": [], "image": [], "text": [], "html": [], "audio": [], "video": []}
         result = op.process(grouped)
         assert result == []
+
+    @pytest.mark.parametrize(
+        ("use_page_elements", "method", "expected_stages"),
+        [
+            pytest.param(False, "pdfium", [], id="disabled"),
+            pytest.param(True, "pdfium", [], id="enabled-without-consumer"),
+            pytest.param(False, "ocr", ["OCRActor"], id="disabled-with-independent-ocr"),
+        ],
+    )
+    def test_detection_pipeline_runs_only_needed_stages(
+        self,
+        monkeypatch,
+        use_page_elements: bool,
+        method: str,
+        expected_stages: list[str],
+    ) -> None:
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        calls: list[str] = []
+
+        class _IdentityStage:
+            def run(self, data):
+                return data
+
+        def _record_stage(operator_class, **_operator_kwargs):
+            calls.append(operator_class.__name__)
+            return _IdentityStage()
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="image",
+            extract_params=ExtractParams(
+                method=method,
+                extract_text=True,
+                extract_images=False,
+                extract_tables=False,
+                extract_charts=False,
+                extract_infographics=False,
+                use_page_elements=use_page_elements,
+            ),
+        )
+        monkeypatch.setattr(op, "_instantiate_resolved", _record_stage)
+
+        batch_df = pd.DataFrame({"page_image": ["x"]})
+        result = op._run_detection_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert calls == expected_stages
 
     def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
         from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor

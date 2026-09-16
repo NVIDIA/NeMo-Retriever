@@ -17,6 +17,7 @@ from nemo_retriever.common.params import ASRParams
 from nemo_retriever.common.params import AudioChunkParams
 from nemo_retriever.common.params import BatchTuningParams
 from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import DedupParams
 from nemo_retriever.common.params import EmbedParams
 from nemo_retriever.common.params import ExtractParams
 from nemo_retriever.common.params import StoreParams
@@ -67,6 +68,81 @@ def test_base_ingest_plan_builds_audio_execution_plan() -> None:
     assert execution_plan.audio_chunk_params is not None
     assert execution_plan.audio_chunk_params.split_interval == 42
     assert execution_plan.has_extraction() is True
+
+
+def test_build_graph_omits_disabled_dedup_and_preserves_hash_only_configuration() -> None:
+    disabled_graph = build_graph(
+        extract_params=ExtractParams(),
+        dedup_params=DedupParams(content_hash=False, bbox_iou=False),
+        stage_order=("dedup",),
+    )
+    hash_only_graph = build_graph(
+        extract_params=ExtractParams(),
+        dedup_params=DedupParams(content_hash=True, bbox_iou=False),
+        stage_order=("dedup",),
+    )
+
+    assert "DedupImages" not in [getattr(node.operator, "name", node.name) for node in _linear_nodes(disabled_graph)]
+    dedup_node = next(
+        node for node in _linear_nodes(hash_only_graph) if getattr(node.operator, "name", node.name) == "DedupImages"
+    )
+    assert dedup_node.operator.fn.keywords == {
+        "content_hash": True,
+        "bbox_iou": False,
+        "iou_threshold": 0.45,
+    }
+
+
+@pytest.mark.parametrize(
+    ("dedup_params", "expected_operators", "expected_image_count"),
+    [
+        pytest.param(DedupParams(), ["DedupImages", "CaptionStub"], 0, id="default"),
+        pytest.param(
+            DedupParams(content_hash=False, bbox_iou=False),
+            ["CaptionStub"],
+            1,
+            id="disabled",
+        ),
+    ],
+)
+def test_post_extract_graph_dedup_policy_controls_caption_input(
+    monkeypatch, dedup_params, expected_operators, expected_image_count
+) -> None:
+    import pandas as pd
+
+    from nemo_retriever.graph import InprocessExecutor, UDFOperator
+    from nemo_retriever.graph import ingestor_runtime
+
+    caption_images = []
+
+    def caption_stub(_params):
+        def capture_images(data):
+            caption_images.extend(data["images"])
+            return data
+
+        return UDFOperator(capture_images, name="CaptionStub")
+
+    monkeypatch.setattr(ingestor_runtime, "CaptionActor", caption_stub)
+    graph = ingestor_runtime.build_post_extract_graph(
+        dedup_params=dedup_params,
+        caption_params=CaptionParams(),
+        stage_order=("dedup", "caption"),
+    )
+    source = pd.DataFrame(
+        {
+            "images": [[{"image_b64": "X", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0]}]],
+            "table": [[{"text": "table", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0]}]],
+            "chart": [[]],
+            "infographic": [[]],
+        }
+    )
+
+    result = InprocessExecutor(graph, show_progress=False).ingest(source)
+
+    assert [node.operator.name for node in _linear_nodes(graph)] == expected_operators
+    assert len(caption_images) == 1
+    assert len(caption_images[0]) == expected_image_count
+    assert len(result.iloc[0]["images"]) == expected_image_count
 
 
 def test_build_graph_accepts_execution_plan_with_split_config() -> None:

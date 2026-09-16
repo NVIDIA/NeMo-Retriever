@@ -57,6 +57,7 @@ from nemo_retriever.ingest.index_mode import (
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
+from nemo_retriever.models import resolve_embed_model
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.agentic_query import run_agentic_query
@@ -158,7 +159,7 @@ class VectorDBState:
         embed_api_key: str,
         embed_model_provider_prefix: str | None = None,
         local_embed: bool = False,
-        local_embed_backend: str = "hf",
+        local_embed_backend: str = "vllm",
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
@@ -235,10 +236,12 @@ def _production_vdb(
     lancedb_uri: str,
     table_name: str,
     expiration_cleanup_enabled: bool,
+    embed_model: str,
     index_mode: ServiceIndexMode = "auto",
 ) -> VDB:
     """Construct the sole production VDB implementation for this service."""
     existing_mode = inspect_existing_lancedb_mode(lancedb_uri, table_name)
+    resolved_embed_model = resolve_embed_model(embed_model)
     effective_mode = resolve_ingest_index_mode(
         index_mode,
         overwrite=False,
@@ -247,7 +250,7 @@ def _production_vdb(
     if effective_mode == "sparse":
         raise ValueError("The VectorDB service requires a dense vector column; sparse-only tables are unsupported.")
     vdb_cls = get_vdb_op_cls("lancedb")
-    return vdb_cls(
+    backend = vdb_cls(
         uri=lancedb_uri,
         table_name=table_name,
         vector_dim=None,
@@ -256,8 +259,27 @@ def _production_vdb(
         hybrid=effective_mode == "hybrid",
         _service_table_schema=True,
         _service_index_mode=index_mode,
+        embedding_model_name=resolved_embed_model,
         expiration_cleanup_enabled=expiration_cleanup_enabled,
     )
+    if existing_mode is None:
+        return backend
+
+    stored_embed_model = backend.get_index_metadata("embedding_model_name")
+    if not stored_embed_model:
+        raise ValueError(
+            f"Existing LanceDB table {table_name!r} at {lancedb_uri!r} does not record its embedding "
+            "model, so query compatibility cannot be verified. Rebuild the table with the configured "
+            "embedding model before starting the VectorDB service."
+        )
+    resolved_stored_model = resolve_embed_model(stored_embed_model)
+    if resolved_stored_model != resolved_embed_model:
+        raise ValueError(
+            f"Existing LanceDB table {table_name!r} at {lancedb_uri!r} uses embedding model "
+            f"{resolved_stored_model!r}, but the VectorDB service is configured for "
+            f"{resolved_embed_model!r}. Use the index model or rebuild the table with the configured model."
+        )
+    return backend
 
 
 def _safe_backend_health(state: VectorDBState | None) -> dict[str, Any] | None:
@@ -283,12 +305,12 @@ def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
     table_name: str = "nemo_retriever",
     embed_endpoint: str = "",
-    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
+    embed_model: str = "nvidia/nemotron-3-embed-1b",
     embed_model_provider_prefix: str | None = None,
     embed_api_key: str = "",
     *,
     local_embed: bool = False,
-    local_embed_backend: str = "hf",
+    local_embed_backend: str = "vllm",
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
@@ -319,6 +341,7 @@ def create_vectordb_app(
             lancedb_uri=lancedb_uri,
             table_name=table_name,
             expiration_cleanup_enabled=expiration_cleanup_enabled,
+            embed_model=embed_model,
             index_mode=index_mode,
         )
         state = VectorDBState(
@@ -847,7 +870,7 @@ def main() -> None:
         help="Fresh-table index mode; auto creates hybrid and preserves existing table capabilities.",
     )
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
-    parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
+    parser.add_argument("--embed-model", default="nvidia/nemotron-3-embed-1b")
     parser.add_argument(
         "--embed-model-provider-prefix",
         default="",
@@ -887,9 +910,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--local-embed-backend",
-        default="hf",
+        default="vllm",
         choices=("hf", "vllm"),
-        help="Backend for --local-embed (default: hf).",
+        help="Backend for --local-embed (default: vllm).",
     )
     parser.add_argument("--hf-cache-dir", default="", help="Hugging Face model cache directory")
     parser.add_argument(

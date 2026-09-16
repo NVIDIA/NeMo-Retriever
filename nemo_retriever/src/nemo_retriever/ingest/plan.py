@@ -15,6 +15,7 @@ from nemo_retriever.ingestor.manifest import (
     build_input_manifest,
     plan_extraction_branches,
 )
+from nemo_retriever.ingestor.plans import resolve_effective_dedup_params
 from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion
 from nemo_retriever.common.params import (
     ASRParams,
@@ -45,7 +46,7 @@ from nemo_retriever.ingest.index_mode import (
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
-from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 IngestRunModeValue = Literal["inprocess", "batch"]
@@ -167,7 +168,7 @@ class IngestCaptionOptions:
 
 @dataclass(frozen=True)
 class IngestDedupOptions:
-    enabled: bool = False
+    enabled: bool | None = None
     iou_threshold: float | None = None
 
 
@@ -484,10 +485,36 @@ def build_caption_params(
     return CaptionParams(**caption_kwargs)
 
 
-def build_dedup_params(*, enabled: bool, iou_threshold: float | None = None) -> DedupParams | None:
-    if not enabled:
+def build_dedup_params(*, enabled: bool | None, iou_threshold: float | None = None) -> DedupParams | None:
+    """Build explicit dedup parameters while preserving unspecified intent.
+
+    Parameters
+    ----------
+    enabled
+        ``True`` explicitly enables deduplication, ``False`` returns the
+        all-disabled opt-out, and ``None`` leaves deduplication unspecified.
+    iou_threshold
+        Optional bounding-box intersection-over-union threshold. This override
+        is valid only when ``enabled`` is explicitly ``True``.
+
+    Returns
+    -------
+    DedupParams | None
+        Explicit enabled or disabled parameters, or ``None`` when the caller
+        did not specify a deduplication policy.
+
+    Raises
+    ------
+    ValueError
+        If ``iou_threshold`` is provided without explicitly enabling
+        deduplication or is outside the supported range.
+    """
+
+    if enabled is not True:
         if iou_threshold is not None:
             raise ValueError("Dedup options require --dedup: dedup_iou_threshold.")
+        if enabled is False:
+            return DedupParams(content_hash=False, bbox_iou=False)
         return None
     dedup_kwargs = {}
     if iou_threshold is not None:
@@ -648,7 +675,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
 
     embedding_model_name = None if resolved_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
     embedding_model_revision = None
-    if embedding_model_name is not None and not str(embed.embed_invoke_url or "").strip():
+    if (
+        embedding_model_name is not None
+        and embedding_model_name != NEMOTRON_3_EMBED_MODEL
+        and not str(embed.embed_invoke_url or "").strip()
+    ):
         embedding_model_revision = resolve_embed_model_revision(embedding_model_name, None)
     embed_runtime_model_name = (
         embedding_model_name
@@ -707,6 +738,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     store_params = build_store_params(images_uri=request.image_store.images_uri, workers=request.image_store.workers)
 
     families = _branch_families(branches)
+    dedup_params = resolve_effective_dedup_params(
+        dedup_params,
+        caption_enabled=caption_params is not None,
+        image_only=families == {"image"},
+    )
     text_chunk_enabled, text_chunk_kwargs = build_text_chunk_kwargs(
         enabled=chunk.enabled,
         text_chunk_max_tokens=chunk.text_chunk_max_tokens,

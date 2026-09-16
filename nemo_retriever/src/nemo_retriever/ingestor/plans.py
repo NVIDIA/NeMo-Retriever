@@ -16,6 +16,62 @@ from nemo_retriever.common.params import TextChunkParams
 from nemo_retriever.common.params import VdbUploadParams
 
 
+def resolve_effective_dedup_params(
+    configured_params: DedupParams | None,
+    *,
+    caption_enabled: bool,
+    image_only: bool,
+) -> DedupParams | None:
+    """Resolve caption-triggered image dedup without changing configured state.
+
+    Explicit parameters are authoritative, including the all-disabled form
+    used to suppress automatic dedup. When dedup is unspecified, captioning
+    enables the default policy for document inputs but not standalone images.
+
+    Parameters
+    ----------
+    configured_params
+        Explicit deduplication parameters, or ``None`` when deduplication was
+        not configured. Explicit parameters are returned unchanged.
+    caption_enabled
+        Whether image captioning is configured for the ingestion request.
+    image_only
+        Whether the request contains only standalone image inputs.
+
+    Returns
+    -------
+    DedupParams | None
+        The explicit parameters when provided, default parameters for a
+        captioned non-image request, or ``None`` when deduplication should not
+        run.
+    """
+
+    if configured_params is not None:
+        return configured_params
+    if caption_enabled and not image_only:
+        return DedupParams()
+    return None
+
+
+def dedup_params_enabled(params: DedupParams | None) -> bool:
+    """Return whether at least one image-deduplication pass is enabled.
+
+    Parameters
+    ----------
+    params
+        Effective deduplication parameters, or ``None`` when no deduplication
+        stage is configured.
+
+    Returns
+    -------
+    bool
+        ``True`` when content-hash or bounding-box-overlap deduplication is
+        enabled; otherwise ``False``.
+    """
+
+    return params is not None and (params.content_hash or params.bbox_iou)
+
+
 @dataclass(frozen=True)
 class PlannedStage:
     """A normalized transform stage ready for executor-specific translation."""

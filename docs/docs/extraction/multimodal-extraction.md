@@ -114,6 +114,40 @@ result = (
 
 Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
 
+### Control image deduplication
+
+Captioning a non-image document automatically enables image deduplication before the caption stage. The default removes duplicate image content. It also removes image crops that overlap table, chart, or infographic regions with an intersection over union (IoU) of `0.45` or greater. This behavior retains the structured region instead of sending the overlapping raw image crop for captioning. Image-only inputs do not enable deduplication automatically because the image is the document content.
+
+For command-line ingest, use `--dedup` to enable the default behavior explicitly. Use `--no-dedup` to disable both content-hash and bounding-box deduplication and preserve all extracted image crops. Opting out can increase the number of caption requests, processing latency, and model cost.
+
+Use `--dedup-iou-threshold` with an explicit `--dedup` to change the bounding-box threshold. You cannot combine the threshold option with `--no-dedup`.
+
+```bash
+retriever ingest ./data/multimodal_test.pdf \
+  --caption \
+  --no-dedup
+```
+
+Use `--dry-run` to inspect the effective deduplication configuration before ingest. The resolved plan includes automatically enabled deduplication for captioned non-image documents and reflects an explicit `--no-dedup` override.
+
+The Python API provides finer-grained control with `DedupParams`. For example, retain content-hash deduplication while preserving crops that overlap structured regions.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import DedupParams, ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["report.pdf"])
+    .extract(ExtractParams(extract_images=True))
+    .dedup(DedupParams(content_hash=True, bbox_iou=False))
+    .caption()
+    .ingest()
+)
+```
+
+To disable all image deduplication through the Python API, call `.dedup(DedupParams(content_hash=False, bbox_iou=False))` before `.caption()`.
+
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)

@@ -28,6 +28,7 @@ import nemo_retriever.cli.ingest.graph_commands as ingest_cli_graph
 import nemo_retriever.cli.ingest.shared as ingest_cli_shared
 import nemo_retriever.cli.shared as cli_shared
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -162,8 +163,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "table_name": "nemo-retriever",
         "overwrite": True,
         "hybrid": True,
-        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -205,8 +205,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "table_name": "nemo-retriever",
         "overwrite": False,
         "hybrid": True,
-        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
 
 
@@ -298,19 +297,30 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert "through retriever service http://retriever-service:7670" in result.output
 
 
-def test_service_split_config_expands_glob_patterns_for_auto_input(tmp_path) -> None:
+def test_service_family_resolution_expands_glob_patterns_for_auto_input(tmp_path) -> None:
     document = tmp_path / "chunked.pdf"
     document.write_bytes(b"%PDF-1.4\n")
+    image = tmp_path / "diagram.png"
+    image.write_bytes(b"png")
     request = ingest_service.ServiceIngestRequest(
-        documents=[str(tmp_path / "*.pdf")],
+        documents=[str(tmp_path / "*")],
         input_type="auto",
         enable_text_chunk=True,
         text_chunk_params=TextChunkParams(max_tokens=64, overlap_tokens=8),
+        caption_params=CaptionParams(),
     )
 
     split_config = ingest_service.service_split_config_for_request(request)
+    dedup_params, dedup_scope = ingest_service.resolve_service_dedup_for_request(request)
 
-    assert split_config == {"pdf": {"max_tokens": 64, "overlap_tokens": 8, "encoding": "utf-8"}}
+    chunk_config = {"max_tokens": 64, "overlap_tokens": 8, "encoding": "utf-8"}
+    assert split_config == {"pdf": chunk_config, "image": chunk_config}
+    assert dedup_params is None
+    assert dedup_scope == {
+        "mode": "caption_default",
+        "enabled_families": ["pdf"],
+        "exempt_families": ["image"],
+    }
 
 
 def test_root_ingest_service_dry_run_redacts_token(tmp_path, monkeypatch) -> None:
@@ -342,6 +352,70 @@ def test_root_ingest_service_dry_run_redacts_token(tmp_path, monkeypatch) -> Non
     assert payload["documents"] == [str(document)]
     assert payload["service"]["service_api_token"] == "<redacted>"
     assert payload["service"]["service_url"] == "http://localhost:7670"
+
+
+@pytest.mark.parametrize(
+    ("filenames", "expected_dedup", "expected_scope"),
+    [
+        pytest.param(
+            ["document.pdf"],
+            {"content_hash": True, "bbox_iou": True, "iou_threshold": 0.45},
+            None,
+            id="pdf",
+        ),
+        pytest.param(["diagram.png"], None, None, id="image"),
+        pytest.param(
+            ["document.pdf", "diagram.png"],
+            None,
+            {
+                "mode": "caption_default",
+                "enabled_families": ["pdf"],
+                "exempt_families": ["image"],
+            },
+            id="mixed-pdf-image",
+        ),
+    ],
+)
+def test_root_ingest_service_caption_dry_run_reports_automatic_dedup_scope(
+    tmp_path,
+    filenames: list[str],
+    expected_dedup: dict[str, object] | None,
+    expected_scope: dict[str, object] | None,
+) -> None:
+    documents = []
+    for filename in filenames:
+        document = tmp_path / filename
+        document.write_bytes(b"input")
+        documents.append(str(document))
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "service", *documents, "--caption", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["dedup"] == expected_dedup
+    assert payload.get("dedup_scope") == expected_scope
+
+
+def test_root_ingest_service_no_dedup_dry_run_reports_explicit_opt_out(tmp_path) -> None:
+    document = tmp_path / "captioned.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "service", str(document), "--caption", "--no-dedup", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["dedup"] == {
+        "content_hash": False,
+        "bbox_iou": False,
+        "iou_threshold": 0.45,
+    }
+    assert "dedup_scope" not in payload
 
 
 @pytest.mark.parametrize(
@@ -403,8 +477,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
-        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -424,8 +497,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "table_name": "nemo-retriever",
         "overwrite": False,
         "hybrid": True,
-        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
 
 
@@ -846,13 +918,27 @@ def test_root_ingest_passes_public_parity_options(monkeypatch, tmp_path) -> None
     assert "Ingested 1 file(s) → 14 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
-def test_root_ingest_rejects_dedup_threshold_without_dedup(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    "dedup_args",
+    [
+        pytest.param([], id="unspecified"),
+        pytest.param(["--no-dedup"], id="explicitly-disabled"),
+    ],
+)
+def test_root_ingest_rejects_dedup_threshold_without_enabling_dedup(
+    monkeypatch,
+    tmp_path,
+    dedup_args: list[str],
+) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "dedup-threshold.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--dedup-iou-threshold", "0.6"])
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "local", str(document), *dedup_args, "--dedup-iou-threshold", "0.6"],
+    )
 
     assert result.exit_code == 1
     assert "Dedup options require --dedup" in result.output
@@ -1067,6 +1153,7 @@ def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyP
     assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "input formats, not commands" in result.output
     assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
+    assert NEMOTRON_3_EMBED_MODEL in result.output
     assert "retriever ingest batch --help" in result.output
     assert "retriever ingest service --help" in result.output
     for option in (
@@ -1115,6 +1202,8 @@ def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.Monkey
     assert "--ray-address" in result.output
     assert "--pdf-extract-workers" in result.output
     assert "--lancedb-uri" in result.output
+    assert "--dedup" in result.output
+    assert "--no-dedup" in result.output
     assert "--service-url" not in result.output
     assert "--input-type" not in result.output
 
@@ -1143,6 +1232,7 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     assert "--store-images-" in result.output
     assert "--api-key" in result.output
     assert "--dedup" in result.output
+    assert "--no-dedup" in result.output
     assert "--caption" in result.output
     assert "--index-mode" in result.output
     assert "--hybrid" not in result.output
@@ -1186,6 +1276,8 @@ def test_root_ingest_service_help_hides_local_only_options() -> None:
     assert result.exit_code == 0
     assert "Usage: root ingest service [OPTIONS] {documents}..." in result.output
     assert "--service-url" in result.output
+    assert "--dedup" in result.output
+    assert "--no-dedup" in result.output
     assert "--extract-images" in result.output
     assert "--embed-granular" in result.output
     assert "--lancedb-uri" not in result.output
@@ -1222,6 +1314,46 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["extract"]["extract_images"] is False
     assert payload["extract"]["use_page_elements"] is False
     assert payload["extract"]["extract_tables"] is False
+
+
+@pytest.mark.parametrize("mode", ["local", "batch"])
+@pytest.mark.parametrize(
+    ("cli_args", "expected_dedup"),
+    [
+        pytest.param([], None, id="unspecified"),
+        pytest.param(
+            ["--caption"],
+            {"content_hash": True, "bbox_iou": True, "iou_threshold": 0.45},
+            id="caption-default",
+        ),
+        pytest.param(
+            ["--dedup"],
+            {"content_hash": True, "bbox_iou": True, "iou_threshold": 0.45},
+            id="enabled",
+        ),
+        pytest.param(
+            ["--no-dedup"],
+            {"content_hash": False, "bbox_iou": False, "iou_threshold": 0.45},
+            id="disabled",
+        ),
+    ],
+)
+def test_root_ingest_dedup_option_preserves_tri_state_in_dry_run(
+    tmp_path,
+    mode: str,
+    cli_args: list[str],
+    expected_dedup: dict[str, object] | None,
+) -> None:
+    document = tmp_path / "dedup-option.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", mode, str(document), *cli_args, "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["dedup"] == expected_dedup
 
 
 def test_root_ingest_dry_run_routes_avi_to_video(monkeypatch, tmp_path) -> None:
@@ -1380,11 +1512,15 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
         "files",
         "extract",
+        "dedup",
         "caption",
         "embed",
         "vdb_upload",
         "ingest",
     ]
+    fake_ingestor.dedup.assert_called_once()
+    dedup_params = fake_ingestor.dedup.call_args.args[0]
+    assert dedup_params == DedupParams(content_hash=True, bbox_iou=True, iou_threshold=0.45)
     caption_params = fake_ingestor.caption.call_args.args[0]
     assert isinstance(caption_params, CaptionParams)
     assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
@@ -1754,8 +1890,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
-        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
-        "embedding_model_revision": "582e3bf72aee355e3c59ed89de53543c5b0657ee",
+        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
 
 
@@ -1770,14 +1905,29 @@ def test_root_ingest_rejects_deprecated_index_mode_aliases(tmp_path, flag: str) 
     assert "No such option" in result.output
 
 
-def test_root_ingest_rejects_redundant_no_dedup_flag(tmp_path) -> None:
+def test_root_ingest_no_dedup_passes_all_false_opt_out(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--no-dedup"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--caption", "--no-dedup"])
 
-    assert result.exit_code != 0
-    assert "No such option" in result.output
+    assert result.exit_code == 0, result.output
+    assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
+        "files",
+        "extract",
+        "dedup",
+        "caption",
+        "embed",
+        "vdb_upload",
+        "ingest",
+    ]
+    fake_ingestor.dedup.assert_called_once()
+    dedup_params = fake_ingestor.dedup.call_args.args[0]
+    assert dedup_params.content_hash is False
+    assert dedup_params.bbox_iou is False
+    fake_ingestor.caption.assert_called_once()
 
 
 def test_root_ingest_default_builds_vector_and_fts_table(monkeypatch, tmp_path) -> None:

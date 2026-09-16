@@ -5,6 +5,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 ## On this page { #on-this-page }
 
 - [Overview](#overview)
+- [Keep the embedding model aligned](#lancedb-embedding-model-compatibility)
 - [LanceDB Overview](#why-lancedb)
 - [Upload to LanceDB](#upload-to-lancedb)
     - [Direct LanceDB ingest and retrieval](#direct-lancedb-ingest-and-retrieval)
@@ -63,6 +64,18 @@ Bare `.vdb_upload()` writes to table `nemo-retriever`. Default `Retriever()`
 queries that table.
 
 You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. If extracted content reaches `.vdb_upload()` without embeddings, `.ingest()` raises `ValueError`. An extraction that produces no content completes without uploading records.
+
+## Keep the embedding model aligned { #lancedb-embedding-model-compatibility }
+
+Dense and hybrid retrieval require query and stored vectors from the same embedding model. New LanceDB tables record the canonical model in `nemo_retriever.embedding_model_name`. A local `Retriever` uses that model automatically and rejects an explicit query model that differs from it. Dense and hybrid queries also reject legacy or third-party tables that do not contain this metadata because compatibility cannot be verified. Local sparse retrieval is exempt because it does not create a dense query vector.
+
+The default changed from `nvidia/llama-nemotron-embed-vl-1b-v2` to `nvidia/nemotron-3-embed-1b`. Before you migrate a persistent table:
+
+1. Back up the LanceDB directory or persistent volume and retain the original corpus and ingest configuration.
+2. To keep the existing embedding space, query a tagged table with its recorded model. For a service deployment, explicitly set `serviceConfig.vectordb.embedModel` to the model used to create the table before startup.
+3. To adopt the new default, rebuild the table and re-ingest the complete corpus. For a CLI-managed table, run `retriever ingest` with the same URI and table name and pass `--overwrite` explicitly. Do not append new-model embeddings to the old table.
+
+An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 
 ## LanceDB Overview { #why-lancedb }
 

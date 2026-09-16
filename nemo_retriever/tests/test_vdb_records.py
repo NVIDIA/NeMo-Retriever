@@ -84,6 +84,18 @@ def test_flat_hit_is_canonicalized_without_entity() -> None:
     assert hit["pdf_page"] == "flat_5"
 
 
+def test_hybrid_relevance_score_is_preserved() -> None:
+    hit = _normalize_one(
+        {
+            "text": "hybrid result",
+            "source": {"source_id": "hybrid.pdf"},
+            "_relevance_score": 0.73,
+        }
+    )
+
+    assert hit["_relevance_score"] == 0.73
+
+
 @pytest.mark.parametrize("content_type", ["audio", "video", "video_frame"])
 def test_legacy_media_page_values_remain_unchanged(content_type: str) -> None:
     metadata = {

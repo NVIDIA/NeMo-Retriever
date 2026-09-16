@@ -22,6 +22,10 @@ that build :class:`GraphIngestionError` directly.
 
 from __future__ import annotations
 
+import multiprocessing
+import pickle
+from concurrent.futures import ProcessPoolExecutor
+
 import pandas as pd
 import pytest
 
@@ -31,6 +35,28 @@ from nemo_retriever.ingestor.graph_ingestor import (
     _StageDiagnostic,
 )
 from nemo_retriever.common.params import EmbedParams, ExtractParams
+
+
+_SERIALIZATION_RECORD = {
+    "row_index": 0,
+    "column": "ocr",
+    "path": "page_processing",
+    "error": "PdfiumError: Failed to load document (PDFium: Data format error)",
+}
+_SERIALIZATION_DIAGNOSTIC = _StageDiagnostic(
+    column="ocr",
+    display_name="OCR NIM",
+    invoke_url="http://ocr.svc/v1/infer",
+    role="ocr",
+)
+
+
+def _raise_serializable_graph_ingestion_error() -> None:
+    """Process-pool target kept at module scope so spawn can pickle it."""
+    raise GraphIngestionError(
+        [_SERIALIZATION_RECORD],
+        stage_diagnostics={"ocr": _SERIALIZATION_DIAGNOSTIC},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +118,48 @@ def test_remote_stage_error_columns_preserves_legacy_shape() -> None:
 # ---------------------------------------------------------------------------
 # Rendered error message
 # ---------------------------------------------------------------------------
+
+
+def test_graph_ingestion_error_pickle_preserves_structured_context() -> None:
+    original = GraphIngestionError(
+        [_SERIALIZATION_RECORD],
+        stage_diagnostics={"ocr": _SERIALIZATION_DIAGNOSTIC},
+    )
+
+    round_tripped = pickle.loads(pickle.dumps(original))
+
+    assert round_tripped.records == [_SERIALIZATION_RECORD]
+    assert round_tripped.stage_diagnostics == {"ocr": _SERIALIZATION_DIAGNOSTIC}
+    assert str(round_tripped) == str(original)
+    assert "row 0, column ocr" in str(round_tripped)
+    assert "stage=OCR NIM" in str(round_tripped)
+    assert "PdfiumError: Failed to load document" in str(round_tripped)
+    assert "row None, column None, path error: G" not in str(round_tripped)
+
+
+def test_graph_ingestion_error_process_pool_preserves_structured_context() -> None:
+    start_method = "forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn"
+    context = multiprocessing.get_context(start_method)
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as executor:
+        future = executor.submit(_raise_serializable_graph_ingestion_error)
+        with pytest.raises(GraphIngestionError) as exc_info:
+            future.result(timeout=30)
+
+    propagated = exc_info.value
+    assert propagated.records == [_SERIALIZATION_RECORD]
+    assert propagated.stage_diagnostics == {"ocr": _SERIALIZATION_DIAGNOSTIC}
+    assert "row 0, column ocr" in str(propagated)
+    assert "stage=OCR NIM" in str(propagated)
+    assert "PdfiumError: Failed to load document" in str(propagated)
+    assert "row None, column None, path error: G" not in str(propagated)
+
+
+def test_graph_ingestion_error_treats_message_string_as_one_record() -> None:
+    err = GraphIngestionError("Graph ingestion failed")
+
+    assert err.records == ["Graph ingestion failed"]
+    assert "path error: Graph ingestion failed" in str(err)
+    assert "more)" not in str(err)
 
 
 def test_error_message_includes_stage_name_and_invoke_url() -> None:

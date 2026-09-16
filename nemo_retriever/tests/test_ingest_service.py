@@ -7,10 +7,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from nemo_retriever.common.params import EmbedParams, ExtractParams, TextChunkParams
+from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.common.policy import validate_pipeline_spec
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
-from nemo_retriever.ingest.service import ServiceIngestRequest, build_service_ingestor, execute_service_ingest_request
+from nemo_retriever.ingest.service import (
+    ServiceIngestCaptionOptions,
+    ServiceIngestDedupOptions,
+    ServiceIngestPlanRequest,
+    ServiceIngestRequest,
+    ServiceIngestSourceOptions,
+    build_service_ingestor,
+    execute_service_ingest_request,
+    resolve_service_ingest_request,
+)
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.service.service_ingestor import ServiceIngestor, ServiceIngestResult
 
@@ -46,6 +55,43 @@ def test_build_service_ingestor_wires_extract_embed_and_chunking(tmp_path: Path)
     validate_pipeline_spec(
         PipelineSpec.model_validate(ingestor._pipeline_spec),
         PipelineOverridesConfig().to_policy(),
+    )
+
+
+def test_resolve_service_caption_leaves_automatic_dedup_to_worker(tmp_path: Path) -> None:
+    document = tmp_path / "document.pdf"
+    document.write_bytes(b"%PDF-1.4")
+    resolved = resolve_service_ingest_request(
+        ServiceIngestPlanRequest(
+            source=ServiceIngestSourceOptions(documents=[str(document)]),
+            caption=ServiceIngestCaptionOptions(enabled=True),
+        )
+    )
+
+    assert resolved.dedup_params is None
+
+
+def test_build_service_ingestor_wires_explicit_no_dedup_opt_out(tmp_path: Path) -> None:
+    pdf = tmp_path / "captioned.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    request = resolve_service_ingest_request(
+        ServiceIngestPlanRequest(
+            source=ServiceIngestSourceOptions(documents=[str(pdf)]),
+            caption=ServiceIngestCaptionOptions(enabled=True),
+            dedup=ServiceIngestDedupOptions(enabled=False),
+        )
+    )
+
+    ingestor = build_service_ingestor(request)
+    payload = ingestor._pipeline_payload()
+
+    assert request.dedup_params == DedupParams(content_hash=False, bbox_iou=False)
+    assert payload is not None
+    assert payload["dedup_params"] == {"content_hash": False, "bbox_iou": False}
+    assert payload["stage_order"].index("dedup") < payload["stage_order"].index("caption")
+    validate_pipeline_spec(
+        PipelineSpec.model_validate(ingestor._pipeline_spec),
+        PipelineOverridesConfig().to_policy(caption_enabled=True),
     )
 
 
