@@ -675,41 +675,64 @@ def test_query_actor_resolves_the_shared_policy_at_query_max_length(
     assert resolver.call_args.kwargs["input_type"] == "query"
 
 
-def test_local_actor_does_not_raise_vllm_above_checkpoint_support(monkeypatch) -> None:
-    from nemo_retriever.models import _create_local_embedder_from_spec as create_local_embedder_factory
+@pytest.mark.parametrize("backend", ["hf", "vllm"])
+@pytest.mark.parametrize("family", ["text", "vl"])
+def test_runtime_max_length_bounds_text_for_both_models_and_backends(monkeypatch, backend, family) -> None:
     from nemo_retriever.models.embed_model_spec import EmbedModelSpec
-    from nemo_retriever.operators.embed import gpu_operator
+    from nemo_retriever.models.inference import embedding_input
+    from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor
 
-    create_local_embedder = Mock(spec=create_local_embedder_factory, return_value=object())
+    model_id = f"nvidia/llama-nemotron-embed{'-vl' if family == 'vl' else ''}-1b-v2"
     checkpoint = EmbedModelSpec(
-        model_id="nvidia/llama-nemotron-embed-1b-v2",
-        revision="113abe4acafa848e77ead9c0623205e511932348",
-        family="text",
+        model_id=model_id,
+        revision="a" * 40,
+        family=family,
         output_dimension=2048,
         query_prefix="query: ",
         document_prefix="passage: ",
-        max_input_tokens=8192,
+        max_input_tokens=4096 if family == "vl" else 8192,
         query_prefix_declared=True,
         document_prefix_declared=True,
     )
-    monkeypatch.setattr("nemo_retriever.models._create_local_embedder_from_spec", create_local_embedder)
+    tokenizer = _CharacterTokenizer()
+    model = _RecordingMultimodalEmbedder()
+    create = Mock(return_value=model)
+    monkeypatch.setattr("nemo_retriever.models._create_local_embedder_from_spec", create)
     monkeypatch.setattr(
-        "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec",
-        Mock(return_value=checkpoint),
+        "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", lambda *args, **kwargs: checkpoint
     )
-    monkeypatch.setattr(
-        "nemo_retriever.models.warmup_registry.get_warmed_model",
-        lambda name, *, expected_identity=None: None,
-    )
+    monkeypatch.setattr(embedding_input, "resolve_embed_model_spec", lambda *args, **kwargs: checkpoint)
+    monkeypatch.setattr(embedding_input, "load_chunk_tokenizer", lambda *args, **kwargs: tokenizer)
+    monkeypatch.setattr("nemo_retriever.models.warmup_registry.get_warmed_model", lambda *args, **kwargs: None)
+    source = pd.DataFrame({"text": ["a", "abcdefghijklmno", "z"], "path": ["doc.txt"] * 3, "page_number": [1, 2, 3]})
 
-    gpu_operator._BatchEmbedActor(
-        params=EmbedParams(
-            model_name="nvidia/llama-nemotron-embed-1b-v2",
-            runtime=ModelRuntimeParams(max_length=131_072),
+    outputs = []
+    for limit in (8192, 16, 131_072):
+        actor = _BatchEmbedActor(
+            params=EmbedParams(
+                model_name=model_id,
+                local_ingest_embed_backend=backend,
+                runtime=ModelRuntimeParams(max_length=limit),
+            )
         )
-    )
+        assert create.call_args.kwargs["max_length"] == min(limit, checkpoint.max_input_tokens)
+        assert create.call_args.kwargs["backend"] == backend
+        result = actor.process(source)
+        assert all(
+            actor._kwargs["embedding_input_policy"]._formatted_token_count(text)
+            <= min(limit, checkpoint.max_input_tokens)
+            for text in result["text"]
+        )
+        assert result["text_embeddings_1b_v2_has_embedding"].all()
+        outputs.append(result)
 
-    assert create_local_embedder.call_args.kwargs["max_length"] == 8192
+    assert outputs[0]["text"].tolist() == source["text"].tolist()
+    assert outputs[2]["text"].tolist() == source["text"].tolist()
+    assert outputs[1]["text"].tolist() == ["a", "abcdef", "ghijkl", "mno", "z"]
+    assert "".join(outputs[1]["text"].iloc[1:-1]) == source.iloc[1]["text"]
+    assert outputs[1]["path"].tolist() == ["doc.txt"] * 5
+    assert outputs[1]["page_number"].tolist() == [1, 2, 2, 2, 3]
+    assert [text for batch in model.calls for text in batch] == [text for result in outputs for text in result["text"]]
 
 
 def test_remote_default_text_image_fallback_preserves_raw_text_and_batch_cap() -> None:

@@ -46,6 +46,17 @@ The default configured limits are 8,192 tokens for passages and 128 tokens for
 queries. If the checkpoint declares a smaller supported limit, the checkpoint
 limit takes precedence.
 
+To set the passage limit in the Python API, use
+`EmbedParams(runtime=ModelRuntimeParams(max_length=N))`. The limit includes the
+model prefix and special tokens and cannot exceed the checkpoint's supported
+limit. The same text-input policy applies to the `hf` and `vllm` backends for
+both text-only and vision-language embedding models. Oversized text is split
+losslessly, not truncated.
+
+`TextChunkParams.max_tokens` controls earlier text chunking, not the final
+formatted embedding-input limit. `EmbedParams.query_max_length` controls the
+separate query limit.
+
 For a registered revision-pinned model, an explicitly revision-pinned model,
 or a local checkpoint, the library loads the tokenizer and prompt configuration
 for that exact model version. If the text does not fit, the library splits it
