@@ -89,7 +89,8 @@ def test_inline_text_runs_split_embed_and_vdb_graph(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.integration
-def test_batch_inline_text_matches_text_file(tmp_path) -> None:
+@pytest.mark.parametrize("text_override", [{}, {"batch_size": 32}])
+def test_batch_inline_text_matches_text_file(tmp_path, text_override) -> None:
     ray = pytest.importorskip("ray")
     pytest.importorskip("transformers")
     text = "one two three four five"
@@ -98,8 +99,9 @@ def test_batch_inline_text_matches_text_file(tmp_path) -> None:
     params = TextChunkParams(max_tokens=2)
 
     try:
+        ray.init(address="local", num_cpus=4, num_gpus=0, include_dashboard=False)
         file_result = (
-            GraphIngestor(run_mode="batch", show_progress=False)
+            GraphIngestor(run_mode="batch", show_progress=False, node_overrides={"TxtSplitActor": text_override})
             .files([str(document)])
             .extract(split_config={"text": params})
             .ingest()
@@ -118,15 +120,17 @@ def test_batch_inline_text_matches_text_file(tmp_path) -> None:
 
 
 @pytest.mark.integration
-def test_batch_inline_text_ingests_alongside_text_file(tmp_path) -> None:
+@pytest.mark.parametrize("text_override", [{}, {"batch_size": 32}])
+def test_batch_inline_text_ingests_alongside_text_file(tmp_path, text_override) -> None:
     ray = pytest.importorskip("ray")
     pytest.importorskip("transformers")
     document = tmp_path / "document.txt"
     document.write_text("from file", encoding="utf-8")
 
     try:
+        ray.init(address="local", num_cpus=4, num_gpus=0, include_dashboard=False)
         result = (
-            GraphIngestor(run_mode="batch", show_progress=False)
+            GraphIngestor(run_mode="batch", show_progress=False, node_overrides={"TxtSplitActor": text_override})
             .files([str(document)])
             .texts(["from inline"])
             .extract(split_config={"text": {"max_tokens": 10}})
