@@ -550,7 +550,7 @@ judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.1,
-    max_tokens=4096,
+    max_tokens=32768,
 )
 result = retriever.answer(
     "What is RAG?",
