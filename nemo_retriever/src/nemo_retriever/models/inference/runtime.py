@@ -15,6 +15,7 @@ from nemo_retriever.common.params.models import IMAGE_MODALITIES
 from nemo_retriever.common.schemas.embedding import (
     embedding_runtime_modality,
     format_embedding_input,
+    requires_text_admission,
 )
 from nemo_retriever.models import _DEFAULT_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy, prepare_embedding_inputs
@@ -157,17 +158,32 @@ def embed_text_main_text_embed(
         current_split_parent_positions = frozenset()
     input_row_count = len(batch_df.index)
 
-    effective_modalities = prepared_df.apply(
-        lambda row: embedding_runtime_modality(row, default_modality=embed_modality), axis=1
+    remote_text_admission = endpoint is not None and embedding_input_policy is not None
+    original_index = prepared_df.index
+    if remote_text_admission:
+        # Partition and reassemble remote requests by row position, not caller
+        # index labels (which may be unordered or repeated).
+        prepared_df = prepared_df.reset_index(drop=True)
+
+    request_routes = prepared_df.apply(
+        lambda row: (
+            embedding_runtime_modality(row, default_modality=embed_modality),
+            (
+                "NONE"
+                if remote_text_admission and requires_text_admission(row, default_modality=embed_modality)
+                else "END"
+            ),
+        ),
+        axis=1,
     )
-    modalities = effective_modalities.unique().tolist() or [
-        embedding_runtime_modality({}, default_modality=embed_modality)
+    routes = request_routes.unique().tolist() or [
+        (embedding_runtime_modality({}, default_modality=embed_modality), "END")
     ]
 
     try:
         parts: List[pd.DataFrame] = []
-        for modality in modalities:
-            group_df = prepared_df if len(modalities) == 1 else prepared_df.loc[effective_modalities == modality]
+        for modality, truncate in routes:
+            group_df = prepared_df if len(routes) == 1 else prepared_df.loc[request_routes == (modality, truncate)]
             part = _embed_group(
                 group_df,
                 group_modality=modality,
@@ -182,10 +198,10 @@ def embed_text_main_text_embed(
                 nim_http_max_concurrent=nim_http_max_concurrent,
                 input_type=input_type,
                 request_timeout_s=float(request_timeout_s),
-                truncate="NONE" if endpoint is not None and embedding_input_policy is not None else "END",
+                truncate=truncate,
             )
             parts.append(part)
-        out_df = parts[0] if len(modalities) == 1 else pd.concat(parts).sort_index()
+        out_df = parts[0] if len(routes) == 1 else pd.concat(parts).sort_index()
     except Exception as exc:
         try:
             import torch
@@ -202,6 +218,9 @@ def embed_text_main_text_embed(
         out_df[has_embedding_column] = False
         if "_embed_modality" in out_df.columns:
             out_df = out_df.drop(columns=["_embed_modality"])
+
+    if remote_text_admission:
+        out_df.index = original_index
 
     if embedding_dim_column:
 

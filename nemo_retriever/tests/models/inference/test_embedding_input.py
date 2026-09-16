@@ -114,6 +114,15 @@ class _CharacterTokenizer:
         return "".join(chr(token_id) for token_id in token_ids if token_id != -1)
 
 
+class _ByteTokenizer:
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        ids = list(text.encode("utf-8"))
+        return ([-1] + ids) if add_special_tokens else ids
+
+    def decode(self, token_ids: list[int], *, skip_special_tokens: bool = True) -> str:
+        return bytes(token_id for token_id in token_ids if token_id != -1).decode("utf-8", errors="replace")
+
+
 class _LiteralSpecialTokenizer:
     _literal = "<SPECIAL>"
     _literal_id = -2
@@ -347,6 +356,38 @@ def test_whitespace_only_split_child_preserves_local_embedder_cardinality(
     assert result["text"].tolist() == ["x", " ab", " ", "y"]
     assert model_inputs == ["x", " ab", " ", "y"]
     assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True, True, True, True]
+
+
+@pytest.mark.parametrize("text", ["😀" * 40, "中文 café 😀\n" * 20])
+def test_unicode_splits_preserve_text_tokens_and_neighbors(text: str) -> None:
+    policy = EmbeddingInputPolicy(tokenizer=_ByteTokenizer(), max_tokens=25, prefix="passage: ")
+    source = pd.DataFrame({"text": ["before", text, "after"], "path": ["doc.pdf"] * 3, "page_number": [1, 2, 3]})
+    embedder = _RecordingEmbedder()
+
+    result = embed_text_main_text_embed(source, model=embedder, embedding_input_policy=policy)
+    repeated = embed_text_main_text_embed(source, model=embedder, embedding_input_policy=policy)
+
+    assert result.iloc[0]["text"] == "before"
+    assert result.iloc[-1]["text"] == "after"
+    assert result["text_embeddings_1b_v2_has_embedding"].all()
+    expected_inputs = ["passage: " + value for value in result["text"]]
+    assert [value for batch in embedder.calls for value in batch] == expected_inputs * 2
+    assert all(
+        len(policy.tokenizer.encode(value, add_special_tokens=True)) <= policy.max_tokens for value in expected_inputs
+    )
+    children = result.iloc[1:-1]
+    assert "".join(children["text"]) == text
+    assert children["path"].tolist() == ["doc.pdf"] * len(children)
+    assert children["page_number"].tolist() == [2] * len(children)
+    parent_ids = policy.tokenizer.encode(text)
+    reconstructed_ids = []
+    for _, child in children.iterrows():
+        split = child["metadata"]["embedding_split"]
+        ids = policy.tokenizer.encode(child["text"])
+        assert ids == parent_ids[split["start_token"] : split["end_token"]]
+        reconstructed_ids.extend(ids)
+    assert reconstructed_ids == parent_ids
+    pd.testing.assert_frame_equal(result, repeated)
 
 
 def test_policy_fails_closed_when_tokenizer_decode_changes_source_text() -> None:
@@ -770,6 +811,85 @@ def test_remote_default_text_image_fallback_preserves_raw_text_and_batch_cap() -
     assert sorted(len(payload["input"]) for payload in payloads) == [1, 4]
     assert sorted(text for payload in payloads for text in payload["input"]) == sorted(source_texts)
     assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 5
+
+
+@pytest.mark.parametrize(("with_policy", "split_text"), [(False, False), (True, False), (True, True)])
+def test_remote_mixed_requests_preserve_image_policy_and_row_order(split_text: bool, with_policy: bool) -> None:
+    source = pd.DataFrame(
+        {
+            "text": ["before", "caption", "one two three four five" if split_text else "short", "", "after"],
+            "_image_b64": [None, "aW1hZ2U=", None, "aW1hZ2U=", None],
+            "path": ["doc.pdf"] * 5,
+            "page_number": [1, 2, 3, 4, 5],
+        },
+        index=[9, 4, 7, 2, 0],
+    )
+    policy = EmbeddingInputPolicy(tokenizer=_WhitespaceTokenizer(), max_tokens=4, prefix="passage: ")
+    payloads = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": i, "embedding": [float(ord(c)) for c in text]} for i, text in enumerate(payload["input"])
+                ]
+            },
+        )
+
+    client_factory = httpx.Client
+    with patch("httpx.Client", side_effect=lambda **kwargs: client_factory(transport=httpx.MockTransport(handler))):
+        result = embed_text_main_text_embed(
+            source,
+            embedding_endpoint="http://embedding.test/v1",
+            model_name="test/model",
+            embed_modality="text_image",
+            inference_batch_size=4,
+            embedding_input_policy=policy if with_policy else None,
+        )
+
+    expected = (
+        prepare_embedding_inputs(source, policy=policy, default_modality="text_image").frame if with_policy else source
+    )
+    pd.testing.assert_frame_equal(result[source.columns], expected[source.columns])
+    assert result["text_embeddings_1b_v2_has_embedding"].all()
+    for _, row in result.iterrows():
+        prompt = row["text"]
+        if isinstance(row["_image_b64"], str):
+            prompt = (prompt + "\n" if prompt else "") + "data:image/png;base64," + row["_image_b64"]
+        assert row["metadata"]["embedding"] == [float(ord(c)) for c in prompt]
+    for payload in payloads:
+        modalities = payload["modality"]
+        modalities = [modalities] * len(payload["input"]) if isinstance(modalities, str) else modalities
+        for modality in modalities:
+            assert payload["truncate"] == ("NONE" if with_policy and modality == "text" else "END")
+        assert len(payload["input"]) <= 4
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_remote_image_batch_with_cached_text_policy_keeps_end_truncation(modality: str) -> None:
+    policy = EmbeddingInputPolicy(tokenizer=_NeverCalledTokenizer(), max_tokens=8192, prefix="passage: ")
+    payloads = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+
+    client_factory = httpx.Client
+    with patch("httpx.Client", side_effect=lambda **kwargs: client_factory(transport=httpx.MockTransport(handler))):
+        result = embed_text_main_text_embed(
+            pd.DataFrame({"text": ["caption"], "_image_b64": ["aW1hZ2U="]}),
+            embedding_endpoint="http://embedding.test/v1",
+            model_name="test/model",
+            embed_modality=modality,
+            embedding_input_policy=policy,
+        )
+
+    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True]
+    assert len(payloads) == 1
+    assert payloads[0]["truncate"] == "END"
 
 
 def test_split_identity_is_stable_across_batch_composition() -> None:

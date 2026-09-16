@@ -186,8 +186,17 @@ class EmbeddingInputPolicy:
         start = 0
         while start < len(token_ids):
             end = self._largest_fitting_end(token_ids, start)
-            chunk = self.tokenizer.decode(token_ids[start:end], skip_special_tokens=False)
-            if self.tokenizer.encode(chunk, add_special_tokens=False) != token_ids[start:end]:
+            # Byte-level tokens can end inside a Unicode character. Back off to
+            # an exact, fitting boundary rather than rejecting splittable text.
+            while end > start:
+                chunk = self.tokenizer.decode(token_ids[start:end], skip_special_tokens=False)
+                if (
+                    self.tokenizer.encode(chunk, add_special_tokens=False) == token_ids[start:end]
+                    and self._formatted_token_count(chunk) <= self.max_tokens
+                ):
+                    break
+                end -= 1
+            else:
                 raise ValueError(
                     "Embedding input cannot be split without changing its token sequence; "
                     "use the exact reversible tokenizer for this embedding model."

@@ -83,11 +83,15 @@ number keep their original meaning.
 
 Local and remote text embedding use the same prepared rows. When this client-side
 policy is active for a remote endpoint, text requests use `truncate="NONE"` so
-the endpoint cannot silently replace the client decision. If a backend still
-rejects a prepared batch, the library reports a batch failure rather than
-guessing from an HTTP status or exception that one document is invalid. The VDB
-boundary refuses a mixed partial write when searchable rows are missing
-embeddings.
+the endpoint cannot silently replace the client decision. Image-bearing inputs
+retain `truncate="END"`. For mixed `text_image` batches, the library sends
+text-only and image-bearing inputs in separate requests and preserves result
+order.
+
+If a backend still rejects a prepared batch, the library reports a batch failure
+rather than guessing from an HTTP status or exception that one document is
+invalid. The VDB boundary refuses a mixed partial write when searchable rows
+are missing embeddings.
 
 For an unpinned custom remote model, the library does not guess its tokenizer
 or input limit. Embedding stage setup fails with an actionable error. Use a
