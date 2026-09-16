@@ -179,8 +179,11 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 | llama-nemotron-rerank-vl-1b-v2 | `https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking` | Optional VL reranker |
 | nemotron-parse | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-parse` | Optional `method="nemotron_parse"`. Hosted Build and self-hosted Parse v1.2 use different request contracts. Refer to [Nemotron Parse: hosted Build endpoint vs self-hosted NIM](#nemotron-parse-hosted-vs-self-hosted) |
 | nemotron-3-nano-omni-30b-a3b-reasoning | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | Optional image captioning. Also a supported configurable `/v1/answer` VLM backend when you point `serviceConfig.llm` at this endpoint. Enabling the Omni caption Helm key does not enable `/v1/answer`. |
-| llama-3.3-nemotron-super-49b-v1.5 | `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Default optional `/v1/answer` LLM (Helm `answer_llm`) and a supported OpenAI-compatible agentic RAG model. Helm auto-wires `answer_llm` to `/v1/answer` only. Self-hosted agentic use requires tool-call passthrough arguments and explicit `serviceConfig.agentic` wiring. Hosted Build endpoints do not need that override. Agentic CLI and harness runs default to local in-process vLLM. Refer to [Answer generation](#answer-generation), [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b), and [local in-process vLLM](workflow-agentic-retrieval.md#local-in-process-vllm). |
 | parakeet-1-1b-ctc-en-us | `grpc.nvcf.nvidia.com:443` (function ID from [build.nvidia.com](https://build.nvidia.com/)) | Optional ASR; refer to [Parakeet hosted inference](audio-video.md#parakeet-hosted-inference-build-nvidia) |
+
+!!! warning "NVIDIA-hosted Super-49B reached end of life"
+
+    `nvidia/llama-3.3-nemotron-super-49b-v1.5` and `nvidia/llama-3.3-nemotron-super-49b-v1` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026. Hosted requests return HTTP 410. The self-hosted Helm `answer_llm` NIM (`nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`) is a separate artifact and remains the optional chart default. For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic retrieval, use [local in-process vLLM](workflow-agentic-retrieval.md#local-in-process-vllm) or a [self-hosted Super-49B NIM](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 
 <a id="nemotron-parse-hosted-vs-self-hosted"></a>
 
@@ -216,8 +219,9 @@ The Omni rows in the following table describe self-hosted NIM deployments. Direc
 
 The supported answer-generation model paths are:
 
-- **Default LLM:** `nvidia/llama-3.3-nemotron-super-49b-v1.5`. Helm `nimOperator.answer_llm` defaults to `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`.
-- **Configurable vision-language model (VLM):** `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Use this Omni NIM as the `/v1/answer` backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm.apiBase` and `serviceConfig.llm.model` at an Omni chat-completions endpoint.
+- **Self-hosted default LLM:** `nvidia/llama-3.3-nemotron-super-49b-v1.5`. Helm `nimOperator.answer_llm` defaults to `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`. Use this image in-cluster. Do not send that model ID to `https://integrate.api.nvidia.com`.
+- **Configurable vision-language model (VLM):** `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Use this Omni NIM as the `/v1/answer` backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm.apiBase` and `serviceConfig.llm.model` at an Omni chat-completions endpoint, including the hosted Build URL in [Default NVCF endpoints](#default-nvcf-endpoints).
+- **NVIDIA-hosted Super-49B:** `nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. Use Omni for hosted `/v1/answer`, or self-host the Super-49B NIM.
 
 These are independent Helm slots:
 

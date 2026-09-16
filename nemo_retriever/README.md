@@ -486,6 +486,16 @@ uv pip install "nemo-retriever[llm]"
 export NVIDIA_API_KEY=nvapi-...
 ```
 
+The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does not
+read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
+so the same key is forwarded on each request.
+
+NVIDIA-hosted Super-49B (`nvidia/llama-3.3-nemotron-super-49b-v1.5`) reached
+end of life on August 26, 2026 and returns HTTP 410. Pass an explicit `model`
+on `LiteLLMClient.from_kwargs()` and `LLMJudge.from_kwargs()`. The examples
+below use the hosted Omni model that remains in the support-matrix NVCF table.
+For Super-49B, self-host the NIM and pass `api_base`.
+
 Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
 embedding model in `embed_kwargs` must match the one used during ingestion so
 query vectors land in the same embedding space as the stored chunks.
@@ -504,7 +514,8 @@ retriever = Retriever(
     top_k=5,
 )
 llm = LiteLLMClient.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    model="nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.0,
     max_tokens=512,
 )
@@ -525,7 +536,8 @@ Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
-    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    model="nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.1,
     max_tokens=4096,
 )

@@ -45,18 +45,9 @@ retriever query "find documents about parser behavior" \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions
 ```
 
-NVIDIA-hosted Build endpoint (requires `NVIDIA_API_KEY`; `NGC_API_KEY` is the fallback):
+`nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. Use [local in-process vLLM](#local-in-process-vllm) or a self-hosted OpenAI-compatible NIM for agentic retrieval. For hosted `/v1/answer` generation, Omni remains a supported hosted chat-completions model. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints). For key setup, refer to [Authentication and API keys](api-keys.md).
 
-```bash
-retriever query "find documents about parser behavior" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --agentic-invoke-url https://integrate.api.nvidia.com/v1/chat/completions
-```
-
-`--agentic-local-tensor-parallel-size` is ignored when `--agentic-invoke-url` is set. For hosted model IDs, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints). For key setup, refer to [Authentication and API keys](api-keys.md).
-
-This self-hosted NIM configuration gap does not apply to NVIDIA-hosted Build endpoints. A Helm-deployed Super-49B NIM rejects tool-call requests until you add the passthrough arguments. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b).
+`--agentic-local-tensor-parallel-size` is ignored when `--agentic-invoke-url` is set. A Helm-deployed Super-49B NIM rejects tool-call requests until you add the passthrough arguments. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b).
 
 ### CLI options { #cli-options }
 
@@ -74,7 +65,7 @@ Embedding credentials use `NVIDIA_API_KEY` or `NGC_API_KEY` when you call a remo
 
 ## Self-hosted Helm Super-49B { #self-hosted-helm-super-49b }
 
-Use this path when the agent LLM is the Helm-deployed Super-49B NIM rather than local in-process vLLM or an NVIDIA-hosted Build endpoint.
+Use this path when the agent LLM is the Helm-deployed Super-49B NIM rather than local in-process vLLM.
 
 `nimOperator.answer_llm.enabled=true` deploys Super-49B and auto-wires it only to `serviceConfig.llm` for `POST /v1/answer`. That answer path sends a plain text-generation request and does not require tool calling. `serviceConfig.agentic` is a separate block and stays empty unless you set it.
 
@@ -257,6 +248,7 @@ Agentic runs use a dedicated worker pool in the VectorDB process so they cannot 
 - Local CLI and harness runs need a CUDA GPU host and the `[local]` extra. `super-49b` needs two visible GPUs and `--agentic-local-tensor-parallel-size 2`.
 - Retriever Service agentic queries require a remote chat-completions URL, a remote embedding endpoint, and matching credentials in the process environment.
 - The default Helm `answer_llm` Super-49B NIM is limited to `POST /v1/answer` until you add the tool-call passthrough arguments. Enabling `nimOperator.answer_llm` does not configure `serviceConfig.agentic`.
+- NVIDIA-hosted Super-49B on `integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. Use local in-process vLLM or a self-hosted OpenAI-compatible NIM for agentic retrieval.
 - Agentic results are document IDs, not chunk text. Downstream answer generation must load source documents by those IDs if it needs passage text.
 - Service agentic queries accept a single query string, `format=hits` only, and cannot combine `rerank=true` on the same `/v1/query` request. On the CLI, `--rerank` applies to each agent retrieve hop.
 
