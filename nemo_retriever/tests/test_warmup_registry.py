@@ -102,7 +102,11 @@ def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend, n
                 "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", return_value=checkpoint
             ) as resolve,
             patch("nemo_retriever.models._create_local_embedder_from_spec") as create,
-            patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint) as admission,
+            patch.object(
+                embedding_input,
+                "resolve_embed_model_spec",
+                side_effect=AssertionError("admission must reuse checkpoint"),
+            ) as admission,
             patch.object(embedding_input, "load_chunk_tokenizer") as tokenizer,
         ):
             warm_local_models({"embed": spec["embed"]})
@@ -112,8 +116,7 @@ def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend, n
         assert all(call.args[0] == model_id for call in resolve.call_args_list)
         assert actor._model is get_warmed_model("embed")
         create.assert_called_once()
-        assert admission.call_args.args[0] == model_id
-        assert admission.call_args.kwargs["revision"] == checkpoint.revision
+        admission.assert_not_called()
         assert tokenizer.call_args.args[0] == model_id
         assert tokenizer.call_args.kwargs["revision"] == checkpoint.revision
     finally:

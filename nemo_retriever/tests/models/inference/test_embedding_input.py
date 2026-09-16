@@ -626,6 +626,35 @@ def test_unpinned_model_fails_closed_before_embedding() -> None:
         )
 
 
+def test_local_actor_reuses_checkpoint_when_local_metadata_changes(monkeypatch, tmp_path) -> None:
+    from nemo_retriever.models.inference import embedding_input
+    from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor
+
+    _write_local_text_policy_metadata(tmp_path, prompts={"document": "document: "}, max_input_tokens=32)
+    create = Mock(return_value=_RecordingMultimodalEmbedder())
+    tokenizer = Mock(return_value=_CharacterTokenizer())
+    monkeypatch.setattr("nemo_retriever.models._create_local_embedder_from_spec", create)
+    monkeypatch.setattr("nemo_retriever.models.warmup_registry.get_warmed_model", lambda *args, **kwargs: None)
+    monkeypatch.setattr(embedding_input, "load_chunk_tokenizer", tokenizer)
+    actor = _BatchEmbedActor(params=EmbedParams(model_name=str(tmp_path), local_ingest_embed_backend="hf"))
+    tokenizer.assert_not_called()
+
+    _write_local_text_policy_metadata(tmp_path, prompts={"document": "changed: "}, max_input_tokens=1)
+    monkeypatch.setattr(
+        embedding_input,
+        "resolve_embed_model_spec",
+        Mock(side_effect=AssertionError("admission must not reread checkpoint metadata")),
+    )
+    result = actor.process(pd.DataFrame({"text": ["unchanged"]}))
+
+    checkpoint = create.call_args.args[0]
+    policy = actor._kwargs["embedding_input_policy"]
+    assert policy.prefix == checkpoint.document_prefix == "document: "
+    assert policy.max_tokens == checkpoint.max_input_tokens == 32
+    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True]
+    tokenizer.assert_called_once()
+
+
 def test_remote_actor_passes_the_resolved_input_policy_to_embedding(
     monkeypatch,
 ) -> None:

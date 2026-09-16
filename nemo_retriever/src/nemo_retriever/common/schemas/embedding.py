@@ -136,17 +136,6 @@ def embedding_split_content(metadata: Any) -> str | None:
     return None
 
 
-def embedding_split_id(metadata: Any) -> str | None:
-    """Return the canonical child ID when present."""
-    if not isinstance(metadata, Mapping):
-        return None
-    split = metadata.get(EMBEDDING_SPLIT_METADATA_KEY)
-    if not isinstance(split, Mapping):
-        return None
-    chunk_id = split.get("chunk_id")
-    return chunk_id if isinstance(chunk_id, str) and chunk_id.strip() else None
-
-
 __all__ = [
     "EMBEDDING_SPLIT_METADATA_KEY",
     "SelectedEmbeddingText",
@@ -155,7 +144,6 @@ __all__ = [
     "embedding_split_metadata",
     "embedding_text_input",
     "embedding_split_content",
-    "embedding_split_id",
     "format_embedding_input",
     "requires_text_admission",
     "select_embedding_text",

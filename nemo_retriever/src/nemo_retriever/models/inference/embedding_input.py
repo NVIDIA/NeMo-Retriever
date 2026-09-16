@@ -28,7 +28,7 @@ from nemo_retriever.common.schemas.embedding import (
     select_embedding_text,
 )
 from nemo_retriever.models import resolve_local_embed_model
-from nemo_retriever.models.embed_model_spec import resolve_embed_model_spec
+from nemo_retriever.models.embed_model_spec import EmbedModelSpec, resolve_embed_model_spec
 from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 
 
@@ -347,19 +347,24 @@ def resolve_embedding_input_policy(
     revision: str | None = None,
     cache_dir: str | None = None,
     prefix_if_missing: bool = False,
+    checkpoint: EmbedModelSpec | None = None,
 ) -> EmbeddingInputPolicy:
     """Resolve a model-pinned input policy shared by local and remote adapters."""
     if configured_max_tokens <= 0:
         raise ValueError("Configured embedding max length must be positive")
-    # Keep concrete worker checkpoints; logical endpoint names use the BF16 tokenizer.
-    model_id = model_name if model_name in HF_MODEL_REVISIONS else resolve_local_embed_model(model_name, backend="hf")
-    if model_id not in HF_MODEL_REVISIONS and not Path(model_id).expanduser().is_dir() and revision is None:
-        raise ValueError(
-            f"Embedding model {model_id!r} is not revision-pinned, so the embedding stage cannot enforce "
-            "its tokenizer, prefix, and input limit. Use a registered model, a local checkpoint, or set an "
-            "immutable embed_model_revision."
+    spec = checkpoint
+    if spec is None:
+        # Keep concrete worker checkpoints; logical endpoint names use the BF16 tokenizer.
+        model_id = (
+            model_name if model_name in HF_MODEL_REVISIONS else resolve_local_embed_model(model_name, backend="hf")
         )
-    spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=cache_dir)
+        if model_id not in HF_MODEL_REVISIONS and not Path(model_id).expanduser().is_dir() and revision is None:
+            raise ValueError(
+                f"Embedding model {model_id!r} is not revision-pinned, so the embedding stage cannot enforce "
+                "its tokenizer, prefix, and input limit. Use a registered model, a local checkpoint, or set an "
+                "immutable embed_model_revision."
+            )
+        spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=cache_dir)
     if spec.max_input_tokens is None:
         raise ValueError(
             f"Embedding model {spec.model_id!r} does not declare a supported input limit; "
@@ -403,6 +408,7 @@ def configure_embedding_input_policy(kwargs: dict[str, Any]) -> EmbeddingInputPo
         revision=kwargs.get("embed_model_revision"),
         cache_dir=kwargs.get("hf_cache_dir"),
         prefix_if_missing=bool(kwargs.get("_embedding_prefix_if_missing", False)),
+        checkpoint=kwargs.get("_embedding_checkpoint"),
     )
     kwargs["embedding_input_policy"] = policy
     return policy

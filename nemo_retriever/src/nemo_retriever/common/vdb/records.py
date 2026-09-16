@@ -15,7 +15,7 @@ from typing import Any, TypedDict
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
-from nemo_retriever.common.schemas.embedding import embedding_record_content
+from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -526,8 +526,9 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
+    split_content = embedding_split_content(content_metadata)
     normalized: RetrievalHit = {
-        "text": _first_str(hit.get("text"), hit.get("content")),
+        "text": split_content if split_content is not None else _first_str(hit.get("text"), hit.get("content")),
         # Keep `metadata` as a native dict on the API boundary. The LanceDB
         # storage layer JSON-encodes it on write (see `_json_str` in
         # `vdb/lancedb.py`); we already parse it back on read in

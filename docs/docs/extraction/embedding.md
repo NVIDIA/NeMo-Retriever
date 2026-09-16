@@ -81,6 +81,13 @@ The returned `DataFrame` can therefore contain more rows than the embedding
 stage received. Existing fields such as `chunk_index` and the physical page
 number keep their original meaning.
 
+Dense LanceDB and collection writes preserve valid split children, including
+whitespace-only children, and store the complete `embedding_split` mapping in
+the JSON `metadata` field. After decoding that field, use
+`metadata["embedding_split"]["chunk_id"]` for the stable embedding child ID.
+A collection row's top-level `chunk_id` remains a storage key derived from the
+document, version, and row index; it is not the embedding child ID.
+
 Local and remote text embedding use the same prepared rows. When this client-side
 policy is active for a remote endpoint, text requests use `truncate="NONE"` so
 the endpoint cannot silently replace the client decision. Image-bearing inputs

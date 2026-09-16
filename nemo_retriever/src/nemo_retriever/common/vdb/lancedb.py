@@ -27,6 +27,7 @@ from nemo_retriever.common.schemas.collections import (
     DocumentInfo,
     DocumentPage,
 )
+from nemo_retriever.common.schemas.embedding import EMBEDDING_SPLIT_METADATA_KEY, embedding_split_content
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
@@ -430,9 +431,12 @@ def _create_lancedb_results(
 
             content_meta = metadata.get("content_metadata", {})
 
-            text = _get_text_for_element(element)
+            split_content = embedding_split_content(metadata)
+            text = split_content if split_content is not None else _get_text_for_element(element)
+            if split_content is not None:
+                content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
 
-            if not isinstance(text, str) or not text.strip():
+            if split_content is None and (not isinstance(text, str) or not text.strip()):
                 is_canonical_image = (
                     doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
                 )

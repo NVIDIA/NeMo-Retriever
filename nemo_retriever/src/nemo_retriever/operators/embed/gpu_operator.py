@@ -39,6 +39,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             return
 
         local_spec = LocalEmbedderSpec.from_config(self._kwargs)
+        self._kwargs["_embedding_checkpoint"] = local_spec.checkpoint
         self._kwargs["model_name"] = local_spec.model_name
         self._kwargs["embed_model_name"] = local_spec.model_name
         self._kwargs["embed_model_revision"] = local_spec.revision
