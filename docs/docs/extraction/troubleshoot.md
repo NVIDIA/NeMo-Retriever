@@ -646,9 +646,9 @@ For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super
 
 ## Hosted Super-49B returns HTTP 410 Gone { #hosted-super-49b-eol }
 
-A request to `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` or `nvidia/llama-3.3-nemotron-super-49b-v1` returns HTTP 410. The response detail states that the model reached end of life on August 26, 2026.
+A request to `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` or `nvidia/llama-3.3-nemotron-super-49b-v1` returns HTTP 410. The response detail indicates that the model reached end of life on August 26, 2026.
 
-The self-hosted Helm `answer_llm` NIM image is a separate artifact and remains available.
+The self-hosted Helm `answer_llm` NIM image is a separate artifact and is available.
 
 Do one of the following:
 
