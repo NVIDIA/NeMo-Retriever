@@ -34,3 +34,9 @@ def test_core_dependencies_include_tokenizer_stack() -> None:
 
     assert "tokenizers" in names
     assert "huggingface-hub" in names
+
+
+def test_service_tokenizer_precache_entrypoint_imports() -> None:
+    from nemo_retriever.models.inference.embedding_input import resolve_embedding_input_policy
+
+    assert callable(resolve_embedding_input_policy)

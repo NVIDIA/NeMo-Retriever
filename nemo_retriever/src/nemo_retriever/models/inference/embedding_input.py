@@ -27,7 +27,7 @@ from nemo_retriever.common.schemas.embedding import (
     requires_text_admission,
     select_embedding_text,
 )
-from nemo_retriever.models import resolve_local_embed_model
+from nemo_retriever.models import resolve_embed_model
 from nemo_retriever.models.embed_model_spec import EmbedModelSpec, resolve_embed_model_spec
 from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 
@@ -354,10 +354,8 @@ def resolve_embedding_input_policy(
         raise ValueError("Configured embedding max length must be positive")
     spec = checkpoint
     if spec is None:
-        # Keep concrete worker checkpoints; logical endpoint names use the BF16 tokenizer.
-        model_id = (
-            model_name if model_name in HF_MODEL_REVISIONS else resolve_local_embed_model(model_name, backend="hf")
-        )
+        # Keep concrete worker checkpoints; resolve aliases through the release model registry.
+        model_id = model_name if model_name in HF_MODEL_REVISIONS else resolve_embed_model(model_name)
         if model_id not in HF_MODEL_REVISIONS and not Path(model_id).expanduser().is_dir() and revision is None:
             raise ValueError(
                 f"Embedding model {model_id!r} is not revision-pinned, so the embedding stage cannot enforce "

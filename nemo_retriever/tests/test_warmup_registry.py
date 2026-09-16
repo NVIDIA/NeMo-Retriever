@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_retriever.models.embed_model_spec import EmbedModelSpec
+from nemo_retriever.models.embed_model_spec import EmbedModelFamily, EmbedModelSpec
 from nemo_retriever.models.local_embedder_spec import LocalEmbedderSpec
 from nemo_retriever.models.warmup_registry import (
     build_warmup_spec,
@@ -26,15 +26,23 @@ from nemo_retriever.service.services.pipeline_executor import (
 )
 
 
-def _checkpoint(model_id: str, revision: str | None = None, **_kwargs) -> EmbedModelSpec:
+def _checkpoint(
+    model_id: str,
+    revision: str | None = None,
+    *,
+    family: EmbedModelFamily = "text",
+    max_input_tokens: int = 8192,
+    hf_cache_dir: str | None = None,
+) -> EmbedModelSpec:
+    del hf_cache_dir
     return EmbedModelSpec(
         model_id=model_id,
         revision=revision,
-        family="text",
+        family=family,
         output_dimension=2048,
         query_prefix="query: ",
         document_prefix="passage: ",
-        max_input_tokens=8192,
+        max_input_tokens=max_input_tokens,
         query_prefix_declared=True,
         document_prefix_declared=True,
     )
@@ -76,20 +84,22 @@ def test_build_warmup_spec_skips_remote_stages() -> None:
     assert build_warmup_spec(extract, embed, asr) is None
 
 
-@pytest.mark.parametrize(
-    ("backend", "native_nvfp4", "checkpoint_suffix"),
-    [(None, False, "BF16"), ("hf", True, "BF16"), ("vllm", True, "NVFP4")],
-)
-def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend, native_nvfp4, checkpoint_suffix):
+@pytest.mark.parametrize("backend", [None, "hf", "vllm"])
+def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend):
     from nemo_retriever.common.params import EmbedParams
     from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
     from nemo_retriever.models.inference import embedding_input
     from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor
 
-    model_id = f"nvidia/Nemotron-3-Embed-1B-{checkpoint_suffix}"
-    checkpoint = _checkpoint(model_id, HF_MODEL_REVISIONS[model_id])
+    model_id = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    checkpoint = _checkpoint(
+        model_id,
+        HF_MODEL_REVISIONS[model_id],
+        family="vl",
+        max_input_tokens=4096,
+    )
     params = EmbedParams(
-        embed_model_name="nemotron-3-embed-1b",
+        embed_model_name=model_id,
         **({"local_ingest_embed_backend": backend} if backend else {}),
     )
     spec = build_warmup_spec({}, params.model_dump(mode="python"), None)
@@ -97,7 +107,6 @@ def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend, n
     clear_warmed_models()
     try:
         with (
-            patch("nemo_retriever.models._cuda_supports_native_nvfp4", return_value=native_nvfp4),
             patch(
                 "nemo_retriever.models.embed_model_spec.resolve_embed_model_spec", return_value=checkpoint
             ) as resolve,
