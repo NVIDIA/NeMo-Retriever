@@ -640,9 +640,23 @@ For value paths and a rename example, refer to [Use externally managed Secrets](
 
 The CLI then exits with `Agentic retrieval failed (llm_call_failed)`.
 
-The Helm `answer_llm` Super-49B NIM is not tool-call ready by default. Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. NVIDIA-hosted Build endpoints do not need this change. `POST /v1/answer` is a separate path and does not require tool calling.
+The Helm `answer_llm` Super-49B NIM is not tool-call ready by default. Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. `POST /v1/answer` is a separate path and does not require tool calling.
 
 For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+
+## Hosted Super-49B returns HTTP 410 Gone { #hosted-super-49b-eol }
+
+A request to `https://integrate.api.nvidia.com/v1/chat/completions` with model ID `nvidia/llama-3.3-nemotron-super-49b-v1.5` or `nvidia/llama-3.3-nemotron-super-49b-v1` returns HTTP 410. The response detail states that the model reached end of life on August 26, 2026.
+
+The self-hosted Helm `answer_llm` NIM image is a separate artifact and remains available.
+
+Do one of the following:
+
+- For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+- For agentic retrieval, use [local in-process vLLM](workflow-agentic-retrieval.md#local-in-process-vllm) or a [self-hosted Super-49B NIM](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
+- For SDK `Retriever.answer()` or an LLM judge, pass a currently available hosted model ID, or set `api_base` to a self-hosted OpenAI-compatible NIM.
+
+Do not retry the retired Super-49B hosted model ID. The endpoint remains gone.
 
 ## Related Topics { #related-topics }
 

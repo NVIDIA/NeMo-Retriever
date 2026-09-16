@@ -1319,8 +1319,9 @@ HTTP 400 unless you also pass `--enable-auto-tool-choice` and
 `--tool-call-parser llama3_json`.
 
 You can reuse the same Super-49B NIM for agentic retrieval after you
-add those arguments. `POST /v1/answer` continues to work. This gap
-does not apply to NVIDIA-hosted Build endpoints.
+add those arguments. `POST /v1/answer` continues to work. NVIDIA-hosted
+Super-49B on `integrate.api.nvidia.com` reached end of life on August 26,
+2026 and is not a supported hosted endpoint.
 
 If you set `nimOperator.answer_llm.env` in a values file, include
 the full list. Change only the passthrough value:
