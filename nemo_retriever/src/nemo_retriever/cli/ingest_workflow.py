@@ -12,6 +12,7 @@ from nemo_retriever.ingest.plan import ResolvedIngestPlan
 from nemo_retriever.ingest.service import (
     ServiceIngestRequest,
     execute_service_ingest_request,
+    resolve_service_dedup_for_request,
     service_split_config_for_request,
 )
 from nemo_retriever.ingestor.manifest import format_branch_summary
@@ -96,7 +97,8 @@ def _ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
 
 def service_ingest_request_to_dry_run_data(request: ServiceIngestRequest) -> dict[str, Any]:
     """Return the JSON payload printed by ``retriever ingest service --dry-run``."""
-    return {
+    dedup_params, dedup_scope = resolve_service_dedup_for_request(request)
+    data = {
         "dry_run": True,
         "run_mode": "service",
         "documents": list(request.documents),
@@ -104,11 +106,14 @@ def service_ingest_request_to_dry_run_data(request: ServiceIngestRequest) -> dic
         "service": _strip_secret_values(asdict(request.connection)),
         "extract": _params_to_dry_run_dict(request.extract_params),
         "split_config": _params_to_dry_run_dict(service_split_config_for_request(request)),
-        "dedup": _params_to_dry_run_dict(request.dedup_params),
+        "dedup": _params_to_dry_run_dict(dedup_params),
         "caption": _params_to_dry_run_dict(request.caption_params),
         "embed": _params_to_dry_run_dict(request.embed_params),
         "store": _params_to_dry_run_dict(request.store_params),
     }
+    if dedup_scope is not None:
+        data["dedup_scope"] = dedup_scope
+    return data
 
 
 def run_ingest_workflow(
