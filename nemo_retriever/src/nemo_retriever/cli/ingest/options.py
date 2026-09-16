@@ -191,8 +191,14 @@ CaptionInfographicsOption = Annotated[
     ),
 ]
 DedupOption = Annotated[
-    bool,
-    typer.Option("--dedup", help="Add a deduplication stage before optional captioning and embedding."),
+    bool | None,
+    typer.Option(
+        "--dedup/--no-dedup",
+        help=(
+            "Enable or disable image deduplication. When omitted, captioning non-image documents "
+            "enables default deduplication."
+        ),
+    ),
 ]
 DedupIouThresholdOption = Annotated[
     float | None,

@@ -408,7 +408,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--caption` | off | Add a captioning stage. |
 | `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights. On a dedicated 80 GB GPU, its local profile reserves `0.95` of GPU memory for vLLM model and KV-cache use. Nano models retain the `0.5` profile default and remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
 | `--caption-gpu-memory-utilization` | model profile | Fraction of a local caption GPU that vLLM can reserve. The Omni BF16 profile defaults to `0.95`; other local caption profiles default to `0.5`. Use this option only with `--caption` and local vLLM captioning. |
-| `--dedup` | off | Add image deduplication before captioning and embedding. |
+| `--dedup/--no-dedup` | automatic with captioning | Captioning a non-image document automatically enables content-hash and bounding-box image deduplication with an intersection over union threshold of `0.45`. Use `--dedup` to enable the default behavior explicitly, or use `--no-dedup` to disable both mechanisms and preserve all extracted image crops. Image-only inputs are exempt from automatic deduplication. |
 | `--text-chunk` | off | Enable token chunking during extraction. |
 | `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
 | `--dry-run` | off | Print the resolved ingest plan without creating an ingestor. |
@@ -433,7 +433,8 @@ controls.
 | `--service-concurrency` | `8` | Maximum concurrent document uploads. |
 | `--service-api-token` | env fallback | Bearer token; also reads `NEMO_RETRIEVER_API_TOKEN`. |
 | `--profile` | `auto` | Same profile names as local and batch ingest where supported. |
-| `--caption`, `--dedup`, `--text-chunk` | off | Service-supported ingest controls. |
+| `--caption`, `--text-chunk` | off | Service-supported ingest controls. |
+| `--dedup/--no-dedup` | automatic with captioning | Explicitly enable or disable image deduplication for captioned non-image documents. Image-only inputs are exempt from automatic deduplication. |
 | `--store-images-uri` | unset | Service-accessible image storage URI. |
 | `--dry-run` | off | Print the resolved service ingest request. Tokens are redacted. |
 
@@ -579,6 +580,8 @@ retriever ingest ./data/test.pdf \
 
 ### Captioning and image storage
 
+Captioning a non-image document automatically enables content-hash and bounding-box image deduplication before captioning. Bounding-box deduplication uses an intersection over union threshold of `0.45` and retains structured table, chart, or infographic regions instead of overlapping raw image crops. Image-only documents do not enable deduplication automatically.
+
 ```bash
 retriever ingest ./data/test.pdf \
   --caption \
@@ -586,6 +589,20 @@ retriever ingest ./data/test.pdf \
   --api-key "${NVIDIA_API_KEY}" \
   --store-images-uri ./processed_docs/images
 ```
+
+Use `--dedup` to enable the default behavior explicitly. Use `--no-dedup` when you need to preserve and caption every extracted image crop:
+
+```bash
+retriever ingest ./data/test.pdf \
+  --caption \
+  --no-dedup
+```
+
+`--dedup-iou-threshold` requires an explicit `--dedup`. You cannot combine the threshold option with `--no-dedup`.
+
+Disabling deduplication can increase the number of caption requests, processing latency, and model cost. Use `--dry-run` to inspect the effective deduplication configuration, including automatic caption deduplication and an explicit `--no-dedup` override.
+
+For mixed service inputs, dry-run output also includes `dedup_scope`, which lists enabled non-image families and exempt image families.
 
 For local Hugging Face Omni BF16 captioning, use a dedicated GPU. The default
 profile reserves `0.95` of GPU memory so that vLLM can allocate both the model

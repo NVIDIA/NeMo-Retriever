@@ -37,7 +37,7 @@ from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resol
 from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
 from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
-from nemo_retriever.ingestor.plans import IngestExecutionPlan
+from nemo_retriever.ingestor.plans import IngestExecutionPlan, dedup_params_enabled
 from nemo_retriever.common.ray_resource_hueristics import (
     ClusterResources,
     resolve_requested_plan,
@@ -550,7 +550,7 @@ def _append_ordered_transform_stages(
         if stage in {"dedup", "caption", "store", "embed"} and (supports_dedup or stage != "dedup")
     ]
     if not pending_stages:
-        if supports_dedup and dedup_params is not None:
+        if supports_dedup and dedup_params_enabled(dedup_params):
             pending_stages.append("dedup")
         if caption_params is not None:
             pending_stages.append("caption")
@@ -562,7 +562,7 @@ def _append_ordered_transform_stages(
     for stage_name in pending_stages:
         if stage_name == "store" and store_params is not None:
             graph = graph >> StoreOperator(params=store_params)
-        elif stage_name == "dedup" and supports_dedup and dedup_params is not None:
+        elif stage_name == "dedup" and supports_dedup and dedup_params_enabled(dedup_params):
             dedup_kwargs = cast(dict[str, Any], dedup_params.model_dump(mode="python"))
             graph = graph >> UDFOperator(partial(dedup_images, **dedup_kwargs), name="DedupImages")
         elif stage_name == "caption" and caption_params is not None:
