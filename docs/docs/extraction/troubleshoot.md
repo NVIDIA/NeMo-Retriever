@@ -656,7 +656,7 @@ Do one of the following:
 - For agentic retrieval, use [local in-process vLLM](workflow-agentic-retrieval.md#local-in-process-vllm) or a [self-hosted Super-49B NIM](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 - For SDK `Retriever.answer()` or an LLM judge, pass a currently available hosted model ID, or set `api_base` to a self-hosted OpenAI-compatible NIM.
 
-Do not retry the retired Super-49B hosted model ID. The endpoint remains gone.
+Do not retry the retired Super-49B hosted model ID. The endpoint is gone.
 
 ## Related Topics { #related-topics }
 
