@@ -14,9 +14,9 @@ Yes. Use the Python API to extract content, then pass the extracted rows into yo
 
 Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list.
 
-Typical columns include `source_id`, `path`, `page_number`, `text`, and `metadata`. When tables are extracted, inspect `table` list items for `text`. The `metadata` value is a diagnostics dictionary, for example `dpi`, `source_path`, and `has_text`. It does not contain nested `source_metadata`, `content_metadata`, `text_metadata`, or `table_metadata` objects.
+Typical columns include `source_id`, `path`, `page_number`, `text`, and `metadata`. When tables are extracted, inspect `table` list items for `text`. The `metadata` value is extractor-specific. Markdown, plain text, and HTML rows include nested `content_metadata` with `type` set to `text`, along with `source_path` and `chunk_index`. PDF rows typically use diagnostics such as `dpi`, `source_path`, and `has_text`.
 
-Those nested blocks appear when the library converts rows for vector-database upload. For the extraction row shape and the nested schema, refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+Extraction-only ingest does not return the canonical vector-database record: a `document_type` wrapper around the full nested `MetadataSchema`. The library builds that top-level shape during `.vdb_upload()`. For the extraction row shape and the nested schema, refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 The following example extracts Markdown without embedding or writing an index.
 
@@ -33,10 +33,11 @@ result = (
 for record in result.to_dict(orient="records"):
     text = record.get("text") or record.get("content")
     source_path = record["path"]
-    metadata = record.get("metadata")
+    metadata = record.get("metadata") or {}
+    content_type = (metadata.get("content_metadata") or {}).get("type")
 ```
 
-Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, and metadata to your retriever.
+Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, metadata, and any extractor-specific `content_metadata` to your retriever.
 
 The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 

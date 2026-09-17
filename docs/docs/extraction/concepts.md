@@ -22,7 +22,7 @@ NeMo Retriever Library does **not** run one static pipeline on every document. Y
 
 ## Extraction metadata { #extraction-metadata }
 
-Output is a **Ray Dataset** (Ray Data) or **pandas** `DataFrame` listing extracted objects (text regions, tables, images, and so on), processing notes, and timing or trace data. Extraction-only rows are flat. Nested `source_metadata` and `content_metadata` objects are added when the library converts rows for vector-database records. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata).
+Output is a **Ray Dataset** (Ray Data) or **pandas** `DataFrame` listing extracted objects (text regions, tables, images, and so on), processing notes, and timing or trace data. Extraction-only rows use flat columns. Some extractors attach nested keys inside `metadata`, for example Markdown `content_metadata.type`. The canonical vector-database record with `source_metadata` and related blocks is built during upload. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata).
 
 ## Embeddings and retrieval { #embeddings-and-retrieval }
 
