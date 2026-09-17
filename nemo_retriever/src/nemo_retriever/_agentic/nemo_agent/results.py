@@ -60,14 +60,14 @@ class AgentRunResult:
     """
 
     final_doc_ids: List[str] = field(default_factory=list)
-    answer: Optional[str] = None
-    citations: Optional[List[str]] = None
     end_payload: Optional[Dict[str, Any]] = None
     error: Optional[AgentError] = None
     trajectory: List[Dict[str, Any]] = field(default_factory=list)
     retrieval_log: List[Dict[str, Any]] = field(default_factory=list)
     extra_data: Dict[str, Any] = field(default_factory=dict)
     atif_trace: Optional[Dict[str, Any]] = None
+    answer: Optional[str] = None
+    citations: Optional[List[str]] = None
 
     @property
     def succeeded(self) -> bool:
