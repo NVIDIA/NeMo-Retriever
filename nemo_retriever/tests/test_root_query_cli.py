@@ -939,7 +939,10 @@ def test_root_query_help_defaults_to_local_command(monkeypatch: pytest.MonkeyPat
     assert "_local" not in result.output
     assert "retriever ingest local" not in result.output
     assert "retriever ingest --lancedb-uri" in result.output
-    assert "Query a LanceDB index produced by local or batch ingest" in result.output
+    assert "Query a LanceDB or Qdrant index produced by local or batch ingest" in result.output
+    assert "--vdb-op" in result.output
+    assert "--qdrant-url" in result.output
+    assert "--qdrant-api-key" in result.output
     assert "For a service deployment" in result.output
     assert "retriever query service --help" in result.output
     assert "--retrieval-mode" in result.output

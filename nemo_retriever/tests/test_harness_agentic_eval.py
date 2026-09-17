@@ -223,3 +223,46 @@ def test_run_beir_queries_invalid_agentic_config_is_structured_failure(tmp_path)
             run_beir_queries(writer, resolved, None, request)
     assert excinfo.value.exit_code == EXIT_INVALID
     assert excinfo.value.failure.failure_reason == "invalid_agentic_config"
+
+
+def test_build_query_request_queries_the_ingested_backend() -> None:
+    from nemo_retriever.common.vdb.targets import VdbTarget
+    from nemo_retriever.harness.resolution import query_plan_payload
+    from nemo_retriever.query.workflow import resolve_query_plan
+
+    resolved = {
+        "query": {"top_k": 5},
+        "ingest": {
+            "storage": {
+                "lancedb_uri": "/runs/1/lancedb",
+                "table_name": "bench",
+                "vdb_op": "qdrant",
+                "qdrant_url": "https://q.example",
+                "qdrant_api_key": "secret-key",
+            }
+        },
+    }
+    request = build_query_request(resolved, "q")
+    expected = VdbTarget(
+        vdb_op="qdrant",
+        lancedb_uri="/runs/1/lancedb",
+        table_name="bench",
+        qdrant_url="https://q.example",
+        qdrant_api_key="secret-key",
+    )
+    assert request.storage.target() == expected
+    payload = query_plan_payload(resolve_query_plan(request))
+    assert (payload["vdb_op"], payload["vdb_target"]) == ("qdrant", "Qdrant https://q.example/bench")
+    assert "secret-key" not in str(payload)
+
+    overridden = build_query_request(
+        {**resolved, "query": {"vdb_op": "lancedb", "qdrant_url": "https://other.example"}}, "q"
+    )
+    assert overridden.storage.target().vdb_op == "lancedb"
+    assert overridden.storage.qdrant_url == "https://other.example"
+
+    assert build_query_request(_resolved({"top_k": 1}), "q").storage.target() == VdbTarget(
+        lancedb_uri="lancedb", table_name="bench"
+    )
+    for key in ("query.vdb_op", "query.qdrant_url", "query.qdrant_api_key"):
+        assert key in QUERY_OVERRIDE_PATHS

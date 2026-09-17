@@ -839,3 +839,19 @@ def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
         max_model_len=None,
         max_num_seqs=None,
     )
+
+
+@pytest.mark.parametrize(
+    ("hit", "score"),
+    [
+        ({"_rerank_score": 3.0, "_relevance_score": 2.0}, 3.0),
+        ({"_relevance_score": 0.5, "_score": 9.0}, 0.5),
+        ({"_score": 0.25}, 0.25),
+        ({"_distance": 0.75}, -0.75),
+        ({}, 0.0),
+    ],
+)
+def test_hit_score_prefers_fused_relevance_over_native_scores(hit: dict, score: float) -> None:
+    from nemo_retriever.query.agentic import _hit_score
+
+    assert _hit_score(hit) == score

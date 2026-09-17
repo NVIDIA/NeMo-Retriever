@@ -496,3 +496,11 @@ def test_narrow_lancedb_hit_promotes_canonical_multimodal_metadata() -> None:
     assert hit["bbox_xyxy_norm"] == [0.1, 0.2, 0.8, 0.9]
     assert hit["page_number"] == 7
     assert hit["source_id"] == "/tmp/source.pdf"
+
+
+def test_sparse_conversion_rejects_batches_with_no_uploadable_rows() -> None:
+    from nemo_retriever.common.vdb.records import VdbUploadError, to_sparse_client_vdb_records
+
+    assert to_sparse_client_vdb_records([]) == []
+    with pytest.raises(VdbUploadError, match="none were uploadable"):
+        to_sparse_client_vdb_records([{"text": "   ", "metadata": {}}])

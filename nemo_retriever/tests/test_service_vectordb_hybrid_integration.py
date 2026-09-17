@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 import nemo_retriever.common.vdb.lancedb as lancedb_module
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table_object
+from nemo_retriever.common.vdb.targets import VdbTarget
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _production_vdb,
@@ -44,8 +45,7 @@ _RECORD = _record()
 
 def _backend(tmp_path, *, index_mode: str = "auto") -> LanceDB:
     backend = _production_vdb(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
+        target=VdbTarget(lancedb_uri=str(tmp_path), table_name="nemo_retriever"),
         expiration_cleanup_enabled=True,
         embed_model="nvidia/nemotron-3-embed-1b",
         index_mode=index_mode,

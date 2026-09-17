@@ -1065,6 +1065,8 @@ def test_execute_ingest_plan_returns_structured_execution_data(monkeypatch, tmp_
     summary = execution.to_summary_dict()
     assert summary == {
         "n_documents": 1,
+        "vdb_op": "lancedb",
+        "vdb_target": "LanceDB /tmp/nemo-test-lancedb/execution_result",
         "lancedb_uri": "/tmp/nemo-test-lancedb",
         "table_name": "execution_result",
         "n_rows": 9,
