@@ -179,7 +179,7 @@ spec:
               mountPath: /tmp
           startupProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/live
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -187,7 +187,7 @@ spec:
             failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/live
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30

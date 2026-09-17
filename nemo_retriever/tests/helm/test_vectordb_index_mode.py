@@ -54,6 +54,20 @@ def test_vectordb_index_mode_rejects_invalid_value() -> None:
     assert "indexMode must be one of" in result.stderr
 
 
+def test_vectordb_probes_separate_liveness_from_readiness() -> None:
+    result = _helm_template()
+    assert result.returncode == 0, result.stderr
+    documents = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+    deployment = next(
+        doc for doc in documents if doc.get("kind") == "Deployment" and doc["metadata"]["name"].endswith("-vectordb")
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["startupProbe"]["httpGet"]["path"] == "/v1/live"
+    assert container["livenessProbe"]["httpGet"]["path"] == "/v1/live"
+    assert container["readinessProbe"]["httpGet"]["path"] == "/v1/health"
+
+
 def test_service_config_uses_the_same_index_modes_as_helm() -> None:
     assert VectorDbConfig().index_mode == "auto"
     assert [VectorDbConfig(index_mode=mode).index_mode for mode in ("auto", "dense", "hybrid")] == [
