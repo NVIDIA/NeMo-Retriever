@@ -75,13 +75,8 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
     ) -> None:
         effective_audio_chunk_params = video_asr_audio_chunk_params(audio_chunk_params)
         effective_video_frame_params = video_frame_params or VideoFrameParams()
-        if (
-            effective_audio_chunk_params.audio_only
-            and effective_video_frame_params.enabled
-        ):
-            effective_video_frame_params = effective_video_frame_params.model_copy(
-                update={"enabled": False}
-            )
+        if effective_audio_chunk_params.audio_only and effective_video_frame_params.enabled:
+            effective_video_frame_params = effective_video_frame_params.model_copy(update={"enabled": False})
         super().__init__(
             audio_chunk_params=audio_chunk_params,
             video_frame_params=effective_video_frame_params,

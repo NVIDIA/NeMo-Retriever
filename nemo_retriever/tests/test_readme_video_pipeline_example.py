@@ -158,9 +158,7 @@ def test_audio_only_excludes_visual_branch_from_graph() -> None:
     assert "_BatchEmbedActor" in names
 
 
-def test_audio_only_video_split_actor_emits_no_frame_rows(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_audio_only_video_split_actor_emits_no_frame_rows(monkeypatch, tmp_path: Path) -> None:
     from nemo_retriever.operators.extract.video import split as video_split
 
     fixture = tmp_path / "audio_only_fixture.mp4"
