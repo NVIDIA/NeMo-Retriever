@@ -158,6 +158,47 @@ def test_audio_only_excludes_visual_branch_from_graph() -> None:
     assert "_BatchEmbedActor" in names
 
 
+def test_audio_only_video_split_actor_emits_no_frame_rows(monkeypatch, tmp_path: Path) -> None:
+    from nemo_retriever.operators.extract.video import split as video_split
+
+    fixture = tmp_path / "audio_only_fixture.mp4"
+    fixture.write_bytes(b"fixture")
+    monkeypatch.setattr(video_split, "is_media_available", lambda: True)
+    monkeypatch.setattr(
+        video_split,
+        "_chunk_one",
+        lambda *args, **kwargs: [{"path": "audio.mp3", "metadata": {}}],
+    )
+
+    def fail_if_frames_are_extracted(*args, **kwargs):
+        raise AssertionError("audio_only=True must not extract video frames")
+
+    monkeypatch.setattr(video_split, "_extract_one", fail_if_frames_are_extracted)
+
+    actor = VideoSplitActor(
+        audio_chunk_params=AudioChunkParams(enabled=True, audio_only=True),
+        video_frame_params=VideoFrameParams(enabled=True),
+    )
+    out = actor.process(pd.DataFrame([{"path": str(fixture)}]))
+
+    assert out["_content_type"].tolist() == [_CT.AUDIO]
+    assert actor._video_frame_params.enabled is False
+
+
+def test_audio_visual_video_split_actor_keeps_frames_enabled(monkeypatch) -> None:
+    from nemo_retriever.operators.extract.video import split as video_split
+
+    monkeypatch.setattr(video_split, "is_media_available", lambda: True)
+    monkeypatch.setattr(video_split, "is_ffmpeg_available", lambda: True)
+
+    actor = VideoSplitActor(
+        audio_chunk_params=AudioChunkParams(enabled=True, audio_only=False),
+        video_frame_params=VideoFrameParams(enabled=True),
+    )
+
+    assert actor._video_frame_params.enabled is True
+
+
 @pytest.mark.skipif(
     not _have_media_dependencies_for_jpeg_video_pipeline(),
     reason="ffmpeg/ffprobe with JPEG encoder required for video pipeline frame extraction",
