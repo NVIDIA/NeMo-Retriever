@@ -10,7 +10,7 @@ For local inference, the default `vllm` backend resolves that logical ID as foll
 
 The BF16 and NVFP4 checkpoints share an embedding space. Validate retrieval quality on representative data before you change the precision used by an existing index.
 
-The previous default, `nvidia/llama-nemotron-embed-vl-1b-v2`, does not share this embedding space. Before upgrading a persistent LanceDB index, back it up and follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain the old model or rebuild and re-ingest with the new default.
+The previous default, `nvidia/llama-nemotron-embed-vl-1b-v2`, does not share this embedding space. Before upgrading a persistent LanceDB index, back it up and follow [Keep the embedding model aligned](../collections/vdbs.md#lancedb-embedding-model-compatibility) to retain the old model or rebuild and re-ingest with the new default.
 
 Helm deploys `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`. The NIM selects a supported NVFP4 or BF16 engine automatically. For NIM product details, refer to the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html).
 
@@ -21,7 +21,7 @@ The following example provides a strong baseline for retrieval.
 
 - The `embed` method is called with no arguments.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -120,7 +120,7 @@ The following example enables the multimodal model to capture the spatial and st
 - The `embed` method is configured with `embed_modality="text_image"` to embed the extracted tables and charts as images.
 - This configuration is more accurate than text only, with a performance cost.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -140,7 +140,7 @@ results = ingestor.ingest()
 
 ## Example with Embedding Entire PDF Pages as Images { #example-with-embedding-entire-pdf-pages-as-images }
 
-For documents where the entire page layout is important (such as infographics, complex diagrams, or forms), 
+For documents where the entire page layout is important (such as infographics, complex diagrams, or forms),
 you can configure NeMo Retriever Library to treat every page as a single image.
 The following example extracts and embeds each page as an image.
 
@@ -153,7 +153,7 @@ enables page-image rendering during extraction, creates one row for each page,
 and embeds the full rendered page image. Either argument alone does not enable
 the complete page-as-image workflow.
 
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
+For parameter details, refer to the [Python API guide](../reference/nemo-retriever-api-reference.md) (`create_ingestor` and `.embed()`).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -173,6 +173,6 @@ results = ingestor.ingest()
 
 ## Related Topics { #related-topics }
 
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
-- [Use the Python API](nemo-retriever-api-reference.md)
+- [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
+- [Troubleshoot Nemo Retriever Extraction](../troubleshooting/troubleshoot.md)
+- [Use the Python API](../reference/nemo-retriever-api-reference.md)

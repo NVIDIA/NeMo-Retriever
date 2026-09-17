@@ -2,7 +2,7 @@
 
 NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Run it as a Python library or Kubernetes deployment, and route inference through NVIDIA NIM microservices or local Nemotron models for downstream RAG and generative applications.
 
-NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
+NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](../collections/vdbs.md)).
 
 ## NVIDIA AI Enterprise (NVAIE) support { #nvidia-ai-enterprise-nvaie-support }
 
@@ -10,13 +10,13 @@ NeMo Retriever Library splits documents into pages, classifies sub-page content 
 
     NVIDIA AI Enterprise (NVAIE) support does **not** cover the NeMo Retriever Library. This applies to the NeMo Retriever Library Python package, its container image, and its Helm chart artifacts.
 
-    Some individual NIM microservices and models that the library calls—for example, the default NIMs in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#default-helm-nims)—may be covered by NVAIE on their own. That coverage applies only to those individual NIMs and models. It does **not** extend to the NeMo Retriever Library or its end-to-end extraction workflow. Using NVAIE-supported NIMs or models through the NeMo Retriever Library does not make the library, its container, or its chart NVAIE-supported.
+    Some individual NIM microservices and models that the library calls—for example, the default NIMs in the [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md#default-helm-nims)—may be covered by NVAIE on their own. That coverage applies only to those individual NIMs and models. It does **not** extend to the NeMo Retriever Library or its end-to-end extraction workflow. Using NVAIE-supported NIMs or models through the NeMo Retriever Library does not make the library, its container, or its chart NVAIE-supported.
 
 ## What NeMo Retriever Library Is ✔️ { #what-nemo-retriever-library-is }
 
 The following diagram shows the retriever pipeline.
 
-![Overview diagram](images/overview-extraction.png)
+![Overview diagram](../images/overview-extraction.png)
 
 NeMo Retriever Library does the following:
 
@@ -52,9 +52,9 @@ NeMo Retriever Library supports the following file types:
 
 ## Related Topics { #related-topics }
 
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
-- [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
+- [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md)
+- [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md)
+- [Deployment options](../deploy/deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
 - [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - [Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)
 - [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag))

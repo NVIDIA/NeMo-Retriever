@@ -1,6 +1,6 @@
 # When to use NVIDIA-hosted NIMs
 
-[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
+[NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](get-started/api-keys.md)) without operating GPU nodes yourself.
 
 Consider hosted NIMs when:
 
@@ -11,4 +11,4 @@ Consider hosted NIMs when:
 For more information, refer to the following pages:
 
 - [NVIDIA NIM catalog](https://build.nvidia.com/)
-- [Deployment options](deployment-options.md#when-to-use-nvidia-hosted-nims)
+- [Deployment options](deploy/deployment-options.md#when-to-use-nvidia-hosted-nims)

@@ -6,10 +6,10 @@ NeMo Retriever Library includes a first-class agentic query path. `retriever que
 
 The agentic path ranks documents rather than chunks. CLI `--agentic` output is the retrieval-hop hit plus `doc_id`, `rank`, and `result_source`. It is not the five-field dense CLI projection. Local CLI and harness runs default to an in-process vLLM agent LLM. Retriever Service requires a remote OpenAI-compatible chat-completions endpoint. A self-hosted vLLM-backed NIM must enable automatic tool choice and a tool-call parser. Helm `answer_llm` does not turn those options on by default.
 
-For commands, service configuration, request and response contracts, and failure behavior, refer to [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
+For commands, service configuration, request and response contracts, and failure behavior, refer to [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md).
 
 ## Related Topics { #related-topics }
 
-- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
-- [Semantic retrieval](vdbs.md#semantic-retrieval)
+- [Workflow: Agentic retrieval](../collections/workflow-agentic-retrieval.md)
+- [Semantic retrieval](../collections/vdbs.md#semantic-retrieval)
 - [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)

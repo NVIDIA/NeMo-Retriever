@@ -8,10 +8,10 @@ Use this page as the baseline for methodology and expectations. Use [Operational
 
 ## Throughput and dataset effects { #throughput-and-dataset-effects }
 
-Read [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality) for why raw numbers from generic benchmarks may not match your corpus (layout complexity, file types, image density, and so on).
+Read [Throughput is dataset-dependent](../ingest/multimodal-extraction.md#extraction-limitations-and-quality) for why raw numbers from generic benchmarks may not match your corpus (layout complexity, file types, image density, and so on).
 
 ## Operational tuning { #operational-tuning }
 
-- [Ray and distributed ingest](ray-logging.md)
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md) for supported configurations
+- [Ray and distributed ingest](../deploy/ray-logging.md)
+- [Pre-Requisites & Support Matrix](../get-started/prerequisites-support-matrix.md) for supported configurations
 - [Troubleshoot](troubleshoot.md) when results or performance diverge from expectations
