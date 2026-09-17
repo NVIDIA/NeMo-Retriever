@@ -5,7 +5,7 @@ scoped collection and document catalog operations at `/v1/collections`.
 `RetrieverServiceClient` is the supported Python SDK for the same contract.
 It wraps those endpoints plus the related ingest and query REST APIs.
 
-Applications do not open LanceDB, choose table names, or reproduce ingestion
+Applications do not open the vector database, choose table names, or reproduce ingestion
 stages.
 
 ## Support boundary { #support-boundary }
@@ -30,7 +30,7 @@ The following surfaces are not a public collection contract:
 
 - Internal VectorDB write routes such as `/internal/vectordb/write`.
 - Direct calls to the VectorDB pod, including its private `/openapi.json`.
-- Raw LanceDB table names, storage URIs, or physical table locations.
+- Raw LanceDB table or Qdrant collection names, storage URIs, server URLs, or physical table locations.
 
 The gateway `/openapi.json` publishes the eight collection paths. The
 gateway forwards those routes without request models. Generated `/docs` can
@@ -213,7 +213,7 @@ To replace one stable document, set `operation` to `replace`,
 ID, then upload one file.
 
 To search a collection, send `POST /v1/query` with `collection_name`. Do not
-send LanceDB table names. Refer to [Workflow: Agentic retrieval](../extraction/workflow-agentic-retrieval.md)
+send LanceDB table or Qdrant collection names. Refer to [Workflow: Agentic retrieval](../extraction/workflow-agentic-retrieval.md)
 for the query envelope and agentic flag.
 
 ```bash
@@ -304,9 +304,11 @@ ID. Collection document APIs show only indexed materializations; pending,
 processing, and failed attempts remain visible through job APIs.
 
 `replace_document()` submits one replacement file. NeMo Retriever records a
-pending-version recovery marker, uses a single LanceDB merge transaction to
-insert the new chunks and remove obsolete chunks for that document, and then
-finalizes the catalog. The VectorDB reconciler inspects stored chunk versions
+pending-version recovery marker, then replaces the document's chunks. LanceDB
+inserts the new chunks and removes obsolete ones in a single merge transaction
+and then finalizes the catalog. Qdrant uploads the new chunks while queries
+still read the old version, commits the catalog, and then removes the obsolete
+chunks. The VectorDB reconciler inspects stored chunk versions
 after a crash and either finalizes the new version or preserves the old one.
 Failed processing never removes the prior version, and queries never expose
 mixed versions.
@@ -368,7 +370,7 @@ where the corresponding credentials and ownership policy already live.
 
 Legacy fixed-table ingestion and query remain available when
 `collection_name` is omitted, but only against the operator-configured table.
-No service request may specify a raw table name, storage URI, or physical
+No service request may specify a raw table name, storage URI, Qdrant server, or physical
 LanceDB location. `/document` is the canonical ingestion route and `/whole` is
 supported; collection-aware `/page` returns 422 before work is registered.
 
@@ -402,7 +404,7 @@ call the gateway paths in [REST reference](#rest-reference). Applications
 should orchestrate calls and translate their own configuration only; NeMo
 Retriever owns processing status, stable chunk/document identity, retrieval
 ordering, citation provenance, retries, idempotency, and lifecycle truth. Clients
-must not open LanceDB directly or reproduce the ingestion pipeline.
+must not open LanceDB or Qdrant directly or reproduce the ingestion pipeline.
 
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
 `text`, a finite native `distance`, filename, a one-based page number when

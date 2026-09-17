@@ -10,6 +10,9 @@
 {{- if not (has $indexMode (list "auto" "dense" "hybrid")) -}}
 {{- fail "serviceConfig.vectordb.indexMode must be one of: auto, dense, hybrid" -}}
 {{- end -}}
+{{- $backend := include "nemo-retriever.vectordb.backend" . -}}
+{{- $qdrant := .Values.serviceConfig.vectordb.qdrant | default dict -}}
+{{- $qdrantKeySecret := $qdrant.apiKeySecret | default dict -}}
 {{- $agentic := .Values.serviceConfig.agentic -}}
 {{- $internalAuth := .Values.serviceConfig.vectordb.internalAuth -}}
 {{- /*
@@ -77,8 +80,15 @@ spec:
             - -m
             - nemo_retriever.service.vectordb_app
           args:
+            - --vdb-op
+            - {{ $backend | quote }}
+            {{- if eq $backend "qdrant" }}
+            - --qdrant-url
+            - {{ $qdrant.url | quote }}
+            {{- else }}
             - --lancedb-uri
             - {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
+            {{- end }}
             - --table-name
             - {{ .Values.serviceConfig.vectordb.tableName | quote }}
             - --index-mode
@@ -143,6 +153,14 @@ spec:
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
+            {{- if and (eq $backend "qdrant") $qdrantKeySecret.name }}
+            - name: QDRANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $qdrantKeySecret.name | quote }}
+                  key: {{ $qdrantKeySecret.key | default "api-key" | quote }}
+                  optional: false
+            {{- end }}
             {{- if $internalAuth.enabled }}
             - name: NRL_INTERNAL_VDB_TOKEN
               valueFrom:
@@ -173,8 +191,10 @@ spec:
             {{- end }}
             {{- toYaml $resources | nindent 12 }}
           volumeMounts:
+            {{- if eq $backend "lancedb" }}
             - name: vectordb-data
               mountPath: {{ .Values.serviceConfig.vectordb.lancedbUri }}
+            {{- end }}
             - name: tmp
               mountPath: /tmp
           startupProbe:
@@ -204,6 +224,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if eq $backend "lancedb" }}
         {{- if $vdb.persistence.enabled }}
         - name: vectordb-data
           persistentVolumeClaim:
@@ -211,5 +232,6 @@ spec:
         {{- else }}
         - name: vectordb-data
           emptyDir: {}
+        {{- end }}
         {{- end }}
 {{- end }}

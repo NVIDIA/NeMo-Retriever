@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed rank-fusion policy for LanceDB hybrid retrieval."""
+"""Typed rank-fusion policy for LanceDB and Qdrant hybrid retrieval."""
 
 from __future__ import annotations
 

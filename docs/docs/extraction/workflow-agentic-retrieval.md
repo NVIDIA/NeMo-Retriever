@@ -6,7 +6,7 @@ Use this workflow after you have ingested documents into a LanceDB table. Agenti
 
 ## Query with the CLI { #query-with-the-cli }
 
-`retriever query --agentic` is the one-shot CLI path. It searches the LanceDB table built by `retriever ingest`. Reuse the same `--lancedb-uri`, `--table-name`, and embedding model that you used at ingest. When `--embed-model-name` is omitted, agentic retrieval uses the selected table's model.
+`retriever query --agentic` is the one-shot CLI path. It searches the index built by `retriever ingest`. Reuse the same `--lancedb-uri` (or `--vdb-op qdrant` and `--qdrant-url`), `--table-name`, and embedding model that you used at ingest. When `--embed-model-name` is omitted, agentic retrieval uses the selected table's model.
 
 ### Local in-process vLLM { #local-in-process-vllm }
 

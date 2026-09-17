@@ -2,13 +2,16 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Export retrieval results from NeMo Retriever LanceDB to FileRetriever JSON."""
+"""Export retrieval results from a NeMo Retriever index (LanceDB or Qdrant) to FileRetriever JSON."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any
+
+from nemo_retriever.common.vdb.records import hit_rank
+from nemo_retriever.common.vdb.targets import VdbTarget
 
 
 def parse_json_field(raw: Any) -> dict:
@@ -53,6 +56,14 @@ def _extract_page_number(hit: dict) -> int:
         return -1
 
 
+def _hit_metadata(hit: dict, source_id: str, page_number: int) -> dict:
+    metadata = {"source_id": source_id, "page_number": page_number, "distance": hit.get("_distance")}
+    score = next((hit[key] for key in ("_relevance_score", "_score") if hit.get(key) is not None), None)
+    if score is not None:
+        metadata["score"] = score
+    return metadata
+
+
 def expand_hits_to_pages(
     hits: list[dict],
     page_index: dict[str, dict[str, str]],
@@ -62,20 +73,19 @@ def expand_hits_to_pages(
     Returns ``(chunks, metadata, miss_count)`` where *miss_count* is the number
     of ``(source_id, page)`` pairs that had no entry in the page index.
     """
-    seen: dict[tuple[str, int], float] = {}
+    best: dict[tuple[str, int], dict] = {}
     ordered_pages: list[tuple[str, int]] = []
 
     for hit in hits:
         source_id = _extract_source_id(hit)
         page_number = _extract_page_number(hit)
-        distance = hit.get("_distance")
 
         key = (source_id, page_number)
-        if key not in seen:
-            seen[key] = distance
+        if key not in best:
+            best[key] = hit
             ordered_pages.append(key)
-        elif distance is not None and (seen[key] is None or distance < seen[key]):
-            seen[key] = distance
+        elif hit_rank(hit) < hit_rank(best[key]):
+            best[key] = hit
 
     chunks: list[str] = []
     metadata: list[dict] = []
@@ -88,13 +98,7 @@ def expand_hits_to_pages(
             miss_count += 1
             continue
         chunks.append(md)
-        metadata.append(
-            {
-                "source_id": source_id,
-                "page_number": page_number,
-                "distance": seen[(source_id, page_number)],
-            }
-        )
+        metadata.append(_hit_metadata(best[(source_id, page_number)], source_id, page_number))
 
     return chunks, metadata, miss_count
 
@@ -109,14 +113,32 @@ def query_lancedb(
     page_index: dict[str, dict[str, str]] | None = None,
     batch_size: int = 50,
 ) -> tuple[dict[str, dict], dict[str, Any]]:
-    """Query LanceDB and return results without writing to disk.
+    """Query a LanceDB table with :func:`query_vdb`."""
+    return query_vdb(
+        VdbTarget(lancedb_uri=lancedb_uri, table_name=lancedb_table),
+        queries,
+        top_k=top_k,
+        embedder=embedder,
+        page_index=page_index,
+        batch_size=batch_size,
+    )
+
+
+def query_vdb(
+    target: VdbTarget,
+    queries: list[dict],
+    *,
+    top_k: int = 5,
+    embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
+    page_index: dict[str, dict[str, str]] | None = None,
+    batch_size: int = 50,
+) -> tuple[dict[str, dict], dict[str, Any]]:
+    """Query a LanceDB table or Qdrant collection and return results without writing to disk.
 
     Parameters
     ----------
-    lancedb_uri : str
-        Path to LanceDB directory.
-    lancedb_table : str
-        LanceDB table name.
+    target : VdbTarget
+        The index to query.
     queries : list[dict]
         Each dict must have a ``"query"`` key.
     top_k : int
@@ -139,10 +161,7 @@ def query_lancedb(
     from nemo_retriever.graph.retriever import Retriever
 
     retriever = Retriever(
-        vdb_kwargs={
-            "vdb_op": "lancedb",
-            "vdb_kwargs": {"uri": lancedb_uri, "table_name": lancedb_table},
-        },
+        vdb_kwargs={"vdb_op": target.vdb_op, "vdb_kwargs": target.vdb_kwargs()},
         embed_kwargs={"model_name": embedder, "embed_model_name": embedder},
         top_k=top_k,
         rerank=False,
@@ -166,19 +185,13 @@ def query_lancedb(
                 metadata: list[dict] = []
                 for hit in hits:
                     chunks.append(hit.get("text", ""))
-                    metadata.append(
-                        {
-                            "source_id": _extract_source_id(hit),
-                            "page_number": _extract_page_number(hit),
-                            "distance": hit.get("_distance"),
-                        }
-                    )
+                    metadata.append(_hit_metadata(hit, _extract_source_id(hit), _extract_page_number(hit)))
             all_results[query] = {"chunks": chunks, "metadata": metadata}
 
     chunk_mode = "full-page markdown" if use_fullpage else "sub-page chunks"
     meta: dict[str, Any] = {
-        "vdb_backend": "lancedb",
-        "collection_name": lancedb_table,
+        "vdb_backend": target.vdb_op,
+        "collection_name": target.table_name,
         "top_k": top_k,
         "embedding_model": embedder,
         "chunk_mode": chunk_mode,
@@ -235,10 +248,13 @@ def export_retrieval_json(
     embedder: str = "nvidia/llama-nemotron-embed-1b-v2",
     page_index: dict[str, dict[str, str]] | None = None,
     batch_size: int = 50,
+    target: VdbTarget | None = None,
 ) -> dict:
-    """Query LanceDB, optionally expand to full-page markdown, write FileRetriever JSON.
+    """Query an index, optionally expand to full-page markdown, write FileRetriever JSON.
 
-    Convenience wrapper around :func:`query_lancedb` + :func:`write_retrieval_json`.
+    Convenience wrapper around :func:`query_vdb` + :func:`write_retrieval_json`.
+    Pass *target* to query a Qdrant collection. *lancedb_uri* and
+    *lancedb_table* are then ignored.
 
     Parameters
     ----------
@@ -265,9 +281,8 @@ def export_retrieval_json(
     dict
         The output JSON structure (also written to *output_path*).
     """
-    all_results, meta = query_lancedb(
-        lancedb_uri=lancedb_uri,
-        lancedb_table=lancedb_table,
+    all_results, meta = query_vdb(
+        target or VdbTarget(lancedb_uri=lancedb_uri, table_name=lancedb_table),
         queries=queries,
         top_k=top_k,
         embedder=embedder,

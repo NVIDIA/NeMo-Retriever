@@ -97,7 +97,7 @@ retriever service start --config my-retriever-service.yaml --launch-vectordb
 
 The launcher is limited to loopback VectorDB URLs. Omit the flag for an existing VectorDB. Helm deployments continue to run VectorDB in a separate pod.
 
-If VectorDB exits during startup or does not become ready, read the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory, and that port `7671` is available.
+If VectorDB exits during startup or does not become ready, read the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory or reachable Qdrant server, and that port `7671` is available.
 
 
 

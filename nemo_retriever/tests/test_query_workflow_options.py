@@ -168,8 +168,8 @@ def test_query_documents_with_metadata_reports_resolved_strategy(monkeypatch, mo
         def __init__(self, **_kwargs: Any) -> None:
             pass
 
-        def _resolve_lancedb_query_mode(self, _vdb_kwargs: Any) -> tuple[str, object, str, str, bool]:
-            return mode, object(), "uri", "table", False
+        def _resolve_query_mode(self, _vdb_kwargs: Any) -> str:
+            return mode
 
         def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return [{"text": query, "source": "doc.pdf", "page_number": 1}]

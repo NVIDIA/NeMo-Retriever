@@ -94,6 +94,11 @@ class QueryRequest(BaseModel):
                 "table_path",
                 "database_uri",
                 "vdb_uri",
+                "vdb_op",
+                "vdb_kwargs",
+                "url",
+                "qdrant_url",
+                "qdrant_api_key",
             }
             supplied = sorted(raw_keys.intersection(value))
             if supplied:

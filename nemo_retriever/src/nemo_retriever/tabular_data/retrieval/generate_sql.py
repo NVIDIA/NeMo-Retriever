@@ -246,8 +246,11 @@ def get_sql_tool_response_top_k(
     embedding_api_key: str = "",
     embedding_http_endpoint="",
     top_k: int = 15,
+    vdb_kwargs: dict | None = None,
 ) -> dict:
-    """Retrieve top_k tables from LanceDB, then generate SQL via LLM (JSON schema + markdown fallbacks).
+    """Retrieve top_k tables from the vector DB, then generate SQL via LLM (JSON schema + markdown fallbacks).
+
+    ``vdb_kwargs`` uses the ``Retriever`` form and defaults to the ``nemo-retriever-tabular`` LanceDB table.
 
     Returns a dict with keys: sql_code, answer, result.
     """
@@ -261,10 +264,7 @@ def get_sql_tool_response_top_k(
         embed_kw["api_key"] = embedding_api_key
 
     retriever = Retriever(
-        vdb_kwargs={
-            "vdb_op": "lancedb",
-            "vdb_kwargs": {"table_name": "nemo-retriever-tabular"},
-        },
+        vdb_kwargs=vdb_kwargs or {"vdb_op": "lancedb", "vdb_kwargs": {"table_name": "nemo-retriever-tabular"}},
         embed_kwargs=embed_kw,
         top_k=top_k,
     )

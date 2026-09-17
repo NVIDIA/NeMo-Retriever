@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -12,8 +12,9 @@ if TYPE_CHECKING:
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
+from nemo_retriever.common.vdb.adt_vdb import RetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.common.vdb.targets import VdbTarget
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
@@ -47,7 +48,7 @@ class AgenticQueryDocumentsResult:
     usage: dict[str, Any]
 
 
-def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
+def _strategies_for_retrieval_mode(mode: RetrievalMode | None) -> list[str]:
     if mode == "hybrid":
         return ["semantic", "lexical"]
     if mode == "sparse":
@@ -91,14 +92,14 @@ class ResolvedQueryPlan:
     embed_kwargs: dict[str, Any]
     rerank: bool
     rerank_kwargs: dict[str, Any]
+    vdb_target: VdbTarget = field(default_factory=VdbTarget)
 
     def retriever_kwargs(self) -> dict[str, Any]:
-        vdb_kwargs: dict[str, Any] = {
-            "uri": self.lancedb_uri,
-            "table_name": self.table_name,
-        }
+        vdb_kwargs = self.vdb_target.vdb_kwargs()
         if self.retrieval_mode != "auto":
             vdb_kwargs["retrieval_mode"] = self.retrieval_mode
+        if self.vdb_target.vdb_op != "lancedb":
+            vdb_kwargs = {"vdb_op": self.vdb_target.vdb_op, "vdb_kwargs": vdb_kwargs}
 
         kwargs: dict[str, Any] = {
             "top_k": self.top_k,
@@ -145,6 +146,7 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
         embed_kwargs=embed_kwargs,
         rerank=bool(request.rerank.enabled),
         rerank_kwargs=rerank_kwargs,
+        vdb_target=request.storage.target(),
     )
 
 
@@ -152,12 +154,10 @@ def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult
     """Run the SDK query path and return hits plus resolved retrieval strategy metadata."""
     plan = resolve_query_plan(request)
     retriever = plan.create_retriever()
-    mode: LanceRetrievalMode | None = None
-    resolve_mode = getattr(retriever, "_resolve_lancedb_query_mode", None)
+    mode: RetrievalMode | None = None
+    resolve_mode = getattr(retriever, "_resolve_query_mode", None)
     if callable(resolve_mode):
-        lancedb_mode = resolve_mode(None)
-        if lancedb_mode is not None:
-            mode = lancedb_mode[0]
+        mode = resolve_mode(None)
     hits = retriever.query(
         request.query,
         **plan.query_kwargs(),
@@ -175,7 +175,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
 
     Shared by the single-query CLI path (:func:`agentic_query_documents`) and the
     batch harness BEIR path so agentic config derivation lives in one place. The
-    LanceDB ``uri``/``table_name``, embedding config, and (when ``rerank`` is
+    selected index (LanceDB or Qdrant), embedding config, and (when ``rerank`` is
     enabled) reranker config are passed straight through to the wrapped
     ``Retriever`` that backs the agent's ``retrieve`` tool. ``top_k`` overrides the
     final document count the agent targets (the harness sets this to the deepest
@@ -184,11 +184,12 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     api_key = resolve_remote_api_key(request.embed.embed_api_key)
-    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
+    target = request.storage.target()
+    vdb_kwargs: dict[str, Any] = target.vdb_kwargs()
     if request.retrieval.retrieval_mode != "auto":
         vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
     cfg_kwargs: dict[str, Any] = {
-        "vdb_op": "lancedb",
+        "vdb_op": target.vdb_op,
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "candidate_k": request.retrieval.candidate_k,

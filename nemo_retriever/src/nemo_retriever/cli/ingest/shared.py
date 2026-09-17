@@ -49,9 +49,9 @@ def print_ingest_summary(summary: dict[str, Any]) -> None:
         return
 
     n_files = summary["n_documents"]
-    table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
+    target = summary["vdb_target"]
     n_rows = summary.get("n_rows")
     if n_rows is None:
-        typer.echo(f"Ingested {n_files} file(s) into LanceDB {table_path} (row count unavailable).")
+        typer.echo(f"Ingested {n_files} file(s) into {target} (row count unavailable).")
     else:
-        typer.echo(f"Ingested {n_files} file(s) → {n_rows} row(s) in LanceDB {table_path}.")
+        typer.echo(f"Ingested {n_files} file(s) → {n_rows} row(s) in {target}.")

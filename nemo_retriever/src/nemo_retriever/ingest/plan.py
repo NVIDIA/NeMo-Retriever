@@ -42,10 +42,11 @@ from nemo_retriever.common.input_files import (
 )
 from nemo_retriever.ingest.index_mode import (
     RequestedIngestIndexMode,
-    inspect_existing_lancedb_mode,
+    inspect_existing_index_mode,
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
+from nemo_retriever.common.vdb.targets import VdbOpValue, VdbTarget
 from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
@@ -213,6 +214,12 @@ class IngestStorageOptions:
     table_name: str = "nemo-retriever"
     overwrite: bool = True
     index_mode: IngestIndexModeValue = "auto"
+    vdb_op: VdbOpValue = "lancedb"
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+
+    def target(self) -> VdbTarget:
+        return VdbTarget.from_options(self)
 
 
 @dataclass(frozen=True)
@@ -314,6 +321,7 @@ class ResolvedIngestPlan:
     lancedb_uri: str
     table_name: str
     sparse: bool = False
+    vdb_target: VdbTarget = field(default_factory=VdbTarget)
 
     def extract_call_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {}
@@ -627,9 +635,8 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     validated_profile = validate_ingest_profile(source.profile)
     validated_input_type = validate_ingest_input_type(source.input_type)
     requested_index_mode = validate_ingest_index_mode(storage.index_mode)
-    existing_index_mode = (
-        None if storage.overwrite else inspect_existing_lancedb_mode(storage.lancedb_uri, storage.table_name)
-    )
+    vdb_target = storage.target()
+    existing_index_mode = None if storage.overwrite else inspect_existing_index_mode(vdb_target)
     resolved_index_mode = resolve_ingest_index_mode(
         requested_index_mode,
         overwrite=storage.overwrite,
@@ -705,11 +712,10 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     extract_params = ExtractParams(**extract_kwargs)
     embed_params = None if resolved_index_mode == "sparse" else EmbedParams(**embed_kwargs) if embed_kwargs else None
     vdb_upload_kwargs = {
-        "uri": storage.lancedb_uri,
-        "table_name": storage.table_name,
+        **vdb_target.vdb_kwargs(),
         "overwrite": bool(storage.overwrite),
     }
-    # Keep dense ingest kwargs unchanged unless the index mode needs additional LanceDB behavior.
+    # Keep dense ingest kwargs unchanged unless the index mode needs additional backend behavior.
     if resolved_index_mode == "sparse":
         vdb_upload_kwargs["sparse"] = True
     elif resolved_index_mode == "hybrid":
@@ -720,7 +726,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
             vdb_upload_kwargs["vector_dim"] = None
     if embedding_model_revision is not None:
         vdb_upload_kwargs["embedding_model_revision"] = embedding_model_revision
-    vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
+    vdb_params = VdbUploadParams(vdb_op=vdb_target.vdb_op, vdb_kwargs=vdb_upload_kwargs)
     caption_params = build_caption_params(
         enabled=request.caption.enabled,
         caption_invoke_url=request.caption.caption_invoke_url,
@@ -799,4 +805,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
         sparse=resolved_index_mode == "sparse",
+        vdb_target=vdb_target,
     )
