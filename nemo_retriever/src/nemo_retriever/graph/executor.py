@@ -317,6 +317,17 @@ def _preflight_executor_nodes(
             available_gpus = effective_resources.available_gpu_count()
             if requested_cpu <= available_cpus and requested_gpu <= available_gpus:
                 break
+        if requested_cpu <= available_cpus and requested_gpu <= available_gpus:
+            # Recompute node GPU reservations and auto-concurrency against the
+            # refreshed snapshot. A local GPU operator initially observed with
+            # zero available GPUs otherwise remains budgeted as a CPU-only node.
+            _preflight_executor_nodes(
+                executor_nodes,
+                available_cpus,
+                available_gpus,
+                reserved_cpus=reserved_cpus,
+            )
+            return effective_resources
     actor_cpu_budget = available_cpus - task_cpu_reservation
     if requested_cpu > available_cpus or requested_gpu > available_gpus:
         raise ValueError(
@@ -575,9 +586,9 @@ class RayDataExecutor(AbstractExecutor):
         available_gpus: int,
         *,
         cluster_resources: ClusterResources | None = None,
-    ) -> None:
+    ) -> ClusterResources | None:
         """Reduce unspecified pools and reject plans that exclude known task work."""
-        _preflight_executor_nodes(
+        return _preflight_executor_nodes(
             [(self, nodes)],
             available_cpus,
             available_gpus,
@@ -687,12 +698,15 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         if nodes and not self._resources_preflight_complete:
-            self._preflight_resources(
+            effective_resources = self._preflight_resources(
                 nodes,
                 cluster.available_cpu_count(),
                 available_gpus,
                 cluster_resources=cluster,
             )
+            if effective_resources is not None:
+                cluster = effective_resources
+                available_gpus = cluster.available_gpu_count()
         preserve_pandas_output = False
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))

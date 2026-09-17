@@ -1477,6 +1477,56 @@ class TestRayDataExecutor:
 
         assert captured["num_gpus"] == 0.1
 
+    def test_build_dataset_uses_recovered_standalone_preflight_gpu_snapshot(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        class _FakeDataset:
+            def map_batches(self, _operator_class, **kwargs):
+                captured.update(kwargs)
+                return self
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        captured: dict[str, object] = {}
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=0, gpu_count=0),
+        )
+        recovered = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=16, gpu_count=1),
+        )
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr("nemo_retriever.graph.executor.gather_cluster_resources", lambda _ray: initial)
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", lambda: recovered)
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 16}},
+            auto_concurrency_nodes={"GPUAdaptiveAddOperator"},
+        )
+
+        executor.build_dataset(fake_dataset)
+
+        assert captured["num_gpus"] == 0.1
+        assert captured["concurrency"] == 10
+
     def test_shared_preflight_rejects_late_filesystem_source_without_reservation(self, tmp_path, monkeypatch):
         import sys
         from types import SimpleNamespace
