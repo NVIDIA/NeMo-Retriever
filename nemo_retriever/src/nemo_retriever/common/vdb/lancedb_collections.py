@@ -31,6 +31,7 @@ from nemo_retriever.common.schemas.collections import (
     DocumentPage,
     IngestOperation,
 )
+from nemo_retriever.common.schemas.embedding import EMBEDDING_SPLIT_METADATA_KEY, embedding_split_content
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
@@ -227,14 +228,20 @@ def _collection_rows(
             if not isinstance(source_metadata, dict):
                 source_metadata = {}
 
-            text = _content_text(record, metadata)
+            split_content = embedding_split_content(metadata)
+            text = split_content if split_content is not None else _content_text(record, metadata)
+            if split_content is not None:
+                content_metadata = {
+                    **content_metadata,
+                    EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY],
+                }
             content_type = normalize_content_type(content_metadata.get("type") or record.get("document_type"))
             content_type = content_type or ""
             if content_type:
                 content_metadata = dict(content_metadata)
                 content_metadata["type"] = content_type
                 content_metadata["_content_type"] = content_type
-            if not text.strip() and content_type != "image":
+            if not text.strip() and content_type != "image" and split_content is None:
                 continue
 
             source_id = str(

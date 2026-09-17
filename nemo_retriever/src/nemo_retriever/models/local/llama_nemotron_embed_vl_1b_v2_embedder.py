@@ -56,6 +56,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
     model_id: Optional[str] = None
     revision: Optional[str] = None
     output_dimension: int = 2048
+    max_length: int = 4096
 
     # Populated lazily by _ensure_loaded.
     _model: Any = field(default=None, init=False, repr=False)
@@ -106,7 +107,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         return False
 
     def _set_p_max_length(self, modality: str) -> None:
-        _RECOMMENDED = {"text": 8192, "image": 2048, "text_image": 10240}
+        _RECOMMENDED = {"text": int(self.max_length), "image": 2048, "text_image": 10240}
         p = _RECOMMENDED.get(modality)
         if p is not None and hasattr(self._model, "processor"):
             self._model.processor.p_max_length = p
@@ -114,7 +115,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
-        texts_list = [str(t) for t in texts if str(t).strip()]
+        texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
         with torch.inference_mode(), warnings.catch_warnings():
@@ -249,13 +250,13 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         return False
 
     def _finalize_vectors(self, vectors: Sequence[Sequence[float]]) -> torch.Tensor:
-        """Zero-pad rows vLLM failed to embed, then optionally normalize."""
-        valid = [v for v in vectors if v]
-        if not valid:
+        """Require one real embedding per input, then optionally normalize."""
+        if not vectors:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
-        dim = len(valid[0])
-        padded = [v if v else [0.0] * dim for v in vectors]
-        tensor = torch.tensor(padded, dtype=torch.float32)
+        missing = sum(not vector for vector in vectors)
+        if missing:
+            raise RuntimeError(f"vLLM failed to return an embedding for {missing}/{len(vectors)} inputs")
+        tensor = torch.tensor(vectors, dtype=torch.float32)
         return _l2_normalize(tensor) if self.normalize else tensor
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
@@ -263,7 +264,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         self._ensure_loaded()
         from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts if str(t).strip()]
+        texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
         vectors = embed_with_vllm_llm(
@@ -280,7 +281,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         self._ensure_loaded()
         from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts if str(t).strip()]
+        texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
         vectors = embed_with_vllm_llm(
