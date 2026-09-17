@@ -90,6 +90,8 @@ The **default document extraction pipeline** (page elements, table structure, OC
 
 On a staging host with internet access, pull from NGC, retag to your private registry, stage chart archives, then install in the enclave with registry overrides. Procedures, the chart image inventory, and Helm value patterns are in [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment).
 
+Include the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images from that inventory. Those images are not NIM Operator custom resources.
+
 !!! warning "Audio and video extraction"
 
     Audio and video workflows require `ffmpeg` and `ffprobe` on `PATH`; runtime package installation is not suitable for air-gapped clusters. Refer to [Audio and video](audio-video.md) and the Helm chart [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment) guide. Skip this if you do not use audio or video.
