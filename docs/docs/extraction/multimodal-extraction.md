@@ -122,7 +122,7 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
-Extraction-only DataFrame rows use flat columns. The canonical `MetadataSchema` record (`document_type` plus nested `source_metadata`, `content_metadata`, `text_metadata`, and `table_metadata`) is built during vector-database upload. Some extractors still attach partial nested keys inside `metadata`, for example Markdown `content_metadata.type`. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata) for the extraction row shape, the nested schema, and the Method column scope.
+Extraction-only DataFrame rows use extractor-specific flat columns. The canonical `MetadataSchema` record (`document_type` plus nested `source_metadata`, `content_metadata`, `text_metadata`, and `table_metadata`) is built during vector-database upload. Some extractors still attach partial nested keys inside `metadata`, for example Markdown `content_metadata.type`. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata) for the extraction row shape, the nested schema, and the Method column scope.
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 

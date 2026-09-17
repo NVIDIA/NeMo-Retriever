@@ -16,7 +16,9 @@ Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_uploa
 
 With `run_mode="inprocess"` or `run_mode="batch"`, `.ingest()` returns a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. With `run_mode="service"`, `.ingest()` returns a `ServiceIngestResult`. The extracted rows are on `result.dataframe`. Do not call DataFrame methods such as `to_dict()` on the wrapper. For service result access, refer to [Service result schemas](nemo-retriever-api-reference.md#service-result-schema).
 
-Typical columns include `source_id`, `path`, `page_number`, `text`, and `metadata`. When tables are extracted, inspect `table` list items for `text`. The `metadata` value is extractor-specific. Markdown, plain text, and HTML rows include nested `content_metadata` with `type` set to `text`, along with `source_path` and `chunk_index`. PDF rows typically use diagnostics such as `dpi`, `source_path`, and `has_text`.
+Columns vary by extractor. Markdown, plain text, and HTML rows include `text`, `content`, `path`, `page_number`, and `metadata`. Nested `metadata` includes `content_metadata` with `type` set to `text`, along with `source_path` and `chunk_index`. Those rows do not include `source_id`.
+
+PDF rows include `source_id` plus `path`, `page_number`, `text`, and `metadata`. Nested PDF `metadata` typically includes diagnostics such as `dpi`, `source_path`, and `has_text`. When tables are extracted, inspect `table` list items for `text`.
 
 Extraction-only ingest does not return the canonical vector-database record: a `document_type` wrapper around the full nested `MetadataSchema`. The library builds that top-level shape during `.vdb_upload()`. For the extraction row shape and the nested schema, refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 

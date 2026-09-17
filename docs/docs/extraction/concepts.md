@@ -22,7 +22,7 @@ NeMo Retriever Library does **not** run one static pipeline on every document. Y
 
 ## Extraction metadata { #extraction-metadata }
 
-Graph ingest (`run_mode="inprocess"` or `run_mode="batch"`) returns a **pandas** `DataFrame` from `.ingest()`. The DataFrame lists extracted objects (text regions, tables, images, and so on), processing notes, and timing or trace data. With `run_mode="service"`, `.ingest()` returns a `ServiceIngestResult`, and the rows are on `result.dataframe`. Extraction-only rows use flat columns. Some extractors attach nested keys inside `metadata`, for example Markdown `content_metadata.type`. The canonical vector-database record with `source_metadata` and related blocks is built during upload. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata).
+Graph ingest (`run_mode="inprocess"` or `run_mode="batch"`) returns a **pandas** `DataFrame` from `.ingest()`. The DataFrame lists extracted objects (text regions, tables, images, and so on), processing notes, and timing or trace data. With `run_mode="service"`, `.ingest()` returns a `ServiceIngestResult`, and the rows are on `result.dataframe`. Extraction-only rows use extractor-specific flat columns. Some extractors attach nested keys inside `metadata`, for example Markdown `content_metadata.type`. The canonical vector-database record with `source_metadata` and related blocks is built during upload. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata).
 
 ## Embeddings and retrieval { #embeddings-and-retrieval }
 
