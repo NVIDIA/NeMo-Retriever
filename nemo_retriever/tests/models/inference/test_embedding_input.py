@@ -556,7 +556,15 @@ def test_policy_resolver_caps_runtime_length_at_checkpoint_support(monkeypatch, 
     assert policy.tokenizer is tokenizer
 
 
-@pytest.mark.parametrize("model_name", [None, "nemotron-3-embed-1b", "nvidia/nemotron-3-embed-1b"])
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        None,
+        "nemotron-3-embed-1b",
+        "nvidia/nemotron-3-embed-1b",
+        "nvidia/Nemotron-3-Embed-1B-BF16",
+    ],
+)
 def test_default_remote_policy_uses_pinned_nemotron3_checkpoint(model_name) -> None:
     from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
     from nemo_retriever.models.inference import embedding_input
@@ -618,12 +626,14 @@ def test_policy_resolver_rejects_missing_checkpoint_prompt(monkeypatch, tmp_path
 
 
 def test_unpinned_model_fails_closed_before_embedding() -> None:
-    with pytest.raises(ValueError, match="is not revision-pinned"):
+    with pytest.raises(ValueError, match="is not revision-pinned") as exc_info:
         resolve_embedding_input_policy(
             "custom/unpinned-model",
             configured_max_tokens=8192,
             input_type="passage",
         )
+
+    assert "embed_model_revision" not in str(exc_info.value)
 
 
 def test_local_actor_reuses_checkpoint_when_local_metadata_changes(monkeypatch, tmp_path) -> None:

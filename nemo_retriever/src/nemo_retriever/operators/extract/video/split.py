@@ -73,12 +73,16 @@ class VideoSplitActor(AbstractOperator, CPUOperator):
         audio_chunk_params: AudioChunkParams | None = None,
         video_frame_params: VideoFrameParams | None = None,
     ) -> None:
+        effective_audio_chunk_params = video_asr_audio_chunk_params(audio_chunk_params)
+        effective_video_frame_params = video_frame_params or VideoFrameParams()
+        if effective_audio_chunk_params.audio_only and effective_video_frame_params.enabled:
+            effective_video_frame_params = effective_video_frame_params.model_copy(update={"enabled": False})
         super().__init__(
             audio_chunk_params=audio_chunk_params,
-            video_frame_params=video_frame_params,
+            video_frame_params=effective_video_frame_params,
         )
-        self._audio_chunk_params = video_asr_audio_chunk_params(audio_chunk_params)
-        self._video_frame_params = video_frame_params or VideoFrameParams()
+        self._audio_chunk_params = effective_audio_chunk_params
+        self._video_frame_params = effective_video_frame_params
         if self._audio_chunk_params.enabled and not is_media_available():
             raise RuntimeError(media_dependency_error_message("VideoSplitActor"))
         if self._video_frame_params.enabled and not is_ffmpeg_available():

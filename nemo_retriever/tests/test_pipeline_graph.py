@@ -1335,6 +1335,107 @@ class TestRayDataExecutor:
             else:
                 executor._preflight_resources(executor._linearize(graph), available_cpus=4, available_gpus=0)
 
+    @pytest.mark.parametrize("shared", [False, True])
+    def test_preflight_rechecks_transiently_unavailable_cluster_capacity(self, monkeypatch, shared):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+        recovered = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=12, gpu_count=0),
+        )
+        refresh_calls = 0
+
+        def refresh_resources():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return recovered
+
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", refresh_resources)
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+
+        if shared:
+            preflight_executors([executor], initial)
+            assert executor._preflight_cluster_resources == recovered
+        else:
+            executor._preflight_resources(
+                executor._linearize(graph),
+                available_cpus=initial.available_cpu_count(),
+                available_gpus=initial.available_gpu_count(),
+                cluster_resources=initial,
+            )
+
+        assert refresh_calls == 1
+        assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 11
+
+    def test_preflight_raises_with_final_snapshot_after_resource_recheck_timeout(self, monkeypatch):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+        final = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=10, gpu_count=0),
+        )
+        monotonic_times = iter((0.0, 0.25, 1.0))
+        refresh_calls = 0
+
+        def refresh_resources():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return final
+
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.monotonic", lambda: next(monotonic_times))
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", refresh_resources)
+
+        with pytest.raises(ValueError, match="Ray reports 10 CPUs and 0 GPUs available"):
+            preflight_executors([executor], initial)
+
+        assert refresh_calls == 1
+
+    def test_preflight_does_not_recheck_plan_over_total_capacity(self, monkeypatch):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 12, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        resources = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+
+        def unexpected_refresh():
+            raise AssertionError("oversubscribed plans must fail without waiting")
+
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", unexpected_refresh)
+
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            preflight_executors([executor], resources)
+
     def test_preflight_counts_implicit_gpu_operator_reservation(self):
         graph = Graph()
         graph.add_root(GPUAdaptiveAddOperator())
@@ -1410,6 +1511,56 @@ class TestRayDataExecutor:
         assert executor._preflight_cluster_resources is not None
 
         assert captured["num_gpus"] == 0.1
+
+    def test_build_dataset_uses_recovered_standalone_preflight_gpu_snapshot(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        class _FakeDataset:
+            def map_batches(self, _operator_class, **kwargs):
+                captured.update(kwargs)
+                return self
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        captured: dict[str, object] = {}
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=0, gpu_count=0),
+        )
+        recovered = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=16, gpu_count=1),
+        )
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr("nemo_retriever.graph.executor.gather_cluster_resources", lambda _ray: initial)
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", lambda: recovered)
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 16}},
+            auto_concurrency_nodes={"GPUAdaptiveAddOperator"},
+        )
+
+        executor.build_dataset(fake_dataset)
+
+        assert captured["num_gpus"] == 0.1
+        assert captured["concurrency"] == 10
 
     def test_shared_preflight_rejects_late_filesystem_source_without_reservation(self, tmp_path, monkeypatch):
         import sys

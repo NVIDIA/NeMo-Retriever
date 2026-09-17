@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import math
+import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 import pandas as pd
 
@@ -39,6 +40,12 @@ logger = logging.getLogger(__name__)
 # Heuristic GPU fraction for GPUOperator nodes that load a local model.
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
+
+# Ray can briefly report stale available resources after a Dataset releases its
+# actors. Keep this wait short: it only covers teardown accounting propagation,
+# not capacity held by another active workload.
+_RESOURCE_RELEASE_WAIT_SECONDS = 1.0
+_RESOURCE_RELEASE_POLL_SECONDS = 0.01
 
 
 def _contains_null_arrow_child(data_type: Any) -> bool:
@@ -237,16 +244,24 @@ def preflight_executors(
     executor_nodes = [
         (executor, executor._linearize(resolve_graph(executor.graph, cluster_resources))) for executor in executors
     ]
-    _preflight_executor_nodes(
+    effective_resources = _preflight_executor_nodes(
         executor_nodes,
         cluster_resources.available_cpu_count(),
         cluster_resources.available_gpu_count(),
         reserved_cpus=reserved_cpus,
+        cluster_resources=cluster_resources,
     )
     for executor in executors:
         executor._resources_preflight_complete = True
         executor._preflight_source_cpu_reservation = executor._source_cpu_reservation
-        executor._preflight_cluster_resources = cluster_resources
+        executor._preflight_cluster_resources = effective_resources or cluster_resources
+
+
+def _refresh_cluster_resources() -> ClusterResources:
+    """Read a fresh Ray cluster resource snapshot."""
+    import ray
+
+    return gather_cluster_resources(ray)
 
 
 def _preflight_executor_nodes(
@@ -255,7 +270,8 @@ def _preflight_executor_nodes(
     available_gpus: int,
     *,
     reserved_cpus: float = 0.0,
-) -> None:
+    cluster_resources: ClusterResources | None = None,
+) -> ClusterResources | None:
     """Admit resolved pools together, adjusting only automatically sized concurrency."""
     entries = []
     if reserved_cpus < 0:
@@ -281,17 +297,44 @@ def _preflight_executor_nodes(
     fixed_cpu = sum(_concurrency_required(item[2]) * item[5] for item in fixed)
     source_cpu_reservation = sum(executor._source_cpu_reservation for executor, _nodes in executor_nodes)
     task_cpu_reservation = source_cpu_reservation + reserved_cpus
-    actor_cpu_budget = available_cpus - task_cpu_reservation
     fixed_gpu = sum(_concurrency_required(item[2]) * item[6] for item in fixed)
     min_cpu = sum(item[4] * item[5] for item in auto)
     min_gpu = sum(item[4] * item[6] for item in auto)
     requested_cpu = task_cpu_reservation + fixed_cpu + min_cpu
-    if requested_cpu > available_cpus or fixed_gpu + min_gpu > available_gpus:
+    requested_gpu = fixed_gpu + min_gpu
+    effective_resources = cluster_resources
+    if (
+        (requested_cpu > available_cpus or requested_gpu > available_gpus)
+        and cluster_resources is not None
+        and requested_cpu <= cluster_resources.total_cpu_count()
+        and requested_gpu <= cluster_resources.total_gpu_count()
+    ):
+        deadline = time.monotonic() + _RESOURCE_RELEASE_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            time.sleep(_RESOURCE_RELEASE_POLL_SECONDS)
+            effective_resources = _refresh_cluster_resources()
+            available_cpus = effective_resources.available_cpu_count()
+            available_gpus = effective_resources.available_gpu_count()
+            if requested_cpu <= available_cpus and requested_gpu <= available_gpus:
+                break
+        if requested_cpu <= available_cpus and requested_gpu <= available_gpus:
+            # Recompute node GPU reservations and auto-concurrency against the
+            # refreshed snapshot. A local GPU operator initially observed with
+            # zero available GPUs otherwise remains budgeted as a CPU-only node.
+            _preflight_executor_nodes(
+                executor_nodes,
+                available_cpus,
+                available_gpus,
+                reserved_cpus=reserved_cpus,
+            )
+            return effective_resources
+    actor_cpu_budget = available_cpus - task_cpu_reservation
+    if requested_cpu > available_cpus or requested_gpu > available_gpus:
         raise ValueError(
             "Infeasible Ray CPU/GPU plan: requested at least "
             f"{requested_cpu:g} CPUs (including {source_cpu_reservation:g} for source reads and "
             f"{reserved_cpus:g} for other non-actor tasks) "
-            f"and {fixed_gpu + min_gpu:g} GPUs, but Ray reports "
+            f"and {requested_gpu:g} GPUs, but Ray reports "
             f"{available_cpus} CPUs and {available_gpus} GPUs available. "
             "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
         )
@@ -334,6 +377,7 @@ def _preflight_executor_nodes(
             for executor, name, _concurrency, _target, _initial, _cpu, _gpu, _auto in auto
         ],
     )
+    return effective_resources
 
 
 class AbstractExecutor(ABC):
@@ -540,9 +584,16 @@ class RayDataExecutor(AbstractExecutor):
         nodes: List[Node],
         available_cpus: int,
         available_gpus: int,
-    ) -> None:
+        *,
+        cluster_resources: ClusterResources | None = None,
+    ) -> ClusterResources | None:
         """Reduce unspecified pools and reject plans that exclude known task work."""
-        _preflight_executor_nodes([(self, nodes)], available_cpus, available_gpus)
+        return _preflight_executor_nodes(
+            [(self, nodes)],
+            available_cpus,
+            available_gpus,
+            cluster_resources=cluster_resources,
+        )
 
     @staticmethod
     def _linearize(graph: Graph) -> List[Node]:
@@ -647,7 +698,15 @@ class RayDataExecutor(AbstractExecutor):
             except FileNotFoundError as exc:
                 raise_input_path_not_found(input_paths or [], exc)
         if nodes and not self._resources_preflight_complete:
-            self._preflight_resources(nodes, cluster.available_cpu_count(), available_gpus)
+            effective_resources = self._preflight_resources(
+                nodes,
+                cluster.available_cpu_count(),
+                available_gpus,
+                cluster_resources=cluster,
+            )
+            if effective_resources is not None:
+                cluster = effective_resources
+                available_gpus = cluster.available_gpu_count()
         preserve_pandas_output = False
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))

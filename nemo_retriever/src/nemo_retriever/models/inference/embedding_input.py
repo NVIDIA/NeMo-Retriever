@@ -361,8 +361,7 @@ def resolve_embedding_input_policy(
         if model_id not in HF_MODEL_REVISIONS and not Path(model_id).expanduser().is_dir() and revision is None:
             raise ValueError(
                 f"Embedding model {model_id!r} is not revision-pinned, so the embedding stage cannot enforce "
-                "its tokenizer, prefix, and input limit. Use a registered model, a local checkpoint, or set an "
-                "immutable embed_model_revision."
+                "its tokenizer, prefix, and input limit. Use a registered model or a local checkpoint."
             )
         spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=cache_dir)
     if spec.max_input_tokens is None:
