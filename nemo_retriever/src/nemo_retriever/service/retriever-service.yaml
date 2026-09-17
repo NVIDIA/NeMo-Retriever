@@ -152,7 +152,7 @@ work_queue:
   max_active_leases_realtime: 8
   max_active_leases_batch: 48
 
-# Dedicated LanceDB pod used by standalone/gateway modes for /v1/query.
+# Dedicated VectorDB pod (LanceDB or Qdrant) used by standalone/gateway modes for /v1/query.
 # Workers POST embedding rows to vectordb_url; the gateway proxies queries.
 vectordb:
   enabled: false
@@ -163,7 +163,11 @@ vectordb:
   # child. This setting has no effect when vectordb_url points to an existing
   # VectorDB deployment.
   max_concurrent_queries: 4
+  # "lancedb" or "qdrant" (a Qdrant 1.18+ server with its key in QDRANT_API_KEY or QDRANT_API_KEY_FILE).
+  vdb_op: "lancedb"
   lancedb_uri: "/data/vectordb"
+  qdrant_url: null
+  # LanceDB table or Qdrant collection name.
   table_name: "nemo_retriever"
   embed_model: "nvidia/nemotron-3-embed-1b"
   embed_model_provider_prefix: null

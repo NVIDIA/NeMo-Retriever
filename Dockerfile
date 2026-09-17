@@ -129,7 +129,7 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service,multimedia]" \
+    && uv pip install -e "./nemo_retriever[service,multimedia,qdrant]" \
     && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
          python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
        fi
@@ -148,7 +148,7 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service,local,multimedia]" \
+    && uv pip install -e "./nemo_retriever[service,local,multimedia,qdrant]" \
     && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
          python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
        fi

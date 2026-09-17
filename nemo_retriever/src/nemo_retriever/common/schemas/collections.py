@@ -6,7 +6,7 @@
 
 These models are shared by the service and Python SDK.  Keeping the contract
 here prevents agent adapters from depending on service implementation details
-or LanceDB-specific names.
+or backend-specific (LanceDB or Qdrant) names.
 """
 
 from __future__ import annotations

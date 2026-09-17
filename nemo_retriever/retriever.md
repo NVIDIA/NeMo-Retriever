@@ -11,7 +11,7 @@ The high-level **`Retriever`** runs **query → embed → vector search → opti
 | **`rerank`** | If `True`, append **`NemotronRerankActor`** after **`RetrieveVdbOperator`**. |
 | **`graph`** | Optional custom `Graph`. When set, **`embed_kwargs` / `vdb_kwargs` are not used to build the default graph**—you supply a fully wired pipeline. |
 | **`embed_kwargs`** | Passed to **`EmbedParams`** (merged over library defaults). Controls model, endpoints, `input_type` (default `"query"`), batch sizes, `runtime` (device, HF cache), etc. |
-| **`vdb_kwargs`** | Passed to **`RetrieveVdbOperator`**. Either nested `{"vdb_op": "lancedb", "vdb_kwargs": {"uri": "...", "table_name": "..."}}` or, for convenience, a **flat** Lance-only dict `{"uri": "...", "table_name": "..."}` is coerced to `vdb_op="lancedb"`. |
+| **`vdb_kwargs`** | Passed to **`RetrieveVdbOperator`**. Either nested `{"vdb_op": "lancedb", "vdb_kwargs": {"uri": "...", "table_name": "..."}}` or, for convenience, a **flat** Lance-only dict `{"uri": "...", "table_name": "..."}` is coerced to `vdb_op="lancedb"`. For Qdrant, use the nested form: `{"vdb_op": "qdrant", "vdb_kwargs": {"url": "...", "collection_name": "..."}}`. |
 | **`rerank_kwargs`** | Forwarded to **`NemotronRerankActor`** (merged over defaults). Common keys: `model_name`, `rerank_invoke_url` (alias: `invoke_url`), `api_key`, `batch_size`, `max_length`, `score_column`, `local_reranker_backend`. Setting the endpoint selects the remote reranker; leaving it unset loads a local model through `local_reranker_backend`. **`refine_factor`** (default `4`) multiplies `top_k` for retrieval when **`rerank`** is true; it is **not** passed to the actor. |
 
 ### Default pipeline
@@ -26,7 +26,7 @@ _BatchEmbedActor >> RetrieveVdbOperator [>> NemotronRerankActor if rerank]
 
 ## Runnable snippets
 
-Set `PYTHONPATH` to the `nemo_retriever` source tree (or use an installed wheel). Examples assume LanceDB already populated (e.g. after ingest).
+Set `PYTHONPATH` to the `nemo_retriever` source tree (or use an installed wheel). Examples assume a LanceDB table already populated (e.g. after ingest). For Qdrant, swap in the nested `vdb_op="qdrant"` form above.
 
 ### 1) Minimal local retrieval (default VL embed model, local backend)
 

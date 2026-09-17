@@ -199,8 +199,8 @@ def _create_row(
 ) -> dict[str, Any]:
     path = f"neo4j:{node_id}" if node_id else "neo4j:unknown"
     # Nest tabular identifiers under content_metadata so they survive the
-    # IngestVdbOperator → LanceDB write path (which only persists
-    # content_metadata + source_metadata into the table's metadata column).
+    # IngestVdbOperator → LanceDB/Qdrant write path (which only persists
+    # content_metadata + source_metadata as the stored metadata).
     # Top-level copies are kept for any in-memory consumer of this DataFrame.
     tabular_fields = {
         "id": node_id,

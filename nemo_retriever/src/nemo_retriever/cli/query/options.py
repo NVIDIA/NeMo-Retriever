@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
+from nemo_retriever.cli.vdb_options import QdrantApiKeyOption, QdrantUrlOption, VdbOpOption  # noqa: F401
 from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 
 DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
@@ -56,14 +57,14 @@ LanceDbUriOption = Annotated[
     str,
     typer.Option(
         "--lancedb-uri",
-        help="LanceDB database URI to read; match the value used for retriever ingest --lancedb-uri.",
+        help="LanceDB database URI to read (--vdb-op lancedb). Must match retriever ingest --lancedb-uri.",
     ),
 ]
 TableNameOption = Annotated[
     str,
     typer.Option(
         "--table-name",
-        help="LanceDB table name to read; match the value used for retriever ingest --table-name.",
+        help="LanceDB table or Qdrant collection to read. Must match retriever ingest --table-name.",
     ),
 ]
 EmbedInvokeUrlOption = Annotated[

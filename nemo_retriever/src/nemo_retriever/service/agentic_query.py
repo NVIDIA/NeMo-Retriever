@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
+from nemo_retriever.common.vdb.targets import VdbTarget
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
     QueryEmbedOptions,
@@ -95,8 +97,7 @@ def build_agentic_query_request(
     query: str,
     top_k: int,
     config: AgenticConfig,
-    lancedb_uri: str,
-    table_name: str,
+    target: VdbTarget,
     embed_endpoint: str,
     embed_model: str,
     embed_model_provider_prefix: str | None,
@@ -112,10 +113,7 @@ def build_agentic_query_request(
             embed_model_provider_prefix=embed_model_provider_prefix,
             embed_api_key=embed_api_key or None,
         ),
-        storage=QueryStorageOptions(
-            lancedb_uri=lancedb_uri,
-            table_name=table_name,
-        ),
+        storage=QueryStorageOptions(**asdict(target)),
         agentic=QueryAgenticOptions(
             enabled=True,
             llm_model=config.llm_model,
@@ -134,8 +132,7 @@ def run_agentic_query(
     query: str,
     top_k: int,
     config: AgenticConfig,
-    lancedb_uri: str,
-    table_name: str,
+    target: VdbTarget,
     embed_endpoint: str,
     embed_model: str,
     embed_model_provider_prefix: str | None,
@@ -146,8 +143,7 @@ def run_agentic_query(
         query=query,
         top_k=top_k,
         config=config,
-        lancedb_uri=lancedb_uri,
-        table_name=table_name,
+        target=target,
         embed_endpoint=embed_endpoint,
         embed_model=embed_model,
         embed_model_provider_prefix=embed_model_provider_prefix,

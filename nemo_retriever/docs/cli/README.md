@@ -6,7 +6,7 @@ ingest and retrieval.
 For product-facing examples, prefer these commands:
 
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
-- `retriever query` - query a local LanceDB table written by local or batch ingest.
+- `retriever query` - query a LanceDB table or Qdrant collection written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
 - `retriever service` - operate a Retriever service deployment.
 
@@ -35,13 +35,13 @@ the command that matches where ingest runs and where results are stored.
 
 | Command | What It Does | Writes To | Use When |
 |---|---|---|---|
-| `retriever ingest ...` | Local in-process ingest | local LanceDB | Default local ingest and CI/small corpus runs. |
-| `retriever ingest local ...` | Local in-process ingest | local LanceDB | Same as the default, but explicit. |
-| `retriever ingest batch ...` | Ray-backed batch ingest | local LanceDB | Larger or batch-tuned runs. |
+| `retriever ingest ...` | Local in-process ingest | local LanceDB (or Qdrant) | Default local ingest and CI/small corpus runs. |
+| `retriever ingest local ...` | Local in-process ingest | local LanceDB (or Qdrant) | Same as the default, but explicit. |
+| `retriever ingest batch ...` | Ray-backed batch ingest | local LanceDB (or Qdrant) | Larger or batch-tuned runs. |
 | `retriever ingest service ...` | Sends documents to a Retriever service | service-configured storage | Remote service ingest. |
 
 This separation keeps invalid flag combinations out of the parser. For example,
-service ingest does not expose LanceDB target flags, Ray tuning, local endpoint
+service ingest does not expose vector database target flags, Ray tuning, local endpoint
 configuration, local embed backend selection, or local media controls.
 
 <!-- --8<-- [start:quickstart] -->
@@ -148,7 +148,7 @@ retriever service start --config my-retriever-service.yaml --launch-vectordb
 
 Use the command above when `nim_endpoints.embed_invoke_url` is configured. Omit the flag to use an existing VectorDB. Helm continues to deploy VectorDB as a separate pod.
 
-If VectorDB exits during startup or does not become ready, inspect the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory, and that port `7671` is available.
+If VectorDB exits during startup or does not become ready, inspect the VectorDB output in the terminal that started the service. Verify the VectorDB configuration, embedding model setup and credentials, writable LanceDB directory or reachable Qdrant server, and that port `7671` is available.
 
 ### Route ingest to hosted or self-hosted NIM endpoints
 
@@ -206,7 +206,7 @@ retriever query "annual revenue by region" \
 
 `--top-k` is the final number of results to return after filtering and
 deduplication. `--candidate-k` is the number of raw results to retrieve from
-LanceDB or the Retriever service before filtering, page deduplication, and
+the vector database or the Retriever service before filtering, page deduplication, and
 final truncation. If omitted, the candidate pool is the same size as
 `--top-k`. Set `--candidate-k` larger than `--top-k` when page deduplication
 or content-type filtering might remove too many of the nearest retrieved rows.
@@ -253,7 +253,7 @@ output are not used for content-type matching.
 
 `--agentic` swaps the single dense pass for an LLM-driven ReAct loop: the agent
 issues several retrieval sub-queries, fuses the candidates, and selects a final
-ranking. It searches the same LanceDB table built by `retriever ingest`. You can
+ranking. It searches the same LanceDB table or Qdrant collection built by `retriever ingest`. You can
 reuse the same table, embedding flags, and `--top-k` as standard retrieval.
 The JSON hit shape is not a drop-in replacement for dense `retriever query`
 output.
@@ -294,7 +294,7 @@ retrieval hop returned, the object contains only `doc_id`, `rank`, and
 `result_source`. Classic hit keys such as `text` and `source` are
 absent. They are not present with null values.
 
-Agentic retrieval reuses the same `--top-k`, `--lancedb-uri`, `--table-name`,
+Agentic retrieval reuses the same `--top-k`, `--vdb-op`, `--lancedb-uri`, `--qdrant-url`, `--table-name`,
 `--embed-invoke-url`, and `--embed-model-name` options as standard retrieval.
 Agentic retrieval uses the selected table's model automatically when
 `--embed-model-name` is omitted.
@@ -395,8 +395,11 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 |---|---|---|
 | `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
 | `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. `fast-text` selects `pdfium` and disables Page Elements, image, table, and chart extraction for text-only PDFs. |
-| `--lancedb-uri` | `lancedb` | LanceDB database URI. |
-| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
+| `--vdb-op` | `lancedb` | Vector database backend: `lancedb` (embedded) or `qdrant` (server). Refer to [Use Qdrant](../../../docs/docs/extraction/vdbs.md#use-qdrant). |
+| `--lancedb-uri` | `lancedb` | LanceDB database URI. LanceDB only. |
+| `--qdrant-url` | `http://localhost:6333` | Qdrant server URL. Also reads `QDRANT_URL`. Qdrant only. |
+| `--qdrant-api-key` | unset | Qdrant API key. Prefer the `QDRANT_API_KEY` environment variable. Never printed. Qdrant only. |
+| `--table-name` | `nemo-retriever` | LanceDB table or Qdrant collection name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--embed-model-name` | `nvidia/nemotron-3-embed-1b` | Logical default embedding model. Local vLLM resolves it to the NVFP4 checkpoint on Blackwell and BF16 otherwise. |
@@ -422,7 +425,7 @@ related batch-size / CPU / GPU tuning flags.
 ### Service ingest
 
 `retriever ingest service` exposes only service-supported request controls.
-It does not expose LanceDB target flags, Ray tuning, local endpoint URLs/API
+It does not expose vector database target flags, Ray tuning, local endpoint URLs/API
 keys, local embed backend selection, `--ocr-lang`, or local audio/video media
 controls.
 
@@ -452,6 +455,22 @@ retriever query "What is in this document?" \
   --lancedb-uri ./my-lancedb \
   --table-name my-corpus
 ```
+
+### Qdrant
+
+`retriever ingest` and `retriever query` accept the same `--vdb-op` and
+Qdrant flags. The server must run Qdrant 1.18 or later, and the package needs
+the `qdrant` extra (`pip install "nemo-retriever[qdrant]"`).
+
+```bash
+export QDRANT_URL=http://localhost:6333
+retriever ingest ./data/multimodal_test.pdf --vdb-op qdrant --table-name my-corpus
+retriever query "What is in this document?" --vdb-op qdrant --table-name my-corpus
+```
+
+`--index-mode sparse` builds a BM25-only collection without running the embed
+stage. `--append`, `--index-mode`, `--retrieval-mode`, and `--agentic` behave as
+they do for LanceDB.
 
 ### Fast text-only PDF fallback
 
@@ -602,10 +621,11 @@ that direct local Hugging Face vLLM inference has sufficient KV-cache capacity.
 
 ## Results and diagnostics
 
-Local and batch ingest report the number of input files and LanceDB rows written:
+Local and batch ingest report the number of input files and rows written, and the target index:
 
 ```text
 Ingested 20 file(s) -> 1884 row(s) in LanceDB lancedb/nemo-retriever.
+Ingested 20 file(s) -> 1884 row(s) in Qdrant http://localhost:6333/nemo-retriever.
 ```
 
 Service ingest reports the row count returned by the service result when

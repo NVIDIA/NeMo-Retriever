@@ -49,11 +49,17 @@ from nemo_retriever.common.vdb.adt_vdb import (
     VDBResourceConflict,
     VDBResourceNotFound,
 )
-from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.hybrid_fusion import DEFAULT_HYBRID_FUSION_POLICY
 from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.common.vdb.targets import (
+    DEFAULT_QDRANT_URL,
+    SUPPORTED_VDB_OPS,
+    VdbOpValue,
+    VdbTarget,
+    qdrant_api_key_from_env,
+)
 from nemo_retriever.ingest.index_mode import (
-    inspect_existing_lancedb_mode,
+    inspect_existing_index_mode,
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
@@ -233,14 +239,13 @@ class VectorDBState:
 
 def _production_vdb(
     *,
-    lancedb_uri: str,
-    table_name: str,
+    target: VdbTarget,
     expiration_cleanup_enabled: bool,
     embed_model: str,
     index_mode: ServiceIndexMode = "auto",
 ) -> VDB:
-    """Construct the sole production VDB implementation for this service."""
-    existing_mode = inspect_existing_lancedb_mode(lancedb_uri, table_name)
+    """Construct the configured production VDB for this service."""
+    existing_mode = inspect_existing_index_mode(target)
     resolved_embed_model = resolve_embed_model(embed_model)
     effective_mode = resolve_ingest_index_mode(
         index_mode,
@@ -249,35 +254,33 @@ def _production_vdb(
     )
     if effective_mode == "sparse":
         raise ValueError("The VectorDB service requires a dense vector column; sparse-only tables are unsupported.")
-    vdb_cls = get_vdb_op_cls("lancedb")
-    backend = vdb_cls(
-        uri=lancedb_uri,
-        table_name=table_name,
-        vector_dim=None,
-        overwrite=False,
-        build_index=False,
-        hybrid=effective_mode == "hybrid",
-        _service_table_schema=True,
-        _service_index_mode=index_mode,
-        embedding_model_name=resolved_embed_model,
-        expiration_cleanup_enabled=expiration_cleanup_enabled,
-    )
+    backend_kwargs: dict[str, Any] = {
+        "vector_dim": None,
+        "overwrite": False,
+        "hybrid": effective_mode == "hybrid",
+        "embedding_model_name": resolved_embed_model,
+        "expiration_cleanup_enabled": expiration_cleanup_enabled,
+    }
+    if target.vdb_op == "lancedb":
+        backend_kwargs.update(build_index=False, _service_table_schema=True, _service_index_mode=index_mode)
+    backend = target.backend(**backend_kwargs)
     if existing_mode is None:
         return backend
 
+    index = f"{target.backend_name} {target.index_noun} {target.table_name!r} at {target.location!r}"
     stored_embed_model = backend.get_index_metadata("embedding_model_name")
     if not stored_embed_model:
         raise ValueError(
-            f"Existing LanceDB table {table_name!r} at {lancedb_uri!r} does not record its embedding "
-            "model, so query compatibility cannot be verified. Rebuild the table with the configured "
-            "embedding model before starting the VectorDB service."
+            f"Existing {index} does not record its embedding model, so query compatibility cannot be "
+            f"verified. Rebuild the {target.index_noun} with the configured embedding model before starting "
+            "the VectorDB service."
         )
     resolved_stored_model = resolve_embed_model(stored_embed_model)
     if resolved_stored_model != resolved_embed_model:
         raise ValueError(
-            f"Existing LanceDB table {table_name!r} at {lancedb_uri!r} uses embedding model "
-            f"{resolved_stored_model!r}, but the VectorDB service is configured for "
-            f"{resolved_embed_model!r}. Use the index model or rebuild the table with the configured model."
+            f"Existing {index} uses embedding model {resolved_stored_model!r}, but the VectorDB service is "
+            f"configured for {resolved_embed_model!r}. Use the index model or rebuild the {target.index_noun} "
+            "with the configured model."
         )
     return backend
 
@@ -321,8 +324,18 @@ def create_vectordb_app(
     expiration_cleanup_enabled: bool = True,
     vdb: VDB | None = None,
     agentic_config: AgenticConfig | None = None,
+    vdb_op: VdbOpValue = "lancedb",
+    qdrant_url: str | None = None,
+    qdrant_api_key: str | None = None,
 ) -> FastAPI:
     """Build the VectorDB FastAPI application around an injected VDB contract."""
+    target = VdbTarget(
+        vdb_op=vdb_op,
+        lancedb_uri=lancedb_uri,
+        table_name=table_name,
+        qdrant_url=qdrant_url,
+        qdrant_api_key=qdrant_api_key,
+    )
     if reconciliation_interval_seconds < 0:
         raise ValueError("reconciliation_interval_seconds must be non-negative")
     index_mode = _validate_service_index_mode(index_mode)
@@ -338,8 +351,7 @@ def create_vectordb_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal state, agentic_executor, agentic_slots
         backend = vdb or _production_vdb(
-            lancedb_uri=lancedb_uri,
-            table_name=table_name,
+            target=target,
             expiration_cleanup_enabled=expiration_cleanup_enabled,
             embed_model=embed_model,
             index_mode=index_mode,
@@ -472,7 +484,7 @@ def create_vectordb_app(
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         current = state
-        backend_health = _safe_backend_health(current)
+        backend_health = await asyncio.to_thread(_safe_backend_health, current)
         if backend_health is None:
             raise HTTPException(503, "VectorDB backend is unavailable")
         return {
@@ -489,7 +501,7 @@ def create_vectordb_app(
         from prometheus_client import CollectorRegistry, Gauge, generate_latest
 
         registry = CollectorRegistry()
-        backend_health = _safe_backend_health(state) or {}
+        backend_health = await asyncio.to_thread(_safe_backend_health, state) or {}
         collections = backend_health.get("collections") or {}
         cleanup = backend_health.get("cleanup") or {}
         reconciliation = backend_health.get("reconciliation") or {}
@@ -566,7 +578,7 @@ def create_vectordb_app(
         )
         if isinstance(result, CollectionWriteResult):
             return WriteResponse(written=result.written, total_rows=result.total_rows)
-        backend_health = current.vdb.health()
+        backend_health = await asyncio.to_thread(current.vdb.health)
         return WriteResponse(
             written=sum(len(batch) for batch in req.records),
             total_rows=int(backend_health.get("total_rows", 0)),
@@ -735,7 +747,7 @@ def create_vectordb_app(
 
         backend_health: dict[str, Any] = {}
         if req.collection_name is None:
-            backend_health = current.vdb.health()
+            backend_health = await asyncio.to_thread(current.vdb.health)
             if backend_health.get("table_exists") is False:
                 raise VDBInvalidRequest("No data has been ingested yet. Ingest documents first, then query.")
 
@@ -835,8 +847,7 @@ def create_vectordb_app(
                 query=req.query,
                 top_k=req.top_k,
                 config=agentic_config,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
+                target=target,
                 embed_endpoint=current.embed_endpoint,
                 embed_model=current.embed_model,
                 embed_model_provider_prefix=current.embed_model_provider_prefix,
@@ -861,8 +872,20 @@ def main() -> None:
         internal_token = Path(token_file).read_text(encoding="utf-8").strip()
 
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
-    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
-    parser.add_argument("--table-name", default="nemo_retriever", help="Vector table name")
+    parser.add_argument(
+        "--vdb-op",
+        default=os.environ.get("NRL_VDB_OP", "lancedb"),
+        choices=SUPPORTED_VDB_OPS,
+        help="Vector database backend: lancedb (embedded, default) or qdrant (server).",
+    )
+    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory (--vdb-op lancedb)")
+    parser.add_argument(
+        "--qdrant-url",
+        default=os.environ.get("QDRANT_URL"),
+        help=f"Qdrant server URL for --vdb-op qdrant (default {DEFAULT_QDRANT_URL}). "
+        "The API key is read from QDRANT_API_KEY or QDRANT_API_KEY_FILE.",
+    )
+    parser.add_argument("--table-name", default="nemo_retriever", help="Vector table or Qdrant collection name")
     parser.add_argument(
         "--index-mode",
         default="auto",
@@ -957,6 +980,9 @@ def main() -> None:
     )
 
     app = create_vectordb_app(
+        vdb_op=args.vdb_op,
+        qdrant_url=args.qdrant_url,
+        qdrant_api_key=qdrant_api_key_from_env() if args.vdb_op == "qdrant" else None,
         lancedb_uri=args.lancedb_uri,
         table_name=args.table_name,
         embed_endpoint=args.embed_endpoint,

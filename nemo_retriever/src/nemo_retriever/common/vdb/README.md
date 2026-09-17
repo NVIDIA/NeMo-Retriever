@@ -5,9 +5,9 @@ This package wraps **vector database backends** behind a small `VDB` interface (
 - **`IngestVdbOperator`** — writes embedded pipeline rows into a VDB (ingestion).
 - **`RetrieveVdbOperator`** — runs similarity search given **precomputed query vectors** (retrieval).
 
-The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`.
+`get_vdb_op_cls()` in `factory.py` resolves two built-in backend keys: **`lancedb`** (the default) to **`LanceDB`** in `lancedb.py`, and **`qdrant`** to **`Qdrant`** in `qdrant.py` (see [Qdrant backend](#qdrant-backend)).
 
-The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not expose a backend-agnostic VDB configuration surface.
+The root CLI defaults to LanceDB. `retriever ingest` and `retriever query` also accept `--vdb-op qdrant`. `targets.VdbTarget` maps the CLI storage options to backend constructor kwargs, so a new CLI backend needs an entry there as well as a `VDB` implementation registered in `factory.py`.
 
 ---
 
@@ -149,7 +149,7 @@ hits_per_query = op.process(
 
 The high-level **`Retriever`** class (`retriever.py`) uses **`RetrieveVdbOperator`** internally. Pass a flat LanceDB **`vdb_kwargs`** dict with `uri`, `table_name`, filters, etc., or the explicit nested shape `{"vdb_op": "lancedb", "vdb_kwargs": {...}}`.
 
-For non-LanceDB backends, implement the `VDB` interface in a backend module, register the backend in `factory.py`, and construct `Retriever` through the SDK with `{"vdb_op": "<backend>", "vdb_kwargs": {...}}` or a concrete `{"vdb": backend_instance}`. The root `retriever query` CLI remains LanceDB-only.
+For non-LanceDB backends, implement the `VDB` interface in a backend module, register the backend in `factory.py`, and construct `Retriever` through the SDK with `{"vdb_op": "<backend>", "vdb_kwargs": {...}}` or a concrete `{"vdb": backend_instance}`. The root `retriever query` CLI supports the built-in `lancedb` and `qdrant` backends through `--vdb-op`. Other backends need an entry in `targets.VdbTarget`.
 
 It **lazy-builds** the operator:
 
@@ -252,6 +252,12 @@ Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(
 ### Hybrid retrieval
 
 Hybrid search (`hybrid=True`) is implemented for LanceDB's precomputed-vector retrieval path. It requires `query_texts` aligned one-to-one with the query vectors so the backend can combine the dense vector query with full-text search. Filters above apply to both dense and hybrid search.
+
+---
+
+## Qdrant backend
+
+`Qdrant` (`qdrant.py`, extra `nemo-retriever[qdrant]`) stores `metadata` and `source` as payload objects filtered with `query_filter`. Collections are dense (a named `dense` vector), hybrid (plus a server-computed `bm25` vector), or sparse. It implements `index_capabilities()` and `sparse_retrieval()`, which `Retriever` uses to route queries. `qdrant_collections.QdrantCollectionStore` implements the collection API with the LanceDB store's recovery states, and `tests/test_vdb_collection_backends.py` runs the same contract against both. User docs: `docs/docs/extraction/vdbs.md#use-qdrant`.
 
 ---
 

@@ -779,7 +779,7 @@ def _doc_id_from_hit(hit: dict[str, Any]) -> str:
 
 
 def _hit_score(hit: dict[str, Any]) -> float:
-    for key in ("_rerank_score", "_score", "score"):
+    for key in ("_rerank_score", "_relevance_score", "_score", "score"):
         if key in hit:
             try:
                 return float(hit[key])

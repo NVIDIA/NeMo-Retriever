@@ -18,6 +18,7 @@ from nemo_retriever.ingest.plan import (
     OcrVersionValue,
     TableOutputFormatValue,
 )
+from nemo_retriever.cli.vdb_options import QdrantApiKeyOption, QdrantUrlOption, VdbOpOption  # noqa: F401
 from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 
 DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
@@ -36,11 +37,11 @@ ProfileOption = Annotated[
 ]
 LanceDbUriOption = Annotated[
     str,
-    typer.Option("--lancedb-uri", help="LanceDB database URI."),
+    typer.Option("--lancedb-uri", help="LanceDB database URI (--vdb-op lancedb)."),
 ]
 TableNameOption = Annotated[
     str,
-    typer.Option("--table-name", help="LanceDB table name."),
+    typer.Option("--table-name", help="LanceDB table or Qdrant collection name."),
 ]
 DryRunOption = Annotated[
     bool,
@@ -212,8 +213,8 @@ OverwriteOption = Annotated[
     typer.Option(
         "--overwrite/--append",
         help=(
-            "Overwrite the target LanceDB table by default. Use --append to add rows to an existing "
-            "table without duplicate checks; rerunning the same inputs in append mode creates duplicates."
+            "Overwrite the target table or collection by default. Use --append to add rows to an existing "
+            "index without duplicate checks; rerunning the same inputs in append mode creates duplicates."
         ),
     ),
 ]

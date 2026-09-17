@@ -30,6 +30,7 @@ from nemo_retriever.common.schemas.collections import (
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
+    IndexCapabilities,
     VDB,
 )
 from nemo_retriever.common.vdb.hybrid_fusion import (
@@ -46,11 +47,11 @@ from nemo_retriever.common.vdb.lancedb_schema import (
     lancedb_schema,
     normalize_content_type,
 )
+from nemo_retriever.common.vdb.records import DEFAULT_VECTOR_DIM, build_dense_rows, build_text_rows
 
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_VECTOR_DIM: Final[int] = 2048
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
@@ -330,156 +331,26 @@ def _record_timing(event: str, duration_s: float, extra: dict | None = None):
         f.write(json.dumps(payload) + "\n")
 
 
-def _get_text_for_element(element):
-    """
-    Extract searchable text from an element based on document_type.
-
-    This prevents base64-encoded images from being stored in the text field.
-    """
-    doc_type = element.get("document_type")
-    metadata = element.get("metadata", {})
-
-    if doc_type == "text":
-        return metadata.get("content")
-    elif doc_type == "structured":
-        # Tables, charts, infographics
-        table_meta = metadata.get("table_metadata", {})
-        return table_meta.get("table_content")
-    elif doc_type == "image":
-        # Use caption/OCR text, not raw base64 image data
-        image_meta = metadata.get("image_metadata", {})
-        content_meta = metadata.get("content_metadata", {})
-        if content_meta.get("subtype") == "page_image":
-            return image_meta.get("text")
-        else:
-            return image_meta.get("caption")
-    elif doc_type == "audio":
-        audio_meta = metadata.get("audio_metadata", {})
-        return audio_meta.get("audio_transcript")
-    else:
-        # Fallback for unknown types
-        return metadata.get("content")
+def _with_json_columns(built: tuple[list, dict[str, int]]) -> tuple[list, dict[str, int]]:
+    """Encode the ``metadata`` and ``source`` columns as JSON strings, as LanceDB stores them."""
+    rows, counts = built
+    for row in rows:
+        row["metadata"] = _json_str(row["metadata"])
+        row["source"] = _json_str(row["source"])
+    return rows, counts
 
 
 def _create_lancedb_results(
     results,
     *,
-    expected_dim: int | None = _DEFAULT_VECTOR_DIM,
+    expected_dim: int | None = DEFAULT_VECTOR_DIM,
 ) -> tuple[list, dict[str, int]]:
-    """Transform Nemo Retriever Library (NRL) pipeline results into LanceDB ingestible rows.
+    """Build dense rows (see :func:`build_dense_rows`) with ``metadata`` and ``source`` as JSON strings.
 
-    Extracts the appropriate searchable text per ``document_type`` and, when
-    ``expected_dim`` is set, validates that each row's embedding is shaped
-    consistently with the LanceDB fixed-size-list schema before forwarding it
-    to the writer. Canonical image records may use ``text=""`` when both
-    ``document_type`` and ``content_metadata.type`` are ``"image"``; all other
-    dense records still require text. The graph adapter owns image-backing
-    validation and emits that normalized record shape.
-    Rows whose embedding is missing, of the wrong type, or of the wrong length
-    are dropped and counted; per-row reasons are emitted at ``DEBUG`` and a
-    single structured ``WARNING`` summary is emitted at the end of the call
-    when any drops occurred.
-
-    Passing ``expected_dim=None`` disables the length check entirely. Callers
-    that prefer to defer to LanceDB's ``on_bad_vectors`` policy on the writer
-    side (e.g. ``LanceDB(on_bad_vectors="error")``) should use this mode so
-    bad rows reach LanceDB rather than being silently dropped at the wrapper.
-
-    Args:
-        results: Iterable of pipeline output result lists, where each element
-            is a per-document list of NRL record dicts.
-        expected_dim: Required vector length, or ``None`` to skip the length
-            check. Defaults to :data:`_DEFAULT_VECTOR_DIM`.
-
-    Returns:
-        ``(rows, counts)`` where ``rows`` is the list of dicts shaped for
-        LanceDB ingestion (``vector``, ``text``, ``metadata``, ``source``)
-        and ``counts`` is a dict containing ``accepted``,
-        ``dropped_no_embedding``, ``dropped_bad_length``, and
-        ``dropped_no_text`` keys.
+    Passing ``expected_dim=None`` skips the wrapper's length check so
+    LanceDB's ``on_bad_vectors`` policy handles bad rows instead.
     """
-    lancedb_rows: list = []
-    accepted = 0
-    dropped_no_embedding = 0
-    dropped_bad_length = 0
-    dropped_no_text = 0
-
-    enforce_length = expected_dim is not None
-    expected_dim_int = int(expected_dim) if enforce_length else None
-
-    for result in results:
-        for element in result:
-            metadata = element.get("metadata", {})
-            doc_type = element.get("document_type")
-
-            embedding = metadata.get("embedding")
-            if embedding is None:
-                dropped_no_embedding += 1
-                continue
-
-            if enforce_length and (not isinstance(embedding, (list, tuple)) or len(embedding) != expected_dim_int):
-                dropped_bad_length += 1
-                got_len: Any = len(embedding) if hasattr(embedding, "__len__") else "n/a"
-                logger.debug(
-                    "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
-                    got_len,
-                    expected_dim_int,
-                    doc_type,
-                )
-                continue
-
-            content_meta = metadata.get("content_metadata", {})
-
-            text = _get_text_for_element(element)
-
-            if not isinstance(text, str) or not text.strip():
-                is_canonical_image = (
-                    doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
-                )
-                if not is_canonical_image:
-                    dropped_no_text += 1
-                    source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-                    pg_num = content_meta.get("page_number")
-                    logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
-                    continue
-                text = ""
-
-            row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-            if row_id is None and isinstance(metadata, dict):
-                row_id = metadata.get("id")
-            row_id_str = str(row_id) if row_id is not None else ""
-
-            lancedb_rows.append(
-                {
-                    "vector": embedding,
-                    "text": text,
-                    "metadata": _json_str(content_meta),
-                    "source": _json_str(metadata.get("source_metadata", {})),
-                    "id": row_id_str,
-                }
-            )
-            accepted += 1
-
-    counts: dict[str, int] = {
-        "accepted": accepted,
-        "dropped_no_embedding": dropped_no_embedding,
-        "dropped_bad_length": dropped_bad_length,
-        "dropped_no_text": dropped_no_text,
-    }
-
-    if dropped_no_embedding or dropped_bad_length or dropped_no_text:
-        expected_dim_repr = expected_dim_int if enforce_length else "None"
-        logger.warning(
-            "_create_lancedb_results: accepted=%d dropped_no_embedding=%d "
-            "dropped_bad_length=%d dropped_no_text=%d expected_dim=%s",
-            accepted,
-            dropped_no_embedding,
-            dropped_bad_length,
-            dropped_no_text,
-            expected_dim_repr,
-        )
-
-    return lancedb_rows, counts
+    return _with_json_columns(build_dense_rows(results, expected_dim=expected_dim))
 
 
 def _to_service_lancedb_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -534,49 +405,7 @@ def _to_service_lancedb_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
     """Transform NRL records into LanceDB rows for FTS-only sparse retrieval."""
-    lancedb_rows: list = []
-    accepted = 0
-    dropped_no_text = 0
-
-    for result in results:
-        for element in result:
-            metadata = element.get("metadata", {})
-            content_meta = metadata.get("content_metadata", {})
-            text = _get_text_for_element(element)
-
-            if not isinstance(text, str) or not text.strip():
-                dropped_no_text += 1
-                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-                pg_num = content_meta.get("page_number") if isinstance(content_meta, dict) else None
-                logger.debug("No text found for sparse entity: %s page: %s", source_name, pg_num)
-                continue
-
-            row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-            if row_id is None and isinstance(metadata, dict):
-                row_id = metadata.get("id")
-            row_id_str = str(row_id) if row_id is not None else ""
-
-            lancedb_rows.append(
-                {
-                    "text": text,
-                    "metadata": _json_str(content_meta),
-                    "source": _json_str(metadata.get("source_metadata", {})),
-                    "id": row_id_str,
-                }
-            )
-            accepted += 1
-
-    counts: dict[str, int] = {
-        "accepted": accepted,
-        "dropped_no_text": dropped_no_text,
-    }
-    if dropped_no_text:
-        logger.warning(
-            "_create_sparse_lancedb_results: accepted=%d dropped_no_text=%d",
-            accepted,
-            dropped_no_text,
-        )
-    return lancedb_rows, counts
+    return _with_json_columns(build_text_rows(results))
 
 
 class LanceDB(VDB):
@@ -595,7 +424,7 @@ class LanceDB(VDB):
         sparse: bool = False,
         fts_language: str = "English",
         embedding_model_name: str | None = None,
-        vector_dim: int | None = _DEFAULT_VECTOR_DIM,
+        vector_dim: int | None = DEFAULT_VECTOR_DIM,
         on_bad_vectors: str = "drop",
         fill_value: float = 0.0,
         validate_vector_length: bool = True,
@@ -1018,6 +847,16 @@ class LanceDB(VDB):
         if value is None:
             return None
         return value.decode("utf-8", errors="replace").strip() or None
+
+    def index_capabilities(self, **kwargs: Any) -> IndexCapabilities | None:
+        """Inspect the selected table, or return ``None`` when it does not exist."""
+        uri = str(kwargs.get("table_path") or kwargs.get("uri") or kwargs.get("lancedb_uri") or self.uri)
+        table_name = str(kwargs.get("table_name") or kwargs.get("lancedb_table") or self.table_name)
+        if table_name not in self._connect(uri).list_tables().tables:
+            return None
+        table = self._open_table(table_name, uri=uri)
+        self._checkout_latest(table)
+        return inspect_lancedb_table_object(table)
 
     def create_index(self, records=None, table_name: str = "nemo-retriever", **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.

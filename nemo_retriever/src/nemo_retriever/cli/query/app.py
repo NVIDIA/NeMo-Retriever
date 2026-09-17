@@ -165,7 +165,8 @@ def _retrieval_options(
     cls=DefaultLocalQueryCommand,
     hidden=True,
     help=(
-        "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
+        "Query a LanceDB or Qdrant index produced by local or batch ingest; "
+        "retrieval mode auto-detects the index.\n\n"
         "Embedding model: read from the selected table when available; "
         "dense and hybrid tables without embedding-model metadata must be rebuilt.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
@@ -180,6 +181,9 @@ def _local_command(
     content_types: opts.ContentTypesOption = None,
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
     table_name: opts.TableNameOption = "nemo-retriever",
+    vdb_op: opts.VdbOpOption = "lancedb",
+    qdrant_url: opts.QdrantUrlOption = None,
+    qdrant_api_key: opts.QdrantApiKeyOption = None,
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
     embed_model_name: opts.EmbedModelNameOption = None,
     embed_model_provider_prefix: opts.EmbedModelProviderPrefixOption = None,
@@ -278,6 +282,9 @@ def _local_command(
                 storage=QueryStorageOptions(
                     lancedb_uri=lancedb_uri,
                     table_name=table_name,
+                    vdb_op=vdb_op,
+                    qdrant_url=qdrant_url,
+                    qdrant_api_key=qdrant_api_key,
                 ),
                 agentic=QueryAgenticOptions(
                     enabled=agentic,
@@ -325,6 +332,9 @@ def _local_command(
                 storage=QueryStorageOptions(
                     lancedb_uri=lancedb_uri,
                     table_name=table_name,
+                    vdb_op=vdb_op,
+                    qdrant_url=qdrant_url,
+                    qdrant_api_key=qdrant_api_key,
                 ),
             )
 
