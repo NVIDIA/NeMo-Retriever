@@ -47,7 +47,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same extraction DataFrame row shape as other extracted objects.
 
 !!! important "Chart modality requires the default layout path"
     [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
@@ -122,7 +122,7 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
-Extracted objects follow the schema and field descriptions in the [Metadata reference](content-metadata.md). Use that page for tables, types, and per-field notes.
+Extraction-only DataFrame rows are flat. Nested `MetadataSchema` objects such as `source_metadata`, `content_metadata`, `text_metadata`, and `table_metadata` are not present until the library converts rows for vector-database upload. Refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata) for the extraction row shape, the nested schema, and the Method column scope.
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 

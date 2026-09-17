@@ -12,7 +12,11 @@ Some NIM microservices and models that the library calls may be individually cov
 
 Yes. Use the Python API to extract content, then pass the extracted rows into your existing retrieval stack.
 
-Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list. Typical columns include `text`, `content`, `path`, `page_number`, and `metadata`. For field-level metadata, refer to [Metadata reference](content-metadata.md). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+Chain `.files()`, `.extract()`, and `.ingest()`. Omit `.embed()` and `.vdb_upload()` so the graph does not embed or write an index. The result is a `pandas.DataFrame` with one row per extracted unit, not a one-entry list.
+
+Typical columns include `source_id`, `path`, `page_number`, `text`, and `metadata`. When tables are extracted, inspect `table` list items for `text`. The `metadata` value is a diagnostics dictionary, for example `dpi`, `source_path`, and `has_text`. It does not contain nested `source_metadata`, `content_metadata`, `text_metadata`, or `table_metadata` objects.
+
+Those nested blocks appear when the library converts rows for vector-database upload. For the extraction row shape and the nested schema, refer to [Extraction DataFrame and nested metadata](content-metadata.md#extraction-dataframe-versus-nested-metadata). For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 The following example extracts Markdown without embedding or writing an index.
 
