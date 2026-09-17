@@ -371,6 +371,26 @@ def test_ingest_operator_rejects_nonempty_batch_with_zero_uploadable_records() -
     assert vdb.run_calls == []
 
 
+def test_ingest_operator_rejects_runtime_empty_vectors_before_backend_call() -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": text,
+            "text_embeddings_1b_v2": {
+                "embedding": [],
+                "error": "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause",
+            },
+        }
+        for text in ("valid neighbor before", "valid neighbor after")
+    ]
+
+    with pytest.raises(VdbUploadError, match=r"none were uploadable"):
+        operator(data)
+
+    assert vdb.run_calls == []
+
+
 def test_ingest_operator_reports_upstream_error_counts_without_payloads() -> None:
     vdb = FakeVDB()
     operator = IngestVdbOperator(vdb=vdb)

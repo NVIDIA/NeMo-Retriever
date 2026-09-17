@@ -7,6 +7,7 @@ from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
 from nemo_retriever.operators.extract.ocr.ocr import OCRActor
 from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
 from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -17,6 +18,7 @@ from nemo_retriever.common.params import ASRParams
 from nemo_retriever.common.params import AudioChunkParams
 from nemo_retriever.common.params import BatchTuningParams
 from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import DedupParams
 from nemo_retriever.common.params import EmbedParams
 from nemo_retriever.common.params import ExtractParams
 from nemo_retriever.common.params import StoreParams
@@ -69,6 +71,81 @@ def test_base_ingest_plan_builds_audio_execution_plan() -> None:
     assert execution_plan.has_extraction() is True
 
 
+def test_build_graph_omits_disabled_dedup_and_preserves_hash_only_configuration() -> None:
+    disabled_graph = build_graph(
+        extract_params=ExtractParams(),
+        dedup_params=DedupParams(content_hash=False, bbox_iou=False),
+        stage_order=("dedup",),
+    )
+    hash_only_graph = build_graph(
+        extract_params=ExtractParams(),
+        dedup_params=DedupParams(content_hash=True, bbox_iou=False),
+        stage_order=("dedup",),
+    )
+
+    assert "DedupImages" not in [getattr(node.operator, "name", node.name) for node in _linear_nodes(disabled_graph)]
+    dedup_node = next(
+        node for node in _linear_nodes(hash_only_graph) if getattr(node.operator, "name", node.name) == "DedupImages"
+    )
+    assert dedup_node.operator.fn.keywords == {
+        "content_hash": True,
+        "bbox_iou": False,
+        "iou_threshold": 0.45,
+    }
+
+
+@pytest.mark.parametrize(
+    ("dedup_params", "expected_operators", "expected_image_count"),
+    [
+        pytest.param(DedupParams(), ["DedupImages", "CaptionStub"], 0, id="default"),
+        pytest.param(
+            DedupParams(content_hash=False, bbox_iou=False),
+            ["CaptionStub"],
+            1,
+            id="disabled",
+        ),
+    ],
+)
+def test_post_extract_graph_dedup_policy_controls_caption_input(
+    monkeypatch, dedup_params, expected_operators, expected_image_count
+) -> None:
+    import pandas as pd
+
+    from nemo_retriever.graph import InprocessExecutor, UDFOperator
+    from nemo_retriever.graph import ingestor_runtime
+
+    caption_images = []
+
+    def caption_stub(_params):
+        def capture_images(data):
+            caption_images.extend(data["images"])
+            return data
+
+        return UDFOperator(capture_images, name="CaptionStub")
+
+    monkeypatch.setattr(ingestor_runtime, "CaptionActor", caption_stub)
+    graph = ingestor_runtime.build_post_extract_graph(
+        dedup_params=dedup_params,
+        caption_params=CaptionParams(),
+        stage_order=("dedup", "caption"),
+    )
+    source = pd.DataFrame(
+        {
+            "images": [[{"image_b64": "X", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0]}]],
+            "table": [[{"text": "table", "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0]}]],
+            "chart": [[]],
+            "infographic": [[]],
+        }
+    )
+
+    result = InprocessExecutor(graph, show_progress=False).ingest(source)
+
+    assert [node.operator.name for node in _linear_nodes(graph)] == expected_operators
+    assert len(caption_images) == 1
+    assert len(caption_images[0]) == expected_image_count
+    assert len(result.iloc[0]["images"]) == expected_image_count
+
+
 def test_build_graph_accepts_execution_plan_with_split_config() -> None:
     plan = BaseIngestPlan()
     plan.set_extraction(mode="text", text_params=TextChunkParams(max_tokens=64))
@@ -89,10 +166,9 @@ def test_build_graph_accepts_execution_plan_with_split_config() -> None:
             break
         node = node.children[0]
 
-    # Text path uses MultiTypeExtractOperator; split_config['text'] = 32-token
-    # params is forwarded into TxtSplitActor inside the operator (no separate
-    # TextChunkActor at graph level here).
-    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
+    assert names == ["TxtSplitActor", "_BatchEmbedActor"]
+    assert isinstance(graph.roots[0].operator, TxtSplitActor)
+    assert graph.roots[0].operator_kwargs["params"].max_tokens == 32
 
 
 def test_build_graph_inserts_ingest_vdb_before_webhook() -> None:
@@ -423,6 +499,59 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=32, gpu_count=1),
+        available_resources=Resources(cpu_count=32, gpu_count=1),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        ExtractParams(),
+        None,
+        cluster_resources=cluster,
+        extraction_mode="text",
+    )
+
+    assert overrides["TxtSplitActor"] == {"concurrency": 8, "num_cpus": 1, "num_gpus": 0.0}
+
+
+def test_batch_preflight_reduces_file_backed_text_pool_for_reader_cpu() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    resources = Resources(cpu_count=4, gpu_count=0)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    overrides = batch_tuning_to_node_overrides(None, None, cluster_resources=cluster, extraction_mode="text")
+    graph = build_graph(extraction_mode="text", stage_order=())
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=overrides,
+        auto_concurrency_nodes=default_concurrency_node_names(None, None, None, None),
+        source_cpu_reservation=1,
+    )
+
+    executor._preflight_resources(executor._linearize(graph), 4, 0)
+
+    assert overrides["TxtSplitActor"]["concurrency"] == 3
+
+
+def test_batch_preflight_rejects_explicit_text_pool_that_excludes_reader() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    explicit = {"TxtSplitActor": {"concurrency": 4, "num_cpus": 1, "num_gpus": 0.0}}
+    graph = build_graph(extraction_mode="text", stage_order=())
+    executor = RayDataExecutor(
+        graph,
+        node_overrides=explicit,
+        auto_concurrency_nodes=default_concurrency_node_names(None, None, None, None) - set(explicit),
+        source_cpu_reservation=1,
+    )
+
+    with pytest.raises(ValueError, match="requested at least 5 CPUs"):
+        executor._preflight_resources(executor._linearize(graph), 4, 0)
+
+
 def test_batch_preflight_rejects_infeasible_explicit_tuning() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
@@ -657,7 +786,7 @@ def test_build_inprocess_graph_supports_text_execution_plan() -> None:
             break
         node = node.children[0]
 
-    assert names == ["MultiTypeExtractOperator", "_BatchEmbedActor"]
+    assert names == ["TxtSplitActor", "_BatchEmbedActor"]
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")

@@ -71,7 +71,7 @@ service:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
     repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.8.1"
+    tag: "26.8.2"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -1079,7 +1079,7 @@ nimOperator:
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.08.1)" for the
+  # See helm/README.md "Recommended minimal install (26.8.2)" for the
   # opt-in flags and "Image tag conventions" for what the
   # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
@@ -1341,6 +1341,11 @@ nimOperator:
     # Cache only the default BF16 2-GPU profile used by the Super-49B
     # default resources. Override this when deploying a different model,
     # profile, or GPU topology.
+    # A single explicit profile in the effective cache configuration also
+    # selects the runtime profile. Empty/filter-only/multiple-profile
+    # configurations preserve automatic runtime selection. An explicit
+    # NIM_MODEL_PROFILE env entry overrides this runtime selection.
+    # Set profiles: [] to remove the bundled pin.
     modelProfile:
       profiles:
         - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"

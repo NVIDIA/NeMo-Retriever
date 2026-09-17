@@ -73,7 +73,7 @@ def _service_command(
     ] = False,
     caption_context_text_max_chars: opts.CaptionContextTextMaxCharsOption = None,
     caption_infographics: opts.CaptionInfographicsOption = None,
-    dedup: opts.DedupOption = False,
+    dedup: opts.DedupOption = None,
     dedup_iou_threshold: opts.DedupIouThresholdOption = None,
     store_images_uri: Annotated[
         str | None,
