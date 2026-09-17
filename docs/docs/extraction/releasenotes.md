@@ -2,19 +2,30 @@
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).
 
-## 26.08.1 Helm Chart Patch { #release-26081-helm-patch }
+## 26.08.2 Release Notes (26.8.2) { #release-26082 }
 
-The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment).
+NVIDIA® NeMo Retriever Library version 26.08.2 is a patch on 26.08.1. The Helm chart version, application version, and default service image tag are `26.8.2`. It includes embedding overflow handling, hosted Super-49B availability changes, Helm air-gapped image inventory updates, and related service and query fixes.
 
-NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on
-`https://integrate.api.nvidia.com` reached end of life on August 26, 2026
-and returns HTTP 410.
-The self-hosted Helm `answer_llm` NIM image
-`nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged.
-For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible
-model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic
-retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM.
-Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md).
+
+### Upgrade notes { #upgrade-notes-26082 }
+
+- NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. The self-hosted Helm `answer_llm` NIM image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged. For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+- The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment).
+
+### Embedding and VectorDB { #embedding-and-vectordb-26082 }
+
+- Overlength extracted text is split into deterministic, contiguous pieces before embedding. One oversized page no longer silently drops trailing tokens or prevents nearby pages from becoming searchable. Text that fits the model limit is not split. Image-bearing inputs keep the existing truncation policy.
+- Embedding requires one vector per admitted row and rejects incomplete coverage before a VectorDB write. A partial embedding batch cannot report success with missing searchable rows.
+
+### Other fixes { #other-fixes-26082 }
+
+- Remote OCR crop batching runs across page rows, matching the local throughput path.
+- Graph ingestion errors preserve diagnostic records across process boundaries. Formatted error strings no longer expand into character-wise pseudo-records.
+- Retriever Service result payloads return complete legacy string values and requested embeddings.
+- Agentic retrieval applies document `top_k` after chunk deduplication.
+- Hybrid query results preserve ranking scores in public responses.
+- Local in-process Super-49B tensor-parallel agentic startup no longer fails on multi-GPU hosts.
 
 ## 26.08.1 Release Notes (26.8.1) { #release-26081 }
 
@@ -46,7 +57,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Answer generation { #answer-generation }
 
-- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The self-hosted default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The NVIDIA-hosted Super-49B Build endpoint reached end of life on August 26, 2026. Refer to [26.08.1 Helm Chart Patch](#release-26081-helm-patch). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including hosted `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The self-hosted default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The NVIDIA-hosted Super-49B Build endpoint reached end of life on August 26, 2026. Refer to [26.08.2 Release Notes (26.8.2)](#release-26082). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including hosted `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
 - Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Agentic retrieval { #agentic-retrieval }
