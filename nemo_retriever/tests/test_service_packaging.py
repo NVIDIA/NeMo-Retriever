@@ -9,7 +9,6 @@ from pathlib import Path
 
 from packaging.requirements import Requirement
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
