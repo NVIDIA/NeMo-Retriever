@@ -50,17 +50,21 @@ class VdbTarget:
 
     @property
     def backend_name(self) -> str:
+        """Display name of the backend."""
         return "Qdrant" if self.vdb_op == "qdrant" else "LanceDB"
 
     @property
     def index_noun(self) -> str:
+        """What the backend calls an index: ``table`` or ``collection``."""
         return "collection" if self.vdb_op == "qdrant" else "table"
 
     @property
     def location(self) -> str:
+        """LanceDB directory or Qdrant URL."""
         return self.lancedb_uri if self.vdb_op == "lancedb" else (self.qdrant_url or DEFAULT_QDRANT_URL)
 
     def vdb_kwargs(self) -> dict[str, Any]:
+        """Constructor arguments for the backend class."""
         if self.vdb_op == "lancedb":
             return {"uri": self.lancedb_uri, "table_name": self.table_name}
         kwargs: dict[str, Any] = {"collection_name": self.table_name}
@@ -75,4 +79,5 @@ class VdbTarget:
         return f"{self.backend_name} {self.location}/{self.table_name}"
 
     def backend(self, **kwargs: Any) -> VDB:
+        """Create the backend. ``kwargs`` override the target's own arguments."""
         return get_vdb_op_cls(self.vdb_op)(**{**self.vdb_kwargs(), **kwargs})

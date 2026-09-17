@@ -9,7 +9,7 @@ services:
   qdrant:
     image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.19.1}
     ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-6333}:6333"
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
     volumes:

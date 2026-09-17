@@ -127,17 +127,17 @@ def _vector_bytes(vector: Any) -> int:
     return 25 * len(vector)
 
 
-def point_bytes(point: Any) -> int:
+def _point_bytes(point: Any) -> int:
     payload = getattr(point, "payload", None)
     return _vector_bytes(point.vector) + (len(json.dumps(payload)) if payload else 0) + 64
 
 
-def point_batches(points: Iterable[Any], max_count: int) -> Iterator[list[Any]]:
+def _point_batches(points: Iterable[Any], max_count: int) -> Iterator[list[Any]]:
     """Split points by count and estimated request size. A batch always has at least one point."""
     batch: list[Any] = []
     batch_bytes = 0
     for point in points:
-        size = point_bytes(point)
+        size = _point_bytes(point)
         if batch and (len(batch) >= max_count or batch_bytes + size > MAX_REQUEST_BYTES):
             yield batch
             batch, batch_bytes = [], 0
@@ -147,7 +147,7 @@ def point_batches(points: Iterable[Any], max_count: int) -> Iterator[list[Any]]:
         yield batch
 
 
-def scroll_points(client: QdrantClient, name: str, **kwargs: Any) -> Iterator[Any]:
+def _scroll_points(client: QdrantClient, name: str, **kwargs: Any) -> Iterator[Any]:
     offset = None
     while True:
         points, offset = client.scroll(name, limit=_SCROLL_PAGE, offset=offset, **kwargs)
@@ -156,7 +156,7 @@ def scroll_points(client: QdrantClient, name: str, **kwargs: Any) -> Iterator[An
             return
 
 
-def query_batch(client: QdrantClient, name: str, requests: list[models.QueryRequest]) -> list[Any]:
+def _query_batch(client: QdrantClient, name: str, requests: list[models.QueryRequest]) -> list[Any]:
     # A few queries per request keeps large query vectors under the request size limit.
     responses: list[Any] = []
     for start in range(0, len(requests), QUERIES_PER_REQUEST):
@@ -193,7 +193,16 @@ class Qdrant(VDB):
         expiration_cleanup_enabled: bool = True,
         payload_indexes: list[str] | tuple[str, ...] | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
+        """Configure the target collection. The client connects on first use.
+
+        ``url``, ``api_key`` and ``client_kwargs`` go to ``QdrantClient``. ``hybrid`` adds a BM25 vector next to the
+        dense one and ``sparse`` stores only BM25. ``overwrite`` recreates the collection on the first write, otherwise
+        writes append. ``payload_indexes`` adds keyword indexes for filtered keys, which strict-mode servers require.
+
+        Raises:
+            ValueError: If the options conflict or are out of range.
+        """
         if sparse and hybrid:
             raise ValueError("Qdrant sparse ingest cannot also be hybrid; pass only one retrieval mode.")
         if bm25_options and not (hybrid or sparse):
@@ -245,6 +254,7 @@ class Qdrant(VDB):
 
     @property
     def client(self) -> QdrantClient:
+        """The shared client, created on first use."""
         if self._client is None:
             with self._client_lock:
                 if self._client is None:
@@ -286,6 +296,7 @@ class Qdrant(VDB):
         return {key: value for key, value in metadata.items() if value}
 
     def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
+        """Return a value recorded on the collection, such as ``embedding_model_name``, or ``None``."""
         config = self._config(self._name(kwargs), cached=True)
         value = (config.metadata or {}).get(_metadata_key(key)) if config else None
         if value is None:
@@ -293,6 +304,7 @@ class Qdrant(VDB):
         return str(value).strip() or None
 
     def index_capabilities(self, **kwargs: Any) -> IndexCapabilities | None:
+        """Describe the collection layout, or return ``None`` if the collection does not exist."""
         name = self._name(kwargs)
         config = self._config(name, cached=True)
         if config is None:
@@ -352,7 +364,7 @@ class Qdrant(VDB):
             else:
                 vector = {DENSE_VECTOR_NAME: row["vector"]}
             points.append(models.PointStruct(id=point_id, vector=vector, payload=payload))
-        for batch in point_batches(points, self.batch_size):
+        for batch in _point_batches(points, self.batch_size):
             self.client.upload_points(name, batch, batch_size=len(batch), wait=True)
 
     def _add_bm25(self, name: str, config: Any) -> None:
@@ -383,9 +395,9 @@ class Qdrant(VDB):
             models.PointVectors(
                 id=point.id, vector={SPARSE_VECTOR_NAME: _bm25((point.payload or {}).get("text") or "", options)}
             )
-            for point in scroll_points(self.client, name, with_payload=["text"])
+            for point in _scroll_points(self.client, name, with_payload=["text"])
         )
-        for batch in point_batches(updates, self.batch_size):
+        for batch in _point_batches(updates, self.batch_size):
             self.client.update_vectors(name, points=batch, wait=True)
         self.client.update_collection(name, metadata={_BM25_BACKFILL_KEY: "complete"})
         self._info_cache.pop(name, None)
@@ -478,6 +490,7 @@ class Qdrant(VDB):
         return len(rows)
 
     def run(self, records: list) -> list:
+        """Create or validate the collection, write the records and return them."""
         rows, dim = self._rows(list(records or []))
         self.create_index(vector_dim=dim)
         written = self.write_to_index(records, rows=rows)
@@ -485,6 +498,7 @@ class Qdrant(VDB):
         return records
 
     def reindex(self, records: list, **kwargs: Any) -> None:
+        """Recreate the collection and write the records."""
         rows, dim = self._rows(list(records or []))
         self.create_index(vector_dim=dim, recreate=True)
         self.write_to_index(records, rows=rows)
@@ -516,7 +530,7 @@ class Qdrant(VDB):
         self._ensure_payload_indexes(name, info, [key])
         point_ids: dict[Any, list[Any]] = {}
         key_filter = models.Filter(must=[models.FieldCondition(key=key, match=models.MatchAny(any=values))])
-        for match in scroll_points(self.client, name, scroll_filter=key_filter, with_payload=[key]):
+        for match in _scroll_points(self.client, name, scroll_filter=key_filter, with_payload=[key]):
             point_ids.setdefault(match.payload[key], []).append(match.id)
 
         missing = [value for value in dict.fromkeys(values) if value not in point_ids]
@@ -548,7 +562,7 @@ class Qdrant(VDB):
         return query_filter, params, top_k
 
     def _search(self, name: str, requests: list[Any], score_key: str) -> list[list[dict[str, Any]]]:
-        responses = query_batch(self.client, name, requests)
+        responses = _query_batch(self.client, name, requests)
         return [[{**(hit.payload or {}), score_key: hit.score} for hit in response.points] for response in responses]
 
     def _existing_config(self, name: str, usable: Callable[[Any], bool]) -> Any:
@@ -680,6 +694,11 @@ class Qdrant(VDB):
         return store
 
     def health(self) -> dict[str, Any]:
+        """Report the collection layout, row count and catalog state.
+
+        Raises:
+            RuntimeError: If the collection catalog failed to initialize.
+        """
         from nemo_retriever.common.vdb.qdrant_collections import QdrantCollectionStore
 
         config = self._config(self.collection_name, cached=True)
@@ -696,36 +715,45 @@ class Qdrant(VDB):
         }
 
     def create_collection(self, *, scope: str, request: CollectionCreateRequest) -> CollectionInfo:
+        """Create a logical collection. See ``QdrantCollectionStore``."""
         return self._get_collection_store().create_collection(scope, request)
 
     def get_collection(self, *, scope: str, collection_name: str) -> CollectionInfo:
+        """Return a logical collection."""
         return self._get_collection_store().get_collection(scope, collection_name)
 
     def list_collections(self, *, scope: str, limit: int, continuation_token: str | None) -> CollectionPage:
+        """List the logical collections in ``scope``."""
         return self._get_collection_store().list_collections(scope, limit, continuation_token)
 
     def update_collection(
         self, *, scope: str, collection_name: str, request: CollectionUpdateRequest
     ) -> CollectionInfo:
+        """Update a logical collection's settings."""
         return self._get_collection_store().update_collection(scope, collection_name, request)
 
     def delete_collection(self, *, scope: str, collection_name: str, if_exists: bool) -> CollectionDeleteResult:
+        """Delete a logical collection and its chunks."""
         return self._get_collection_store().delete_collection(scope, collection_name, if_exists)
 
     def get_document(self, *, scope: str, collection_name: str, document_id: str) -> DocumentInfo:
+        """Return a document in a logical collection."""
         return self._get_collection_store().get_document(scope, collection_name, document_id)
 
     def list_documents(
         self, *, scope: str, collection_name: str, limit: int, continuation_token: str | None
     ) -> DocumentPage:
+        """List the documents in a logical collection."""
         return self._get_collection_store().list_documents(scope, collection_name, limit, continuation_token)
 
     def delete_document(
         self, *, scope: str, collection_name: str, document_id: str, if_exists: bool
     ) -> DocumentDeleteResult:
+        """Delete a document and its chunks."""
         return self._get_collection_store().delete_document(scope, collection_name, document_id, if_exists)
 
     def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
+        """Append or replace documents in a logical collection."""
         return self._get_collection_store().write_collection(records, context=context)
 
     def retrieve_collection(
@@ -738,9 +766,11 @@ class Qdrant(VDB):
         top_k: int,
         **kwargs: Any,
     ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        """Search a logical collection. Returns the hits per query and the retrieval strategies used."""
         return self._get_collection_store().retrieve_collection(
             vectors, scope=scope, collection_name=collection_name, query_texts=query_texts, top_k=top_k, **kwargs
         )
 
     def reconcile_collections(self) -> dict[str, int]:
+        """Finish interrupted writes and deletes, and remove expired collections."""
         return self._get_collection_store().reconcile_collections()

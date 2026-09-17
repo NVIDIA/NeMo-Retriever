@@ -51,9 +51,9 @@ from nemo_retriever.common.vdb.lancedb_schema import infer_vector_dim
 from nemo_retriever.common.vdb.qdrant import (
     DENSE_VECTOR_NAME,
     _metadata_key,
-    point_batches,
-    query_batch,
-    scroll_points,
+    _point_batches,
+    _query_batch,
+    _scroll_points,
 )
 from nemo_retriever.common.vdb.records import RetrievalContractError
 
@@ -101,6 +101,11 @@ class QdrantCollectionStore:
     """Collection API for the Qdrant backend."""
 
     def __init__(self, backend: Any, *, expiration_cleanup_enabled: bool = True) -> None:
+        """Use ``backend``'s client and create the catalog if it is missing.
+
+        Raises:
+            RuntimeError: If the existing catalog has an incompatible schema.
+        """
         self._backend = backend
         self._client = backend.client
         self.expiration_cleanup_enabled = expiration_cleanup_enabled
@@ -142,7 +147,7 @@ class QdrantCollectionStore:
             self._client.create_payload_index(CATALOG_COLLECTION, field, models.PayloadSchemaType.KEYWORD)
 
     def _scroll(self, collection: str, scroll_filter: Any, with_payload: Any = True) -> list[dict[str, Any]]:
-        points = scroll_points(self._client, collection, scroll_filter=scroll_filter, with_payload=with_payload)
+        points = _scroll_points(self._client, collection, scroll_filter=scroll_filter, with_payload=with_payload)
         return [dict(point.payload or {}) for point in points]
 
     def _rows(self, kind: str, scroll_filter: Any = None, with_payload: Any = True) -> list[dict[str, Any]]:
@@ -227,6 +232,11 @@ class QdrantCollectionStore:
         self._upsert_catalog(_collection_point(row["scope"], row["name"]), row)
 
     def create_collection(self, scope: str, request: CollectionCreateRequest) -> CollectionInfo:
+        """Create an empty logical collection in ``scope``.
+
+        Raises:
+            VDBResourceConflict: If the collection already exists.
+        """
         with self._write_lock:
             if self._collection_row(scope, request.name):
                 raise VDBResourceConflict(f"Collection {request.name!r} already exists")
@@ -254,6 +264,11 @@ class QdrantCollectionStore:
             return self._collection_info(row)
 
     def list_collections(self, scope: str, limit: int, continuation_token: str | None) -> CollectionPage:
+        """List collections by name, ``limit`` per page.
+
+        Raises:
+            VDBInvalidRequest: If ``continuation_token`` is invalid.
+        """
         rows = sorted(self._rows("collection", _where(scope=scope)), key=lambda row: row["name"])
         last = _decode_cursor(continuation_token, resource="collections", scope=scope, collection=None)
         if last is not None:
@@ -267,6 +282,12 @@ class QdrantCollectionStore:
         return CollectionPage(items=[self._collection_info(row) for row in page], next_token=next_token)
 
     def update_collection(self, scope: str, name: str, request: CollectionUpdateRequest) -> CollectionInfo:
+        """Update the description, metadata or expiry of an active collection.
+
+        Raises:
+            VDBResourceNotFound: If the collection does not exist.
+            VDBInvalidRequest: If the collection is not active.
+        """
         with self._write_lock:
             row = self._collection_row(scope, name, active=True)
             if not row:
@@ -521,7 +542,7 @@ class QdrantCollectionStore:
                     )
                     for index, row in enumerate(rows)
                 ]
-                for batch in point_batches(points, 256):
+                for batch in _point_batches(points, 256):
                     self._client.upload_points(chunks_collection, batch, batch_size=len(batch), wait=True)
                 if context.operation is IngestOperation.REPLACE:
                     # Queries only see the committed generation, so commit before pruning.
@@ -614,7 +635,7 @@ class QdrantCollectionStore:
                 )
                 for vector in vectors
             ]
-            responses = query_batch(self._client, chunks_collection, requests)
+            responses = _query_batch(self._client, chunks_collection, requests)
             raw_results = [
                 [{**(hit.payload or {}), "_distance": max(0.0, 1.0 - hit.score)} for hit in response.points]
                 for response in responses
@@ -629,6 +650,12 @@ class QdrantCollectionStore:
     def list_documents(
         self, scope: str, collection_name: str, limit: int, continuation_token: str | None
     ) -> DocumentPage:
+        """List committed documents by creation time, ``limit`` per page.
+
+        Raises:
+            VDBResourceNotFound: If the collection does not exist.
+            VDBInvalidRequest: If the collection is not active or ``continuation_token`` is invalid.
+        """
         self._resolved_table(scope, collection_name)
         rows = self._rows("document", _where(scope=scope, collection_name=collection_name))
         rows = [row for row in rows if not _is_uncommitted_initial_append(row)]
@@ -743,6 +770,7 @@ class QdrantCollectionStore:
             return False
 
     def reconcile_collections(self) -> dict[str, int]:
+        """Finish interrupted document writes, then delete expired and half-deleted collections."""
         successes = 0
         failures = 0
         now = datetime.now(timezone.utc)
@@ -795,6 +823,7 @@ class QdrantCollectionStore:
         return {"successes": successes, "failures": failures}
 
     def health(self) -> dict[str, Any]:
+        """Report catalog cleanup state and reconciliation counters."""
         now = datetime.now(timezone.utc)
         collections = self._rows("collection", with_payload=["status", "expires_at", "delete_started_at"])
         documents = self._rows(
