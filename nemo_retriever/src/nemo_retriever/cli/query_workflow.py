@@ -7,7 +7,15 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_retriever.query.options import QueryRequest
-from nemo_retriever.query.workflow import AgenticQueryDocumentsResult, QueryDocumentsResult
+from nemo_retriever.query.workflow import (
+    AgenticAnswerDocumentsResult,
+    AgenticQueryDocumentsResult,
+    QueryDocumentsResult,
+)
+from nemo_retriever.query.workflow import agentic_answer_documents as run_agentic_answer_documents
+from nemo_retriever.query.workflow import (
+    agentic_answer_documents_with_metadata as run_agentic_answer_documents_with_metadata,
+)
 from nemo_retriever.query.workflow import agentic_query_documents as run_agentic_query_documents
 from nemo_retriever.query.workflow import (
     agentic_query_documents_with_metadata as run_agentic_query_documents_with_metadata,
@@ -35,3 +43,13 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
 def agentic_query_documents_with_metadata(request: QueryRequest) -> AgenticQueryDocumentsResult:
     """Run the typed root agentic query workflow with LLM usage metadata."""
     return run_agentic_query_documents_with_metadata(request)
+
+
+def agentic_answer_documents(request: QueryRequest) -> dict[str, Any]:
+    """Run the typed integrated agentic answer workflow."""
+    return run_agentic_answer_documents(request)
+
+
+def agentic_answer_documents_with_metadata(request: QueryRequest) -> AgenticAnswerDocumentsResult:
+    """Run the integrated agentic answer workflow with LLM usage metadata."""
+    return run_agentic_answer_documents_with_metadata(request)

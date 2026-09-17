@@ -71,7 +71,7 @@ from nemo_retriever.service.errors import (
     RetrieverServiceNotFoundError,
     RetrieverServiceValidationError,
 )
-from nemo_retriever.service.query_schema import QueryResponse
+from nemo_retriever.service.query_schema import AgenticAnswerResponse, QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -596,6 +596,19 @@ class RetrieverServiceClient:
         if collection_name and isinstance(query, str):
             return [self._query_hit(hit) for hit in parsed[0]]
         return parsed
+
+    def agentic_answer(self, query: str, *, top_k: int = 5) -> AgenticAnswerResponse:
+        """Research and answer a query with the service's integrated ReAct agent."""
+        return self._run(self.aagentic_answer(query, top_k=top_k))
+
+    async def aagentic_answer(self, query: str, *, top_k: int = 5) -> AgenticAnswerResponse:
+        """Asynchronously run integrated agentic answer mode."""
+        body = await self._arequest(
+            "POST",
+            "/v1/answer",
+            json={"query": str(query), "top_k": int(top_k), "mode": "agentic"},
+        )
+        return self._model(AgenticAnswerResponse, body, "agentic answer")
 
     # ------------------------------------------------------------------
     # Job lifecycle

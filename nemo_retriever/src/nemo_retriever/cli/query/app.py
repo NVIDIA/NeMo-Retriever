@@ -14,6 +14,10 @@ from typer.core import TyperCommand, TyperGroup
 
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
+from nemo_retriever.cli.query_workflow import agentic_answer_documents as query_agentic_answer
+from nemo_retriever.cli.query_workflow import (
+    agentic_answer_documents_with_metadata as query_agentic_answer_with_metadata,
+)
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import (
     agentic_query_documents_with_metadata as query_agentic_documents_with_metadata,
@@ -192,6 +196,7 @@ def _local_command(
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
+    agentic_mode: opts.AgenticModeOption = "select",
     include_usage: opts.IncludeUsageOption = False,
     agentic_llm_model: opts.AgenticLlmModelOption = None,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
@@ -205,6 +210,12 @@ def _local_command(
     _validate_output_options(output_format, max_text_chars)
     if include_usage and not agentic:
         typer.echo("Error: --include-usage requires --agentic.", err=True)
+        raise typer.Exit(1)
+    if agentic_mode != "select" and not agentic:
+        typer.echo("Error: --agentic-mode answer requires --agentic.", err=True)
+        raise typer.Exit(1)
+    if agentic and agentic_mode == "answer" and output_format != "hits":
+        typer.echo("Error: --agentic-mode answer requires --format hits.", err=True)
         raise typer.Exit(1)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
@@ -292,11 +303,26 @@ def _local_command(
                 ),
             )
             with quiet_capture():
-                if include_usage:
+                if agentic_mode == "answer" and include_usage:
+                    result = query_agentic_answer_with_metadata(request)
+                elif agentic_mode == "answer":
+                    result = query_agentic_answer(request)
+                elif include_usage:
                     result = query_agentic_documents_with_metadata(request)
                 else:
                     result = query_agentic_documents(request)
-            payload = {"hits": result.hits, "usage": result.usage or None} if include_usage else result
+            if agentic_mode == "answer" and include_usage:
+                payload = {
+                    "answer": result.answer,
+                    "citations": result.citations,
+                    "citation_hits": result.citation_hits,
+                    "succeeded": result.succeeded,
+                    "message": result.message,
+                    "error": result.error,
+                    "usage": result.usage or None,
+                }
+            else:
+                payload = {"hits": result.hits, "usage": result.usage or None} if include_usage else result
             typer.echo(json.dumps(payload, indent=2, sort_keys=True, default=str))
             return
 

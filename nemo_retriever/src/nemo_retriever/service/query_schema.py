@@ -41,6 +41,13 @@ class QueryRequest(BaseModel):
             "have null classic fields and source falls back to doc_id."
         ),
     )
+    agentic_mode: Literal["select", "answer"] = Field(
+        default="select",
+        description=(
+            "Agentic output contract. 'select' returns ranked hits; 'answer' returns "
+            "an integrated answer plus validated citation IDs and hydrated citation hits."
+        ),
+    )
 
     rerank: bool = Field(
         default=False,
@@ -69,6 +76,8 @@ class QueryRequest(BaseModel):
             if self.rerank_top_k is not None and self.rerank_top_k < self.top_k:
                 raise ValueError("rerank_top_k must be greater than or equal to top_k")
         if not self.agentic:
+            if self.agentic_mode != "select":
+                raise ValueError("agentic_mode='answer' requires agentic=true")
             return self
         if not isinstance(self.query, str):
             raise ValueError("agentic queries require a single query string, not a list")
@@ -143,6 +152,19 @@ class AgenticQueryResponse(QueryResponse):
         default=None,
         description="Exact provider-reported LLM usage; present for instrumented agentic queries.",
     )
+
+
+class AgenticAnswerResponse(BaseModel):
+    """Integrated ReAct answer returned by ``agentic_mode='answer'``."""
+
+    answer: str | None = None
+    citations: list[str] | None = None
+    citation_hits: list[dict[str, Any]] = Field(default_factory=list)
+    succeeded: bool
+    message: str | None = None
+    error: dict[str, Any] | None = None
+    query_mode: Literal["agentic_answer"] = "agentic_answer"
+    usage: AgenticTokenUsage | None = None
 
 
 class Locator(BaseModel):

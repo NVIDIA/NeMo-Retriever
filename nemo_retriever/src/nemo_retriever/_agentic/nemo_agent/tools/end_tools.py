@@ -60,7 +60,8 @@ class BaseEndTool(BaseTool):
         end call, the agent's last invalid attempt still carries the model's
         intended output. Returns a lenient subset — a non-empty ``doc_ids``
         list of strings and/or a non-empty ``answer`` string, plus non-empty
-        ``citations`` and a non-blank ``message`` — or ``None`` when nothing
+        ``citations`` (including an explicit empty list) and a non-blank
+        ``message`` — or ``None`` when nothing
         usable was supplied. The strict
         contract lives in :meth:`_validate_payload`; this never raises and is
         deliberately generic (each end tool only ever supplies its own keys).
@@ -79,8 +80,7 @@ class BaseEndTool(BaseTool):
         citations = kwargs.get("citations")
         if isinstance(citations, list):
             cited = [c.strip() for c in citations if isinstance(c, str) and c.strip()]
-            if cited:
-                out["citations"] = cited
+            out["citations"] = list(dict.fromkeys(cited))
         message = kwargs.get("message")
         if isinstance(message, str) and message.strip():
             out["message"] = message

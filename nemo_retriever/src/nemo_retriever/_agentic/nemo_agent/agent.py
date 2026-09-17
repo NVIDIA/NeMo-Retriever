@@ -39,7 +39,7 @@ from .tools import (
     RetrieveContext,
     ThinkTool,
 )
-from .tools.base_tool import tool_error_text
+from .tools.base_tool import ToolError, tool_error_text
 from .tools.retrieve import retrieve_output_to_msg_content
 
 logger = logging.getLogger(__name__)
@@ -108,11 +108,14 @@ class Agent(_BaseAgentLoop):
 
         if end_tool is not None and not isinstance(end_tool, BaseEndTool):
             raise TypeError(f"end_tool must be a BaseEndTool, got {type(end_tool).__name__}.")
-        if config.mode == "select":
+        is_select = config.mode == "select"
+        enforce_top_k = config.enforce_top_k if is_select else False
+        target_top_k = config.target_top_k if is_select else None
+        if is_select:
             default_prompt = "06_select_lean_v1.j2"
             end_payload_phrase = "with your selected doc_ids"
             if end_tool is None:
-                top_k = int(config.target_top_k) if config.enforce_top_k and config.target_top_k else None
+                top_k = int(target_top_k) if enforce_top_k and target_top_k else None
                 end_tool = FinalResults(top_k=top_k, include_msg=config.end_tool_with_msg)
         else:  # mode == "answer"
             default_prompt = "05_answer_lean_v1.j2"
@@ -166,8 +169,8 @@ class Agent(_BaseAgentLoop):
         system_prompt = render_system_prompt(
             prompt_name,
             with_init_docs=config.user_msg_type == "with_results",
-            enforce_top_k=config.enforce_top_k,
-            top_k=config.target_top_k,
+            enforce_top_k=enforce_top_k,
+            top_k=target_top_k,
             extended_relevance=config.extended_relevance,
         )
         self._system_msg = {"role": "system", "content": [{"type": "text", "text": system_prompt}]}
@@ -287,6 +290,20 @@ class Agent(_BaseAgentLoop):
             except Exception as e:
                 raise ToolExecutionError(fn_name, e) from e
             return content, False
+        if isinstance(tool, LogAnswer):
+            citations = fn_kwargs.get("citations")
+            if isinstance(citations, list) and all(isinstance(citation, str) for citation in citations):
+                cited_ids = {citation.strip() for citation in citations if citation.strip()}
+                unknown = sorted(cited_ids - state.retrieved_docs)
+                if unknown:
+                    text = tool_error_text(
+                        tool.name,
+                        ToolError(
+                            "Every citation must identify a document retrieved during this run. "
+                            f"Unknown citation ID(s): {', '.join(unknown)}."
+                        ),
+                    )
+                    return [{"type": "text", "text": text}], False
         return await super()._dispatch_tool_call(state, fn_name, fn_kwargs)
 
     async def _execute_retrieve(

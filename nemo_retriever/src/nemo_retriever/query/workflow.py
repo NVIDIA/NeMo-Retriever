@@ -47,6 +47,19 @@ class AgenticQueryDocumentsResult:
     usage: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class AgenticAnswerDocumentsResult:
+    """One integrated agentic answer with validated, rehydrated citations."""
+
+    answer: str | None
+    citations: list[str] | None
+    citation_hits: list[dict[str, Any]]
+    succeeded: bool
+    message: str | None
+    error: dict[str, Any] | None
+    usage: dict[str, Any]
+
+
 def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
     if mode == "hybrid":
         return ["semantic", "lexical"]
@@ -267,6 +280,69 @@ def agentic_query_documents_with_metadata(request: QueryRequest) -> AgenticQuery
         result = retriever.retrieve_with_usage(["0"], [str(request.query)])
         return AgenticQueryDocumentsResult(
             hits=_agentic_rows_to_hits(result.documents, top_k=request.retrieval.top_k),
+            usage=normalize_usage_breakdown(result.usage.get("0")),
+        )
+    finally:
+        retriever.unload()
+
+
+def agentic_answer_documents(request: QueryRequest) -> dict[str, Any]:
+    """Run integrated ReAct answer mode for one query without usage metadata."""
+
+    result = agentic_answer_documents_with_metadata(request)
+    return {
+        "answer": result.answer,
+        "citations": result.citations,
+        "citation_hits": result.citation_hits,
+        "succeeded": result.succeeded,
+        "message": result.message,
+        "error": result.error,
+    }
+
+
+def agentic_answer_documents_with_metadata(request: QueryRequest) -> AgenticAnswerDocumentsResult:
+    """Run integrated ReAct answer mode for one query with exact LLM usage."""
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    retriever = build_agentic_retriever(request)
+    try:
+        result = retriever.answer_with_usage(["0"], [str(request.query)])
+        if result.answers.empty:
+            return AgenticAnswerDocumentsResult(
+                answer=None,
+                citations=None,
+                citation_hits=[],
+                succeeded=False,
+                message=None,
+                error={"category": "unexpected", "message": "Agentic answer produced no result."},
+                usage=normalize_usage_breakdown(result.usage.get("0")),
+            )
+        row = result.answers.iloc[0]
+        citations = row.get("citations")
+        if not isinstance(citations, list):
+            citations = None
+        citation_hits = row.get("citation_hits")
+        if not isinstance(citation_hits, list):
+            citation_hits = []
+        error_category = row.get("error_category")
+        error: dict[str, Any] | None = None
+        if isinstance(error_category, str) and error_category:
+            error = {
+                "category": error_category,
+                "message": str(row.get("error_message") or ""),
+            }
+            exception_class = row.get("error_exception_class")
+            if isinstance(exception_class, str) and exception_class:
+                error["exception_class"] = exception_class
+        answer = row.get("answer")
+        message = row.get("message")
+        return AgenticAnswerDocumentsResult(
+            answer=answer if isinstance(answer, str) else None,
+            citations=citations,
+            citation_hits=citation_hits,
+            succeeded=bool(row.get("succeeded", False)),
+            message=message if isinstance(message, str) else None,
+            error=error,
             usage=normalize_usage_breakdown(result.usage.get("0")),
         )
     finally:

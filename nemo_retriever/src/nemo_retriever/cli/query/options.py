@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -163,6 +163,16 @@ AgenticOption = Annotated[
     typer.Option(
         "--agentic",
         help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
+    ),
+]
+AgenticModeOption = Annotated[
+    Literal["select", "answer"],
+    typer.Option(
+        "--agentic-mode",
+        help=(
+            "With --agentic, choose 'select' to return ranked documents or "
+            "'answer' to return an integrated answer with validated citations."
+        ),
     ),
 ]
 IncludeUsageOption = Annotated[

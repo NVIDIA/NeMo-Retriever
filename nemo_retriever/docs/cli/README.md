@@ -275,6 +275,12 @@ retriever query "summarize the deployment options" \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --embed-invoke-url http://localhost:8000/v1 \
   --agentic-react-max-steps 5
+
+# integrated answer plus validated citation IDs and hydrated citation hits
+retriever query "what changed in the latest report?" \
+  --agentic \
+  --agentic-mode answer \
+  --include-usage
 ```
 
 Agentic mode returns the agent's ranked documents as JSON. The dense path
@@ -348,8 +354,18 @@ fusion) -> SelectionAgentOperator -> ranked results`:
   emits ranked document IDs. Those IDs are then rehydrated from the retrieval-hop
   hit dictionary.
 
+`--agentic-mode answer` uses the same iterative retriever but ends inside the
+ReAct loop with an integrated answer. It intentionally bypasses RRF and the
+selection agent because those stages produce a document ranking, not an answer.
+The output contains `answer`, `citations`, `citation_hits`, `succeeded`, `error`,
+and optional `usage`. Citation IDs must have been returned by a retrieval hop;
+`citation_hits` preserves citation order and contains the corresponding full
+retrieval metadata.
+
 Agentic-only knobs (apply only with `--agentic`):
 
+- `--agentic-mode` (default `select`) — return ranked documents with `select`, or
+  an integrated answer and citations with `answer`.
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.

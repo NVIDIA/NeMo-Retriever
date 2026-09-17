@@ -15,9 +15,12 @@ from nemo_retriever.query.options import (
     QueryRetrievalOptions,
     QueryStorageOptions,
 )
-from nemo_retriever.query.workflow import agentic_query_documents_with_metadata
+from nemo_retriever.query.workflow import (
+    agentic_answer_documents_with_metadata,
+    agentic_query_documents_with_metadata,
+)
 from nemo_retriever.service.config import AgenticConfig
-from nemo_retriever.service.query_schema import AgenticQueryResponse, QueryResult
+from nemo_retriever.service.query_schema import AgenticAnswerResponse, AgenticQueryResponse, QueryResult
 
 
 #: Annotations the agentic workflow layers on top of the classic hit fields.
@@ -157,5 +160,41 @@ def run_agentic_query(
     return AgenticQueryResponse(
         results=[QueryResult(hits=agentic_ranked_to_hits(result.hits))],
         query_mode="agentic",
+        usage=result.usage or None,
+    )
+
+
+def run_agentic_answer(
+    *,
+    query: str,
+    top_k: int,
+    config: AgenticConfig,
+    lancedb_uri: str,
+    table_name: str,
+    embed_endpoint: str,
+    embed_model: str,
+    embed_model_provider_prefix: str | None,
+    embed_api_key: str,
+) -> AgenticAnswerResponse:
+    """Execute one integrated agentic answer run."""
+    query_request = build_agentic_query_request(
+        query=query,
+        top_k=top_k,
+        config=config,
+        lancedb_uri=lancedb_uri,
+        table_name=table_name,
+        embed_endpoint=embed_endpoint,
+        embed_model=embed_model,
+        embed_model_provider_prefix=embed_model_provider_prefix,
+        embed_api_key=embed_api_key,
+    )
+    result = agentic_answer_documents_with_metadata(query_request)
+    return AgenticAnswerResponse(
+        answer=result.answer,
+        citations=result.citations,
+        citation_hits=agentic_ranked_to_hits(result.citation_hits),
+        succeeded=result.succeeded,
+        message=result.message,
+        error=result.error,
         usage=result.usage or None,
     )
