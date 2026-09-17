@@ -55,6 +55,7 @@ def test_local_hf_nemotron_models_use_transformers_5_compatible_revisions() -> N
         registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-embed-vl-1b-v2"]
         == "582e3bf72aee355e3c59ed89de53543c5b0657ee"
     )
+    assert registry.HF_MODEL_REVISIONS["nvidia/Nemotron-3-Embed-1B-BF16"] == "9e0b24858b1195815ecb1188ffa1b73bcea7b30a"
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/llama-nemotron-rerank-vl-1b-v2"]
         == "9c20c4aedf9ec87b6b7346c3bc4754ea030dab35"

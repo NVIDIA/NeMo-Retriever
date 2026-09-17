@@ -583,6 +583,69 @@ def test_default_remote_policy_uses_pinned_vl_checkpoint(model_name) -> None:
     assert policy.prefix == "passage: "
 
 
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "nemotron-3-embed-1b",
+        "nvidia/nemotron-3-embed-1b",
+        "nvidia/Nemotron-3-Embed-1B-BF16",
+    ],
+)
+def test_optional_nemotron3_policy_uses_pinned_bf16_checkpoint(model_name) -> None:
+    from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
+    from nemo_retriever.models.inference import embedding_input
+
+    model_id = "nvidia/Nemotron-3-Embed-1B-BF16"
+    checkpoint = Mock(
+        model_id=model_id,
+        revision=HF_MODEL_REVISIONS[model_id],
+        max_input_tokens=8192,
+        document_prefix="passage: ",
+        document_prefix_declared=True,
+    )
+    with (
+        patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint) as resolve,
+        patch.object(embedding_input, "load_chunk_tokenizer") as tokenizer,
+    ):
+        policy = resolve_embedding_input_policy(model_name, configured_max_tokens=8192, input_type="passage")
+
+    assert resolve.call_args.args[0] == model_id
+    tokenizer.assert_called_once_with(model_id, cache_dir=None, revision=HF_MODEL_REVISIONS[model_id])
+    assert policy.prefix == "passage: "
+
+
+def test_remote_nemotron3_actor_reaches_inference_with_nim_model_id() -> None:
+    from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
+    from nemo_retriever.models.inference import embedding_input
+    from nemo_retriever.operators.embed import cpu_operator
+
+    nim_model_id = "nvidia/nemotron-3-embed-1b"
+    policy_model_id = "nvidia/Nemotron-3-Embed-1B-BF16"
+    frame = pd.DataFrame({"text": ["hello"]})
+    checkpoint = Mock(
+        model_id=policy_model_id,
+        revision=HF_MODEL_REVISIONS[policy_model_id],
+        max_input_tokens=8192,
+        document_prefix="passage: ",
+        document_prefix_declared=True,
+    )
+
+    with (
+        patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint),
+        patch.object(embedding_input, "load_chunk_tokenizer", return_value=_WhitespaceTokenizer()),
+        patch.object(cpu_operator, "embed_text_main_text_embed", return_value=frame) as invoke,
+    ):
+        actor = cpu_operator._BatchEmbedCPUActor(
+            EmbedParams(model_name=nim_model_id, embed_invoke_url="http://embed.example/v1")
+        )
+        result = actor.process(frame)
+
+    pd.testing.assert_frame_equal(result, frame)
+    assert invoke.call_args.kwargs["model_name"] == nim_model_id
+    assert invoke.call_args.kwargs["embedding_endpoint"] == "http://embed.example/v1"
+    assert invoke.call_args.kwargs["embedding_input_policy"].prefix == "passage: "
+
+
 def test_policy_resolver_rejects_missing_checkpoint_input_limit(monkeypatch, tmp_path) -> None:
     _write_local_text_policy_metadata(tmp_path, prompts={"query": "query: ", "document": "document: "})
     monkeypatch.setattr(
@@ -621,12 +684,14 @@ def test_policy_resolver_rejects_missing_checkpoint_prompt(monkeypatch, tmp_path
 
 
 def test_unpinned_model_fails_closed_before_embedding() -> None:
-    with pytest.raises(ValueError, match="is not revision-pinned"):
+    with pytest.raises(ValueError, match="is not revision-pinned") as exc_info:
         resolve_embedding_input_policy(
             "custom/unpinned-model",
             configured_max_tokens=8192,
             input_type="passage",
         )
+
+    assert "embed_model_revision" not in str(exc_info.value)
 
 
 def test_local_actor_reuses_checkpoint_when_local_metadata_changes(monkeypatch, tmp_path) -> None:

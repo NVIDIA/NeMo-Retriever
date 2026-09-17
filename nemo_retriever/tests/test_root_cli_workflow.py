@@ -528,6 +528,31 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert "embedding_model_revision" not in vdb_kwargs
 
 
+def test_root_ingest_uses_pinned_nemotron3_hf_checkpoint(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "nemotron3.txt"
+    document.write_text("hello", encoding="utf-8")
+    revision = "9e0b24858b1195815ecb1188ffa1b73bcea7b30a"
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "local", str(document), "--embed-model-name", "nvidia/Nemotron-3-Embed-1B-BF16"],
+    )
+
+    assert result.exit_code == 0
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.model_name == "nvidia/Nemotron-3-Embed-1B-BF16"
+    assert embed_params.embed_model_name == "nvidia/Nemotron-3-Embed-1B-BF16"
+    assert embed_params.embed_model_revision == revision
+
+    vdb_kwargs = fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs
+    assert vdb_kwargs["embedding_model_name"] == "nvidia/Nemotron-3-Embed-1B-BF16"
+    assert vdb_kwargs["embedding_model_revision"] == revision
+
+
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "jp20-style.pdf"

@@ -31,6 +31,12 @@ from nemo_retriever.models import resolve_embed_model
 from nemo_retriever.models.embed_model_spec import EmbedModelSpec, resolve_embed_model_spec
 from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 
+_NEMOTRON_3_EMBED_BF16_MODEL = "nvidia/Nemotron-3-Embed-1B-BF16"
+_EMBEDDING_POLICY_MODEL_ALIASES = {
+    "nemotron-3-embed-1b": _NEMOTRON_3_EMBED_BF16_MODEL,
+    "nvidia/nemotron-3-embed-1b": _NEMOTRON_3_EMBED_BF16_MODEL,
+}
+
 
 def _stable_json(value: Any) -> str:
     def normalize(item: Any) -> Any:
@@ -355,12 +361,12 @@ def resolve_embedding_input_policy(
     spec = checkpoint
     if spec is None:
         # Keep concrete worker checkpoints; resolve aliases through the release model registry.
-        model_id = model_name if model_name in HF_MODEL_REVISIONS else resolve_embed_model(model_name)
+        configured_model = model_name if model_name in HF_MODEL_REVISIONS else resolve_embed_model(model_name)
+        model_id = _EMBEDDING_POLICY_MODEL_ALIASES.get(configured_model, configured_model)
         if model_id not in HF_MODEL_REVISIONS and not Path(model_id).expanduser().is_dir() and revision is None:
             raise ValueError(
                 f"Embedding model {model_id!r} is not revision-pinned, so the embedding stage cannot enforce "
-                "its tokenizer, prefix, and input limit. Use a registered model, a local checkpoint, or set an "
-                "immutable embed_model_revision."
+                "its tokenizer, prefix, and input limit. Use a registered model or a local checkpoint."
             )
         spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=cache_dir)
     if spec.max_input_tokens is None:
