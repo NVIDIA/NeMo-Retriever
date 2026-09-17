@@ -914,6 +914,17 @@ unready. Client traffic continues to use the readiness-gated gateway Service, so
 `/v1/health` still removes an unhealthy gateway from Service endpoints after
 startup.
 
+The init container image defaults to `busybox:1.37`. Override these values when
+you mirror BusyBox into a private registry:
+
+| Path | Default | Notes |
+|------|---------|-------|
+| `topology.waitForGateway.image.repository` | `busybox` | Split-mode realtime and batch `wait-for-gateway` init container. |
+| `topology.waitForGateway.image.tag` | `1.37` | Pin the mirrored tag. |
+| `topology.waitForGateway.image.pullPolicy` | `IfNotPresent` | Use `Always` only when the mirrored tag moves. |
+
+Refer to [Air-gapped deployment](#air-gapped-deployment).
+
 When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from
 the readiness-gated gateway Service endpoints until its required workers are
 ready. The response includes backend health details to help diagnose the
@@ -2383,6 +2394,10 @@ nimOperator:
     enabled: true
 ```
 
+Override `topology.otel.image` and `topology.zipkin.image` when you mirror
+`otel/opentelemetry-collector-contrib:0.127.0` and `openzipkin/zipkin:3.5.0`
+into a private registry. Refer to [Air-gapped deployment](#air-gapped-deployment).
+
 Because Zipkin is chart-owned by default, an upgrade with default values can
 create a Zipkin Deployment and Service. Set `topology.zipkin.enabled=false`
 before upgrading if your deployment uses an external backend or should not run
@@ -2533,6 +2548,14 @@ your release tag). Defaults below match
 
 GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).
 
+Default chart-owned auxiliary images (not NIM Operator CRs):
+
+| Role | Values path | Default image (`repository:tag`) | When rendered |
+|------|-------------|----------------------------------|---------------|
+| OpenTelemetry Collector | `topology.otel.image` | `otel/opentelemetry-collector-contrib:0.127.0` | `topology.otel.enabled=true` (default) |
+| Zipkin | `topology.zipkin.image` | `openzipkin/zipkin:3.5.0` | `topology.otel.enabled=true` and `topology.zipkin.enabled=true` (default) |
+| BusyBox wait-for-gateway init | `topology.waitForGateway.image` | `busybox:1.37` | `topology.mode=split` on realtime and batch workers |
+
 Also mirror images for the vectordb sidecar, Redis, or other subcharts if
 your values enable them.
 
@@ -2568,6 +2591,24 @@ nimOperator:
       tag: "2.0.1"
       pullPolicy: IfNotPresent
   # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
+
+topology:
+  otel:
+    image:
+      repository: <PRIVATE_REGISTRY>/opentelemetry-collector-contrib
+      tag: "0.127.0"
+      pullPolicy: IfNotPresent
+  zipkin:
+    image:
+      repository: <PRIVATE_REGISTRY>/zipkin
+      tag: "3.5.0"
+      pullPolicy: IfNotPresent
+  # Required when topology.mode=split. Omit for standalone.
+  waitForGateway:
+    image:
+      repository: <PRIVATE_REGISTRY>/busybox
+      tag: "1.37"
+      pullPolicy: IfNotPresent
 ```
 
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
