@@ -1049,15 +1049,23 @@ nimOperator:
   #     - ocr
   #     - vlm_embed
   #
-  #   Optional (enabled: false by default, NOT auto-wired):
+  #   Optional (enabled: false by default). When you opt in and the NIM
+  #   Operator CRDs are present, the chart auto-wires the in-cluster
+  #   Service URL unless you set an explicit override:
   #     - rerankqa                                 (VL reranker,
-  #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #                                                 ≈ 3.1 GiB GPU;
+  #                                                 auto-wires rerank URL)
+  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU;
+  #                                                 auto-wires Parse URL)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
-  #                                                 ≈ 62 GiB BF16 weights)
+  #                                                 ≈ 62 GiB BF16 weights;
+  #                                                 auto-wires caption URL)
   #     - answer_llm                               (OpenAI-compatible answer LLM,
-  #                                                 Super-49B defaults)
-  #     - audio                                    (Parakeet ASR)
+  #                                                 Super-49B defaults;
+  #                                                 auto-wires llm.apiBase)
+  #     - audio                                    (Parakeet ASR; still
+  #                                                 requires explicit
+  #                                                 audioGrpcEndpoint)
   #
   # Two flags gate every NIM, so each one is opt-in along two independent
   # axes:

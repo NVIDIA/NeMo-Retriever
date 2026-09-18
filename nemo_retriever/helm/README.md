@@ -74,7 +74,7 @@ nemo_retriever/helm/
         ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService
         ├── nemotron-3-embed-1b.yaml             # NIMCache + NIMService (text embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; auto-wired when enabled)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
@@ -686,20 +686,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 
 ### Query reranking (optional)
 
-The optional `nimOperator.rerankqa` NIM is not auto-wired into the retriever service. To use `POST /v1/query` with `rerank=true`, enable the NIM and configure the service endpoint explicitly:
-
-```yaml
-nimOperator:
-  rerankqa:
-    enabled: true
-
-serviceConfig:
-  nimEndpoints:
-    rerankInvokeUrl: http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking
-    rerankModelName: nvidia/llama-nemotron-rerank-vl-1b-v2
-```
-
-Enabling `nimOperator.rerankqa.enabled=true` without `serviceConfig.nimEndpoints.rerankInvokeUrl` deploys the NIM but does not enable service query reranking.
+The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in. When the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` only to override that URL, for example to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
 
 Track operator reconciliation with:
 

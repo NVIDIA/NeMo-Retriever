@@ -148,22 +148,7 @@ For self-hosted NIM GPU memory by SKU and precision, refer to the following prod
 
 ### Configure query reranking with Helm { #configure-query-reranking-with-helm }
 
-The optional `nimOperator.rerankqa` NIM is not auto-wired into the retriever service. To use service query reranking, enable the NIM and configure its in-cluster ranking endpoint. You can also configure the model ID. Add the following values to your Helm values file:
-
-```yaml
-nimOperator:
-  rerankqa:
-    enabled: true
-
-serviceConfig:
-  nimEndpoints:
-    rerankInvokeUrl: http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking
-    rerankModelName: nvidia/llama-nemotron-rerank-vl-1b-v2
-```
-
-The chart renders these values as `nim_endpoints.rerank_invoke_url` and `nim_endpoints.rerank_model_name` in the retriever service configuration. After deployment, send `rerank: true` in a `/v1/query` request to use the configured reranker.
-
-Setting `nimOperator.rerankqa.enabled=true` without `serviceConfig.nimEndpoints.rerankInvokeUrl` deploys the NIM but does not enable query reranking.
+The VL reranker (`nimOperator.rerankqa`) is optional and disabled by default. When you enable it, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `/v1/query` request with `rerank=true` then uses the in-cluster ranking Service. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` only to override that URL. For the resolution order, refer to [Query-time reranking](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#query-time-reranking) in the Helm chart README.
 
 <a id="nemotron-ocr-v2-language-mode"></a>
 
