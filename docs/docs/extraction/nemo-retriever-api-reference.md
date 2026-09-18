@@ -49,6 +49,29 @@ Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.
 
+### Disable Page Elements when extraction does not require detections
+
+Set `use_page_elements=False` only when the enabled extraction stages do not
+require Page Elements detections. `ExtractParams` raises a Pydantic
+`ValidationError` during construction for these combinations:
+
+- `extract_text=True` with `method="ocr"` or `method="pdfium_hybrid"`.
+- `extract_tables=True`, `extract_charts=True`, or `extract_infographics=True`
+  with any method other than `nemotron_parse` or `audio`.
+- `use_table_structure=True` with `extract_tables=True`.
+
+Keep `use_page_elements=True` for these stages, or disable the stages that
+require detections. Validation prevents OCR from silently returning empty
+output because detections are unavailable.
+
+Native PDF text extraction with `method="pdfium"` and page-level image
+embedding remain compatible with `use_page_elements=False` when those
+stages are disabled. Nemotron Parse can extract text, tables, charts, and
+infographics without Page Elements when `use_table_structure=False`.
+The legacy `method="audio"` path also accepts `use_page_elements=False`
+with the default extraction flags because audio processing does not use
+Page Elements detections.
+
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when

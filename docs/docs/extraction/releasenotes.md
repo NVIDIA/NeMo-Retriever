@@ -20,6 +20,8 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Librar
 
 ### Other fixes { #other-fixes-26082 }
 
+- SDK batch ingestion with `extraction_mode="auto"` skips Page Elements for PDF and image inputs when `use_page_elements=False` or no enabled extraction stage requires its output. Page-level image embedding continues to render one full-page image for each PDF page without loading a Page Elements model.
+- `ExtractParams` rejects `use_page_elements=False` when enabled extraction stages require Page Elements detections, preventing silent empty OCR output. Refer to [Page Elements configuration validation](nemo-retriever-api-reference.md#disable-page-elements-when-extraction-does-not-require-detections).
 - Remote OCR crop batching runs across page rows, matching the local throughput path.
 - Graph ingestion errors preserve diagnostic records across process boundaries. Formatted error strings no longer expand into character-wise pseudo-records.
 - Retriever Service result payloads return complete legacy string values and requested embeddings.

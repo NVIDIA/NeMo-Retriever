@@ -117,6 +117,11 @@ def _ocr_stage_needed(extract_params: ExtractParams) -> bool:
     return False
 
 
+def _page_elements_stage_needed(extract_params: ExtractParams) -> bool:
+    needs_table_structure = extract_params.use_table_structure and extract_params.extract_tables
+    return extract_params.use_page_elements and (needs_table_structure or _ocr_stage_needed(extract_params))
+
+
 def _extract_params_need_local_gpu(extraction_mode: str, extract_params: ExtractParams | None) -> bool:
     if extract_params is None:
         return False
@@ -126,7 +131,7 @@ def _extract_params_need_local_gpu(extraction_mode: str, extract_params: Extract
     if _parse_mode_enabled(extract_params):
         return not _has_endpoint(extract_params.nemotron_parse_invoke_url, extract_params.invoke_url)
 
-    if not _has_endpoint(extract_params.page_elements_invoke_url):
+    if _page_elements_stage_needed(extract_params) and not _has_endpoint(extract_params.page_elements_invoke_url):
         return True
     if (
         extract_params.use_table_structure
@@ -459,7 +464,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         )
         if inference_batch_size:
             detect_kwargs["inference_batch_size"] = int(inference_batch_size)
-        batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
+        if _page_elements_stage_needed(extract_params):
+            batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
             table_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
