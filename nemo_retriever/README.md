@@ -635,11 +635,12 @@ set `INSTALL_FFMPEG=true` at runtime to install them during container startup:
 docker run -e INSTALL_FFMPEG=true nemo-retriever-service
 ```
 
-For Kubernetes deployments, set `service.installFfmpeg=true` in the Helm chart.
+For Kubernetes deployments, the Helm chart default is `service.installFfmpeg=true`.
 This runtime install requires network access to package repositories, a
 writable root filesystem, and security policy that allows the image's scoped
 sudo use. For locked-down environments that cannot install packages at startup,
-use a custom service image that already contains ffmpeg/ffprobe.
+set `service.installFfmpeg=false` or use a custom service image that already
+contains ffmpeg/ffprobe.
 
 ```python
 ingestor = create_ingestor(run_mode="batch")
