@@ -11,6 +11,16 @@ defaults for these settings. If you need to override one of them, set the
 complete `nimOperator.<key>.env` list because Helm replaces environment-variable
 lists rather than merging them.
 
+NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on
+`https://integrate.api.nvidia.com` reached end of life on August 26, 2026
+and returns HTTP 410.
+The self-hosted Helm `answer_llm` NIM image
+`nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged.
+For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible
+model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic
+retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM.
+Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+
 ## 26.08.1 Release Notes (26.8.1) { #release-26081 }
 
 NVIDIA® NeMo Retriever Library version 26.08.1 includes a shared text-generation task API, configurable large language model (LLM) settings, grounded answer-generation model paths, agentic retrieval, and updated Helm NIM defaults. It builds on the graph ingest, multimodal extraction, and Helm-first deployment foundation.
@@ -42,7 +52,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Answer generation { #answer-generation }
 
-- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
+- `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The self-hosted default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The NVIDIA-hosted Super-49B Build endpoint reached end of life on August 26, 2026. Refer to [26.08.2 Helm Chart Patch](#release-26082). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including hosted `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
 - Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Agentic retrieval { #agentic-retrieval }
