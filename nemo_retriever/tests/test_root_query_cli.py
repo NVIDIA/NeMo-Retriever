@@ -13,11 +13,22 @@ import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
 query_cli_app = importlib.import_module("nemo_retriever.cli.query.app")
+
+
+def test_query_cli_hit_uses_hybrid_relevance_score() -> None:
+    hit = {
+        "text": "hybrid result",
+        "source": "doc.pdf",
+        "metadata": {"type": "text"},
+        "_relevance_score": 0.73,
+    }
+
+    assert query_cli_app._query_cli_hit(hit)["score"] == 0.73
 
 
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
@@ -453,6 +464,53 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
         {"rank": 1, "doc_id": "a.pdf", "result_source": "final_results"},
         {"rank": 2, "doc_id": "b.pdf", "result_source": "rrf"},
     ]
+
+
+def test_root_query_agentic_include_usage_emits_envelope(monkeypatch) -> None:
+    from nemo_retriever.query.workflow import AgenticQueryDocumentsResult
+
+    usage = {
+        "input_tokens": 12,
+        "cache_tokens": 4,
+        "output_tokens": 5,
+        "total_tokens": 17,
+        "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
+    }
+    monkeypatch.setattr(
+        query_cli_app,
+        "query_agentic_documents_with_metadata",
+        lambda _request: AgenticQueryDocumentsResult(
+            hits=[{"doc_id": "a.pdf", "rank": 1, "result_source": "final_results"}],
+            usage=usage,
+        ),
+    )
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "how does ingest work?",
+            "--agentic",
+            "--include-usage",
+            "--agentic-llm-model",
+            "model",
+            "--agentic-invoke-url",
+            "https://llm.example/v1/chat/completions",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "hits": [{"doc_id": "a.pdf", "rank": 1, "result_source": "final_results"}],
+        "usage": usage,
+    }
+
+
+def test_root_query_include_usage_requires_agentic() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "hello", "--include-usage"])
+
+    assert result.exit_code == 1
+    assert "--include-usage requires --agentic" in result.output
 
 
 def test_root_query_agentic_rejects_candidate_k_below_top_k() -> None:
@@ -921,9 +979,9 @@ def test_root_query_local_help_describes_model_resolution() -> None:
 
     assert result.exit_code == 0
     assert "Embedding model: read from the selected table" in result.output
-    assert "legacy tables" in result.output
-    assert "fall back" in result.output
-    assert VL_EMBED_MODEL in result.output
+    assert "without embedding-model metadata must be rebuilt" in result.output
+    assert "fall back" not in result.output
+    assert query_cli_app.opts.DEFAULT_EMBED_MODEL == NEMOTRON_3_EMBED_MODEL
     assert "Default local reranker model" in result.output
     assert VL_RERANK_MODEL in result.output
 

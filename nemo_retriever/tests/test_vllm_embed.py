@@ -141,6 +141,27 @@ def _make_vllm_vl_embedder():
     return embedder
 
 
+def _make_hf_vl_embedder():
+    from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
+        LlamaNemotronEmbedVL1BV2Embedder,
+    )
+
+    embedder = LlamaNemotronEmbedVL1BV2Embedder()
+    embedder._model = MagicMock()
+    embedder._model.encode_documents.side_effect = lambda *, texts: torch.ones((len(texts), 2))
+    embedder._ensure_loaded = lambda: None
+    return embedder
+
+
+def test_hf_vl_text_limit_uses_the_checkpoint_supported_maximum() -> None:
+    embedder = _make_hf_vl_embedder()
+    embedder.max_length = 4096
+
+    embedder._set_p_max_length("text")
+
+    assert embedder._model.processor.p_max_length == 4096
+
+
 class TestEmbedMultimodalWithVllmLlm:
     def test_basic_prompt_dict(self):
         llm = MagicMock()
@@ -576,9 +597,15 @@ class TestLlamaNemotronEmbed1BV2Embedder:
         assert "use_activation" not in mock_fn.call_args[1]
         assert mock_fn.call_args[1].get("normalize") is True
 
-    def test_embed_empty_input_returns_empty_tensor(self):
-        result = self.embedder.embed(["", "  "])
-        assert result.shape == (0, 0)
+    def test_embed_blank_inputs_preserves_cardinality(self):
+        with patch(
+            "nemo_retriever.models.inference.vllm.embed_with_vllm_llm",
+            return_value=[[1.0, 0.0], [0.0, 1.0]],
+        ) as mock_fn:
+            result = self.embedder.embed(["", "  "])
+
+        assert result.shape == (2, 2)
+        assert mock_fn.call_args.args[0] == ["", "  "]
 
     def test_unload_clears_llm(self):
         with patch("torch.cuda.is_available", return_value=False):
@@ -611,6 +638,17 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
 
 
 class TestLlamaNemotronEmbedVL1BV2VLLMEmbedderNormalization:
+    def test_text_blank_inputs_preserve_cardinality(self):
+        embedder = _make_vllm_vl_embedder()
+        with patch(
+            "nemo_retriever.models.inference.vllm.embed_with_vllm_llm",
+            return_value=[[1.0, 0.0], [0.0, 1.0]],
+        ) as mock_fn:
+            result = embedder.embed(["content", "  "])
+
+        assert result.shape == (2, 2)
+        assert mock_fn.call_args.args[0] == ["content", "  "]
+
     def test_text_output_unnormalized_when_normalize_false(self):
         embedder = _make_vllm_vl_embedder()
         embedder.normalize = False
@@ -626,6 +664,15 @@ class TestLlamaNemotronEmbedVL1BV2VLLMEmbedderNormalization:
             result = embedder.embed_queries(["text"])
         assert mock_fn.call_args.kwargs["normalize"] is False
         assert result.tolist() == [[3.0, 4.0]]
+
+
+def test_hf_vl_text_blank_inputs_preserve_cardinality() -> None:
+    embedder = _make_hf_vl_embedder()
+
+    result = embedder.embed(["content", "  "])
+
+    assert result.shape == (2, 2)
+    assert embedder._model.encode_documents.call_args.kwargs["texts"] == ["content", "  "]
 
 
 class TestVLLMEmbedderTextImage:

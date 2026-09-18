@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from nemo_retriever._agentic.nemo_agent import SelectionAgent, SelectionAgentConfig
+from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever._agentic.nemo_agent.results import AgentRunResult
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -216,6 +217,30 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             )
         return self._sel
 
+    def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
+        """Transfer the accumulated provider usage for one query to the caller.
+
+        Parameters
+        ----------
+        query_id:
+            Graph-assigned query ID used while executing the agent.
+
+        Returns
+        -------
+        dict[str, Any]
+            Stage-keyed provider usage, or an empty mapping when the agent has
+            not been initialized or no usage was reported.
+
+        Notes
+        -----
+        This operation removes the query's usage from the operator-owned
+        backend. A second call for the same ID returns an empty mapping unless
+        additional LLM calls have recorded new usage.
+        """
+        if self._sel is None:
+            return {}
+        return self._sel.llm.pop_query_usage(str(query_id))
+
     # ------------------------------------------------------------------
     # AbstractOperator interface
     # ------------------------------------------------------------------
@@ -344,13 +369,15 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     ) -> Optional[AgentRunResult]:
         """Run the selection agent, returning None on an unexpected failure."""
         try:
-            return self._ensure_agent().select_sync(
+            result = self._ensure_agent().select_sync(
                 query_text,
                 documents,
                 scores=scores,
                 query_id=query_id,
                 raw_log_dir=None,
             )
+            persist_atif_trajectory(result.atif_trace)
+            return result
         except Exception as exc:  # production: fall back to RRF rather than crash
             logger.warning("SelectionAgentOperator: selection failed for query %r: %s", query_id, exc, exc_info=True)
             return None

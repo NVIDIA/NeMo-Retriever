@@ -63,6 +63,35 @@ AGENTIC_LOCAL_LLM_BACKEND = "vllm"
 AGENTIC_LOCAL_LLM_MODEL = "nemotron-8b"
 AGENTIC_LOCAL_LLM_BACKENDS = frozenset({"vllm"})
 
+# Raw embeddings are large and are not part of the classic hit envelope, so they
+# are dropped from the hits kept for rehydration.
+_UNCACHED_HIT_FIELDS = frozenset({"vector", "embedding"})
+
+# Selection stages that can only rank documents a retrieve hop returned. A hit
+# missing for one of these means the captured metadata and the selected ids
+# disagree, which is an internal inconsistency rather than agent behavior.
+_RETRIEVED_ONLY_RESULT_SOURCES = frozenset({"rrf", "selection_agent"})
+
+
+@dataclass(frozen=True)
+class AgenticRetrieveResult:
+    """Ranked agentic documents and provider-reported usage by query ID.
+
+    Attributes
+    ----------
+    documents:
+        Ranked rows for all requested queries. See
+        :meth:`AgenticRetriever.retrieve` for the column contract.
+    usage:
+        Mapping from caller query ID to a stage-keyed provider usage breakdown,
+        ``{query_id: {stage: provider_usage}}``. Repeated LLM calls within each
+        stage are summed. Queries for which the provider reported no usage are
+        omitted.
+    """
+
+    documents: pd.DataFrame
+    usage: dict[str, dict[str, Any]]
+
 
 class AgenticQueryInputOperator(AbstractOperator):
     """Adapt ``Retriever(graph=...)`` input DataFrames to agentic query schema."""
@@ -392,6 +421,13 @@ class AgenticRetriever:
         )
         self._lock = threading.Lock()
         self._chat_completion_fn: Any | None = None
+        # Classic hits keyed by (graph query_id, doc_id), captured on every
+        # retrieve hop before the agent boundary reduces them to
+        # doc_id/text/score. The query component keeps query-dependent fields
+        # (especially scores) isolated when a batch retrieves the same document.
+        # Only final selected ids are rehydrated; reset for each retrieve().
+        self._hit_cache: dict[tuple[str, str], dict[str, Any]] = {}
+        self._hit_cache_lock = threading.Lock()
 
     def _get_chat_completion_fn(self) -> Any | None:
         if self._cfg.llm_backend == "openai_compatible":
@@ -424,12 +460,47 @@ class AgenticRetriever:
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
 
-        The output schema matches ``SelectionAgentOperator``: ``query_id``,
-        ``doc_id``, ``rank``, and ``message``.
+        Columns are ``SelectionAgentOperator``'s (``query_id``, ``doc_id``,
+        ``rank``, ``message``, ``result_source``) plus ``hit``: the classic
+        ``RetrievalHit`` (``text``, ``source``, ``page_number``, ``metadata``, …)
+        captured on the retrieve hop that first returned the document, or ``{}``
+        when no hop returned it. Use :func:`rehydrated_agentic_hit` to layer the
+        agentic annotations onto that hit.
+        """
+        return self.retrieve_with_usage(query_ids, query_texts).documents
+
+    def retrieve_with_usage(
+        self,
+        query_ids: Sequence[str],
+        query_texts: Sequence[str],
+    ) -> AgenticRetrieveResult:
+        """Return ranked documents and exact per-query agent LLM usage.
+
+        Parameters
+        ----------
+        query_ids:
+            Caller-owned IDs used as keys in the returned usage mapping.
+        query_texts:
+            Query strings aligned positionally with ``query_ids``.
+
+        Returns
+        -------
+        AgenticRetrieveResult
+            Ranked documents and a stage-keyed provider usage breakdown for
+            each query that reported usage.
+
+        Raises
+        ------
+        ValueError
+            If ``query_ids`` and ``query_texts`` have different lengths.
         """
 
         if len(query_ids) != len(query_texts):
             raise ValueError("query_ids and query_texts must have the same length.")
+        caller_query_ids = [str(query_id) for query_id in query_ids]
+
+        with self._hit_cache_lock:
+            self._hit_cache.clear()
 
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
         from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
@@ -442,38 +513,41 @@ class AgenticRetriever:
         per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, target_top_k)
         chat_completion_fn = self._get_chat_completion_fn()
 
+        react_operator = ReActAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            retriever_fn=self._retrieve_for_agent,
+            retriever_fn_accepts_query_id=True,
+            retriever_top_k=per_hop_top_k,
+            target_top_k=target_top_k,
+            max_steps=int(self._cfg.react_max_steps),
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            num_concurrent=int(self._cfg.num_concurrent),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=chat_completion_fn,
+        )
+        selection_operator = SelectionAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            top_k=target_top_k,
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            text_truncation=int(self._cfg.text_truncation),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=chat_completion_fn,
+        )
         pipeline = (
             AgenticQueryInputOperator()
-            >> ReActAgentOperator(
-                invoke_url=_none_if_empty(self._cfg.invoke_url),
-                llm_model=str(self._cfg.llm_model),
-                retriever_fn=self._retrieve_for_agent,
-                retriever_top_k=per_hop_top_k,
-                target_top_k=target_top_k,
-                max_steps=int(self._cfg.react_max_steps),
-                api_key=_none_if_empty(self._cfg.api_key),
-                parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                num_concurrent=int(self._cfg.num_concurrent),
-                reasoning_effort=self._cfg.reasoning_effort,
-                temperature=self._cfg.temperature,
-                backend=self._cfg.llm_client,
-                max_tokens=self._cfg.max_tokens,
-                chat_completion_fn=chat_completion_fn,
-            )
+            >> react_operator
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
-            >> SelectionAgentOperator(
-                invoke_url=_none_if_empty(self._cfg.invoke_url),
-                llm_model=str(self._cfg.llm_model),
-                top_k=target_top_k,
-                api_key=_none_if_empty(self._cfg.api_key),
-                parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                text_truncation=int(self._cfg.text_truncation),
-                reasoning_effort=self._cfg.reasoning_effort,
-                temperature=self._cfg.temperature,
-                backend=self._cfg.llm_client,
-                max_tokens=self._cfg.max_tokens,
-                chat_completion_fn=chat_completion_fn,
-            )
+            >> selection_operator
             >> AgenticSelectionOutputOperator()
         )
         graph_retriever = Retriever(
@@ -481,13 +555,36 @@ class AgenticRetriever:
             top_k=target_top_k,
             embed_kwargs={"text_column": "query_text"},
         )
-        raw_hits = graph_retriever.queries(
-            [str(query_text) for query_text in query_texts],
-            top_k=target_top_k,
-        )
-        return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
+        usage_by_query: dict[str, dict[str, Any]] = {}
+        try:
+            raw_hits = graph_retriever.queries(
+                [str(query_text) for query_text in query_texts],
+                top_k=target_top_k,
+            )
+        finally:
+            # Retriever.queries assigns positional graph query IDs ("0", "1",
+            # ...). Pop both operator-owned backends after all query workers
+            # finish, then restore the caller's IDs.
+            for position, caller_query_id in enumerate(caller_query_ids):
+                # Each backend has already summed repeated calls within its
+                # stages. Operator stage names are disjoint
+                # (main_agent vs top{K}_agent), so joining the maps is enough.
+                breakdown = {
+                    **react_operator.pop_query_usage(str(position)),
+                    **selection_operator.pop_query_usage(str(position)),
+                }
+                if breakdown:
+                    usage_by_query[caller_query_id] = breakdown
 
-    def _retrieve_for_agent(self, query_text: str, top_k: int) -> list[dict[str, Any]]:
+        result = _raw_hits_to_agentic_result(caller_query_ids, raw_hits)
+        with self._hit_cache_lock:
+            hit_cache = dict(self._hit_cache)
+        return AgenticRetrieveResult(
+            documents=_rehydrate_selected_hits(result, hit_cache),
+            usage=usage_by_query,
+        )
+
+    def _retrieve_for_agent(self, query_text: str, top_k: int, *, query_id: str = "") -> list[dict[str, Any]]:
         """Retriever callback used by ``ReActAgentOperator``.
 
         Retrieval is serialized across concurrent ReAct workers via ``self._lock``
@@ -498,10 +595,12 @@ class AgenticRetriever:
         """
 
         candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k is not None else None
+        chunk_pool_k = candidate_k if candidate_k is not None else int(top_k)
         with self._lock:
-            hits = self._retriever.query(str(query_text), top_k=int(top_k), candidate_k=candidate_k)
+            hits = self._retriever.query(str(query_text), top_k=chunk_pool_k, candidate_k=candidate_k)
 
         docs: list[dict[str, Any]] = []
+        seen_doc_ids: set[str] = set()
         doc_id_field = getattr(self, "_doc_id_field", None)
         for hit in hits:
             hit_dict = dict(hit)
@@ -512,6 +611,17 @@ class AgenticRetriever:
             )
             if not doc_id:
                 continue
+            if doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
+            # Keep the untruncated hit for rehydration; truncation below only
+            # bounds what the agent LLM sees. First occurrence per query and
+            # doc_id wins.
+            with self._hit_cache_lock:
+                self._hit_cache.setdefault(
+                    (str(query_id), doc_id),
+                    {key: value for key, value in hit_dict.items() if key not in _UNCACHED_HIT_FIELDS},
+                )
             text = str(hit_dict.get("text", ""))
             if int(self._cfg.text_truncation) > 0:
                 text = text[: int(self._cfg.text_truncation)]
@@ -525,6 +635,82 @@ class AgenticRetriever:
             if len(docs) >= int(top_k):
                 break
         return docs
+
+
+def rehydrated_agentic_hit(hit: Any, *, doc_id: str, rank: int, result_source: str) -> dict[str, Any]:
+    """Layer the agentic annotations onto one rehydrated classic hit.
+
+    ``hit`` is a value from the ``hit`` column of
+    :meth:`AgenticRetriever.retrieve`. The result carries the classic
+    ``RetrievalHit`` fields plus ``doc_id``, ``rank``, and ``result_source``, so
+    agentic output matches classic retrieval output while still reporting which
+    stage selected the document.
+
+    Args:
+        hit: Rehydrated classic hit mapping from ``AgenticRetriever.retrieve``.
+            Non-dict values represent unavailable hit metadata and produce an
+            annotation-only result.
+        doc_id: Non-empty document identifier selected by the agentic pipeline.
+        rank: One-based position in the final selected result list.
+        result_source: Stage that produced the final selection, normally
+            ``final_results``, ``selection_agent``, or ``rrf``.
+
+    Returns:
+        A new dictionary containing the classic hit fields, when available,
+        plus top-level ``doc_id``, ``rank``, and ``result_source`` annotations.
+    """
+
+    rehydrated: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}
+    rehydrated.update({"doc_id": doc_id, "rank": rank, "result_source": result_source})
+    return rehydrated
+
+
+def _rehydrate_selected_hits(
+    result: pd.DataFrame,
+    hit_cache: dict[tuple[str, str], dict[str, Any]],
+) -> pd.DataFrame:
+    """Attach the captured classic hit for each selected doc_id."""
+
+    doc_ids = result["doc_id"].astype(str).tolist() if "doc_id" in result.columns else []
+    retrieval_query_ids = (
+        result["_retrieval_query_id"].astype(str).tolist()
+        if "_retrieval_query_id" in result.columns
+        else [""] * len(doc_ids)
+    )
+    if "result_source" in result.columns:
+        result_sources = result["result_source"].astype(str).tolist()
+    else:
+        result_sources = [""] * len(doc_ids)
+
+    hits: list[dict[str, Any]] = []
+    for retrieval_query_id, doc_id, result_source in zip(retrieval_query_ids, doc_ids, result_sources):
+        hit = hit_cache.get((retrieval_query_id, doc_id))
+        if hit is None:
+            _log_missing_rehydration_hit(doc_id, result_source)
+            hit = {}
+        hits.append(dict(hit))
+    result["hit"] = pd.Series(hits, dtype="object", index=result.index)
+    result.drop(columns=["_retrieval_query_id"], inplace=True, errors="ignore")
+    return result
+
+
+def _log_missing_rehydration_hit(doc_id: str, result_source: str) -> None:
+    if result_source in _RETRIEVED_ONLY_RESULT_SOURCES:
+        logger.error(
+            "Agentic hit metadata is missing for doc_id=%r selected by result_source=%r, which can only rank "
+            "documents a retrieve hop returned; the selected id and the captured hits disagree. "
+            "Returning agentic annotations without classic hit fields.",
+            doc_id,
+            result_source,
+        )
+        return
+    logger.warning(
+        "Agentic hit metadata is missing for doc_id=%r selected by result_source=%r: no retrieve hop returned "
+        "this document, so the agent named an id it never saw. Returning agentic annotations without classic "
+        "hit fields.",
+        doc_id,
+        result_source,
+    )
 
 
 def _raw_hits_to_agentic_result(query_ids: Sequence[str], raw_hits: Sequence[Sequence[dict[str, Any]]]) -> pd.DataFrame:
@@ -542,6 +728,7 @@ def _raw_hits_to_agentic_result(query_ids: Sequence[str], raw_hits: Sequence[Seq
     for pos, hits in enumerate(raw_hits):
         for rank, hit in enumerate(hits, start=1):
             raw_qid = hit.get("query_id")
+            retrieval_query_id = str(raw_qid) if raw_qid is not None else str(pos)
             if raw_qid is not None and str(raw_qid).isdigit() and int(raw_qid) < n:
                 qid = str(query_ids[int(raw_qid)])
             elif pos < n:
@@ -555,10 +742,11 @@ def _raw_hits_to_agentic_result(query_ids: Sequence[str], raw_hits: Sequence[Seq
                     "rank": int(hit.get("rank", rank)),
                     "message": str(hit.get("message", "")),
                     "result_source": str(hit.get("result_source", "")),
+                    "_retrieval_query_id": retrieval_query_id,
                 }
             )
     if not rows:
-        return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message", "result_source"])
+        return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message", "result_source", "_retrieval_query_id"])
     return pd.DataFrame(rows)
 
 

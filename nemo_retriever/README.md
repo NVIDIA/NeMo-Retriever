@@ -51,11 +51,14 @@ uv pip install "nemo-retriever[local]"
 ```
 
 The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease/nightly Nemotron packages from PyPI within the same supported
-major-version windows, opt in with `--pre`:
+try prerelease or nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
+version you are installing.
+
+Run the following command, and replace `<version>` with that version:
 
 ```bash
-uv pip install --pre "nemo-retriever[local]==26.08-RC1"
+uv pip install --pre "nemo-retriever[local]==<version>"
 ```
 
 **Remote NIM (no local GPU)**
@@ -127,6 +130,9 @@ ingestor = (
 )
 ```
 
+Bare `.vdb_upload()` writes to the default LanceDB table `nemo-retriever`.
+Default `Retriever()` and `retriever ingest` use that same table.
+
 ### Ingest inline text
 
 Python callers can pass raw text documents directly to the same text splitting,
@@ -197,10 +203,17 @@ retriever ingest /path/to/file-or-directory \
   --table-name nemo-retriever
 ```
 
+You do not need to choose a retrieval index mode for the normal workflow. The
+default `index_mode=auto` creates a hybrid table (dense
+vectors plus BM25/full-text search), and query mode `auto` uses that table
+automatically. The explicit `dense`, `hybrid`, and `sparse` modes are advanced
+overrides for experiments or specialized deployments.
+
 Chunks land at `./lancedb/nemo-retriever`, which matches the storage settings
-used in [Run a recall query](#run-a-recall-query) below. With the
-`[local]` extra installed (see setup), defaults point at local-GPU extraction
-and embedding.
+used in [Run a recall query](#run-a-recall-query) below. Python
+`.vdb_upload()` and default `Retriever()` use the same table. With the
+`[local]` extra installed (refer to the setup steps above), defaults point at
+local-GPU extraction and embedding.
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
@@ -255,7 +268,8 @@ dict_keys([1, 2, 3])
 '# Extracted Content\n\n## Page 1\n\nTestingDocument\r\nA s'
 ```
 
-Since the ingestion job automatically populated a lancedb table with all these chunks, you can use queries to retrieve semantically relevant chunks for feeding directly into an LLM:
+After ingest, those chunks are in the default LanceDB table `nemo-retriever`.
+You can query them to retrieve semantically relevant chunks for an LLM:
 
 ### Run a recall query
 
@@ -263,7 +277,6 @@ Since the ingestion job automatically populated a lancedb table with all these c
 from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
-  # values used by the retriever ingest example above
   vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
   top_k=5,
   rerank=False
@@ -271,9 +284,12 @@ retriever = Retriever(
 
 query = "Given their activities, which animal is responsible for the typos in my documents?"
 
-# you can also submit a list with retriever.queries[...]
+# you can also submit a list with retriever.queries([...])
 hits = retriever.query(query)
 ```
+
+Default `Retriever()` also reads `lancedb/nemo-retriever`. Pass `vdb_kwargs` only
+when you wrote a different URI or table name.
 
 If you ingested with the remote-NIM recipe above (no local GPU), point the
 `Retriever` at the same embedding endpoint so query vectors are produced by the
@@ -349,6 +365,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
+The examples below use the default table `nemo-retriever`. When you omit
+`--embed-model-name`, agentic retrieval uses the selected table's model.
 
 By default, the agent LLM runs in process with local vLLM and `nemotron-8b`
 (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`). This requires a CUDA GPU host and the
@@ -367,8 +385,7 @@ GPUs (for example `CUDA_VISIBLE_DEVICES=0,1`).
 CUDA_VISIBLE_DEVICES=0 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
   --agentic \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --table-name nemo-retriever
 ```
 
 ```bash
@@ -377,8 +394,7 @@ CUDA_VISIBLE_DEVICES=0,1 retriever query "Given their activities, which animal i
   --agentic-llm-model super-49b \
   --agentic-local-tensor-parallel-size 2 \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2
+  --table-name nemo-retriever
 ```
 
 When the first ``tensor_parallel_size`` CUDA-visible GPUs are not
@@ -400,8 +416,7 @@ retriever query "What is RAG?" \
   --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+  --table-name nemo-retriever
 ```
 
 The Helm `answer_llm` Super-49B NIM is not tool-call ready by default.
@@ -411,8 +426,11 @@ endpoint. Refer to
 [Agentic retrieval (self-hosted Super-49B)](helm/README.md#agentic-retrieval-llm)
 in the Helm chart README.
 
-Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
-text-enriched hits.
+Agentic CLI output is not the five-field dense projection (`modality`,
+`page_number`, `score`, `source`, and `text`). Each JSON object is the
+internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
+`result_source` is `final_results`, `rrf`, or `selection_agent`. When no
+retrieval hop returned the document, only those three keys are present.
 
 For a quick smoke test, reduce agent work:
 
@@ -421,20 +439,19 @@ CUDA_VISIBLE_DEVICES=0 retriever query "What is RAG?" \
   --agentic \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --top-k 1 \
   --agentic-react-max-steps 1
 ```
 
 You can run the same flow from Python. Omit `invoke_url` for the default local
 in-process vLLM backend, or pass `invoke_url` on `QueryAgenticOptions` for a
-separate OpenAI-compatible chat-completions endpoint.
+separate OpenAI-compatible chat-completions endpoint. Omit `embed_model_name`
+so the query reuses the table's recorded model.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
-    QueryEmbedOptions,
     QueryRequest,
     QueryRetrievalOptions,
     QueryStorageOptions,
@@ -449,9 +466,6 @@ results = agentic_query_documents(
         storage=QueryStorageOptions(
             lancedb_uri="lancedb",
             table_name="nemo-retriever",
-        ),
-        embed=QueryEmbedOptions(
-            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
@@ -474,7 +488,7 @@ The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into
 | --- | --- | --- | --- |
 | `Retriever.retrieve(query, top_k=...)` | one query | `RetrievalResult` (`chunks`, `metadata`) | Structured retrieval without an LLM. |
 | `Retriever.answer(query, llm=..., judge=None, reference=None, ...)` | one query | `AnswerResult` (answer + chunks + optional scores) | One-shot RAG -- production/live. |
-| `Retriever.pipeline().generate(...).score().judge(...).run(queries)` | many queries | `pandas.DataFrame` | Batch RAG over the operator graph, each step optional. |
+| `Retriever.pipeline().generate(...).judge(...).score().run(queries)` | many queries | `pandas.DataFrame` | Batch RAG over the operator graph, each step optional. |
 
 Install the LLM client extra:
 ```bash
@@ -482,9 +496,13 @@ uv pip install "nemo-retriever[llm]"
 export NVIDIA_API_KEY=nvapi-...
 ```
 
-Single-query live RAG. Point `vdb_kwargs["uri"]` at any table built above; the
-embedding model in `embed_kwargs` must match the one used during ingestion so
-query vectors land in the same embedding space as the stored chunks.
+The default Live RAG model uses LiteLLM's `nvidia_nim` provider. LiteLLM does not
+read `NVIDIA_API_KEY` for that provider. Pass `api_key="os.environ/NVIDIA_API_KEY"`
+so the same key is forwarded on each request.
+
+Single-query live RAG. Point `vdb_kwargs` at the table you ingested. The default
+table is `nemo-retriever` for both Python `.vdb_upload()` and `retriever ingest`.
+The embedding model in `embed_kwargs` must match the model used during ingestion.
 
 ```python
 from nemo_retriever.graph.retriever import Retriever
@@ -501,6 +519,7 @@ retriever = Retriever(
 )
 llm = LiteLLMClient.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.0,
     max_tokens=512,
 )
@@ -513,8 +532,9 @@ print(f"{result.latency_s:.2f}s on {result.model}")
 ```
 
 Local-GPU shortcut: if you ingested with default `retriever ingest` flags
-(`[local]` extra installed), drop `embed_kwargs` to reuse
-the bundled `VL_EMBED_MODEL`.
+(`[local]` extra installed), omit `embed_kwargs`. The `Retriever` reads the
+logical `nvidia/nemotron-3-embed-1b` model from the LanceDB table metadata and
+resolves it to a checkpoint that supports the local GPU.
 
 Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python
@@ -522,6 +542,7 @@ from nemo_retriever.models.llm import LLMJudge
 
 judge = LLMJudge.from_kwargs(
     model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    api_key="os.environ/NVIDIA_API_KEY",
     temperature=0.1,
     max_tokens=4096,
 )
@@ -540,8 +561,8 @@ Batch RAG over the operator graph -- each builder step is optional:
 df = (
     retriever.pipeline()
     .generate(llm)
-    .score()
     .judge(judge)
+    .score()
     .run(
         queries=["What is RAG?", "What is reranking?"],
         reference=["RAG combines retrieval with generation.", "Reranking re-scores retrieved passages."],
@@ -550,12 +571,14 @@ df = (
 print(df[["query", "answer", "token_f1", "judge_score", "failure_mode"]])
 ```
 
+The pipeline builder runs steps in call order. `.score()` writes `failure_mode` from the `judge_score` present at that step. Call `.judge()` before `.score()` when you want `failure_mode` to reflect the judge result. If `.score()` runs first, a missing `judge_score` is classified as `judge_error`, and a later `.judge()` does not recompute `failure_mode`.
+
 Scoring tiers on `AnswerResult`:
 
 - **Tier 1** (`answer_in_context`) -- whether retrieval surfaced the evidence; requires `reference`.
 - **Tier 2** (`token_f1`, `exact_match`) -- token-level overlap; requires `reference`.
 - **Tier 3** (`judge_score`) -- dual-judge `AnswerAccuracy` LLM-as-judge score (0.0-1.0), ported from ragas onto `litellm`; requires `reference` and `judge`. `judge_reasoning` is always empty (the metric emits only a rating).
-- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`).
+- `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `generation_error`, `refused_*`, `thinking_truncated`, `judge_error`).
 
 If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
 
@@ -595,7 +618,7 @@ If you want a readable markdown view of extracted results, pass a single documen
 records to `nemo_retriever.common.io.to_markdown`. The helper returns one markdown string (or `None`
 if there is no content), with per-page sections joined under a single document heading.
 
-For multi-document runs, pass one document at a time—for example, `to_markdown(results[0])`.
+For multi-document runs, filter the results by `path` and pass one document at a time.
 To build a filename-keyed index across many documents, use `build_page_index`.
 
 PDF text is split at the page level.
@@ -610,11 +633,13 @@ ingestor = (
   .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
 results = ingestor.ingest()
-markdown_doc = to_markdown(results[0])
+document_path = results["path"].iloc[0]
+document_results = results[results["path"] == document_path]
+markdown_doc = to_markdown(document_results)
 print(markdown_doc)
 ```
 
-Use `to_markdown_by_page(results[0])` when you want a `dict[int, str]` keyed by page
+Use `to_markdown_by_page(document_results)` when you want a `dict[int, str]` keyed by page
 number instead, where each value is the rendered markdown for that page.
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
 

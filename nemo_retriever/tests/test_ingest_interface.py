@@ -77,8 +77,9 @@ def _run_graph_ingest_with_result(ingestor: GraphIngestor, result, monkeypatch, 
         lambda: SimpleNamespace(extraction_mode="pdf"),
     )
 
-    def _execute_single_graph(effective_extraction, *, post_extract_order):
+    def _execute_single_graph(effective_extraction, *, dedup_params, post_extract_order):
         assert effective_extraction.extraction_mode == "pdf"
+        assert dedup_params is ingestor._dedup_params
         assert isinstance(post_extract_order, tuple)
         return result
 
@@ -363,6 +364,88 @@ def test_graph_ingestor_action_methods_materialize_default_params() -> None:
 
     ingestor.embed()
     assert isinstance(ingestor._embed_params, EmbedParams)
+
+
+def test_caption_auto_dedup_does_not_mutate_repeated_ingest_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    ingestor = GraphIngestor(run_mode="inprocess").files(["document.pdf"]).caption()
+    configured_stage_order = list(ingestor._stage_order)
+    calls: list[tuple[DedupParams | None, tuple[str, ...]]] = []
+    monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
+    monkeypatch.setattr(
+        ingestor,
+        "_resolve_effective_extraction_inputs",
+        lambda: SimpleNamespace(extraction_mode="pdf"),
+    )
+
+    def _execute_single_graph(effective_extraction, *, dedup_params, post_extract_order):
+        assert effective_extraction.extraction_mode == "pdf"
+        calls.append((dedup_params, post_extract_order))
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ingestor, "_execute_single_graph", _execute_single_graph)
+
+    ingestor.ingest()
+    ingestor.ingest()
+
+    assert ingestor._dedup_params is None
+    assert ingestor._stage_order == configured_stage_order == ["caption"]
+    assert [stage_order for _, stage_order in calls] == [("dedup", "caption"), ("dedup", "caption")]
+    for dedup_params, _ in calls:
+        assert dedup_params is not None
+        assert dedup_params.content_hash is True
+        assert dedup_params.bbox_iou is True
+        assert dedup_params.iou_threshold == 0.45
+
+
+def test_image_only_caption_does_not_enable_or_persist_dedup(monkeypatch: pytest.MonkeyPatch) -> None:
+    ingestor = GraphIngestor(run_mode="inprocess").files(["image.png"]).extract_image_files().caption()
+    configured_stage_order = list(ingestor._stage_order)
+    calls: list[tuple[DedupParams | None, tuple[str, ...]]] = []
+    monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
+    monkeypatch.setattr(
+        ingestor,
+        "_resolve_effective_extraction_inputs",
+        lambda: SimpleNamespace(extraction_mode="image"),
+    )
+
+    def _execute_single_graph(effective_extraction, *, dedup_params, post_extract_order):
+        assert effective_extraction.extraction_mode == "image"
+        calls.append((dedup_params, post_extract_order))
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ingestor, "_execute_single_graph", _execute_single_graph)
+
+    ingestor.ingest()
+
+    assert calls == [(None, ("caption",))]
+    assert ingestor._dedup_params is None
+    assert ingestor._stage_order == configured_stage_order == ["extract", "caption"]
+
+
+def test_explicit_disabled_dedup_preserves_sdk_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    configured_dedup = DedupParams(content_hash=False, bbox_iou=False)
+    ingestor = GraphIngestor(run_mode="inprocess").files(["document.pdf"]).extract().dedup(configured_dedup).caption()
+    configured_stage_order = list(ingestor._stage_order)
+    calls: list[tuple[DedupParams | None, tuple[str, ...]]] = []
+    monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
+    monkeypatch.setattr(
+        ingestor,
+        "_resolve_effective_extraction_inputs",
+        lambda: SimpleNamespace(extraction_mode="pdf"),
+    )
+
+    def _execute_single_graph(effective_extraction, *, dedup_params, post_extract_order):
+        assert effective_extraction.extraction_mode == "pdf"
+        calls.append((dedup_params, post_extract_order))
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ingestor, "_execute_single_graph", _execute_single_graph)
+
+    ingestor.ingest()
+
+    assert calls == [(configured_dedup, ("dedup", "caption"))]
+    assert ingestor._dedup_params is configured_dedup
+    assert ingestor._stage_order == configured_stage_order == ["extract", "dedup", "caption"]
 
 
 def test_extract_unified_defaults() -> None:

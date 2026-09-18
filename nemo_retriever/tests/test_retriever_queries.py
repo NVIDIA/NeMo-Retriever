@@ -61,6 +61,14 @@ def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[st
 
 
 class TestQueriesGraphExecution:
+    @pytest.fixture(autouse=True)
+    def _mock_index_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        metadata_reader = MagicMock()
+        metadata_reader.get_index_metadata.return_value = None
+        monkeypatch.setattr(
+            "nemo_retriever.graph.retriever.RetrieveVdbOperator", MagicMock(return_value=metadata_reader)
+        )
+
     def test_empty_queries_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mock_get = MagicMock()
         monkeypatch.setattr(Retriever, "_get_graph", mock_get)
@@ -83,10 +91,79 @@ class TestQueriesGraphExecution:
         assert list(df.columns) == ["text"]
         assert df["text"].tolist() == ["q"]
 
+    @pytest.mark.parametrize("embed_kwargs", [{}, {"local_ingest_embed_backend": None}])
+    def test_default_embed_params_use_nemotron_vllm(self, embed_kwargs: dict[str, Any]) -> None:
+        params = Retriever(embed_kwargs=embed_kwargs)._merge_embed_params()
+
+        assert params.model_name == "nvidia/nemotron-3-embed-1b"
+        assert params.embed_model_name == "nvidia/nemotron-3-embed-1b"
+        assert params.local_ingest_embed_backend == "vllm"
+
     def test_merge_embed_params_per_call_overrides(self) -> None:
         r = _make_retriever(embed_kwargs={"model_name": "base", "embed_model_name": "base"})
         p = r._merge_embed_params({"model_name": "call"})
         assert p.model_name == "call"
+
+    @pytest.mark.parametrize(
+        ("explicit_embed_kwargs", "query_embed_kwargs"),
+        [
+            ({"model_name": "acme/model-b", "embed_model_name": "acme/model-b"}, None),
+            ({}, {"model_name": "acme/model-b", "embed_model_name": "acme/model-b"}),
+        ],
+    )
+    def test_explicit_model_mismatch_is_rejected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        explicit_embed_kwargs: dict[str, str],
+        query_embed_kwargs: dict[str, str] | None,
+    ) -> None:
+        graph = _install_mock_graph(monkeypatch, [[{"text": "retrieved"}]])
+        metadata_reader = MagicMock()
+        metadata_reader.get_index_metadata.side_effect = lambda key, **_kwargs: {
+            "embedding_model_name": "acme/model-a",
+            "embedding_model_revision": "a" * 40,
+        }.get(key)
+        reader_factory = MagicMock(return_value=metadata_reader)
+        monkeypatch.setattr("nemo_retriever.graph.retriever.RetrieveVdbOperator", reader_factory)
+        retriever = _make_retriever(embed_kwargs=explicit_embed_kwargs)
+
+        with pytest.raises(ValueError, match="does not match model .acme/model-a. recorded on the index"):
+            retriever.queries(["q"], embed_kwargs=query_embed_kwargs)
+
+        reader_factory.assert_called_once()
+        graph.execute_in_place.assert_not_called()
+
+    def test_dense_lancedb_without_embedding_model_metadata_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        graph = _install_mock_graph(monkeypatch, [[{"text": "retrieved"}]])
+        monkeypatch.setattr(
+            Retriever,
+            "_resolve_lancedb_query_mode",
+            lambda self, runtime_vdb_kwargs: ("dense", MagicMock(), "lancedb", "nemo-retriever", False),
+        )
+        retriever = _make_retriever()
+
+        with pytest.raises(ValueError, match="does not record its embedding model"):
+            retriever.queries(["q"])
+
+        graph.execute_in_place.assert_not_called()
+
+    def test_explicit_model_matching_index_does_not_warn(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        _install_mock_graph(monkeypatch, [[{"text": "retrieved"}]])
+        metadata_reader = MagicMock()
+        metadata_reader.get_index_metadata.side_effect = lambda key, **_kwargs: {
+            "embedding_model_name": "acme/model-a",
+        }.get(key)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.retriever.RetrieveVdbOperator", MagicMock(return_value=metadata_reader)
+        )
+        retriever = _make_retriever(embed_kwargs={"model_name": "acme/model-a", "embed_model_name": "acme/model-a"})
+
+        with caplog.at_level("WARNING", logger="nemo_retriever.graph.retriever"):
+            retriever.queries(["q"])
+
+        assert not caplog.records
 
     def test_index_model_keeps_constructor_provider_prefix(self) -> None:
         retriever = _make_retriever(

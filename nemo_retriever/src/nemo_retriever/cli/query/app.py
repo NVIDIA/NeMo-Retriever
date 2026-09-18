@@ -15,6 +15,9 @@ from typer.core import TyperCommand, TyperGroup
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
+from nemo_retriever.cli.query_workflow import (
+    agentic_query_documents_with_metadata as query_agentic_documents_with_metadata,
+)
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
 from nemo_retriever.query.agentic_options import (
     agentic_llm_client_error,
@@ -74,8 +77,10 @@ app = typer.Typer(
 def _query_cli_hit(hit: RetrievalHit, max_text_chars: int | None = None) -> dict[str, object]:
     metadata = hit.get("metadata") or {}
     modality = hit.get("content_type") or metadata.get("type") or "text"
-    if "_score" in hit and hit["_score"] is not None:
-        score: object = hit["_score"]
+    if "_relevance_score" in hit and hit["_relevance_score"] is not None:
+        score: object = hit["_relevance_score"]
+    elif "_score" in hit and hit["_score"] is not None:
+        score = hit["_score"]
     elif "_distance" in hit and hit["_distance"] is not None:
         score = hit["_distance"]
     else:
@@ -162,7 +167,7 @@ def _retrieval_options(
     help=(
         "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
         "Embedding model: read from the selected table when available; "
-        f"legacy tables fall back to {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        "dense and hybrid tables without embedding-model metadata must be rebuilt.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
         "For a service deployment, use retriever query service --help."
     ),
@@ -187,6 +192,7 @@ def _local_command(
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
+    include_usage: opts.IncludeUsageOption = False,
     agentic_llm_model: opts.AgenticLlmModelOption = None,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
@@ -197,6 +203,9 @@ def _local_command(
     agentic_llm_client: opts.AgenticLlmClientOption = None,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
+    if include_usage and not agentic:
+        typer.echo("Error: --include-usage requires --agentic.", err=True)
+        raise typer.Exit(1)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
     if rerank is None:
@@ -283,8 +292,12 @@ def _local_command(
                 ),
             )
             with quiet_capture():
-                ranked = query_agentic_documents(request)
-            typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
+                if include_usage:
+                    result = query_agentic_documents_with_metadata(request)
+                else:
+                    result = query_agentic_documents(request)
+            payload = {"hits": result.hits, "usage": result.usage or None} if include_usage else result
+            typer.echo(json.dumps(payload, indent=2, sort_keys=True, default=str))
             return
 
         def _request() -> QueryRequest:

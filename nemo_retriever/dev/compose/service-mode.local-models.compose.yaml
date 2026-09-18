@@ -19,7 +19,7 @@ services:
   vectordb:
     image: ${NEMO_RETRIEVER_GPU_IMAGE:-nemo-retriever-service-gpu:dev}
     build: {target: service-gpu, args: {DOWNLOAD_DEFAULT_TOKENIZER: "True"}}
-    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --local-embed, --local-embed-backend, "${LOCAL_EMBED_BACKEND:-hf}", --hf-cache-dir, /var/cache/huggingface, --device, cuda, --gpu-memory-utilization, "${LOCAL_EMBED_GPU_MEMORY_UTILIZATION:-0.45}", --embed-model, "${LOCAL_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
+    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --local-embed, --local-embed-backend, "${LOCAL_EMBED_BACKEND:-vllm}", --hf-cache-dir, /var/cache/huggingface, --device, cuda, --gpu-memory-utilization, "${LOCAL_EMBED_GPU_MEMORY_UTILIZATION:-0.45}", --embed-model, "${LOCAL_EMBED_MODEL:-nvidia/nemotron-3-embed-1b}", --port, "7671"]
     environment:
       CUDA_VISIBLE_DEVICES: ${LOCAL_VECTORDB_GPU_ID:-1}
     volumes: [huggingface_cache:/var/cache/huggingface]

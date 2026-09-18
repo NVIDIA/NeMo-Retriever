@@ -65,11 +65,11 @@ class LlamaNemotronEmbed1BV2Embedder:
     def _ensure_loaded(self) -> None:
         if self._llm is not None:
             return
-        from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+        from nemo_retriever.models import resolve_local_embed_model
         from nemo_retriever.models.inference.vllm import create_vllm_llm
 
         configure_global_hf_cache_base(self.hf_cache_dir)
-        model_id = self.model_id or _DEFAULT_EMBED_MODEL
+        model_id = resolve_local_embed_model(self.model_id, backend="vllm")
         max_model_len = int(self.max_length) if int(self.max_length) > 0 else None
         self._llm = create_vllm_llm(
             str(model_id),
@@ -85,14 +85,11 @@ class LlamaNemotronEmbed1BV2Embedder:
         return False
 
     def _finalize_vectors(self, vectors: List[List[float]]) -> torch.Tensor:
-        """Reject empty rows before tensor conversion and normalization."""
+        """Require one real embedding per input, then optionally normalize."""
         report_lost_rows(vectors, embedder=type(self).__name__)
-        valid = [v for v in vectors if v]
-        if not valid:
+        if not vectors:
             return torch.empty((0, 0), dtype=torch.float32)
-        dim = len(valid[0])
-        padded: List[List[float]] = [v if v else [0.0] * dim for v in vectors]
-        t = torch.tensor(padded, dtype=torch.float32)
+        t = torch.tensor(vectors, dtype=torch.float32)
         if self.normalize:
             return _l2_normalize(t)
         return t
@@ -105,7 +102,7 @@ class LlamaNemotronEmbed1BV2Embedder:
         self._ensure_loaded()
         from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts if str(t).strip()]
+        texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         vectors = embed_with_vllm_llm(
@@ -122,7 +119,7 @@ class LlamaNemotronEmbed1BV2Embedder:
         self._ensure_loaded()
         from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
-        texts_list = [str(t) for t in texts if str(t).strip()]
+        texts_list = [str(t) for t in texts]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
         vectors = embed_with_vllm_llm(

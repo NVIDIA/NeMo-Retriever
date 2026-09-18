@@ -15,6 +15,7 @@ from nemo_retriever.ingestor.manifest import (
     build_input_manifest,
     plan_extraction_branches,
 )
+from nemo_retriever.ingestor.plans import resolve_effective_dedup_params
 from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion
 from nemo_retriever.common.params import (
     ASRParams,
@@ -39,13 +40,19 @@ from nemo_retriever.common.input_files import (
     expand_input_file_patterns,
     resolve_input_files,
 )
-from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.ingest.index_mode import (
+    RequestedIngestIndexMode,
+    inspect_existing_lancedb_mode,
+    resolve_ingest_index_mode,
+    validate_requested_index_mode,
+)
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 IngestRunModeValue = Literal["inprocess", "batch"]
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
 IngestProfileValue = Literal["auto", "fast-text"]
-IngestIndexModeValue = Literal["dense", "hybrid", "sparse"]
+IngestIndexModeValue = RequestedIngestIndexMode
 AudioSplitTypeValue = Literal["size", "time", "frame"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
 OcrLangValue = OCRLang
@@ -53,7 +60,6 @@ OcrVersionValue = OCRVersion
 TableOutputFormatValue = Literal["pseudo_markdown", "markdown"]
 _SUPPORTED_RUN_MODES: tuple[IngestRunModeValue, ...] = ("inprocess", "batch")
 _SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto", "fast-text")
-_SUPPORTED_INDEX_MODES: tuple[IngestIndexModeValue, ...] = ("dense", "hybrid", "sparse")
 _SUPPORTED_AUDIO_SPLIT_TYPES: tuple[AudioSplitTypeValue, ...] = ("size", "time", "frame")
 _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "auto",
@@ -162,7 +168,7 @@ class IngestCaptionOptions:
 
 @dataclass(frozen=True)
 class IngestDedupOptions:
-    enabled: bool = False
+    enabled: bool | None = None
     iou_threshold: float | None = None
 
 
@@ -206,7 +212,7 @@ class IngestStorageOptions:
     lancedb_uri: str = "lancedb"
     table_name: str = "nemo-retriever"
     overwrite: bool = True
-    index_mode: IngestIndexModeValue = "dense"
+    index_mode: IngestIndexModeValue = "auto"
 
 
 @dataclass(frozen=True)
@@ -242,10 +248,7 @@ def validate_ingest_profile(profile: str) -> IngestProfileValue:
 
 
 def validate_ingest_index_mode(index_mode: str) -> IngestIndexModeValue:
-    normalized = index_mode.strip().lower()
-    if normalized not in _SUPPORTED_INDEX_MODES:
-        raise ValueError(f"index_mode must be one of {', '.join(_SUPPORTED_INDEX_MODES)}, got {index_mode!r}.")
-    return cast(IngestIndexModeValue, normalized)
+    return validate_requested_index_mode(index_mode)
 
 
 def _validate_audio_split_type(split_type: str) -> AudioSplitTypeValue:
@@ -482,10 +485,36 @@ def build_caption_params(
     return CaptionParams(**caption_kwargs)
 
 
-def build_dedup_params(*, enabled: bool, iou_threshold: float | None = None) -> DedupParams | None:
-    if not enabled:
+def build_dedup_params(*, enabled: bool | None, iou_threshold: float | None = None) -> DedupParams | None:
+    """Build explicit dedup parameters while preserving unspecified intent.
+
+    Parameters
+    ----------
+    enabled
+        ``True`` explicitly enables deduplication, ``False`` returns the
+        all-disabled opt-out, and ``None`` leaves deduplication unspecified.
+    iou_threshold
+        Optional bounding-box intersection-over-union threshold. This override
+        is valid only when ``enabled`` is explicitly ``True``.
+
+    Returns
+    -------
+    DedupParams | None
+        Explicit enabled or disabled parameters, or ``None`` when the caller
+        did not specify a deduplication policy.
+
+    Raises
+    ------
+    ValueError
+        If ``iou_threshold`` is provided without explicitly enabling
+        deduplication or is outside the supported range.
+    """
+
+    if enabled is not True:
         if iou_threshold is not None:
             raise ValueError("Dedup options require --dedup: dedup_iou_threshold.")
+        if enabled is False:
+            return DedupParams(content_hash=False, bbox_iou=False)
         return None
     dedup_kwargs = {}
     if iou_threshold is not None:
@@ -597,7 +626,15 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     validated_run_mode = _validate_run_mode(runtime.run_mode)
     validated_profile = validate_ingest_profile(source.profile)
     validated_input_type = validate_ingest_input_type(source.input_type)
-    validated_index_mode = validate_ingest_index_mode(storage.index_mode)
+    requested_index_mode = validate_ingest_index_mode(storage.index_mode)
+    existing_index_mode = (
+        None if storage.overwrite else inspect_existing_lancedb_mode(storage.lancedb_uri, storage.table_name)
+    )
+    resolved_index_mode = resolve_ingest_index_mode(
+        requested_index_mode,
+        overwrite=storage.overwrite,
+        existing_mode=existing_index_mode,
+    )
     validated_audio_split_type = _validate_audio_split_type(media.audio_split_type)
     document_list = expand_ingest_documents(source.documents, input_type=validated_input_type)
     branches = plan_extraction_branches(build_input_manifest(document_list))
@@ -636,9 +673,13 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     if extract_tuning is not None:
         extract_kwargs["batch_tuning"] = extract_tuning
 
-    embedding_model_name = None if validated_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
+    embedding_model_name = None if resolved_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
     embedding_model_revision = None
-    if embedding_model_name is not None and not str(embed.embed_invoke_url or "").strip():
+    if (
+        embedding_model_name is not None
+        and embedding_model_name != NEMOTRON_3_EMBED_MODEL
+        and not str(embed.embed_invoke_url or "").strip()
+    ):
         embedding_model_revision = resolve_embed_model_revision(embedding_model_name, None)
     embed_runtime_model_name = (
         embedding_model_name
@@ -662,16 +703,16 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         embed_gpus_per_actor=embed.batch.embed_gpus_per_actor,
     )
     extract_params = ExtractParams(**extract_kwargs)
-    embed_params = None if validated_index_mode == "sparse" else EmbedParams(**embed_kwargs) if embed_kwargs else None
+    embed_params = None if resolved_index_mode == "sparse" else EmbedParams(**embed_kwargs) if embed_kwargs else None
     vdb_upload_kwargs = {
         "uri": storage.lancedb_uri,
         "table_name": storage.table_name,
         "overwrite": bool(storage.overwrite),
     }
     # Keep dense ingest kwargs unchanged unless the index mode needs additional LanceDB behavior.
-    if validated_index_mode == "sparse":
+    if resolved_index_mode == "sparse":
         vdb_upload_kwargs["sparse"] = True
-    elif validated_index_mode == "hybrid":
+    elif resolved_index_mode == "hybrid":
         vdb_upload_kwargs["hybrid"] = True
     if embedding_model_name is not None:
         vdb_upload_kwargs["embedding_model_name"] = embedding_model_name
@@ -697,6 +738,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     store_params = build_store_params(images_uri=request.image_store.images_uri, workers=request.image_store.workers)
 
     families = _branch_families(branches)
+    dedup_params = resolve_effective_dedup_params(
+        dedup_params,
+        caption_enabled=caption_params is not None,
+        image_only=families == {"image"},
+    )
     text_chunk_enabled, text_chunk_kwargs = build_text_chunk_kwargs(
         enabled=chunk.enabled,
         text_chunk_max_tokens=chunk.text_chunk_max_tokens,
@@ -752,5 +798,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         vdb_params=vdb_params,
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
-        sparse=validated_index_mode == "sparse",
+        sparse=resolved_index_mode == "sparse",
     )

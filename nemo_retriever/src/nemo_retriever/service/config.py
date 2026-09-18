@@ -52,8 +52,8 @@ class LocalEmbedConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    model_name: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
-    local_ingest_embed_backend: str = "hf"
+    model_name: str = "nvidia/nemotron-3-embed-1b"
+    local_ingest_embed_backend: str = "vllm"
     gpu_memory_utilization: float = 0.45
 
     @model_validator(mode="after")
@@ -67,7 +67,7 @@ class LocalEmbedConfig(RichModel):
             self.local_ingest_embed_backend,
             _LOCAL_INGEST_EMBED_BACKENDS,
             field_name="local_ingest_embed_backend",
-            default="hf",
+            default="vllm",
         )
         return self
 
@@ -437,10 +437,22 @@ class VectorDbConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    launch_on_start: bool = Field(
+        default=False,
+        description=(
+            "Start and supervise a loopback VectorDB child when retriever service starts. "
+            "The configured vectordb_url must use localhost or 127.0.0.1."
+        ),
+    )
+    max_concurrent_queries: int = Field(
+        default=4,
+        ge=1,
+        description=("Maximum number of concurrent queries handled by a supervised " "VectorDB child."),
+    )
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
-    index_mode: Literal["dense", "hybrid"] = "hybrid"
-    embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    index_mode: Literal["auto", "dense", "hybrid"] = "auto"
+    embed_model: str = "nvidia/nemotron-3-embed-1b"
     embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",

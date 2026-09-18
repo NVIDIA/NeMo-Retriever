@@ -462,7 +462,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                     "vdb_op": "lancedb",
                     "vdb_kwargs": {
                         "uri": "/tmp/lancedb",
-                        "table_name": "nv-ingest",
+                        "table_name": "nemo-retriever",
                         "hybrid": False,
                         "nprobes": 0,
                         "refine_factor": 10,
@@ -471,7 +471,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                 "embed_kwargs": {
                     "model_name": "embedder",
                     "embed_model_name": "embedder",
-                    "local_ingest_embed_backend": "hf",
+                    "local_ingest_embed_backend": "vllm",
                     "inference_batch_size": 32,
                     "embed_inference_batch_size": 32,
                     "query_max_length": 128,
@@ -503,7 +503,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
 
     cfg = BeirConfig(
         lancedb_uri="/tmp/lancedb",
-        lancedb_table="nv-ingest",
+        lancedb_table="nemo-retriever",
         embedding_model="embedder",
         embedding_http_endpoint="http://embed.example/v1",
         embedding_api_key=" secret ",
@@ -517,5 +517,5 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     assert metrics["ndcg@10"] == 1.0
     assert metrics["recall@5"] == 1.0
     assert "embed_use_vllm" not in retriever_instances[0].kwargs
-    assert retriever_instances[0].kwargs["embed_kwargs"].get("local_ingest_embed_backend") == "hf"
+    assert retriever_instances[0].kwargs["embed_kwargs"].get("local_ingest_embed_backend") == "vllm"
     assert retriever_instances[0].kwargs["rerank_kwargs"].get("local_reranker_backend") == "vllm"

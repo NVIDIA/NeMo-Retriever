@@ -101,7 +101,11 @@ def _records_from_iterable(results: Iterable[Any]) -> list[dict[str, Any]]:
             return _records_from_mapping(first)
     if all(isinstance(item, Mapping) for item in items):
         return [dict(item) for item in items]
-    raise ValueError("Markdown rendering expects a single document result. Pass one document, such as results[0].")
+    raise ValueError(
+        "Markdown rendering expects a single document result, but received an iterable "
+        "containing multiple or unsupported document values. Pass one DataFrame at a time, "
+        "or pass one iterable containing only record mappings."
+    )
 
 
 def _records_from_mapping(results: Mapping[str, Any]) -> list[dict[str, Any]]:

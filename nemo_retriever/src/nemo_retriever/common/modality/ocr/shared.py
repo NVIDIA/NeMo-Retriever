@@ -25,6 +25,7 @@ _logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
+from requests import HTTPError
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.modality.table_and_chart import join_table_structure_and_ocr_output
@@ -671,6 +672,17 @@ class _OCRCropJob:
     crop_array: np.ndarray
 
 
+@dataclass(frozen=True)
+class _RemoteOCRCropJob:
+    """One remote crop plus the address needed to stitch its result."""
+
+    row_index: int
+    row: Any
+    label_name: str
+    bbox: List[float]
+    crop_b64: str
+
+
 def _record_ocr_error(row_result: _OCRRowResult, exc: BaseException) -> None:
     print(f"Warning: OCR failed: {type(exc).__name__}: {exc}")
     row_result.error = {
@@ -809,10 +821,90 @@ def _run_remote_ocr(
     nim_client: NIMClient | None,
     use_table_structure: bool,
 ) -> None:
-    """Invoke the existing per-page remote OCR path and stitch its results."""
+    """Batch remote crops across pages, retaining per-page failure isolation."""
 
+    if max_batch_size < 1:
+        raise ValueError("inference_batch_size must be positive")
+    # Bound queued requests and retained encoded crops as well as active HTTP
+    # workers. Crop preparation retains at most this window plus one page.
+    window_size = max_batch_size * max(1, int(retry.remote_max_pool_workers))
+
+    def _invoke(jobs: List[_RemoteOCRCropJob]) -> List[Any]:
+        invoke_kwargs = dict(
+            invoke_url=invoke_url,
+            image_b64_list=[job.crop_b64 for job in jobs],
+            api_key=api_key,
+            timeout_s=float(request_timeout_s),
+            max_batch_size=max_batch_size,
+            max_retries=int(retry.remote_max_retries),
+            max_429_retries=int(retry.remote_max_429_retries),
+        )
+        if nim_client is not None:
+            response_items = nim_client.invoke_image_inference_batches(**invoke_kwargs)
+        else:
+            response_items = invoke_image_inference_batches(
+                **invoke_kwargs,
+                max_pool_workers=int(retry.remote_max_pool_workers),
+            )
+        return response_items
+
+    def _stitch(jobs: List[_RemoteOCRCropJob], response_items: List[Any]) -> None:
+        for job, response_item in zip(jobs, response_items):
+            if row_results[job.row_index].error is not None:
+                continue
+            try:
+                preds = _extract_remote_ocr_item(response_item)
+                crop_hw = _remote_crop_shape(job.crop_b64) if job.label_name == "table" else (0, 0)
+                _append_ocr_prediction(
+                    row_results[job.row_index],
+                    row=job.row,
+                    label_name=job.label_name,
+                    bbox=job.bbox,
+                    preds=preds,
+                    crop_hw=crop_hw,
+                    use_table_structure=use_table_structure,
+                )
+            except Exception as exc:
+                _fail_page(job.row_index, exc)
+
+    def _fail_page(row_index: int, exc: Exception) -> None:
+        # A page can span windows. A failed crop must not publish
+        # successful fragments from earlier windows as partial page output.
+        row_results[row_index] = _OCRRowResult()
+        _record_ocr_error(row_results[row_index], exc)
+
+    def _flush(jobs: List[_RemoteOCRCropJob]) -> None:
+        jobs = [job for job in jobs if row_results[job.row_index].error is None]
+        if not jobs:
+            return
+        try:
+            response_items = _invoke(jobs)
+        except Exception as exc:
+            jobs_by_page: Dict[int, List[_RemoteOCRCropJob]] = {}
+            for job in jobs:
+                jobs_by_page.setdefault(job.row_index, []).append(job)
+            # Only input/payload rejections can benefit from splitting a
+            # multi-page call. Transport retries belong to the NIM client.
+            errors = exc.exceptions if isinstance(exc, ExceptionGroup) else (exc,)
+            isolate_pages = len(jobs_by_page) > 1 and all(
+                isinstance(error, HTTPError)
+                and error.response is not None
+                and error.response.status_code in (400, 413, 422)
+                for error in errors
+            )
+            for row_index, page_jobs in jobs_by_page.items():
+                if not isolate_pages:
+                    _fail_page(row_index, exc)
+                    continue
+                try:
+                    _stitch(page_jobs, _invoke(page_jobs))
+                except Exception as page_exc:
+                    _fail_page(row_index, page_exc)
+            return
+        _stitch(jobs, response_items)
+
+    pending: List[_RemoteOCRCropJob] = []
     for prepared in prepared_rows:
-        row_result = row_results[prepared.row_index]
         try:
             crops = _crop_all_from_page(
                 prepared.page_image_b64,
@@ -820,44 +912,16 @@ def _run_remote_ocr(
                 prepared.wanted_labels,
                 as_b64=True,
             )
-            crop_b64s: List[str] = [crop_b64 for _label, _bbox, crop_b64 in crops]
-            crop_metadata: List[Tuple[str, List[float]]] = [(label_name, bbox) for label_name, bbox, _crop_b64 in crops]
-            if not crop_b64s:
-                continue
-
-            invoke_kwargs = dict(
-                invoke_url=invoke_url,
-                image_b64_list=crop_b64s,
-                api_key=api_key,
-                timeout_s=float(request_timeout_s),
-                max_batch_size=max_batch_size,
-                max_retries=int(retry.remote_max_retries),
-                max_429_retries=int(retry.remote_max_429_retries),
-            )
-            if nim_client is not None:
-                response_items = nim_client.invoke_image_inference_batches(**invoke_kwargs)
-            else:
-                response_items = invoke_image_inference_batches(
-                    **invoke_kwargs,
-                    max_pool_workers=int(retry.remote_max_pool_workers),
-                )
-            if len(response_items) != len(crop_metadata):
-                raise RuntimeError(f"Expected {len(crop_metadata)} OCR responses, got {len(response_items)}")
-
-            for index, (label_name, bbox) in enumerate(crop_metadata):
-                preds = _extract_remote_ocr_item(response_items[index])
-                crop_hw = _remote_crop_shape(crop_b64s[index]) if label_name == "table" else (0, 0)
-                _append_ocr_prediction(
-                    row_result,
-                    row=prepared.row,
-                    label_name=label_name,
-                    bbox=bbox,
-                    preds=preds,
-                    crop_hw=crop_hw,
-                    use_table_structure=use_table_structure,
-                )
-        except BaseException as exc:
-            _record_ocr_error(row_result, exc)
+            for label_name, bbox, crop_b64 in crops:
+                if row_results[prepared.row_index].error is not None:
+                    break
+                pending.append(_RemoteOCRCropJob(prepared.row_index, prepared.row, label_name, bbox, crop_b64))
+                if len(pending) == window_size:
+                    _flush(pending)
+                    pending = []
+        except Exception as exc:
+            _record_ocr_error(row_results[prepared.row_index], exc)
+    _flush(pending)
 
 
 def _collect_local_crop_jobs(
@@ -1092,9 +1156,7 @@ def ocr_page_elements(
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
-            # Preserve the existing remote behavior. The named
-            # inference_batch_size parameter is local policy in this path.
-            max_batch_size=int(kwargs.get("inference_batch_size", 8)),
+            max_batch_size=int(inference_batch_size),
             retry=retry,
             nim_client=nim_client,
             use_table_structure=use_table_structure,

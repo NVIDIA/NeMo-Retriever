@@ -12,7 +12,7 @@ inherits the NIMService resource name, so the mapping is fixed:
   table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
   ocr                                    -> nemotron-ocr-v2                          /v1/ocr
   nemotron_parse                         -> nemotron-parse                           /v1/chat/completions
-  vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  vlm_embed                              -> nemotron-3-embed-1b            /v1/embeddings
   rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1

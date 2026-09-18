@@ -5,14 +5,20 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+import logging
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
 
-def _make_tool_call_response(fn_name: str, fn_args: dict, tc_id: str = "call_1") -> dict:
-    return {
+def _make_tool_call_response(
+    fn_name: str,
+    fn_args: dict,
+    tc_id: str = "call_1",
+    usage: dict | None = None,
+) -> dict:
+    response = {
         "choices": [
             {
                 "message": {
@@ -29,6 +35,9 @@ def _make_tool_call_response(fn_name: str, fn_args: dict, tc_id: str = "call_1")
             }
         ]
     }
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
 class FakeRetriever:
@@ -126,10 +135,319 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever():
         result = retriever.retrieve(["0"], ["find doc"])
 
     assert "local_ingest_embed_backend" not in retriever._retriever.kwargs["embed_kwargs"]
-    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
+    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source", "hit"]
     assert result["query_id"].tolist() == ["0"] * 10
     assert result["doc_id"].tolist()[0] == "doc_1"
     assert result["rank"].tolist() == list(range(1, 11))
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_returns_and_pops_query_usage():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    usage = {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15}
+    response = _make_tool_call_response(
+        "final_results",
+        {
+            "doc_ids": ["doc_1"] + [f"extra_{i}" for i in range(9)],
+            "message": "done",
+            "search_successful": "true",
+        },
+        usage=usage,
+    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=lambda **_: response):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve_with_usage(["customer-q"], ["find doc"])
+
+    assert result.usage == {"customer-q": {"main_agent": usage}}
+    assert result.documents["query_id"].tolist() == ["customer-q"] * 10
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_isolates_usage_for_concurrent_queries():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    usage = {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
+    response = _make_tool_call_response(
+        "final_results",
+        {
+            "doc_ids": ["doc_1"] + [f"extra_{i}" for i in range(9)],
+            "message": "done",
+            "search_successful": "true",
+        },
+        usage=usage,
+    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", num_concurrent=2)
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=lambda **_: response):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve_with_usage(
+            ["customer-a", "customer-b"],
+            ["find a", "find b"],
+        )
+
+    assert result.usage == {
+        "customer-a": {"main_agent": usage},
+        "customer-b": {"main_agent": usage},
+    }
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_rehydrates_only_retrieved_documents():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    # doc_1 comes back from the retrieve hop; the extras are ids the agent named
+    # without ever retrieving them, so there is nothing to rehydrate for them.
+    final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
+    chat_fn = _dispatch_chat_fn(
+        _make_tool_call_response(
+            "final_results", {"doc_ids": final_ids, "message": "done", "search_successful": "true"}
+        ),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "doc_1 is best"}),
+    )
+
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
+
+    hits = dict(zip(result["doc_id"], result["hit"]))
+    assert hits["doc_1"]["text"] == "matching document"
+    assert hits["doc_1"]["source_id"] == "/tmp/doc.pdf"
+    assert hits["doc_1"]["page_number"] == 1
+    assert hits["doc_1"]["_score"] == 0.9
+    assert hits["extra_0"] == {}
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_caches_untruncated_text_for_rehydration():
+    """Truncation bounds what the agent sees; rehydration returns the stored text."""
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, text_truncation=5)
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+
+    docs = retriever._retrieve_for_agent("find doc", 10, query_id="q1")
+
+    assert docs[0]["text"] == "match"
+    assert retriever._hit_cache[("q1", "doc_1")]["text"] == "matching document"
+
+
+def test_rehydrated_agentic_hit_layers_annotations_onto_classic_fields():
+    from nemo_retriever.query.agentic import rehydrated_agentic_hit
+
+    hit = rehydrated_agentic_hit(
+        {"text": "body", "source": "/tmp/doc.pdf", "page_number": 3},
+        doc_id="doc_3",
+        rank=1,
+        result_source="selection_agent",
+    )
+
+    assert hit == {
+        "text": "body",
+        "source": "/tmp/doc.pdf",
+        "page_number": 3,
+        "doc_id": "doc_3",
+        "rank": 1,
+        "result_source": "selection_agent",
+    }
+
+
+def test_rehydrated_agentic_hit_without_captured_metadata():
+    from nemo_retriever.query.agentic import rehydrated_agentic_hit
+
+    assert rehydrated_agentic_hit({}, doc_id="doc_3", rank=2, result_source="final_results") == {
+        "doc_id": "doc_3",
+        "rank": 2,
+        "result_source": "final_results",
+    }
+
+
+def test_rehydration_miss_severity_depends_on_selecting_stage(caplog):
+    """A stage that can only rank retrieved candidates must never miss the cache."""
+    from nemo_retriever.query.agentic import _rehydrate_selected_hits
+
+    result = pd.DataFrame(
+        {
+            "doc_id": ["seen", "unretrieved_candidate", "invented"],
+            "rank": [1, 2, 3],
+            "result_source": ["selection_agent", "selection_agent", "final_results"],
+            "_retrieval_query_id": ["q1", "q1", "q1"],
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="nemo_retriever.query.agentic"):
+        rehydrated = _rehydrate_selected_hits(result, {("q1", "seen"): {"text": "body"}})
+
+    assert rehydrated["hit"].tolist() == [{"text": "body"}, {}, {}]
+    assert "_retrieval_query_id" not in rehydrated.columns
+    levels = {record.levelno: record.getMessage() for record in caplog.records}
+    assert "unretrieved_candidate" in levels[logging.ERROR]
+    assert "invented" in levels[logging.WARNING]
+
+
+def test_rehydration_isolates_same_doc_id_per_query():
+    from nemo_retriever.query.agentic import _rehydrate_selected_hits
+
+    result = pd.DataFrame(
+        {
+            "query_id": ["customer-query-a", "customer-query-b"],
+            "doc_id": ["shared_doc", "shared_doc"],
+            "rank": [1, 1],
+            "result_source": ["selection_agent", "selection_agent"],
+            "_retrieval_query_id": ["0", "1"],
+        }
+    )
+    cache = {
+        ("0", "shared_doc"): {"text": "query a hit", "_score": 0.9},
+        ("1", "shared_doc"): {"text": "query b hit", "_score": 0.4},
+    }
+
+    rehydrated = _rehydrate_selected_hits(result, cache)
+
+    assert rehydrated["hit"].tolist() == [
+        {"text": "query a hit", "_score": 0.9},
+        {"text": "query b hit", "_score": 0.4},
+    ]
+    assert "_retrieval_query_id" not in rehydrated.columns
+
+
+def test_agentic_query_documents_returns_classic_hit_fields_with_annotations():
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest, QueryRetrievalOptions
+    from nemo_retriever.query.workflow import agentic_query_documents
+
+    retriever = MagicMock()
+    retriever.retrieve.return_value = pd.DataFrame(
+        {
+            "query_id": ["0", "0"],
+            "doc_id": ["doc_1", "invented"],
+            "rank": [1, 2],
+            "message": ["", ""],
+            "result_source": ["selection_agent", "final_results"],
+            "hit": [{"text": "body", "source": "/tmp/doc.pdf", "page_number": 1}, {}],
+        }
+    )
+    request = QueryRequest(
+        query="find doc",
+        retrieval=QueryRetrievalOptions(top_k=2),
+        agentic=QueryAgenticOptions(enabled=True, llm_model="m", invoke_url=_REMOTE_URL),
+    )
+
+    with patch("nemo_retriever.query.workflow.build_agentic_retriever", return_value=retriever):
+        ranked = agentic_query_documents(request)
+
+    assert ranked == [
+        {
+            "text": "body",
+            "source": "/tmp/doc.pdf",
+            "page_number": 1,
+            "doc_id": "doc_1",
+            "rank": 1,
+            "result_source": "selection_agent",
+        },
+        {"doc_id": "invented", "rank": 2, "result_source": "final_results"},
+    ]
+    retriever.unload.assert_called_once()
+
+
+def test_agentic_query_documents_with_metadata_normalizes_usage():
+    from nemo_retriever.query.agentic import AgenticRetrieveResult
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest, QueryRetrievalOptions
+    from nemo_retriever.query.workflow import agentic_query_documents_with_metadata
+
+    retriever = MagicMock()
+    retriever.retrieve_with_usage.return_value = AgenticRetrieveResult(
+        documents=pd.DataFrame(
+            {
+                "query_id": ["0"],
+                "doc_id": ["doc_1"],
+                "rank": [1],
+                "result_source": ["final_results"],
+                "hit": [{"text": "body"}],
+            }
+        ),
+        usage={
+            "0": {
+                "main_agent": {
+                    "prompt_tokens": 11,
+                    "completion_tokens": 4,
+                    "total_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 5},
+                },
+                "top1_agent": {"input_tokens": 3, "output_tokens": 2},
+            }
+        },
+    )
+    request = QueryRequest(
+        query="find doc",
+        retrieval=QueryRetrievalOptions(top_k=1),
+        agentic=QueryAgenticOptions(enabled=True, llm_model="m", invoke_url=_REMOTE_URL),
+    )
+
+    with patch("nemo_retriever.query.workflow.build_agentic_retriever", return_value=retriever):
+        result = agentic_query_documents_with_metadata(request)
+
+    assert result.usage["input_tokens"] == 14
+    assert result.usage["cache_tokens"] == 5
+    assert result.usage["output_tokens"] == 6
+    assert result.usage["total_tokens"] == 20
+    assert set(result.usage["stages"]) == {"main_agent", "top1_agent"}
+    retriever.unload.assert_called_once()
+
+
+def test_normalize_usage_breakdown_includes_split_cache_input_tokens():
+    """Separately reported cache counters contribute to the input total."""
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    split_input_usage = {
+        "input_tokens": 120,
+        "cache_creation_input_tokens": 30,
+        "cache_read_input_tokens": 400,
+        "cache_creation": {
+            "ephemeral_5m_input_tokens": 30,
+            "ephemeral_1h_input_tokens": 0,
+        },
+        "output_tokens": 25,
+        "service_tier": "standard",
+    }
+
+    result = normalize_usage_breakdown({"main_agent": split_input_usage})
+
+    assert result == {
+        "input_tokens": 550,
+        "cache_tokens": 400,
+        "output_tokens": 25,
+        "total_tokens": 575,
+        "stages": {"main_agent": split_input_usage},
+    }
+
+
+def test_normalize_usage_breakdown_sums_observed_nested_cache_reads():
+    from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown
+
+    usage = {
+        "main_agent": {
+            "prompt_tokens": 120,
+            "completion_tokens": 25,
+            "total_tokens": 145,
+            "prompt_tokens_details": {"cached_tokens": 40},
+        },
+        "selection_agent": {
+            "input_tokens": 30,
+            "output_tokens": 5,
+            "input_tokens_details": {"cached_tokens": 10},
+        },
+        "provider_without_cache_details": {
+            "prompt_tokens": 20,
+            "completion_tokens": 3,
+            "total_tokens": 23,
+        },
+    }
+
+    result = normalize_usage_breakdown(usage)
+
+    assert result["input_tokens"] == 170
+    assert result["cache_tokens"] == 50
+    assert result["output_tokens"] == 33
+    assert result["total_tokens"] == 203
+    assert result["stages"] == usage
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
@@ -159,13 +477,41 @@ def test_agentic_retriever_forwards_candidate_k_per_hop():
     cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=10, candidate_k=20)
     retriever = AgenticRetriever(cfg, match_mode="pdf_page")
 
-    retriever._retrieve_for_agent("first", 10)
-    retriever._retrieve_for_agent("later", 25)
+    retriever._retrieve_for_agent("first", 10, query_id="q1")
+    retriever._retrieve_for_agent("later", 25, query_id="q1")
 
     assert retriever._retriever.query_calls == [
-        {"query": "first", "top_k": 10, "candidate_k": 20},
+        {"query": "first", "top_k": 20, "candidate_k": 20},
         {"query": "later", "top_k": 25, "candidate_k": 25},
     ]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_fills_top_k_after_document_dedup():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, top_k=3, candidate_k=6)
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+    ranked_chunks = [
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 1", "_score": 0.9},
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 2", "_score": 0.8},
+        {"pdf_page": "doc_1", "text": "doc 1 chunk 3", "_score": 0.7},
+        {"pdf_page": "doc_2", "text": "doc 2", "_score": 0.6},
+        {"pdf_page": "doc_3", "text": "doc 3", "_score": 0.5},
+        {"pdf_page": "doc_4", "text": "doc 4", "_score": 0.4},
+    ]
+
+    def query(_query, *, top_k=None, candidate_k=None):
+        retriever._retriever.query_calls.append({"query": _query, "top_k": top_k, "candidate_k": candidate_k})
+        return ranked_chunks[:top_k]
+
+    retriever._retriever.query = query
+
+    docs = retriever._retrieve_for_agent("find docs", 3, query_id="q1")
+
+    assert [doc["doc_id"] for doc in docs] == ["doc_1", "doc_2", "doc_3"]
+    assert docs[0]["text"] == "doc 1 chunk 1"
+    assert retriever._retriever.query_calls == [{"query": "find docs", "top_k": 6, "candidate_k": 6}]
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)

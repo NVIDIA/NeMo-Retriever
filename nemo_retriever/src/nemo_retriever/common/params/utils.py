@@ -13,6 +13,9 @@ if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
 
+NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+
+
 def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
     """Normalize Parse endpoints and reject mixed NVIDIA Build/self-hosted lists."""
     invoke_urls = tuple(part.strip() for part in str(invoke_url or "").split(",") if part.strip())

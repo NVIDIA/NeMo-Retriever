@@ -51,6 +51,7 @@ from nemo_retriever.common.api.util.string_processing import (
     prepend_model_provider_prefix,
 )
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
+from nemo_retriever.common.schemas.embedding import embedding_text_input, select_embedding_text
 from nemo_retriever.models import _DEFAULT_EMBED_MODEL
 from nemo_retriever.models.embed_errors import LocalEmbedderReturnedNothingError, LocalEmbedderRowsLostError
 
@@ -135,19 +136,19 @@ def _generate_batches(prompts: Iterable[str], batch_size: int = 100) -> List[Lis
 
 
 def _text_from_row(row: pd.Series, *, text_column: str) -> Optional[str]:
-    """
-    Extract text from a row with small fallbacks for graph-ingest inputs.
-    """
-    v = row.get(text_column)
-    if isinstance(v, str) and v.strip():
-        return v
+    """Return the canonical selected source text without ordinary-row normalization."""
+    selected = select_embedding_text(row, text_column=text_column)
+    return selected.content if selected is not None else None
 
-    for k in ("text", "content", "chunk", "page_text"):
-        v2 = row.get(k)
-        if isinstance(v2, str) and v2.strip():
-            return v2
 
-    return None
+def _text_input_for_embedding(
+    row: pd.Series,
+    *,
+    text_column: str,
+    default_modality: str = "text",
+) -> Optional[str]:
+    """Preserve lossless split children while retaining legacy normalization for ordinary rows."""
+    return embedding_text_input(row, text_column=text_column, default_modality=default_modality)
 
 
 def _ensure_metadata_dict(row: pd.Series, *, metadata_column: str = "metadata") -> Dict[str, Any]:
@@ -218,6 +219,15 @@ def _multimodal_callable_runner(
         size = len(chunk)
         images_b64 = [_image_from_row(chunk.iloc[i]) or "" for i in range(size)]
         texts = [_text_from_row(chunk.iloc[i], text_column=text_column) or "" for i in range(size)]
+        text_inputs = [
+            _text_input_for_embedding(
+                chunk.iloc[i],
+                text_column=text_column,
+                default_modality=embed_modality,
+            )
+            or ""
+            for i in range(size)
+        ]
 
         if embed_modality == "image":
             vecs = embedder.embed_images(images_b64, batch_size=bs)
@@ -262,7 +272,7 @@ def _multimodal_callable_runner(
                 _validate_vector_count(mm_vecs_list, expected=len(mm_images), embedder=type(embedder).__name__)
 
             # text-only fallback subset
-            fb_texts = [t for t, h in zip(texts, has_image) if not h and t.strip()]
+            fb_texts = [t for t, h in zip(text_inputs, has_image) if not h and t]
             fb_vecs_list: List[Optional[Sequence[float]]] = []
             if fb_texts:
                 vecs = embedder.embed(fb_texts, batch_size=bs)
@@ -273,10 +283,10 @@ def _multimodal_callable_runner(
             # reassemble in original order
             mm_iter = iter(mm_vecs_list)
             fb_iter = iter(fb_vecs_list)
-            for h, t in zip(has_image, texts):
+            for h, t in zip(has_image, text_inputs):
                 if h:
                     flat_embeddings.append(next(mm_iter, None))
-                elif t.strip():
+                elif t:
                     flat_embeddings.append(next(fb_iter, None))
                 else:
                     flat_embeddings.append(None)
@@ -746,8 +756,13 @@ def create_text_embeddings_for_df(
         extracted_content = df_transform_ledger.apply(_text_image_content, axis=1)
     else:
         extracted_content = df_transform_ledger.apply(
-            lambda r: _text_from_row(r, text_column=str(transform_config.text_column)), axis=1
-        ).apply(lambda x: x.strip() if isinstance(x, str) and x.strip() else None)
+            lambda r: _text_input_for_embedding(
+                r,
+                text_column=str(transform_config.text_column),
+                default_modality=embed_modality,
+            ),
+            axis=1,
+        )
 
     df_content = df_transform_ledger.copy()
     df_content["_content"] = extracted_content
@@ -775,7 +790,14 @@ def create_text_embeddings_for_df(
                 filtered_content_list = []
                 filtered_modalities = []
                 for _, r in df_content.loc[valid_content_mask].iterrows():
-                    text = _text_from_row(r, text_column=str(transform_config.text_column)) or ""
+                    text = (
+                        _text_input_for_embedding(
+                            r,
+                            text_column=str(transform_config.text_column),
+                            default_modality=embed_modality,
+                        )
+                        or ""
+                    )
                     image = _image_from_row(r) or ""
                     if image and text.strip():
                         filtered_content_list.append(_format_text_image_pair_input_string(text, image))

@@ -54,6 +54,28 @@ class TestExtractParams:
         )
         assert params.method == "nemotron_parse"
 
+    @pytest.mark.parametrize("endpoint_field", ["nemotron_parse_invoke_url", "invoke_url"])
+    def test_remote_parse_model_is_accepted(self, endpoint_field: str) -> None:
+        params = ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            **{endpoint_field: "http://parse:8000/v1/chat/completions"},
+        )
+
+        assert params.nemotron_parse_model == "nvidia/NVIDIA-Nemotron-Parse-2.0"
+
+    def test_unsupported_local_parse_model_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Local Nemotron Parse supports only") as exc_info:
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            )
+
+        error = str(exc_info.value)
+        assert "nvidia/NVIDIA-Nemotron-Parse-v1.2" in error
+        assert "nvidia/NVIDIA-Nemotron-Parse-2.0" in error
+        assert "nemotron_parse_invoke_url" in error
+
     @pytest.mark.parametrize(
         "model",
         [None, "nvidia/nemotron-parse", "nvidia/nemotron-parse-v1.2"],

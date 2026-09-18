@@ -18,9 +18,9 @@ from nemo_retriever.ingest.plan import (
     OcrVersionValue,
     TableOutputFormatValue,
 )
-from nemo_retriever.models import VL_EMBED_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 
-DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 DEFAULT_CAPTION_MODEL = CaptionParams().model_name
 
 DocumentsArgument = Annotated[
@@ -191,8 +191,14 @@ CaptionInfographicsOption = Annotated[
     ),
 ]
 DedupOption = Annotated[
-    bool,
-    typer.Option("--dedup", help="Add a deduplication stage before optional captioning and embedding."),
+    bool | None,
+    typer.Option(
+        "--dedup/--no-dedup",
+        help=(
+            "Enable or disable image deduplication. When omitted, captioning non-image documents "
+            "enables default deduplication."
+        ),
+    ),
 ]
 DedupIouThresholdOption = Annotated[
     float | None,
@@ -222,8 +228,9 @@ IndexModeOption = Annotated[
     typer.Option(
         "--index-mode",
         help=(
-            "LanceDB index mode: dense, hybrid, or sparse. Dense is vector-only; hybrid also builds "
-            "BM25/FTS; sparse skips dense embedding and writes an FTS-only table."
+            "Recommended: leave unset. Auto creates a hybrid table for new indexes and preserves an existing "
+            "table on append. Dense, hybrid, and sparse are advanced overrides for experiments or specialized "
+            "deployments."
         ),
     ),
 ]

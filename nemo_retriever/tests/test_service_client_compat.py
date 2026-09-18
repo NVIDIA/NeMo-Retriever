@@ -4,7 +4,7 @@
 
 """Regression tests for SDK/service version-mismatch handling.
 
-These tests pin the customer-facing failure mode reported in 26.05-RC2:
+These tests pin the customer-facing failure mode reported in 26.08.1:
 a Python SDK wheel whose ``RetrieverServiceClient`` targets the new
 job-scoped ingest API (``POST /v1/ingest/job`` +
 ``POST /v1/ingest/job/{job_id}/document`` +
@@ -140,7 +140,7 @@ def test_compat_error_message_clips_long_body() -> None:
 def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
     """The very first SDK call ⇒ clear compat error, not silent empty result.
 
-    Reproduces the 26.05-RC2 customer scenario: ``POST /v1/ingest/job``
+    Reproduces the 26.08.1 customer scenario: ``POST /v1/ingest/job``
     on a service image that does not advertise that route. Before this
     fix the client surfaced a generic ``httpx.HTTPStatusError`` (which
     callers often catch+log+continue), so the documented service-mode
@@ -154,7 +154,7 @@ def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
         if status == 410:
             return httpx.Response(
                 410,
-                json={"detail": "POST /v1/ingest was removed in 26.05"},
+                json={"detail": "POST /v1/ingest was removed in 26.08.1"},
             )
         return httpx.Response(404)
 
@@ -402,7 +402,7 @@ def test_upload_one_410_surfaces_replacement_routes(tmp_path: Path) -> None:
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             410,
-            json={"detail": "POST /v1/ingest was removed in 26.05"},
+            json={"detail": "POST /v1/ingest was removed in 26.08.1"},
         )
 
     rc = RetrieverServiceClient(base_url="http://nrl:7670")

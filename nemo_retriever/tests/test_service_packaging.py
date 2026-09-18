@@ -9,7 +9,6 @@ from pathlib import Path
 
 from packaging.requirements import Requirement
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -35,3 +34,15 @@ def test_core_dependencies_include_tokenizer_stack() -> None:
 
     assert "tokenizers" in names
     assert "huggingface-hub" in names
+
+
+def test_platform_classifiers_describe_supported_operating_systems() -> None:
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    classifiers = set(pyproject["project"]["classifiers"])
+
+    assert "Operating System :: OS Independent" not in classifiers
+    assert {
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: MacOS",
+    } <= classifiers

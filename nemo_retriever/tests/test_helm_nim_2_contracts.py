@@ -66,13 +66,35 @@ def test_extraction_nims_select_distinct_native_models() -> None:
         assert env["NIM_ENGINE_MODEL_PATH"] == model_path
         assert env["NIM_PERFORMANCE_MODE"] == "1"
         assert env["NIM_ENGINE_COUNT"] == "1"
-        assert env["NIM_PIPELINE_MAX_BATCH_SIZE"] == "1"
+        assert "NIM_PIPELINE_MAX_BATCH_SIZE" not in env
         assert "NIM_TRITON_MAX_BATCH_SIZE" not in env
 
     ocr_env = {
         item["name"]: item.get("value") for item in _find(documents, "NIMService", "nemotron-ocr-v2")["spec"]["env"]
     }
     assert ocr_env["NIM_ENGINE_MODEL_VARIANT"] == "multilingual"
+
+
+def test_embed_performance_mode_is_documented_as_optional() -> None:
+    values = (CHART / "values.yaml").read_text()
+    assert '# - name: NIM_PERFORMANCE_MODE\n      #   value: "1"' in values
+    assert "NIM_TRITON_PERFORMANCE_MODE" not in values
+
+
+def test_default_embed_nim_uses_nemotron_3_auto_precision() -> None:
+    documents = _render()
+    service = _find(documents, "NIMService", "nemotron-3-embed-1b")
+    assert service["spec"]["image"] == {
+        "repository": "nvcr.io/nim/nvidia/nemotron-3-embed-1b",
+        "tag": "2.2.2",
+        "pullPolicy": "IfNotPresent",
+        "pullSecrets": ["ngc-secret"],
+    }
+    env = {item["name"]: item.get("value") for item in service["spec"]["env"]}
+    assert env["NIM_ENGINE_COUNT"] == "1"
+    assert "NIM_PERFORMANCE_MODE" not in env
+    assert "NIM_ENGINE_PRECISION" not in env
+    assert "NIM_TRITON_PERFORMANCE_MODE" not in env
 
 
 def test_operator_managed_urls_use_nim_2_contracts() -> None:

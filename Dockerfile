@@ -87,10 +87,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
     && pip install --no-cache-dir openai
 
+# The keyring package pins the apt source to the repo directory it came from, so
+# it must match the build architecture. Server-class ARM uses "sbsa"; the
+# "arm64" repo is Jetson/Tegra only and has no cuda-toolkit-13-0.
 RUN --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && case "$(dpkg --print-architecture)" in \
+         amd64) CUDA_REPO_ARCH=x86_64 ;; \
+         arm64) CUDA_REPO_ARCH=sbsa ;; \
+         *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+       esac \
+    && wget "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/${CUDA_REPO_ARCH}/cuda-keyring_1.1-1_all.deb" \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm -f cuda-keyring_1.1-1_all.deb \
     && apt update && apt-get --fix-broken install -y && apt-get -y install cuda-toolkit-13-0
 
 WORKDIR /workspace
@@ -122,7 +131,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     . /opt/retriever_runtime/bin/activate \
     && uv pip install -e "./nemo_retriever[service,multimedia]" \
     && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
-         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
+         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.models.inference.embedding_input import resolve_embedding_input_policy; resolve_embedding_input_policy(DEFAULT_TOKENIZER_MODEL_ID, configured_max_tokens=8192, input_type='passage')"; \
        fi
 
 # GPU service install: in-pod Hugging Face models + multimedia (ASR, SVG).
@@ -141,7 +150,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     . /opt/retriever_runtime/bin/activate \
     && uv pip install -e "./nemo_retriever[service,local,multimedia]" \
     && if [ "${DOWNLOAD_DEFAULT_TOKENIZER}" = "True" ]; then \
-         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)"; \
+         python -c "from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID; from nemo_retriever.models.inference.embedding_input import resolve_embedding_input_policy; resolve_embedding_input_policy(DEFAULT_TOKENIZER_MODEL_ID, configured_max_tokens=8192, input_type='passage')"; \
        fi
 
 # Default: run in-process pipeline (help if no args)
@@ -170,7 +179,7 @@ FROM install AS service
 
 # Optional release metadata for OpenAPI ``info.version`` and package version helpers.
 # Release builds should pass matching values, for example:
-#   --build-arg RETRIEVER_VERSION=26.08-RC4 --build-arg RETRIEVER_RELEASE_TYPE=release
+#   --build-arg RETRIEVER_VERSION=26.08.1 --build-arg RETRIEVER_RELEASE_TYPE=release
 ARG RETRIEVER_VERSION=
 ARG RETRIEVER_RELEASE_TYPE=dev
 ENV RETRIEVER_VERSION=${RETRIEVER_VERSION}

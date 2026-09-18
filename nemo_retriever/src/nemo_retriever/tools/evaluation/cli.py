@@ -203,7 +203,7 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
         retrieval_block = {
             "type": "lancedb",
             "lancedb_uri": lancedb_uri,
-            "lancedb_table": os.environ.get("LANCEDB_TABLE", "nv-ingest"),
+            "lancedb_table": os.environ.get("LANCEDB_TABLE", "nemo-retriever"),
             "embedder": os.environ.get("EMBEDDER", "nvidia/llama-nemotron-embed-1b-v2"),
             "save_path": os.environ.get("RETRIEVAL_SAVE_PATH"),
         }
@@ -275,7 +275,7 @@ def run_qa_sweep_from_config_dict(cfg: dict) -> int:
         retriever = FileRetriever.from_lancedb(
             qa_pairs=qa_pairs,
             lancedb_uri=retrieval_cfg.get("lancedb_uri", "lancedb"),
-            lancedb_table=retrieval_cfg.get("lancedb_table", "nv-ingest"),
+            lancedb_table=retrieval_cfg.get("lancedb_table", "nemo-retriever"),
             embedder=retrieval_cfg.get("embedder", "nvidia/llama-nemotron-embed-1b-v2"),
             top_k=execution.get("top_k", 5),
             page_index=page_idx,
@@ -358,7 +358,7 @@ def run_cmd(
 @app.command("export")
 def export_cmd(
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="Path to LanceDB directory."),
-    lancedb_table: str = typer.Option("nv-ingest", "--lancedb-table", help="LanceDB table name."),
+    lancedb_table: str = typer.Option("nemo-retriever", "--lancedb-table", help="LanceDB table name."),
     query_csv: Path = typer.Option(
         ...,
         "--query-csv",

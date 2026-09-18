@@ -34,9 +34,11 @@ class QueryRequest(BaseModel):
         description=(
             "When true, run the server-configured agentic (ReAct) retrieval workflow. "
             "Requires agentic.enabled in service configuration. Response uses the same "
-            "hits envelope as dense/hybrid query; document-level agentic results map "
-            "doc_id onto source, keep result_source/rank in metadata, and leave "
-            "chunk-level fields unset (null)."
+            "hits envelope as dense/hybrid query: each hit carries the classic hit "
+            "fields (text, metadata, source, page_number, scores, ...) plus doc_id, "
+            "rank, and result_source. For compatibility, metadata also carries rank "
+            "and result_source. Documents the agent selected without retrieving them "
+            "have null classic fields and source falls back to doc_id."
         ),
     )
 
@@ -103,6 +105,20 @@ class QueryResult(BaseModel):
     hits: list[dict[str, Any]]
 
 
+class AgenticTokenUsage(BaseModel):
+    """Provider-reported LLM usage for one agentic retrieval query."""
+
+    input_tokens: int | None = Field(default=None, ge=0)
+    cache_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Observed provider-reported cache-read input tokens.",
+    )
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    stages: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
 class QueryResponse(BaseModel):
     results: list[QueryResult]
     query_mode: QueryMode = Field(
@@ -117,6 +133,16 @@ class QueryResponse(BaseModel):
         if expected_results is not None and len(self.results) != expected_results:
             raise ValueError(f"expected {expected_results} result set(s), got {len(self.results)}")
         return [result.hits for result in self.results]
+
+
+class AgenticQueryResponse(QueryResponse):
+    """Agentic query response with exact provider-reported LLM usage."""
+
+    query_mode: Literal["agentic"] = "agentic"
+    usage: AgenticTokenUsage | None = Field(
+        default=None,
+        description="Exact provider-reported LLM usage; present for instrumented agentic queries.",
+    )
 
 
 class Locator(BaseModel):
@@ -134,7 +160,7 @@ class EvidenceItem(BaseModel):
     locator: Locator
     modality: str
     fidelity: str
-    score: float
+    score: float | None
     citation: str
 
 

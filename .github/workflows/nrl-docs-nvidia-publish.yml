@@ -11,19 +11,36 @@
 #   Variables (optional): DOCS_AWS_REGION, NRL_DOCS_PUBLISH_VERSION, DOCS_RELEASE_EMAILS
 #
 # S3 layout written under developer/docs/nemo/retriever/:
-#   index.html, versions.json, latest/, <version>/ (e.g. 26.5.0/)
+#   index.html, versions.json, latest/, <version>/ (e.g. 26.8.1/)
 #
-# Manual publish only (workflow_dispatch). Do not re-enable push/tag auto-publish
-# while docs.nvidia.com 26.5.0 / latest are frozen to the 26.05 release docs.
+# 26.08.1 patch RC window:
+#   - Do not auto-publish main. main currently carries the Nemotron 3 Embed
+#     default (#2632) and must not overwrite docs.nvidia.com 26.8.1 / latest.
+#   - Live 26.8.1 builds run from release/26.08.1 (push + workflow_dispatch).
+#   - This file on main is gated by missing `on.push` / `on.schedule` keys only.
+#     The resolve script and publish-job `if` still handle those events so
+#     restoration is not a three-way hunt. See SDR-629.
+#   - GitHub Pages for the RC also publishes from release/26.08.1.
 #
-# Operator steps when ready to publish:
-#   1. Merge doc changes to the 26.05 branch (content source for the build).
-#   2. Keep docs/publish/versions.json on main accurate (version picker + latest alias).
-#   3. Actions → "NRL documentation — docs.nvidia.com publish" → Run workflow:
+# After the RC, restore automatic publishing on main with ALL THREE of:
+#   1. Restore `on.push` (branches: [main], path-filtered) and `on.schedule`
+#      (cron: "0 7 * * *") next to workflow_dispatch below.
+#   2. Keep the resolve script EVENT_NAME branches (already present): dispatch
+#      uses operator inputs; push/schedule on main set dry_run=false and
+#      publish_latest=true. Do not leave a dispatch-only resolver — those
+#      inputs are empty on automatic runs.
+#   3. Keep the publish job `if` (already present): workflow_dispatch OR
+#      github.ref == refs/heads/main. A workflow_dispatch-only `if` skips
+#      the S3 job after triggers return.
+# Restoring only (1) repeats the #2563 class of failure: runs start but do
+# not publish, or they publish with empty dry_run / publish_latest.
+#
+# Manual: Actions → "NRL documentation — docs.nvidia.com publish":
+#        Use branch release/26.08.1 for a live 26.8.1 cut.
 #        dry-run: false
-#        docs-version-override: 26.5.0 (or leave empty to use NRL_DOCS_PUBLISH_VERSION / default)
+#        docs-version-override: 26.8.1 (or empty for NRL_DOCS_PUBLISH_VERSION)
 #        publish-as-latest: true only when intentionally refreshing latest/
-# Backports: publish-as-latest: false; do not move the "latest" alias in versions.json.
+# Keep docs/publish/versions.json on main accurate (version picker + latest alias).
 name: NRL documentation — docs.nvidia.com publish
 
 on:
@@ -35,7 +52,7 @@ on:
         type: boolean
         default: true
       docs-version-override:
-        description: Version folder to publish (e.g. 26.5.0). Empty uses NRL_DOCS_PUBLISH_VERSION, or 26.5.0.
+        description: Version folder to publish (e.g. 26.8.1). Empty uses NRL_DOCS_PUBLISH_VERSION, or 26.8.1.
         required: false
         type: string
         default: ""
@@ -78,6 +95,7 @@ jobs:
       - name: Resolve publish inputs
         id: publish
         env:
+          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
           VERSION_INPUT: ${{ inputs.docs-version-override }}
           PUBLISH_LATEST_INPUT: ${{ inputs.publish-as-latest }}
@@ -85,15 +103,36 @@ jobs:
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
         run: |
-          echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
-          echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          # RC: push/schedule are not in `on:`, so this is dispatch-only in
+          # practice. Keep the automatic-event branches so restoring those
+          # triggers (step 1 in the file header) is sufficient.
+          # Dispatch uses operator inputs (dry-run defaults to true).
+          # Fail closed for tags and any other unexpected event — the Aug 19
+          # 26.08 leak wrote S3/latest from a push with no confirmation path.
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=${PUBLISH_LATEST_INPUT}" >> "$GITHUB_OUTPUT"
+          elif [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "schedule" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+              echo "dry_run=true" >> "$GITHUB_OUTPUT"
+              echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::${EVENT_NAME} on ${GITHUB_REF}; forcing dry-run (main only)."
+            else
+              echo "dry_run=false" >> "$GITHUB_OUTPUT"
+              echo "publish_latest=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "publish_latest=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Unsupported event ${EVENT_NAME}; forcing dry-run and not moving latest/."
+          fi
 
           VERSION="${VERSION_INPUT}"
           if [[ -z "${VERSION}" ]]; then
             VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
           fi
           if [[ -z "${VERSION}" ]]; then
-            VERSION="26.5.0"
+            VERSION="26.8.1"
           fi
           echo "docs_version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "site_url=${{ env.DOCS_SITE_URL_BASE }}/${VERSION}/" >> "$GITHUB_OUTPUT"
@@ -116,23 +155,13 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     steps:
-      # Publish the doc pages from the 26.05 release branch, not main. main keeps
-      # moving toward the next release, so its docs must not be published under the
-      # 26.5.0 label. mkdocs.yml, requirements.txt, and docs/docs/** come from 26.05.
-      - name: Checkout 26.05 docs content
+      # Publish the triggering commit under the 26.8.1 label. Use github.sha so a
+      # delayed run cannot publish a newer tip, and a dispatch from this branch
+      # includes the versions.json picker on the same commit.
+      - name: Checkout docs content
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: "26.05"
-
-      # versions.json (the version picker + "latest" alias) is canonical on main and
-      # does not exist on 26.05, so fetch just that file from main into a side path.
-      - name: Checkout version-picker metadata from main
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
-          path: .docs-main-meta
-          sparse-checkout: docs/publish/versions.json
-          sparse-checkout-cone-mode: false
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -156,9 +185,9 @@ jobs:
 
       # MkDocs does not emit versions.json. publish-docs uploads the artifact copy to S3
       # (it does not merge with the live S3 file). versions.json is canonical on main.
-      - name: Stage version picker metadata for publish-docs
+      - name: Copy versions.json into site artifact
         run: |
-          cp .docs-main-meta/docs/publish/versions.json docs/site/versions.json
+          cp docs/publish/versions.json docs/site/versions.json
 
       - name: Upload docs.nvidia.com site artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -170,7 +199,12 @@ jobs:
   publish:
     name: Publish to S3 and flush Akamai
     needs: [resolve, build]
-    if: github.repository == 'NVIDIA/NeMo-Retriever'
+    # RC: push/schedule are not in `on:`, so only dispatch reaches here.
+    # Keep the main-ref clause so restoring those triggers also restores the
+    # S3 job (header restoration step 3). A dispatch-only `if` would skip it.
+    if: >
+      github.repository == 'NVIDIA/NeMo-Retriever' &&
+      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     environment: docs-nvidia-prod
     steps:
