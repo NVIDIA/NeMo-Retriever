@@ -686,7 +686,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 
 ### Query reranking (optional)
 
-The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in. When the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` only to override that URL, for example to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
+The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in, and keep `nims.enabled=true` (the default). When those flags are true and the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. If `nims.enabled=false`, the chart does not auto-wire those fields. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` to override, or to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
 
 Track operator reconciliation with:
 
@@ -1745,8 +1745,8 @@ Resolution order mirrors every other NIM endpoint (see the
    (use this to point at a hosted or external ranking endpoint).
 2. Otherwise the operator-managed URL of
    `llama-nemotron-rerank-vl-1b-v2` is used, provided
-   `nimOperator.rerankqa.enabled=true` **and** the
-   `apps.nvidia.com/v1alpha1` CRDs are installed.
+   `nimOperator.rerankqa.enabled=true`, `nims.enabled=true`,
+   **and** the `apps.nvidia.com/v1alpha1` CRDs are installed.
 3. Otherwise `rerank_invoke_url` stays `null` and query-time reranking
    stays disabled.
 

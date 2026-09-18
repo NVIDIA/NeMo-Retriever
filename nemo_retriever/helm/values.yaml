@@ -1049,8 +1049,9 @@ nimOperator:
   #     - ocr
   #     - vlm_embed
   #
-  #   Optional (enabled: false by default). When you opt in and the NIM
-  #   Operator CRDs are present, the chart auto-wires the in-cluster
+  #   Optional (enabled: false by default). Auto-wiring also requires
+  #   `nims.enabled: true` (the default) and the NIM Operator CRDs.
+  #   When those conditions hold, the chart auto-wires the in-cluster
   #   Service URL unless you set an explicit override:
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU;
