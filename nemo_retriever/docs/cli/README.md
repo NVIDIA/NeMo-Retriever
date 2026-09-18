@@ -238,7 +238,7 @@ explicitly. Do not use `--append` to mix embeddings from the two models. You can
 continue to query a tagged old table with its recorded model, but an untagged
 dense or hybrid table must be rebuilt. For service deployments, rebuild persisted
 legacy and collection tables before access or configure the service with the old
-index model. Refer to [Keep the embedding model aligned](../../../docs/docs/extraction/vdbs.md#lancedb-embedding-model-compatibility).
+index model. Refer to [Keep the embedding model aligned](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/vdbs.md#lancedb-embedding-model-compatibility).
 
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
@@ -351,12 +351,12 @@ fusion) -> SelectionAgentOperator -> ranked results`:
 Agentic-only knobs (apply only with `--agentic`):
 
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
-  provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
+  provided (`nemotron-8b` by default), or the remote
   model ID when `--agentic-invoke-url` is provided.
 - `--agentic-local-tensor-parallel-size` (default `1`) — vLLM
   `tensor_parallel_size` for the in-process agent LLM. Use `2+` with matching
-  `CUDA_VISIBLE_DEVICES` for multi-GPU local profiles (for example
-  `super-49b`). Ignored when `--agentic-invoke-url` is set. When the first
+  `CUDA_VISIBLE_DEVICES` for tensor-parallel local runs. Ignored when
+  `--agentic-invoke-url` is set. When the first
   `tensor_parallel_size` CUDA-visible GPUs are not NVLink-connected (typical
   dual-GPU PCIe workstations), tensor-parallel startup automatically sets
   `NCCL_NVLS_ENABLE=0` and `TORCH_SYMM_MEM_DISABLE_MULTICAST=1`, because NVLink

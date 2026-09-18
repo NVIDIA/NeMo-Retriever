@@ -231,7 +231,7 @@ AgenticLocalTensorParallelSizeOption = Annotated[
         help=(
             "vLLM tensor_parallel_size for the in-process agent LLM. "
             "Use 2+ with matching CUDA_VISIBLE_DEVICES for multi-GPU local "
-            "profiles (e.g. super-49b); ignored when --agentic-invoke-url is set."
+            "profiles; ignored when --agentic-invoke-url is set."
         ),
     ),
 ]
