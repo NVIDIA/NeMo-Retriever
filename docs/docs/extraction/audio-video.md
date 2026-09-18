@@ -147,7 +147,7 @@ For OCR-oriented extract methods on scanned or image-heavy content, refer to [OC
 
 Container formats and early-access video types are listed under [supported file types and formats](multimodal-extraction.md#supported-file-types-and-formats) (refer to [NeMo Retriever Library Overview](overview.md) for the full list).
 
-For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).
+For application stacks that include multimodal ingestion, refer to the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/). Blueprints are not the NeMo Retriever Library product.
 
 ## Related topics { #related-topics }
 

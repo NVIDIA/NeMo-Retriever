@@ -139,6 +139,8 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 
 The `page_elements` and `table_structure` services share the combined `nemotron-object-detection:2.0.1` image and select distinct models. For air-gapped, mirrored, or allowlisted deployments, pull that image once. Do not treat the older standalone `nemotron-page-elements-v3` or `nemotron-table-structure-v1` container images as the current Helm defaults.
 
+Local Hugging Face embedding checkpoints are not Helm NIMs unless the support matrix lists a matching chart image. The default Helm embed NIM is `nemotron-3-embed-1b`. Additional official local checkpoints, including Nemotron-3 Embed 8B, are listed in the CLI. For tested official local checkpoints, refer to [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints). For measuring quality without the Helm extraction stack, refer to [Evaluate on your data](evaluate-on-your-data.md).
+
 For self-hosted NIM GPU memory by SKU and precision, refer to the following product memory footprint tables.
 
 - [Object detection supported hardware and memory footprint](https://docs.nvidia.com/nim/ingestion/object-detection/latest/support-matrix.html#supported-hardware-and-memory-footprint) covers `page_elements` and `table_structure`.

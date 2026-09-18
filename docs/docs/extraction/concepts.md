@@ -50,6 +50,6 @@ Token-based splitting uses the revision-pinned `nvidia/Nemotron-3-Embed-1B-BF16`
 
 - **Library mode** — Run without the full container stack where appropriate; refer to [Deployment options](deployment-options.md).
 - **Kubernetes / Helm (self-hosted)** — Refer to [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md) and [deployment options](deployment-options.md) for running the full microservices pipeline on your infrastructure.
-- **Notebooks** — [Jupyter examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md) for experimentation and RAG demos.
+- **Notebooks** — [Jupyter examples](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md) for experimentation and framework integration.
 
 For a concise comparison, refer to [Deployment options](deployment-options.md).

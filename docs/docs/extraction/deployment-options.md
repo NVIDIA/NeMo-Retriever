@@ -1,10 +1,18 @@
 # Deployment options
 
-Use this page to compare how you run NeMo Retriever — including when to use [NVIDIA-hosted NIMs](https://build.nvidia.com/) versus self-hosting on your own infrastructure.
+Use this page to compare how you run NeMo Retriever Library, including local Hugging Face checkpoints, [NVIDIA-hosted NIMs](https://build.nvidia.com/), and self-hosting on your own infrastructure.
 
 ## Compare deployment options
 
 Use the sections below to pick documentation and deployment options that match your goal.
+
+### I want to run Nemotron models from Hugging Face on a local GPU
+
+1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
+2. [Package quick start](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever) with the `[local]` extra
+3. [Evaluate on your data](evaluate-on-your-data.md) when you are measuring retrieval quality
+
+You do not need the four default Helm NIMs for this path.
 
 ### I want to run locally or embed the library
 
@@ -95,6 +103,14 @@ On a staging host with internet access, pull from NGC, retag to your private reg
     Audio and video workflows require `ffmpeg` and `ffprobe` on `PATH`; runtime package installation is not suitable for air-gapped clusters. Refer to [Audio and video](audio-video.md) and the Helm chart [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment) guide. Skip this if you do not use audio or video.
 
 For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prerequisites-support-matrix.md#image-captioning) NIM and point your pipeline caption endpoint at the in-cluster HTTP URL instead of `integrate.api.nvidia.com` or other hosted APIs.
+
+### Local Hugging Face checkpoints without Hub access { #hf-offline-cache }
+
+Helm air-gapped deployment mirrors NIM container images. Local library evaluation uses Hugging Face checkpoints instead.
+
+On a connected host, download the checkpoints you will run. Copy the Hugging Face cache or the on-disk model directories into the disconnected environment. Pass an on-disk path or a cached repository ID to `--embed-model-name` (and to query) so the runtime does not need Hub access. Set `HF_ACCESS_TOKEN` only when a repository requires it. Refer to [Dense Nemotron embedding checkpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#dense-nemotron-embedding-checkpoints), [Token-based splitting](concepts.md#token-based-splitting), and [Environment variables](environment-config.md).
+
+This path does not replace [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment) for the NIM extraction stack.
 
 **Related**
 

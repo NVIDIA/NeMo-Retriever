@@ -1,50 +1,11 @@
-# NVIDIA NeMo Retriever Overview { #what-is-nvidia-nemo-retriever }
+# NeMo Retriever Library
 
-NVIDIA NeMo Retriever is a collection of microservices 
-for building and scaling multimodal data extraction, embedding, and reranking pipelines 
-with high accuracy and maximum data privacy – built with NVIDIA NIM. 
-NeMo Retriever, part of the [NVIDIA NeMo](https://www.nvidia.com/en-us/ai-data-science/products/nemo/) software suite for managing the AI agent lifecycle, 
-ensures data privacy and seamlessly connects to proprietary data wherever it resides, 
-empowering secure, enterprise-grade retrieval.
+NVIDIA NeMo Retriever Library is the evaluation and integration layer for NVIDIA Nemotron embedding, reranking, and parsing models. It extracts multimodal document content, runs those models, indexes results, and helps you measure retrieval quality. It is not a managed retrieval service or a turnkey enterprise retrieval-augmented generation (RAG) platform.
 
-NeMo Retriever provides the following:
-
-- **Multimodal Data Extraction** — Quickly extract documents at scale that include text, tables, charts, and infographics.
-- **Embedding + Indexing** — Embed all extracted text from text chunks and images, then insert embeddings into LanceDB.
-- **Retrieval** — Leverage semantic + hybrid search for high accuracy retrieval with the embedding + reranking NIM microservice.
-
-
-![Overview diagram](extraction/images/overview-extraction.png)
-
-
-## Enterprise-Ready Features
-
-NVIDIA NeMo Retriever comes with enterprise-ready features, including the following:
-
-- **High Accuracy** — NeMo Retriever exhibits a high level of accuracy when retrieving across various modalities through enterprise documents. 
-- **High Throughput** — NeMo Retriever is capable of extracting, embedding, indexing and retrieving across hundreds of thousands of documents at scale with high throughput. 
-- **Decomposable/Customizable** — NeMo Retriever consists of modules that can be separately used and deployed in your own environment. 
-- **Enterprise-Grade Security** — NeMo Retriever NIMs come with security features such as the use of [safetensors](https://huggingface.co/docs/safetensors/index), continuous patching of CVEs, and more. 
-
-
-
-## Applications
-
-The following are some applications that use NVIDIA Nemo Retriever:
-
-- [AI Virtual Assistant for Customer Service](https://github.com/NVIDIA-AI-Blueprints/ai-virtual-assistant) (NVIDIA AI Blueprint)
-- [Build an Enterprise RAG pipeline](https://build.nvidia.com/nvidia/build-an-enterprise-rag-pipeline/blueprintcard) (NVIDIA AI Blueprint)
-- [Building Code Documentation Agents with CrewAI](https://github.com/crewAIInc/nvidia-demo) (CrewAI Demo)
-- [Digital Human for Customer Service](https://github.com/NVIDIA-AI-Blueprints/digital-human) (NVIDIA AI Blueprint)
-- [Document Research Assistant for Blog Creation](https://docs.llamaindex.ai/en/stable/examples/agent/nvidia_document_research_assistant_for_blog_creation/) (LlamaIndex Jupyter Notebook)
-- [Video Search and Summarization](https://github.com/NVIDIA-AI-Blueprints/video-search-and-summarization) (NVIDIA AI Blueprint)
-
-
+Start at [NeMo Retriever Library Overview](extraction/overview.md). For when to use the library versus calling a single model, refer to the [FAQ](extraction/faq.md#when-to-use-nrl-versus-a-model).
 
 ## Related Topics
 
 - [License](license.md)
-- [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
-- [NeMo Retriever Text Reranking NIM](https://docs.nvidia.com/nim/nemo-retriever/text-reranking/latest/overview.html)
-- [NVIDIA NIM for Object Detection](https://docs.nvidia.com/nim/ingestion/object-detection/latest/overview.html)
-- [NVIDIA NIM for Image OCR](https://docs.nvidia.com/nim/ingestion/image-ocr/latest/overview.html)
+- [NeMo Retriever Library Overview](extraction/overview.md)
+- [Evaluate on your data](extraction/evaluate-on-your-data.md)

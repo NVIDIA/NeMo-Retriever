@@ -1,6 +1,8 @@
 # NeMo Retriever Library Overview { #what-is-nemo-retriever-library }
 
-NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Run it as a Python library or Kubernetes deployment, and route inference through NVIDIA NIM microservices or local Nemotron models for downstream RAG and generative applications.
+NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Nemotron embedding, reranking, and parsing models are the models you evaluate and integrate. The library is the evaluation and integration layer for those models. It is not a managed retrieval service or a turnkey enterprise retrieval-augmented generation (RAG) platform.
+
+Run the library as a Python package or a Kubernetes deployment. Route inference through local Hugging Face checkpoints or NVIDIA NIM microservices. You do not need the four default Helm NIMs to run a local Hugging Face workflow.
 
 NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
 
@@ -11,6 +13,17 @@ NeMo Retriever Library splits documents into pages, classifies sub-page content 
     NVIDIA AI Enterprise (NVAIE) support does **not** cover the NeMo Retriever Library. This applies to the NeMo Retriever Library Python package, its container image, and its Helm chart artifacts.
 
     Some individual NIM microservices and models that the library calls—for example, the default NIMs in the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#default-helm-nims)—may be covered by NVAIE on their own. That coverage applies only to those individual NIMs and models. It does **not** extend to the NeMo Retriever Library or its end-to-end extraction workflow. Using NVAIE-supported NIMs or models through the NeMo Retriever Library does not make the library, its container, or its chart NVAIE-supported.
+
+## What NeMo Retriever Library is not { #what-nemo-retriever-library-is-not }
+
+NeMo Retriever Library is not the following:
+
+- A managed retrieval service, a complete enterprise RAG application, or an NVIDIA AI Enterprise (NVAIE) supported platform
+- A requirement for calling a single Nemotron model from Hugging Face, NIM, or an existing framework
+- A guarantee that a partner or production pipeline will match library measurements
+- A public ranking result for the library itself. Name the Nemotron model and configuration first. Treat the library as methodology.
+
+For when to use the library versus a single model, refer to [When should I use NeMo Retriever Library versus calling a Nemotron model directly?](faq.md#when-to-use-nrl-versus-a-model). For measuring quality on your corpus, refer to [Evaluate on your data](evaluate-on-your-data.md).
 
 ## What NeMo Retriever Library Is ✔️ { #what-nemo-retriever-library-is }
 
@@ -57,5 +70,6 @@ NeMo Retriever Library supports the following file types:
 - [Deployment options](deployment-options.md) — library, Helm, hosted vs self-hosted NIMs in one place
 - [Deploy on Kubernetes with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
 - [Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md)
-- [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — solution cards, enterprise RAG blueprints, and end-to-end patterns (including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag))
+- [Evaluate on your data](evaluate-on-your-data.md) — measure retrieval quality on your documents
+- [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) — optional application examples, including [Enterprise RAG — multimodal PDF data extraction](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag). Blueprints are not the library product.
 - For integration pathways, refer to [Starter kits](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/README.md).
