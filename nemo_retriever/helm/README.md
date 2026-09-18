@@ -667,7 +667,7 @@ helm install "${REL}" ./nemo_retriever/helm -n "${NS}" --create-namespace \
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
 >
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true` (auto-wires `nim_endpoints.rerank_invoke_url` / `rerank_model_name` — refer to [Query-time reranking](#query-time-reranking))
-> * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true` (auto-wires `nim_endpoints.nemotron_parse_invoke_url` and sets the service default PDF extract method to `nemotron_parse` — refer to [Nemotron Parse PDF extraction](#nemotron-parse-pdf-extraction))
+> * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true` (enabling this NIM also sets the default PDF extract method to `nemotron_parse`)
 > * Omni 30B captioner — `--set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
 > * Answer generation LLM — `--set nimOperator.answer_llm.enabled=true`
 > * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service, plus `service.installFfmpeg=true` if your image does not bundle ffmpeg)
@@ -687,22 +687,6 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 ### Query reranking (optional)
 
 The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in, and keep `nims.enabled=true` (the default). When those flags are true and the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. If `nims.enabled=false`, the chart does not auto-wire those fields. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` to override, or to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
-
-### Nemotron Parse (optional)
-
-Nemotron Parse is optional and disabled by default. Set
-`nimOperator.nemotron_parse.enabled=true` to opt in, and keep
-`nims.enabled=true` (the default). When those flags are true and the
-NIM Operator CRDs are present, the chart auto-wires
-`nim_endpoints.nemotron_parse_invoke_url`. The retriever service then
-sets the default PDF extract method to `nemotron_parse`. An ingest
-request that does not set an extract method uses Parse instead of
-pdfium, page-elements, table-structure, and OCR. Set
-`pipeline.extract_params.method` to `pdfium`, `pdfium_hybrid`, or
-`ocr` on a request to keep that layout path. If `nims.enabled=false`, set
-`serviceConfig.nimEndpoints.nemotronParseInvokeUrl` instead.
-Refer to [Nemotron Parse PDF extraction](#nemotron-parse-pdf-extraction)
-for the resolution order.
 
 Track operator reconciliation with:
 
@@ -959,13 +943,11 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. Refer to [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
 | `serviceConfig.resources.maxUploadBytes`          | `500000000` | Maximum upload file size in bytes; requests exceeding the limit are rejected before buffering. |
 | `serviceConfig.sidecarStore.maxPayloadBytes`      | `33554432` | Maximum sidecar metadata upload size in bytes. The service rejects a larger upload with HTTP `413` before buffering the complete payload. This value cannot exceed `serviceConfig.resources.maxUploadBytes`. |
-| `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. Available knobs: `pageElementsInvokeUrl`, `tableStructureInvokeUrl`, `ocrInvokeUrl`, `embedInvokeUrl`, `nemotronParseInvokeUrl` (refer to [Nemotron Parse PDF extraction](#nemotron-parse-pdf-extraction)), `rerankInvokeUrl` (refer to [Query-time reranking](#query-time-reranking)), and `captionInvokeUrl` (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b)). |
+| `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. Available knobs: `pageElementsInvokeUrl`, `tableStructureInvokeUrl`, `ocrInvokeUrl`, `embedInvokeUrl`, `rerankInvokeUrl` (refer to [Query-time reranking](#query-time-reranking)), and `captionInvokeUrl` (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b)). |
 | `serviceConfig.nimEndpoints.rerankModelName`      | `""`    | Model id sent to the remote reranker. Auto-set to `nvidia/llama-nemotron-rerank-vl-1b-v2` whenever a rerank URL is resolved. |
 | `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
 | `serviceConfig.nimEndpoints.rerankInvokeUrl`      | `""`    | Ranking API URL used by `POST /v1/query` when `rerank=true`. Auto-wired from the optional `rerankqa` NIM when enabled; override to point at a hosted or external ranking endpoint. |
 | `serviceConfig.nimEndpoints.rerankModelName`      | `""`    | Model ID sent to the ranking API. Auto-set to `nvidia/llama-nemotron-rerank-vl-1b-v2` whenever a rerank URL is resolved; override for a different compatible reranker. |
-| `serviceConfig.nimEndpoints.nemotronParseInvokeUrl` | `""`  | Parse chat-completions URL. Auto-wired from the optional `nemotron_parse` NIM when enabled. When this URL is set, the service default extract method is `nemotron_parse`. Override to point at a hosted or external Parse endpoint. |
-| `serviceConfig.nimEndpoints.nemotronParseModel`   | `""`    | Optional Parse model id. Leave empty unless you override the endpoint contract. Explicit values win over the empty chart default. |
 | `serviceConfig.nimEndpoints.audioGrpcEndpoint`    | `""`    | gRPC endpoint for Parakeet ASR. Not auto-wired from `nimOperator.audio`. Set `audio:50051` when you enable the audio NIM. |
 | `serviceConfig.llm.enabled`                         | `false` | Enables `POST /v1/answer`. Auto-flips to true when `nimOperator.answer_llm` is enabled and the operator URL resolves. |
 | `serviceConfig.llm.apiBase`                         | `""`    | OpenAI-compatible LLM base URL. Explicit value wins; otherwise `answer_llm` opt-in resolves to `http://answer-llm:8000/v1` by default. |
@@ -1470,7 +1452,7 @@ gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.env` | `NIM_HTTP_API_PORT=8000`, `NIM_TRITON_LOG_VERBOSE=1`, `OMP_NUM_THREADS=1`, `NIM_ENGINE_COUNT=1` | Environment for the default text embed NIM. Overrides replace the complete list. `NIM_PERFORMANCE_MODE=1` is optional. |
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional). Set `true` to opt in — refer to [Query-time reranking](#query-time-reranking). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
-| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` to deploy Parse and auto-wire `nim_endpoints.nemotron_parse_invoke_url`. The service then defaults PDF extract `method` to `nemotron_parse`. Refer to [Nemotron Parse PDF extraction](#nemotron-parse-pdf-extraction). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` to deploy Parse. Enabling this NIM also sets the default PDF extract method to `nemotron_parse`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
@@ -1513,13 +1495,11 @@ nimOperator:
 > The four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
 > are enabled and auto-wired by default. Optional NIMs stay off until
 > `nimOperator.<key>.enabled` is `true`. When you opt in, the chart
-> auto-wires Omni captioning, VL reranking, and Nemotron Parse into
-> `nim_endpoints` (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b),
-> [Query-time reranking](#query-time-reranking), and
-> [Nemotron Parse PDF extraction](#nemotron-parse-pdf-extraction)).
-> Enabling Parse also sets the service default PDF extract method to
-> `nemotron_parse`. Parakeet ASR still needs an explicit
-> `audioGrpcEndpoint`. For minimal installs, prefer the
+> auto-wires Omni captioning and VL reranking into `nim_endpoints`
+> (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b) and
+> [Query-time reranking](#query-time-reranking)); other optional NIMs
+> still need an explicit serviceConfig hook (for example
+> `audioGrpcEndpoint` for Parakeet ASR). For minimal installs, prefer the
 > [minimal install](#recommended-minimal-install-2682) overrides.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
@@ -1774,60 +1754,6 @@ Resolution order mirrors every other NIM endpoint (see the
 it defaults to the canonical VL reranker model id
 (`nvidia/llama-nemotron-rerank-vl-1b-v2`) whenever the chart resolves any
 rerank URL. Override only when pointing at a different ranking SKU.
-
-
-#### Nemotron Parse PDF extraction { #nemotron-parse-pdf-extraction }
-
-Nemotron Parse is an optional PDF extraction NIM. It stays disabled
-until you set `nimOperator.nemotron_parse.enabled=true`. Enable the
-Parse NIM with the following command:
-
-```bash
-helm upgrade --install retriever ./nemo_retriever/helm \
-  --set nimOperator.nemotron_parse.enabled=true
-```
-
-The chart auto-wires the Parse URL into the rendered
-`retriever-service.yaml` ConfigMap, including every split-topology
-role ConfigMap. The rendered fields are as follows:
-
-```yaml
-nim_endpoints:
-  nemotron_parse_invoke_url: "http://nemotron-parse:8000/v1/chat/completions"
-  nemotron_parse_model: null
-```
-
-When `nemotron_parse_invoke_url` is set, the retriever service sets
-the default extract `method` to `nemotron_parse`. An ingest request
-that does not set an extract method uses Parse instead of pdfium,
-page-elements, table-structure, and OCR. Confirm the live default with
-`GET /v1/ingest/pipeline-config`. The response includes
-`extract_params.method` and `extract_params.nemotron_parse_invoke_url`.
-
-This Helm default does not change the in-process Python
-`ExtractParams` default, which remains `pdfium` when you do not set a
-Parse URL. The CLI `auto` profile still selects `pdfium_hybrid`.
-
-To keep pdfium layout extraction on a cluster that has Parse enabled,
-set `pipeline.extract_params.method` to `pdfium`, `pdfium_hybrid`, or
-`ocr` on the ingest request. The worker drops Parse-only fields when
-the method is not `nemotron_parse`.
-
-Resolution order matches every other NIM endpoint. Refer to the
-[NIM Operator sub-stack](#nim-operator-sub-stack) section:
-
-1. Explicit `serviceConfig.nimEndpoints.nemotronParseInvokeUrl` always
-   wins (use this to point at a hosted or external Parse endpoint).
-2. Otherwise the operator-managed URL of `nemotron-parse` is used,
-   provided `nimOperator.nemotron_parse.enabled=true`,
-   `nims.enabled=true`, **and** the `apps.nvidia.com/v1alpha1` CRDs
-   are installed.
-3. Otherwise `nemotron_parse_invoke_url` stays `null` and the service
-   default extract method stays `pdfium`.
-
-`serviceConfig.nimEndpoints.nemotronParseModel` stays empty unless you
-set it. Override only when the endpoint contract requires an explicit
-model id.
 
 
 #### Image captioning (Omni 30B) { #image-captioning-omni-30b }

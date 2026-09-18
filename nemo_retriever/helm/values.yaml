@@ -1057,8 +1057,9 @@ nimOperator:
   #                                                 ≈ 3.1 GiB GPU;
   #                                                 auto-wires rerank URL)
   #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU;
-  #                                                 auto-wires Parse URL and
-  #                                                 default extract method)
+  #                                                 auto-wires Parse URL;
+  #                                                 enabling also sets default
+  #                                                 extract method)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights;
   #                                                 auto-wires caption URL)
@@ -1452,17 +1453,10 @@ nimOperator:
   # Nemotron Parse v1.2. Optional structured document parser.
   #
   # Disabled by default per the 26.08.1 "optional and disabled by default"
-  # contract (refer to docs/extraction/deployment-options.md). Set
-  # enabled=true to deploy the NIM. The chart then auto-wires
-  # nemotron_parse_invoke_url when nims.enabled is true and the NIM
-  # Operator CRDs are present. The retriever service sets the default
-  # PDF extract method to nemotron_parse whenever that URL is set.
-  # An ingest request that does not set an extract method then uses
-  # Parse, not pdfium. Per-request method=pdfium, pdfium_hybrid, or ocr
-  # still uses page-elements, table-structure, and OCR.
-  # Enabling this NIM consumes one GPU and ~3.5 GiB of GPU memory at
-  # runtime, plus ~16 GB of on-disk NIM model cache (refer to
-  # prerequisites-support-matrix).
+  # contract (see docs/extraction/deployment-options.md). Enabling this
+  # NIM also sets the default PDF extract method to nemotron_parse.
+  # This NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
+  # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
   #
   # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
   # NIM SKU shipped alongside the 26.08.1 release; the `-variant` suffix
