@@ -93,6 +93,20 @@ class AgenticRetrieveResult:
     usage: dict[str, dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class AgenticAnswerResult:
+    """Agentic answers, cited retrieval hits, and provider usage by query ID.
+
+    ``answers`` contains one row per input query with ``answer``, ``citations``,
+    ``citation_hits``, success/error fields, and the original query identifiers.
+    Citation hits preserve the model's citation order and use the same classic-hit
+    hydration contract as :meth:`AgenticRetriever.retrieve`.
+    """
+
+    answers: pd.DataFrame
+    usage: dict[str, dict[str, Any]]
+
+
 class AgenticQueryInputOperator(AbstractOperator):
     """Adapt ``Retriever(graph=...)`` input DataFrames to agentic query schema."""
 
@@ -457,6 +471,71 @@ class AgenticRetriever:
         if callable(unload):
             unload()
 
+    def answer(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
+        """Return one integrated agentic answer per query.
+
+        Answer mode ends inside the ReAct loop and therefore intentionally
+        bypasses RRF and the selection agent. Each row includes citation IDs and
+        their rehydrated classic retrieval hits in citation order.
+        """
+
+        return self.answer_with_usage(query_ids, query_texts).answers
+
+    def answer_with_usage(
+        self,
+        query_ids: Sequence[str],
+        query_texts: Sequence[str],
+    ) -> AgenticAnswerResult:
+        """Return integrated agentic answers and exact per-query LLM usage."""
+
+        if len(query_ids) != len(query_texts):
+            raise ValueError("query_ids and query_texts must have the same length.")
+        caller_query_ids = [str(query_id) for query_id in query_ids]
+
+        with self._hit_cache_lock:
+            self._hit_cache.clear()
+
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, int(self._cfg.top_k))
+        react_operator = ReActAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            retriever_fn=self._retrieve_for_agent,
+            retriever_fn_accepts_query_id=True,
+            retriever_top_k=per_hop_top_k,
+            target_top_k=int(self._cfg.top_k),
+            mode="answer",
+            max_steps=int(self._cfg.react_max_steps),
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            num_concurrent=int(self._cfg.num_concurrent),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=self._get_chat_completion_fn(),
+        )
+        input_df = pd.DataFrame(
+            {
+                "query_id": caller_query_ids,
+                "query_text": [str(query_text) for query_text in query_texts],
+            }
+        )
+        usage_by_query: dict[str, dict[str, Any]] = {}
+        try:
+            raw_answers = react_operator.run(input_df)
+        finally:
+            for query_id in caller_query_ids:
+                breakdown = react_operator.pop_query_usage(query_id)
+                if breakdown:
+                    usage_by_query[query_id] = breakdown
+
+        with self._hit_cache_lock:
+            hit_cache = dict(self._hit_cache)
+        answers = _rehydrate_answer_citations(raw_answers, hit_cache)
+        return AgenticAnswerResult(answers=answers, usage=usage_by_query)
+
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
 
@@ -663,6 +742,42 @@ def rehydrated_agentic_hit(hit: Any, *, doc_id: str, rank: int, result_source: s
     rehydrated: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}
     rehydrated.update({"doc_id": doc_id, "rank": rank, "result_source": result_source})
     return rehydrated
+
+
+def _rehydrate_answer_citations(
+    answers: pd.DataFrame,
+    hit_cache: dict[tuple[str, str], dict[str, Any]],
+) -> pd.DataFrame:
+    """Attach full retrieval hits to answer citations without changing IDs."""
+
+    result = answers.copy()
+    citation_hits_per_answer: list[list[dict[str, Any]]] = []
+    for row in result.to_dict("records"):
+        query_id = str(row.get("query_id", ""))
+        raw_citations = row.get("citations")
+        citations = raw_citations if isinstance(raw_citations, list) else []
+        citation_hits: list[dict[str, Any]] = []
+        for rank, raw_doc_id in enumerate(citations, start=1):
+            doc_id = str(raw_doc_id)
+            hit = hit_cache.get((query_id, doc_id), {})
+            if not hit:
+                logger.warning(
+                    "Could not rehydrate answer citation %r for query_id=%r; "
+                    "the citation ID was not present in the retrieval cache.",
+                    doc_id,
+                    query_id,
+                )
+            citation_hits.append(
+                rehydrated_agentic_hit(
+                    hit,
+                    doc_id=doc_id,
+                    rank=rank,
+                    result_source="citation",
+                )
+            )
+        citation_hits_per_answer.append(citation_hits)
+    result["citation_hits"] = pd.Series(citation_hits_per_answer, dtype="object", index=result.index)
+    return result
 
 
 def _rehydrate_selected_hits(

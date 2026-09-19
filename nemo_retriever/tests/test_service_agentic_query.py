@@ -16,6 +16,7 @@ from nemo_retriever.service.app import create_app
 from nemo_retriever.service.agentic_query import (
     agentic_ranked_to_hits,
     build_agentic_query_request,
+    run_agentic_answer,
     run_agentic_query,
 )
 from nemo_retriever.service.config import (
@@ -27,6 +28,7 @@ from nemo_retriever.service.config import (
     VectorDbConfig,
 )
 from nemo_retriever.service.query_schema import (
+    AgenticAnswerResponse,
     AgenticQueryResponse,
     MAX_AGENTIC_QUERY_CHARS,
     QueryRequest,
@@ -52,6 +54,8 @@ def test_query_request_agentic_requires_hits_format() -> None:
         QueryRequest(query="   ", agentic=True)
     with pytest.raises(ValidationError, match="format='hits'"):
         QueryRequest(query="q", agentic=True, format="evidence")
+    with pytest.raises(ValidationError, match="requires agentic=true"):
+        QueryRequest(query="q", agentic_mode="answer")
 
 
 def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
@@ -125,6 +129,71 @@ def test_run_agentic_query_includes_provider_usage() -> None:
 
     assert response.usage is not None
     assert response.usage.model_dump() == usage
+
+
+def test_run_agentic_answer_includes_hydrated_citations_and_usage() -> None:
+    from nemo_retriever.query.workflow import AgenticAnswerDocumentsResult
+
+    workflow_result = AgenticAnswerDocumentsResult(
+        answer="Revenue grew 4%.",
+        citations=["report_7"],
+        citation_hits=[
+            {
+                "doc_id": "report_7",
+                "rank": 1,
+                "result_source": "citation",
+                "text": "Revenue grew 4%.",
+                "source": "/indexes/report.pdf",
+            }
+        ],
+        succeeded=True,
+        message=None,
+        error=None,
+        usage={
+            "input_tokens": 12,
+            "cache_tokens": 4,
+            "output_tokens": 5,
+            "total_tokens": 17,
+            "stages": {},
+        },
+    )
+
+    with patch(
+        "nemo_retriever.service.agentic_query.agentic_answer_documents_with_metadata",
+        return_value=workflow_result,
+    ):
+        response = run_agentic_answer(
+            query="revenue trend",
+            top_k=1,
+            config=AgenticConfig(
+                enabled=True,
+                llm_model="model",
+                invoke_url="https://llm.example/v1/chat/completions",
+            ),
+            lancedb_uri="/indexes/finance",
+            table_name="finance",
+            embed_endpoint="https://embed.example/v1/embeddings",
+            embed_model="embed-model",
+            embed_model_provider_prefix=None,
+            embed_api_key="",
+        )
+
+    assert response == AgenticAnswerResponse(
+        answer="Revenue grew 4%.",
+        citations=["report_7"],
+        citation_hits=[
+            {
+                "doc_id": "report_7",
+                "rank": 1,
+                "result_source": "citation",
+                "text": "Revenue grew 4%.",
+                "source": "/indexes/report.pdf",
+                "metadata": {"rank": 1, "result_source": "citation"},
+            }
+        ],
+        succeeded=True,
+        usage=workflow_result.usage,
+    )
 
 
 def test_agentic_ranked_to_hits_keeps_rehydrated_classic_fields() -> None:
@@ -296,6 +365,42 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
     assert run_query.call_args.kwargs["lancedb_uri"] == str(tmp_path)
     assert run_query.call_args.kwargs["table_name"] == "finance"
     assert run_query.call_args.kwargs["embed_api_key"] == ""
+
+
+def test_agentic_answer_mode_runs_answer_workflow_on_v1_query(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        table_name="finance",
+        embed_endpoint="https://embed.example/v1/embeddings",
+        agentic_config=AgenticConfig(
+            enabled=True,
+            llm_model="model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
+    )
+    expected = AgenticAnswerResponse(
+        answer="Revenue grew 4%.",
+        citations=["report_7"],
+        citation_hits=[{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+        succeeded=True,
+    )
+
+    with (
+        patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True),
+        patch.object(vectordb_module, "run_agentic_answer", return_value=expected) as run_answer,
+        TestClient(app) as client,
+    ):
+        response = client.post(
+            "/v1/query",
+            json={"query": "revenue trend", "top_k": 3, "agentic": True, "agentic_mode": "answer"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["query_mode"] == "agentic_answer"
+    assert response.json()["answer"] == "Revenue grew 4%."
+    assert response.json()["citations"] == ["report_7"]
+    assert run_answer.call_args.kwargs["query"] == "revenue trend"
+    assert run_answer.call_args.kwargs["top_k"] == 3
 
 
 def test_agentic_query_rejects_top_k_above_backend_depth(tmp_path) -> None:

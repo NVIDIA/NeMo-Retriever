@@ -169,6 +169,42 @@ def test_agentic_query_client_posts_agentic_flag_on_v1_query() -> None:
     assert result["usage"]["total_tokens"] == 150
 
 
+def test_agentic_answer_client_posts_mode_on_v1_answer() -> None:
+    seen: dict[str, Any] = {}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "answer": "Revenue grew 4%.",
+                "citations": ["report_7"],
+                "citation_hits": [],
+                "succeeded": True,
+                "query_mode": "agentic_answer",
+            },
+        )
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(
+            base_url="http://service:7670",
+            query_methods="agentic",
+            agentic_request_timeout_s=300.0,
+        ),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    result = _run(client.agentic_answer("What changed?", top_k=2))
+
+    assert seen == {
+        "path": "/v1/answer",
+        "body": {"query": "What changed?", "top_k": 2, "mode": "agentic"},
+    }
+    assert result["answer"] == "Revenue grew 4%."
+    assert result["citations"] == ["report_7"]
+
+
 def test_query_methods_gate_mcp_retrieval_tools() -> None:
     classic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="classic")).list_tools())}
     agentic = {tool.name for tool in _run(build_mcp(ServiceMCPSettings(query_methods="agentic")).list_tools())}
@@ -178,8 +214,11 @@ def test_query_methods_gate_mcp_retrieval_tools() -> None:
     assert "agentic_query" not in classic
     assert "query" not in agentic
     assert "agentic_query" in agentic
+    assert "agentic_answer" in agentic
     assert "query" in all_tools
     assert "agentic_query" in all_tools
+    assert "agentic_answer" in all_tools
+    assert "agentic_answer" not in classic
     assert "answer" in classic and "answer" in agentic and "answer" in all_tools
 
 

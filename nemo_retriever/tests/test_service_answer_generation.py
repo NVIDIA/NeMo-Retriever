@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from nemo_retriever.models.llm.types import GenerationResult, JudgeResult
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AgenticConfig,
     AuthConfig,
     LLMConfig,
     LoggingConfig,
@@ -62,6 +63,11 @@ def app_with_answer_config(monkeypatch: pytest.MonkeyPatch, tmp_path):
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+        agentic=AgenticConfig(
+            enabled=True,
+            llm_model="agent-model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
         llm=LLMConfig(
             enabled=True,
             model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
@@ -163,6 +169,107 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
         rag_system_prompt_prefix=None,
         reasoning_enabled=False,
     )
+
+
+def test_answer_agentic_mode_validates_integrated_answer_and_uses_agentic_timeout(
+    app_with_answer_config: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[dict[str, Any]] = []
+    timeouts: list[float] = []
+    payload = {
+        "answer": "Revenue grew 4%.",
+        "citations": ["report_7"],
+        "citation_hits": [{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+        "succeeded": True,
+        "message": None,
+        "error": None,
+        "query_mode": "agentic_answer",
+        "usage": None,
+    }
+
+    class _FakeResponse:
+        status_code = 200
+        content = json.dumps(payload).encode()
+        headers = {"content-type": "application/json"}
+
+        def json(self) -> dict[str, Any]:
+            return payload
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            timeouts.append(kwargs["timeout"])
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs) -> _FakeResponse:
+            requests.append({"url": url, **kwargs})
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+
+    with patch("nemo_retriever.models.llm.clients.LiteLLMClient.from_kwargs") as from_kwargs:
+        response = app_with_answer_config.post(
+            "/v1/answer",
+            json={"query": "What changed?", "top_k": 3, "mode": "agentic"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert timeouts == [1800.0]
+    assert requests == [
+        {
+            "url": "http://vectordb:7671/v1/query",
+            "json": {
+                "query": "What changed?",
+                "top_k": 3,
+                "agentic": True,
+                "agentic_mode": "answer",
+            },
+            "headers": {"X-NRL-Scope": "default"},
+        }
+    ]
+    from_kwargs.assert_not_called()
+
+
+def test_answer_agentic_mode_rejects_invalid_vectordb_response(
+    app_with_answer_config: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        status_code = 200
+        content = b'{"answer": "missing required status"}'
+        headers = {"content-type": "application/json"}
+
+        def json(self) -> dict[str, Any]:
+            return {"answer": "missing required status"}
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs) -> _FakeResponse:
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+
+    response = app_with_answer_config.post(
+        "/v1/answer",
+        json={"query": "What changed?", "mode": "agentic"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "VectorDB returned an invalid agentic answer response."
 
 
 def test_answer_preserves_vectordb_error_content_type(

@@ -60,9 +60,10 @@ from nemo_retriever.ingest.index_mode import (
 from nemo_retriever.models import resolve_embed_model
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.query.evidence import build_evidence_result
-from nemo_retriever.service.agentic_query import run_agentic_query
+from nemo_retriever.service.agentic_query import run_agentic_answer, run_agentic_query
 from nemo_retriever.service.config import AgenticConfig
 from nemo_retriever.service.query_schema import (
+    AgenticAnswerResponse,
     AgenticQueryResponse,
     EvidenceQueryResponse,
     EvidenceResult,
@@ -713,13 +714,13 @@ def create_vectordb_app(
 
     @app.post(
         "/v1/query",
-        response_model=Union[AgenticQueryResponse, QueryResponse, EvidenceQueryResponse],
+        response_model=Union[AgenticAnswerResponse, AgenticQueryResponse, QueryResponse, EvidenceQueryResponse],
         tags=["query"],
     )
     async def query(
         req: QueryRequest,
         x_nrl_scope: str | None = Header(None),
-    ) -> AgenticQueryResponse | QueryResponse | EvidenceQueryResponse:
+    ) -> AgenticAnswerResponse | AgenticQueryResponse | QueryResponse | EvidenceQueryResponse:
         current = require_state()
         if req.agentic:
             if req.collection_name is not None:
@@ -783,7 +784,7 @@ def create_vectordb_app(
             )
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
-    async def _run_agentic_query(req: QueryRequest) -> AgenticQueryResponse:
+    async def _run_agentic_query(req: QueryRequest) -> AgenticAnswerResponse | AgenticQueryResponse:
         """Run the blocking agentic workflow without consuming plain-query workers."""
         current = require_state()
         if not agentic_config.enabled:
@@ -831,7 +832,7 @@ def create_vectordb_app(
         assert isinstance(req.query, str)
         try:
             future = executor.submit(
-                run_agentic_query,
+                run_agentic_answer if req.agentic_mode == "answer" else run_agentic_query,
                 query=req.query,
                 top_k=req.top_k,
                 config=agentic_config,
