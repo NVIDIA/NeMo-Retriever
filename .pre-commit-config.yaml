@@ -13,6 +13,7 @@ repos:
       - id: trailing-whitespace
         exclude: '(^(docs|data)/|\.md$)'
       - id: end-of-file-fixer
+        exclude: '(^|/)skill[.]oms[.]sig$'
       - id: check-added-large-files
         args: ['--maxkb=1500']
       - id: check-ast

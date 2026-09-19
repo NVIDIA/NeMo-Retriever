@@ -14,7 +14,10 @@ import pytest
 
 from nemo_retriever.service.auth import _is_gateway_proxy_path, internal_auth_headers
 from nemo_retriever.service.config import load_config
-from nemo_retriever.service.services.pipeline_executor import _post_records_to_vectordb
+from nemo_retriever.service.services.pipeline_executor import (
+    _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
+    _post_records_to_vectordb,
+)
 from nemo_retriever.service.services.pipeline_pool import DocumentWriteContext
 
 
@@ -66,5 +69,5 @@ def test_pipeline_vectordb_request_uses_normalized_internal_header() -> None:
             context=DocumentWriteContext(),
         )
 
-    assert captured["timeout"] == 30
+    assert captured["timeout"] == _DEFAULT_VECTORDB_WRITE_TIMEOUT_S
     assert captured["request"].get_header("X-nrl-internal-token") == "internal-secret"

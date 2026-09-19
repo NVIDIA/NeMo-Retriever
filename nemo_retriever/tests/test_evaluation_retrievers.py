@@ -197,7 +197,7 @@ def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
 
     all_results, meta = query_lancedb(
         lancedb_uri="/tmp/lancedb",
-        lancedb_table="nv-ingest",
+        lancedb_table="nemo-retriever",
         queries=[{"query": "What is the range of the 767?"}],
         top_k=7,
         embedder="embedder",
@@ -206,14 +206,14 @@ def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
     assert captured_kwargs == {
         "vdb_kwargs": {
             "vdb_op": "lancedb",
-            "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "nv-ingest"},
+            "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "nemo-retriever"},
         },
         "embed_kwargs": {"model_name": "embedder", "embed_model_name": "embedder"},
         "top_k": 7,
         "rerank": False,
     }
     assert all_results["What is the range of the 767?"]["chunks"] == ["range chunk"]
-    assert meta["collection_name"] == "nv-ingest"
+    assert meta["collection_name"] == "nemo-retriever"
 
 
 def test_from_lancedb_no_save_path_keeps_memory_label() -> None:

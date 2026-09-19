@@ -15,6 +15,9 @@ from nemo_retriever.models.embed_model_spec import (
 if TYPE_CHECKING:
     from nemo_retriever.models.model import BaseModel
 
+NEMOTRON_3_EMBED_MODEL = "nvidia/nemotron-3-embed-1b"
+NEMOTRON_3_EMBED_BF16_MODEL = "nvidia/Nemotron-3-Embed-1B-BF16"
+NEMOTRON_3_EMBED_NVFP4_MODEL = "nvidia/Nemotron-3-Embed-1B-NVFP4"
 VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 
@@ -25,19 +28,22 @@ _VL_RERANK_MODEL_IDS = frozenset(
     }
 )
 
-# Short name → full HF repo ID.
+# Short name to canonical model ID.
 _EMBED_MODEL_ALIASES: dict[str, str] = {
+    "nemotron-3-embed-1b": NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_BF16_MODEL: NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_NVFP4_MODEL: NEMOTRON_3_EMBED_MODEL,
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
     "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
     "llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
     "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
 }
 
-_DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+_DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 
 
 def resolve_embed_model(model_name: str | None) -> str:
-    """Resolve a model name/alias to a full HF repo ID.
+    """Resolve a model name or alias to its canonical ID.
 
     Returns ``_DEFAULT_EMBED_MODEL`` when *model_name* is ``None`` or empty.
     """
@@ -49,6 +55,41 @@ def resolve_embed_model(model_name: str | None) -> str:
 def is_vl_embed_model(model_name: str | None) -> bool:
     """Return True when a legacy model ID or alias names the default VL embedder."""
     return resolve_embed_model(model_name) == VL_EMBED_MODEL
+
+
+def _cuda_supports_native_nvfp4() -> bool:
+    """Return whether every visible CUDA device has native NVFP4 support."""
+    try:
+        import torch
+
+        if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
+            return False
+        return all(torch.cuda.get_device_capability(index)[0] >= 10 for index in range(torch.cuda.device_count()))
+    except (ImportError, RuntimeError, AssertionError):
+        return False
+
+
+def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
+    """Resolve an embedding model to a backend-compatible checkpoint.
+
+    Args:
+        model_name: Logical embedding model name or alias. An omitted or empty
+            value uses the default embedding model.
+        backend: Normalized local inference backend, such as ``"vllm"`` or
+            ``"hf"``.
+
+    Returns:
+        The resolved Hugging Face checkpoint identifier. The logical Nemotron 3
+        default resolves to NVFP4 for vLLM when every visible CUDA device has
+        native NVFP4 support, and to BF16 otherwise. Other model identifiers
+        are returned after alias resolution.
+    """
+    resolved = resolve_embed_model(model_name)
+    if resolved != NEMOTRON_3_EMBED_MODEL:
+        return resolved
+    if backend == "vllm" and _cuda_supports_native_nvfp4():
+        return NEMOTRON_3_EMBED_NVFP4_MODEL
+    return NEMOTRON_3_EMBED_BF16_MODEL
 
 
 def is_vl_rerank_model(model_name: str | None) -> bool:
@@ -88,8 +129,9 @@ def create_local_embedder(
     forwarded for compatibility but deprecated and ignored (vLLM placement is
     process-level); passing it emits ``DeprecationWarning``.
 
-    Note: ``gpu_memory_utilization``, ``enforce_eager``, ``dimensions``,
-    ``normalize``, and ``max_length`` apply to vLLM paths only; the HF VL path ignores them.
+    The requested text limits are capped at the checkpoint-declared maximum
+    before construction. Backend-specific runtime options are ignored by
+    loaders that do not support them.
 
     Local checkpoints and compatible Hub fine-tunes are routed from their
     immutable config. Compatibility requires a supported dense Nemotron
@@ -100,9 +142,43 @@ def create_local_embedder(
     if b not in ("vllm", "hf"):
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
 
-    model_id = resolve_embed_model(model_name)
+    model_id = resolve_local_embed_model(model_name, backend=b)
     spec = resolve_embed_model_spec(model_id, revision=revision, hf_cache_dir=hf_cache_dir)
+    return _create_local_embedder_from_spec(
+        spec,
+        backend=b,
+        device=device,
+        hf_cache_dir=hf_cache_dir,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        dimensions=dimensions,
+        normalize=normalize,
+        max_length=max_length,
+        query_max_length=query_max_length,
+    )
+
+
+def _create_local_embedder_from_spec(
+    spec: EmbedModelSpec,
+    *,
+    backend: str,
+    device: str | None,
+    hf_cache_dir: str | None,
+    gpu_memory_utilization: float,
+    enforce_eager: bool,
+    dimensions: int | None,
+    normalize: bool,
+    max_length: int,
+    query_max_length: int,
+) -> Any:
+    """Construct from already-resolved metadata without another checkpoint lookup."""
+    b = backend
+    model_id = spec.model_id
     validate_embed_model_backend(spec, b)
+    effective_max_length = min(int(max_length), spec.max_input_tokens) if spec.max_input_tokens else int(max_length)
+    effective_query_max_length = (
+        min(int(query_max_length), spec.max_input_tokens) if spec.max_input_tokens else int(query_max_length)
+    )
 
     if spec.family == "vl":
         if b == "hf":
@@ -116,6 +192,7 @@ def create_local_embedder(
                 model_id=model_id,
                 revision=spec.revision,
                 output_dimension=spec.output_dimension,
+                max_length=effective_max_length,
             )
 
         from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
@@ -144,8 +221,8 @@ def create_local_embedder(
             device=device,
             hf_cache_dir=hf_cache_dir,
             normalize=normalize,
-            max_length=int(max_length),
-            query_max_length=int(query_max_length),
+            max_length=effective_max_length,
+            query_max_length=effective_query_max_length,
             model_id=model_id,
             revision=spec.revision,
             query_prefix=spec.query_prefix,
@@ -164,7 +241,7 @@ def create_local_embedder(
         enforce_eager=enforce_eager,
         dimensions=dimensions,
         normalize=normalize,
-        max_length=int(max_length),
+        max_length=effective_max_length,
         revision=spec.revision,
         query_prefix=spec.query_prefix,
         document_prefix=spec.document_prefix,
@@ -191,7 +268,7 @@ def normalize_backend(value: str | None, valid: frozenset[str], *, field_name: s
 def create_local_query_embedder(
     model_name: str | None = None,
     *,
-    backend: str = "hf",
+    backend: str = "vllm",
     device: str | None = None,
     hf_cache_dir: str | None = None,
     gpu_memory_utilization: float = 0.45,
@@ -204,7 +281,7 @@ def create_local_query_embedder(
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
-    *backend* must be ``"hf"`` (default) or ``"vllm"``.
+    *backend* must be ``"vllm"`` (default) or ``"hf"``.
 
     - ``backend="hf"``: HuggingFace for both VL and non-VL models.
     - ``backend="vllm"``: vLLM for both VL and non-VL models.
@@ -212,7 +289,7 @@ def create_local_query_embedder(
     Model architecture and quantization requirements are resolved from the
     checkpoint config; see :func:`create_local_embedder`.
     """
-    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="hf")
+    b = normalize_backend(backend, _LOCAL_QUERY_BACKENDS, field_name="backend", default="vllm")
 
     return create_local_embedder(
         model_name,

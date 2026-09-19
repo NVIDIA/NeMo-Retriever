@@ -272,6 +272,17 @@ nemo-retriever.role.configMapName
 {{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
 {{- end -}}
 
+{{/*
+nemo-retriever.gateway.startupServiceName
+  Name of the gateway startup Service. This Service publishes not-ready
+  addresses so worker init containers can reach the gateway's shallow
+  /v1/live endpoint before the gateway's deep readiness probe passes.
+  Usage: {{ include "nemo-retriever.gateway.startupServiceName" $ }}
+*/}}
+{{- define "nemo-retriever.gateway.startupServiceName" -}}
+{{- include "nemo-retriever.suffixedFullname" (dict "context" . "suffix" "-gateway-startup") -}}
+{{- end -}}
+
 
 {{/*
 =============================================================================
@@ -641,7 +652,7 @@ Mapping (key -> Service name, default invokePath):
   page_elements                          -> nemotron-page-elements-v3                /v1/page-elements
   table_structure                        -> nemotron-table-structure-v1              /v1/table-structure
   ocr                                    -> nemotron-ocr-v2                          /v1/ocr
-  vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  vlm_embed                              -> nemotron-3-embed-1b            /v1/embeddings
   rerankqa                               -> llama-nemotron-rerank-vl-1b-v2           /v1/ranking
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
   answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1

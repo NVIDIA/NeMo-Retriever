@@ -2,10 +2,9 @@
 
 This project uses the following third-party components:
 
-## Llama Nemotron Embed VL 1B v2
+## Nemotron 3 Embed 1B BF16
 
 - **Component**: The revision-pinned tokenizer artifact from
-  [`nvidia/llama-nemotron-embed-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2).
-- **License**: [NVIDIA Open Model License](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/blob/main/LICENSE).
-  The model card also identifies the Llama 3.2 Community License Agreement as
-  additional terms and includes the Built with Llama attribution.
+  [`nvidia/Nemotron-3-Embed-1B-BF16`](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16).
+- **License**: [OpenMDW License Agreement, version 1.1](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16/blob/main/LICENSE).
+  The model card also identifies the Apache License, Version 2.0, as additional information.

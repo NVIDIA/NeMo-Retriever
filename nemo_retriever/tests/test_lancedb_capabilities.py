@@ -13,8 +13,16 @@ lancedb = pytest.importorskip("lancedb")
 pa = pytest.importorskip("pyarrow")
 
 import nemo_retriever.graph.retriever as retriever_module  # noqa: E402
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities, inspect_lancedb_table  # noqa: E402
+from nemo_retriever.common.vdb.hybrid_fusion import (
+    DEFAULT_HYBRID_FUSION_POLICY,  # noqa: E402
+)
 from nemo_retriever.common.vdb.lancedb import LanceDB  # noqa: E402
+from nemo_retriever.common.vdb.lancedb_capabilities import (  # noqa: E402
+    LanceTableCapabilities,
+    inspect_lancedb_table,
+    inspect_lancedb_table_object,
+)
+from nemo_retriever.graph.pipeline_graph import Graph  # noqa: E402
 from nemo_retriever.graph.retriever import Retriever  # noqa: E402
 from nemo_retriever.operators.vdb import RetrieveVdbOperator  # noqa: E402
 
@@ -24,6 +32,7 @@ def _create_vector_table(
     table_name: str,
     *,
     fts: bool = False,
+    embedding_model_name: str | None = "nvidia/nemotron-3-embed-1b",
 ) -> None:
     schema = pa.schema(
         [
@@ -32,7 +41,12 @@ def _create_vector_table(
             pa.field("metadata", pa.string()),
             pa.field("source", pa.string()),
             pa.field("id", pa.string()),
-        ]
+        ],
+        metadata=(
+            {b"nemo_retriever.embedding_model_name": embedding_model_name.encode("utf-8")}
+            if embedding_model_name
+            else None
+        ),
     )
     rows = [
         {
@@ -159,6 +173,36 @@ def test_detector_returns_hybrid_for_vector_plus_fts_table(tmp_path) -> None:
     assert caps.retrieval_mode == "hybrid"
 
 
+def test_physical_fts_overrides_stale_dense_schema_metadata(tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "upgraded", fts=True)
+    table = lancedb.connect(uri).open_table("upgraded")
+    stale_table = type(
+        "StaleSchemaTable",
+        (),
+        {"schema": table.schema.with_metadata({b"retrieval_mode": b"dense"}), "list_indices": table.list_indices},
+    )()
+
+    caps = inspect_lancedb_table_object(stale_table)
+
+    assert caps.retrieval_mode == "hybrid"
+
+
+def test_physical_vector_only_table_overrides_stale_hybrid_metadata(tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "legacy")
+    table = lancedb.connect(uri).open_table("legacy")
+    stale_table = type(
+        "StaleSchemaTable",
+        (),
+        {"schema": table.schema.with_metadata({b"retrieval_mode": b"hybrid"}), "list_indices": table.list_indices},
+    )()
+
+    caps = inspect_lancedb_table_object(stale_table)
+
+    assert caps.retrieval_mode == "dense"
+
+
 def test_detector_returns_sparse_for_fts_only_table(tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_sparse_table(uri, "sparse")
@@ -170,6 +214,16 @@ def test_detector_returns_sparse_for_fts_only_table(tmp_path) -> None:
     assert caps.vector_column is None
     assert caps.text_column == "text"
     assert caps.retrieval_mode == "sparse"
+
+
+def test_fts_index_telemetry_failure_is_nonfatal() -> None:
+    class BrokenIndexTable:
+        def list_indices(self):
+            raise RuntimeError("transient index metadata failure")
+
+    backend = LanceDB.__new__(LanceDB)
+
+    assert backend._fts_unindexed_rows(BrokenIndexTable()) is None
 
 
 def test_sparse_query_does_not_call_embedding_graph(monkeypatch, tmp_path) -> None:
@@ -184,6 +238,41 @@ def test_sparse_query_does_not_call_embedding_graph(monkeypatch, tmp_path) -> No
     assert hits[0]["text"] == "alpha safety manual"
 
 
+@pytest.mark.parametrize(
+    "query_path",
+    [
+        "injected",
+        "custom_graph",
+    ],
+)
+@pytest.mark.parametrize("hybrid", [False, True])
+def test_lancedb_query_paths_reject_untagged_vector_table(
+    query_path: str,
+    hybrid: bool,
+    tmp_path,
+) -> None:
+    uri = str(tmp_path / "db")
+    table_name = "hybrid" if hybrid else "dense"
+    _create_vector_table(uri, table_name, fts=hybrid, embedding_model_name=None)
+    backend = LanceDB(
+        uri=uri,
+        table_name=table_name,
+        vector_dim=2,
+        build_index=False,
+        hybrid=hybrid,
+    )
+
+    if query_path == "custom_graph":
+        graph = Graph()
+        graph.add_root(RetrieveVdbOperator(vdb=backend))
+        retriever = Retriever(graph=graph)
+    else:
+        retriever = Retriever(vdb_kwargs={"vdb": backend})
+
+    with pytest.raises(ValueError, match="does not record its embedding model"):
+        retriever.query("alpha", top_k=1)
+
+
 def test_hybrid_table_query_automatically_enables_hybrid(monkeypatch, tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "hybrid", fts=True)
@@ -191,7 +280,7 @@ def test_hybrid_table_query_automatically_enables_hybrid(monkeypatch, tmp_path) 
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid"}).query("alpha", top_k=1)
 
-    assert calls == [{"hybrid": True}]
+    assert calls == [{"hybrid": True, "hybrid_fusion": DEFAULT_HYBRID_FUSION_POLICY}]
 
 
 def test_existing_dense_query_behavior_is_unchanged(monkeypatch, tmp_path) -> None:
@@ -221,7 +310,7 @@ def test_explicit_hybrid_override_on_hybrid_table(monkeypatch, tmp_path) -> None
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "hybrid"}).query("alpha", top_k=1)
 
-    assert calls == [{"hybrid": True}]
+    assert calls == [{"hybrid": True, "hybrid_fusion": DEFAULT_HYBRID_FUSION_POLICY}]
 
 
 def test_explicit_sparse_override_on_hybrid_table_uses_sparse_retrieval(monkeypatch, tmp_path) -> None:

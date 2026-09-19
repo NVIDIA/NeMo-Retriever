@@ -22,11 +22,13 @@ import json
 import pytest
 
 from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
+from nemo_retriever.common.vdb import lancedb_capabilities
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
+    _DEFAULT_VECTORDB_WRITE_TIMEOUT_S,
     _merge_server_owned,
     _post_records_to_vectordb,
     _request_needs_asr_params,
@@ -829,6 +831,40 @@ def test_run_pipeline_in_process_preserves_service_inline_identity(monkeypatch: 
     assert rows[0]["metadata"]["source_path"] == "inline://00000003"
 
 
+def test_run_pipeline_in_process_uses_effective_embedding_output_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pandas as pd
+
+    class _Ingestor:
+        _embed_params = EmbedParams(model_name="embed-model", output_column="custom_embeddings")
+
+        def ingest(self):
+            return pd.DataFrame(
+                {
+                    "text": ["hello"],
+                    "earlier_payload": [{"embedding": [9.0]}],
+                    "custom_embeddings": [{"embedding": [0.1]}],
+                }
+            )
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor._build_graph_ingestor_from_spec",
+        lambda *_args, **_kwargs: (_Ingestor(), "pdf", False),
+    )
+
+    row_count, rows, _ = _run_pipeline_in_process(
+        "document.pdf",
+        b"%PDF-1.4 stub",
+        {},
+        None,
+        pipeline_spec={"result_schema": "compact", "return_embeddings": True},
+    )
+
+    assert row_count == 1
+    assert rows[0]["embedding"] == [0.1]
+
+
 def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> None:
     """When the worker has no ASR endpoint, nothing should be attached
     regardless of filename or extraction mode.
@@ -997,7 +1033,7 @@ def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: p
     )
 
     assert posted["url"] == "http://vectordb:7671/internal/vectordb/write"
-    assert posted["timeout"] == 30
+    assert posted["timeout"] == _DEFAULT_VECTORDB_WRITE_TIMEOUT_S
     assert posted["headers"]["X-nrl-internal-token"] == "internal-token"
     assert posted["json"] == {
         "records": records,
@@ -1012,3 +1048,68 @@ def test_post_records_to_vectordb_uses_canonical_internal_payload(monkeypatch: p
     }
     assert "rows" not in posted["json"]
     assert "artifact_prefix" not in posted["json"]
+
+
+def test_post_records_to_vectordb_fails_the_document_when_the_write_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A write the storage tier never acknowledged must not be reported as ingested."""
+
+    def _urlopen(request, timeout):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    records = [[{"document_type": "text", "metadata": {"embedding": [0.1], "content": "chunk"}}]]
+
+    # A legacy fixed-table write, i.e. no collection context.
+    with pytest.raises(RuntimeError, match="VectorDB write failed for gamma.txt"):
+        _post_records_to_vectordb(
+            records,
+            "http://vectordb:7671",
+            "gamma.txt",
+            context=DocumentWriteContext(),
+        )
+
+
+def test_post_records_to_vectordb_honors_the_configured_write_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def _urlopen(request, timeout):
+        seen["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    _post_records_to_vectordb(
+        [[{"document_type": "text", "metadata": {"embedding": [0.1], "content": "chunk"}}]],
+        "http://vectordb:7671",
+        "gamma.txt",
+        context=DocumentWriteContext(),
+        timeout_s=45.0,
+    )
+
+    assert seen["timeout"] == 45.0
+
+
+def test_default_write_timeout_outlasts_the_index_readiness_waits() -> None:
+    """A durable write must not fail because the VectorDB waited on its own indexes.
+
+    The VectorDB acknowledges a write only after index maintenance, and a hybrid
+    table waits once per index. If those advisory waits can outlast the worker's
+    timeout, a document whose rows are already committed fails on the wait alone.
+    """
+    worst_case_index_wait_s = (
+        lancedb_capabilities.MAX_INDEX_READY_WAITS_PER_WRITE * lancedb_capabilities.INDEX_READY_TIMEOUT.total_seconds()
+    )
+
+    assert worst_case_index_wait_s < _DEFAULT_VECTORDB_WRITE_TIMEOUT_S

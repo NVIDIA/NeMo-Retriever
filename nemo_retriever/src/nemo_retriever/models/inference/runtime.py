@@ -11,12 +11,18 @@ from typing import Any, List, Optional, Sequence
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
-
-from nemo_retriever.models.nim.error_reporter import report_error
-from nemo_retriever.models import VL_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
+from nemo_retriever.common.schemas.embedding import (
+    embedding_runtime_modality,
+    format_embedding_input,
+    requires_text_admission,
+)
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL, resolve_embed_model
+from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy, prepare_embedding_inputs
 from nemo_retriever.models.inference.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
+from nemo_retriever.models.nim.error_reporter import report_error
+
+logger = logging.getLogger(__name__)
 
 
 def _embed_group(
@@ -34,6 +40,7 @@ def _embed_group(
     nim_http_max_concurrent: int = 32,
     input_type: str = "passage",
     request_timeout_s: float = 600.0,
+    truncate: str = "END",
 ) -> pd.DataFrame:
     """Embed a single modality group via ``create_text_embeddings_for_df``."""
     embedder = None
@@ -49,7 +56,7 @@ def _embed_group(
                 if str(input_type).strip().lower() == "query" and skip_prefix:
                     vectors = model.embed_queries(texts, batch_size=int(inference_batch_size))
                 else:
-                    batch = texts if skip_prefix else [f"passage: {text}" for text in texts]
+                    batch = texts if skip_prefix else [format_embedding_input(text, "passage: ") for text in texts]
                     vectors = model.embed(batch, batch_size=int(inference_batch_size))
                 tolist = getattr(vectors, "tolist", None)
                 if callable(tolist):
@@ -73,10 +80,10 @@ def _embed_group(
         batch_size=int(effective_batch_size),
         encoding_format="float",
         input_type=str(input_type),
-        truncate="END",
+        truncate=str(truncate),
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
-        embedding_model=resolved_model_name or VL_EMBED_MODEL,
+        embedding_model=resolved_model_name or _DEFAULT_EMBED_MODEL,
         embedding_model_provider_prefix=embed_model_provider_prefix,
         embed_modality=group_modality,
         nim_http_max_concurrent=max(1, int(nim_http_max_concurrent)),
@@ -117,6 +124,7 @@ def embed_text_main_text_embed(
     nim_http_max_concurrent: int = 32,
     input_type: str = "passage",
     request_timeout_s: float | None = None,
+    embedding_input_policy: EmbeddingInputPolicy | None = None,
     **_extras: Any,
 ) -> Any:
     """Embed graph batches while preserving the legacy output columns."""
@@ -134,17 +142,51 @@ def embed_text_main_text_embed(
 
     resolved_model_name = resolve_embed_model(model_name)
 
-    has_per_row_modality = "_embed_modality" in batch_df.columns
-    if has_per_row_modality:
-        modalities = batch_df["_embed_modality"].fillna(embed_modality).unique().tolist()
+    if embedding_input_policy is not None:
+        preparation = prepare_embedding_inputs(
+            batch_df,
+            policy=embedding_input_policy,
+            text_column=text_column,
+            default_modality=embed_modality,
+        )
+        prepared_df = preparation.frame
+        current_split_child_positions = preparation.split_child_positions
+        current_split_parent_positions = preparation.split_parent_positions
     else:
-        modalities = [embed_modality]
+        prepared_df = batch_df
+        current_split_child_positions = frozenset()
+        current_split_parent_positions = frozenset()
+    input_row_count = len(batch_df.index)
+
+    remote_text_admission = endpoint is not None and embedding_input_policy is not None
+    original_index = prepared_df.index
+    if remote_text_admission:
+        # Partition and reassemble remote requests by row position, not caller
+        # index labels (which may be unordered or repeated).
+        prepared_df = prepared_df.reset_index(drop=True)
+
+    request_routes = prepared_df.apply(
+        lambda row: (
+            embedding_runtime_modality(row, default_modality=embed_modality),
+            (
+                "NONE"
+                if remote_text_admission and requires_text_admission(row, default_modality=embed_modality)
+                else "END"
+            ),
+        ),
+        axis=1,
+    )
+    routes = request_routes.unique().tolist() or [
+        (embedding_runtime_modality({}, default_modality=embed_modality), "END")
+    ]
 
     try:
-        if len(modalities) == 1:
-            out_df = _embed_group(
-                batch_df,
-                group_modality=modalities[0],
+        parts: List[pd.DataFrame] = []
+        for modality, truncate in routes:
+            group_df = prepared_df if len(routes) == 1 else prepared_df.loc[request_routes == (modality, truncate)]
+            part = _embed_group(
+                group_df,
+                group_modality=modality,
                 model=model,
                 endpoint=endpoint,
                 api_key=api_key,
@@ -156,31 +198,10 @@ def embed_text_main_text_embed(
                 nim_http_max_concurrent=nim_http_max_concurrent,
                 input_type=input_type,
                 request_timeout_s=float(request_timeout_s),
+                truncate=truncate,
             )
-        else:
-            parts: List[pd.DataFrame] = []
-            for modality in modalities:
-                mask = batch_df["_embed_modality"] == modality
-                group_df = batch_df.loc[mask]
-                if group_df.empty:
-                    continue
-                part = _embed_group(
-                    group_df,
-                    group_modality=modality,
-                    model=model,
-                    endpoint=endpoint,
-                    api_key=api_key,
-                    text_column=text_column,
-                    inference_batch_size=inference_batch_size,
-                    output_column=output_column,
-                    resolved_model_name=resolved_model_name,
-                    embed_model_provider_prefix=embed_model_provider_prefix,
-                    nim_http_max_concurrent=nim_http_max_concurrent,
-                    input_type=input_type,
-                    request_timeout_s=float(request_timeout_s),
-                )
-                parts.append(part)
-            out_df = pd.concat(parts).sort_index()
+            parts.append(part)
+        out_df = parts[0] if len(routes) == 1 else pd.concat(parts).sort_index()
     except Exception as exc:
         try:
             import torch
@@ -190,13 +211,16 @@ def embed_text_main_text_embed(
             logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         report_error("embed", exc)
-        out_df = batch_df.copy()
-        out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
+        out_df = prepared_df.copy()
+        public_error = f"{type(exc).__name__}: embedding batch failed; inspect embed-stage logs for the cause"
+        out_df[output_column] = [{"embedding": [], "error": public_error} for _ in out_df.index]
         out_df[embedding_dim_column] = 0
         out_df[has_embedding_column] = False
         if "_embed_modality" in out_df.columns:
             out_df = out_df.drop(columns=["_embed_modality"])
-        return out_df
+
+    if remote_text_admission:
+        out_df.index = original_index
 
     if embedding_dim_column:
 
@@ -219,7 +243,33 @@ def embed_text_main_text_embed(
 
     embedded_flags = out_df[has_embedding_column].tolist()
     out_df["embedding_v1_num_detections"] = [int(f) for f in embedded_flags]
-    out_df["embedding_v1_counts_by_label"] = [{"embedded": 1} if f else {} for f in embedded_flags]
+    counts_by_label: list[dict[str, int]] = []
+    for position, (_, row) in enumerate(out_df.iterrows()):
+        embedded = bool(row.get(has_embedding_column))
+        counts = {"embedded": 1} if embedded else {"unembedded": 1}
+        payload = row.get(output_column)
+        if isinstance(payload, dict) and payload.get("error") is not None:
+            counts["failed"] = 1
+        if position in current_split_child_positions:
+            counts["split_child"] = 1
+            if position in current_split_parent_positions:
+                counts["overlength"] = 1
+                counts["split"] = 1
+        counts_by_label.append(counts)
+    out_df["embedding_v1_counts_by_label"] = counts_by_label
+
+    totals = {
+        label: sum(int(counts.get(label, 0)) for counts in counts_by_label)
+        for label in ("overlength", "split", "split_child", "failed", "embedded", "unembedded")
+    }
+    summary = (
+        f"Embedding summary: input_rows={input_row_count} output_rows={len(out_df.index)} "
+        f"overlength={totals['overlength']} split={totals['split']} truncated=0 "
+        f"failed={totals['failed']} embedded={totals['embedded']} unembedded={totals['unembedded']} "
+        f"split_children={totals['split_child']}"
+    )
+    if totals["failed"] or totals["unembedded"] or totals["overlength"]:
+        logger.warning(summary)
 
     if "_embed_modality" in out_df.columns:
         # Internal embedding router column; StoreOperator consumes _image_b64.

@@ -11,6 +11,20 @@ jobs:
     name: Pre-commit Checks
     uses: ./.github/workflows/reusable-pre-commit.yml
 
+  determine-version:
+    name: Determine Image Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        uses: ./.github/actions/determine-version
+        with:
+          date-format: '%Y.%m.%d'
+
   # Build and test standard Docker image
   docker-build-and-test:
     name: Build & Test Docker (amd64)
@@ -27,3 +41,79 @@ jobs:
       runner: 'linux-large-disk'
     secrets:
       HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+
+  # Cross-compile arm64 under QEMU and smoke-test. Full pytest on QEMU is too
+  # slow for every main push; the random subset matches docker-build-arm.yml.
+  docker-build-and-test-arm:
+    name: Build & Test Docker (arm64)
+    uses: ./.github/workflows/reusable-docker-build-and-test.yml
+    with:
+      platform: 'linux/arm64'
+      target: 'service'
+      tags: 'nrl-service:main-arm64-${{ github.sha }}'
+      base-image: 'ubuntu'
+      base-image-tag: 'jammy-20250415.1'
+      use-qemu: true
+      test-selection: 'random'
+      random-count: '100'
+      pytest-markers: 'not integration'
+      coverage: false
+      runner: 'linux-large-disk'
+    secrets:
+      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+
+  # Restore NGC publish on main (removed when docker-nightly-publish.yml was
+  # deleted) and include linux/arm64 in the pushed manifest list.
+  docker-build-and-push:
+    name: Publish Docker to NGC (amd64+arm64)
+    if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
+    needs:
+      - determine-version
+      - docker-build-and-test
+      - docker-build-and-test-arm
+    runs-on: linux-large-disk
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: ./.github/actions/setup-docker-buildx
+        with:
+          use-qemu: 'true'
+          platforms: 'linux/amd64,linux/arm64'
+
+      - name: Login to NGC
+        uses: ./.github/actions/docker-login-ngc
+        with:
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create HF token file
+        env:
+          HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
+        run: |
+          mkdir -p ./scripts/private_local
+          if [ -n "${HF_ACCESS_TOKEN}" ]; then
+            printf '%s' "${HF_ACCESS_TOKEN}" > ./scripts/private_local/hf_token.txt
+          fi
+
+      - name: Build and Push Multi-platform Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          target: service
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
+          build-args: |
+            DOWNLOAD_DEFAULT_TOKENIZER=True
+            GIT_COMMIT=${{ github.sha }}
+            RETRIEVER_VERSION=${{ needs.determine-version.outputs.version }}
+            RETRIEVER_RELEASE_TYPE=dev
+          tags: ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ needs.determine-version.outputs.version }}
+          secret-files: hf_token=./scripts/private_local/hf_token.txt
+
+      - name: Cleanup HF token file
+        if: always()
+        run: rm -f ./scripts/private_local/hf_token.txt

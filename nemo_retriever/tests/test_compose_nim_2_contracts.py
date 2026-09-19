@@ -58,6 +58,14 @@ def test_extraction_nims_use_distinct_native_models_and_supported_model_paths() 
     assert "/model-store" not in COMPOSE.read_text(encoding="utf-8")
 
 
+def test_caption_nim_uses_the_helm_aligned_omni_image_tag() -> None:
+    caption_image = _compose()["services"]["nim-caption"]["image"]
+    assert caption_image == (
+        "${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:"
+        "${NIM_CAPTION_TAG:-2.0.4-variant}"
+    )
+
+
 def test_zero_profile_defaults_to_hosted_endpoints() -> None:
     compose = _compose()
     config = compose["configs"]["retriever_service_config"]["content"]

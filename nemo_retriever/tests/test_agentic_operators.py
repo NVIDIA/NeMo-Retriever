@@ -188,6 +188,15 @@ class TestReActAgentOperator:
     def _input(self):
         return pd.DataFrame({"query_id": ["q1"], "query_text": ["What causes inflation?"]})
 
+    def test_pop_query_usage_delegates_without_building_agent(self):
+        op = self._op()
+        assert op.pop_query_usage("q1") == {}
+
+        op._agent = MagicMock()
+        op._agent.llm.pop_query_usage.return_value = {"main_agent": {"prompt_tokens": 3}}
+        assert op.pop_query_usage("q1") == {"main_agent": {"prompt_tokens": 3}}
+        op._agent.llm.pop_query_usage.assert_called_once_with("q1")
+
     def test_retrieve_adapter_renames_and_coerces(self):
         op = self._op(
             retriever_fn=lambda q, k: [
@@ -201,6 +210,28 @@ class TestReActAgentOperator:
             {"id": "d1", "score": 0.5, "text": "t"},
             {"id": "d2", "score": 0.4, "text": "u"},
         ]
+
+    def test_retrieve_adapter_passes_active_query_id_when_enabled(self):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        calls = []
+
+        def retrieve(query, top_k, *, query_id):
+            calls.append((query, top_k, query_id))
+            return []
+
+        op = self._op(retriever_fn=retrieve, retriever_fn_accepts_query_id=True)
+        mock_agent = MagicMock()
+
+        def run_sync(query, *, query_id=None, raw_log_dir=None):
+            op._retrieve_adapter("agent subquery", 5)
+            return _agent_result()
+
+        mock_agent.run_sync.side_effect = run_sync
+        with patch.object(ReActAgentOperator, "_ensure_agent", return_value=mock_agent):
+            op.run(self._input())
+
+        assert calls == [("agent subquery", 5, "q1")]
 
     def test_translates_retrieval_log_and_final(self):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
@@ -357,6 +388,15 @@ class TestSelectionAgentOperator:
                 "react_final_rank": react_final_rank,
             }
         )
+
+    def test_pop_query_usage_delegates_without_building_agent(self):
+        op = self._op()
+        assert op.pop_query_usage("q1") == {}
+
+        op._sel = MagicMock()
+        op._sel.llm.pop_query_usage.return_value = {"top2_agent": {"completion_tokens": 2}}
+        assert op.pop_query_usage("q1") == {"top2_agent": {"completion_tokens": 2}}
+        op._sel.llm.pop_query_usage.assert_called_once_with("q1")
 
     def test_final_results_passthrough(self):
         """Tier 1: a ReAct final list passes through; the selection agent is not run."""
@@ -896,22 +936,27 @@ class TestCallableLLMBackend:
 
 
 class TestAgentConfigMode:
-    """``mode`` is retained as the extension point but only ``select`` is implemented."""
+    """``select`` and ``answer`` are the supported modes; anything else is rejected."""
 
     def test_select_mode_is_accepted(self):
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         assert AgentConfig(mode="select").mode == "select"
 
+    def test_answer_mode_is_accepted(self):
+        from nemo_retriever._agentic.nemo_agent import AgentConfig
+
+        assert AgentConfig(mode="answer").mode == "answer"
+
     def test_mode_defaults_to_select(self):
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         assert AgentConfig().mode == "select"
 
-    def test_answer_mode_is_rejected(self):
+    def test_unknown_mode_is_rejected(self):
         from pydantic import ValidationError
 
         from nemo_retriever._agentic.nemo_agent import AgentConfig
 
         with pytest.raises(ValidationError):
-            AgentConfig(mode="answer")
+            AgentConfig(mode="summarize")

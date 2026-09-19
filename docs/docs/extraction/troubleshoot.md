@@ -134,15 +134,21 @@ such as a DNA sequence, errors or unexpected results occur.
 
 ## Can't process malformed input files { #cant-process-malformed-input-files }
 
-When you run a job you might see errors similar to the following:
+Malformed PDFs and images usually produce a row-level error instead of
+aborting the entire job. Inspect `metadata.error` on the returned row, pass
+`return_failures=True`, or use `error_policy="collect"`.
 
-- Failed to process the message
-- Failed to extract image
-- File may be malformed
-- Failed to format paragraph
+- For a malformed PDF, `metadata.error` is an object with `stage`, `type`,
+  `message`, and `traceback` fields. For example:
+  `{"stage": "page_processing", "type": "PdfiumError", "message": "...", "traceback": "..."}`.
+- For a malformed standalone image, `metadata.error` is a string. For example:
+  `UnidentifiedImageError: cannot identify image file`.
 
-These errors can occur when your input file is malformed.
-Verify or fix the format of your input file, and try resubmitting your job.
+Verify or repair the input format and resubmit the job. Do not rely on legacy
+messages such as `Failed to extract image` or `File may be malformed`; current
+NeMo Retriever Library extraction operators do not emit those strings. For
+safe handling examples, refer to
+[Row-level error payloads](nemo-retriever-api-reference.md#row-level-error-payloads).
 
 ## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
@@ -215,15 +221,67 @@ To reduce memory pressure, try one or more of the following:
 
 ## Embedding service fails to start with an unsupported batch size error { #embedding-service-fails-unsupported-batch-size }
 
-On certain hardware, for example RTX 6000,
-the embedding service might fail to start and you might see an error similar to the following.
+On some GPUs, for example RTX 6000, a self-hosted embedding NIM can fail
+during startup with an error similar to the following:
 
-```bash
-ValueError: Configured max_batch_size (30) is larger than the model''s supported max_batch_size (3).
+```text
+ValueError: Configured max_batch_size (30) is larger than the model's supported max_batch_size (3).
 ```
 
-If you are using hardware where the embedding NIM uses the ONNX model profile,
-you must set `EMBEDDER_BATCH_SIZE=3` in the process environment. For example, run `export EMBEDDER_BATCH_SIZE=3`. The SDK and CLI do not load a `.env` file automatically. Refer to [Environment variables](environment-config.md).
+This error comes from the embedding NIM process. NeMo Retriever Library does
+not read `EMBEDDER_BATCH_SIZE`. Setting that variable in the SDK, CLI, or
+Helm process environment does not change NIM startup.
+
+Configure the embedding NIM container instead. Use the supported maximum
+from the error message. In this example, that value is `3`.
+
+**Helm:** The default chart deploys `nemotron-3-embed-1b:2.2.2`
+as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
+on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
+keep the default entries. The following example keeps those defaults, leaves
+the optional performance mode disabled, and adds the batch-size variable.
+Uncomment `NIM_PERFORMANCE_MODE` only if your NIM build supports it for this
+SKU:
+
+```yaml
+nimOperator:
+  vlm_embed:
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_ENGINE_COUNT
+        value: "1"
+      # Optional: enable if your NIM build supports throughput mode for this SKU.
+      # - name: NIM_PERFORMANCE_MODE
+      #   value: "1"
+      - name: NIM_PIPELINE_MAX_BATCH_SIZE
+        value: "3"
+```
+
+**Development Compose:** The default `nim-embedding` image is also `nemotron-3-embed-1b:2.2.2`. Add `NIM_PIPELINE_MAX_BATCH_SIZE` to its existing environment mapping in `nemo_retriever/dev/compose/service-mode.compose.yaml`:
+
+```yaml
+NIM_PIPELINE_MAX_BATCH_SIZE: "3"
+```
+
+**Library or CLI with a remote NIM:** Set the image-specific batch-size
+variable on the NIM container or NIMService that serves your embed URL.
+`--embed-batch-size` and `.embed(inference_batch_size=...)` batch requests
+after the NIM is running. They do not start the NIM.
+
+**NVIDIA-hosted Build endpoints:** NVIDIA operates the NIM. This startup
+error does not apply.
+
+For image-specific variables, refer to
+[Troubleshoot NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/troubleshoot.html)
+and
+[Environment Variables for NVIDIA NeMo Retriever Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/environment-variables.html).
+For the Helm env list contract, refer to
+[NIM Operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 
 
@@ -264,22 +322,30 @@ When you run PDF extraction with `method="nemotron_parse"`, a mismatched model a
 HTTP 400: Content cannot be a plain string. The model does not support text input.
 ```
 
-This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. It can also occur when the selected self-hosted Parse image and configured model use different versions. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
+This can occur when you send a versioned self-hosted model (for example `nvidia/nemotron-parse-v1.2`) to the NVIDIA-hosted Build endpoint, which expects the image-only `nvidia/nemotron-parse` contract. The library may replace the raw HTTP error with a targeted model/contract mismatch hint.
 
-To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` or `nvidia/nemotron-parse-v2.0` only to its matching self-hosted chat endpoint. For direct external Parse v2.0 endpoints, set `nemotron_parse_model="nvidia/nemotron-parse-v2.0"` explicitly. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` only to a compatible self-hosted chat endpoint.
+
+Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
-[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
+[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` accept only **inline** PNG or JPEG payloads. The matching build.nvidia.com model experience uses the same contract. The same `/v1/infer` request shape applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs.
+
+The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) documents image URLs as `data:image/<format>;base64,<data>`. Hosted Page Elements inference does not accept NVCF Asset API identifiers in that `url` field.
 
 The following table summarizes inline payload limits by deployment:
 
-| Deployment | Inline base64 limit | Oversized images |
-|------------|---------------------|------------------|
-| Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Upload with the [NVCF Asset API](https://docs.api.nvidia.com/cloud-functions/reference/createasset), then reference `data:image/<format>;asset_id,<asset_id>` in the `url` field |
+| Deployment | Inline base64 limit | If the image exceeds the limit |
+|------------|---------------------|--------------------------------|
+| Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Resize or re-encode the image so the inline payload fits. Self-host the NIM if you need larger images. Do not use the NVCF Asset API as a hosted fallback. |
 | Self-hosted NIM container | Higher; the NeMo Retriever client downscales HTTP payloads above **512,000 characters** before calling the NIM | Resize or re-encode the source image, or rely on the client downscaling |
 
-The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) states only that “very large images may cause processing issues.” For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+That API reference states only that "very large images may cause processing issues." For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+
+!!! important
+
+    The build.nvidia.com playground can tell you to use the NVCF Asset API when an image exceeds the inline cap. Creating and uploading an asset can succeed. Hosted Page Elements inference still rejects `data:image/<format>;asset_id,<asset-id>` with HTTP 422. That rejection occurs with or without the `NVCF-INPUT-ASSET-REFERENCES` header. There is no Asset API recovery path for this hosted endpoint.
 
 ### NeMo Retriever Library pipeline users
 
@@ -292,75 +358,30 @@ When you route extraction to hosted Page Elements NIM URLs (for example `page_el
 
     The library downscales payloads to **512,000** characters before HTTP calls to object-detection NIMs. Hosted endpoints still reject inline base64 above **180,000** characters. Treat the lower hosted cap as the effective limit when `page_elements_invoke_url` points at `ai.api.nvidia.com`.
 
-If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams`, keep `render_mode="fit_to_model"`, or preprocess very large standalone image inputs before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams` and keep `render_mode="fit_to_model"`. For very large standalone image inputs, preprocess the files before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
-### Direct Page Elements NIM API calls (build.nvidia.com or custom clients)
+### Direct Page Elements NIM API calls
 
-When you call Page Elements NIM **directly** (build playground, curl, or a custom integration—not through the NeMo Retriever pipeline), use inline base64 only when `len(base64_image) < 180_000`. For larger PNG or JPEG inputs, upload once with the NVCF Asset API and pass an asset reference in the inference payload.
+When you call Page Elements NIM **directly**, send only inline base64. Direct calls include the build playground, curl, and custom integrations that do not go through the NeMo Retriever pipeline. The following example shows the required `input` payload:
 
-1. **Create an asset** — `POST https://api.nvcf.nvidia.com/v2/nvcf/assets` with `Authorization: Bearer $NVIDIA_API_KEY`, plus JSON `contentType` (for example `image/png`) and `description`.
-2. **Upload the file** — `PUT` the image bytes to the `uploadUrl` from step 1. Set `Content-Type` to match `contentType`, and set `x-amz-meta-nvcf-asset-description` to the same description string.
-3. **Infer** — `POST` to your Page Elements invoke URL with `"url": "data:image/png;asset_id,<assetId>"` inside each `input[]` item (same `type: image_url` schema as inline base64).
-
-For the full asset workflow (including reuse across requests), refer to [NVCF assets](https://docs.nvidia.com/cloud-functions/user-guide/latest/cloud-function/assets.html) in the Cloud Functions user guide and the [Create Asset](https://docs.api.nvidia.com/cloud-functions/reference/createasset) API reference. Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints.
-
-For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
-
-??? example "Create an NVCF asset, upload a PNG, and call Page Elements"
-
-    ```python
-    import os
-    import requests
-
-    API_KEY = os.environ["NVIDIA_API_KEY"]
-    PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
-    IMAGE_PATH = "large_page.png"
-
-    create = requests.post(
-        "https://api.nvcf.nvidia.com/v2/nvcf/assets",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        json={"contentType": "image/png", "description": "page-elements-large-input"},
-        timeout=60,
-    )
-    create.raise_for_status()
-    asset = create.json()
-
-    with open(IMAGE_PATH, "rb") as image_file:
-        upload = requests.put(
-            asset["uploadUrl"],
-            headers={
-                "Content-Type": "image/png",
-                "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
-            },
-            data=image_file,
-            timeout=120,
-        )
-    upload.raise_for_status()
-
-    payload = {
-        "input": [{
-            "type": "image_url",
-            "url": f"data:image/png;asset_id,{asset['assetId']}",
-        }]
+```json
+{
+  "input": [
+    {
+      "type": "image_url",
+      "url": "data:image/png;base64,<BASE64_ENCODED_IMAGE>"
     }
-    response = requests.post(
-        PAGE_ELEMENTS_URL,
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=120,
-    )
-    response.raise_for_status()
-    ```
+  ]
+}
+```
 
-Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
+Use this form only when `len(base64_image) < 180_000`. If the encoded image is larger, resize or re-encode it to PNG or JPEG until the base64 string is under 180,000 characters. You can also self-host Page Elements NIM.
+
+Do not send `"url": "data:image/png;asset_id,<assetId>"`. Hosted Page Elements rejects that encoding with HTTP 422.
+
+Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
+
+Supported formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
 ## Too many open files error { #too-many-open-files-error }
 
@@ -380,35 +401,112 @@ ulimit -n 10000
 
 ## Triton server INFO messages incorrectly logged as errors { #triton-server-info-messages-incorrectly-logged-as-errors }
 
-Sometimes messages are incorrectly logged as errors, when they are information.
-When this happens, you can ignore the errors, and treat the messages as information.
-For example, you might see log messages that look similar to the following.
+Self-hosted NIM containers can wrap Triton server INFO lines as ERROR in
+the container log. The logger can show a filename such as `nimutils.py`.
+That logger is inside the NIM image. It is not part of the NeMo Retriever
+Library source.
 
-```bash
-ERROR 2025-04-24 22:49:44.266 nimutils.py:68] tritonserver: /usr/local/lib/libcurl.so.4: ...
+You can ignore messages whose Triton payload starts with `I` (INFO).
+Treat them as informational. They do not mean ingest failed.
+
+```text
 ERROR 2025-04-24 22:49:44.268 nimutils.py:68] I0424 22:49:44.265292 98 cache_manager.cc:480] "Create CacheManager with cache_dir: '/opt/tritonserver/caches'"
 ERROR 2025-04-24 22:49:44.431 nimutils.py:68] I0424 22:49:44.431796 98 pinned_memory_manager.cc:277] "Pinned memory pool is created at '0x7f8e4a000000' with size 268435456"
-ERROR 2025-04-24 22:49:44.432 nimutils.py:68] I0424 22:49:44.432036 98 cuda_memory_manager.cc:107] "CUDA memory pool is created on device 0 with size 67108864"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] I0424 22:49:44.433448 98 model_config_utils.cc:753] "Server side auto-completed config: "
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "yolox"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] platform: "tensorrt_plan"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] max_batch_size: 32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] input {
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] name: "input"
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 3
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] dims: 1024
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] }
-ERROR 2025-04-24 22:49:44.433 nimutils.py:68] output {
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] name: "output"
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] data_type: TYPE_FP32
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 21504
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] dims: 9
-ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
-...
 ```
 
+If a real failure occurs, inspect the NIM pod or Compose container logs for
+the same timestamp. Do not treat these startup INFO lines as the root cause.
+
+
+
+## LanceDB index creation fails during concurrent Helm ingestion { #lancedb-concurrent-index-creation }
+
+Concurrent ingest workers can finish extraction at nearly the same time and
+send overlapping writes to the VectorDB service. In affected releases, those
+writes can rebuild the LanceDB vector or full-text-search index concurrently.
+LanceDB rejects one of the competing commits with an error similar to the
+following:
+
+```text
+Retryable commit conflict for version <version>:
+This CreateIndex transaction was preempted by concurrent transaction CreateIndex.
+Please retry.
+```
+
+Upgrade to a NeMo Retriever Library release that separates row commits from
+index maintenance. The VectorDB service admits concurrent
+`/internal/vectordb/write` requests that reach the same pod. Each request
+commits its rows under a short-lived lock, so those rows are durable as soon
+as the commit lands. LanceDB search also scans rows that no index covers yet,
+so a committed row is queryable before the next rebuild includes it.
+
+Only index maintenance is serialized, because LanceDB rejects competing index
+commits. Concurrent writers share one coalesced rebuild: a rebuild that starts
+after a batch was committed also indexes that batch. A write therefore never
+waits behind another writer's index build. There is no Helm value to configure
+this behavior.
+
+An index-readiness wait that expires no longer fails the write. The VectorDB
+pod logs a warning similar to the following, and the committed rows stay
+queryable until the next rebuild covers them:
+
+```text
+LanceDB index on column 'vector' did not report coverage of 512 row(s) within
+0:01:00. Queries still scan unindexed rows and the next rebuild will cover them.
+```
+
+Keep the VectorDB deployment at one replica. Row and index serialization is
+local to a single VectorDB process. It does not coordinate writes across
+multiple pods or independently deployed processes that share a LanceDB
+directory.
+
+If a request failed before the upgrade, inspect the table and the ingest job
+before you resubmit it. A write can append rows before a later index rebuild
+fails. The legacy append path does not deduplicate rows, so rerunning the same
+input can create duplicate rows.
+
+## Ingest fails with a VectorDB write error { #vectordb-write-not-acknowledged }
+
+A worker posts extracted records to the VectorDB service before it reports a
+document as complete. When the VectorDB service rejects that write or does not
+acknowledge it within the configured timeout, the document fails with an error
+similar to the following:
+
+```text
+RuntimeError: VectorDB write failed for report.pdf: <error>. The extracted rows
+are not confirmed durable, so the document is not queryable.
+```
+
+A write into a managed collection reports
+`Collection write failed for report.pdf: <error>` instead.
+
+The worker pod logs the underlying failure at error level:
+
+```text
+Failed to POST 128 records to vectordb for report.pdf: <error>
+```
+
+Earlier releases logged this failure as a warning for writes to the legacy
+fixed table and still reported the document as `completed` with a positive row
+count. Queries then returned no rows for a document that the ingest job called
+successful. A failed document now means the rows are not confirmed durable.
+
+Complete the following checks:
+
+1. Run `kubectl get pods --namespace <namespace>` and confirm the VectorDB pod is `Running` and ready. A pod that is restarting or unschedulable does not accept writes.
+2. Read the VectorDB pod logs for the same records. A rejected write reports a request or backend error. A write that the worker abandoned on timeout can still be in progress on the VectorDB pod.
+3. If writes time out under load or on slow storage, raise the acknowledgement timeout. `serviceConfig.vectordb.writeTimeoutSeconds` defaults to `300` seconds and covers the row commit plus the index maintenance that follows it.
+4. Resubmit the failed documents after the write path is healthy. A write that timed out on the worker can still have committed its rows, and the legacy append path does not deduplicate rows, so check the table row count first.
+
+To raise the timeout on an existing release, run the following command:
+
+```bash
+helm upgrade retriever ./nemo_retriever/helm \
+  --reuse-values \
+  --set serviceConfig.vectordb.writeTimeoutSeconds=900
+```
+
+For the rendered service key and sibling VectorDB values, refer to [Service configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-configuration-rendered-into-retriever-serviceyaml).
 
 
 ## Helm install succeeds but PersistentVolumeClaims stay Pending { #helm-pending-pvcs }
@@ -431,7 +529,7 @@ Complete the following checks:
 3. If you intended a named StorageClass, set the three chart-managed paths and the four per-NIM `nimOperator.<key>.storage.pvc.storageClass` paths. Do not set only `nimOperator.nimCache.pvc.storageClass`. That chart-level value is not applied to the core NIMCache resources.
 4. After you add a default StorageClass or compatible volumes, confirm the claims become `Bound`. If they remain `Pending`, uninstall and reinstall after the storage strategy is in place.
 
-For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
+For the default claim list, Helm value paths, and preflight commands, refer to [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements) and [Persistent storage prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#persistent-storage-prerequisite).
 
 ## Core NIM pods stay Pending for GPU { #helm-pending-gpus }
 
@@ -447,11 +545,48 @@ Warning  FailedScheduling  default-scheduler  0/1 nodes are available:
 Complete the following checks:
 
 1. Run `kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu` and sum `GPU` across eligible nodes. A default core install needs four slots across the cluster. Four one-GPU nodes are enough. A single node needs four slots only when you pack all four core NIMs onto one physical GPU with sharing and placement constraints.
-2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `llama-nemotron-embed-vl-1b-v2`).
-3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+2. Run `kubectl get pods --namespace <namespace>` and `kubectl describe pod <nim-pod>`. Confirm the Pending pods are the core NIMServices (`nemotron-page-elements-v3`, `nemotron-table-structure-v1`, `nemotron-ocr-v2`, and `nemotron-3-embed-1b`).
+3. Either add GPU capacity so four slots are allocatable across the cluster, or configure GPU Operator time-slicing with at least four replicas before you reinstall. Time-slicing creates logical slots. MIG is an advanced GPU Operator configuration outside this chart. For one-GPU placement, cluster-wide oversubscription, and MIG constraints, refer to [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
 4. After sharing or extra GPUs are in place, confirm the four core NIM pods reach `Running`.
 
-For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+For VRAM versus scheduling, the time-slicing ConfigMap, and ClusterPolicy patch, refer to [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling) and [GPU scheduling prerequisite](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#gpu-scheduling-prerequisite).
+
+## Split topology Helm install or upgrade times out with Deployments not ready { #helm-split-topology-startup-deadlock }
+
+`helm upgrade --install --wait` can time out in split topology
+(`topology.mode: split`) with errors similar to the following:
+
+```text
+Release "<release>" failed:
+resource Deployment/<release>-nemo-retriever-gateway not ready
+resource Deployment/<release>-nemo-retriever-realtime not ready
+resource Deployment/<release>-nemo-retriever-batch not ready
+context deadline exceeded
+```
+
+This deadlock occurs when the gateway readiness probe uses deep
+`GET /v1/health`, which returns HTTP `503` until realtime and batch workers are
+healthy, while worker Pods cannot start until their `wait-for-gateway` init
+container reaches the gateway's shallow `GET /v1/live` endpoint. The externally
+exposed gateway Service does not publish endpoints for an unready Pod, so neither
+side can become ready on a clean install.
+
+The chart renders an internal gateway startup Service named
+`<release>-nemo-retriever-gateway-startup` with `publishNotReadyAddresses: true`.
+Worker init containers poll `/v1/live` through that Service so startup completes
+without manual intervention. Client traffic continues to use the
+readiness-gated gateway Service.
+
+If you run an older chart that does not render the startup Service, you can
+unblock the install with a one-time patch on the gateway Service:
+
+```bash
+kubectl patch service <release>-nemo-retriever-gateway --type=merge \
+  -p '{"spec":{"publishNotReadyAddresses":true}}'
+```
+
+Upgrade to a chart version that includes the startup Service so you do not need
+to repeat that patch after every reinstall. Refer to [Health probes](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#health-probes) and [Service networking](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#service-networking) in the Helm chart README.
 
 ## Helm upgrade fails when changing a NIM image repository or tag { #helm-nimcache-modelpuller-immutable }
 
@@ -478,7 +613,36 @@ The affected NIM is unavailable during re-cache. Repeat the sequence for every N
 
 Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
 
-For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+
+## NIMCache or NIMService still uses ngc-secret after a global Secret rename { #helm-nim-secret-names }
+
+Retriever Pods inherit `ngcImagePullSecret.name` and `ngcApiSecret.name`. Empty per-NIM `image.pullSecrets` and `authSecret` inherit the same names.
+
+If NIMCache or NIMService still shows `ngc-secret` or `ngc-api` after a rename, you still have a non-empty per-NIM override. The retriever Deployment can become Ready while NIM model-download Jobs and NIM Pods fail because they reference Secrets that do not exist.
+
+Complete the following checks:
+
+1. Render the chart with the NIM Operator CRDs enabled. Inspect `pullSecret` on every `NIMCache` and `pullSecrets` on every `NIMService`, plus `authSecret` on both.
+2. Confirm those fields match Secrets that exist in the release namespace.
+3. If a NIM still lists `ngc-secret` or `ngc-api` after you renamed the global Secret names, clear `nimOperator.<key>.image.pullSecrets` and `nimOperator.<key>.authSecret`, or set them to the new names. Empty values inherit the global names.
+4. Top-level `imagePullSecrets` applies only to Retriever Pods. It does not update NIM Operator custom resources.
+
+For value paths and a rename example, refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#secrets) in the Helm chart README.
+
+## Agentic retrieval fails with auto tool choice HTTP 400 { #agentic-auto-tool-choice }
+
+`retriever query --agentic`, `POST /v1/query` with `agentic=true`, or the MCP `agentic_query` tool can fail on the first LLM call with HTTP 400 from a self-hosted chat-completions NIM:
+
+```text
+"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set
+```
+
+The CLI then exits with `Agentic retrieval failed (llm_call_failed)`.
+
+The Helm `answer_llm` Super-49B NIM is not tool-call ready by default. Add `--enable-auto-tool-choice --tool-call-parser llama3_json` to `NIM_PASSTHROUGH_ARGS` and set `serviceConfig.agentic` for service mode. NVIDIA-hosted Build endpoints do not need this change. `POST /v1/answer` is a separate path and does not require tool calling.
+
+For the copy-paste Helm values and CLI command, refer to [Self-hosted Helm Super-49B](workflow-agentic-retrieval.md#self-hosted-helm-super-49b).
 
 ## Related Topics { #related-topics }
 
@@ -486,6 +650,8 @@ For default cache names, PVC cleanup, and the full upgrade sequence, refer to [C
 - [Kubernetes Helm Storage Requirements](prerequisites-support-matrix.md#kubernetes-helm-storage-requirements)
 - [Kubernetes Helm GPU scheduling](prerequisites-support-matrix.md#kubernetes-helm-gpu-scheduling)
 - [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
-- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md)
+- [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
+- [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets)
+- [Workflow: Agentic retrieval](workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

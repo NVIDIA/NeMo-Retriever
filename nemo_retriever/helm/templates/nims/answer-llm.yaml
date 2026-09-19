@@ -2,6 +2,15 @@
 {{- $cfg := .Values.nimOperator.answer_llm -}}
 {{- $name := $cfg.nimServiceName -}}
 {{- $nimSecrets := dict "context" $ "key" "answer_llm" "cfg" $cfg -}}
+{{/* Match nimcache.modelBlock: a non-empty per-NIM filter replaces the global filter. */}}
+{{- $modelProfile := $cfg.modelProfile | default .Values.nimOperator.modelProfile | default dict -}}
+{{- $profiles := $modelProfile.profiles | default list -}}
+{{- $profileEnvOverride := false -}}
+{{- range $cfg.env -}}
+{{- if eq .name "NIM_MODEL_PROFILE" -}}
+{{- $profileEnvOverride = true -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -40,6 +49,9 @@ spec:
   storage:
     nimCache:
       name: {{ $name }}
+      {{- if and (eq (len $profiles) 1) (not $profileEnvOverride) }}
+      profile: {{ index $profiles 0 | quote }}
+      {{- end }}
   replicas: {{ $cfg.replicas }}
   nodeSelector:
 {{ toYaml $cfg.nodeSelector | indent 4 }}

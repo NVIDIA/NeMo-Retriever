@@ -15,22 +15,47 @@ from nemo_retriever.query.options import (
     QueryRetrievalOptions,
     QueryStorageOptions,
 )
-from nemo_retriever.query.workflow import agentic_query_documents
+from nemo_retriever.query.workflow import agentic_query_documents_with_metadata
 from nemo_retriever.service.config import AgenticConfig
-from nemo_retriever.service.query_schema import QueryResponse, QueryResult
+from nemo_retriever.service.query_schema import AgenticQueryResponse, QueryResult
+
+
+#: Annotations the agentic workflow layers on top of the classic hit fields.
+_AGENTIC_ANNOTATION_FIELDS = frozenset({"doc_id", "rank", "result_source"})
+
+#: Classic fields reported as null when no retrieve hop captured the selected
+#: document, so the envelope keeps a stable key set either way.
+_UNRESOLVED_HIT_FIELDS = ("text", "source_id", "path", "page_number", "pdf_basename", "pdf_page")
 
 
 def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Map agentic document ranks onto the ``/v1/query`` hits envelope.
+    """Map agentic ranked hits onto the ``/v1/query`` hits envelope.
 
-    Agentic retrieval selects documents (``doc_id``), not chunks. Each hit places
-    ``doc_id`` in ``source``, records ``result_source`` / ``rank`` under
-    ``metadata``, and leaves chunk-level fields (``text``, ``page_number``,
-    scores, …) unset.
+    Agentic retrieval selects documents (``doc_id``), not chunks, but each hit
+    carries the classic chunk-level fields (``text``, ``metadata``, ``source``,
+    ``page_number``, scores, …) rehydrated from the retrieve hop that returned the
+    document, plus ``doc_id`` / ``rank`` / ``result_source``. When no hop captured
+    the document, those fields are null and ``source`` falls back to ``doc_id``.
 
     Rows without a non-empty ``doc_id`` are a contract violation: the agentic
     workflow already skips blank ids on retrieve hops, and a hit with
     ``source=null`` is useless to clients. Raise rather than emit a null source.
+
+    For backward compatibility, ``rank`` and ``result_source`` are emitted both
+    as top-level agentic annotations and under ``metadata``. Existing content
+    metadata is copied before those keys are added.
+
+    Args:
+        ranked: Ranked agentic results. Each item must contain a non-empty
+            ``doc_id`` and may contain rehydrated classic hit fields plus
+            ``rank`` and ``result_source``.
+
+    Returns:
+        Hits in the service ``/v1/query`` envelope, preserving rehydrated classic
+        fields and adding top-level and nested agentic annotations.
+
+    Raises:
+        ValueError: If any ranked item has a missing or blank ``doc_id``.
     """
     hits: list[dict[str, Any]] = []
     for item in ranked:
@@ -40,21 +65,28 @@ def agentic_ranked_to_hits(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "agentic ranked result is missing a non-empty doc_id "
                 f"(rank={item.get('rank')!r}, result_source={item.get('result_source')!r})"
             )
-        hits.append(
+        hit = {key: value for key, value in item.items() if key not in _AGENTIC_ANNOTATION_FIELDS}
+        if not hit:
+            hit = {field: None for field in _UNRESOLVED_HIT_FIELDS}
+        if not str(hit.get("source") or "").strip():
+            hit["source"] = doc_id
+        raw_metadata = hit.get("metadata")
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        metadata.update(
             {
-                "text": None,
-                "metadata": {
-                    "result_source": item.get("result_source"),
-                    "rank": item.get("rank"),
-                },
-                "source": doc_id,
-                "source_id": None,
-                "path": None,
-                "page_number": None,
-                "pdf_basename": None,
-                "pdf_page": None,
+                "rank": item.get("rank"),
+                "result_source": item.get("result_source"),
             }
         )
+        hit["metadata"] = metadata
+        hit.update(
+            {
+                "doc_id": doc_id,
+                "rank": item.get("rank"),
+                "result_source": item.get("result_source"),
+            }
+        )
+        hits.append(hit)
     return hits
 
 
@@ -108,8 +140,8 @@ def run_agentic_query(
     embed_model: str,
     embed_model_provider_prefix: str | None,
     embed_api_key: str,
-) -> QueryResponse:
-    """Execute one agentic retrieval query and return ``QueryResponse`` hits."""
+) -> AgenticQueryResponse:
+    """Execute one agentic retrieval query and return hits plus LLM usage."""
     query_request = build_agentic_query_request(
         query=query,
         top_k=top_k,
@@ -121,8 +153,9 @@ def run_agentic_query(
         embed_model_provider_prefix=embed_model_provider_prefix,
         embed_api_key=embed_api_key,
     )
-    ranked = agentic_query_documents(query_request)
-    return QueryResponse(
-        results=[QueryResult(hits=agentic_ranked_to_hits(ranked))],
+    result = agentic_query_documents_with_metadata(query_request)
+    return AgenticQueryResponse(
+        results=[QueryResult(hits=agentic_ranked_to_hits(result.hits))],
         query_mode="agentic",
+        usage=result.usage or None,
     )

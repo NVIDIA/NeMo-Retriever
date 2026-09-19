@@ -2192,7 +2192,7 @@ async def job_callback(request: Request) -> JSONResponse:
 # ------------------------------------------------------------------
 
 
-_LEGACY_REMOVED_VERSION = "26.05"
+_LEGACY_REMOVED_VERSION = "26.08.1"
 
 _LEGACY_INGEST_DETAIL = (
     "POST /v1/ingest was removed in retriever-service "
@@ -2223,7 +2223,7 @@ async def _legacy_ingest_upload_removed() -> None:
     Older SDK builds (pre-v2 client) upload through ``POST /v1/ingest``.
     Without this stub FastAPI returns a body-less 404 and the SDK
     surfaces "no documents completed" with no indication of why — the
-    customer-visible regression captured in the 26.05-RC2 release notes.
+    customer-visible regression captured in the 26.08.1 release notes.
     """
     raise HTTPException(status_code=410, detail=_LEGACY_INGEST_DETAIL)
 

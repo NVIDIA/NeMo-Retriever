@@ -12,7 +12,9 @@ import hashlib
 import json
 import math
 import threading
+from copy import deepcopy
 from dataclasses import replace
+from unittest.mock import MagicMock
 
 import lancedb
 import pytest
@@ -22,6 +24,7 @@ from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
     CollectionUpdateRequest,
 )
+from nemo_retriever.common.schemas.embedding import embedding_split_metadata
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     UnsupportedVDBOperation,
@@ -36,12 +39,28 @@ from nemo_retriever.common.vdb.lancedb import (
     _to_service_lancedb_rows,
 )
 from nemo_retriever.common.vdb.lancedb_collections import (
+    LanceDBCollectionStore,
     _collection_rows,
     _encode_cursor,
     _normalize_collection_results,
     _public_collection_hit,
 )
-from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.common.vdb.records import RetrievalContractError, to_client_vdb_records
+
+
+def test_catalog_scans_reuse_open_table_handle() -> None:
+    table = MagicMock()
+    table.search.return_value.limit.return_value.to_list.return_value = []
+    database = MagicMock()
+    database.open_table.return_value = table
+    store = object.__new__(LanceDBCollectionStore)
+    store._db = database
+    store._opened_tables = {}
+
+    assert store._rows("_nrl_collections") == []
+    assert store._rows("_nrl_collections") == []
+
+    database.open_table.assert_called_once_with("_nrl_collections")
 
 
 def _context(
@@ -138,6 +157,83 @@ def _fail_document_finalize(monkeypatch, store):
 
     monkeypatch.setattr(store, "_persist_document_row", fail_completed)
     return original_persist
+
+
+@pytest.mark.parametrize("writer", ["ordinary", "service", "collection"])
+def test_split_children_survive_adapter_write_and_retrieval(tmp_path, writer):
+    pieces = ["alpha", " \n ", "omega"]
+    graph_rows = []
+    start = 0
+    for index, text in enumerate(pieces):
+        end = start + len(text)
+        graph_rows.append(
+            {
+                "text": text,
+                "path": "/inputs/source.pdf",
+                "page_number": 2,
+                "metadata": {
+                    "embedding": [1.0, float(index)],
+                    **embedding_split_metadata(
+                        content=text,
+                        parent_id="parent",
+                        chunk_id=f"child-{index}",
+                        chunk_index=index,
+                        chunk_count=len(pieces),
+                        start_token=start,
+                        end_token=end,
+                    ),
+                },
+            }
+        )
+        start = end
+    records = to_client_vdb_records(graph_rows)
+    # Ordinary blank records must still be filtered; only valid split children are exempt.
+    records[0].extend(_records(text=" ")[0])
+    original = deepcopy(records)
+    if writer == "collection":
+        backend = _backend_with_collection(tmp_path)
+        written = backend.write_collection(records, context=_context())
+        assert written.written == len(pieces)
+        hits, _ = backend.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=[""],
+            top_k=10,
+        )
+        assert len(hits[0]) == len(pieces)
+        for hit in hits[0]:
+            split = hit["metadata"]["embedding_split"]
+            assert hit["text"] == pieces[split["chunk_index"]]
+            assert hit["source_id"] == "/inputs/source.pdf"
+        table_name = backend._get_collection_store()._resolved_table("workspace-a", "collection-a")
+    else:
+        backend = LanceDB(
+            uri=str(tmp_path / "lancedb"),
+            table_name="children",
+            vector_dim=2,
+            build_index=False,
+            _service_table_schema=writer == "service",
+        )
+        backend.run(records)
+        table_name = "children"
+    stored = lancedb.connect(backend.uri).open_table(table_name).search([1.0, 0.0]).limit(10).to_list()
+    for row in stored:
+        row["metadata"] = json.loads(row["metadata"])
+        row["source"] = json.loads(row["source"])
+    assert len(stored) == len(pieces)
+    stored.sort(key=lambda row: row["metadata"]["embedding_split"]["chunk_index"])
+    assert [row["text"] for row in stored] == pieces
+    assert "".join(row["text"] for row in stored) == "alpha \n omega"
+    for index, row in enumerate(stored):
+        metadata = row["metadata"]
+        assert metadata["embedding_split"] == records[0][index]["metadata"]["embedding_split"]
+        assert metadata["page_number"] == 2
+        assert row["source"]["source_id"] == "/inputs/source.pdf"
+        assert row["vector"] == [1.0, float(index)]
+        if writer == "collection":
+            assert row["chunk_id"] == hashlib.sha256(f"document-a\0v1\0{index}".encode()).hexdigest()
+    assert records == original
 
 
 def test_collection_row_conversion_preserves_identity_and_provenance():
@@ -382,6 +478,75 @@ def test_collection_updates_preserve_replace_or_clear_expiration_window(tmp_path
     )
     assert cleared.updated_at == "2030-01-01T14:00:00+00:00"
     assert cleared.expires_at is None
+
+
+def test_collection_table_records_and_validates_embedding_model(tmp_path):
+    uri = str(tmp_path / "lancedb")
+    model = "nvidia/nemotron-3-embed-1b"
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name=model,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    backend.write_collection(_records(), context=_context())
+    physical_table = backend._get_collection_store()._resolved_table("workspace-a", "collection-a")
+    table = lancedb.connect(uri).open_table(physical_table)
+    schema = table.schema() if callable(table.schema) else table.schema
+
+    assert schema.metadata[b"nemo_retriever.embedding_model_name"] == model.encode()
+
+    restarted = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    )
+    with pytest.raises(VDBInvalidRequest, match="uses embedding model.*nemotron-3"):
+        restarted.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=["query"],
+            top_k=1,
+        )
+
+
+def test_collection_query_rejects_untagged_existing_table(tmp_path):
+    uri = str(tmp_path / "lancedb")
+    backend = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+    )
+    backend.create_collection(
+        scope="workspace-a",
+        request=CollectionCreateRequest(name="collection-a"),
+    )
+    backend.write_collection(_records(), context=_context())
+
+    restarted = LanceDB(
+        uri=uri,
+        table_name="legacy",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/nemotron-3-embed-1b",
+    )
+    with pytest.raises(VDBInvalidRequest, match="does not record its embedding model"):
+        restarted.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=["query"],
+            top_k=1,
+        )
 
 
 def test_collection_lifecycle_is_lazy_and_restart_safe(tmp_path):

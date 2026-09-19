@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Callable
 
@@ -18,6 +18,7 @@ from nemo_retriever.graph.ingestor_runtime import (
     build_graph,
     build_post_extract_graph,
     default_concurrency_node_names,
+    _image_embedding_requires_page_image,
 )
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
@@ -106,9 +107,10 @@ class ExtractionBranchExecutor:
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=None,
                 video_frame_params=effective_extraction.video_frame_params,
+                extraction_mode=effective_extraction.extraction_mode,
             )
             file_paths, inline_rows = self._partition_branch_inputs(branch)
-            inputs = []
+            inputs: list[Any] = []
             if file_paths:
                 inputs.append(file_paths)
             if inline_rows:
@@ -150,7 +152,12 @@ class ExtractionBranchExecutor:
             source_cpu_reservation=0,
         )
         if hasattr(cluster_resources, "available_cpu_count"):
-            preflight_executors([*branch_executors, post_executor], cluster_resources)
+            normalization_cpus = 1.0 if len(branch_inputs) > 1 else 0.0
+            preflight_executors(
+                [*branch_executors, post_executor],
+                cluster_resources,
+                reserved_cpus=normalization_cpus,
+            )
 
         for executor, input_data in branch_inputs:
             branch_datasets.append(executor.build_dataset(input_data))
@@ -192,7 +199,7 @@ class ExtractionBranchExecutor:
         return any(branch.family in {"pdf", "image"} for branch in self.branches)
 
     def _resolve_branch(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
-        return resolve_branch_extraction_inputs(
+        resolved = resolve_branch_extraction_inputs(
             branch,
             extract_params=self.extract_params,
             text_params=self.text_params,
@@ -203,6 +210,17 @@ class ExtractionBranchExecutor:
             video_text_dedup_params=self.video_text_dedup_params,
             av_fuse_params=self.av_fuse_params,
         )
+        if (
+            branch.family == "pdf"
+            and resolved.extract_params is not None
+            and _image_embedding_requires_page_image(self.embed_params)
+            and not resolved.extract_params.extract_page_as_image
+        ):
+            resolved = replace(
+                resolved,
+                extract_params=resolved.extract_params.model_copy(update={"extract_page_as_image": True}),
+            )
+        return resolved
 
     def _build_extraction_only_graph(self, effective_extraction: ResolvedExtractionInputs) -> Any:
         return build_graph(
@@ -233,7 +251,8 @@ class ExtractionBranchExecutor:
             num_cpus=self.num_cpus,
             num_gpus=self.num_gpus,
             node_overrides=merge_node_overrides(derived_overrides, self.node_overrides),
-            auto_concurrency_nodes=auto_concurrency_nodes - set(self.node_overrides),
+            auto_concurrency_nodes=auto_concurrency_nodes
+            - {name for name, override in self.node_overrides.items() if "concurrency" in override},
             source_cpu_reservation=source_cpu_reservation,
         )
 

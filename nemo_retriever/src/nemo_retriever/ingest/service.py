@@ -31,6 +31,7 @@ from nemo_retriever.common.params import (
 )
 from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.input_files import expand_input_file_patterns, input_type_for_path
+from nemo_retriever.ingestor.plans import resolve_effective_dedup_params
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class ServiceIngestExtractOptions:
 
 @dataclass(frozen=True)
 class ServiceIngestDedupOptions:
-    enabled: bool = False
+    enabled: bool | None = None
     iou_threshold: float | None = None
 
 
@@ -310,11 +311,71 @@ def expand_service_file_patterns(documents: Sequence[str]) -> list[str]:
     return resolved_files
 
 
+def _service_input_types_for_documents(documents: Sequence[str]) -> set[str]:
+    return {
+        family
+        for document in expand_input_file_patterns(documents)
+        for family in [input_type_for_path(document)]
+        if family is not None
+    }
+
+
 def service_split_config_for_request(request: ServiceIngestRequest) -> dict[str, Any] | None:
     """Build the service split configuration for a resolved ingest request."""
 
     chunk_dict = _service_text_chunk_dict(request.text_chunk_params) if request.enable_text_chunk else None
     return _split_config_for_input_type(request.input_type, chunk_dict, documents=request.documents)
+
+
+def resolve_service_dedup_for_request(
+    request: ServiceIngestRequest,
+) -> tuple[DedupParams | None, dict[str, Any] | None]:
+    """Resolve effective service dedup parameters and mixed-input scope.
+
+    Parameters
+    ----------
+    request
+        Resolved service-ingest request. When deduplication is resolved
+        automatically for ``input_type="auto"``, document paths are inspected
+        to distinguish standalone images from other inputs.
+
+    Returns
+    -------
+    tuple[DedupParams | None, dict[str, Any] | None]
+        Effective deduplication parameters and an optional mixed-input scope.
+        An automatically configured mixed image/document request leaves the
+        global parameters unset and reports which input families use
+        caption-triggered deduplication.
+
+    Raises
+    ------
+    FileNotFoundError
+        If automatic resolution encounters an auto-typed literal document
+        path that does not exist.
+    IsADirectoryError
+        If automatic resolution encounters an auto-typed literal document
+        path that is a directory.
+    """
+
+    if request.dedup_params is not None or request.caption_params is None:
+        return request.dedup_params, None
+
+    families = (
+        _service_input_types_for_documents(request.documents) if request.input_type == "auto" else {request.input_type}
+    )
+    enabled_families = sorted(family for family in families if family != "image")
+    dedup_params = resolve_effective_dedup_params(
+        None,
+        caption_enabled=True,
+        image_only=not enabled_families,
+    )
+    if dedup_params is not None and "image" in families:
+        return None, {
+            "mode": "caption_default",
+            "enabled_families": enabled_families,
+            "exempt_families": ["image"],
+        }
+    return dedup_params, None
 
 
 def _validate_service_profile_documents(profile: ServiceIngestProfileValue, documents: Sequence[str]) -> None:
@@ -431,7 +492,7 @@ def _split_config_for_auto_documents(
     documents: Sequence[str],
     chunk_dict: dict[str, Any],
 ) -> dict[str, Any] | None:
-    input_types = {input_type_for_path(document) for document in expand_input_file_patterns(documents)}
+    input_types = _service_input_types_for_documents(documents)
     split_config: dict[str, Any] = {}
     if input_types & {"pdf", "doc"}:
         split_config["pdf"] = dict(chunk_dict)

@@ -9,11 +9,7 @@ from types import SimpleNamespace
 
 import huggingface_hub
 import pytest
-
-from nemo_retriever.models.embed_model_spec import (
-    resolve_embed_model_revision,
-    resolve_embed_model_spec,
-)
+from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision, resolve_embed_model_spec
 from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 
 
@@ -29,11 +25,29 @@ def _write_prompt_config(tmp_path, prompts):
     return path
 
 
+def _write_sentence_config(tmp_path, **config):
+    path = tmp_path / "sentence_bert_config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return path
+
+
 def _text_config(**overrides):
     config = {
         "model_type": "llama_bidirec",
         "architectures": ["LlamaBidirectionalModel"],
         "hidden_size": 2048,
+        "pooling": "avg",
+    }
+    config.update(overrides)
+    return config
+
+
+def _ministral_config(**overrides):
+    config = {
+        "model_type": "ministral3",
+        "architectures": ["Ministral3Model"],
+        "hidden_size": 2048,
+        "is_causal": False,
         "pooling": "avg",
     }
     config.update(overrides)
@@ -53,6 +67,7 @@ def _vl_config(**overrides):
 
 def test_local_text_checkpoint_is_resolved_from_model_type(tmp_path):
     _write_config(tmp_path, _text_config())
+    _write_sentence_config(tmp_path, max_seq_length=8192)
 
     spec = resolve_embed_model_spec(str(tmp_path))
 
@@ -60,6 +75,15 @@ def test_local_text_checkpoint_is_resolved_from_model_type(tmp_path):
     assert spec.output_dimension == 2048
     assert spec.revision is None
     assert spec.requires_vllm is False
+    assert spec.max_input_tokens == 8192
+
+
+def test_vl_checkpoint_uses_declared_document_input_limit(tmp_path):
+    _write_config(tmp_path, _vl_config(p_max_length=4096))
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.max_input_tokens == 4096
 
 
 @pytest.mark.parametrize(
@@ -76,6 +100,12 @@ def test_local_text_checkpoint_is_resolved_from_model_type(tmp_path):
             "text",
             "NVFP4",
             id="text-nvfp4",
+        ),
+        pytest.param(
+            _ministral_config(quantization_config={"quant_method": "modelopt", "quant_algo": "NVFP4"}),
+            "text",
+            "NVFP4",
+            id="ministral3-nvfp4",
         ),
     ],
 )
@@ -108,6 +138,7 @@ def test_text_reranker_architecture_is_rejected(tmp_path):
     ("config", "family"),
     [
         pytest.param(_text_config(hidden_size=4096), "text", id="text"),
+        pytest.param(_ministral_config(hidden_size=4096), "text", id="ministral3"),
         pytest.param(_vl_config(llm_config={"hidden_size": 4096}), "vl", id="vl"),
     ],
 )
@@ -127,19 +158,72 @@ def test_invalid_embedding_dimension_is_rejected(tmp_path):
         resolve_embed_model_spec(str(tmp_path))
 
 
-def test_ministral_checkpoint_is_rejected(tmp_path):
-    _write_config(
+def test_ministral_checkpoint_is_resolved_with_prompt_metadata(tmp_path):
+    _write_config(tmp_path, _ministral_config())
+    _write_prompt_config(
         tmp_path,
         {
-            "model_type": "ministral3",
-            "architectures": ["Ministral3Model"],
-            "hidden_size": 2048,
-            "is_causal": False,
-            "pooling": "avg",
+            "query": "query: ",
+            "document": "passage: ",
         },
     )
 
-    with pytest.raises(ValueError, match="unsupported model_type 'ministral3'"):
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.family == "text"
+    assert spec.output_dimension == 2048
+    assert spec.query_prefix == "query: "
+    assert spec.document_prefix == "passage: "
+    assert spec.requires_vllm is False
+
+
+def test_ministral_checkpoint_rejects_wrong_architecture(tmp_path):
+    _write_config(
+        tmp_path,
+        _ministral_config(architectures=["Mistral3ForConditionalGeneration"]),
+    )
+
+    with pytest.raises(ValueError, match="unsupported architectures"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize("is_causal", [True, None])
+def test_ministral_checkpoint_requires_explicit_non_causal_config(tmp_path, is_causal):
+    _write_config(tmp_path, _ministral_config(is_causal=is_causal))
+
+    with pytest.raises(ValueError, match="dense Ministral3 embedding profiles require is_causal=false"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(
+            {
+                "model_type": "mistral3",
+                "architectures": ["Mistral3ForConditionalGeneration"],
+                "hidden_size": 2048,
+                "is_causal": True,
+                "pooling": "avg",
+            },
+            id="mistral3-conditional-generation",
+        ),
+        pytest.param(
+            {
+                "model_type": "ministral3_bidirec",
+                "architectures": ["Ministral3BidirectionalModel"],
+                "hidden_size": 2048,
+                "is_causal": False,
+                "pooling": "avg",
+            },
+            id="nemo-automodel-bidirectional",
+        ),
+    ],
+)
+def test_other_mistral_checkpoint_formats_remain_rejected(tmp_path, config):
+    _write_config(tmp_path, config)
+
+    with pytest.raises(ValueError, match="unsupported model_type"):
         resolve_embed_model_spec(str(tmp_path))
 
 
@@ -157,10 +241,19 @@ def test_checkpoint_prompt_metadata_is_resolved(tmp_path):
 
     assert spec.query_prefix == "Instruct: Retrieve relevant passages\nQuery: "
     assert spec.document_prefix == ""
+    assert spec.query_prefix_declared is True
+    assert spec.document_prefix_declared is True
 
 
-def test_non_average_pooling_is_rejected(tmp_path):
-    _write_config(tmp_path, _text_config(pooling="last"))
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(_text_config(pooling="last"), id="text"),
+        pytest.param(_ministral_config(pooling="last"), id="ministral3"),
+    ],
+)
+def test_non_average_pooling_is_rejected(tmp_path, config):
+    _write_config(tmp_path, config)
 
     with pytest.raises(ValueError, match="unsupported pooling 'last'"):
         resolve_embed_model_spec(str(tmp_path))
@@ -186,6 +279,15 @@ def test_local_directory_requires_config_json(tmp_path):
         ),
         ("nvidia/llama-embed-nemotron-8b", _text_config(hidden_size=4096), "text", 4096, False),
         ("nvidia/llama-nv-embed-reasoning-3b", _text_config(hidden_size=3072), "text", 3072, False),
+        ("nvidia/Nemotron-3-Embed-1B-BF16", _ministral_config(), "text", 2048, False),
+        ("nvidia/Nemotron-3-Embed-8B-BF16", _ministral_config(hidden_size=4096), "text", 4096, False),
+        (
+            "nvidia/Nemotron-3-Embed-1B-NVFP4",
+            _ministral_config(quantization_config={"quant_method": "modelopt", "quant_algo": "NVFP4"}),
+            "text",
+            2048,
+            True,
+        ),
     ],
 )
 def test_supported_hub_models_resolve_immutable_revisions(
@@ -246,6 +348,7 @@ def test_compatible_custom_hub_model_is_pinned_before_config_load(monkeypatch, t
     assert {call["filename"] for call in calls["downloads"]} == {
         "config.json",
         "config_sentence_transformers.json",
+        "sentence_bert_config.json",
     }
     assert all(call["revision"] == resolved_sha for call in calls["downloads"])
     assert all(call["cache_dir"] == cache_dir for call in calls["downloads"])

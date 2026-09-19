@@ -37,17 +37,21 @@ from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.common.ray_resource_hueristics import Resources
 
 
-def _graph_node_names(graph: Graph) -> list[str]:
-    names: list[str] = []
+def _graph_nodes(graph: Graph) -> list[Node]:
+    nodes: list[Node] = []
 
     def visit(node: Node) -> None:
-        names.append(getattr(node.operator, "name", node.name))
+        nodes.append(node)
         for child in node.children:
             visit(child)
 
     for root in graph.roots:
         visit(root)
-    return names
+    return nodes
+
+
+def _graph_node_names(graph: Graph) -> list[str]:
+    return [getattr(node.operator, "name", node.name) for node in _graph_nodes(graph)]
 
 
 def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
@@ -70,6 +74,92 @@ def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
     )
 
     assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_pdf_image_embedding_enables_page_raster(modality: str) -> None:
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(
+            embed_modality=modality,
+            embed_granularity="page",
+            local_ingest_embed_backend="hf",
+        ),
+    )
+
+    pdf_extract_node = next(
+        node for node in _graph_nodes(graph) if node.operator.__class__.__name__ == "PDFExtractionActor"
+    )
+
+    assert pdf_extract_node.operator_kwargs["extract_page_as_image"] is True
+
+
+def test_pdf_text_embedding_preserves_disabled_page_raster() -> None:
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(embed_modality="text", embed_granularity="page"),
+    )
+
+    pdf_extract_node = next(
+        node for node in _graph_nodes(graph) if node.operator.__class__.__name__ == "PDFExtractionActor"
+    )
+
+    assert pdf_extract_node.operator_kwargs["extract_page_as_image"] is False
+
+
+@pytest.mark.parametrize("modality", ["image", "text_image"])
+def test_auto_image_page_embedding_enables_page_raster(modality: str) -> None:
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(extract_page_as_image=False),
+        embed_params=EmbedParams(embed_modality=modality, embed_granularity="page"),
+    )
+
+    operator = graph.roots[0].operator
+
+    assert isinstance(operator, MultiTypeExtractOperator)
+    assert operator.extract_params.extract_page_as_image is True
+
+
+def test_auto_remote_page_embedding_without_local_extraction_resolves_to_cpu() -> None:
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+    model = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(
+            extract_text=True,
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            use_page_elements=False,
+            extract_page_as_image=False,
+        ),
+        embed_params=EmbedParams(
+            model_name=model,
+            embed_model_name=model,
+            embed_invoke_url="http://embed.example/v1/embeddings",
+            embed_modality="image",
+            embed_granularity="page",
+        ),
+    )
+
+    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=1))
+
+    assert resolved.roots[0].operator_class is MultiTypeExtractCPUActor
 
 
 def test_batch_graph_forwards_resolvable_hosted_parse_contract() -> None:
@@ -865,6 +955,53 @@ class TestMultiTypeExtractOperator:
         result = op.process(grouped)
         assert result == []
 
+    @pytest.mark.parametrize(
+        ("use_page_elements", "method", "expected_stages"),
+        [
+            pytest.param(False, "pdfium", [], id="disabled"),
+            pytest.param(True, "pdfium", [], id="enabled-without-consumer"),
+            pytest.param(False, "ocr", ["OCRActor"], id="disabled-with-independent-ocr"),
+        ],
+    )
+    def test_detection_pipeline_runs_only_needed_stages(
+        self,
+        monkeypatch,
+        use_page_elements: bool,
+        method: str,
+        expected_stages: list[str],
+    ) -> None:
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        calls: list[str] = []
+
+        class _IdentityStage:
+            def run(self, data):
+                return data
+
+        def _record_stage(operator_class, **_operator_kwargs):
+            calls.append(operator_class.__name__)
+            return _IdentityStage()
+
+        op = MultiTypeExtractCPUActor(
+            extraction_mode="image",
+            extract_params=ExtractParams(
+                method=method,
+                extract_text=True,
+                extract_images=False,
+                extract_tables=False,
+                extract_charts=False,
+                extract_infographics=False,
+                use_page_elements=use_page_elements,
+            ),
+        )
+        monkeypatch.setattr(op, "_instantiate_resolved", _record_stage)
+
+        batch_df = pd.DataFrame({"page_image": ["x"]})
+        result = op._run_detection_pipeline(batch_df)
+
+        pd.testing.assert_frame_equal(result, batch_df)
+        assert calls == expected_stages
+
     def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
         from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
         from nemo_retriever.common.ray_resource_hueristics import Resources
@@ -1074,6 +1211,34 @@ class TestRayDataExecutor:
         with pytest.raises(ValueError, match="fan-out"):
             RayDataExecutor._linearize(g)
 
+    @pytest.mark.parametrize("available_cpus, expected_cpu_workers", [(4, 1), (6, 3), (10, 7)])
+    def test_single_and_shared_preflight_produce_same_plan(self, available_cpus, expected_cpu_workers):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph() >> CPUAdaptiveAddOperator() >> GPUAdaptiveAddOperator()
+        executors = [
+            RayDataExecutor(
+                graph,
+                node_overrides={
+                    "CPUAdaptiveAddOperator": {"concurrency": 8, "num_cpus": 1},
+                    "GPUAdaptiveAddOperator": {"concurrency": (1, 8, 2), "num_cpus": 1, "num_gpus": 0.5},
+                },
+                auto_concurrency_nodes={"CPUAdaptiveAddOperator", "GPUAdaptiveAddOperator"},
+                source_cpu_reservation=1,
+            )
+            for _ in range(2)
+        ]
+        single, shared = executors
+        resources = Resources(cpu_count=available_cpus, gpu_count=1)
+        single._preflight_resources(single._linearize(graph), available_cpus=available_cpus, available_gpus=1)
+        preflight_executors([shared], ClusterResources(total_resources=resources, available_resources=resources))
+
+        assert single._node_overrides == shared._node_overrides
+        assert single._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == expected_cpu_workers
+        assert single._node_overrides["GPUAdaptiveAddOperator"]["concurrency"] == (1, 2, 2)
+        assert not single._resources_preflight_complete
+        assert shared._resources_preflight_complete
+
     def test_shared_preflight_bounds_multiple_lazy_executors(self):
         first_graph = Graph()
         first_graph.add_root(CPUAdaptiveAddOperator())
@@ -1100,6 +1265,176 @@ class TestRayDataExecutor:
             + second._node_overrides["CPUAdaptiveAddOperator"]["concurrency"]
             <= 4
         )
+
+    def test_shared_preflight_admits_file_and_inline_workers_with_normalization(self):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        file_executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 4, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+            source_cpu_reservation=1,
+        )
+        inline_executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 4, "num_cpus": 1}},
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+        )
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        resources = Resources(cpu_count=4, gpu_count=0)
+        preflight_executors(
+            [file_executor, inline_executor],
+            ClusterResources(total_resources=resources, available_resources=resources),
+            reserved_cpus=1,
+        )
+
+        assert file_executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 1
+        assert inline_executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 1
+
+    @pytest.mark.parametrize("shared", [False, True])
+    @pytest.mark.parametrize("concurrency", [(1, 8), (1, 8, 2)])
+    def test_preflight_preserves_explicit_elastic_pool(self, shared, concurrency):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": concurrency, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+
+        if shared:
+            from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+            resources = Resources(cpu_count=4, gpu_count=0)
+            preflight_executors([executor], ClusterResources(total_resources=resources, available_resources=resources))
+        else:
+            executor._preflight_resources(executor._linearize(graph), available_cpus=4, available_gpus=0)
+
+        assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == concurrency
+
+    @pytest.mark.parametrize("shared", [False, True])
+    @pytest.mark.parametrize("concurrency", [4, (4, 8), (1, 8, 4)])
+    def test_preflight_rejects_pool_startup_that_excludes_reader(self, shared, concurrency):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": concurrency, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            if shared:
+                from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+                resources = Resources(cpu_count=4, gpu_count=0)
+                preflight_executors(
+                    [executor], ClusterResources(total_resources=resources, available_resources=resources)
+                )
+            else:
+                executor._preflight_resources(executor._linearize(graph), available_cpus=4, available_gpus=0)
+
+    @pytest.mark.parametrize("shared", [False, True])
+    def test_preflight_rechecks_transiently_unavailable_cluster_capacity(self, monkeypatch, shared):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+        recovered = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=12, gpu_count=0),
+        )
+        refresh_calls = 0
+
+        def refresh_resources():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return recovered
+
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", refresh_resources)
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+
+        if shared:
+            preflight_executors([executor], initial)
+            assert executor._preflight_cluster_resources == recovered
+        else:
+            executor._preflight_resources(
+                executor._linearize(graph),
+                available_cpus=initial.available_cpu_count(),
+                available_gpus=initial.available_gpu_count(),
+                cluster_resources=initial,
+            )
+
+        assert refresh_calls == 1
+        assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 11
+
+    def test_preflight_raises_with_final_snapshot_after_resource_recheck_timeout(self, monkeypatch):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 11, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+        final = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=10, gpu_count=0),
+        )
+        monotonic_times = iter((0.0, 0.25, 1.0))
+        refresh_calls = 0
+
+        def refresh_resources():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return final
+
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.monotonic", lambda: next(monotonic_times))
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", refresh_resources)
+
+        with pytest.raises(ValueError, match="Ray reports 10 CPUs and 0 GPUs available"):
+            preflight_executors([executor], initial)
+
+        assert refresh_calls == 1
+
+    def test_preflight_does_not_recheck_plan_over_total_capacity(self, monkeypatch):
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"CPUAdaptiveAddOperator": {"concurrency": 12, "num_cpus": 1}},
+            source_cpu_reservation=1,
+        )
+        resources = ClusterResources(
+            total_resources=Resources(cpu_count=12, gpu_count=0),
+            available_resources=Resources(cpu_count=11, gpu_count=0),
+        )
+
+        def unexpected_refresh():
+            raise AssertionError("oversubscribed plans must fail without waiting")
+
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", unexpected_refresh)
+
+        with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+            preflight_executors([executor], resources)
 
     def test_preflight_counts_implicit_gpu_operator_reservation(self):
         graph = Graph()
@@ -1176,6 +1511,56 @@ class TestRayDataExecutor:
         assert executor._preflight_cluster_resources is not None
 
         assert captured["num_gpus"] == 0.1
+
+    def test_build_dataset_uses_recovered_standalone_preflight_gpu_snapshot(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+
+        class _FakeDataset:
+            def map_batches(self, _operator_class, **kwargs):
+                captured.update(kwargs)
+                return self
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(Dataset=_FakeDataset, DataContext=_FakeDataContext)
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        captured: dict[str, object] = {}
+        initial = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=0, gpu_count=0),
+        )
+        recovered = ClusterResources(
+            total_resources=Resources(cpu_count=16, gpu_count=1),
+            available_resources=Resources(cpu_count=16, gpu_count=1),
+        )
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr("nemo_retriever.graph.executor.gather_cluster_resources", lambda _ray: initial)
+        monkeypatch.setattr("nemo_retriever.graph.executor._refresh_cluster_resources", lambda: recovered)
+        monkeypatch.setattr("nemo_retriever.graph.executor.time.sleep", lambda _seconds: None)
+
+        graph = Graph()
+        graph.add_root(GPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={"GPUAdaptiveAddOperator": {"concurrency": 16}},
+            auto_concurrency_nodes={"GPUAdaptiveAddOperator"},
+        )
+
+        executor.build_dataset(fake_dataset)
+
+        assert captured["num_gpus"] == 0.1
+        assert captured["concurrency"] == 10
 
     def test_shared_preflight_rejects_late_filesystem_source_without_reservation(self, tmp_path, monkeypatch):
         import sys
@@ -1379,13 +1764,9 @@ class TestRayDataExecutor:
         pdf_path.write_bytes(b"pdf")
 
         class _FakeDataset:
-            def iter_batches(self, *, batch_format):
-                assert batch_format == "pyarrow"
-                return iter([])
+            pass
 
-            def schema(self):
-                return SimpleNamespace(names=[])
-
+        fake_dataset = _FakeDataset()
         captured: dict[str, object] = {}
 
         class _FakeDataContext:
@@ -1399,7 +1780,11 @@ class TestRayDataExecutor:
         def _fake_read_binary_files(paths, include_paths=True):
             captured["paths"] = list(paths)
             captured["include_paths"] = include_paths
-            return _FakeDataset()
+            return fake_dataset
+
+        def _fake_ray_dataset_to_pandas(dataset):
+            assert dataset is fake_dataset
+            return pd.DataFrame()
 
         fake_ray_data = SimpleNamespace(
             Dataset=_FakeDataset,
@@ -1415,6 +1800,7 @@ class TestRayDataExecutor:
             lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
         )
         monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+        monkeypatch.setattr("nemo_retriever.graph.executor.ray_dataset_to_pandas", _fake_ray_dataset_to_pandas)
 
         executor = RayDataExecutor(Graph())
         result = executor.ingest([str(tmp_path / "**" / "*.pdf")])

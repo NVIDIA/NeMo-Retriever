@@ -54,8 +54,10 @@ class LiteLLMClient:
     - Any OpenAI-compatible server (vLLM, Ollama): openai/<model> + api_base
     - HuggingFace: huggingface/<org>/<model>
 
-    Provider API keys are read from environment variables automatically
-    (NVIDIA_API_KEY, OPENAI_API_KEY, HUGGINGFACE_API_KEY, etc.).
+    When ``api_key`` is omitted, LiteLLM performs provider-native environment
+    lookup. Variable names are provider-specific. The default ``nvidia_nim``
+    provider reads ``NVIDIA_NIM_API_KEY``, not ``NVIDIA_API_KEY``. Pass
+    ``api_key="os.environ/NVIDIA_API_KEY"`` to forward the hosted-inference key.
 
     Configuration is split into two orthogonal Pydantic objects:
 

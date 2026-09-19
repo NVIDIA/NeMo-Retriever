@@ -9,9 +9,9 @@ from typing import Annotated
 import typer
 
 from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
 
-DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
 DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
 
 # Advertised in --agentic-llm-client help; sourced from the registry so a newly
@@ -76,8 +76,8 @@ EmbedModelNameOption = Annotated[
         "--embed-model-name",
         envvar="EMBED_MODEL_NAME",
         help=(
-            "Embedding model override. When omitted, use the model recorded on the selected table, "
-            f"then fall back to {DEFAULT_EMBED_MODEL} for a legacy table without metadata."
+            "Embedding model override. When omitted, use the model recorded on the selected table. "
+            "Dense and hybrid tables without embedding-model metadata must be rebuilt before querying."
         ),
     ),
 ]
@@ -136,8 +136,8 @@ RetrievalModeOption = Annotated[
     typer.Option(
         "--retrieval-mode",
         help=(
-            "Expert LanceDB retrieval mode: auto, dense, hybrid, or sparse. Default auto inspects the table "
-            "and chooses the supported mode."
+            "Advanced override: auto, dense, hybrid, or sparse. Leave at auto to inspect the table and use "
+            "the supported default mode."
         ),
     ),
 ]
@@ -163,6 +163,13 @@ AgenticOption = Annotated[
     typer.Option(
         "--agentic",
         help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
+    ),
+]
+IncludeUsageOption = Annotated[
+    bool,
+    typer.Option(
+        "--include-usage",
+        help="With --agentic, emit a {hits, usage} JSON envelope containing provider-reported LLM token usage.",
     ),
 ]
 AgenticLlmModelOption = Annotated[

@@ -13,7 +13,7 @@ import pytest
 
 lancedb = pytest.importorskip("lancedb")
 
-from nemo_retriever.common.vdb.lancedb import (
+from nemo_retriever.common.vdb.lancedb import (  # noqa: E402
     LanceDB,
     _effective_ivf_num_partitions,
     _is_ivf_vector_index,

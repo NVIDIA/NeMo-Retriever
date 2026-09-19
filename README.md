@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 **Important: The default branch is main, which tracks active development and may be ahead of the latest supported release.**
 
-For the latest supported release, use the [26.05 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) (GA PyPI and Helm chart version `26.5.0`). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
+For the latest supported release, use the [26.08 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08) (GA PyPI and Helm chart version `26.8.1`). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
 
 See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
@@ -101,7 +101,7 @@ retriever = Retriever()
 
 query = "Given their activities, which animal is responsible for the typos in my documents?"
 
-# you can also submit a list with retriever.queries[...]
+# you can also submit a list with retriever.queries([...])
 hits = retriever.query(query)
 
 client = OpenAI(
@@ -141,7 +141,6 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 - **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
 - **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Retriever Harness](nemo_retriever/harness/README.md)** - Repeatable end-to-end ingest and retrieval benchmarks
 - **[Stage Benchmarking](nemo_retriever/docs/cli/benchmarking.md)** - Internal per-stage throughput measurements
 - **[MIG Deployment](nemo_retriever/helm/README.md)** - Multi-Instance GPU configurations for Kubernetes
 - **[API Documentation](docs/docs/extraction/nemo-retriever-api-reference.md)** - Python client and API reference
@@ -160,13 +159,13 @@ https://pypi.org/project/pdfservices-sdk/
     required if you want to use the Adobe extraction service for PDF decomposition. Please review the
     [license agreement](https://github.com/adobe/pdfservices-python-sdk?tab=License-1-ov-file) for the
     pdfservices-sdk before enabling this option.
-- **Built With Llama**:
+- **Default embedding tokenizer**:
   - **Description**: Published NeMo Retriever service images pre-cache the
     revision-pinned tokenizer for the default embedding model, currently
-    [`nvidia/llama-nemotron-embed-vl-1b-v2`](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2),
+    [`nvidia/Nemotron-3-Embed-1B-BF16`](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16),
     so TXT and HTML splitting does not need network access at runtime. The model
-    is governed by the [NVIDIA Open Model License](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2/blob/main/LICENSE)
-    and identifies additional Llama 3.2 terms in its model card.
+    is governed by the [OpenMDW License Agreement, version 1.1](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16/blob/main/LICENSE)
+    and identifies the Apache License, Version 2.0, as additional information.
 
     Source builds opt in to the same pinned tokenizer cache with
     `--build-arg DOWNLOAD_DEFAULT_TOKENIZER=True`. The default tokenizer

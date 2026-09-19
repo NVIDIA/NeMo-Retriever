@@ -74,7 +74,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
+When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [CLI — OCR language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md#ocr-language-mode). For Kubernetes image pins and overrides, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration). For hosted OCR endpoints and the NVCF language-mode limitation, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 
 **Related**
 
@@ -114,6 +114,40 @@ result = (
 
 Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
 
+### Control image deduplication
+
+Captioning a non-image document automatically enables image deduplication before the caption stage. The default removes duplicate image content. It also removes image crops that overlap table, chart, or infographic regions with an intersection over union (IoU) of `0.45` or greater. This behavior retains the structured region instead of sending the overlapping raw image crop for captioning. Image-only inputs do not enable deduplication automatically because the image is the document content.
+
+For command-line ingest, use `--dedup` to enable the default behavior explicitly. Use `--no-dedup` to disable both content-hash and bounding-box deduplication and preserve all extracted image crops. Opting out can increase the number of caption requests, processing latency, and model cost.
+
+Use `--dedup-iou-threshold` with an explicit `--dedup` to change the bounding-box threshold. You cannot combine the threshold option with `--no-dedup`.
+
+```bash
+retriever ingest ./data/multimodal_test.pdf \
+  --caption \
+  --no-dedup
+```
+
+Use `--dry-run` to inspect the effective deduplication configuration before ingest. The resolved plan includes automatically enabled deduplication for captioned non-image documents and reflects an explicit `--no-dedup` override.
+
+The Python API provides finer-grained control with `DedupParams`. For example, retain content-hash deduplication while preserving crops that overlap structured regions.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import DedupParams, ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["report.pdf"])
+    .extract(ExtractParams(extract_images=True))
+    .dedup(DedupParams(content_hash=True, bbox_iou=False))
+    .caption()
+    .ingest()
+)
+```
+
+To disable all image deduplication through the Python API, call `.dedup(DedupParams(content_hash=False, bbox_iou=False))` before `.caption()`.
+
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
@@ -126,7 +160,7 @@ Extracted objects follow the schema and field descriptions in the [Metadata refe
 
 ## Extraction limitations and quality { #extraction-limitations-and-quality }
 
-Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must use the NVCF Asset API for larger inputs. For limits, `dpi` and `render_mode` tuning, and a step-by-step asset upload example, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
+Hosted Page Elements, Table Structure, and Graphic Elements NIM endpoints cap inline base64 image payloads at about **180,000 characters** (roughly 180 KB). The NeMo Retriever pipeline downscales large page renders before remote NIM calls. Direct API integrations must keep inline payloads under that cap. Hosted Page Elements does not accept NVCF Asset API references. For limits, plus `dpi` and `render_mode` tuning, refer to [Hosted Page Elements NIM image size limits](troubleshoot.md#hosted-page-elements-nim-image-size-limits).
 
 Image payload limits are separate from the throughput metrics in the rest of this section.
 
