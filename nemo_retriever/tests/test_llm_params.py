@@ -255,6 +255,29 @@ class TestLiteLLMCompleteCallKwargs:
         assert kwargs["stop"] == ["END"]
 
 
+class TestLiteLLMStreaming:
+    @patch("litellm.acompletion")
+    def test_stream_complete_forwards_stream_flag(self, mock_acompletion):
+        import asyncio
+
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+
+        async def fake_stream():
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="Hi"))])
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=" there"))])
+
+        mock_acompletion.return_value = fake_stream()
+        client = LiteLLMClient.from_kwargs(model="openai/gpt-4o-mini")
+
+        async def collect() -> list[str]:
+            return [delta async for delta in client.stream_complete([{"role": "user", "content": "hi"}])]
+
+        deltas = asyncio.run(collect())
+
+        assert deltas == ["Hi", " there"]
+        assert mock_acompletion.call_args.kwargs["stream"] is True
+
+
 class TestLiteLLMHardening:
     """Credential, protected-field, and text-only response contracts."""
 
