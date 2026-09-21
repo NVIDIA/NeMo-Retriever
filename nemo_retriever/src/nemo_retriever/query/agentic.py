@@ -491,6 +491,8 @@ class AgenticRetriever:
         if len(query_ids) != len(query_texts):
             raise ValueError("query_ids and query_texts must have the same length.")
         caller_query_ids = [str(query_id) for query_id in query_ids]
+        if len(set(caller_query_ids)) != len(caller_query_ids):
+            raise ValueError("query_ids must be unique.")
 
         with self._hit_cache_lock:
             self._hit_cache.clear()

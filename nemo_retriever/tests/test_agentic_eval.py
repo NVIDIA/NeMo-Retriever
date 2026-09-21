@@ -228,6 +228,16 @@ def test_agentic_retriever_answer_retries_unretrieved_citation():
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_answer_rejects_duplicate_query_ids_before_running():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    retriever = AgenticRetriever(AgenticRetrievalConfig(llm_model="nemotron-8b"), match_mode="pdf_page")
+
+    with pytest.raises(ValueError, match="query_ids must be unique"):
+        retriever.answer_with_usage(["duplicate", "duplicate"], ["first query", "second query"])
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_agentic_retriever_isolates_usage_for_concurrent_queries():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
