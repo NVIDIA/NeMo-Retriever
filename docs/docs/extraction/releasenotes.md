@@ -164,7 +164,7 @@ The following foundational capabilities remain current. They are not new 26.08.1
 - Air-gapped deployment guidance is in [deployment options](deployment-options.md) and the Helm chart README.
 - Nemotron Parse is an alternate PDF extraction method (v1.2 HTTP interface, optional Helm NIM, and local inference through vLLM where configured).
 - VLM image captioning through vLLM, including Omni caption model profiles, is available.
-- vLLM-backed text and vision-language embedders, a multimodal VL reranker, and torch 2.13 are available for local GPU installs.
+- vLLM-backed text and vision-language embedders, a multimodal VL reranker, and torch 2.11 are available for local GPU installs.
 - The video retrieval pipeline includes frame extraction, OCR, audio-visual fusion, and text deduplication.
 - Long-audio Parakeet chunking provides time-aligned segments, punctuation-based audio segmenting, and ASR batch and streaming improvements.
 - The live RAG SDK includes `Retriever.retrieve()`, reference answer generation through `Retriever.answer()`, and optional batch operator graphs through LiteLLM (`[llm]` extra).
