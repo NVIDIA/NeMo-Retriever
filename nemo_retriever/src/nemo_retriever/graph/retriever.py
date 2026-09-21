@@ -615,7 +615,7 @@ class RetrieverPipelineBuilder:
 
     Example:
         >>> builder = retriever.pipeline()  # doctest: +SKIP
-        >>> df = builder.generate(llm).score().judge(judge).run(  # doctest: +SKIP
+        >>> df = builder.generate(llm).judge(judge).score().run(  # doctest: +SKIP
         ...     queries=["q1", "q2"],
         ...     reference=["r1", "r2"],
         ... )
