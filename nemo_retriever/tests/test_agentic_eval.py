@@ -505,6 +505,30 @@ def test_agentic_answer_documents_with_metadata_preserves_error_and_usage():
     retriever.unload.assert_called_once()
 
 
+def test_agentic_answer_documents_empty_result_has_recovery_guidance():
+    from nemo_retriever.query.agentic import AgenticAnswerResult
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest
+    from nemo_retriever.query.workflow import agentic_answer_documents_with_metadata
+
+    retriever = MagicMock()
+    retriever.answer_with_usage.return_value = AgenticAnswerResult(answers=pd.DataFrame(), usage={})
+    request = QueryRequest(
+        query="find doc",
+        agentic=QueryAgenticOptions(enabled=True, llm_model="m", invoke_url=_REMOTE_URL),
+    )
+
+    with patch("nemo_retriever.query.workflow.build_agentic_retriever", return_value=retriever):
+        result = agentic_answer_documents_with_metadata(request)
+
+    assert result.error is not None
+    assert result.error["category"] == "unexpected"
+    assert "Retry the query" in result.error["message"]
+    assert "embedding endpoints" in result.error["message"]
+    assert "indexed data" in result.error["message"]
+    assert "service logs" in result.error["message"]
+    retriever.unload.assert_called_once()
+
+
 def test_normalize_usage_breakdown_includes_split_cache_input_tokens():
     """Separately reported cache counters contribute to the input total."""
     from nemo_retriever._agentic.nemo_agent.llm.usage import normalize_usage_breakdown

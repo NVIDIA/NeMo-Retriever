@@ -477,6 +477,25 @@ class AgenticRetriever:
         Answer mode ends inside the ReAct loop and therefore intentionally
         bypasses RRF and the selection agent. Each row includes citation IDs and
         their rehydrated classic retrieval hits in citation order.
+
+        Parameters
+        ----------
+        query_ids:
+            Unique caller-owned IDs for the queries.
+        query_texts:
+            Query strings aligned positionally with ``query_ids``.
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per query containing the answer, validated citation IDs,
+            rehydrated citation hits, status, message, and error fields.
+
+        Raises
+        ------
+        ValueError
+            If the sequences have different lengths or ``query_ids`` contains
+            duplicates.
         """
 
         return self.answer_with_usage(query_ids, query_texts).answers
@@ -486,7 +505,27 @@ class AgenticRetriever:
         query_ids: Sequence[str],
         query_texts: Sequence[str],
     ) -> AgenticAnswerResult:
-        """Return integrated agentic answers and exact per-query LLM usage."""
+        """Return integrated agentic answers and exact per-query LLM usage.
+
+        Parameters
+        ----------
+        query_ids:
+            Unique caller-owned IDs used as keys in the returned usage mapping.
+        query_texts:
+            Query strings aligned positionally with ``query_ids``.
+
+        Returns
+        -------
+        AgenticAnswerResult
+            Answer rows and a stage-keyed provider usage breakdown for each
+            query that reported usage.
+
+        Raises
+        ------
+        ValueError
+            If the sequences have different lengths or ``query_ids`` contains
+            duplicates.
+        """
 
         if len(query_ids) != len(query_texts):
             raise ValueError("query_ids and query_texts must have the same length.")

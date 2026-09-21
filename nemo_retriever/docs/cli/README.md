@@ -283,7 +283,7 @@ retriever query "what changed in the latest report?" \
   --include-usage
 ```
 
-Agentic mode returns the agent's ranked documents as JSON. The dense path
+Agentic select mode returns the agent's ranked documents as JSON. The dense path
 projects each hit to five fields: `modality`, `page_number`, `score`,
 `source`, and `text`. Agentic mode does not use that projection. It prints
 the internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
@@ -305,9 +305,9 @@ Agentic retrieval reuses the same `--top-k`, `--lancedb-uri`, `--table-name`,
 Agentic retrieval uses the selected table's model automatically when
 `--embed-model-name` is omitted.
 
-The default `retriever query --agentic` output remains a JSON hits list. Add
-`--include-usage` to print a JSON object with `hits` and exact provider-reported
-LLM usage:
+The default `retriever query --agentic` select-mode output remains a JSON hits
+list. Add `--include-usage` to print a JSON object with `hits` and exact
+provider-reported LLM usage:
 
 ```bash
 retriever query "how does the ingestion pipeline handle tables?" \
@@ -360,7 +360,9 @@ selection agent because those stages produce a document ranking, not an answer.
 The output contains `answer`, `citations`, `citation_hits`, `succeeded`, `error`,
 and optional `usage`. Citation IDs must have been returned by a retrieval hop;
 `citation_hits` preserves citation order and contains the corresponding full
-retrieval metadata.
+retrieval metadata. In answer mode, `--include-usage` adds `usage` to that answer
+object; it does not return the select-mode `{ "hits": ..., "usage": ... }`
+envelope.
 
 Agentic-only knobs (apply only with `--agentic`):
 
@@ -395,8 +397,9 @@ Agentic-only knobs (apply only with `--agentic`):
   calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
   non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
   endpoints allow up to `1.0`.
-- `--include-usage` (default: off) — replace the default hits-list output with
-  an object that contains `hits` and provider-reported LLM `usage`.
+- `--include-usage` (default: off) — in select mode, replace the default hits
+  list with an object containing `hits` and provider-reported LLM `usage`; in
+  answer mode, add `usage` to the answer, citations, status, and error object.
 
 <!-- --8<-- [end:quickstart] -->
 

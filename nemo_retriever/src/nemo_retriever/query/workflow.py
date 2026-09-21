@@ -314,7 +314,14 @@ def agentic_answer_documents_with_metadata(request: QueryRequest) -> AgenticAnsw
                 citation_hits=[],
                 succeeded=False,
                 message=None,
-                error={"category": "unexpected", "message": "Agentic answer produced no result."},
+                error={
+                    "category": "unexpected",
+                    "message": (
+                        "Agentic answer produced no result. Retry the query; if it fails again, "
+                        "check the configured agent LLM and embedding endpoints, verify that the "
+                        "selected table contains indexed data, and inspect the service logs."
+                    ),
+                },
                 usage=normalize_usage_breakdown(result.usage.get("0")),
             )
         row = result.answers.iloc[0]
