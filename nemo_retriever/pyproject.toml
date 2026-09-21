@@ -24,11 +24,7 @@ override-dependencies = [
   "requests>=2.33.0",
   "idna>=3.15",
   "pydantic-settings>=2.14.2",
-  # vLLM 0.29.0 requires torch 2.13.0; override older upper bounds from the
-  # current Nemotron extraction wheels so the local inference stack resolves.
-  "torch==2.13.0",
-  "torchvision==0.28.0",
-  "vllm==0.29.0",
+  "vllm==0.25.1",
   "transformers>=5.17.0",
   "ray>=2.56.1",
   "nltk>=3.10.3",
@@ -147,12 +143,12 @@ local = [
   "transformers>=5.17.0,<6",
   "accelerate==1.15.0",
   "opencv-python-headless>=4.8.0",
-  "torch==2.13.0; sys_platform == 'linux'",
-  "torch==2.13.0; sys_platform == 'win32'",
-  "torch==2.13.0; sys_platform == 'darwin'",
-  "torchvision==0.28.0; sys_platform == 'linux'",
-  "torchvision==0.28.0; sys_platform == 'win32'",
-  "torchvision==0.28.0; sys_platform == 'darwin'",
+  "torch==2.11.0; sys_platform == 'linux'",
+  "torch==2.11.0; sys_platform == 'win32'",
+  "torch==2.11.0; sys_platform == 'darwin'",
+  "torchvision==0.26.0; sys_platform == 'linux'",
+  "torchvision==0.26.0; sys_platform == 'win32'",
+  "torchvision==0.26.0; sys_platform == 'darwin'",
   "tritonclient",
   "einops",
   "easydict",
@@ -169,11 +165,10 @@ local = [
   # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
-  "vllm==0.29.0; sys_platform == 'linux'",
-  # Keep the CUDA inference stack reproducible; vLLM requires FlashInfer Python 0.6.18.
-  # FlashInfer's separately versioned precompiled cubin package is latest at 0.6.13.
+  "vllm==0.25.1; sys_platform == 'linux'",
+  # Keep the CUDA inference stack reproducible; vLLM 0.25.1 requires FlashInfer 0.6.13.
   "flashinfer-cubin==0.6.13; sys_platform == 'linux'",
-  "flashinfer-python==0.6.18; sys_platform == 'linux'",
+  "flashinfer-python==0.6.13; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
