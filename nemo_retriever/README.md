@@ -131,7 +131,9 @@ ingestor = (
 ```
 
 Bare `.vdb_upload()` writes to the default LanceDB table `nemo-retriever`.
-Default `Retriever()` and `retriever ingest` use that same table.
+Default `Retriever()` and `retriever ingest` use that same table. To store
+vectors in a Qdrant server instead, pass `vdb_op="qdrant"`. Refer to
+[Use Qdrant](../docs/docs/extraction/vdbs.md#use-qdrant).
 
 ### Ingest inline text
 
@@ -215,6 +217,16 @@ used in [Run a recall query](#run-a-recall-query) below. Python
 `[local]` extra installed (refer to the setup steps above), defaults point at
 local-GPU extraction and embedding.
 
+To write to a Qdrant server (1.18 or later) instead of LanceDB, install the
+`qdrant` extra and pass `--vdb-op qdrant`. The `--table-name` value names the
+collection, and `QDRANT_URL` / `QDRANT_API_KEY` select the server:
+
+```bash
+export QDRANT_URL=http://localhost:6333
+retriever ingest /path/to/file-or-directory --vdb-op qdrant --table-name nemo-retriever
+retriever query "What is in this document?" --vdb-op qdrant --table-name nemo-retriever
+```
+
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 
@@ -238,7 +250,7 @@ retriever ingest /path/to/file-or-directory \
 > behavior, and the local OCR selectors are not added to remote request payloads.
 
 When you use a remote embedder, the endpoint and provider prefix remain runtime
-configuration. The query model is read from LanceDB metadata when available;
+configuration. The query model is read from the index metadata when available;
 pass an explicit model only for an override or a legacy table without metadata.
 
 ### Inspect extracts
@@ -362,9 +374,9 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 ### Run agentic retrieval
 
-Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
+Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB or Qdrant index.
 It does not ingest documents. Build the index with one of the ingestion flows
-above, then query the same `lancedb_uri`, `table_name`, and embedding model.
+above, then query the same storage flags (`lancedb_uri` or `--vdb-op qdrant`), `table_name`, and embedding model.
 The examples below use the default table `nemo-retriever`. When you omit
 `--embed-model-name`, agentic retrieval uses the selected table's model.
 

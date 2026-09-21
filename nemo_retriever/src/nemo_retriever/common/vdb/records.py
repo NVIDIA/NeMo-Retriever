@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
@@ -15,8 +16,16 @@ from typing import Any, TypedDict
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
-from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
+from nemo_retriever.common.schemas.embedding import (
+    EMBEDDING_SPLIT_METADATA_KEY,
+    embedding_record_content,
+    embedding_split_content,
+)
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_VECTOR_DIM = 2048
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
     "chart_caption": "chart",
@@ -517,7 +526,7 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
 
 
 def to_sparse_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
-    """Convert graph-ingest rows into text/provenance records for sparse LanceDB ingest."""
+    """Convert graph-ingest rows into NRL records for sparse ingest."""
     if hasattr(rows, "to_pandas"):
         rows = rows.to_pandas()
     if hasattr(rows, "to_dict"):
@@ -526,12 +535,161 @@ def to_sparse_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
         nested = [[record for record in batch if isinstance(record, dict) and record.get("metadata")] for batch in rows]
         nested = [batch for batch in nested if batch]
         return nested
+    graph_rows = [row for row in rows or [] if isinstance(row, dict)]
     inner = [
         record
-        for row in rows or []
-        if isinstance(row, dict) and (record := _client_record_from_graph_row(row, require_embedding=False)) is not None
+        for row in graph_rows
+        if (record := _client_record_from_graph_row(row, require_embedding=False)) is not None
     ]
+    if not inner and graph_rows:
+        upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
+        _raise_for_empty_vdb_conversion(
+            row_count=len(graph_rows),
+            upstream_error_count=len(upstream_errors),
+            upstream_error_fields=Counter(_stage_error_field(error.get("path")) for error in upstream_errors),
+            rejection_reasons=Counter({"missing searchable text or image backing": len(graph_rows)}),
+        )
     return [inner] if inner else []
+
+
+def text_for_element(element: dict[str, Any]) -> Any:
+    """Return an NRL record's searchable text by ``document_type`` (never base64 image data)."""
+    doc_type = element.get("document_type")
+    metadata = element.get("metadata", {})
+
+    if doc_type == "structured":
+        return metadata.get("table_metadata", {}).get("table_content")
+    if doc_type == "image":
+        image_meta = metadata.get("image_metadata", {})
+        if metadata.get("content_metadata", {}).get("subtype") == "page_image":
+            return image_meta.get("text")
+        return image_meta.get("caption")
+    if doc_type == "audio":
+        return metadata.get("audio_metadata", {}).get("audio_transcript")
+    return metadata.get("content")
+
+
+def _row_id(metadata: Any, content_meta: Any) -> str:
+    row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
+    if row_id is None and isinstance(metadata, dict):
+        row_id = metadata.get("id")
+    return str(row_id) if row_id is not None else ""
+
+
+def dense_row(element: dict[str, Any], *, expected_dim: int | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Build one ``vector``/``text``/``metadata``/``source``/``id`` row, or return why it was dropped.
+
+    Rows with no embedding, a length other than ``expected_dim``, or blank text are dropped.
+    Canonical image records keep ``text=""``.
+    """
+    metadata = element.get("metadata", {})
+    doc_type = element.get("document_type")
+    embedding = metadata.get("embedding")
+    if embedding is None:
+        return None, "dropped_no_embedding"
+    if expected_dim is not None and (not isinstance(embedding, (list, tuple)) or len(embedding) != int(expected_dim)):
+        logger.debug(
+            "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
+            len(embedding) if hasattr(embedding, "__len__") else "n/a",
+            int(expected_dim),
+            doc_type,
+        )
+        return None, "dropped_bad_length"
+
+    content_meta = metadata.get("content_metadata", {})
+    split_content = embedding_split_content(metadata)
+    text = split_content if split_content is not None else text_for_element(element)
+    if split_content is not None:
+        content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
+    elif not isinstance(text, str) or not text.strip():
+        is_canonical_image = (
+            doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
+        )
+        if not is_canonical_image:
+            logger.debug(
+                "No text found for entity: %s page: %s type: %s",
+                metadata.get("source_metadata", {}).get("source_name", "unknown"),
+                content_meta.get("page_number") if isinstance(content_meta, dict) else None,
+                doc_type,
+            )
+            return None, "dropped_no_text"
+        text = ""
+
+    row = {
+        "vector": embedding,
+        "text": text,
+        "metadata": content_meta,
+        "source": metadata.get("source_metadata", {}),
+        "id": _row_id(metadata, content_meta),
+    }
+    return row, None
+
+
+def text_row(element: dict[str, Any]) -> dict[str, Any] | None:
+    """Build one embedding-free row for sparse indexes, or ``None`` if the text is blank."""
+    metadata = element.get("metadata", {})
+    content_meta = metadata.get("content_metadata", {})
+    text = text_for_element(element)
+    if not isinstance(text, str) or not text.strip():
+        logger.debug(
+            "No text found for sparse entity: %s page: %s",
+            metadata.get("source_metadata", {}).get("source_name", "unknown"),
+            content_meta.get("page_number") if isinstance(content_meta, dict) else None,
+        )
+        return None
+    return {
+        "text": text,
+        "metadata": content_meta,
+        "source": metadata.get("source_metadata", {}),
+        "id": _row_id(metadata, content_meta),
+    }
+
+
+def build_dense_rows(
+    results: Any,
+    *,
+    expected_dim: int | None = DEFAULT_VECTOR_DIM,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Build :func:`dense_row` rows from NRL record batches and count the dropped ones."""
+    rows: list[dict[str, Any]] = []
+    counts = {"accepted": 0, "dropped_no_embedding": 0, "dropped_bad_length": 0, "dropped_no_text": 0}
+    for result in results:
+        for element in result:
+            row, drop_reason = dense_row(element, expected_dim=expected_dim)
+            if drop_reason is not None:
+                counts[drop_reason] += 1
+                continue
+            rows.append(row)
+            counts["accepted"] += 1
+
+    if counts["dropped_no_embedding"] or counts["dropped_bad_length"] or counts["dropped_no_text"]:
+        logger.warning(
+            "build_dense_rows: accepted=%d dropped_no_embedding=%d dropped_bad_length=%d dropped_no_text=%d "
+            "expected_dim=%s",
+            counts["accepted"],
+            counts["dropped_no_embedding"],
+            counts["dropped_bad_length"],
+            counts["dropped_no_text"],
+            expected_dim,
+        )
+    return rows, counts
+
+
+def build_text_rows(results: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Build :func:`text_row` rows from NRL record batches and count the dropped ones."""
+    rows: list[dict[str, Any]] = []
+    counts = {"accepted": 0, "dropped_no_text": 0}
+    for result in results:
+        for element in result:
+            row = text_row(element)
+            if row is None:
+                counts["dropped_no_text"] += 1
+                continue
+            rows.append(row)
+            counts["accepted"] += 1
+    if counts["dropped_no_text"]:
+        logger.warning("build_text_rows: accepted=%d dropped_no_text=%d", counts["accepted"], counts["dropped_no_text"])
+    return rows, counts
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -563,7 +721,7 @@ def _flatten_legacy_entity_hit(hit: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
-    """Adapt LanceDB client hit shapes to Retriever hits."""
+    """Adapt vector database (LanceDB, Qdrant) hit shapes to Retriever hits."""
     hit = _flatten_legacy_entity_hit(hit)
 
     source = _mapping(hit.get("source") or hit.get("source_metadata"))
@@ -628,6 +786,17 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         if key in hit:
             normalized[key] = hit[key]
     return normalized
+
+
+def hit_rank(hit: dict[str, Any]) -> float:
+    """Return a lower-is-better rank: ``_distance``, else the negated ``_relevance_score`` or ``_score``."""
+    for key, sign in (("_distance", 1.0), ("_relevance_score", -1.0), ("_score", -1.0)):
+        if hit.get(key) is not None:
+            try:
+                return sign * float(hit[key])
+            except (TypeError, ValueError):
+                return float("inf")
+    return float("inf")
 
 
 def _hit_to_dict(hit: Any) -> dict[str, Any] | None:

@@ -306,6 +306,13 @@ class SinkUrlAllowlist:
     def check_vdb_upload(self, params: dict[str, Any] | None) -> None:
         if params is None:
             return
+        vdb_op = str(params.get("vdb_op") or "lancedb").strip().lower()
+        if vdb_op != "lancedb":
+            raise PolicyError(
+                f"vdb_upload_params.vdb_op {vdb_op!r} is not allowed for per-request overrides; only 'lancedb' "
+                "sinks are supported. Configure Qdrant on the VectorDB service (vectordb.vdb_op) instead.",
+                status_code=403,
+            )
         if not self.vdb_uri_schemes:
             raise PolicyError(
                 "vdb_upload_params: per-request vector-DB overrides are disabled. "

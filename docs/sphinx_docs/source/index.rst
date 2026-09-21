@@ -116,6 +116,13 @@ To query the ingested LanceDB table, use :meth:`~nemo_retriever.common.vdb.lance
     )
     hits = retriever.query("Which animal is responsible for the typos?", top_k=1)
 
+.. note::
+
+   To use a Qdrant server instead of LanceDB, install ``nemo-retriever[qdrant]`` and pass
+   ``vdb_op="qdrant"`` with ``vdb_kwargs={"url": ..., "collection_name": ...}`` to ``vdb_upload``, and
+   ``vdb_kwargs={"vdb_op": "qdrant", "vdb_kwargs": {...}}`` to ``Retriever``.
+   The backend is :class:`~nemo_retriever.common.vdb.qdrant.Qdrant`.
+
 
 .. toctree::
     :maxdepth: 2

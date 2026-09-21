@@ -21,9 +21,9 @@ from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
 )
+from nemo_retriever.common.vdb.adt_vdb import VDB, IndexCapabilities, RetrievalMode, UnsupportedVDBOperation
 from nemo_retriever.common.vdb.hybrid_fusion import DEFAULT_HYBRID_FUSION_POLICY
 from nemo_retriever.common.vdb.lancedb_capabilities import (
-    LanceRetrievalMode,
     LanceTableCapabilities,
     inspect_lancedb_table,
 )
@@ -34,6 +34,8 @@ from nemo_retriever.operators.vdb import RetrieveVdbOperator
 logger = logging.getLogger(__name__)
 
 _QUERY_ROUTING_VDB_KWARGS = frozenset({"retrieval_mode"})
+_RETRIEVAL_MODE_OVERRIDES = frozenset({"auto", "dense", "hybrid", "sparse"})
+_MODE_ROUTING_KEYS = frozenset({"hybrid", "retrieval_mode"})
 
 if TYPE_CHECKING:
     from nemo_retriever.models.llm.types import (
@@ -57,6 +59,34 @@ def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
             u["vdb_kwargs"] = nested
         return u
     return {"vdb_op": "lancedb", "vdb_kwargs": u}
+
+
+def _select_retrieval_mode(
+    caps: IndexCapabilities,
+    routing_kwargs: dict[str, Any],
+    *,
+    backend: str,
+    target: str,
+) -> tuple[RetrievalMode, bool]:
+    """Return ``(mode, explicit)``. ``hybrid`` wins over ``retrieval_mode``, and ``auto`` follows the index."""
+    mode_override = str(routing_kwargs.get("retrieval_mode") or "auto").strip().lower()
+    if mode_override not in _RETRIEVAL_MODE_OVERRIDES:
+        raise ValueError(
+            f"Unsupported {backend} retrieval mode {mode_override!r}; " "use 'auto', 'dense', 'hybrid', or 'sparse'."
+        )
+    if "hybrid" in routing_kwargs:
+        mode_override = "hybrid" if bool(routing_kwargs["hybrid"]) else "dense"
+    mode = caps.retrieval_mode if mode_override == "auto" else cast(RetrievalMode, mode_override)
+
+    if mode == "unknown":
+        raise ValueError(f"{target} is not queryable: no vector column or FTS index was detected.")
+    if mode == "dense" and not caps.has_vector:
+        raise ValueError(f"{target} cannot run dense retrieval: no vector column was detected.")
+    if mode == "hybrid" and (not caps.has_vector or not caps.has_fts):
+        raise ValueError(f"{target} cannot run hybrid retrieval: both a vector column and FTS index are required.")
+    if mode == "sparse" and not caps.has_fts:
+        raise ValueError(f"{target} cannot run sparse retrieval: no FTS index was detected.")
+    return mode, mode_override != "auto"
 
 
 def _default_rerank_actor_kwargs() -> dict[str, Any]:
@@ -101,6 +131,9 @@ class Retriever:
     _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
     _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
     _lancedb_capabilities_cache: dict[tuple[str, str], LanceTableCapabilities] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _index_operators: dict[str, RetrieveVdbOperator] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
 
@@ -276,12 +309,9 @@ class Retriever:
             self._lancedb_capabilities_cache[key] = caps
         return caps
 
-    def _graph_lancedb_retrieve_operator(self) -> RetrieveVdbOperator | None:
-        """Return the LanceDB retrieval operator from a caller-owned graph, if present."""
+    def _graph_retrieve_operator(self, backend: type) -> RetrieveVdbOperator | None:
         if self.graph is None:
             return None
-
-        from nemo_retriever.common.vdb.lancedb import LanceDB
 
         roots = getattr(self.graph, "roots", None)
         if not isinstance(roots, list):
@@ -295,18 +325,81 @@ class Retriever:
                 continue
             visited.add(id(node))
             operator = getattr(node, "operator", None)
-            if isinstance(operator, RetrieveVdbOperator) and isinstance(getattr(operator, "_vdb", None), LanceDB):
+            if isinstance(operator, RetrieveVdbOperator) and isinstance(getattr(operator, "_vdb", None), backend):
                 return operator
             children = getattr(node, "children", None)
             if isinstance(children, list):
                 pending.extend(children)
         return None
 
+    def _index_operator(self) -> RetrieveVdbOperator | None:
+        """Return the operator used for index metadata. Graphs are only inspected when they wrap a ``VDB``."""
+        if self.graph is not None:
+            return self._graph_retrieve_operator(VDB)
+        key = json.dumps(self.vdb_kwargs, sort_keys=True, default=str)
+        if key not in self._index_operators:
+            self._index_operators = {key: RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))}
+        return self._index_operators[key]
+
+    def _resolve_backend_query_mode(
+        self,
+        operator: RetrieveVdbOperator,
+        runtime_vdb_kwargs: Optional[dict[str, Any]],
+    ) -> tuple[RetrievalMode, bool] | None:
+        """Route non-LanceDB backends. Returns ``None`` when a backend reports no capabilities."""
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        vdb = operator._vdb
+        if isinstance(vdb, LanceDB) or not hasattr(vdb, "index_capabilities"):
+            return None
+        configured: dict[str, Any] = {}
+        if getattr(vdb, "sparse", False):
+            configured["retrieval_mode"] = "sparse"
+        elif getattr(vdb, "hybrid", False):
+            configured["retrieval_mode"] = "hybrid"
+        configured.update(operator._vdb_kwargs)
+        configured.update(self._configured_routing_kwargs())
+        runtime = dict(runtime_vdb_kwargs or {})
+        if _MODE_ROUTING_KEYS & runtime.keys():
+            # A mode on the call replaces both configured mode keys.
+            configured = {key: value for key, value in configured.items() if key not in _MODE_ROUTING_KEYS}
+        routing_kwargs = {**configured, **runtime}
+        try:
+            caps = vdb.index_capabilities(**routing_kwargs)
+        except UnsupportedVDBOperation:
+            return None
+        name = (
+            routing_kwargs.get("table_name") or getattr(vdb, "collection_name", None) or getattr(vdb, "table_name", "")
+        )
+        target = f"{type(vdb).__name__} index {name!r}"
+        if caps is None:
+            raise FileNotFoundError(f"{target} not found.")
+        return _select_retrieval_mode(caps, routing_kwargs, backend=type(vdb).__name__, target=target)
+
+    def _configured_routing_kwargs(self) -> dict[str, Any]:
+        """Return the routing keys that operator construction strips from ``vdb_kwargs``."""
+        if self.graph is not None:
+            return {}
+        configured = dict(self.vdb_kwargs or {})
+        nested = configured.get("vdb_kwargs")
+        sources = [configured, nested] if isinstance(nested, dict) else [configured]
+        return {key: value for source in sources for key, value in source.items() if key in _QUERY_ROUTING_VDB_KWARGS}
+
+    def _resolve_query_mode(self, runtime_vdb_kwargs: Optional[dict[str, Any]]) -> RetrievalMode | None:
+        lancedb_mode = self._resolve_lancedb_query_mode(runtime_vdb_kwargs)
+        if lancedb_mode is not None:
+            return lancedb_mode[0]
+        operator = self._index_operator()
+        route = self._resolve_backend_query_mode(operator, runtime_vdb_kwargs) if operator is not None else None
+        return route[0] if route is not None else None
+
     def _resolve_lancedb_query_mode(
         self,
         runtime_vdb_kwargs: Optional[dict[str, Any]],
     ) -> tuple[str, LanceTableCapabilities, str, str, bool] | None:
-        graph_operator = self._graph_lancedb_retrieve_operator()
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        graph_operator = self._graph_retrieve_operator(LanceDB)
         if self.graph is not None and graph_operator is None:
             return None
 
@@ -343,35 +436,13 @@ class Retriever:
         table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nemo-retriever")
         caps = self._inspect_lancedb_capabilities(uri, table_name)
 
-        mode_override = str(lancedb_kwargs.get("retrieval_mode") or "auto").strip().lower()
-        if mode_override not in {"auto", "dense", "hybrid", "sparse"}:
-            raise ValueError(
-                f"Unsupported LanceDB retrieval mode {mode_override!r}; " "use 'auto', 'dense', 'hybrid', or 'sparse'."
-            )
-        if "hybrid" in lancedb_kwargs:
-            mode_override = "hybrid" if bool(lancedb_kwargs["hybrid"]) else "dense"
-        mode = caps.retrieval_mode if mode_override == "auto" else cast(LanceRetrievalMode, mode_override)
-
-        if mode == "unknown":
-            raise ValueError(
-                f"LanceDB table {table_name!r} at {uri!r} is not queryable: "
-                "no vector column or FTS index was detected."
-            )
-        if mode == "dense" and not caps.has_vector:
-            raise ValueError(
-                f"LanceDB table {table_name!r} at {uri!r} cannot run dense retrieval: " "no vector column was detected."
-            )
-        if mode == "hybrid" and (not caps.has_vector or not caps.has_fts):
-            raise ValueError(
-                f"LanceDB table {table_name!r} at {uri!r} cannot run hybrid retrieval: "
-                "both a vector column and FTS index are required."
-            )
-        if mode == "sparse" and not caps.has_fts:
-            raise ValueError(
-                f"LanceDB table {table_name!r} at {uri!r} cannot run sparse retrieval: " "no FTS index was detected."
-            )
-
-        return mode, caps, uri, table_name, mode_override != "auto"
+        mode, explicit = _select_retrieval_mode(
+            caps,
+            lancedb_kwargs,
+            backend="LanceDB",
+            target=f"LanceDB table {table_name!r} at {uri!r}",
+        )
+        return mode, caps, uri, table_name, explicit
 
     @staticmethod
     def _embedding_model_from_kwargs(kwargs: Optional[dict[str, Any]]) -> str | None:
@@ -507,10 +578,7 @@ class Retriever:
         explicit_model = self._embedding_model_from_kwargs(embed_kwargs) or self._embedding_model_from_kwargs(
             self.embed_kwargs
         )
-        if self.graph is None:
-            metadata_reader = RetrieveVdbOperator(**_coerce_vdb_init(self.vdb_kwargs))
-        else:
-            metadata_reader = self._graph_lancedb_retrieve_operator()
+        metadata_reader = self._index_operator()
         if metadata_reader is not None:
             index_model = metadata_reader.get_index_metadata("embedding_model_name", **vdb_call_kwargs)
             index_revision = metadata_reader.get_index_metadata("embedding_model_revision", **vdb_call_kwargs)
@@ -525,24 +593,41 @@ class Retriever:
                     )
 
         lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
-        if lancedb_mode is not None and lancedb_mode[0] != "sparse" and not index_model:
+        route: tuple[RetrievalMode, bool] | None = None
+        if lancedb_mode is not None:
+            route, backend, index = (lancedb_mode[0], lancedb_mode[4]), "LanceDB", "table"
+        elif metadata_reader is not None:
+            route = self._resolve_backend_query_mode(metadata_reader, vdb_call_kwargs)
+            backend, index = type(metadata_reader._vdb).__name__, "index"
+        if route is not None and route[0] != "sparse" and not index_model:
             raise ValueError(
-                "The existing LanceDB table does not record its embedding model, so query compatibility "
-                "cannot be verified. Rebuild the table with the configured embedding model before querying."
+                f"The existing {backend} {index} does not record its embedding model, so query compatibility "
+                f"cannot be verified. Rebuild the {index} with the configured embedding model before querying."
             )
         for key in _QUERY_ROUTING_VDB_KWARGS:
             vdb_call_kwargs.pop(key, None)
-        if lancedb_mode is not None:
-            mode, caps, uri, table_name, has_mode_override = lancedb_mode
+        if route is not None:
+            mode, has_mode_override = route
             if mode == "sparse":
-                raw_hits = self._execute_sparse_lancedb_queries(
-                    query_texts,
-                    retrieval_top_k=retrieval_top_k,
-                    vdb_call_kwargs=vdb_call_kwargs,
-                    caps=caps,
-                    uri=uri,
-                    table_name=table_name,
-                )
+                if lancedb_mode is not None:
+                    _, caps, uri, table_name, _ = lancedb_mode
+                    raw_hits = self._execute_sparse_lancedb_queries(
+                        query_texts,
+                        retrieval_top_k=retrieval_top_k,
+                        vdb_call_kwargs=vdb_call_kwargs,
+                        caps=caps,
+                        uri=uri,
+                        table_name=table_name,
+                    )
+                else:
+                    retrieval_kwargs = {
+                        **metadata_reader._vdb_kwargs,
+                        **filter_retrieval_kwargs(vdb_call_kwargs),
+                        "top_k": int(retrieval_top_k),
+                    }
+                    raw_hits = normalize_retrieval_results(
+                        metadata_reader._vdb.sparse_retrieval(query_texts, **retrieval_kwargs)
+                    )
                 return [
                     shape_query_hits(
                         hits,
@@ -557,6 +642,8 @@ class Retriever:
                 vdb_call_kwargs.setdefault("hybrid_fusion", DEFAULT_HYBRID_FUSION_POLICY)
             elif mode == "dense" and has_mode_override:
                 vdb_call_kwargs["hybrid"] = False
+        if lancedb_mode is not None:
+            caps = lancedb_mode[1]
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
         if self.graph is None:
@@ -673,9 +760,12 @@ class Retriever:
         return RetrieverPipelineBuilder(self, top_k=effective_top_k)
 
     def generate_sql(self, query: str) -> str:
+        """Generate SQL for ``query``. LanceDB retrievers search the ``nemo-retriever-tabular`` table."""
         from nemo_retriever.tabular_data.retrieval import generate_sql
 
-        return generate_sql(query)
+        target = _coerce_vdb_init(self.vdb_kwargs)
+        uses_default_table = "vdb" not in target and target.get("vdb_op") == "lancedb"
+        return generate_sql(query, vdb_kwargs=None if uses_default_table else self.vdb_kwargs)
 
 
 class RetrieverPipelineBuilder:

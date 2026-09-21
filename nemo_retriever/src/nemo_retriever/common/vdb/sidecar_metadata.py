@@ -6,7 +6,7 @@
 
 Parity with ``nv_ingest_client`` ingestion: ``meta_dataframe``, ``meta_source_field``,
 and ``meta_fields`` attach user columns to ``content_metadata`` so LanceDB
-can query fields like ``meta_a``, ``meta_b``, etc.
+and Qdrant can filter on fields like ``meta_a``, ``meta_b``, etc.
 """
 
 from __future__ import annotations

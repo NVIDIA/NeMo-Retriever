@@ -2,7 +2,7 @@
 
 NVIDIA NeMo Retriever Library (NRL) extracts text, tables, charts, infographics, and transcripts from PDFs, HTML, Office documents, audio, video, and images. Run it as a Python library or Kubernetes deployment, and route inference through NVIDIA NIM microservices or local Nemotron models for downstream RAG and generative applications.
 
-NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload (refer to [Vector databases](vdbs.md)).
+NeMo Retriever Library splits documents into pages, classifies sub-page content (text, tables, charts, and infographics), extracts it, and applies optical character recognition (OCR) where needed into a standard schema. It can compute embeddings for extracted content and store vectors in [LanceDB](https://lancedb.com/) when you pass `vdb_op="lancedb"` to upload, or in [Qdrant](vdbs.md#use-qdrant) with `vdb_op="qdrant"` (refer to [Vector databases](vdbs.md)).
 
 ## NVIDIA AI Enterprise (NVAIE) support { #nvidia-ai-enterprise-nvaie-support }
 

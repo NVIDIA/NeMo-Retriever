@@ -89,6 +89,10 @@ services:
     environment:
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-${NGC_API_KEY:-}}
       NRL_INTERNAL_VDB_TOKEN: ${NRL_INTERNAL_VDB_TOKEN:-}
+      # Backend selection. qdrant.compose.yaml runs a bundled Qdrant server.
+      NRL_VDB_OP: ${NRL_VDB_OP:-lancedb}
+      QDRANT_URL: ${QDRANT_URL:-}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
     volumes: [vectordb_data:/data/vectordb]
     depends_on:
       nim-embedding: {condition: service_healthy, required: false}

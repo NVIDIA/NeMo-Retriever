@@ -209,6 +209,32 @@ def test_validate_admits_vdb_upload_when_scheme_allowed() -> None:
     assert out is spec
 
 
+@pytest.mark.parametrize("mode", ["allow_list", "allow_all"])
+def test_validate_rejects_per_request_qdrant_sinks(mode: str) -> None:
+    cfg = PipelineOverridesConfig(mode=mode, sinks=SinksConfig(vdb_uri_schemes=["*"]))
+    spec = PipelineSpec(
+        vdb_upload_params={
+            "vdb_op": "qdrant",
+            "vdb_kwargs": {
+                "uri": "s3://corpus/lancedb",
+                "url": "http://internal-admin:6333",
+                "client_kwargs": {"host": "internal-admin"},
+            },
+        }
+    )
+    with pytest.raises(PolicyError, match="vdb_op 'qdrant' is not allowed|not in the allow_list"):
+        validate_pipeline_spec(spec, cfg.to_policy())
+    with pytest.raises(PolicyError, match="vdb_op 'qdrant' is not allowed") as excinfo:
+        SinkUrlAllowlist(vdb_uri_schemes=["*"]).check_vdb_upload(spec.vdb_upload_params)
+    assert excinfo.value.status_code == 403
+
+
+def test_vdb_upload_rejects_per_request_qdrant_on_client() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    with pytest.raises(ValueError, match="Configure Qdrant on the VectorDB service"):
+        ing.vdb_upload(VdbUploadParams(vdb_op="qdrant", vdb_kwargs={"url": "https://qdrant.example"}))
+
+
 def test_validate_rejects_vdb_kwargs_storage_options_nested() -> None:
     cfg = PipelineOverridesConfig(sinks=SinksConfig(vdb_uri_schemes=["s3://"]))
     spec = PipelineSpec(

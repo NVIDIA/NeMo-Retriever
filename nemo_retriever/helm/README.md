@@ -968,8 +968,12 @@ client entrypoint. Refer to [Health probes](#health-probes).
 | `serviceConfig.mcp.path`                          | `/mcp` | HTTP mount path for the FastMCP app. Remote agents must connect to this path. |
 | `serviceConfig.mcp.queryMethods`                  | `classic` | Retrieval tools to register: `classic` (`query` only), `agentic` (`agentic_query` only), or `all` (both). Agentic tools also require `serviceConfig.agentic.enabled=true`. |
 | `serviceConfig.mcp.enableWriteTools`              | `true` | When `true`, registers the `ingest_documents` MCP tool. |
-| `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
-| `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
+| `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
+| `serviceConfig.vectordb.backend`                  | `lancedb` | Vector store: `lancedb` keeps the index on the vectordb Pod's PVC, and `qdrant` uses an existing Qdrant 1.18+ server and mounts no data volume. Other values fail rendering. Keep `topology.vectordb.replicas` at `1` with either backend. |
+| `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC (`backend: lancedb`). |
+| `serviceConfig.vectordb.qdrant.url`               | `""` | Qdrant server URL, such as `http://qdrant.qdrant.svc:6333`. Required when `backend` is `qdrant`. |
+| `serviceConfig.vectordb.qdrant.apiKeySecret.name` / `.key` | `""` / `api-key` | Existing Secret key mounted as `QDRANT_API_KEY` on the vectordb Pod. Leave the name empty for a server without authentication. |
+| `serviceConfig.vectordb.tableName`                | `nemo_retriever` | LanceDB table or Qdrant collection for non-collection queries. |
 | `serviceConfig.vectordb.indexMode`                | `auto` | `auto`, `dense`, or `hybrid`. Fresh `auto` storage creates FTS and uses hybrid retrieval; persistent dense storage remains dense until `hybrid` is requested explicitly. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/nemotron-3-embed-1b` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |

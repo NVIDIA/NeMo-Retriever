@@ -62,7 +62,7 @@ app.command(
 app.command(
     "batch",
     help=(
-        f"Run Ray batch ingest into a LanceDB index. Default embedding model: {DEFAULT_EMBED_MODEL}. "
+        f"Run Ray batch ingest into a LanceDB or Qdrant index. Default embedding model: {DEFAULT_EMBED_MODEL}. "
         f"Default caption model when captioning: {DEFAULT_CAPTION_MODEL}."
     ),
 )(_graph_ingest_command)

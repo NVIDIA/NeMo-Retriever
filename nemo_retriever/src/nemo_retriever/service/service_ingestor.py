@@ -902,6 +902,12 @@ class ServiceIngestor(ingestor):
             params_dict["meta_fields"] = [str(x) for x in meta_fields]
             params_dict["meta_join_key"] = meta_join
 
+        vdb_op = str(params_dict.get("vdb_op") or "lancedb").strip().lower()
+        if vdb_op != "lancedb":
+            raise ValueError(
+                f"ServiceIngestor.vdb_upload(): per-request vdb_op={vdb_op!r} is not supported; only LanceDB "
+                "sinks can be overridden per request. Configure Qdrant on the VectorDB service instead."
+            )
         vdb_kwargs = params_dict.get("vdb_kwargs") or {}
         if vdb_kwargs:
             uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")

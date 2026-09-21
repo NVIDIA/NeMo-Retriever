@@ -57,6 +57,7 @@ def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[st
 
     monkeypatch.setattr(Retriever, "_get_graph", fresh_get)
     monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+    monkeypatch.setattr(Retriever, "_resolve_backend_query_mode", lambda self, op, kwargs: None)
     return graph
 
 
@@ -357,6 +358,7 @@ class TestQueriesGraphExecution:
         build = MagicMock(return_value=graph)
         monkeypatch.setattr(Retriever, "_build_default_graph", build)
         monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+        monkeypatch.setattr(Retriever, "_resolve_backend_query_mode", lambda self, op, kwargs: None)
 
         retriever = _make_retriever()
         assert retriever.query("first") == hits[0]
@@ -375,6 +377,7 @@ class TestQueriesGraphExecution:
         graph = MagicMock()
         graph.resolve_for_local_execution.side_effect = (LegacyResolvedGraph(), LegacyResolvedGraph())
         monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+        monkeypatch.setattr(Retriever, "_resolve_backend_query_mode", lambda self, op, kwargs: None)
 
         retriever = _make_retriever(graph=graph)
         assert retriever.query("first") == hits[0]
@@ -417,6 +420,7 @@ class TestQueriesGraphExecution:
         build = MagicMock(side_effect=(graph_one, graph_two))
         monkeypatch.setattr(Retriever, "_build_default_graph", build)
         monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+        monkeypatch.setattr(Retriever, "_resolve_backend_query_mode", lambda self, op, kwargs: None)
 
         retriever = _make_retriever()
         retriever.query("first")
@@ -716,3 +720,20 @@ class TestRerankLongDataframe:
         assert out[0][0]["text"] == "a"
         assert out[0][0]["_rerank_score"] == 0.9
         assert out[1][0]["text"] == "c"
+
+
+def test_caller_owned_graph_with_duck_typed_vdb_is_not_probed() -> None:
+    from types import SimpleNamespace
+
+    from nemo_retriever.graph.retriever import Retriever
+    from nemo_retriever.operators.vdb import RetrieveVdbOperator
+
+    class DuckVdb:
+        def retrieval(self, vectors, **kwargs):
+            return [[{"text": "duck", "_distance": 0.1}] for _ in vectors]
+
+    operator = RetrieveVdbOperator(vdb=DuckVdb())
+    graph = SimpleNamespace(roots=[SimpleNamespace(operator=operator, children=[])])
+    retriever = Retriever(graph=graph)
+    assert retriever._index_operator() is None
+    assert retriever._resolve_query_mode(None) is None

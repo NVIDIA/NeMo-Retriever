@@ -12,6 +12,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
 - [LanceDB deployment characteristics](#lancedb-deployment-characteristics)
+- [Use Qdrant](#use-qdrant)
 - [Upload to a Custom Data Store](#upload-to-a-custom-data-store)
 - [Vector database partners](#vector-database-partners)
     - [Backends with `VDB` implementations](#vdb-backends-implementations)
@@ -22,11 +23,11 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 ## Overview { #overview }
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
-and ingesting to a vector database. [LanceDB](https://lancedb.com/) is the vector database backend for storing and retrieving extracted embeddings.
+and ingesting to a vector database. [LanceDB](https://lancedb.com/) is the default vector database backend for storing and retrieving extracted embeddings. The Python API, the `retriever` CLI, the retriever service, and the Helm chart can also use [Qdrant](#use-qdrant) as an optional backend.
 
 The data upload task (`vdb_upload`) converts embedded graph rows to canonical
-vector database records and passes them to LanceDB. LanceDB runs embedded in the
-NeMo Retriever Library process.
+vector database records and passes them to LanceDB by default. LanceDB runs embedded
+in the NeMo Retriever Library process.
 
 The vector database stores only the extracted text representations of ingested data.
 It does not store the embeddings for images.
@@ -38,7 +39,7 @@ It does not store the embeddings for images.
 NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)) and through the public `retriever ingest` CLI.
 
 - **Python SDK ingest** (`.vdb_upload()` on `create_ingestor(...)`) persists embeddings to LanceDB with default URI `lancedb` and default table `nemo-retriever`. Default `Retriever()` queries that same table.
-- **Local and batch CLI ingest** (`retriever ingest`, `retriever ingest local`, `retriever ingest batch`) persist embeddings to LanceDB (default URI `lancedb`, table `nemo-retriever`).
+- **Local and batch CLI ingest** (`retriever ingest`, `retriever ingest local`, `retriever ingest batch`) persist embeddings to LanceDB (default URI `lancedb`, table `nemo-retriever`), or to a Qdrant collection with `--vdb-op qdrant`.
 - **Service CLI ingest** (`retriever ingest service`) writes to service-configured storage.
 
 The Python SDK and the local CLI share the same LanceDB default table. Pass an explicit URI and table name at ingest and at query time only when you need a non-default location.
@@ -75,6 +76,8 @@ The default changed from `nvidia/llama-nemotron-embed-vl-1b-v2` to `nvidia/nemot
 1. Back up the LanceDB directory or persistent volume and retain the original corpus and ingest configuration.
 2. To keep the existing embedding space, query a tagged table with its recorded model. For a service deployment, explicitly set `serviceConfig.vectordb.embedModel` to the model used to create the table before startup.
 3. To adopt the new default, rebuild the table and re-ingest the complete corpus. For a CLI-managed table, run `retriever ingest` with the same URI and table name and pass `--overwrite` explicitly. Do not append new-model embeddings to the old table.
+
+Qdrant collections follow the same rules.
 
 An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 
@@ -206,25 +209,89 @@ Refer to the [metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retrie
 
 
 
+## Use Qdrant { #use-qdrant }
+
+[Qdrant](https://qdrant.tech/) is an optional backend with dense, hybrid, and sparse retrieval. Install it with `pip install "nemo-retriever[qdrant]"` and select it with `vdb_op="qdrant"`.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.graph.retriever import Retriever
+
+qdrant_kwargs = {
+    "url": "http://localhost:6333",
+    "collection_name": "nemo-retriever",
+    "hybrid": True,
+    "embedding_model_name": "nvidia/nemotron-3-embed-1b",
+}
+
+create_ingestor(run_mode="inprocess").files(["document.pdf"]).extract().embed().vdb_upload(
+    vdb_op="qdrant", vdb_kwargs=qdrant_kwargs
+).ingest()
+
+retriever = Retriever(vdb_kwargs={"vdb_op": "qdrant", "vdb_kwargs": qdrant_kwargs})
+hits = retriever.query(
+    "What is in the document?",
+    top_k=5,
+    vdb_kwargs={"query_filter": {"must": [{"key": "metadata.page_number", "range": {"gte": 2}}]}},
+)
+```
+
+From the CLI, pass `--vdb-op qdrant` to `retriever ingest` and `retriever query`. `--table-name` names the collection, `--qdrant-url` (or `QDRANT_URL`) the server, and `QDRANT_API_KEY` (or `--qdrant-api-key`) the API key, which is never printed.
+
+```bash
+export QDRANT_URL=http://localhost:6333
+retriever ingest local ./docs --vdb-op qdrant --table-name nemo-retriever
+retriever query "What is in the document?" --vdb-op qdrant --table-name nemo-retriever
+```
+
+`vdb_kwargs` for the `Qdrant` backend:
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `url`, `api_key` | `None` | Server or Qdrant Cloud URL and key. The URL defaults to `http://localhost:6333`. Local `path` and `:memory:` modes are not supported. |
+| `collection_name` | `"nemo-retriever"` | Collection to use. `table_name` is an alias, and also selects a collection per query. |
+| `overwrite` | `True` | Replace an existing collection. With `False`, appends must match its vector size, metric, and mode. |
+| `metric` | `"cosine"` | `cosine`, `l2` (or `euclid`), `dot`, or `manhattan`. Hits carry `_score` for `cosine` and `dot`, and `_distance` otherwise. |
+| `vector_dim` | `2048` | Embedding length. `None` infers it. |
+| `validate_vector_length` | `True` | Drop rows whose embedding length does not match `vector_dim`. |
+| `batch_size` | `256` | Points per upload request. |
+| `on_disk` | `False` | Store vectors on disk. |
+| `embedding_model_name`, `embedding_model_revision` | `None` | Model recorded on the collection. `.vdb_upload()` and the CLI fill them in. Appends with another model are rejected, and dense or hybrid queries need a recorded model. |
+| `hybrid` | `False` | Store a dense vector and a BM25 vector. |
+| `sparse` | `False` | Store only a BM25 vector, with no embeddings. |
+| `bm25_options` | `None` | BM25 options such as `{"language": "german"}`, recorded on the collection. Requires `hybrid` or `sparse`. |
+| `client_kwargs` | `{}` | Extra `QdrantClient` options. |
+| `payload_indexes` | `[]` | Extra payload keys to index. `id`, `metadata.label`, and `metadata.database_name` are always indexed. Servers in strict mode reject filters on unindexed keys. |
+
+- **Query modes**: `Retriever` runs hybrid, dense, or sparse queries to match the collection. To override, pass `retrieval_mode` (`"dense"`, `"hybrid"`, `"sparse"`) or `hybrid` in the query or `Retriever` `vdb_kwargs`. Queries reuse a collection's settings for up to 5 seconds, so changes made by other processes can take that long to apply.
+- **Filtering**: `query_filter` takes a `qdrant_client.models.Filter` or a dict on `text`, `id`, `metadata.*`, and `source.*`. SQL `where` is rejected. `hnsw_ef` and `exact` tune dense search.
+- **Hybrid retrieval**: results are fused with weighted RRF. Pass a `HybridFusionPolicy` as `hybrid_fusion` to change it. Hits carry `_relevance_score`. A hybrid append to a dense collection upgrades it in place.
+- **Sparse retrieval**: `retriever ingest --vdb-op qdrant --index-mode sparse` skips the embed stage, and queries skip the embedding model. Hits carry the BM25 `_score`.
+- **In-place updates**: `PutVdbOperator` replaces points matched on `id` (or `text` with `key="text"`).
+- **Collection API**: `/v1/collections` stores records in `_nrl_catalog` and chunks in shared `_nrl_chunks_*` collections split by scope and collection name. Collection queries are dense-only. Run a single VectorDB replica, as with LanceDB.
+- **Retriever service**: set `vectordb.vdb_op: qdrant` and `vectordb.qdrant_url` in `retriever-service.yaml`, and pass the key through `QDRANT_API_KEY` or `QDRANT_API_KEY_FILE`. Per-request `.vdb_upload()` overrides accept only LanceDB.
+- **Deployment**: in Helm, set `serviceConfig.vectordb.backend=qdrant`, `serviceConfig.vectordb.qdrant.url`, and optionally `serviceConfig.vectordb.qdrant.apiKeySecret.name`. For Docker Compose, add `nemo_retriever/dev/compose/qdrant.compose.yaml`.
+
 ## Upload to a Custom Data Store { #upload-to-a-custom-data-store }
 
 You can ingest to other data stores through `.vdb_upload()` on `create_ingestor(...)`;
 however, you must configure other data stores and connections yourself.
-NeMo Retriever Library does not provide connections to other data sources.
+NeMo Retriever Library does not provide connections to data stores other than LanceDB and Qdrant.
 
 ## Vector database partners { #vector-database-partners }
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as the shipped backend. This section lists that backend and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, refer to [Chunking](concepts.md#chunking).
+NeMo Retriever Library integrates with vector databases used for RAG collections. This section lists the built-in backends and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, refer to [Chunking](concepts.md#chunking).
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
-NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships one first-party backend:
+NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships the following backends:
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
 | **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — default `vdb_op` is `"lancedb"`. |
+| **Qdrant** | [Qdrant](https://qdrant.tech/) · [documentation](https://qdrant.tech/documentation/) | `qdrant.py` in the same package. Select it with `vdb_op="qdrant"` after you install the `qdrant` extra. |
 
-`GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb).
+`GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb) and [Use Qdrant](#use-qdrant).
 
 To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb)).
 

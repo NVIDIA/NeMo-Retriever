@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 import nemo_retriever.service.vectordb_app as vectordb_module
+from nemo_retriever.common.vdb.targets import VdbTarget
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.agentic_query import (
     agentic_ranked_to_hits,
@@ -65,8 +66,7 @@ def test_build_agentic_query_request_maps_server_owned_configuration() -> None:
             backend_top_k=25,
             react_max_steps=7,
         ),
-        lancedb_uri="/indexes/finance",
-        table_name="finance",
+        target=VdbTarget(lancedb_uri="/indexes/finance", table_name="finance"),
         embed_endpoint="https://embed.example/v1/embeddings",
         embed_model="embed-model",
         embed_model_provider_prefix="openai",
@@ -115,8 +115,7 @@ def test_run_agentic_query_includes_provider_usage() -> None:
                 llm_model="model",
                 invoke_url="https://llm.example/v1/chat/completions",
             ),
-            lancedb_uri="/indexes/finance",
-            table_name="finance",
+            target=VdbTarget(lancedb_uri="/indexes/finance", table_name="finance"),
             embed_endpoint="https://embed.example/v1/embeddings",
             embed_model="embed-model",
             embed_model_provider_prefix=None,
@@ -293,8 +292,7 @@ def test_agentic_true_runs_react_workflow_on_v1_query(tmp_path) -> None:
     }
     assert run_query.call_args.kwargs["query"] == "revenue trend"
     assert run_query.call_args.kwargs["top_k"] == 3
-    assert run_query.call_args.kwargs["lancedb_uri"] == str(tmp_path)
-    assert run_query.call_args.kwargs["table_name"] == "finance"
+    assert run_query.call_args.kwargs["target"] == VdbTarget(lancedb_uri=str(tmp_path), table_name="finance")
     assert run_query.call_args.kwargs["embed_api_key"] == ""
 
 
@@ -488,3 +486,18 @@ def test_service_rejects_agentic_flag_when_not_configured(
 
     assert response.status_code == 400
     assert "not enabled" in response.json()["detail"]
+
+
+def test_build_agentic_query_request_carries_qdrant_target() -> None:
+    target = VdbTarget(vdb_op="qdrant", table_name="finance", qdrant_url="https://q.example", qdrant_api_key="k")
+    request = build_agentic_query_request(
+        query="revenue",
+        top_k=2,
+        config=AgenticConfig(enabled=True, llm_model="model", invoke_url="https://llm.example/v1"),
+        target=target,
+        embed_endpoint="https://embed.example/v1/embeddings",
+        embed_model="embed-model",
+        embed_model_provider_prefix=None,
+        embed_api_key="",
+    )
+    assert request.storage.target() == target

@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 import pyarrow as pa
 
+from nemo_retriever.common.vdb.adt_vdb import IndexCapabilities, RetrievalMode
+
 logger = logging.getLogger(__name__)
 
-LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
+LanceRetrievalMode = RetrievalMode
+LanceTableCapabilities = IndexCapabilities
 
 # Index readiness is advisory: rows are queryable before an index covers them,
 # so expiry only costs query speed until the next rebuild. A write is
@@ -36,15 +38,6 @@ _RETRIEVAL_MODES: dict[str, LanceRetrievalMode] = {
     "hybrid": "hybrid",
     "sparse": "sparse",
 }
-
-
-@dataclass(frozen=True)
-class LanceTableCapabilities:
-    has_vector: bool
-    has_fts: bool
-    retrieval_mode: LanceRetrievalMode
-    vector_column: str | None
-    text_column: str | None
 
 
 def _table_schema(table: Any) -> pa.Schema:
