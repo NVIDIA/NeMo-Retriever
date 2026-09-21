@@ -292,8 +292,12 @@ class Agent(_BaseAgentLoop):
             return content, False
         if isinstance(tool, LogAnswer):
             citations = fn_kwargs.get("citations")
-            if isinstance(citations, list) and all(isinstance(citation, str) for citation in citations):
-                cited_ids = {citation.strip() for citation in citations if citation.strip()}
+            if isinstance(citations, list):
+                cited_ids = {
+                    citation.strip()
+                    for citation in citations
+                    if isinstance(citation, str) and citation.strip()
+                }
                 unknown = sorted(cited_ids - state.retrieved_docs)
                 if unknown:
                     text = tool_error_text(

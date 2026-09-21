@@ -15,7 +15,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Literal, Optional, Sequence
 
 import pandas as pd
 
@@ -453,6 +453,35 @@ class AgenticRetriever:
                 self._chat_completion_fn = _build_agent_chat_completion_fn(self._cfg)
             return self._chat_completion_fn
 
+    def _build_react_operator(
+        self,
+        *,
+        mode: Literal["select", "answer"],
+        chat_completion_fn: Any | None,
+    ) -> Any:
+        """Build the shared ReAct stage for select and answer workflows."""
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        target_top_k = int(self._cfg.top_k)
+        return ReActAgentOperator(
+            invoke_url=_none_if_empty(self._cfg.invoke_url),
+            llm_model=str(self._cfg.llm_model),
+            retriever_fn=self._retrieve_for_agent,
+            retriever_fn_accepts_query_id=True,
+            retriever_top_k=max(AGENTIC_RETRIEVER_TOP_K, target_top_k),
+            target_top_k=target_top_k,
+            mode=mode,
+            max_steps=int(self._cfg.react_max_steps),
+            api_key=_none_if_empty(self._cfg.api_key),
+            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+            num_concurrent=int(self._cfg.num_concurrent),
+            reasoning_effort=self._cfg.reasoning_effort,
+            temperature=self._cfg.temperature,
+            backend=self._cfg.llm_client,
+            max_tokens=self._cfg.max_tokens,
+            chat_completion_fn=chat_completion_fn,
+        )
+
     def unload(self) -> None:
         """Release the in-process agent LLM owned by this retriever.
 
@@ -536,25 +565,8 @@ class AgenticRetriever:
         with self._hit_cache_lock:
             self._hit_cache.clear()
 
-        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
-
-        per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, int(self._cfg.top_k))
-        react_operator = ReActAgentOperator(
-            invoke_url=_none_if_empty(self._cfg.invoke_url),
-            llm_model=str(self._cfg.llm_model),
-            retriever_fn=self._retrieve_for_agent,
-            retriever_fn_accepts_query_id=True,
-            retriever_top_k=per_hop_top_k,
-            target_top_k=int(self._cfg.top_k),
+        react_operator = self._build_react_operator(
             mode="answer",
-            max_steps=int(self._cfg.react_max_steps),
-            api_key=_none_if_empty(self._cfg.api_key),
-            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-            num_concurrent=int(self._cfg.num_concurrent),
-            reasoning_effort=self._cfg.reasoning_effort,
-            temperature=self._cfg.temperature,
-            backend=self._cfg.llm_client,
-            max_tokens=self._cfg.max_tokens,
             chat_completion_fn=self._get_chat_completion_fn(),
         )
         input_df = pd.DataFrame(
@@ -622,7 +634,6 @@ class AgenticRetriever:
         with self._hit_cache_lock:
             self._hit_cache.clear()
 
-        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
         from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
@@ -630,24 +641,10 @@ class AgenticRetriever:
         # the default pool depth so the agent always sees a full working set even for
         # small top_k.
         target_top_k = int(self._cfg.top_k)
-        per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, target_top_k)
         chat_completion_fn = self._get_chat_completion_fn()
 
-        react_operator = ReActAgentOperator(
-            invoke_url=_none_if_empty(self._cfg.invoke_url),
-            llm_model=str(self._cfg.llm_model),
-            retriever_fn=self._retrieve_for_agent,
-            retriever_fn_accepts_query_id=True,
-            retriever_top_k=per_hop_top_k,
-            target_top_k=target_top_k,
-            max_steps=int(self._cfg.react_max_steps),
-            api_key=_none_if_empty(self._cfg.api_key),
-            parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-            num_concurrent=int(self._cfg.num_concurrent),
-            reasoning_effort=self._cfg.reasoning_effort,
-            temperature=self._cfg.temperature,
-            backend=self._cfg.llm_client,
-            max_tokens=self._cfg.max_tokens,
+        react_operator = self._build_react_operator(
+            mode="select",
             chat_completion_fn=chat_completion_fn,
         )
         selection_operator = SelectionAgentOperator(

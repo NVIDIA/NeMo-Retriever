@@ -91,6 +91,7 @@ def test_service_client_agentic_answer_posts_mode_and_validates_response(monkeyp
 
     assert result.answer == "Revenue grew 4%."
     assert result.citations == ["report_7"]
+    assert calls[0]["timeout"].read == 1800.0
     assert calls[1] == {
         "url": "http://svc:7670/v1/answer",
         "json": {"query": "What changed?", "top_k": 3, "mode": "agentic"},

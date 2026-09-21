@@ -2,7 +2,14 @@
 
 Use this workflow after you have ingested documents into a LanceDB table. Agentic retrieval does not ingest files. It queries the same table, embedding model, and storage flags as one-pass `retriever query`.
 
-**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct) loop: the agent issues several retrieval sub-queries, fuses candidates with reciprocal rank fusion, and selects a final document ranking. **One-pass retrieval** sends a single dense or hybrid query and returns text-enriched chunk hits. For the concept distinction, refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md).
+**Agentic retrieval** runs a large language model (LLM) Reason and Act (ReAct)
+loop that issues several retrieval sub-queries. In the default `select` mode,
+the workflow fuses candidates with reciprocal rank fusion and selects a final
+document ranking. In `answer` mode, the ReAct loop instead returns an integrated
+answer with validated citations to documents retrieved during that run.
+**One-pass retrieval** sends a single dense or hybrid query and returns
+text-enriched chunk hits. For the concept distinction, refer to
+[Agentic retrieval (concept)](agentic-retrieval-concept.md).
 
 ## Query with the CLI { #query-with-the-cli }
 
@@ -54,6 +61,16 @@ retriever query "find documents about parser behavior" \
   --agentic-invoke-url https://integrate.api.nvidia.com/v1/chat/completions
 ```
 
+Add `--agentic-mode answer` to either local or remote commands when you want an
+integrated answer rather than a ranked document list:
+
+```bash
+retriever query "explain the parser behavior" \
+  --agentic \
+  --agentic-mode answer \
+  --include-usage
+```
+
 `--agentic-local-tensor-parallel-size` is ignored when `--agentic-invoke-url` is set. For hosted model IDs, refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints). For key setup, refer to [Authentication and API keys](api-keys.md).
 
 This self-hosted NIM configuration gap does not apply to NVIDIA-hosted Build endpoints. A Helm-deployed Super-49B NIM rejects tool-call requests until you add the passthrough arguments. Refer to [Self-hosted Helm Super-49B](#self-hosted-helm-super-49b).
@@ -64,12 +81,13 @@ The following options apply only with `--agentic`. For the full flag list, refer
 
 | Option | Default | Notes |
 |---|---|---|
+| `--agentic-mode` | `select` | `select` returns ranked documents; `answer` returns an integrated answer, validated citation IDs, and hydrated citation hits. |
 | `--agentic-llm-model` | `nemotron-8b` when no invoke URL is set | Local profile alias (`nemotron-8b` or `super-49b`) or remote model ID when `--agentic-invoke-url` is set. |
 | `--agentic-invoke-url` | unset (local vLLM) | OpenAI-compatible `/v1/chat/completions` endpoint. Required together with `--agentic-llm-model` for remote runs. |
 | `--agentic-local-tensor-parallel-size` | `1` | vLLM `tensor_parallel_size` for the in-process agent LLM. Set to `2` for local `super-49b`. Ignored when `--agentic-invoke-url` is set. |
 | `--agentic-react-max-steps` | `50` | Maximum ReAct loop iterations. |
 | `--agentic-reasoning-effort` | `high` | Forwarded on OpenAI-compatible agent LLM calls. Ignored by the local adapter. |
-| `--include-usage` | off | Print an object with `hits` and provider-reported LLM `usage` instead of the default hits list. |
+| `--include-usage` | off | In select mode, print an object with `hits` and provider-reported LLM `usage`. In answer mode, add `usage` to the answer response object. |
 
 Embedding credentials use `NVIDIA_API_KEY` or `NGC_API_KEY` when you call a remote embedding endpoint. The CLI also reuses `--embed-invoke-url`, `--top-k`, `--lancedb-uri`, and `--table-name` from standard retrieval.
 
@@ -77,7 +95,12 @@ Embedding credentials use `NVIDIA_API_KEY` or `NGC_API_KEY` when you call a remo
 
 Use this path when the agent LLM is the Helm-deployed Super-49B NIM rather than local in-process vLLM or an NVIDIA-hosted Build endpoint.
 
-`nimOperator.answer_llm.enabled=true` deploys Super-49B and auto-wires it only to `serviceConfig.llm` for `POST /v1/answer`. That answer path sends a plain text-generation request and does not require tool calling. `serviceConfig.agentic` is a separate block and stays empty unless you set it.
+`nimOperator.answer_llm.enabled=true` deploys Super-49B and auto-wires it only
+to `serviceConfig.llm` for the default `POST /v1/answer` classic path. That path
+sends a plain text-generation request and does not require tool calling.
+`POST /v1/answer` with `"mode": "agentic"` uses `serviceConfig.agentic`
+instead. That block stays empty unless you set it, and its LLM must support tool
+calling.
 
 The chart starts that NIM with `NIM_PASSTHROUGH_ARGS=--disable-custom-all-reduce`. The agentic ReAct loop sends OpenAI-style tool-call messages with `tool_choice=auto`. A self-hosted vLLM-backed Super-49B NIM rejects those requests with HTTP 400 unless you also pass `--enable-auto-tool-choice` and `--tool-call-parser llama3_json`.
 
@@ -155,7 +178,10 @@ For chart keys, refer to [Agentic retrieval (self-hosted Super-49B)](https://git
 
 ## Enable agentic retrieval in the service { #enable-agentic-retrieval-in-the-service }
 
-Retriever Service exposes agentic retrieval on `POST /v1/query` when `agentic.enabled` is true. Service mode requires remote OpenAI-compatible LLM and embedding endpoints. Local in-process vLLM remains available on the one-shot CLI and harness paths only.
+Retriever Service exposes agentic retrieval on `POST /v1/query` and
+`POST /v1/answer` when `agentic.enabled` is true. Service mode requires remote
+OpenAI-compatible LLM and embedding endpoints. Local in-process vLLM remains
+available on the one-shot CLI and harness paths only.
 
 Enable agentic retrieval in `retriever-service.yaml`:
 
@@ -180,13 +206,27 @@ The VectorDB service runs up to four non-agentic queries concurrently by default
 Set `--max-concurrent-queries` when starting `nemo_retriever.service.vectordb_app`
 to use a different positive limit.
 
-REST clients set the flag on `/v1/query`:
+REST clients select document-ranking mode on `/v1/query`:
 
 ```bash
 curl -X POST http://localhost:7670/v1/query \
   -H 'Content-Type: application/json' \
   -d '{"query": "find documents about parser behavior", "top_k": 5, "agentic": true}'
 ```
+
+Set `agentic_mode` to `answer` on `/v1/query`, or set `mode` to `agentic` on
+the gateway `/v1/answer` endpoint, to return an integrated answer:
+
+```bash
+curl -X POST http://localhost:7670/v1/answer \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "explain the parser behavior", "top_k": 5, "mode": "agentic"}'
+```
+
+The Python service client exposes the same path through
+`RetrieverServiceClient.agentic_answer()` and `aagentic_answer()`. Their request
+timeout defaults to 1,800 seconds to match long-running agentic service
+requests, and can be overridden with `request_timeout_s`.
 
 When service auth is enabled, send `Authorization: Bearer <token>` (`NEMO_RETRIEVER_API_TOKEN`). Requests with `agentic: true` return HTTP `400` when agentic retrieval is not configured on the service.
 
@@ -198,10 +238,15 @@ When service auth is enabled, send `Authorization: Bearer <token>` (`NEMO_RETRIE
 
 The Helm chart does not enable that mount. `serviceConfig.mcp.enabled` is `false`, so a chart-rendered service returns HTTP `404` at the MCP path until you opt in. Refer to [Enable MCP on Helm](#enable-mcp-on-helm).
 
-Plain and agentic retrieval share `POST /v1/query` and the same hits response envelope. They are separate MCP tools so agents can choose explicitly:
+Plain and agentic selection share `POST /v1/query` and the same hits response
+envelope. Integrated agentic answering has a separate response contract. MCP
+exposes distinct tools so agents can choose explicitly:
 
 - `query` calls `POST /v1/query` with `agentic=false` for one-pass dense or hybrid retrieval.
 - `agentic_query` calls `POST /v1/query` with `agentic=true` and runs the ReAct retrieval workflow. It is added to MCP when `agentic.enabled` is true.
+- `agentic_answer` calls `POST /v1/answer` with `mode=agentic` and returns an
+  integrated answer, validated citations, hydrated citation hits, status, error,
+  and usage fields. It is added when `agentic.enabled` is true.
 
 Use `--query-methods classic` (default), `agentic`, or `all` to choose which retrieval tools the MCP server registers. The mounted MCP endpoint uses the same knob through `mcp.query_methods` in the service config. Agentic tools are omitted unless `agentic.enabled` is also true.
 
@@ -266,7 +311,11 @@ trajectory bounds observation content to keep the file lightweight. These
 traces are not added to HTTP responses. If a trace cannot be persisted,
 retrieval continues and emits a warning.
 
-One-pass retrieval returns text-enriched chunk hits. Agentic retrieval ranks documents. Each selected document is rehydrated from the retrieval hop that returned it. CLI and service output then use different JSON shapes.
+One-pass retrieval returns text-enriched chunk hits. Agentic select mode ranks
+documents. Each selected document is rehydrated from the retrieval hop that
+returned it. Agentic answer mode returns an integrated answer and only permits
+citation IDs that a retrieval hop returned during that run. CLI and service
+output then use different JSON shapes.
 
 CLI `retriever query` without `--agentic` projects each hit to five fields: `modality`, `page_number`, `score`, `source`, and `text`. CLI `retriever query --agentic` does not use that projection. It prints the internal hit dictionary plus these ranking annotations:
 
@@ -321,6 +370,22 @@ output is unchanged.
 Service `POST /v1/query` with `agentic=true` maps those ranked hits onto the classic hits envelope and can include the same optional `usage` object at the response root. Successful responses set `query_mode` to `"agentic"`. Classic dense or hybrid `/v1/query` (including `format=evidence`) sets `query_mode` to `"classic"` and does not add usage metadata. For backward compatibility with the previous agentic service contract, service and MCP hits also copy `rank` and `result_source` under `metadata`; the top-level fields are authoritative and carry the same values.
 
 When no retrieval hop captured the document, the service envelope fills these classic fields with null: `text`, `source_id`, `path`, `page_number`, `pdf_basename`, and `pdf_page`. `source` falls back to `doc_id`. That null-key behavior applies to service and MCP hits only, not to CLI `--agentic` output.
+
+CLI `--agentic-mode answer`, `/v1/query` with
+`{"agentic": true, "agentic_mode": "answer"}`, `/v1/answer` with
+`{"mode": "agentic"}`, the Python client's `agentic_answer` methods, and the MCP
+`agentic_answer` tool return the answer contract:
+
+- `answer` — the integrated answer, or null when no answer was produced.
+- `citations` — deduplicated IDs of documents retrieved during the run.
+- `citation_hits` — those cited documents rehydrated in citation order.
+- `succeeded`, `message`, and `error` — termination and diagnostic state.
+- `query_mode` — `"agentic_answer"` on service responses.
+- `usage` — normalized provider-reported token usage when requested or available.
+
+Answer mode terminates inside the ReAct loop and intentionally bypasses
+reciprocal rank fusion and the selection agent, because those stages produce a
+document ranking rather than an answer.
 
 ## Failure and retry behavior { #failure-and-retry-behavior }
 

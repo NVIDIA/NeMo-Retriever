@@ -114,6 +114,24 @@ class TestAnswerModeRun:
         assert result.succeeded
         assert result.citations == []
 
+    def test_unknown_string_citation_is_not_salvaged_from_malformed_call(self):
+        result = _run(
+            AgentConfig(
+                mode="answer",
+                user_msg_type="with_results",
+                on_error="never_raise",
+                max_steps=1,
+            ),
+            "log_answer",
+            {"answer": _ANSWER, "citations": ["ghost", 42], "message": "Malformed citation list."},
+        )
+
+        assert not result.succeeded
+        assert result.error is not None
+        assert result.error.category == "max_steps"
+        assert result.citations is None
+        assert result.end_payload is None
+
     def test_answer_mode_normalizes_select_only_prompt_settings(self):
         llm = create_llm(
             create_llm_config("callable", model="test-model"),
