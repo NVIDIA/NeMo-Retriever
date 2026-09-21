@@ -36,6 +36,13 @@ from pydantic import BaseModel
 
 from nemo_retriever.harness import history
 from nemo_retriever.harness.config import VALID_EVALUATION_MODES
+from nemo_retriever.harness.contracts import MODE_TO_RUN_MODE
+
+# Execution modes accepted by the current `retriever harness run --mode` surface
+# (local, batch, service). Kept in sync with the harness contract so the portal
+# never dispatches a job the runner cannot translate into a valid CLI invocation.
+VALID_RUN_MODES = tuple(MODE_TO_RUN_MODE)
+DEFAULT_RUN_MODE = "local"
 
 mimetypes.add_type("text/javascript", ".jsx")
 
@@ -232,6 +239,9 @@ class TriggerRequest(BaseModel):
     git_commit: str | None = None
     nsys_profile: bool = False
     graph_id: int | None = None
+    # Execution mode for the harness `--mode` flag: "local", "batch", or
+    # "service". ``run_mode`` is kept as a legacy alias for older clients.
+    mode: str | None = None
     run_mode: str | None = None
     service_url: str | None = None
     service_max_concurrency: int | None = None
@@ -1521,6 +1531,54 @@ async def get_yaml_config():
     return {"datasets": {}, "presets": {}, "active": {}}
 
 
+@app.get("/api/harness-info")
+async def get_harness_info():
+    """Expose the current harness run contract so the UI stays in sync.
+
+    Reports the execution modes accepted by ``retriever harness run --mode``
+    and the code-owned benchmark/runset registry. The registry import is
+    intentionally lightweight (no ingest/query modules) so this endpoint stays
+    cheap to call from the trigger UI.
+    """
+    modes = [
+        {"value": mode, "ingest_run_mode": MODE_TO_RUN_MODE[mode]}
+        for mode in sorted(MODE_TO_RUN_MODE)
+    ]
+    benchmarks: list[dict[str, Any]] = []
+    runsets: list[dict[str, Any]] = []
+    try:
+        from nemo_retriever.harness.benchmark_registry import list_benchmarks, list_runsets
+
+        for spec in list_benchmarks():
+            benchmarks.append(
+                {
+                    "name": spec.name,
+                    "dataset": spec.dataset,
+                    "tags": list(spec.tags),
+                    "description": spec.description,
+                }
+            )
+        for runset in list_runsets():
+            runsets.append(
+                {
+                    "name": runset.name,
+                    "runs": list(runset.runs),
+                    "tags": list(runset.tags),
+                    "description": runset.description,
+                }
+            )
+    except Exception as exc:  # pragma: no cover - registry import is best-effort
+        logger.warning("Failed to load harness benchmark registry: %s", exc)
+
+    return {
+        "default_mode": DEFAULT_RUN_MODE,
+        "modes": modes,
+        "evaluation_modes": sorted(VALID_EVALUATION_MODES),
+        "benchmarks": benchmarks,
+        "runsets": runsets,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Managed Dataset CRUD
 # ---------------------------------------------------------------------------
@@ -2228,8 +2286,18 @@ async def trigger_run(req: TriggerRequest):
         req.git_commit,
     )
 
-    if req.run_mode == "service":
-        merged_overrides["run_mode"] = "service"
+    # Resolve the execution mode against the harness contract. ``mode`` is the
+    # canonical field; ``run_mode`` is accepted as a legacy alias. Anything the
+    # current harness cannot map to ``retriever harness run --mode`` is rejected
+    # up front so a job never reaches a runner in an unrunnable state.
+    run_mode = (req.mode or req.run_mode or DEFAULT_RUN_MODE).strip().lower()
+    if run_mode not in MODE_TO_RUN_MODE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"mode must be one of {sorted(MODE_TO_RUN_MODE)}, got {run_mode!r}",
+        )
+    merged_overrides["run_mode"] = run_mode
+    if run_mode == "service":
         if req.service_url:
             merged_overrides["service_url"] = req.service_url
         if req.service_max_concurrency:

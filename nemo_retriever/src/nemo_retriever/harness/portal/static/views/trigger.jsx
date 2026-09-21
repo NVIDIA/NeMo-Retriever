@@ -7,6 +7,8 @@ function TriggerModal({ onClose, onTriggered }) {
   const [dataset, setDataset] = useState("");
   const [preset, setPreset] = useState("");
   const [pipelineMode, setPipelineMode] = useState("preset");
+  const [runMode, setRunMode] = useState("local");
+  const [modeOptions, setModeOptions] = useState(["local", "batch", "service"]);
   const [graphId, setGraphId] = useState("");
   const [runnerId, setRunnerId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -30,6 +32,11 @@ function TriggerModal({ onClose, onTriggered }) {
       if (cfg.datasets?.length) setDataset(cfg.datasets[0]);
       if (cfg.presets?.length) setPreset(cfg.presets[0]);
     });
+    fetch("/api/harness-info").then(r=>r.json()).then(info => {
+      const modes = (info.modes || []).map(m => m.value).filter(Boolean);
+      if (modes.length) setModeOptions(modes);
+      if (info.default_mode) setRunMode(info.default_mode);
+    }).catch(()=>{});
     fetch("/api/runners").then(r=>r.json()).then(setRunners).catch(()=>{});
     fetch("/api/graphs").then(r=>r.json()).then(list => {
       const arr = Array.isArray(list) ? list : [];
@@ -61,12 +68,12 @@ function TriggerModal({ onClose, onTriggered }) {
         preset: pipelineMode === "preset" ? (preset || null) : null,
         runner_id: runnerId ? parseInt(runnerId, 10) : null,
         nsys_profile: nsysProfile,
+        mode: runMode,
       };
       if (pipelineMode === "graph") {
         payload.graph_id = parseInt(graphId, 10);
       }
-      if (pipelineMode === "service") {
-        payload.run_mode = "service";
+      if (runMode === "service") {
         payload.service_url = serviceUrl.trim();
         payload.service_max_concurrency = serviceMaxConcurrency;
       }
@@ -93,13 +100,20 @@ function TriggerModal({ onClose, onTriggered }) {
 
   const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
   const hintStyle = {fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px',lineHeight:'1.5'};
-  const modeBtn = (id, label) => ({
+  const toggleBtn = (active) => ({
     fontSize:'11px',padding:'5px 12px',flex:1,justifyContent:'center',textAlign:'center',
-    background: pipelineMode===id ? 'rgba(118,185,0,0.12)' : 'transparent',
-    color: pipelineMode===id ? 'var(--nv-green)' : 'var(--nv-text-dim)',
-    border: `1px solid ${pipelineMode===id ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
-    cursor:'pointer', borderRadius:'6px', fontWeight: pipelineMode===id ? 600 : 400,
+    background: active ? 'rgba(118,185,0,0.12)' : 'transparent',
+    color: active ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+    border: `1px solid ${active ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+    cursor:'pointer', borderRadius:'6px', fontWeight: active ? 600 : 400,
   });
+  const modeBtn = (id) => toggleBtn(pipelineMode===id);
+  const runModeLabels = { local: "Local", batch: "Batch", service: "Service" };
+  const runModeHints = {
+    local: "In-process ingest/query on the runner. Best for smoke and small BEIR datasets.",
+    batch: "Ray-backed batch ingest. Use for large BEIR corpora (BO767, FinanceBench, Earnings, ViDoRe).",
+    service: "Runs against an already-deployed Retriever service. No GPU or Ray cluster needed on the runner.",
+  };
 
   const selectedGraph = graphs.find(g => String(g.id) === graphId);
 
@@ -119,6 +133,22 @@ function TriggerModal({ onClose, onTriggered }) {
               </select>
             </div>
 
+            {/* Execution Mode Toggle — maps to `retriever harness run --mode` */}
+            <div>
+              <label style={labelStyle}>Execution Mode</label>
+              <div style={{display:'flex',gap:'6px'}}>
+                {modeOptions.map(m => (
+                  <button key={m} type="button" onClick={()=>{
+                    setRunMode(m);
+                    if (m === "service" && pipelineMode === "graph") setPipelineMode("preset");
+                  }} className="btn btn-sm" style={toggleBtn(runMode===m)}>
+                    {runModeLabels[m] || m}
+                  </button>
+                ))}
+              </div>
+              <div style={hintStyle}>{runModeHints[runMode] || ""}</div>
+            </div>
+
             {/* Pipeline Mode Toggle */}
             <div>
               <label style={labelStyle}>Pipeline</label>
@@ -127,18 +157,15 @@ function TriggerModal({ onClose, onTriggered }) {
                   Preset
                 </button>
                 <button type="button" onClick={()=>setPipelineMode("graph")} className="btn btn-sm"
-                  style={modeBtn("graph")} disabled={graphs.length===0}>
+                  style={modeBtn("graph")} disabled={graphs.length===0 || runMode==="service"}>
                   Graph Pipeline
-                </button>
-                <button type="button" onClick={()=>setPipelineMode("service")} className="btn btn-sm" style={modeBtn("service")}>
-                  Service
                 </button>
               </div>
               {graphs.length === 0 && pipelineMode === "preset" && (
                 <div style={hintStyle}>No saved graphs available. Create one in the Designer view to enable graph pipeline runs.</div>
               )}
-              {pipelineMode === "service" && (
-                <div style={hintStyle}>Uploads documents to a running retriever service and measures ingestion throughput. No GPU or Ray cluster needed on the runner.</div>
+              {runMode === "service" && (
+                <div style={hintStyle}>Graph pipelines are not available in service mode; runs use the deployed service's ingest/query APIs.</div>
               )}
             </div>
 
@@ -168,7 +195,7 @@ function TriggerModal({ onClose, onTriggered }) {
               </div>
             )}
 
-            {pipelineMode === "service" && (
+            {runMode === "service" && (
               <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
                 <div>
                   <label style={labelStyle}>Service URL</label>
@@ -307,8 +334,8 @@ function TriggerModal({ onClose, onTriggered }) {
           </div>
           <div className="modal-foot">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={submitting||!dataset||(pipelineMode==='graph'&&!graphId)||(pipelineMode==='service'&&!serviceUrl.trim())} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
-              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (pipelineMode==='graph' ? 'Run Graph Pipeline' : pipelineMode==='service' ? 'Run Service Ingest' : 'Start Run')}
+            <button type="submit" disabled={submitting||!dataset||(pipelineMode==='graph'&&!graphId)||(runMode==='service'&&!serviceUrl.trim())} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (pipelineMode==='graph' ? 'Run Graph Pipeline' : runMode==='service' ? 'Run Service Ingest' : runMode==='batch' ? 'Start Batch Run' : 'Start Run')}
             </button>
           </div>
         </form>
