@@ -74,7 +74,7 @@ nemo_retriever/helm/
         ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService
         ├── nemotron-3-embed-1b.yaml             # NIMCache + NIMService (text embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; auto-wired when enabled)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; auto-wired when enabled)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
@@ -667,7 +667,7 @@ helm install "${REL}" ./nemo_retriever/helm -n "${NS}" --create-namespace \
 > The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
 >
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true` (auto-wires `nim_endpoints.rerank_invoke_url` / `rerank_model_name` — refer to [Query-time reranking](#query-time-reranking))
-> * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
+> * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true` (enabling this NIM also sets the default PDF extract method to `nemotron_parse`)
 > * Omni 30B captioner — `--set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
 > * Answer generation LLM — `--set nimOperator.answer_llm.enabled=true`
 > * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service, plus `service.installFfmpeg=true` if your image does not bundle ffmpeg)
@@ -686,20 +686,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 
 ### Query reranking (optional)
 
-The optional `nimOperator.rerankqa` NIM is not auto-wired into the retriever service. To use `POST /v1/query` with `rerank=true`, enable the NIM and configure the service endpoint explicitly:
-
-```yaml
-nimOperator:
-  rerankqa:
-    enabled: true
-
-serviceConfig:
-  nimEndpoints:
-    rerankInvokeUrl: http://llama-nemotron-rerank-vl-1b-v2:8000/v1/ranking
-    rerankModelName: nvidia/llama-nemotron-rerank-vl-1b-v2
-```
-
-Enabling `nimOperator.rerankqa.enabled=true` without `serviceConfig.nimEndpoints.rerankInvokeUrl` deploys the NIM but does not enable service query reranking.
+The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in, and keep `nims.enabled=true` (the default). When those flags are true and the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. If `nims.enabled=false`, the chart does not auto-wire those fields. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` to override, or to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
 
 Track operator reconciliation with:
 
@@ -913,6 +900,10 @@ through that Service so workers can start while the gateway Pod is still
 unready. Client traffic continues to use the readiness-gated gateway Service, so
 `/v1/health` still removes an unhealthy gateway from Service endpoints after
 startup.
+
+The split-mode `wait-for-gateway` init container uses `busybox:1.37`.
+Refer to [Air-gapped deployment](#air-gapped-deployment) for the mirror inventory
+and the values override limitation.
 
 When a gateway returns HTTP `503` from `/v1/health`, Kubernetes removes it from
 the readiness-gated gateway Service endpoints until its required workers are
@@ -1469,7 +1460,7 @@ gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.env` | `NIM_HTTP_API_PORT=8000`, `NIM_TRITON_LOG_VERBOSE=1`, `OMP_NUM_THREADS=1`, `NIM_ENGINE_COUNT=1` | Environment for the default text embed NIM. Overrides replace the complete list. `NIM_PERFORMANCE_MODE=1` is optional. |
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional). Set `true` to opt in — refer to [Query-time reranking](#query-time-reranking). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
-| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` to deploy Parse. Enabling this NIM also sets the default PDF extract method to `nemotron_parse`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Super-49B)](#agentic-retrieval-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
@@ -1762,8 +1753,8 @@ Resolution order mirrors every other NIM endpoint (see the
    (use this to point at a hosted or external ranking endpoint).
 2. Otherwise the operator-managed URL of
    `llama-nemotron-rerank-vl-1b-v2` is used, provided
-   `nimOperator.rerankqa.enabled=true` **and** the
-   `apps.nvidia.com/v1alpha1` CRDs are installed.
+   `nimOperator.rerankqa.enabled=true`, `nims.enabled=true`,
+   **and** the `apps.nvidia.com/v1alpha1` CRDs are installed.
 3. Otherwise `rerank_invoke_url` stays `null` and query-time reranking
    stays disabled.
 
@@ -2387,6 +2378,10 @@ nimOperator:
     enabled: true
 ```
 
+Override `topology.otel.image` and `topology.zipkin.image` when you mirror
+`otel/opentelemetry-collector-contrib:0.127.0` and `openzipkin/zipkin:3.5.0`
+into a private registry. Refer to [Air-gapped deployment](#air-gapped-deployment).
+
 Because Zipkin is chart-owned by default, an upgrade with default values can
 create a Zipkin Deployment and Service. Set `topology.zipkin.enabled=false`
 before upgrading if your deployment uses an external backend or should not run
@@ -2537,6 +2532,14 @@ your release tag). Defaults below match
 
 GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).
 
+The following table lists default chart-owned auxiliary images. These images are not NIM Operator custom resources.
+
+| Role | Values path | Default image (`repository:tag`) | When rendered |
+|------|-------------|----------------------------------|---------------|
+| OpenTelemetry Collector | `topology.otel.image` | `otel/opentelemetry-collector-contrib:0.127.0` | `topology.otel.enabled=true` (default) |
+| Zipkin | `topology.zipkin.image` | `openzipkin/zipkin:3.5.0` | `topology.otel.enabled=true` and `topology.zipkin.enabled=true` (default) |
+| BusyBox wait-for-gateway init | not overridable | `busybox:1.37` | `topology.mode=split` on realtime and batch workers |
+
 Also mirror images for the vectordb sidecar, Redis, or other subcharts if
 your values enable them.
 
@@ -2572,7 +2575,24 @@ nimOperator:
       tag: "2.0.1"
       pullPolicy: IfNotPresent
   # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
+
+topology:
+  otel:
+    image:
+      repository: <PRIVATE_REGISTRY>/opentelemetry-collector-contrib
+      tag: "0.127.0"
+      pullPolicy: IfNotPresent
+  zipkin:
+    image:
+      repository: <PRIVATE_REGISTRY>/zipkin
+      tag: "3.5.0"
+      pullPolicy: IfNotPresent
 ```
+
+The split-mode `wait-for-gateway` init container image is `busybox:1.37`.
+That reference is hard-coded in `templates/deployment.yaml` and is not in
+`values.yaml`. Mirror the exact tag, or run `topology.mode=standalone` so those
+init containers are not rendered.
 
 - Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
   (for example `my-private-registry`) when it differs from

@@ -87,6 +87,7 @@ dependencies = [
   "universal-pathlib>=0.2.0",
   "numpy>=1.26.0",
   "debugpy>=1.8.0",
+  "filelock>=3.12.1",
   "fsspec>=2025.5.1",
   "s3fs>=2025.5.1",
   # Core ingest packages

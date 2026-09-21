@@ -13,6 +13,7 @@ import pytest
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     CollectionWriteResult,
+    UnsupportedVDBOperation,
     VDB,
 )
 from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
@@ -634,6 +635,74 @@ def test_put_operator_delegates_records_with_configured_key_and_table_name() -> 
             }
         ]
     ]
+
+
+def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
+    pulls: list[int] = []
+
+    class LegacyDuckVDB:
+        def run(self, records) -> None:
+            pass
+
+    class StreamingFakeVDB(FakeVDB):
+        supports_stream_ingest = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.stream_records: list[dict[str, Any]] = []
+
+        def stream_ingest(self, records) -> None:
+            assert pulls == []
+            assert not isinstance(records, (list, tuple, pd.DataFrame))
+            self.stream_records = list(records)
+
+    class EarlyReturningVDB(StreamingFakeVDB):
+        def stream_ingest(self, records) -> None:
+            next(iter(records))
+
+    def batches():
+        pulls.append(0)
+        first = pd.DataFrame([_graph_rows()[0]])
+        first["document_type"] = pd.Series([None], dtype="string[pyarrow]")
+        yield first
+        pulls.append(1)
+        yield pd.DataFrame([_graph_rows()[1]])
+
+    streaming_vdb = StreamingFakeVDB()
+    streaming = IngestVdbOperator(vdb=streaming_vdb)
+    legacy_vdb = FakeVDB()
+    legacy = IngestVdbOperator(vdb=legacy_vdb)
+    legacy_duck = IngestVdbOperator(vdb=LegacyDuckVDB())
+    put = PutVdbOperator(vdb=streaming_vdb)
+
+    assert streaming._stream_ingest(batches()) is None
+    assert pulls == [0, 1]
+    assert streaming_vdb.run_calls == []
+    assert [record["document_type"] for record in streaming_vdb.stream_records] == ["text", "text"]
+    assert [record["metadata"]["content"] for record in streaming_vdb.stream_records] == [
+        "first chunk",
+        "second chunk",
+    ]
+
+    partial_rows = _graph_rows()
+    partial_rows[1]["text_embeddings_1b_v2"] = {"embedding": []}
+    fail_closed_vdb = StreamingFakeVDB()
+    pulls.clear()
+    with pytest.raises(VdbUploadError, match="refusing a partial write"):
+        IngestVdbOperator(vdb=fail_closed_vdb)._stream_ingest([pd.DataFrame(partial_rows)])
+    assert fail_closed_vdb.stream_records == []
+
+    legacy.process(pd.DataFrame(_graph_rows()))
+    assert len(legacy_vdb.run_calls) == 1
+    with pytest.raises(UnsupportedVDBOperation, match="does not implement stream_ingest"):
+        legacy._stream_ingest(batches())
+    with pytest.raises(UnsupportedVDBOperation, match="does not implement stream_ingest"):
+        legacy_duck._stream_ingest(batches())
+    with pytest.raises(UnsupportedVDBOperation, match="does not implement stream_ingest"):
+        put._stream_ingest(batches())
+    with pytest.raises(RuntimeError, match="returned before consuming the record stream"):
+        operator = IngestVdbOperator(vdb=EarlyReturningVDB())
+        operator._stream_ingest([pd.DataFrame(_graph_rows())])
 
 
 def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:

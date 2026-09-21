@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -391,36 +391,81 @@ def _stage_error_field(path: Any) -> str:
     return "error"
 
 
-def _raise_for_empty_vdb_conversion(graph_rows: list[dict[str, Any]], *, require_embedding: bool = True) -> None:
-    upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
-    if upstream_errors:
-        error_fields = Counter(_stage_error_field(error.get("path")) for error in upstream_errors)
-        summary = ", ".join(f"{field}={count}" for field, count in sorted(error_fields.items()))
+def _raise_for_empty_vdb_conversion(
+    *,
+    row_count: int,
+    upstream_error_count: int,
+    upstream_error_fields: Counter[str],
+    rejection_reasons: Counter[str],
+) -> None:
+    if upstream_error_count:
+        summary = ", ".join(f"{field}={count}" for field, count in sorted(upstream_error_fields.items()))
         raise VdbUploadError(
-            f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable because upstream stages "
-            f"reported {len(upstream_errors)} structured row error(s) ({summary}); "
+            f"vdb_upload received {row_count} row(s), but none were uploadable because upstream stages "
+            f"reported {upstream_error_count} structured row error(s) ({summary}); "
             "error payloads are omitted because they may contain sensitive data."
         )
 
-    reasons = Counter(
-        (
-            "missing embedding"
-            if _row_has_uploadable_content_without_embedding(row)
-            else "missing searchable text or image backing"
-        )
-        for row in graph_rows
-    )
-    if require_embedding and "missing embedding" in reasons:
-        summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
+    summary = ", ".join(f"{reason}={count}" for reason, count in sorted(rejection_reasons.items()))
+    if "missing embedding" in rejection_reasons:
         raise VdbUploadError(
             "vdb_upload requires embedded records, but no embeddings were found. "
-            f"Received {len(graph_rows)} nonempty row(s); rejection reasons: {summary}. "
+            f"Received {row_count} nonempty row(s); rejection reasons: {summary}. "
             "Add an embed stage or provide a supported embedding column."
         )
-    summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
     raise VdbUploadError(
-        f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable; rejection reasons: {summary}."
+        f"vdb_upload received {row_count} row(s), but none were uploadable; rejection reasons: {summary}."
     )
+
+
+def _iter_client_vdb_records(rows: Iterable[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Lazily convert graph rows into individual canonical NRL records.
+
+    Rows without searchable content are skipped. Missing embeddings fail the
+    stream on exhaustion, matching :func:`to_client_vdb_records`.
+    """
+
+    row_count = 0
+    converted_count = 0
+    upstream_error_count = 0
+    upstream_error_fields: Counter[str] = Counter()
+    rejection_reasons: Counter[str] = Counter()
+    missing_embeddings = 0
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_count += 1
+        record = _client_record_from_graph_row(row)
+        if record is not None:
+            converted_count += 1
+            yield record
+            continue
+
+        missing_embedding = _row_has_uploadable_content_without_embedding(row)
+        if missing_embedding:
+            missing_embeddings += 1
+
+        upstream_errors = list(iter_stage_errors_from_value(row))
+        if upstream_errors:
+            upstream_error_count += len(upstream_errors)
+            upstream_error_fields.update(_stage_error_field(error.get("path")) for error in upstream_errors)
+        else:
+            reason = "missing embedding" if missing_embedding else "missing searchable text or image backing"
+            rejection_reasons[reason] += 1
+
+    if converted_count and missing_embeddings:
+        raise VdbUploadError(
+            "vdb_upload is refusing a partial write because searchable rows are missing embeddings: "
+            f"input rows={row_count}, uploadable rows={converted_count}, missing embedding={missing_embeddings}."
+        )
+    if row_count and not converted_count:
+        _raise_for_empty_vdb_conversion(
+            row_count=row_count,
+            upstream_error_count=upstream_error_count,
+            upstream_error_fields=upstream_error_fields,
+            rejection_reasons=rejection_reasons,
+        )
 
 
 def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
@@ -461,7 +506,21 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
             f"input rows={len(graph_rows)}, uploadable rows={len(inner)}, missing embedding={missing_embeddings}."
         )
     if not inner and graph_rows:
-        _raise_for_empty_vdb_conversion(graph_rows)
+        upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
+        rejection_reasons = Counter(
+            (
+                "missing embedding"
+                if _row_has_uploadable_content_without_embedding(row)
+                else "missing searchable text or image backing"
+            )
+            for row in graph_rows
+        )
+        _raise_for_empty_vdb_conversion(
+            row_count=len(graph_rows),
+            upstream_error_count=len(upstream_errors),
+            upstream_error_fields=Counter(_stage_error_field(error.get("path")) for error in upstream_errors),
+            rejection_reasons=rejection_reasons,
+        )
     # Preserve legacy contract: no uploadable rows → [], not [[]].
     return [inner] if inner else []
 
@@ -483,7 +542,13 @@ def to_sparse_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
         if (record := _client_record_from_graph_row(row, require_embedding=False)) is not None
     ]
     if not inner and graph_rows:
-        _raise_for_empty_vdb_conversion(graph_rows, require_embedding=False)
+        upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
+        _raise_for_empty_vdb_conversion(
+            row_count=len(graph_rows),
+            upstream_error_count=len(upstream_errors),
+            upstream_error_fields=Counter(_stage_error_field(error.get("path")) for error in upstream_errors),
+            rejection_reasons=Counter({"missing searchable text or image backing": len(graph_rows)}),
+        )
     return [inner] if inner else []
 
 
@@ -511,69 +576,90 @@ def _row_id(metadata: Any, content_meta: Any) -> str:
     return str(row_id) if row_id is not None else ""
 
 
+def dense_row(element: dict[str, Any], *, expected_dim: int | None) -> tuple[dict[str, Any] | None, str | None]:
+    """Build one ``vector``/``text``/``metadata``/``source``/``id`` row, or return why it was dropped.
+
+    Rows with no embedding, a length other than ``expected_dim``, or blank text are dropped.
+    Canonical image records keep ``text=""``.
+    """
+    metadata = element.get("metadata", {})
+    doc_type = element.get("document_type")
+    embedding = metadata.get("embedding")
+    if embedding is None:
+        return None, "dropped_no_embedding"
+    if expected_dim is not None and (not isinstance(embedding, (list, tuple)) or len(embedding) != int(expected_dim)):
+        logger.debug(
+            "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
+            len(embedding) if hasattr(embedding, "__len__") else "n/a",
+            int(expected_dim),
+            doc_type,
+        )
+        return None, "dropped_bad_length"
+
+    content_meta = metadata.get("content_metadata", {})
+    split_content = embedding_split_content(metadata)
+    text = split_content if split_content is not None else text_for_element(element)
+    if split_content is not None:
+        content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
+    elif not isinstance(text, str) or not text.strip():
+        is_canonical_image = (
+            doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
+        )
+        if not is_canonical_image:
+            logger.debug(
+                "No text found for entity: %s page: %s type: %s",
+                metadata.get("source_metadata", {}).get("source_name", "unknown"),
+                content_meta.get("page_number") if isinstance(content_meta, dict) else None,
+                doc_type,
+            )
+            return None, "dropped_no_text"
+        text = ""
+
+    row = {
+        "vector": embedding,
+        "text": text,
+        "metadata": content_meta,
+        "source": metadata.get("source_metadata", {}),
+        "id": _row_id(metadata, content_meta),
+    }
+    return row, None
+
+
+def text_row(element: dict[str, Any]) -> dict[str, Any] | None:
+    """Build one embedding-free row for sparse indexes, or ``None`` if the text is blank."""
+    metadata = element.get("metadata", {})
+    content_meta = metadata.get("content_metadata", {})
+    text = text_for_element(element)
+    if not isinstance(text, str) or not text.strip():
+        logger.debug(
+            "No text found for sparse entity: %s page: %s",
+            metadata.get("source_metadata", {}).get("source_name", "unknown"),
+            content_meta.get("page_number") if isinstance(content_meta, dict) else None,
+        )
+        return None
+    return {
+        "text": text,
+        "metadata": content_meta,
+        "source": metadata.get("source_metadata", {}),
+        "id": _row_id(metadata, content_meta),
+    }
+
+
 def build_dense_rows(
     results: Any,
     *,
     expected_dim: int | None = DEFAULT_VECTOR_DIM,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Build ``vector``/``text``/``metadata``/``source``/``id`` rows from NRL records.
-
-    Drops and counts rows with no embedding, a length other than ``expected_dim``, or blank text.
-    Canonical image records keep ``text=""``.
-    """
+    """Build :func:`dense_row` rows from NRL record batches and count the dropped ones."""
     rows: list[dict[str, Any]] = []
     counts = {"accepted": 0, "dropped_no_embedding": 0, "dropped_bad_length": 0, "dropped_no_text": 0}
-
     for result in results:
         for element in result:
-            metadata = element.get("metadata", {})
-            doc_type = element.get("document_type")
-
-            embedding = metadata.get("embedding")
-            if embedding is None:
-                counts["dropped_no_embedding"] += 1
+            row, drop_reason = dense_row(element, expected_dim=expected_dim)
+            if drop_reason is not None:
+                counts[drop_reason] += 1
                 continue
-            if expected_dim is not None and (
-                not isinstance(embedding, (list, tuple)) or len(embedding) != int(expected_dim)
-            ):
-                counts["dropped_bad_length"] += 1
-                logger.debug(
-                    "Dropping row with bad embedding (got_len=%s, expected=%d, doc_type=%s)",
-                    len(embedding) if hasattr(embedding, "__len__") else "n/a",
-                    int(expected_dim),
-                    doc_type,
-                )
-                continue
-
-            content_meta = metadata.get("content_metadata", {})
-            split_content = embedding_split_content(metadata)
-            text = split_content if split_content is not None else text_for_element(element)
-            if split_content is not None:
-                content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
-            elif not isinstance(text, str) or not text.strip():
-                is_canonical_image = (
-                    doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
-                )
-                if not is_canonical_image:
-                    counts["dropped_no_text"] += 1
-                    logger.debug(
-                        "No text found for entity: %s page: %s type: %s",
-                        metadata.get("source_metadata", {}).get("source_name", "unknown"),
-                        content_meta.get("page_number") if isinstance(content_meta, dict) else None,
-                        doc_type,
-                    )
-                    continue
-                text = ""
-
-            rows.append(
-                {
-                    "vector": embedding,
-                    "text": text,
-                    "metadata": content_meta,
-                    "source": metadata.get("source_metadata", {}),
-                    "id": _row_id(metadata, content_meta),
-                }
-            )
+            rows.append(row)
             counts["accepted"] += 1
 
     if counts["dropped_no_embedding"] or counts["dropped_bad_length"] or counts["dropped_no_text"]:
@@ -590,30 +676,16 @@ def build_dense_rows(
 
 
 def build_text_rows(results: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Build embedding-free rows for sparse indexes, dropping and counting blank-text rows."""
+    """Build :func:`text_row` rows from NRL record batches and count the dropped ones."""
     rows: list[dict[str, Any]] = []
     counts = {"accepted": 0, "dropped_no_text": 0}
     for result in results:
         for element in result:
-            metadata = element.get("metadata", {})
-            content_meta = metadata.get("content_metadata", {})
-            text = text_for_element(element)
-            if not isinstance(text, str) or not text.strip():
+            row = text_row(element)
+            if row is None:
                 counts["dropped_no_text"] += 1
-                logger.debug(
-                    "No text found for sparse entity: %s page: %s",
-                    metadata.get("source_metadata", {}).get("source_name", "unknown"),
-                    content_meta.get("page_number") if isinstance(content_meta, dict) else None,
-                )
                 continue
-            rows.append(
-                {
-                    "text": text,
-                    "metadata": content_meta,
-                    "source": metadata.get("source_metadata", {}),
-                    "id": _row_id(metadata, content_meta),
-                }
-            )
+            rows.append(row)
             counts["accepted"] += 1
     if counts["dropped_no_text"]:
         logger.warning("build_text_rows: accepted=%d dropped_no_text=%d", counts["accepted"], counts["dropped_no_text"])
