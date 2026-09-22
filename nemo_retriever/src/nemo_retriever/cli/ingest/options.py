@@ -66,6 +66,13 @@ ExtractImagesOption = Annotated[
     bool | None,
     typer.Option("--extract-images/--no-extract-images", help="Enable or disable PDF image extraction."),
 ]
+ExtractNestedImagesOption = Annotated[
+    bool | None,
+    typer.Option(
+        "--extract-nested-images/--no-extract-nested-images",
+        help="Also emit source raster images nested in PDF Form XObjects.",
+    ),
+]
 ExtractTablesOption = Annotated[
     bool | None,
     typer.Option("--extract-tables/--no-extract-tables", help="Enable or disable PDF table extraction."),

@@ -202,6 +202,7 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     assert plan.extract_params.method == "pdfium_hybrid"
     assert plan.extract_params.dpi == 200
     assert plan.extract_params.extract_images is True
+    assert plan.extract_params.extract_nested_images is False
     assert plan.extract_params.extract_tables is True
     assert plan.extract_params.extract_charts is True
     assert plan.extract_params.extract_infographics is False

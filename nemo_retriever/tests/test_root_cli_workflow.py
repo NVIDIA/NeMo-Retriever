@@ -265,6 +265,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
             "--dpi",
             "300",
             "--extract-images",
+            "--extract-nested-images",
             "--embed-granularity",
             "page",
             "--dedup",
@@ -289,6 +290,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["extraction_mode"] == "auto"
     assert captured["extract_params"].dpi == 300
     assert captured["extract_params"].extract_images is True
+    assert captured["extract_params"].extract_nested_images is True
     assert captured["split_config"]["pdf"]["max_tokens"] == 64
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
@@ -1270,8 +1272,10 @@ def test_root_ingest_default_local_rejects_batch_only_options(tmp_path) -> None:
     assert "--ray-address" in result.output
 
 
-def test_root_ingest_service_help_hides_local_only_options() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
+def test_root_ingest_service_help_hides_local_only_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
+    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"])
 
     assert result.exit_code == 0
     assert "Usage: root ingest service [OPTIONS] {documents}..." in result.output
@@ -1279,6 +1283,7 @@ def test_root_ingest_service_help_hides_local_only_options() -> None:
     assert "--dedup" in result.output
     assert "--no-dedup" in result.output
     assert "--extract-images" in result.output
+    assert "--extract-nested-images" in result.output
     assert "--embed-granular" in result.output
     assert "--lancedb-uri" not in result.output
     assert "--overwrite" not in result.output

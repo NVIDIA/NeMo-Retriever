@@ -76,6 +76,7 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
     {
         "extract_text",
         "extract_images",
+        "extract_nested_images",
         "extract_tables",
         "extract_charts",
         "extract_infographics",

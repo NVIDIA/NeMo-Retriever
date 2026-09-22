@@ -59,6 +59,7 @@ class ServiceIngestExtractOptions:
     dpi: int | None = None
     extract_text: bool | None = None
     extract_images: bool | None = None
+    extract_nested_images: bool | None = None
     extract_tables: bool | None = None
     extract_charts: bool | None = None
     extract_infographics: bool | None = None
@@ -182,6 +183,7 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
                 "dpi": request.extract.dpi,
                 "extract_text": request.extract.extract_text,
                 "extract_images": request.extract.extract_images,
+                "extract_nested_images": request.extract.extract_nested_images,
                 "extract_tables": request.extract.extract_tables,
                 "extract_charts": request.extract.extract_charts,
                 "extract_infographics": request.extract.extract_infographics,

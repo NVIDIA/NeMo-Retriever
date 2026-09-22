@@ -121,6 +121,7 @@ class IngestExtractOptions:
     dpi: int | None = None
     extract_text: bool | None = None
     extract_images: bool | None = None
+    extract_nested_images: bool | None = None
     extract_tables: bool | None = None
     extract_charts: bool | None = None
     extract_infographics: bool | None = None
@@ -649,6 +650,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
                 "dpi": extract.dpi,
                 "extract_text": extract.extract_text,
                 "extract_images": extract.extract_images,
+                "extract_nested_images": extract.extract_nested_images,
                 "extract_tables": extract.extract_tables,
                 "extract_charts": extract.extract_charts,
                 "extract_infographics": extract.extract_infographics,

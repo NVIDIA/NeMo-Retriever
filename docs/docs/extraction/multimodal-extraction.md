@@ -6,6 +6,7 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 
 - [Supported file types and formats](#supported-file-types-and-formats)
 - [Text and layout extraction](#text-and-layout-extraction)
+- [PDF image extraction](#pdf-image-extraction)
 - [Tables](#tables)
 - [Charts and infographics](#charts-and-infographics)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
@@ -34,6 +35,57 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 - [NeMo Retriever Library Overview](overview.md)
 - [OCR and scanned documents](#ocr-and-scanned-documents)
 - [Chunking](concepts.md#chunking)
+
+## PDF image extraction { #pdf-image-extraction }
+
+For the PDFium path, `extract_images=True` extracts rendered page regions that resemble images. A region can represent a composite figure, including an entire PDF Form XObject. The output does not necessarily correspond one-to-one with the raster IMAGE XObjects stored in the PDF.
+
+Set `extract_nested_images=True` when you also need the individual raster IMAGE objects nested in Form XObjects. This option applies only to PDFium extraction and requires `extract_images=True`. Configuration validation rejects `extract_nested_images=True` when `extract_images=False`.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["report.pdf"])
+    .extract(
+        ExtractParams(
+            method="pdfium",
+            extract_images=True,
+            extract_nested_images=True,
+        )
+    )
+    .ingest()
+)
+```
+
+Both local and service CLI ingest expose the same image extraction options. Enable both options with the command for your ingest path.
+
+```bash
+retriever ingest report.pdf \
+  --extract-images --extract-nested-images
+
+retriever ingest service report.pdf \
+  --extract-images --extract-nested-images
+```
+
+Nested image extraction has the following output behavior:
+
+- It adds nested raster images to the default rendered regions. The output can contain both a composite Form region and its individual source images.
+- It emits each occurrence of a decodable nested IMAGE object. Repeated placements of the same source remain separate output elements. Each occurrence is decoded independently. The extractor does not reuse encoded payloads across PDF image objects because their render state can differ.
+- It returns each decoded source bitmap at its intrinsic pixel dimensions. The payload resolution is independent of the PDF page-render DPI.
+- It reports each occurrence location as normalized page-space coordinates in `bbox_xyxy_norm`.
+
+Nested image extraction enforces the following limits:
+
+- A maximum of 256 nested image occurrences per page.
+- A maximum of 50,000,000 decoded pixels, summed across all nested image placements on a page.
+- A maximum of 64 MiB of raw source data, summed across all nested image placements on a page.
+
+If supplemental nested image extraction fails or exceeds a limit, the extractor discards all nested image additions for that page. It preserves successful base results, including text, the rendered page image, and default rendered image regions. The extractor records the failure in `metadata.error` with the `nested_images` stage and reports it through the operator error output.
+
+To remove repeated image content after extraction, add a `.dedup(...)` stage. For configuration details, refer to [Control image deduplication](#control-image-deduplication).
 
 ## Tables { #tables }
 

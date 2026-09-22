@@ -167,6 +167,97 @@ def test_pdf_extraction_populates_images(mock_extract):
     assert abs(images[0]["bbox_xyxy_norm"][0] - 10 / 612) < 1e-6
 
 
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_nested_simple_images_from_pdfium_page")
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_image_like_objects_from_pdfium_page")
+def test_pdf_extraction_adds_nested_images_when_enabled(mock_extract, mock_extract_nested):
+    _ext = pytest.importorskip("nemo_retriever.operators.extract.pdf.extract")
+    pdfium = pytest.importorskip("pypdfium2")
+
+    rendered = MagicMock(image=_make_test_png_b64(), bbox=(10, 20, 100, 200), max_width=612, max_height=792)
+    nested = MagicMock(image=_make_test_png_b64(), bbox=(20, 30, 80, 90), max_width=612, max_height=792)
+    mock_extract.return_value = [rendered]
+    mock_extract_nested.return_value = [nested, nested]
+
+    doc = pdfium.PdfDocument.new()
+    doc.new_page(612, 792)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    result = _ext.pdf_extraction(
+        pd.DataFrame([{"bytes": buf.getvalue(), "path": "t.pdf", "page_number": 1}]),
+        extract_images=True,
+        extract_nested_images=True,
+    )
+
+    images = result.iloc[0]["images"]
+    assert len(images) == 3
+    assert images[0]["bbox_xyxy_norm"] == pytest.approx([10 / 612, 20 / 792, 100 / 612, 200 / 792])
+    assert images[1]["bbox_xyxy_norm"] == pytest.approx([20 / 612, 30 / 792, 80 / 612, 90 / 792])
+    assert images[1] == images[2]
+
+
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_nested_simple_images_from_pdfium_page")
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_image_like_objects_from_pdfium_page")
+def test_pdf_extraction_does_not_extract_nested_images_by_default(mock_extract, mock_extract_nested):
+    _ext = pytest.importorskip("nemo_retriever.operators.extract.pdf.extract")
+    pdfium = pytest.importorskip("pypdfium2")
+    mock_extract.return_value = []
+
+    doc = pdfium.PdfDocument.new()
+    doc.new_page(612, 792)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    _ext.pdf_extraction(
+        pd.DataFrame([{"bytes": buf.getvalue(), "path": "t.pdf", "page_number": 1}]), extract_images=True
+    )
+
+    mock_extract_nested.assert_not_called()
+
+
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_nested_simple_images_from_pdfium_page")
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_image_like_objects_from_pdfium_page")
+def test_pdf_extraction_records_nested_image_failure(mock_extract, mock_extract_nested):
+    _ext = pytest.importorskip("nemo_retriever.operators.extract.pdf.extract")
+    pdfium = pytest.importorskip("pypdfium2")
+    from nemo_retriever.models.nim.error_reporter import drain_errors
+
+    base_image = MagicMock()
+    base_image.image = "base-image"
+    base_image.bbox = [10, 20, 100, 200]
+    base_image.max_width = 612
+    base_image.max_height = 792
+    mock_extract.return_value = [base_image]
+    mock_extract_nested.side_effect = RuntimeError("nested image budget exceeded")
+    drain_errors()
+
+    doc = pdfium.PdfDocument.new()
+    doc.new_page(612, 792)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    result = _ext.pdf_extraction(
+        pd.DataFrame([{"bytes": buf.getvalue(), "path": "t.pdf", "page_number": 1}]),
+        extract_images=True,
+        extract_nested_images=True,
+    )
+
+    row = result.iloc[0]
+    assert row["page_image"] is not None
+    assert len(row["images"]) == 1
+    assert row["images"][0]["image_b64"] == "base-image"
+    assert row["metadata"]["error"]["stage"] == "nested_images"
+    assert row["metadata"]["error"]["type"] == "RuntimeError"
+    assert row["metadata"]["error"]["message"] == "nested image budget exceeded"
+    errors = drain_errors()
+    assert len(errors) == 1
+    assert errors[0].stage == "pdf_extraction:nested_images"
+    assert errors[0].message == "nested image budget exceeded"
+
+
 def test_explode_includes_captioned_images():
     from nemo_retriever.common.modality.content_transforms import explode_content_to_rows
 

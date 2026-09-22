@@ -198,6 +198,7 @@ def _graph_ingest_command(
     dpi: opts.DpiOption = None,
     extract_text: opts.ExtractTextOption = None,
     extract_images: opts.ExtractImagesOption = None,
+    extract_nested_images: opts.ExtractNestedImagesOption = None,
     extract_tables: opts.ExtractTablesOption = None,
     extract_charts: opts.ExtractChartsOption = None,
     extract_infographics: opts.ExtractInfographicsOption = None,

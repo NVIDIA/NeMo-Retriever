@@ -26,6 +26,7 @@ def _render_params() -> ExtractParams:
         render_mode="full_dpi",
         image_format="png",
         jpeg_quality=73,
+        extract_nested_images=True,
     )
 
 
@@ -37,6 +38,7 @@ def test_pdf_graph_forwards_rendering_params() -> None:
     assert extract_kwargs["render_mode"] == "full_dpi"
     assert extract_kwargs["image_format"] == "png"
     assert extract_kwargs["jpeg_quality"] == 73
+    assert extract_kwargs["extract_nested_images"] is True
 
 
 class _IdentityStage:
@@ -67,6 +69,7 @@ def test_multitype_pdf_graph_forwards_rendering_params(monkeypatch) -> None:
     assert captured["render_mode"] == "full_dpi"
     assert captured["image_format"] == "png"
     assert captured["jpeg_quality"] == 73
+    assert captured["extract_nested_images"] is True
 
 
 @pytest.mark.parametrize("modality", ["image", "text_image"])
