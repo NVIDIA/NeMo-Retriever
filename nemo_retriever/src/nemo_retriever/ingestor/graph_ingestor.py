@@ -852,13 +852,11 @@ class GraphIngestor(ingestor):
         """
         return_failures = self._resolve_execute_flag(params, kwargs, "return_failures", default=False)
         return_results = self._resolve_execute_flag(params, kwargs, "return_results", default=True)
-        executor_kwargs: dict[str, Any] = {}
         if not return_results:
             if self._run_mode != "batch" or self._vdb_upload_params is None:
                 raise ValueError("return_results=False requires run_mode='batch' with a VDB upload")
             if return_failures or self._error_policy == "collect":
                 raise ValueError("return_results=False requires error_policy='raise' and return_failures=False")
-            executor_kwargs = {"return_results": False, "_validate_batch": self._raise_for_stage_errors}
         self._validate_input_sources(self._inline_texts)
         if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
             result = empty_text_chunks_df()
@@ -904,7 +902,7 @@ class GraphIngestor(ingestor):
                 default_branches,
                 dedup_params=effective_dedup_params,
                 post_extract_order=post_extract_order,
-                **executor_kwargs,
+                return_results=return_results,
             )
         else:
             if single_effective is None:
@@ -913,7 +911,7 @@ class GraphIngestor(ingestor):
                 single_effective,
                 dedup_params=effective_dedup_params,
                 post_extract_order=post_extract_order,
-                **executor_kwargs,
+                return_results=return_results,
             )
 
         return self._finalize_ingest_result(result, return_failures=return_failures)
@@ -924,14 +922,14 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        **executor_kwargs: Any,
+        return_results: bool = True,
     ) -> Any:
         if self._run_mode == "batch":
             return self._execute_single_graph_batch(
                 effective_extraction,
                 dedup_params=dedup_params,
                 post_extract_order=post_extract_order,
-                **executor_kwargs,
+                return_results=return_results,
             )
         return self._execute_single_graph_inprocess(
             effective_extraction,
@@ -945,7 +943,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        **executor_kwargs: Any,
+        return_results: bool = True,
     ) -> Any:
         ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
@@ -996,7 +994,11 @@ class GraphIngestor(ingestor):
             ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
-        result = executor.ingest(executor_input, **executor_kwargs)
+        result = executor.ingest(
+            executor_input,
+            return_results=return_results,
+            _validate_batch=self._raise_for_stage_errors if not return_results else None,
+        )
         self._rd_dataset = result
         return result
 
@@ -1043,7 +1045,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        **executor_kwargs: Any,
+        return_results: bool = True,
     ) -> Any:
         result = ExtractionBranchExecutor(
             run_mode=self._run_mode,
@@ -1075,7 +1077,8 @@ class GraphIngestor(ingestor):
             show_progress=self._show_progress,
             allow_no_gpu=self._allow_no_gpu,
             ensure_batch_runtime=self._ensure_batch_runtime,
-            executor_kwargs=executor_kwargs,
+            return_results=return_results,
+            validate_batch=self._raise_for_stage_errors if not return_results else None,
         ).execute()
         self._rd_dataset = result if self._run_mode == "batch" else None
         return result

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import gc
-from types import SimpleNamespace
 import weakref
 
 import pandas as pd
@@ -47,7 +46,11 @@ class GeneratedBatches:
                     assert all(ref() is None for ref in self.refs[:-2])
                 batch = pd.DataFrame(
                     [
-                        {"text": f"page-{i}", "metadata": {"embedding": [1.0, 2.0]}, "result_only": bytearray(1 << 20)},
+                        {
+                            "text": f"page-{i}",
+                            "metadata": {"embedding": [1.0, 2.0]},
+                            "result_only": "extraction payload",
+                        },
                         {"text": "", "metadata": {}},
                     ]
                 )
@@ -127,28 +130,39 @@ def test_public_summary_option_checks_remote_errors_before_releasing_batch(monke
         .extract(page_elements_invoke_url="http://invalid.test/page-elements")
         .vdb_upload()
     )
-    monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
-    monkeypatch.setattr(
-        ingestor, "_resolve_effective_extraction_inputs", lambda: SimpleNamespace(extraction_mode="pdf")
-    )
 
-    def execute(effective, *, dedup_params, post_extract_order, **kwargs):
-        assert kwargs["return_results"] is False
-        frame = pd.DataFrame(
-            [
-                {
-                    "path": "doc.pdf",
-                    "text": "valid text",
-                    "page_elements_v3": {
-                        "error": {"stage": "page_elements_v3", "type": "RuntimeError", "message": "failed"}
-                    },
-                }
-            ]
-        )
-        kwargs["_validate_batch"](frame)
-        pytest.fail("stage error must be raised before the frame is released")
+    class FakeCluster:
+        def available_gpu_count(self):
+            return 0
 
-    monkeypatch.setattr(ingestor, "_execute_single_graph", execute)
+        def total_gpu_count(self):
+            return 0
+
+        def total_cpu_count(self):
+            return 4
+
+    class FakeExecutor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def ingest(self, data, *, return_results, _validate_batch):
+            assert return_results is False
+            frame = pd.DataFrame(
+                [
+                    {
+                        "path": "doc.pdf",
+                        "text": "valid text",
+                        "page_elements_v3": {
+                            "error": {"stage": "page_elements_v3", "type": "RuntimeError", "message": "failed"}
+                        },
+                    }
+                ]
+            )
+            _validate_batch(frame)
+            pytest.fail("stage error must be raised before the frame is released")
+
+    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (None, FakeCluster()))
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.RayDataExecutor", FakeExecutor)
     with pytest.raises(GraphIngestionError):
         ingestor.ingest(**options)
 

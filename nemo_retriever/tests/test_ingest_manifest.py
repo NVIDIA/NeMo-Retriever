@@ -649,9 +649,10 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path, return
     assert len(combined.unioned) == 1
     assert combined.normalized_columns == ("path", "pdf_value", "image_value")
     assert result["done"].tolist() == [True]
-    assert executor_calls[2]["kwargs"] == (
-        {} if return_results else {"return_results": False, "_validate_batch": ingestor._raise_for_stage_errors}
-    )
+    assert executor_calls[2]["kwargs"] == {
+        "return_results": return_results,
+        "_validate_batch": None if return_results else ingestor._raise_for_stage_errors,
+    }
 
 
 def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_path) -> None:
