@@ -14,7 +14,7 @@ from typing import Any, TypedDict
 
 from pydantic import ValidationError
 
-from nemo_retriever.common.modality.embedding_transport import CONTENT_COUNTS_FIELD, PAGE_IMAGE_URI_FIELD
+from nemo_retriever.common.modality.embedding_transport import CONTENT_COUNTS_FIELD
 from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
@@ -268,7 +268,7 @@ def _is_inherited_page_uri(row: dict[str, Any], stored_image_uri: str, content_t
         return False
 
     page_image = row.get("page_image")
-    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else row.get(PAGE_IMAGE_URI_FIELD)
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
     return bool(_first_str(page_uri) == stored_image_uri)
 
 
