@@ -13,7 +13,7 @@ from PIL import Image
 import pytest
 
 from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows, explode_content_to_rows
-from nemo_retriever.common.modality.embedding_transport import project_embedding_transport
+from nemo_retriever.common.modality.embedding_transport import _project_embedding_transport
 from nemo_retriever.common.schemas.embedding import embedding_text_input
 from nemo_retriever.common.vdb.records import to_client_vdb_records
 from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy, prepare_embedding_inputs
@@ -133,7 +133,7 @@ def test_upstream_store_and_dedup_keep_required_rich_payload(tmp_path, dedup, st
     assert list(tmp_path.glob("*.png"))
     assert bool(stored.iloc[0]["page_image"].get("image_b64")) != strip_base64
     rich = explode_content_to_rows(stored, modality="text_image", content_columns=("images",))
-    compact = project_embedding_transport(rich)
+    compact = _project_embedding_transport(rich)
     assert _inputs(compact) == _inputs(rich)
     assert compact["_image_b64"].fillna("").tolist() == rich["_image_b64"].fillna("").tolist()
     assert _records(compact) == _records(rich)
@@ -195,7 +195,7 @@ def test_builtin_metadata_preserves_overflow_identity_and_exact_text(identity):
     exact = "alpha \n omega and further text"
     metadata = {"id": "element-A"} if identity == "id" else {"content_metadata": {"id": "element-A"}}
     frame = pd.DataFrame([{"text": exact, "metadata": metadata, "path": "doc.pdf", "page_number": 7}])
-    rich, compact = _admit(frame), _admit(project_embedding_transport(frame))
+    rich, compact = _admit(frame), _admit(_project_embedding_transport(frame))
     assert len(rich) > 1
     assert "".join(_inputs(compact)) == exact
     assert _inputs(compact) == _inputs(rich)
@@ -219,7 +219,7 @@ def test_errors_keep_original_stage_payload_and_failure_details():
             }
         ]
     )
-    compact = project_embedding_transport(frame)
+    compact = _project_embedding_transport(frame)
     assert all("image_b64" not in value for value in compact["page_image"])
     assert compact["page_elements_v3"].tolist() == frame["page_elements_v3"].tolist()
     ingestor = GraphIngestor(run_mode="batch").extract(page_elements_invoke_url="http://invalid.test")
