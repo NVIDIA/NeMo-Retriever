@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.io.image_store import inline_image_b64
+from nemo_retriever.common.modality.embedding_transport import _project_embedding_transport
 from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
@@ -88,6 +89,7 @@ def explode_content_to_rows(
     modality: str = "text",
     text_elements_modality: Optional[str] = None,
     structured_elements_modality: Optional[str] = None,
+    compact: bool = False,
 ) -> Any:
     """Expand each page row into multiple rows for per-element embedding."""
     text_mod = text_elements_modality or modality
@@ -96,7 +98,8 @@ def explode_content_to_rows(
     if not isinstance(batch_df, pd.DataFrame):
         return batch_df
     if batch_df.empty:
-        return _normalize_bbox_column(batch_df)
+        result = _normalize_bbox_column(batch_df)
+        return _project_embedding_transport(result) if compact else result
 
     any_images = text_mod in IMAGE_MODALITIES or struct_mod in IMAGE_MODALITIES
 
@@ -111,7 +114,8 @@ def explode_content_to_rows(
                 lambda page_image: page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
             )
         batch_df["_embed_modality"] = text_mod
-        return _normalize_bbox_column(batch_df)
+        result = _normalize_bbox_column(batch_df)
+        return _project_embedding_transport(result) if compact else result
 
     new_rows: List[Dict[str, Any]] = []
     for _, row in batch_df.iterrows():
@@ -182,7 +186,8 @@ def explode_content_to_rows(
             preserved["_bbox_xyxy_norm"] = None
             new_rows.append(preserved)
 
-    return _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
+    result = _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
+    return _project_embedding_transport(result) if compact else result
 
 
 def collapse_content_to_page_rows(
@@ -191,6 +196,7 @@ def collapse_content_to_page_rows(
     text_column: str = "text",
     content_columns: Sequence[str] = _CONTENT_COLUMNS,
     modality: str = "text",
+    compact: bool = False,
 ) -> Any:
     """Collapse each page into a single row for page-level embedding."""
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
@@ -209,4 +215,5 @@ def collapse_content_to_page_rows(
         row_dict["_embed_modality"] = modality
         new_rows.append(row_dict)
 
-    return _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
+    result = _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
+    return _project_embedding_transport(result) if compact else result

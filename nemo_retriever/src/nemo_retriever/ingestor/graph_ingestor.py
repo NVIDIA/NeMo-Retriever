@@ -964,6 +964,7 @@ class GraphIngestor(ingestor):
             vdb_upload_params=self._vdb_upload_params,
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
+            compact_embedding_transport=not return_results,
         )
         effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.total_gpu_count() == 0
         derived_overrides = batch_tuning_to_node_overrides(
