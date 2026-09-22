@@ -638,7 +638,6 @@ class RayDataExecutor(AbstractExecutor):
         data: Any,
         *,
         return_results: bool = True,
-        _validate_batch: Callable[[pd.DataFrame], None] | None = None,
         **kwargs: Any,
     ) -> Any:
         """Run the graph and complete any streaming VDB write.
@@ -651,9 +650,6 @@ class RayDataExecutor(AbstractExecutor):
             Return the full result frame. If false, release consumed batches
             and return one row with ``input_rows`` and ``submitted_records``.
             Submitted records are counted before backend filtering.
-        _validate_batch : callable, optional
-            Internal hook called on each batch before streaming upload.
-            Exceptions abort ingestion and propagate to the caller.
 
         Returns
         -------
@@ -671,7 +667,16 @@ class RayDataExecutor(AbstractExecutor):
         if kwargs:
             unsupported = ", ".join(sorted(kwargs))
             raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
+        return self._ingest(data, return_results=return_results)
 
+    def _ingest(
+        self,
+        data: Any,
+        *,
+        return_results: bool = True,
+        validate_batch: Callable[[pd.DataFrame], None] | None = None,
+    ) -> Any:
+        """Execute ingestion with optional stage-error validation before upload."""
         nodes = self._linearize(self.graph)
         sink_index = self._stream_ingest_index(nodes)
         if not return_results and (sink_index is None or sink_index != len(nodes) - 1):
@@ -701,8 +706,8 @@ class RayDataExecutor(AbstractExecutor):
             nonlocal input_rows
             for block in batch_iterator:
                 frame = arrow_table_to_pandas(block)
-                if _validate_batch is not None:
-                    _validate_batch(frame)
+                if validate_batch is not None:
+                    validate_batch(frame)
                 input_rows += len(frame)
                 if return_results:
                     terminal_frames.append(frame)

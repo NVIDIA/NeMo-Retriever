@@ -994,10 +994,10 @@ class GraphIngestor(ingestor):
             ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
-        result = executor.ingest(
+        result = executor._ingest(
             executor_input,
             return_results=return_results,
-            _validate_batch=self._raise_for_stage_errors if not return_results else None,
+            validate_batch=self._raise_for_stage_errors if not return_results else None,
         )
         self._rd_dataset = result
         return result

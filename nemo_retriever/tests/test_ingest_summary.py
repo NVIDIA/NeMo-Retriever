@@ -145,7 +145,7 @@ def test_public_summary_option_checks_remote_errors_before_releasing_batch(monke
         def __init__(self, *args, **kwargs):
             pass
 
-        def ingest(self, data, *, return_results, _validate_batch):
+        def _ingest(self, data, *, return_results, validate_batch):
             assert return_results is False
             frame = pd.DataFrame(
                 [
@@ -158,7 +158,7 @@ def test_public_summary_option_checks_remote_errors_before_releasing_batch(monke
                     }
                 ]
             )
-            _validate_batch(frame)
+            validate_batch(frame)
             pytest.fail("stage error must be raised before the frame is released")
 
     monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: (None, FakeCluster()))
