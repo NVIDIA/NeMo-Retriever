@@ -6,10 +6,11 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.08.2 is a patch on 26.08.1. The Helm chart version, application version, and default service image tag are `26.8.2`. It includes embedding overflow handling, hosted Super-49B availability changes, Helm air-gapped image inventory updates, and related service and query fixes.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md).
 
 ### Upgrade notes { #upgrade-notes-26082 }
 
+- Enabling optional Helm Nemotron Parse (`nimOperator.nemotron_parse.enabled=true`) also sets the service default PDF extract method to `nemotron_parse`. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#recommended-minimal-install-2682).
 - NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. The self-hosted Helm `answer_llm` NIM image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged. For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
 - The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#air-gapped-deployment).
 
@@ -33,7 +34,7 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Librar
 
 NVIDIA® NeMo Retriever Library version 26.08.1 includes a shared text-generation task API, configurable large language model (LLM) settings, grounded answer-generation model paths, agentic retrieval, and updated Helm NIM defaults. It builds on the graph ingest, multimodal extraction, and Helm-first deployment foundation.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md).
 
 The following sections summarize user-visible changes included in 26.08.1 and foundational capabilities that remain current.
 
@@ -196,4 +197,4 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
-- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md)
