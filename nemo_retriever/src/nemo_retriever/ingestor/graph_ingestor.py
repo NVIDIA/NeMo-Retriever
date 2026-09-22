@@ -824,7 +824,7 @@ class GraphIngestor(ingestor):
         ----------
         params
             Optional :class:`IngestExecuteParams` (or plain ``dict``) carrying
-            execute-time flags. Graph run modes honor ``return_failures``.
+            execute-time flags. Batch mode also honors ``return_results``.
         **kwargs
             Execute-time flags passed directly. ``return_failures`` may be
             passed here and takes precedence over the value in ``params``.
@@ -835,6 +835,12 @@ class GraphIngestor(ingestor):
             scanned for populated error fields so local collected failures can
             still be returned; the default raise path remains scoped to
             explicitly configured remote stages.
+        return_results
+            When ``False``, batch ingestion returns a one-row summary with
+            ``input_rows`` and ``submitted_records`` instead of retaining the
+            extracted records. Requires a terminal streaming VDB upload,
+            ``error_policy='raise'``, and ``return_failures=False``. Submitted
+            records are counted before any backend filtering.
 
         Returns
         -------
@@ -844,10 +850,22 @@ class GraphIngestor(ingestor):
             ``(result, failures)`` where ``failures`` is a list of
             service-style ``(source, error)`` tuples.
         """
-        return_failures = self._resolve_return_failures(params, kwargs)
+        return_failures = self._resolve_execute_flag(params, kwargs, "return_failures", default=False)
+        return_results = self._resolve_execute_flag(params, kwargs, "return_results", default=True)
+        executor_kwargs: dict[str, Any] = {}
+        if not return_results:
+            if self._run_mode != "batch" or self._vdb_upload_params is None:
+                raise ValueError("return_results=False requires run_mode='batch' with a VDB upload")
+            if return_failures or self._error_policy == "collect":
+                raise ValueError("return_results=False requires error_policy='raise' and return_failures=False")
+            executor_kwargs = {"return_results": False, "_validate_batch": self._raise_for_stage_errors}
         self._validate_input_sources(self._inline_texts)
         if not self._documents and not self._buffers and is_blank_inline_corpus(self._inline_texts):
             result = empty_text_chunks_df()
+            if not return_results:
+                import pandas as pd
+
+                result = pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
             if self._run_mode == "batch":
                 self._rd_dataset = result
             else:
@@ -886,6 +904,7 @@ class GraphIngestor(ingestor):
                 default_branches,
                 dedup_params=effective_dedup_params,
                 post_extract_order=post_extract_order,
+                **executor_kwargs,
             )
         else:
             if single_effective is None:
@@ -894,6 +913,7 @@ class GraphIngestor(ingestor):
                 single_effective,
                 dedup_params=effective_dedup_params,
                 post_extract_order=post_extract_order,
+                **executor_kwargs,
             )
 
         return self._finalize_ingest_result(result, return_failures=return_failures)
@@ -904,12 +924,14 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
+        **executor_kwargs: Any,
     ) -> Any:
         if self._run_mode == "batch":
             return self._execute_single_graph_batch(
                 effective_extraction,
                 dedup_params=dedup_params,
                 post_extract_order=post_extract_order,
+                **executor_kwargs,
             )
         return self._execute_single_graph_inprocess(
             effective_extraction,
@@ -923,6 +945,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
+        **executor_kwargs: Any,
     ) -> Any:
         ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
@@ -973,7 +996,7 @@ class GraphIngestor(ingestor):
             ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
-        result = executor.ingest(executor_input)
+        result = executor.ingest(executor_input, **executor_kwargs)
         self._rd_dataset = result
         return result
 
@@ -1020,6 +1043,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
+        **executor_kwargs: Any,
     ) -> Any:
         result = ExtractionBranchExecutor(
             run_mode=self._run_mode,
@@ -1051,6 +1075,7 @@ class GraphIngestor(ingestor):
             show_progress=self._show_progress,
             allow_no_gpu=self._allow_no_gpu,
             ensure_batch_runtime=self._ensure_batch_runtime,
+            executor_kwargs=executor_kwargs,
         ).execute()
         self._rd_dataset = result if self._run_mode == "batch" else None
         return result
@@ -1420,14 +1445,14 @@ class GraphIngestor(ingestor):
             raise GraphIngestionError(records, stage_diagnostics=diagnostics)
 
     @staticmethod
-    def _resolve_return_failures(params: Any, kwargs: dict[str, Any]) -> bool:
-        if "return_failures" in kwargs:
-            return bool(kwargs["return_failures"])
+    def _resolve_execute_flag(params: Any, kwargs: dict[str, Any], name: str, *, default: bool) -> bool:
+        if name in kwargs:
+            return bool(kwargs[name])
         if isinstance(params, IngestExecuteParams):
-            return bool(params.return_failures)
-        if isinstance(params, dict) and "return_failures" in params:
-            return bool(params["return_failures"])
-        return False
+            return bool(getattr(params, name))
+        if isinstance(params, dict) and name in params:
+            return bool(params[name])
+        return default
 
     def _collect_failure_records(self, result: Any) -> list[dict[str, Any]]:
         diagnostics = self._remote_stage_diagnostics()

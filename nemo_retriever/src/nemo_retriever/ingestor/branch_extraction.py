@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from typing import Any, Callable
 
@@ -73,6 +73,7 @@ class ExtractionBranchExecutor:
     show_progress: bool
     allow_no_gpu: bool
     ensure_batch_runtime: Callable[[], tuple[Any, Any]]
+    executor_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def execute(self) -> Any:
         logger.info(
@@ -165,7 +166,7 @@ class ExtractionBranchExecutor:
         combined = normalized[0]
         for branch_ds in normalized[1:]:
             combined = combined.union(branch_ds)
-        return post_executor.ingest(combined)
+        return post_executor.ingest(combined, **self.executor_kwargs)
 
     def _execute_inprocess(self) -> Any:
         frames = []
