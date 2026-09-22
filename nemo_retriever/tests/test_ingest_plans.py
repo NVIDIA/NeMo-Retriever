@@ -732,7 +732,7 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
         def __init__(self, graph, **kwargs):
             self.graph = graph
 
-        def ingest(self, data):
+        def _ingest(self, data, *, return_results=True, validate_batch=None):
             return {"data": data, "graph": self.graph}
 
     def _fake_batch_tuning_to_node_overrides(
