@@ -14,6 +14,7 @@ from typing import Any, TypedDict
 
 from pydantic import ValidationError
 
+from nemo_retriever.common.modality.embedding_transport import CONTENT_COUNTS_FIELD, PAGE_IMAGE_URI_FIELD
 from nemo_retriever.common.schemas.collections import QueryHit
 from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
@@ -222,10 +223,15 @@ def _add_detection_metadata(
         if normalized_counts:
             content_metadata.setdefault("page_elements_v3_counts_by_label", normalized_counts)
 
+    compact_counts = row.get(CONTENT_COUNTS_FIELD)
     for content_type in ("table", "chart", "infographic"):
-        detections = row.get(content_type)
-        if isinstance(detections, list):
-            content_metadata.setdefault(f"ocr_{content_type}_detections", len(detections))
+        count = _optional_int(compact_counts.get(content_type)) if isinstance(compact_counts, dict) else None
+        if count is not None:
+            content_metadata.setdefault(f"ocr_{content_type}_detections", count)
+        else:
+            detections = row.get(content_type)
+            if isinstance(detections, list):
+                content_metadata.setdefault(f"ocr_{content_type}_detections", len(detections))
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -262,7 +268,7 @@ def _is_inherited_page_uri(row: dict[str, Any], stored_image_uri: str, content_t
         return False
 
     page_image = row.get("page_image")
-    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else row.get(PAGE_IMAGE_URI_FIELD)
     return bool(_first_str(page_uri) == stored_image_uri)
 
 
