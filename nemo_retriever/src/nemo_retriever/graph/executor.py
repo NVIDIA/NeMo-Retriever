@@ -641,7 +641,32 @@ class RayDataExecutor(AbstractExecutor):
         _validate_batch: Callable[[pd.DataFrame], None] | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Run the graph, returning records or counts for a terminal streaming write."""
+        """Run the graph and complete any streaming VDB write.
+
+        Parameters
+        ----------
+        data : Any
+            Input accepted by ``build_dataset``.
+        return_results : bool, default True
+            Return the full result frame. If false, release consumed batches
+            and return one row with ``input_rows`` and ``submitted_records``.
+            Submitted records are counted before backend filtering.
+        _validate_batch : callable, optional
+            Internal hook called on each batch before streaming upload.
+            Exceptions abort ingestion and propagate to the caller.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Full graph results, or the counts after a successful terminal write.
+
+        Raises
+        ------
+        ValueError
+            Summary mode requires a terminal VDB that supports streaming ingest.
+        TypeError
+            Additional keyword settings are not supported.
+        """
 
         if kwargs:
             unsupported = ", ".join(sorted(kwargs))
