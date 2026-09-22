@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Experimental Ray Direct Transport backend for ``cudf.DataFrame``.
 
 This is intentionally benchmark-scoped.  Ray 2.56's RDT API is alpha and
@@ -9,6 +13,7 @@ frames in Ray's small metadata message.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -19,6 +24,9 @@ from ray.experimental.rdt.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,6 +87,8 @@ class CudfCudaIpcTransport(TensorTransportManager):
             ray_gpu_ids = ray.get_gpu_ids()
             if not ray_gpu_ids:
                 raise RuntimeError("CUDF_CUDA_IPC source actor has no Ray-assigned GPU")
+            if not torch.cuda.is_available():
+                raise RuntimeError("CUDF_CUDA_IPC requires a usable PyTorch CUDA runtime in the source actor")
             ray_gpu_idx = int(ray_gpu_ids[0])
             ray_node_id = ray.get_runtime_context().get_node_id()
 
@@ -170,8 +180,8 @@ class CudfCudaIpcTransport(TensorTransportManager):
             def __del__(self) -> None:
                 try:
                     cp.cuda.runtime.ipcCloseMemHandle(self.ptr)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Failed to close CUDA IPC memory handle: %s", exc)
 
         if target_buffers:
             raise ValueError("CUDF_CUDA_IPC does not support target buffers")
@@ -181,6 +191,8 @@ class CudfCudaIpcTransport(TensorTransportManager):
         metadata = tensor_transport_metadata
         if ray.get_runtime_context().get_node_id() != metadata.ray_node_id:
             raise ValueError("CUDF_CUDA_IPC only supports actors on the same node")
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDF_CUDA_IPC requires a usable PyTorch CUDA runtime in the destination actor")
         try:
             local_device = ray.get_gpu_ids().index(metadata.ray_gpu_idx)
         except ValueError as exc:

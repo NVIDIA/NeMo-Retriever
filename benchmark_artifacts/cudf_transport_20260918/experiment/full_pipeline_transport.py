@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Experiment-scoped full NRL tails for narrow and cuDF-RDT transport.
 
 The stock Ray Data graph is retained through extraction.  Its embedding and
@@ -9,6 +13,7 @@ construction without the stock one-block heterogeneous-dataframe repartition.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import queue
@@ -16,6 +21,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Iterator
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -24,6 +30,9 @@ import ray
 
 from cudf_cuda_ipc import register_cudf_cuda_ipc
 from nemo_retriever.operators.abstract_operator import AbstractOperator
+
+
+logger = logging.getLogger(__name__)
 
 
 _MODE_ENV = "NRL_FULL_TRANSPORT_MODE"
@@ -141,8 +150,8 @@ class _IncrementalPDFSplitCPUActor:
                 if document is not None:
                     try:
                         document.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("Failed to close source PDF document %r: %s", pdf_path, exc)
 
         if page_rows:
             yield pd.DataFrame(page_rows)
@@ -667,122 +676,199 @@ def _find_tail(nodes: list[Any]) -> tuple[int, int]:
     return embed_index, vdb_index
 
 
+@dataclass
+class _PreparedPrefix:
+    dataset: Any
+    embed_params: Any
+    vdb_kwargs: dict[str, Any]
+    batch_size: int
+    inference_batch_size: int
+    streaming_gpu: float
+    streaming: bool
+    dataset_build_seconds: float
+    materialize_seconds: float
+    page_block_rows: int
+
+
+def _prepare_prefix(executor: Any, data: Any, kwargs: dict[str, Any]) -> _PreparedPrefix:
+    """Build the extraction prefix and resolve tail configuration."""
+    nodes = executor._linearize(executor.graph)
+    embed_index, vdb_index = _find_tail(nodes)
+    embed_node = nodes[embed_index]
+    vdb_node = nodes[vdb_index]
+    embed_params = embed_node.operator_kwargs["params"]
+    inference_batch_override = int(os.environ.get(_INFERENCE_BATCH_SIZE_ENV, "0"))
+    if inference_batch_override < 0:
+        raise ValueError(f"{_INFERENCE_BATCH_SIZE_ENV} must be non-negative")
+    if inference_batch_override:
+        embed_params = embed_params.model_copy(update={"inference_batch_size": inference_batch_override})
+    vdb_kwargs = dict(vdb_node.operator_kwargs.get("vdb_kwargs") or {})
+
+    prefix = _prefix_graph(nodes, embed_index)
+    prefix_overrides = {key: value for key, value in executor._node_overrides.items() if key != embed_node.name}
+    ocr_cost_budget = int(os.environ.get(_OCR_COST_BUDGET_ENV, "0"))
+    if ocr_cost_budget:
+        prefix_overrides["CostAwareOCRBatcher"] = {
+            "batch_size": None,
+            "concurrency": 1,
+            "num_cpus": 0.1,
+        }
+        prefix_overrides.setdefault("OCRActor", {})["batch_size"] = None
+    page_block_rows = int(os.environ.get(_PAGE_BLOCK_ROWS_ENV, "0"))
+    if page_block_rows < 0:
+        raise ValueError(f"{_PAGE_BLOCK_ROWS_ENV} must be non-negative")
+    if page_block_rows:
+        prefix_overrides.setdefault("PageElementDetectionActor", {})["target_num_rows_per_block"] = page_block_rows
+    for node_name, env_name in (
+        ("PageElementDetectionActor", _PAGE_MPS_ENV),
+        ("OCRActor", _OCR_MPS_ENV),
+    ):
+        percentage = int(os.environ.get(env_name, "0"))
+        if not 0 <= percentage <= 100:
+            raise ValueError(f"{env_name} must be between 0 and 100")
+        if percentage:
+            prefix_overrides.setdefault(node_name, {})["runtime_env"] = {
+                "env_vars": {"CUDA_MPS_ACTIVE_THREAD_PERCENTAGE": str(percentage)}
+            }
+
+    prefix_executor = type(executor)(
+        prefix,
+        ray_address=executor._ray_address,
+        batch_size=executor._default_batch_size,
+        batch_format=executor._default_batch_format,
+        num_cpus=executor._default_num_cpus,
+        num_gpus=executor._default_num_gpus,
+        node_overrides=prefix_overrides,
+        auto_concurrency_nodes=executor._auto_concurrency_nodes - {embed_node.name},
+        source_cpu_reservation=executor._source_cpu_reservation,
+    )
+    dataset_build_started = time.perf_counter()
+    if ocr_cost_budget:
+        import ray.data as rd
+
+        original_map_batches = rd.Dataset.map_batches
+
+        def cost_block_map_batches(dataset: Any, fn: Any, *args: Any, **map_kwargs: Any):
+            whole_gpu_block = map_kwargs.get("batch_size") is None and float(map_kwargs.get("num_gpus") or 0) > 0
+            if whole_gpu_block:
+                private_defaults = {
+                    "compute": None,
+                    "batch_format": "default",
+                    "zero_copy_batch": True,
+                    "fn_args": None,
+                    "fn_kwargs": None,
+                    "fn_constructor_args": None,
+                    "fn_constructor_kwargs": None,
+                    "num_cpus": None,
+                    "num_gpus": None,
+                    "memory": None,
+                    "concurrency": None,
+                    "udf_modifying_row_count": True,
+                    "ray_remote_args_fn": None,
+                }
+                for key, value in private_defaults.items():
+                    map_kwargs.setdefault(key, value)
+                return dataset._map_batches_without_batch_size_validation(fn, *args, **map_kwargs)
+            return original_map_batches(dataset, fn, *args, **map_kwargs)
+
+        rd.Dataset.map_batches = cost_block_map_batches
+        try:
+            extracted = prefix_executor.build_dataset(data, **kwargs)
+        finally:
+            rd.Dataset.map_batches = original_map_batches
+    else:
+        extracted = prefix_executor.build_dataset(data, **kwargs)
+    dataset_build_seconds = time.perf_counter() - dataset_build_started
+
+    streaming = os.environ.get(_STREAMING_ENV, "").strip().lower() in {"1", "true", "yes"}
+    materialize_seconds = 0.0
+    if not streaming:
+        materialize_started = time.perf_counter()
+        extracted = extracted.materialize()
+        materialize_seconds = time.perf_counter() - materialize_started
+    configured_batch_size = int(executor._node_overrides.get(embed_node.name, {}).get("batch_size") or 32)
+    batch_size = int(os.environ.get(_TAIL_BATCH_SIZE_ENV, "0")) or configured_batch_size
+    if batch_size <= 0:
+        raise ValueError(f"{_TAIL_BATCH_SIZE_ENV} must resolve to a positive integer")
+
+    return _PreparedPrefix(
+        dataset=extracted,
+        embed_params=embed_params,
+        vdb_kwargs=vdb_kwargs,
+        batch_size=batch_size,
+        inference_batch_size=int(getattr(embed_params, "inference_batch_size", 0) or 0),
+        streaming_gpu=float(os.environ.get(_STREAMING_GPU_ENV, "0.4")),
+        streaming=streaming,
+        dataset_build_seconds=dataset_build_seconds,
+        materialize_seconds=materialize_seconds,
+        page_block_rows=page_block_rows,
+    )
+
+
+def _finalize_transport_result(
+    final: dict[str, Any],
+    *,
+    mode: str,
+    stored_rows: int,
+    executor_started: float,
+    prepared: _PreparedPrefix,
+    first_batch_at: float | None,
+    last_batch_at: float | None,
+    iteration_started: float,
+    drain_finished: float,
+    finalize_started: float,
+    batch_count: int,
+    source_stats: dict[str, Any] | None,
+    admission_stats: dict[str, Any],
+    retained_results: list[Any],
+) -> Any:
+    """Validate accounting, persist timings, and construct the ingest result."""
+    import pandas as pd
+
+    if int(final["rows"]) != stored_rows:
+        raise RuntimeError(f"streamed row accounting mismatch: {final['rows']} != {stored_rows}")
+    finalized_at = time.perf_counter()
+    final["streaming"] = prepared.streaming
+    final["driver_timings"] = {
+        "executor_total_seconds": finalized_at - executor_started,
+        "dataset_build_seconds": prepared.dataset_build_seconds,
+        "materialize_seconds": prepared.materialize_seconds,
+        "time_to_first_batch_seconds": first_batch_at - iteration_started if first_batch_at is not None else None,
+        "input_stream_seconds": last_batch_at - iteration_started if last_batch_at is not None else None,
+        "tail_drain_seconds": drain_finished - (last_batch_at or iteration_started),
+        "finalize_seconds": finalized_at - finalize_started,
+        "batches": batch_count,
+        "batch_size": prepared.batch_size,
+        "inference_batch_size": prepared.inference_batch_size,
+        "streaming_gpu_fraction": prepared.streaming_gpu if prepared.streaming else 1.0,
+    }
+    if source_stats is not None:
+        final["source_timings"] = source_stats
+    if admission_stats:
+        final["admission"] = admission_stats
+    final["result_mode"] = os.environ.get(_CUSTOM_RESULT_MODE_ENV, "sink_only") if mode == "custom" else None
+    stats_path = Path(final["lancedb_uri"]).parent / "full_transport_stats.json"
+    stats_path.write_text(json.dumps(final, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if retained_results:
+        return pd.concat(retained_results, ignore_index=True)
+    return pd.DataFrame({"stored": [True] * stored_rows})
+
+
 def _install_executor_patch() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
 
     original_ingest = RayDataExecutor.ingest
 
-    def transport_ingest(self, data: Any, **kwargs: Any):
+    def run_transport_tail(self, data: Any, mode: str, **kwargs: Any):
         executor_started = time.perf_counter()
-        mode = os.environ.get(_MODE_ENV, "").strip().lower()
-        if mode not in {"narrow", "custom"}:
-            return original_ingest(self, data, **kwargs)
-
-        import pandas as pd
-
-        nodes = self._linearize(self.graph)
-        embed_index, vdb_index = _find_tail(nodes)
-        embed_node = nodes[embed_index]
-        vdb_node = nodes[vdb_index]
-        embed_params = embed_node.operator_kwargs["params"]
-        inference_batch_override = int(os.environ.get(_INFERENCE_BATCH_SIZE_ENV, "0"))
-        if inference_batch_override < 0:
-            raise ValueError(f"{_INFERENCE_BATCH_SIZE_ENV} must be non-negative")
-        if inference_batch_override:
-            embed_params = embed_params.model_copy(update={"inference_batch_size": inference_batch_override})
-        vdb_kwargs = dict(vdb_node.operator_kwargs.get("vdb_kwargs") or {})
-
-        prefix = _prefix_graph(nodes, embed_index)
-        prefix_overrides = {key: value for key, value in self._node_overrides.items() if key != embed_node.name}
-        ocr_cost_budget = int(os.environ.get(_OCR_COST_BUDGET_ENV, "0"))
-        if ocr_cost_budget:
-            prefix_overrides["CostAwareOCRBatcher"] = {
-                "batch_size": None,
-                "concurrency": 1,
-                "num_cpus": 0.1,
-            }
-            prefix_overrides.setdefault("OCRActor", {})["batch_size"] = None
-        page_block_rows = int(os.environ.get(_PAGE_BLOCK_ROWS_ENV, "0"))
-        if page_block_rows < 0:
-            raise ValueError(f"{_PAGE_BLOCK_ROWS_ENV} must be non-negative")
-        if page_block_rows:
-            prefix_overrides.setdefault("PageElementDetectionActor", {})["target_num_rows_per_block"] = page_block_rows
-        for node_name, env_name in (
-            ("PageElementDetectionActor", _PAGE_MPS_ENV),
-            ("OCRActor", _OCR_MPS_ENV),
-        ):
-            percentage = int(os.environ.get(env_name, "0"))
-            if not 0 <= percentage <= 100:
-                raise ValueError(f"{env_name} must be between 0 and 100")
-            if percentage:
-                prefix_overrides.setdefault(node_name, {})["runtime_env"] = {
-                    "env_vars": {"CUDA_MPS_ACTIVE_THREAD_PERCENTAGE": str(percentage)}
-                }
-        prefix_executor = RayDataExecutor(
-            prefix,
-            ray_address=self._ray_address,
-            batch_size=self._default_batch_size,
-            batch_format=self._default_batch_format,
-            num_cpus=self._default_num_cpus,
-            num_gpus=self._default_num_gpus,
-            node_overrides=prefix_overrides,
-            auto_concurrency_nodes=self._auto_concurrency_nodes - {embed_node.name},
-            source_cpu_reservation=self._source_cpu_reservation,
-        )
-        dataset_build_started = time.perf_counter()
-        if ocr_cost_budget:
-            import ray.data as rd
-
-            original_map_batches = rd.Dataset.map_batches
-
-            def cost_block_map_batches(dataset: Any, fn: Any, *args: Any, **map_kwargs: Any):
-                whole_gpu_block = map_kwargs.get("batch_size") is None and float(map_kwargs.get("num_gpus") or 0) > 0
-                if whole_gpu_block:
-                    private_defaults = {
-                        "compute": None,
-                        "batch_format": "default",
-                        "zero_copy_batch": True,
-                        "fn_args": None,
-                        "fn_kwargs": None,
-                        "fn_constructor_args": None,
-                        "fn_constructor_kwargs": None,
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "concurrency": None,
-                        "udf_modifying_row_count": True,
-                        "ray_remote_args_fn": None,
-                    }
-                    for key, value in private_defaults.items():
-                        map_kwargs.setdefault(key, value)
-                    return dataset._map_batches_without_batch_size_validation(
-                        fn,
-                        *args,
-                        **map_kwargs,
-                    )
-                return original_map_batches(dataset, fn, *args, **map_kwargs)
-
-            rd.Dataset.map_batches = cost_block_map_batches
-            try:
-                extracted = prefix_executor.build_dataset(data, **kwargs)
-            finally:
-                rd.Dataset.map_batches = original_map_batches
-        else:
-            extracted = prefix_executor.build_dataset(data, **kwargs)
-        dataset_build_seconds = time.perf_counter() - dataset_build_started
-        streaming = os.environ.get(_STREAMING_ENV, "").strip().lower() in {"1", "true", "yes"}
-        materialize_seconds = 0.0
-        if not streaming:
-            materialize_started = time.perf_counter()
-            extracted = extracted.materialize()
-            materialize_seconds = time.perf_counter() - materialize_started
-
-        configured_batch_size = int(self._node_overrides.get(embed_node.name, {}).get("batch_size") or 32)
-        batch_size = int(os.environ.get(_TAIL_BATCH_SIZE_ENV, "0")) or configured_batch_size
-        if batch_size <= 0:
-            raise ValueError(f"{_TAIL_BATCH_SIZE_ENV} must resolve to a positive integer")
-        inference_batch_size = int(getattr(embed_params, "inference_batch_size", 0) or 0)
-        streaming_gpu = float(os.environ.get(_STREAMING_GPU_ENV, "0.4"))
+        prepared = _prepare_prefix(self, data, kwargs)
+        extracted = prepared.dataset
+        embed_params = prepared.embed_params
+        vdb_kwargs = prepared.vdb_kwargs
+        batch_size = prepared.batch_size
+        streaming_gpu = prepared.streaming_gpu
+        streaming = prepared.streaming
+        page_block_rows = prepared.page_block_rows
         pending: list[Any] = []
         stored_rows = 0
         batch_count = 0
@@ -1195,33 +1281,28 @@ def _install_executor_patch() -> None:
             finalize_started = time.perf_counter()
             final = ray.get(writer.finalize.remote())
 
-        if int(final["rows"]) != stored_rows:
-            raise RuntimeError(f"streamed row accounting mismatch: {final['rows']} != {stored_rows}")
-        finalized_at = time.perf_counter()
-        final["streaming"] = streaming
-        final["driver_timings"] = {
-            "executor_total_seconds": finalized_at - executor_started,
-            "dataset_build_seconds": dataset_build_seconds,
-            "materialize_seconds": materialize_seconds,
-            "time_to_first_batch_seconds": (first_batch_at - iteration_started if first_batch_at is not None else None),
-            "input_stream_seconds": (last_batch_at - iteration_started if last_batch_at is not None else None),
-            "tail_drain_seconds": drain_finished - (last_batch_at or iteration_started),
-            "finalize_seconds": finalized_at - finalize_started,
-            "batches": batch_count,
-            "batch_size": batch_size,
-            "inference_batch_size": inference_batch_size,
-            "streaming_gpu_fraction": streaming_gpu if streaming else 1.0,
-        }
-        if source_stats is not None:
-            final["source_timings"] = source_stats
-        if admission_stats:
-            final["admission"] = admission_stats
-        final["result_mode"] = os.environ.get(_CUSTOM_RESULT_MODE_ENV, "sink_only") if mode == "custom" else None
-        stats_path = Path(final["lancedb_uri"]).parent / "full_transport_stats.json"
-        stats_path.write_text(json.dumps(final, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        if retained_results:
-            return pd.concat(retained_results, ignore_index=True)
-        return pd.DataFrame({"stored": [True] * stored_rows})
+        return _finalize_transport_result(
+            final,
+            mode=mode,
+            stored_rows=stored_rows,
+            executor_started=executor_started,
+            prepared=prepared,
+            first_batch_at=first_batch_at,
+            last_batch_at=last_batch_at,
+            iteration_started=iteration_started,
+            drain_finished=drain_finished,
+            finalize_started=finalize_started,
+            batch_count=batch_count,
+            source_stats=source_stats,
+            admission_stats=admission_stats,
+            retained_results=retained_results,
+        )
+
+    def transport_ingest(self, data: Any, **kwargs: Any):
+        mode = os.environ.get(_MODE_ENV, "").strip().lower()
+        if mode not in {"narrow", "custom"}:
+            return original_ingest(self, data, **kwargs)
+        return run_transport_tail(self, data, mode, **kwargs)
 
     RayDataExecutor.ingest = transport_ingest
 

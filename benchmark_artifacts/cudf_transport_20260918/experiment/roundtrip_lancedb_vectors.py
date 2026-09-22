@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Round-trip an NRL LanceDB vector column through a narrow cuDF GPU island."""
 
 from __future__ import annotations
