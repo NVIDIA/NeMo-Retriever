@@ -137,6 +137,7 @@ class ExtractionBranchExecutor:
             webhook_params=self.webhook_params,
             stage_order=self.post_extract_order,
             reshape_content_before_embed=self._should_reshape_content_before_embed(),
+            compact_embedding_transport=self.executor_kwargs.get("return_results") is False,
         )
         post_overrides = batch_tuning_to_node_overrides(
             None,
