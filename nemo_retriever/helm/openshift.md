@@ -46,7 +46,8 @@ The following table maps common OpenShift failures to Helm overrides in this gui
 | PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (refer to the sample below) |
 | `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
 | `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Set `serviceConfig.vectordb.enabled=false` for a minimal service-only install, or patch the vectordb Deployment after install (below) |
-| PSA warnings on **otel-collector** or **Zipkin** | Otel and Zipkin Deployments have no container `securityContext` in the chart. Zipkin renders only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true | Keep `topology.otel.enabled=false` and `topology.zipkin.enabled=false` (this profile) unless you patch those Deployments |
+| PSA warnings on **otel-collector** | The otel-collector Deployment has no `securityContext` or `podSecurityContext` values in the chart | Keep `topology.otel.enabled=false` (this profile) unless you patch that Deployment |
+| PSA warnings on **Zipkin** | `topology.zipkin.podSecurityContext` and `topology.zipkin.securityContext` default to empty, so Helm omits those blocks. Zipkin renders only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true | Keep `topology.zipkin.enabled=false` (this profile), or set those keys to the restricted baseline used for `service.securityContext` |
 | Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (refer to [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
 | `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
 | Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths through `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
@@ -279,7 +280,9 @@ Re-apply the patch after `helm upgrade` if the Deployment is recreated. A future
 
 ### Enabling the OpenTelemetry collector on OpenShift
 
-The chart's otel-collector and Zipkin Deployments likewise lack `securityContext` fields. Zipkin is created only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true. Prefer `topology.otel.enabled=false` and `topology.zipkin.enabled=false` (as in the sample values) unless you operate your own collector or patch `*-otel` and `*-zipkin` the same way as vectordb.
+The chart's otel-collector Deployment has no `securityContext` or `podSecurityContext` values. Prefer `topology.otel.enabled=false` (as in the sample values) unless you operate your own collector or patch `*-otel` the same way as vectordb.
+
+Zipkin is different. The chart renders `topology.zipkin.podSecurityContext` and `topology.zipkin.securityContext` when those maps are non-empty. Their defaults are empty, so a stock Zipkin pod does not satisfy PSA `enforce=restricted`. Zipkin is created only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true. This profile sets both to false. If you enable Zipkin, set those keys to the restricted baseline used for `service.securityContext`.
 
 ### What this guide does not require on OpenShift
 
