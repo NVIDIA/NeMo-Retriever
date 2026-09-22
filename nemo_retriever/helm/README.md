@@ -2499,7 +2499,7 @@ override the inherited NIM values.
 
 ## OpenShift deployment { #openshift-deployment }
 
-OpenShift install procedures, **restricted-v2** value overrides for the retriever Service, prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](./openshift.md)**. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift. Chart-owned Service and VectorDB Pods can use **restricted-v2**. The in-cluster NIM Operator example supports Pod Security Admission (PSA) `restricted` in warn and audit mode only. PSA `enforce=restricted` is not supported for Operator-generated NIM Pods.
+OpenShift install procedures, **restricted-v2** value overrides for the standalone retriever Service (`topology.mode=standalone`), prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](./openshift.md)**. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift. Chart-owned standalone Service and VectorDB Pods can use **restricted-v2**. Split topology and the in-cluster NIM Operator example support Pod Security Admission (PSA) `restricted` in warn and audit mode only. PSA `enforce=restricted` is not supported for Operator-generated NIM Pods or split-mode Service Pods. When you set `nims.enabled=false` for an enforced namespace, set `serviceConfig.nimEndpoints.*InvokeUrl` for NIMs that run outside that namespace.
 
 ---
 
