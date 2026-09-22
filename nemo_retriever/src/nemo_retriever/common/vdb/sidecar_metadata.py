@@ -160,31 +160,49 @@ def apply_sidecar_metadata_to_client_batches(
         for element in batch:
             if not isinstance(element, dict):
                 continue
-            meta = element.get("metadata")
-            if not isinstance(meta, dict):
-                new_batch.append(element)
-                continue
-            src = meta.get("source_metadata")
-            if not isinstance(src, dict):
-                new_batch.append(element)
-                continue
-            row = None
-            for jk in _resolve_join_keys(src, join_key):
-                row = lookup.get(jk)
-                if row is not None:
-                    break
-            if row is None:
-                new_batch.append(element)
-                continue
-            content_meta = meta.get("content_metadata")
-            if not isinstance(content_meta, dict):
-                content_meta = {}
-                meta["content_metadata"] = content_meta
-            for col in meta_fields:
-                content_meta[col] = normalize_sidecar_cell_value(row.get(col))
-            new_batch.append(element)
+            new_batch.append(
+                _apply_sidecar_metadata_to_client_record(
+                    element,
+                    lookup=lookup,
+                    meta_fields=meta_fields,
+                    join_key=join_key,
+                )
+            )
         new_batches.append(new_batch)
     return new_batches
+
+
+def _apply_sidecar_metadata_to_client_record(
+    record: dict[str, Any],
+    *,
+    lookup: dict[str, dict[str, Any]],
+    meta_fields: list[str],
+    join_key: MetaJoinKey,
+) -> dict[str, Any]:
+    """Merge sidecar fields into one canonical record in place."""
+
+    metadata = record.get("metadata")
+    if not isinstance(metadata, dict):
+        return record
+    source_metadata = metadata.get("source_metadata")
+    if not isinstance(source_metadata, dict):
+        return record
+
+    row = None
+    for key in _resolve_join_keys(source_metadata, join_key):
+        row = lookup.get(key)
+        if row is not None:
+            break
+    if row is None:
+        return record
+
+    content_metadata = metadata.get("content_metadata")
+    if not isinstance(content_metadata, dict):
+        content_metadata = {}
+        metadata["content_metadata"] = content_metadata
+    for field in meta_fields:
+        content_metadata[field] = normalize_sidecar_cell_value(row.get(field))
+    return record
 
 
 def split_sidecar_from_vdb_kwargs(

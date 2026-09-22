@@ -284,7 +284,7 @@ retriever = Retriever(
 
 query = "Given their activities, which animal is responsible for the typos in my documents?"
 
-# you can also submit a list with retriever.queries[...]
+# you can also submit a list with retriever.queries([...])
 hits = retriever.query(query)
 ```
 
@@ -618,7 +618,7 @@ If you want a readable markdown view of extracted results, pass a single documen
 records to `nemo_retriever.common.io.to_markdown`. The helper returns one markdown string (or `None`
 if there is no content), with per-page sections joined under a single document heading.
 
-For multi-document runs, pass one document at a time—for example, `to_markdown(results[0])`.
+For multi-document runs, filter the results by `path` and pass one document at a time.
 To build a filename-keyed index across many documents, use `build_page_index`.
 
 PDF text is split at the page level.
@@ -633,11 +633,13 @@ ingestor = (
   .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
 results = ingestor.ingest()
-markdown_doc = to_markdown(results[0])
+document_path = results["path"].iloc[0]
+document_results = results[results["path"] == document_path]
+markdown_doc = to_markdown(document_results)
 print(markdown_doc)
 ```
 
-Use `to_markdown_by_page(results[0])` when you want a `dict[int, str]` keyed by page
+Use `to_markdown_by_page(document_results)` when you want a `dict[int, str]` keyed by page
 number instead, where each value is the rendered markdown for that page.
 For audio and video files, ensure ffmpeg is installed by your system's package manager.
 

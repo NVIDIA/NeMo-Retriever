@@ -11,11 +11,20 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from .llm.usage import cache_read_tokens, usage_integer
-from nemo_retriever.version import __version__
+
+# Fall back only for standalone imports so full-library version errors remain visible.
+if __package__.startswith("nemo_retriever."):
+    from nemo_retriever.version import __version__
+else:
+    try:
+        __version__ = version("nemo-retriever")
+    except PackageNotFoundError:
+        __version__ = "0.0.0"
 
 logger = logging.getLogger(__name__)
 

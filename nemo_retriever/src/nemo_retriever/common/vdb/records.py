@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, TypedDict
 
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
+from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -24,6 +25,14 @@ _CONTENT_TYPE_ALIASES: dict[str, str] = {
     "infographic_caption": "infographic",
     "table_caption": "table",
 }
+
+_CONTENT_PROVENANCE_METADATA_KEYS = (
+    "chunk_index",
+    "chunk_count",
+    "segment_start_seconds",
+    "segment_end_seconds",
+    "frame_timestamp_seconds",
+)
 
 
 def normalize_content_type(value: Any) -> str | None:
@@ -37,7 +46,7 @@ class RetrievalContractError(RuntimeError):
 
 
 class VdbUploadError(ValueError):
-    """A nonempty graph batch cannot produce any canonical VDB records."""
+    """A nonempty graph batch cannot safely produce canonical VDB records."""
 
 
 def validate_collection_retrieval_results(
@@ -154,6 +163,8 @@ def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> 
             embedding = tolist()
         elif isinstance(embedding, tuple):
             embedding = list(embedding)
+    if isinstance(embedding, list) and not embedding:
+        return None
     return embedding
 
 
@@ -164,12 +175,9 @@ def _first_str(*values: Any) -> str:
     return ""
 
 
-def _text_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> str:
-    """Return the first nonblank text field without rewriting its contents."""
-    for value in (row.get("text"), row.get("content"), metadata.get("content")):
-        if isinstance(value, str) and value.strip():
-            return value
-    return ""
+def _text_from_graph_row(row: dict[str, Any]) -> str | None:
+    """Return canonical embedding content without interpreting its provenance."""
+    return embedding_record_content(row)
 
 
 def _optional_int(value: Any) -> int | None:
@@ -281,11 +289,11 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     metadata = _dict_or_empty(row.get("metadata"))
 
     embedding = _embedding_from_graph_row(row, metadata)
-    text = _text_from_graph_row(row, metadata)
+    text = _text_from_graph_row(row)
     if require_embedding and embedding is None:
         return None
-    image_only = require_embedding and not text and _is_image_backed_row(row)
-    if not text and not image_only:
+    image_only = require_embedding and text is None and _is_image_backed_row(row)
+    if text is None and not image_only:
         return None
 
     content_metadata = _dict_or_empty(metadata.get("content_metadata"))
@@ -314,13 +322,7 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     if bbox is not None:
         content_metadata.setdefault("bbox_xyxy_norm", bbox)
 
-    for key in (
-        "chunk_index",
-        "chunk_count",
-        "segment_start_seconds",
-        "segment_end_seconds",
-        "frame_timestamp_seconds",
-    ):
+    for key in _CONTENT_PROVENANCE_METADATA_KEYS:
         if key in metadata:
             content_metadata.setdefault(key, metadata[key])
 
@@ -341,7 +343,7 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
     record_metadata = dict(metadata)
     if embedding is not None:
         record_metadata["embedding"] = embedding
-    record_metadata["content"] = text
+    record_metadata["content"] = "" if text is None else text
     record_metadata["content_metadata"] = content_metadata
     record_metadata["source_metadata"] = source_metadata
 
@@ -350,10 +352,26 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
 
 
 def _row_has_uploadable_content_without_embedding(row: dict[str, Any]) -> bool:
+    """Return whether a searchable graph row is missing its dense embedding."""
     metadata = _dict_or_empty(row.get("metadata"))
     if _embedding_from_graph_row(row, metadata) is not None:
         return False
-    return bool(_text_from_graph_row(row, metadata)) or _is_image_backed_row(row)
+    if _text_from_graph_row(row) is not None:
+        return True
+    if _first_str(row.get("_image_b64")):
+        return True
+
+    content_metadata = _dict_or_empty(metadata.get("content_metadata"))
+    stored_image_uri = _first_str(
+        row.get("_stored_image_uri"),
+        row.get("stored_image_uri"),
+        content_metadata.get("stored_image_uri"),
+        content_metadata.get("uploaded_image_uri"),
+    )
+    content_type = normalize_content_type(
+        row.get("_content_type") or row.get("content_type") or content_metadata.get("type")
+    )
+    return bool(stored_image_uri and not _is_inherited_page_uri(row, stored_image_uri, content_type))
 
 
 def _stage_error_field(path: Any) -> str:
@@ -364,36 +382,81 @@ def _stage_error_field(path: Any) -> str:
     return "error"
 
 
-def _raise_for_empty_vdb_conversion(graph_rows: list[dict[str, Any]]) -> None:
-    upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
-    if upstream_errors:
-        error_fields = Counter(_stage_error_field(error.get("path")) for error in upstream_errors)
-        summary = ", ".join(f"{field}={count}" for field, count in sorted(error_fields.items()))
+def _raise_for_empty_vdb_conversion(
+    *,
+    row_count: int,
+    upstream_error_count: int,
+    upstream_error_fields: Counter[str],
+    rejection_reasons: Counter[str],
+) -> None:
+    if upstream_error_count:
+        summary = ", ".join(f"{field}={count}" for field, count in sorted(upstream_error_fields.items()))
         raise VdbUploadError(
-            f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable because upstream stages "
-            f"reported {len(upstream_errors)} structured row error(s) ({summary}); "
+            f"vdb_upload received {row_count} row(s), but none were uploadable because upstream stages "
+            f"reported {upstream_error_count} structured row error(s) ({summary}); "
             "error payloads are omitted because they may contain sensitive data."
         )
 
-    reasons = Counter(
-        (
-            "missing embedding"
-            if _row_has_uploadable_content_without_embedding(row)
-            else "missing searchable text or image backing"
-        )
-        for row in graph_rows
-    )
-    if "missing embedding" in reasons:
-        summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
+    summary = ", ".join(f"{reason}={count}" for reason, count in sorted(rejection_reasons.items()))
+    if "missing embedding" in rejection_reasons:
         raise VdbUploadError(
             "vdb_upload requires embedded records, but no embeddings were found. "
-            f"Received {len(graph_rows)} nonempty row(s); rejection reasons: {summary}. "
+            f"Received {row_count} nonempty row(s); rejection reasons: {summary}. "
             "Add an embed stage or provide a supported embedding column."
         )
-    summary = ", ".join(f"{reason}={count}" for reason, count in sorted(reasons.items()))
     raise VdbUploadError(
-        f"vdb_upload received {len(graph_rows)} row(s), but none were uploadable; rejection reasons: {summary}."
+        f"vdb_upload received {row_count} row(s), but none were uploadable; rejection reasons: {summary}."
     )
+
+
+def _iter_client_vdb_records(rows: Iterable[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Lazily convert graph rows into individual canonical NRL records.
+
+    Rows without searchable content are skipped. Missing embeddings fail the
+    stream on exhaustion, matching :func:`to_client_vdb_records`.
+    """
+
+    row_count = 0
+    converted_count = 0
+    upstream_error_count = 0
+    upstream_error_fields: Counter[str] = Counter()
+    rejection_reasons: Counter[str] = Counter()
+    missing_embeddings = 0
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_count += 1
+        record = _client_record_from_graph_row(row)
+        if record is not None:
+            converted_count += 1
+            yield record
+            continue
+
+        missing_embedding = _row_has_uploadable_content_without_embedding(row)
+        if missing_embedding:
+            missing_embeddings += 1
+
+        upstream_errors = list(iter_stage_errors_from_value(row))
+        if upstream_errors:
+            upstream_error_count += len(upstream_errors)
+            upstream_error_fields.update(_stage_error_field(error.get("path")) for error in upstream_errors)
+        else:
+            reason = "missing embedding" if missing_embedding else "missing searchable text or image backing"
+            rejection_reasons[reason] += 1
+
+    if converted_count and missing_embeddings:
+        raise VdbUploadError(
+            "vdb_upload is refusing a partial write because searchable rows are missing embeddings: "
+            f"input rows={row_count}, uploadable rows={converted_count}, missing embedding={missing_embeddings}."
+        )
+    if row_count and not converted_count:
+        _raise_for_empty_vdb_conversion(
+            row_count=row_count,
+            upstream_error_count=upstream_error_count,
+            upstream_error_fields=upstream_error_fields,
+            rejection_reasons=rejection_reasons,
+        )
 
 
 def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
@@ -405,11 +468,18 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     :class:`VdbUploadError` before a backend write is attempted.
     When at least one row converts, returns ``[batch]`` with a single non-empty inner list
     (never ``[[]]``, which would be truthy and could trip backends on an empty insert).
-    Uploadable graph content without an embedding raises ``VdbUploadError`` when
-    no row survives conversion.
+    Any uploadable graph content without an embedding raises ``VdbUploadError``
+    before a partial backend write can occur.
     """
     if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
         nonempty_batches = [batch for batch in rows if batch]
+        canonical_records = [record for batch in nonempty_batches for record in batch if isinstance(record, dict)]
+        missing_embeddings = sum(_row_has_uploadable_content_without_embedding(record) for record in canonical_records)
+        if missing_embeddings:
+            raise VdbUploadError(
+                "vdb_upload is refusing canonical records with missing embeddings: "
+                f"input records={len(canonical_records)}, missing embedding={missing_embeddings}."
+            )
         return rows if len(nonempty_batches) == len(rows) else nonempty_batches
     if hasattr(rows, "to_pandas"):
         rows = rows.to_pandas()
@@ -420,8 +490,28 @@ def to_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
     # would call _client_record_from_graph_row twice per row on large datasets.
     # isinstance(row, dict): plain lists are not normalized like DataFrame rows; skip None/Series/etc.
     inner = [record for row in graph_rows if (record := _client_record_from_graph_row(row)) is not None]
+    missing_embeddings = sum(_row_has_uploadable_content_without_embedding(row) for row in graph_rows)
+    if inner and missing_embeddings:
+        raise VdbUploadError(
+            "vdb_upload is refusing a partial write because searchable rows are missing embeddings: "
+            f"input rows={len(graph_rows)}, uploadable rows={len(inner)}, missing embedding={missing_embeddings}."
+        )
     if not inner and graph_rows:
-        _raise_for_empty_vdb_conversion(graph_rows)
+        upstream_errors = [error for row in graph_rows for error in iter_stage_errors_from_value(row)]
+        rejection_reasons = Counter(
+            (
+                "missing embedding"
+                if _row_has_uploadable_content_without_embedding(row)
+                else "missing searchable text or image backing"
+            )
+            for row in graph_rows
+        )
+        _raise_for_empty_vdb_conversion(
+            row_count=len(graph_rows),
+            upstream_error_count=len(upstream_errors),
+            upstream_error_fields=Counter(_stage_error_field(error.get("path")) for error in upstream_errors),
+            rejection_reasons=rejection_reasons,
+        )
     # Preserve legacy contract: no uploadable rows → [], not [[]].
     return [inner] if inner else []
 
@@ -495,8 +585,9 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
 
     path = Path(source_id) if source_id else None
     pdf_basename = path.stem if path is not None else ""
+    split_content = embedding_split_content(content_metadata)
     normalized: RetrievalHit = {
-        "text": _first_str(hit.get("text"), hit.get("content")),
+        "text": split_content if split_content is not None else _first_str(hit.get("text"), hit.get("content")),
         # Keep `metadata` as a native dict on the API boundary. The LanceDB
         # storage layer JSON-encodes it on write (see `_json_str` in
         # `vdb/lancedb.py`); we already parse it back on read in

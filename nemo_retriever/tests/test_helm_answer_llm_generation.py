@@ -70,7 +70,8 @@ class HelmAnswerLLMGenerationTests(TestCase):
         values = _read_required_file(_VALUES_YAML)
 
         self.assertIn(_ANSWER_LLM_KEY, values)
-        block = values[values.index(_ANSWER_LLM_KEY) : values.index(_ANSWER_LLM_KEY) + 2200]
+        start = values.index(_ANSWER_LLM_KEY)
+        block = values[start : values.index("\n  rerankqa:", start)]
         self.assertIn("enabled: false", block)
         self.assertIn(f"nimServiceName: {_ANSWER_LLM_SERVICE}", block)
         self.assertIn(f"repository: {_SUPER49B_REPOSITORY}", block)

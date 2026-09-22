@@ -660,7 +660,32 @@ class ServiceIngestor(ingestor):
         return self
 
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        """Record a dedup stage with optional :class:`DedupParams` overrides."""
+        """Record a dedup stage with optional :class:`DedupParams` overrides.
+
+        Setting both mechanisms to ``False`` transmits an explicit opt-out
+        that suppresses caption-triggered automatic deduplication.
+
+        Parameters
+        ----------
+        params
+            Optional :class:`DedupParams` instance or parameter mapping to
+            transmit to the service.
+        **kwargs
+            Field values used directly when ``params`` is omitted or applied
+            as overrides when ``params`` is a parameter model.
+
+        Returns
+        -------
+        ServiceIngestor
+            This ingestor instance for fluent chaining.
+
+        Raises
+        ------
+        TypeError
+            If ``params`` cannot be serialized as a parameter mapping.
+        ValueError
+            If the request attempts to set a server-owned field.
+        """
         if params is not None or kwargs:
             from nemo_retriever.common.policy import _DEFAULT_ALLOWED_DEDUP_KEYS
 
@@ -1016,19 +1041,45 @@ class ServiceIngestor(ingestor):
     def caption(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a caption stage backed by the server's remote VLM endpoint.
 
+        Captioning non-image documents automatically uses default image
+        deduplication unless :meth:`dedup` explicitly disables both
+        mechanisms. Standalone image documents remain exempt.
+
         Behavioural knobs — ``prompt``, ``system_prompt``, ``batch_size``,
         ``context_text_max_chars``, ``caption_infographics``, and generic
         sampling params (``temperature``, ``max_tokens``, ``top_p``,
         ``top_k``) — are honored. Trust-sensitive fields
         (``endpoint_url``, ``api_key``, ``model_name``) and
         local-execution fields (``device``, ``hf_cache_dir``,
-        ``tensor_parallel_size``, ``gpu_memory_utilization``) are
-        rejected on the client; the operator-configured remote endpoint
-        is the only path to a caption NIM.
+        ``tensor_parallel_size``, ``gpu_memory_utilization``) are never
+        transmitted. Prohibited keyword overrides fail fast. Non-default
+        prohibited values on a ``CaptionParams`` model also fail fast, except
+        ``api_key`` because environment auto-fill makes caller intent
+        ambiguous. Prohibited mapping values and model defaults are stripped
+        instead. The operator-configured remote endpoint is the only path to a
+        caption NIM.
 
-        We use Pydantic's ``model_fields_set`` to distinguish fields
-        the caller *explicitly* set from fields carrying their
-        ``CaptionParams`` default — only the former are rejected.
+        Parameters
+        ----------
+        params
+            Optional :class:`CaptionParams` instance or parameter mapping to
+            transmit to the service.
+        **kwargs
+            Field values used directly when ``params`` is omitted or applied
+            as overrides when ``params`` is a parameter model.
+
+        Returns
+        -------
+        ServiceIngestor
+            This ingestor instance for fluent chaining.
+
+        Raises
+        ------
+        TypeError
+            If ``params`` cannot be serialized as a parameter mapping.
+        ValueError
+            If a prohibited keyword override is supplied, or ``CaptionParams``
+            sets a non-default prohibited field other than ``api_key``.
         """
         trust_sensitive = {"endpoint_url", "api_key", "model_name"}
         local_only = {

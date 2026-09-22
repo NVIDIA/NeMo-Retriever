@@ -219,7 +219,7 @@ def _graph_ingest_command(
     caption_gpu_memory_utilization: opts.CaptionGpuMemoryUtilizationOption = None,
     caption_context_text_max_chars: opts.CaptionContextTextMaxCharsOption = None,
     caption_infographics: opts.CaptionInfographicsOption = None,
-    dedup: opts.DedupOption = False,
+    dedup: opts.DedupOption = None,
     dedup_iou_threshold: opts.DedupIouThresholdOption = None,
     store_images_uri: opts.StoreImagesUriOption = None,
     overwrite: opts.OverwriteOption = True,

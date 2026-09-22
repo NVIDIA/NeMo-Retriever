@@ -35,9 +35,9 @@ from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, bui
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
 from nemo_retriever.operators.vdb import IngestVdbOperator
-from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
+from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor, TxtSplitActor
 from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
-from nemo_retriever.ingestor.plans import IngestExecutionPlan
+from nemo_retriever.ingestor.plans import IngestExecutionPlan, dedup_params_enabled
 from nemo_retriever.common.ray_resource_hueristics import (
     ClusterResources,
     resolve_requested_plan,
@@ -83,6 +83,7 @@ def default_concurrency_node_names(
 ) -> set[str]:
     """Return pools whose concurrency came from an unspecified default."""
     names: set[str] = set()
+    names.update({MultiTypeExtractOperator.__name__, TxtSplitActor.__name__})
     extract_tuning = _batch_tuning(extract_params)
     if extract_params is not None:
         worker_fields = {
@@ -131,6 +132,7 @@ def batch_tuning_to_node_overrides(
     caption_gpus_per_actor: float | None = None,
     video_frame_params: Any | None = None,
     store_params: Any | None = None,
+    extraction_mode: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Translate BatchTuningParams from stage params into RayDataExecutor node_overrides.
 
@@ -140,8 +142,8 @@ def batch_tuning_to_node_overrides(
     already initialised).  Without ``cluster_resources`` only explicit values
     are emitted, matching the previous behaviour.
 
-    PDF extract concurrency is capped so that it cannot exhaust the cluster CPU
-    budget when all other persistent actors are running simultaneously.
+    Final actor-pool sizing is reconciled after graph resolution by the executor
+    resource preflight.
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
@@ -389,6 +391,13 @@ def batch_tuning_to_node_overrides(
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
 
+    if extraction_mode == "text" and cluster_resources is not None:
+        available_cpus = cluster_resources.available_cpu_count()
+        if available_cpus > 0:
+            _set(TxtSplitActor.__name__, "concurrency", min(available_cpus, 8))
+            _set(TxtSplitActor.__name__, "num_cpus", 1)
+            _force_cpu_only(TxtSplitActor.__name__)
+
     # VideoSplitActor: one ffmpeg subprocess per input video, ~1-2 CPU cores
     # per actor during decode. Default Ray Data concurrency=1 serialises every
     # video, making this stage the wall-clock bottleneck on multi-video inputs.
@@ -550,7 +559,7 @@ def _append_ordered_transform_stages(
         if stage in {"dedup", "caption", "store", "embed"} and (supports_dedup or stage != "dedup")
     ]
     if not pending_stages:
-        if supports_dedup and dedup_params is not None:
+        if supports_dedup and dedup_params_enabled(dedup_params):
             pending_stages.append("dedup")
         if caption_params is not None:
             pending_stages.append("caption")
@@ -562,7 +571,7 @@ def _append_ordered_transform_stages(
     for stage_name in pending_stages:
         if stage_name == "store" and store_params is not None:
             graph = graph >> StoreOperator(params=store_params)
-        elif stage_name == "dedup" and supports_dedup and dedup_params is not None:
+        elif stage_name == "dedup" and supports_dedup and dedup_params_enabled(dedup_params):
             dedup_kwargs = cast(dict[str, Any], dedup_params.model_dump(mode="python"))
             graph = graph >> UDFOperator(partial(dedup_images, **dedup_kwargs), name="DedupImages")
         elif stage_name == "caption" and caption_params is not None:
@@ -764,7 +773,13 @@ def build_graph(
     ):
         graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
         graph = _maybe_append_chunk_actor(graph, split_config, "audio")
-    elif extraction_mode in {"text", "html", "audio", "image", "auto"}:
+    elif extraction_mode == "text":
+        configured_text_params = split_config.get("text")
+        effective_text_params = (
+            configured_text_params if isinstance(configured_text_params, TextChunkParams) else text_params
+        )
+        graph = Graph() >> TxtSplitActor(params=effective_text_params)
+    elif extraction_mode in {"html", "audio", "image", "auto"}:
         graph = Graph() >> MultiTypeExtractOperator(
             extraction_mode=extraction_mode,
             extract_params=extract_params,
@@ -839,11 +854,11 @@ def build_graph(
                 ocr_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
             if extract_params.api_key:
                 ocr_kwargs["api_key"] = extract_params.api_key
-            detect_batch_size = _positive(
+            ocr_batch_size = _positive(
                 getattr(tuning, "ocr_inference_batch_size", None) if tuning is not None else None
-            )
-            if detect_batch_size:
-                ocr_kwargs["inference_batch_size"] = int(detect_batch_size)
+            ) or _positive(getattr(extract_params, "inference_batch_size", None))
+            if ocr_batch_size:
+                ocr_kwargs["inference_batch_size"] = int(ocr_batch_size)
 
             table_kwargs: dict[str, Any] = {}
             if extract_params.table_structure_invoke_url:

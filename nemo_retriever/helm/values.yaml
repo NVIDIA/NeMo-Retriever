@@ -71,7 +71,7 @@ service:
     #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
     repository: nvcr.io/nvidia/nemo-microservices/nrl-service
-    tag: "26.8.1"
+    tag: "26.8.2"
     pullPolicy: IfNotPresent
 
   # Optional image for in-pod Hugging Face models (service-gpu Docker target).
@@ -1049,15 +1049,26 @@ nimOperator:
   #     - ocr
   #     - vlm_embed
   #
-  #   Optional (enabled: false by default, NOT auto-wired):
+  #   Optional (enabled: false by default). Auto-wiring also requires
+  #   `nims.enabled: true` (the default) and the NIM Operator CRDs.
+  #   When those conditions hold, the chart auto-wires the in-cluster
+  #   Service URL unless you set an explicit override:
   #     - rerankqa                                 (VL reranker,
-  #                                                 ≈ 3.1 GiB GPU)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #                                                 ≈ 3.1 GiB GPU;
+  #                                                 auto-wires rerank URL)
+  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU;
+  #                                                 auto-wires Parse URL;
+  #                                                 enabling also sets default
+  #                                                 extract method)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
-  #                                                 ≈ 62 GiB BF16 weights)
+  #                                                 ≈ 62 GiB BF16 weights;
+  #                                                 auto-wires caption URL)
   #     - answer_llm                               (OpenAI-compatible answer LLM,
-  #                                                 Super-49B defaults)
-  #     - audio                                    (Parakeet ASR)
+  #                                                 Super-49B defaults;
+  #                                                 auto-wires llm.apiBase)
+  #     - audio                                    (Parakeet ASR; still
+  #                                                 requires explicit
+  #                                                 audioGrpcEndpoint)
   #
   # Two flags gate every NIM, so each one is opt-in along two independent
   # axes:
@@ -1069,7 +1080,7 @@ nimOperator:
   # on alongside the core stack at install time would silently pull tens
   # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
   # an additional dedicated GPU per NIM with no opt-in from the operator.
-  # See helm/README.md "Recommended minimal install (26.08.1)" for the
+  # See helm/README.md "Recommended minimal install (26.8.2)" for the
   # opt-in flags and "Image tag conventions" for what the
   # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
   # ---------------------------------------------------------------------------
@@ -1331,6 +1342,11 @@ nimOperator:
     # Cache only the default BF16 2-GPU profile used by the Super-49B
     # default resources. Override this when deploying a different model,
     # profile, or GPU topology.
+    # A single explicit profile in the effective cache configuration also
+    # selects the runtime profile. Empty/filter-only/multiple-profile
+    # configurations preserve automatic runtime selection. An explicit
+    # NIM_MODEL_PROFILE env entry overrides this runtime selection.
+    # Set profiles: [] to remove the bundled pin.
     modelProfile:
       profiles:
         - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
@@ -1437,9 +1453,9 @@ nimOperator:
   # Nemotron Parse v1.2. Optional structured document parser.
   #
   # Disabled by default per the 26.08.1 "optional and disabled by default"
-  # contract (see docs/extraction/deployment-options.md). Opt in only when
-  # the pipeline runs `extract_method="nemotron_parse"`; enabling this
-  # NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
+  # contract (see docs/extraction/deployment-options.md). Enabling this
+  # NIM also sets the default PDF extract method to nemotron_parse.
+  # This NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
   # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
   #
   # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2

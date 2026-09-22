@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import threading
+from copy import deepcopy
 from dataclasses import replace
 from unittest.mock import MagicMock
 
@@ -23,6 +24,7 @@ from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
     CollectionUpdateRequest,
 )
+from nemo_retriever.common.schemas.embedding import embedding_split_metadata
 from nemo_retriever.common.vdb.adt_vdb import (
     CollectionWriteContext,
     UnsupportedVDBOperation,
@@ -43,7 +45,7 @@ from nemo_retriever.common.vdb.lancedb_collections import (
     _normalize_collection_results,
     _public_collection_hit,
 )
-from nemo_retriever.common.vdb.records import RetrievalContractError
+from nemo_retriever.common.vdb.records import RetrievalContractError, to_client_vdb_records
 
 
 def test_catalog_scans_reuse_open_table_handle() -> None:
@@ -155,6 +157,83 @@ def _fail_document_finalize(monkeypatch, store):
 
     monkeypatch.setattr(store, "_persist_document_row", fail_completed)
     return original_persist
+
+
+@pytest.mark.parametrize("writer", ["ordinary", "service", "collection"])
+def test_split_children_survive_adapter_write_and_retrieval(tmp_path, writer):
+    pieces = ["alpha", " \n ", "omega"]
+    graph_rows = []
+    start = 0
+    for index, text in enumerate(pieces):
+        end = start + len(text)
+        graph_rows.append(
+            {
+                "text": text,
+                "path": "/inputs/source.pdf",
+                "page_number": 2,
+                "metadata": {
+                    "embedding": [1.0, float(index)],
+                    **embedding_split_metadata(
+                        content=text,
+                        parent_id="parent",
+                        chunk_id=f"child-{index}",
+                        chunk_index=index,
+                        chunk_count=len(pieces),
+                        start_token=start,
+                        end_token=end,
+                    ),
+                },
+            }
+        )
+        start = end
+    records = to_client_vdb_records(graph_rows)
+    # Ordinary blank records must still be filtered; only valid split children are exempt.
+    records[0].extend(_records(text=" ")[0])
+    original = deepcopy(records)
+    if writer == "collection":
+        backend = _backend_with_collection(tmp_path)
+        written = backend.write_collection(records, context=_context())
+        assert written.written == len(pieces)
+        hits, _ = backend.retrieve_collection(
+            [[1.0, 0.0]],
+            scope="workspace-a",
+            collection_name="collection-a",
+            query_texts=[""],
+            top_k=10,
+        )
+        assert len(hits[0]) == len(pieces)
+        for hit in hits[0]:
+            split = hit["metadata"]["embedding_split"]
+            assert hit["text"] == pieces[split["chunk_index"]]
+            assert hit["source_id"] == "/inputs/source.pdf"
+        table_name = backend._get_collection_store()._resolved_table("workspace-a", "collection-a")
+    else:
+        backend = LanceDB(
+            uri=str(tmp_path / "lancedb"),
+            table_name="children",
+            vector_dim=2,
+            build_index=False,
+            _service_table_schema=writer == "service",
+        )
+        backend.run(records)
+        table_name = "children"
+    stored = lancedb.connect(backend.uri).open_table(table_name).search([1.0, 0.0]).limit(10).to_list()
+    for row in stored:
+        row["metadata"] = json.loads(row["metadata"])
+        row["source"] = json.loads(row["source"])
+    assert len(stored) == len(pieces)
+    stored.sort(key=lambda row: row["metadata"]["embedding_split"]["chunk_index"])
+    assert [row["text"] for row in stored] == pieces
+    assert "".join(row["text"] for row in stored) == "alpha \n omega"
+    for index, row in enumerate(stored):
+        metadata = row["metadata"]
+        assert metadata["embedding_split"] == records[0][index]["metadata"]["embedding_split"]
+        assert metadata["page_number"] == 2
+        assert row["source"]["source_id"] == "/inputs/source.pdf"
+        assert row["vector"] == [1.0, float(index)]
+        if writer == "collection":
+            assert row["chunk_id"] == hashlib.sha256(f"document-a\0v1\0{index}".encode()).hexdigest()
+    assert records == original
 
 
 def test_collection_row_conversion_preserves_identity_and_provenance():
