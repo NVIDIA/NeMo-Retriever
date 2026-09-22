@@ -12,7 +12,7 @@ CONTENT_COUNTS_FIELD = "_embedding_transport_content_counts"
 
 # Embedding inputs and canonical VDB content, provenance, and diagnostics.
 # Metadata stays intact because it is part of the retrieval contract.
-EMBEDDING_TRANSPORT_FIELDS = (
+_EMBEDDING_TRANSPORT_FIELDS = (
     "text",
     "content",
     "metadata",
@@ -36,9 +36,9 @@ EMBEDDING_TRANSPORT_FIELDS = (
 )
 
 
-def project_embedding_transport(frame: pd.DataFrame) -> pd.DataFrame:
+def _project_embedding_transport(frame: pd.DataFrame) -> pd.DataFrame:
     """Drop extraction payloads after their text and image inputs are resolved."""
-    columns = [field for field in EMBEDDING_TRANSPORT_FIELDS if field in frame.columns]
+    columns = [field for field in _EMBEDDING_TRANSPORT_FIELDS if field in frame.columns]
     for column in frame.columns:
         if column in columns:
             continue

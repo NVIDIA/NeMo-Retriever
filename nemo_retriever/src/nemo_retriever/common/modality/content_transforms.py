@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.io.image_store import inline_image_b64
-from nemo_retriever.common.modality.embedding_transport import project_embedding_transport
+from nemo_retriever.common.modality.embedding_transport import _project_embedding_transport
 from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
@@ -99,7 +99,7 @@ def explode_content_to_rows(
         return batch_df
     if batch_df.empty:
         result = _normalize_bbox_column(batch_df)
-        return project_embedding_transport(result) if compact else result
+        return _project_embedding_transport(result) if compact else result
 
     any_images = text_mod in IMAGE_MODALITIES or struct_mod in IMAGE_MODALITIES
 
@@ -115,7 +115,7 @@ def explode_content_to_rows(
             )
         batch_df["_embed_modality"] = text_mod
         result = _normalize_bbox_column(batch_df)
-        return project_embedding_transport(result) if compact else result
+        return _project_embedding_transport(result) if compact else result
 
     new_rows: List[Dict[str, Any]] = []
     for _, row in batch_df.iterrows():
@@ -187,7 +187,7 @@ def explode_content_to_rows(
             new_rows.append(preserved)
 
     result = _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
-    return project_embedding_transport(result) if compact else result
+    return _project_embedding_transport(result) if compact else result
 
 
 def collapse_content_to_page_rows(
@@ -216,4 +216,4 @@ def collapse_content_to_page_rows(
         new_rows.append(row_dict)
 
     result = _normalize_bbox_column(pd.DataFrame(new_rows).reset_index(drop=True))
-    return project_embedding_transport(result) if compact else result
+    return _project_embedding_transport(result) if compact else result
