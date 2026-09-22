@@ -90,7 +90,7 @@ def test_modalities_captions_and_image_uris_preserve_consumer_contract(
         )
     rich = reshape(pd.DataFrame([source]), **kwargs)
     compact = reshape(pd.DataFrame([source]), compact=True, **kwargs)
-    assert "page_image" not in compact
+    assert all("image_b64" not in value for value in compact["page_image"])
     assert not set(columns).intersection(compact.columns)
     assert _inputs(compact) == _inputs(rich)
     if "_image_b64" in rich:
@@ -220,7 +220,7 @@ def test_errors_keep_original_stage_payload_and_failure_details():
         ]
     )
     compact = project_embedding_transport(frame)
-    assert "page_image" not in compact
+    assert all("image_b64" not in value for value in compact["page_image"])
     assert compact["page_elements_v3"].tolist() == frame["page_elements_v3"].tolist()
     ingestor = GraphIngestor(run_mode="batch").extract(page_elements_invoke_url="http://invalid.test")
     failures = []

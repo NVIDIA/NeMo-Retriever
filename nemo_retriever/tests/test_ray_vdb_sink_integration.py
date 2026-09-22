@@ -205,7 +205,7 @@ def test_compact_reshape_preserves_records_across_ray_blocks(tmp_path, monkeypat
             return "".join(map(chr, value))
 
     def embed_probe(frame, *, compact):
-        assert ("page_image" in frame.columns) is not compact
+        assert all(("image_b64" in value) == (not compact) for value in frame["page_image"])
         frame = prepare_embedding_inputs(
             frame, policy=EmbeddingInputPolicy(CharacterTokenizer(), max_tokens=12, prefix="")
         ).frame

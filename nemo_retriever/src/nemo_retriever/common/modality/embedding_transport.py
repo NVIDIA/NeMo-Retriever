@@ -9,7 +9,6 @@ import pandas as pd
 from nemo_retriever.common.stage_errors import iter_stage_errors_from_value
 
 CONTENT_COUNTS_FIELD = "_embedding_transport_content_counts"
-PAGE_IMAGE_URI_FIELD = "_embedding_transport_page_image_uri"
 
 # Embedding inputs and canonical VDB content, provenance, and diagnostics.
 # Metadata stays intact because it is part of the retrieval contract.
@@ -51,21 +50,23 @@ def project_embedding_transport(frame: pd.DataFrame) -> pd.DataFrame:
                 break
 
     result = frame.loc[:, columns].copy()
-    rows = frame.to_dict(orient="records")
-    result[CONTENT_COUNTS_FIELD] = pd.Series(
-        [
-            {kind: len(row[kind]) for kind in ("table", "chart", "infographic") if isinstance(row.get(kind), list)}
-            for row in rows
-        ],
-        index=frame.index,
-        dtype=object,
-    )
-    result[PAGE_IMAGE_URI_FIELD] = pd.Series(
-        [
-            row["page_image"].get("stored_image_uri") if isinstance(row.get("page_image"), dict) else None
-            for row in rows
-        ],
-        index=frame.index,
-        dtype=object,
-    )
+    counts = [{} for _ in frame.index]
+    for kind in ("table", "chart", "infographic"):
+        if kind in frame:
+            for row_counts, detections in zip(counts, frame[kind]):
+                if isinstance(detections, list):
+                    row_counts[kind] = len(detections)
+    result[CONTENT_COUNTS_FIELD] = pd.Series(counts, index=frame.index, dtype=object)
+
+    if "page_image" in frame and "page_image" not in result:
+        # VDB conversion needs the original URI to distinguish page images
+        # from uploaded crops. Keep its existing shape without the raster.
+        result["page_image"] = pd.Series(
+            [
+                {"stored_image_uri": value.get("stored_image_uri")} if isinstance(value, dict) else None
+                for value in frame["page_image"]
+            ],
+            index=frame.index,
+            dtype=object,
+        )
     return result
