@@ -649,7 +649,7 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path, return
             executor_calls.append({"method": "build_dataset", "data": data})
             return datasets.pop(0)
 
-        def ingest(self, data: Any, **kwargs: Any) -> Any:
+        def _ingest(self, data: Any, **kwargs: Any) -> Any:
             executor_calls.append({"method": "ingest", "data": data, "kwargs": kwargs})
             return pd.DataFrame({"done": [True]})
 
@@ -671,7 +671,7 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path, return
     assert result["done"].tolist() == [True]
     assert executor_calls[2]["kwargs"] == {
         "return_results": return_results,
-        "_validate_batch": None if return_results else ingestor._raise_for_stage_errors,
+        "validate_batch": None if return_results else ingestor._raise_for_stage_errors,
     }
 
 
@@ -705,7 +705,7 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
             calls.append("build")
             return datasets.pop(0)
 
-        def ingest(self, data: Any, **kwargs: Any) -> Any:
+        def _ingest(self, data: Any, **kwargs: Any) -> Any:
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 
@@ -754,7 +754,7 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
             calls.append("build")
             return datasets.pop(0)
 
-        def ingest(self, data: Any, **kwargs: Any) -> Any:
+        def _ingest(self, data: Any, **kwargs: Any) -> Any:
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 
