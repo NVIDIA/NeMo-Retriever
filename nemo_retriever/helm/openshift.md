@@ -47,7 +47,7 @@ The following table maps common OpenShift failures to Helm overrides in this gui
 | `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
 | `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Set `serviceConfig.vectordb.enabled=false` for a minimal service-only install, or patch the vectordb Deployment after install (below) |
 | PSA warnings on **otel-collector** | The otel-collector Deployment has no `securityContext` or `podSecurityContext` values in the chart | Keep `topology.otel.enabled=false` (this profile) unless you patch that Deployment |
-| PSA warnings on **Zipkin** | `topology.zipkin.podSecurityContext` and `topology.zipkin.securityContext` default to empty, so Helm omits those blocks. Zipkin renders only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true | Keep `topology.zipkin.enabled=false` (this profile), or set those keys to the restricted baseline used for `service.securityContext` |
+| PSA warnings on **Zipkin** | `topology.zipkin.podSecurityContext` and `topology.zipkin.securityContext` default to empty, so Helm omits those blocks. Zipkin renders only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true | Keep `topology.zipkin.enabled=false` (this profile). If you enable Zipkin, set `topology.zipkin.podSecurityContext` like `service.podSecurityContext` and `topology.zipkin.securityContext` like `service.securityContext`. Do not copy container-only fields into the pod key |
 | Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (refer to [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
 | `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
 | Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths through `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
@@ -282,7 +282,29 @@ Re-apply the patch after `helm upgrade` if the Deployment is recreated. A future
 
 The chart's otel-collector Deployment has no `securityContext` or `podSecurityContext` values. Prefer `topology.otel.enabled=false` (as in the sample values) unless you operate your own collector or patch `*-otel` the same way as vectordb.
 
-Zipkin is different. The chart renders `topology.zipkin.podSecurityContext` and `topology.zipkin.securityContext` when those maps are non-empty. Their defaults are empty, so a stock Zipkin pod does not satisfy PSA `enforce=restricted`. Zipkin is created only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true. This profile sets both to false. If you enable Zipkin, set those keys to the restricted baseline used for `service.securityContext`.
+Zipkin is different. The chart renders `topology.zipkin.podSecurityContext` on the Pod spec and `topology.zipkin.securityContext` on the Zipkin container when those maps are non-empty. Their defaults are empty, so a stock Zipkin pod does not satisfy PSA `enforce=restricted`. Zipkin is created only when `topology.otel.enabled` and `topology.zipkin.enabled` are both true. This profile sets both to false.
+
+If you enable Zipkin, set the two keys separately. Copy the `service.podSecurityContext` baseline (`runAsNonRoot: true`, with no UID or GID fields) into `topology.zipkin.podSecurityContext`. Copy the `service.securityContext` baseline into `topology.zipkin.securityContext`. Do not copy container-only fields such as `allowPrivilegeEscalation` or `capabilities` into `topology.zipkin.podSecurityContext`. Those fields are invalid on a Pod `securityContext`, and the Zipkin Deployment fails validation.
+
+The following values apply the same OpenShift restricted baselines that this profile uses for the standalone Service:
+
+```yaml
+topology:
+  otel:
+    enabled: true
+  zipkin:
+    enabled: true
+    podSecurityContext:
+      runAsNonRoot: true
+    securityContext:
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
+```
+
 
 ### What this guide does not require on OpenShift
 
