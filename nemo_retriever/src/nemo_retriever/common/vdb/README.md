@@ -59,10 +59,13 @@ streaming path when the graph has one eligible `IngestVdbOperator` whose backend
 sets `supports_stream_ingest = True`.
 
 On that path, the executor owns Ray batch iteration, prefetch, iterator cleanup,
-retention of the historical pandas result, and downstream ordering. The
-operator converts those batches into canonical records before the backend sees
-them. The executor does not import LanceDB or pass Ray objects across the VDB
-interface.
+retention of the historical pandas result, and downstream ordering. It sends
+native Arrow blocks through a bounded queue to a dedicated storage actor. That
+actor owns `IngestVdbOperator`, converts graph rows into canonical records, and
+drives the backend stream while upstream operators continue producing blocks.
+Embedding and storage therefore remain separate graph operators and separate
+Ray actors. The executor does not import LanceDB, and only canonical records
+cross the `VDB.stream_ingest()` interface.
 
 Backends with `supports_stream_ingest = False` retain the historical
 global-batch path. `IngestVdbOperator.REQUIRES_GLOBAL_BATCH` causes the complete

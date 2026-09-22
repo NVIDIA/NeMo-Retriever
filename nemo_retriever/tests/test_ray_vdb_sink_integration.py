@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import os
 from typing import Any
 
 import pyarrow as pa
@@ -163,6 +164,10 @@ def test_ray_streams_three_blocks_into_real_lancedb_and_preserves_contract(tmp_p
         result = executor.ingest(dataset)
 
         assert Counter(ray.get(completed.completed_blocks.remote())) == Counter({0: 1, 1: 1, 2: 1})
+        assert executor._last_stream_ingest_stats["actor_pid"] != os.getpid()
+        assert executor._last_stream_ingest_stats["batches"] == 3
+        assert executor._last_stream_ingest_stats["rows"] == 6
+        assert executor._last_stream_ingest_stats["operator_timings"]["converted_records"] == 6
 
         assert result["page_number"].tolist() == list(range(6))
         assert result["text"].tolist() == [f"chunk-{row_id}" for row_id in range(6)]

@@ -9,6 +9,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 import math
+import os
+from queue import Full
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
 import pandas as pd
@@ -42,6 +44,9 @@ logger = logging.getLogger(__name__)
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
 _STREAM_INGEST_PREFETCH_BATCHES = 1
+_STREAM_INGEST_QUEUE_SIZE = 4
+_STREAM_INGEST_QUEUE_PUT_TIMEOUT_SECONDS = 1.0
+_STREAM_INGEST_QUEUE_END = "nemo_retriever.stream_ingest.end"
 _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 
 # Ray can briefly report stale available resources after a Dataset releases its
@@ -181,6 +186,60 @@ class _ArrowPandasOperatorAdapter:
 
     def __call__(self, table: Any) -> Any:
         return self._operator(arrow_table_to_pandas(table))
+
+
+class _StreamingVdbActor:
+    """Own one streaming VDB operator behind a bounded Ray queue."""
+
+    def __init__(self, operator_class: type, operator_kwargs: dict[str, Any]) -> None:
+        self._operator = operator_class(**operator_kwargs)
+
+    def consume(self, input_queue: Any) -> dict[str, Any]:
+        batches = 0
+        rows = 0
+        queue_wait_seconds = 0.0
+
+        def queued_batches() -> Iterator[Any]:
+            nonlocal batches, rows, queue_wait_seconds
+            while True:
+                started = time.perf_counter()
+                batch = input_queue.get()
+                queue_wait_seconds += time.perf_counter() - started
+                if isinstance(batch, str) and batch == _STREAM_INGEST_QUEUE_END:
+                    return
+                batches += 1
+                rows += int(getattr(batch, "num_rows", len(batch)))
+                yield batch
+
+        started = time.perf_counter()
+        self._operator._stream_ingest(queued_batches())
+        result = {
+            "actor_pid": os.getpid(),
+            "batches": batches,
+            "rows": rows,
+            "elapsed_seconds": time.perf_counter() - started,
+            "queue_wait_seconds": queue_wait_seconds,
+            "operator_timings": dict(getattr(self._operator, "_stream_ingest_timings", {})),
+        }
+        logger.info("Streaming VDB actor stats: %s", result)
+        return result
+
+
+def _put_stream_ingest_item(input_queue: Any, item: Any, sink_ref: Any) -> None:
+    """Put one item without hanging when the consumer actor fails or exits."""
+
+    import ray
+
+    while True:
+        try:
+            input_queue.put(item, timeout=_STREAM_INGEST_QUEUE_PUT_TIMEOUT_SECONDS)
+            return
+        except Full:
+            ready, _ = ray.wait([sink_ref], timeout=0)
+            if not ready:
+                continue
+            result = ray.get(ready[0])
+            raise RuntimeError(f"Streaming VDB actor returned before consuming the complete input: {result!r}")
 
 
 def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
@@ -645,13 +704,16 @@ class RayDataExecutor(AbstractExecutor):
         if sink_index is None:
             return ray_dataset_to_pandas(self.build_dataset(data))
 
-        sink_operator = nodes[sink_index].operator
+        sink_node = nodes[sink_index]
         has_downstream_nodes = sink_index + 1 < len(nodes)
 
         dataset = self._build_dataset(
             data,
             segment="before_stream_ingest",
         )
+
+        import ray
+        from ray.util.queue import Queue
 
         terminal_frames: list[pd.DataFrame] = []
         batch_iterator = iter(
@@ -662,18 +724,27 @@ class RayDataExecutor(AbstractExecutor):
             )
         )
 
-        def retained_batches() -> Iterator[pd.DataFrame]:
+        input_queue = Queue(maxsize=_STREAM_INGEST_QUEUE_SIZE, actor_options={"num_cpus": 0})
+        # The graph planner already assigns the full logical CPU budget to the
+        # Ray Data operator pools. Keep storage in its own actor/process without
+        # claiming an additional scheduling slot, which would deadlock a fully
+        # admitted graph before its first source task can run.
+        sink_type = ray.remote(num_cpus=0)(_StreamingVdbActor)
+        sink_actor = sink_type.remote(sink_node.operator_class, sink_node.operator_kwargs)
+        sink_ref = sink_actor.consume.remote(input_queue)
+        try:
             for block in batch_iterator:
                 frame = arrow_table_to_pandas(block)
                 terminal_frames.append(frame)
-                yield frame
-
-        try:
-            sink_operator._stream_ingest(retained_batches())
+                _put_stream_ingest_item(input_queue, block, sink_ref)
+            _put_stream_ingest_item(input_queue, _STREAM_INGEST_QUEUE_END, sink_ref)
+            self._last_stream_ingest_stats = ray.get(sink_ref)
         finally:
             close = getattr(batch_iterator, "close", None)
             if callable(close):
                 close()
+            input_queue.shutdown(force=True)
+            ray.kill(sink_actor, no_restart=True)
 
         if has_downstream_nodes:
             import ray.data as rd

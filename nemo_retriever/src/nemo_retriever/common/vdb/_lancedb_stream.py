@@ -34,7 +34,7 @@ _CREATE_REQUEST_KEY = b"nemo_retriever.sink_create_request_sha256"
 # Estimates can undercount Python-object overhead. This cap bounds the number
 # of canonical dictionaries retained before an exact Arrow allocation decides
 # whether to emit or bisect the candidate batch.
-_MAX_PENDING_CANONICAL_ROWS = 256
+_MAX_PENDING_CANONICAL_ROWS = 2048
 
 
 class OversizedVdbRowError(ValueError):
