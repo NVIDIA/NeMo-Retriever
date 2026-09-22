@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 import math
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
@@ -633,8 +633,15 @@ class RayDataExecutor(AbstractExecutor):
         ]
         return positions[0] if len(positions) == 1 else None
 
-    def ingest(self, data: Any, **kwargs: Any) -> Any:
-        """Build, execute, and materialize a Ray Data pipeline from the graph."""
+    def ingest(
+        self,
+        data: Any,
+        *,
+        return_results: bool = True,
+        _validate_batch: Callable[[pd.DataFrame], None] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Run the graph, returning records or counts for a terminal streaming write."""
 
         if kwargs:
             unsupported = ", ".join(sorted(kwargs))
@@ -642,6 +649,8 @@ class RayDataExecutor(AbstractExecutor):
 
         nodes = self._linearize(self.graph)
         sink_index = self._stream_ingest_index(nodes)
+        if not return_results and (sink_index is None or sink_index != len(nodes) - 1):
+            raise ValueError("return_results=False requires a terminal VDB that supports streaming ingest")
         if sink_index is None:
             return ray_dataset_to_pandas(self.build_dataset(data))
 
@@ -654,6 +663,7 @@ class RayDataExecutor(AbstractExecutor):
         )
 
         terminal_frames: list[pd.DataFrame] = []
+        input_rows = 0
         batch_iterator = iter(
             dataset.iter_batches(
                 batch_format=None,
@@ -662,18 +672,26 @@ class RayDataExecutor(AbstractExecutor):
             )
         )
 
-        def retained_batches() -> Iterator[pd.DataFrame]:
+        def input_batches() -> Iterator[pd.DataFrame]:
+            nonlocal input_rows
             for block in batch_iterator:
                 frame = arrow_table_to_pandas(block)
-                terminal_frames.append(frame)
+                if _validate_batch is not None:
+                    _validate_batch(frame)
+                input_rows += len(frame)
+                if return_results:
+                    terminal_frames.append(frame)
                 yield frame
 
         try:
-            sink_operator._stream_ingest(retained_batches())
+            submitted_records = sink_operator._stream_ingest(input_batches())
         finally:
             close = getattr(batch_iterator, "close", None)
             if callable(close):
                 close()
+
+        if not return_results:
+            return pd.DataFrame([{"input_rows": input_rows, "submitted_records": submitted_records}])
 
         if has_downstream_nodes:
             import ray.data as rd
