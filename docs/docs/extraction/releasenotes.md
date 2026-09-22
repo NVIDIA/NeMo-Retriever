@@ -10,9 +10,10 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Librar
 
 ### Upgrade notes { #upgrade-notes-26082 }
 
+- Optional Helm `nimOperator.rerankqa` auto-wires the in-cluster ranking URL when it is enabled, `nims.enabled` remains true, and the NIM Operator CRDs are present. An explicit `serviceConfig.nimEndpoints.rerankInvokeUrl` still wins. The immutable `26.08.2` tag README still states that this NIM is not auto-wired. The optional-NIM comment in that tag's `values.yaml` retains the older wording. Refer to [Query-time reranking](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#query-time-reranking) on the 26.08.1 patch branch.
 - Enabling optional Helm Nemotron Parse (`nimOperator.nemotron_parse.enabled=true`) also sets the service default PDF extract method to `nemotron_parse`. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#recommended-minimal-install-2682).
 - NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. The self-hosted Helm `answer_llm` NIM image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged. For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
-- The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#air-gapped-deployment).
+- The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#air-gapped-deployment).
 
 ### Embedding and VectorDB { #embedding-and-vectordb-26082 }
 
@@ -48,7 +49,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 - macOS Intel (x86_64) is no longer supported for package installs. Use Apple Silicon (arm64) macOS, Windows x64, or Linux. Refer to [Packaging and platform](#packaging-and-platform).
 - Legacy `nv-ingest` and compatibility pipeline CLI code paths are removed. Use `retriever ingest` and the graph stage registry.
 - Self-hosted Parakeet on Helm requires both `nimOperator.audio.enabled=true` and `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051`. Enabling the audio NIM alone does not wire the service ASR endpoint.
-- Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+- Changing a Helm NIM image repository or tag on an existing release cannot patch `NIMCache` `spec.source.ngc.modelPuller`. Delete the `NIMCache` and its PVC, then upgrade. The affected NIM is unavailable while the operator re-caches weights. Refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 - A document whose VectorDB write is not acknowledged now fails instead of reporting `completed` with a positive row count. Earlier builds failed only collection-managed writes and logged a legacy fixed-table failure as a warning. The worker acknowledgement timeout is configurable through `serviceConfig.vectordb.writeTimeoutSeconds` (rendered as `vectordb.write_timeout_s`) and defaults to 300 seconds. Refer to [Ingest fails with a VectorDB write error](troubleshoot.md#vectordb-write-not-acknowledged).
 - Retriever Service OpenAPI `info.version` no longer reports a stale package-version value. The service reports the package version, and Helm sets `RETRIEVER_SERVICE_VERSION` from the running service image tag so `/openapi.json` matches the deployed release.
 
@@ -61,7 +62,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 ### Answer generation { #answer-generation }
 
 - `Retriever.answer()` and optional `POST /v1/answer` remain the grounded answer-generation path. The self-hosted default LLM is `nvidia/llama-3.3-nemotron-super-49b-v1.5` (Helm `nimOperator.answer_llm` image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5`). The NVIDIA-hosted Super-49B Build endpoint reached end of life on August 26, 2026. Refer to [26.08.2 Release Notes (26.8.2)](#release-26082). The generic slot also accepts another OpenAI-compatible LLM or vision-language model (VLM), including hosted `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`.
-- Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#answer-generation-llm).
+- Enabling the Omni caption Helm key does not enable `/v1/answer`. Use Omni as the answer backend by overriding the generic `answer_llm` slot or by pointing `serviceConfig.llm` at an Omni chat-completions endpoint. Refer to [Answer generation](prerequisites-support-matrix.md#answer-generation) and [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Agentic retrieval { #agentic-retrieval }
 
@@ -73,7 +74,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 ### Models, OCR, and NIM artifacts { #models-ocr-and-captioning }
 
-- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#ocr-nim-configuration).
+- Nemotron OCR v2 is unified across library, hosted, and Helm defaults. The Helm default image is `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1`. Hosted OCR uses its own language behavior. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#ocr-nim-configuration).
 - Local OCR crop batching runs across page rows for throughput. Helm extraction NIMs (OCR and object detection) enable performance mode by default. The VL embed NIM does not.
 - 26.08.1 Helm default and optional NIM images that affect mirroring, allowlisting, and troubleshooting include the following:
     - Combined object detection for page elements and table structure: `nvcr.io/nim/nvidia/nemotron-object-detection:2.0.1`
@@ -147,7 +148,7 @@ The following sections summarize user-visible changes included in 26.08.1 and fo
 
 - Published [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md) for CLI, service, REST, and MCP usage.
 - Published [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation) for `TextGenerationTask`, `GenericGenerationOperator`, `SummarizationOperator`, and `TextGenerationParams`.
-- Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#answer-generation-llm).
+- Clarified Super-49B and Omni answer-generation paths on this page and in [Answer generation](prerequisites-support-matrix.md#answer-generation). For Helm enablement and slot overrides, refer to [Answer generation (operator-managed LLM)](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#answer-generation-llm).
 
 ### Current foundational capabilities { #current-foundational-capabilities }
 
@@ -198,3 +199,4 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
 - [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md)
+- [Query-time reranking](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#query-time-reranking)
