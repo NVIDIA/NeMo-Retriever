@@ -152,6 +152,10 @@ configuration supports it. For supported LanceDB locations, refer to
 [streaming ingest](#vdb-backends-implementations). Batch summary mode keeps the
 existing [raise error policy coverage](nemo-retriever-api-reference.md#what-the-raise-error-policy-covers).
 
+When the only input is blank inline text, ingestion returns zero counts without
+starting Ray or initializing or validating the VDB backend. Batch mode, a
+configured VDB upload, and the error-policy requirements still apply.
+
 ### Direct LanceDB ingest and retrieval { #direct-lancedb-ingest-and-retrieval }
 
 You can also construct a `LanceDB` instance and call `run` and `retrieval` directly. This is the optional low-level path. Prefer `.vdb_upload()` for typical ingest.
