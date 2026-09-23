@@ -12,6 +12,8 @@
 #
 # S3 layout written under developer/docs/nemo/retriever/:
 #   index.html, versions.json, latest/, <version>/ (e.g. 26.8.1/)
+# Akamai caches the public URL path /nemo/retriever/, not the S3 key prefix.
+# publish-docs ECCU uses s3-target-path; a second flush revalidates nemo/retriever.
 #
 # 26.08.1 patch RC window:
 #   - Auto-publish on push to release/26.08.1 (path-filtered) and workflow_dispatch.
@@ -75,6 +77,7 @@ env:
   FW_CI_TEMPLATES_REF: 563a769458cf1428194be49cb4de575b72d739e8
   DOCS_SITE_URL_BASE: https://docs.nvidia.com/nemo/retriever
   S3_TARGET_PATH: developer/docs/nemo/retriever
+  AKAMAI_ECCU_PUBLIC_PATH: nemo/retriever
   ARTIFACT_NAME: nrl-docs-nvidia-site
 
 jobs:
@@ -254,3 +257,36 @@ jobs:
           S3_ROOT="${S3_TARGET_ROOT%/}"
           DEST="${S3_ROOT}/${{ env.S3_TARGET_PATH }}/index.html"
           aws s3 cp --quiet nemo-retriever-src/docs/publish/index.html "${DEST}"
+
+      # publish-docs ECCU matches S3 key developer/docs/nemo/retriever. Readers hit
+      # https://docs.nvidia.com/nemo/retriever/... which Akamai caches separately.
+      - name: Flush Akamai cache for public docs.nvidia.com URL path
+        if: needs.resolve.outputs.dry_run == 'false'
+        env:
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+          AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
+          AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
+          AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
+          EMAILS_CSV: ${{ needs.resolve.outputs.emails_csv }}
+          AKAMAI_ECCU_PUBLIC_PATH: ${{ env.AKAMAI_ECCU_PUBLIC_PATH }}
+        run: |
+          set -euo pipefail
+          XSLT_TEMPLATE="FW-CI-templates/.github/actions/publish-docs/akamai-eccu-flush.xslt"
+          EDGERC_TEMPLATE="FW-CI-templates/.github/actions/publish-docs/edgerc.template"
+          if [[ ! -f "${XSLT_TEMPLATE}" || ! -f "${EDGERC_TEMPLATE}" ]]; then
+            echo "::error::publish-docs Akamai templates not found"
+            exit 1
+          fi
+          xsltproc --stringparam target-path "${AKAMAI_ECCU_PUBLIC_PATH}" "${XSLT_TEMPLATE}" \
+            | sed 's/xmlns:match="x" //' > /tmp/flush-public.xml
+          cat /tmp/flush-public.xml
+          echo -n "${EMAILS_CSV}" | jq -Rc 'split(",")' > /tmp/flush-public-emails.json
+          envsubst < "${EDGERC_TEMPLATE}" > ~/.edgerc
+          http --ignore-stdin --auth-type edgegrid -a default: :/eccu-api/v1/requests \
+            metadata=@/tmp/flush-public.xml \
+            propertyName=docs.nvidia.com \
+            propertyNameExactMatch=true \
+            propertyType=HOST_HEADER \
+            requestName="nemo-retriever-docs-url-path-${{ github.run_id }}" \
+            statusUpdateEmails:=@/tmp/flush-public-emails.json
+          rm -f ~/.edgerc
