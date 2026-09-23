@@ -19,6 +19,8 @@ lancedb = pytest.importorskip("lancedb", minversion="0.34.0")
 from nemo_retriever.common.vdb._lancedb_stream import (
     DataCommittedFinalizationError,
     OversizedVdbRowError,
+    _StreamStats,
+    _checked_batches,
     VdbWriteNotFinalized,
 )
 from nemo_retriever.common.vdb._lancedb_stream_state import (
@@ -183,6 +185,42 @@ def _state(uri: Path) -> tuple[list[str], list[int]]:
 
 def _product_metadata(schema: pa.Schema) -> dict[bytes, bytes]:
     return {key: value for key, value in (schema.metadata or {}).items() if not key.startswith(b"nemo_retriever.sink_")}
+
+
+def test_checked_batches_uses_large_bounded_record_batches() -> None:
+    """The row-retention guard amortizes RecordBatchReader overhead."""
+
+    schema = pa.schema(
+        [
+            pa.field("vector", pa.list_(pa.float32(), 2)),
+            pa.field("text", pa.string()),
+            pa.field("metadata", pa.string()),
+            pa.field("source", pa.string()),
+            pa.field("id", pa.string()),
+        ]
+    )
+    rows = (
+        {
+            "vector": [float(row_id), 1.0],
+            "text": f"chunk-{row_id}",
+            "metadata": "{}",
+            "source": "{}",
+            "id": f"row-{row_id}",
+        }
+        for row_id in range(4097)
+    )
+
+    batches = list(
+        _checked_batches(
+            rows,
+            schema=schema,
+            max_batch_bytes=256 * 1024 * 1024,
+            stats=_StreamStats(),
+            include_digest=False,
+        )
+    )
+
+    assert [batch.num_rows for batch in batches] == [2048, 2048, 1]
 
 
 def test_stream_ingest_is_lazy_and_byte_bounded_with_legacy_query_parity(
