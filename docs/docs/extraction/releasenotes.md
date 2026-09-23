@@ -23,7 +23,7 @@ Treat the NGC tag and digest as the release identity. The following table maps t
 | `importlib.metadata.version("nemo-retriever")` | `2026.9.21.dev20260921220349` |
 | Helm `/openapi.json` `info.version` | `26.8.2` when the chart injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag` |
 
-This issue does not change extraction or query behavior. Do not use the CLI or module version strings for version-gating, reproduction, rollback, support diagnostics, telemetry, or test attribution. Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#nrl-service-2682-version-identity).
+This issue does not change extraction or query behavior. Do not use the CLI or module version strings for version-gating, reproduction, rollback, support diagnostics, telemetry, or test attribution. Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag).
 
 ### Upgrade notes { #upgrade-notes-26082 }
 
@@ -214,5 +214,5 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
-- [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#nrl-service-2682-version-identity)
+- [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag)
 - [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md)

@@ -647,7 +647,7 @@ Do one of the following:
 
 Do not retry the retired Super-49B hosted model ID. The endpoint remains gone.
 
-## CLI and Python versions do not match the 26.8.2 image tag { #nrl-service-2682-version-identity }
+## CLI and Python versions do not match the 26.8.2 image tag
 
 The public `nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2` image does not report `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version that follows the UTC date when the process starts, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution metadata reports `2026.9.21.dev20260921220349`. The imported module resolves from `/workspace/nemo_retriever/src/nemo_retriever/__init__.py`.
 

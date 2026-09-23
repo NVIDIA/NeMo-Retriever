@@ -500,7 +500,7 @@ This profile targets BO767 PDF ingestion. The profile sets
 `service.installFfmpeg=false` to override the chart default of `true`.
 Enable FFmpeg separately for audio or video workflows.
 
-### 1. Service image { #1-service-image }
+### 1. Service image
 
 The chart defaults to the image published to NGC:
 
@@ -510,7 +510,7 @@ nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2
 
 Identify the public `26.8.2` artifact by the NGC tag and digest, not by `retriever --version` or `nemo_retriever.__version__` inside the container.
 
-Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/docs/docs/extraction/troubleshoot.md#nrl-service-2682-version-identity).
+Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/docs/docs/extraction/troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag).
 
 Pulling from `nvcr.io` requires an NGC pull secret — either set
 `ngcImagePullSecret.create=true` (see below) or pre-create one in the
@@ -751,7 +751,7 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. The public `26.8.2` image CLI and Python module versions do not report this tag. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/docs/docs/extraction/troubleshoot.md#nrl-service-2682-version-identity). |
+| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. The public `26.8.2` image CLI and Python module versions do not report this tag. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/docs/docs/extraction/troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag). |
 
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `true`                             | Default Helm installs set `INSTALL_FFMPEG=true` for every service role, including split gateway, realtime, and batch. If FFmpeg is absent, the entrypoint runs a privileged `sudo` apt install before the API starts. Requires network egress, writable root filesystem, and sudo/setuid. Set `false` on air-gapped, proxy-restricted, read-only, or sudo-restricted clusters, or embed `ffmpeg`/`ffprobe` in a custom image at build time. |

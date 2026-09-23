@@ -108,7 +108,7 @@ The public `nrl-service:26.8.2` image does not expose `26.8.2` from `retriever -
 
 Use the NGC tag and digest as the release identity. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. This mismatch does not change extraction or query behavior.
 
-Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#nrl-service-2682-version-identity) and [26.08.2 Release Notes (26.8.2)](releasenotes.md#known-issues-26082).
+Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag) and [26.08.2 Release Notes (26.8.2)](releasenotes.md#known-issues-26082).
 
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
