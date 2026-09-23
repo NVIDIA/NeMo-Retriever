@@ -514,6 +514,10 @@ The chart defaults to the image published to NGC:
 nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2
 ```
 
+Identify the public `26.8.2` artifact by the NGC tag and digest, not by `retriever --version` or `nemo_retriever.__version__` inside the container.
+
+Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#nrl-service-2682-version-identity).
+
 Release-published tags of that image are multi-architecture (`linux/amd64` and `linux/arm64`). Kubernetes pulls the variant that matches the node.
 
 Pulling from `nvcr.io` requires an NGC pull secret — either set
@@ -837,7 +841,7 @@ short list of knobs you'll touch first.
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
 | `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | NGC image; override to pin a different build or use a local registry. |
-| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. |
+| `service.image.tag`           | `26.8.2`                           | Also injected as `RETRIEVER_SERVICE_VERSION` so `/openapi.json` `info.version` matches the running image tag. The public `26.8.2` image CLI and Python module versions do not report this tag. Refer to [CLI and Python versions do not match the 26.8.2 image tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/troubleshoot.md#nrl-service-2682-version-identity). |
 
 | `service.replicas`            | `1`                                | Keep at 1 because standalone job and scheduler state are process-local. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |

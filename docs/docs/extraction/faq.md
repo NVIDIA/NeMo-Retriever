@@ -93,6 +93,14 @@ A non-empty per-NIM override takes precedence. If you previously set those field
 
 Refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [NIMCache or NIMService still uses ngc-secret after a global Secret rename](troubleshoot.md#helm-nim-secret-names).
 
+## Why does `retriever --version` not report `26.8.2` in the public service image? { #nrl-service-2682-version }
+
+The public `nrl-service:26.8.2` image does not expose `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`.
+
+Use the NGC tag and digest as the release identity. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. This mismatch does not change extraction or query behavior.
+
+Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#nrl-service-2682-version-identity) and [26.08.2 Helm Chart Patch](releasenotes.md#known-issues-26082).
+
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
 ### Self-Hosted Deployments { #self-hosted-deployments }
