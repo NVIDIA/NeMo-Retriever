@@ -176,11 +176,20 @@ class _CostAwareOCRBatcher(AbstractOperator):
             if value is not None and not math.isnan(float(value)):
                 return max(1, int(value))
         except (TypeError, ValueError):
-            pass
+            logger.debug(
+                "Falling back to detected-element length for non-numeric OCR cost %r",
+                value,
+                exc_info=True,
+            )
         detections = row.get("page_elements_v3")
         try:
             return max(1, len(detections))
         except TypeError:
+            logger.debug(
+                "Falling back to unit OCR cost because page_elements_v3 has no length (type=%s)",
+                type(detections).__name__,
+                exc_info=True,
+            )
             return 1
 
     def process(self, data: Any, **kwargs: Any) -> Iterator[Any]:
