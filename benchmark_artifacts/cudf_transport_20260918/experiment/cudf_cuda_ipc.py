@@ -180,8 +180,8 @@ class CudfCudaIpcTransport(TensorTransportManager):
             def __del__(self) -> None:
                 try:
                     cp.cuda.runtime.ipcCloseMemHandle(self.ptr)
-                except Exception as exc:
-                    logger.warning("Failed to close CUDA IPC memory handle: %s", exc)
+                except cp.cuda.runtime.CUDARuntimeError:
+                    logger.warning("Failed to close CUDA IPC memory handle", exc_info=True)
 
         if target_buffers:
             raise ValueError("CUDF_CUDA_IPC does not support target buffers")

@@ -105,10 +105,8 @@ class _IncrementalPDFSplitCPUActor:
             try:
                 if not isinstance(pdf_bytes, (bytes, bytearray, memoryview)):
                     raise ValueError(f"Unsupported bytes payload type: {type(pdf_bytes)!r}")
-                try:
-                    document = pdfium.PdfDocument(pdf_bytes)
-                except Exception:
-                    document = pdfium.PdfDocument(BytesIO(bytes(pdf_bytes)))
+                pdf_stream = BytesIO(bytes(pdf_bytes))
+                document = pdfium.PdfDocument(pdf_stream)
 
                 start_idx = 0 if self.split_params.start_page is None else max(int(self.split_params.start_page) - 1, 0)
                 end_idx = (
@@ -150,8 +148,8 @@ class _IncrementalPDFSplitCPUActor:
                 if document is not None:
                     try:
                         document.close()
-                    except Exception as exc:
-                        logger.warning("Failed to close source PDF document %r: %s", pdf_path, exc)
+                    except pdfium.PdfiumError:
+                        logger.warning("Failed to close source PDF document %r", pdf_path, exc_info=True)
 
         if page_rows:
             yield pd.DataFrame(page_rows)
@@ -660,10 +658,7 @@ def _batch_page_keys(batch: Any) -> set[str]:
 
 
 def _batch_memory_bytes(batch: Any) -> int:
-    try:
-        return int(batch.memory_usage(index=True, deep=True).sum())
-    except Exception:
-        return 0
+    return int(batch.memory_usage(index=True, deep=True).sum())
 
 
 def _find_tail(nodes: list[Any]) -> tuple[int, int]:
