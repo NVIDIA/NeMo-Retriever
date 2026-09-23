@@ -102,6 +102,12 @@ A non-empty per-NIM override takes precedence. If you previously set those field
 
 Refer to [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets) and [NIMCache or NIMService still uses ngc-secret after a global Secret rename](troubleshoot.md#helm-nim-secret-names).
 
+## Why does the documentation version selector show 26.8.1 instead of 26.8.2? { #docs-version-2682 }
+
+The 26.08.2 Helm chart patch is covered by the 26.08.1 Library documentation set. The selector does not list 26.8.2. The `/26.8.2/` path is not published. The page-header GitHub version indicator identifies 26.08.1.
+
+Use the 26.8.1 (`latest`) documentation set for 26.08.2 Helm deployments. Refer to [Documentation coverage](releasenotes.md#documentation-coverage-26082).
+
 ## Why does `retriever --version` not report `26.8.2` in the public service image? { #nrl-service-2682-version }
 
 The public `nrl-service:26.8.2` image does not expose `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`.

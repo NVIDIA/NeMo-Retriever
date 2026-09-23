@@ -10,6 +10,11 @@ Use **Helm** (this chart and/or the **additional Library charts** documented in 
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/))
 for supported NIM and service deployment.
 
+Chart version `26.8.2` is a Helm chart patch on the 26.08.1 Library release.
+Published Library documentation remains the 26.8.1 (`latest`) set.
+Refer to
+[Documentation coverage](https://docs.nvidia.com/nemo/retriever/latest/extraction/releasenotes/#documentation-coverage-26082).
+
 The chart ships two deployable layers behind feature flags:
 
 - **the service** — always on; one Deployment (standalone) or three
