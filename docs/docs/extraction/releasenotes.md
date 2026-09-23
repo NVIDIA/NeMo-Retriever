@@ -4,7 +4,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 ## 26.08.2 Release Notes (26.8.2) { #release-26082 }
 
-NVIDIA® NeMo Retriever Library version 26.08.2 is a patch on 26.08.1. The Helm chart version, application version, and default service image tag are `26.8.2`. It includes embedding overflow handling, hosted Super-49B availability changes, Helm air-gapped image inventory updates, and related service and query fixes.
+NVIDIA® NeMo Retriever Library version 26.08.2 is a patch on 26.08.1. The Helm chart version, application version, and default service image tag are `26.8.2`. It includes embedding overflow handling, hosted Super-49B availability changes, and related service and query fixes.
 
 To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md).
 
@@ -20,7 +20,7 @@ The page-header GitHub version indicator identifies 26.08.1. That value is the L
 
 - Enabling optional Helm Nemotron Parse (`nimOperator.nemotron_parse.enabled=true`) also sets the service default PDF extract method to `nemotron_parse`. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#recommended-minimal-install-2682).
 - NVIDIA-hosted `nvidia/llama-3.3-nemotron-super-49b-v1.5` on `https://integrate.api.nvidia.com` reached end of life on August 26, 2026 and returns HTTP 410. The self-hosted Helm `answer_llm` NIM image `nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:2.0.5` is unchanged. For hosted `/v1/answer`, use a currently available hosted OpenAI-compatible model such as `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`. For agentic retrieval, use local in-process vLLM or a self-hosted OpenAI-compatible NIM. Refer to [Default NVCF endpoints](prerequisites-support-matrix.md#default-nvcf-endpoints).
-- The Helm air-gapped image inventory now lists the default OpenTelemetry Collector, Zipkin, and split-mode BusyBox images: `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. Split-mode `wait-for-gateway` init containers use `topology.waitForGateway.image` so you can retarget a private registry without editing the chart template. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#air-gapped-deployment).
+- Default split Helm installs pull `otel/opentelemetry-collector-contrib:0.127.0`, `openzipkin/zipkin:3.5.0`, and `busybox:1.37`. The 26.08.2 (26.8.2) Helm air-gapped inventory does not list those exact references. Split-mode `wait-for-gateway` init containers use the hard-coded image `busybox:1.37`. That image has no `values.yaml` override. Refer to [Helm — Air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.2/nemo_retriever/helm/README.md#air-gapped-deployment).
 
 ### Embedding and VectorDB { #embedding-and-vectordb-26082 }
 
