@@ -8,6 +8,14 @@ NVIDIA® NeMo Retriever Library version 26.08.2 is a patch on 26.08.1. The Helm 
 
 To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md).
 
+### Documentation coverage { #documentation-coverage-26082 }
+
+The 26.08.2 release is a Helm chart patch on 26.08.1. It does not have a separate Library documentation tree.
+
+Use the 26.8.1 (`latest`) documentation set for Helm chart `26.8.2`. The documentation version selector lists 26.8.1 as the latest Library version. The `/26.8.2/` documentation path is not published.
+
+The page-header GitHub version indicator identifies 26.08.1. That value is the Library documentation baseline. Do not treat that indicator as a missing 26.08.2 documentation publication.
+
 ### Upgrade notes { #upgrade-notes-26082 }
 
 - Enabling optional Helm Nemotron Parse (`nimOperator.nemotron_parse.enabled=true`) also sets the service default PDF extract method to `nemotron_parse`. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#recommended-minimal-install-2682).
@@ -197,4 +205,5 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [One-shot text generation](nemo-retriever-api-reference.md#one-shot-text-generation)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
+- [Why does the documentation version selector show 26.8.1 instead of 26.8.2?](faq.md#docs-version-2682)
 - [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md)
