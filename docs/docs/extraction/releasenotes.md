@@ -16,6 +16,23 @@ Use the 26.8.1 (`latest`) documentation set for Helm chart `26.8.2`. The documen
 
 The page-header GitHub version indicator identifies 26.08.1. That value is the Library documentation baseline. Do not treat that indicator as a missing 26.08.2 documentation publication.
 
+### Known issues { #known-issues-26082 }
+
+The public NGC image `nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2` does not expose `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` Python distribution reports a different development version, `2026.9.21.dev20260921220349`. The imported module path is `/workspace/nemo_retriever/src/nemo_retriever/__init__.py`.
+
+Treat the NGC tag and digest as the release identity. The following table maps the public `26.8.2` artifact to the version strings observed inside the container.
+
+| Surface | Value |
+| --- | --- |
+| Public image | `nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2` |
+| Digest | `sha256:6b93a1f4224387e57c3b0c5241c4a1496c57fd7c2d1f789b9e29db818a9504c1` |
+| Image created | `2026-09-21T22:04:24.75383788Z` |
+| `retriever --version` and `nemo_retriever.__version__` | Date-style development version, for example `2026.09.23.dev0` |
+| `importlib.metadata.version("nemo-retriever")` | `2026.9.21.dev20260921220349` |
+| Helm `/openapi.json` `info.version` | `26.8.2` when the chart injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag` |
+
+This issue does not change extraction or query behavior. Do not use the CLI or module version strings for version-gating, reproduction, rollback, support diagnostics, telemetry, or test attribution. Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag).
+
 ### Upgrade notes { #upgrade-notes-26082 }
 
 - Enabling optional Helm Nemotron Parse (`nimOperator.nemotron_parse.enabled=true`) also sets the service default PDF extract method to `nemotron_parse`. Refer to [Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims) and [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#recommended-minimal-install-2682).
@@ -206,4 +223,5 @@ Release notes for 24.12.1 and 24.12.0 are on the [25.3.0 archived release notes]
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md)
 - [Deployment options](deployment-options.md)
 - [Why does the documentation version selector show 26.8.1 instead of 26.8.2?](faq.md#docs-version-2682)
+- [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag)
 - [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md)

@@ -647,6 +647,41 @@ Do one of the following:
 
 Do not retry the retired Super-49B hosted model ID. The endpoint remains gone.
 
+## CLI and Python versions do not match the 26.8.2 image tag
+
+The public `nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2` image does not report `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version that follows the UTC date when the process starts, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution metadata reports `2026.9.21.dev20260921220349`. The imported module resolves from `/workspace/nemo_retriever/src/nemo_retriever/__init__.py`.
+
+Identify the deployed artifact by the NGC tag and digest, not by those Python or CLI strings. The public tag resolves to digest `sha256:6b93a1f4224387e57c3b0c5241c4a1496c57fd7c2d1f789b9e29db818a9504c1`.
+
+When you deploy with Helm, the chart sets `RETRIEVER_SERVICE_VERSION` from `service.image.tag`. `GET /openapi.json` then reports `info.version` as `26.8.2`. If that environment variable is unset, OpenAPI `info.version` uses the same development version as the CLI.
+
+Confirm the image identity with the following command. The public tag digest is `sha256:6b93a1f4224387e57c3b0c5241c4a1496c57fd7c2d1f789b9e29db818a9504c1`.
+
+```bash
+docker pull nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2
+```
+
+The following commands show the mismatched in-container version surfaces. Do not treat their output as the public release identity.
+
+```bash
+docker run --rm \
+  --entrypoint retriever \
+  nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2 \
+  --version
+```
+
+```bash
+docker run --rm \
+  --entrypoint python \
+  nvcr.io/nvidia/nemo-microservices/nrl-service:26.8.2 \
+  -c 'import importlib.metadata as m, nemo_retriever; \
+print("distribution=" + m.version("nemo-retriever")); \
+print("module=" + nemo_retriever.__version__); \
+print("path=" + nemo_retriever.__file__)'
+```
+
+This mismatch does not change extraction or query behavior. For the digest mapping, refer to [26.08.2 Release Notes (26.8.2)](releasenotes.md#known-issues-26082). For Helm OpenAPI version injection, refer to [Service image](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#1-service-image).
+
 ## Related Topics { #related-topics }
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
@@ -657,4 +692,6 @@ Do not retry the retired Super-49B hosted model ID. The endpoint remains gone.
 - [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag)
 - [Use externally managed Secrets](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#use-externally-managed-secrets)
 - [Workflow: Agentic retrieval](workflow-agentic-retrieval.md#self-hosted-helm-super-49b)
+- [26.08.2 Release Notes (26.8.2)](releasenotes.md#known-issues-26082)
+- [Service image](https://github.com/NVIDIA/NeMo-Retriever/blob/release/26.08.1/nemo_retriever/helm/README.md#1-service-image)
 - [About getting started](getting-started-about.md) (prerequisites and deployment)

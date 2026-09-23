@@ -108,6 +108,14 @@ The 26.08.2 Helm chart patch is covered by the 26.08.1 Library documentation set
 
 Use the 26.8.1 (`latest`) documentation set for 26.08.2 Helm deployments. Refer to [Documentation coverage](releasenotes.md#documentation-coverage-26082).
 
+## Why does `retriever --version` not report `26.8.2` in the public service image? { #nrl-service-2682-version }
+
+The public `nrl-service:26.8.2` image does not expose `26.8.2` from `retriever --version` or `nemo_retriever.__version__`. Those surfaces can report a date-style development version, for example `2026.09.23.dev0`. The installed `nemo-retriever` distribution reports `2026.9.21.dev20260921220349`.
+
+Use the NGC tag and digest as the release identity. Helm still injects `RETRIEVER_SERVICE_VERSION` from `service.image.tag`, so `/openapi.json` `info.version` reports `26.8.2`. This mismatch does not change extraction or query behavior.
+
+Refer to [CLI and Python versions do not match the 26.8.2 image tag](troubleshoot.md#cli-and-python-versions-do-not-match-the-2682-image-tag) and [26.08.2 Release Notes (26.8.2)](releasenotes.md#known-issues-26082).
+
 ## Why are the environment variables different between library mode and self-hosted mode? { #library-vs-self-hosted-env-vars }
 
 ### Self-Hosted Deployments { #self-hosted-deployments }
