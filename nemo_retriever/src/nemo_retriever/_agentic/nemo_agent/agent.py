@@ -173,7 +173,10 @@ class Agent(_BaseAgentLoop):
             top_k=target_top_k,
             extended_relevance=config.extended_relevance,
         )
-        self._system_msg = {"role": "system", "content": [{"type": "text", "text": system_prompt}]}
+        self._system_msg = {
+            "role": "system",
+            "content": [{"type": "text", "text": system_prompt}],
+        }
         self._auto_user_msg = build_auto_continue_msg(end_tool.name, end_payload_phrase)
 
     # ------------------------------------------------------------------
@@ -223,7 +226,7 @@ class Agent(_BaseAgentLoop):
             state = _RunState(
                 query=str(query),
                 raw_log_dir=Path(raw_log_dir) if raw_log_dir is not None else None,
-                exclude_docs=set(exclude_docids) if exclude_docids is not None else set(),
+                exclude_docs=(set(exclude_docids) if exclude_docids is not None else set()),
                 pacer=PropagationPacer(target_s=self.config.cache_propagation_target_s),
                 tool_map=self._tool_map,
                 tool_specs=self._tool_specs,
@@ -234,7 +237,8 @@ class Agent(_BaseAgentLoop):
             if state.raw_log_dir is not None and task_info is not None:
                 await _awrite_json(task_info, state.raw_log_dir, "extra_info.json")
             return await self._run_state_to_result(
-                state, prologue=lambda: self._append_user_message(state, task_instruction)
+                state,
+                prologue=lambda: self._append_user_message(state, task_instruction),
             )
 
     def run_sync(self, query: str, **kwargs: Any) -> AgentRunResult:
@@ -264,7 +268,10 @@ class Agent(_BaseAgentLoop):
         # through the primary retrieve tool.
         try:
             content = await self._execute_retrieve(
-                state, tool=self._retrieve_tool, llm_kwargs={"query": state.query}, query_type="main"
+                state,
+                tool=self._retrieve_tool,
+                llm_kwargs={"query": state.query},
+                query_type="main",
             )
         except Exception as e:
             raise ToolExecutionError(self._retrieve_tool.name, e) from e
@@ -294,9 +301,7 @@ class Agent(_BaseAgentLoop):
             citations = fn_kwargs.get("citations")
             if isinstance(citations, list):
                 cited_ids = {
-                    citation.strip()
-                    for citation in citations
-                    if isinstance(citation, str) and citation.strip()
+                    citation.strip() for citation in citations if isinstance(citation, str) and citation.strip()
                 }
                 unknown = sorted(cited_ids - state.retrieved_docs)
                 if unknown:
