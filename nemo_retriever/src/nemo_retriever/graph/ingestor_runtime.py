@@ -33,6 +33,7 @@ from nemo_retriever.operators.extract.page_elements.page_elements import PageEle
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
+from nemo_retriever.operators.graph_ops.agent_trajectory_operator import AgentTrajectoryProjectionOperator
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
 from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor, TxtSplitActor
@@ -650,6 +651,7 @@ def build_graph(
     *,
     execution_plan: IngestExecutionPlan | None = None,
     extraction_mode: str = "pdf",
+    trajectory_params: dict[str, Any] | None = None,
     extract_params: Any | None = None,
     text_params: Any | None = None,
     html_params: Any | None = None,
@@ -773,6 +775,16 @@ def build_graph(
     ):
         graph = Graph() >> MediaChunkActor(params=audio_chunk_params) >> ASRActor(params=asr_params)
         graph = _maybe_append_chunk_actor(graph, split_config, "audio")
+    elif extraction_mode == "trajectory":
+        configured_text_params = split_config.get("text")
+        effective_text_params = (
+            configured_text_params if isinstance(configured_text_params, TextChunkParams) else text_params
+        )
+        graph = (
+            Graph()
+            >> AgentTrajectoryProjectionOperator(**(trajectory_params or {}))
+            >> TextChunkActor(params=effective_text_params)
+        )
     elif extraction_mode == "text":
         configured_text_params = split_config.get("text")
         effective_text_params = (

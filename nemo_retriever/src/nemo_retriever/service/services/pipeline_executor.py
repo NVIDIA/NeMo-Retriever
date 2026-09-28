@@ -620,7 +620,14 @@ def _build_graph_ingestor_from_spec(
     ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
-    if extraction_mode == "video":
+    if extraction_mode == "trajectory":
+        trajectory_params = spec.get("trajectory_params") or {}
+        ingestor = ingestor.extract_agent_trajectory(
+            exclude_tool_names=trajectory_params.get("exclude_tool_names", ()),
+            tool_output_char_limit=trajectory_params.get("tool_output_char_limit"),
+            split_config=split_config,
+        )
+    elif extraction_mode == "video":
         # Service auto-routing resolves supported video extensions before this
         # point. Preserve the canonical video branch defaults instead of
         # passing the MP4 bytes through the generic PDF extraction path. ASR

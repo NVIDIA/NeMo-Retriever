@@ -16,6 +16,7 @@ __all__ = [
     "CPUOperator",
     "GPUOperator",
     "TextGenerationOperator",
+    "AgentTrajectoryProjectionOperator",
     "ExplodeContentActor",
     "_BatchEmbedActor",
 ]
@@ -25,6 +26,7 @@ _LAZY = {
     "CPUOperator": "nemo_retriever.operators.cpu_operator",
     "GPUOperator": "nemo_retriever.operators.gpu_operator",
     "TextGenerationOperator": "nemo_retriever.operators.generation",
+    "AgentTrajectoryProjectionOperator": "nemo_retriever.operators.graph_ops.agent_trajectory_operator",
     "ExplodeContentActor": "nemo_retriever.operators.graph_ops.content_operators",
     "_BatchEmbedActor": "nemo_retriever.operators.embed.operators",
 }

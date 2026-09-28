@@ -104,6 +104,7 @@ _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
     "pdf": PDF_DOCUMENT_INPUT_TYPES,
     "image": frozenset({"image"}),
     "text": frozenset({"txt"}),
+    "trajectory": frozenset({"txt"}),
     "html": frozenset({"html"}),
     "audio": frozenset({"audio"}),
     "video": frozenset({"video"}),
@@ -513,6 +514,7 @@ class GraphIngestor(ingestor):
 
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str | None = None
+        self._trajectory_params: dict[str, Any] = {}
         self._extract_params: Any = None
         self._text_params: Any = None
         self._html_params: Any = None
@@ -630,6 +632,23 @@ class GraphIngestor(ingestor):
             self._video_text_dedup_params = video_text_dedup_params
         if av_fuse_params is not None:
             self._av_fuse_params = av_fuse_params
+        self._apply_split_config(split_config)
+        self._record_stage("extract")
+        return self
+
+    def extract_agent_trajectory(
+        self,
+        *,
+        exclude_tool_names: Sequence[str] = (),
+        tool_output_char_limit: int | None = None,
+        split_config: dict[str, Any] | None = None,
+    ) -> "GraphIngestor":
+        """Configure canonical ATIF trajectory projection and text chunking."""
+        self._extraction_mode = "trajectory"
+        self._trajectory_params = {
+            "exclude_tool_names": tuple(exclude_tool_names),
+            "tool_output_char_limit": tool_output_char_limit,
+        }
         self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
@@ -927,6 +946,7 @@ class GraphIngestor(ingestor):
         ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
+            trajectory_params=self._trajectory_params,
             extract_params=effective_extraction.extract_params,
             text_params=effective_extraction.text_params,
             html_params=effective_extraction.html_params,
@@ -986,6 +1006,7 @@ class GraphIngestor(ingestor):
     ) -> Any:
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
+            trajectory_params=self._trajectory_params,
             extract_params=effective_extraction.extract_params,
             text_params=effective_extraction.text_params,
             html_params=effective_extraction.html_params,
