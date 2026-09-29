@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from io import BytesIO
 
@@ -17,7 +18,7 @@ from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.common.schemas.collections import CollectionName
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.common.schemas.requests import IngestRequest, JobCreateRequest
-from nemo_retriever.common.schemas.responses import JobCreatedResponse
+from nemo_retriever.common.schemas.responses import IngestAccepted, JobCreatedResponse
 from nemo_retriever.service.routers import ingest
 from nemo_retriever.service.trajectory_adapter import (
     decode_trajectory,
@@ -34,6 +35,7 @@ class TrajectoryIngestRequest(RichModel):
     label: str = "agent-trajectory"
     exclude_tool_names: list[str] = Field(default_factory=list)
     tool_output_char_limit: int | None = Field(default=None, ge=0)
+    queue_admission_timeout_seconds: float = Field(default=30.0, gt=0, le=240)
 
 
 class TrajectoryIngestResponse(RichModel):
@@ -47,6 +49,11 @@ class TrajectoryIngestResponse(RichModel):
     label: str | None = None
     trace_id: str | None = None
     collection_name: str | None = None
+
+
+class _QueueAdmissionTimeout(Exception):
+    def __init__(self, headers: dict[str, str] | None) -> None:
+        self.headers = headers
 
 
 @router.post(
@@ -101,25 +108,85 @@ async def ingest_trajectory(
         return created
 
     pipeline = PipelineSpec(extraction_mode="text")
-    for document in documents:
-        upload = UploadFile(
-            file=BytesIO(document.text.encode("utf-8")),
-            filename=document.filename,
-        )
+    admission_deadline = (
+        asyncio.get_running_loop().time()
+        + options.queue_admission_timeout_seconds
+    )
+    for accepted_events, document in enumerate(documents):
         ingest_metadata = IngestRequest(
             filename=document.filename,
             content_type="text/plain",
             metadata=document.metadata,
             pipeline=pipeline,
         )
-        accepted = await ingest.submit_document_to_job(
-            request,
-            created.job_id,
-            upload,
-            metadata=ingest_metadata.model_dump_json(exclude_none=True),
-            manifest_entry_id=None,
-        )
+        try:
+            accepted = await _submit_event_with_retry(
+                request=request,
+                job_id=created.job_id,
+                filename=document.filename,
+                payload=document.text.encode("utf-8"),
+                metadata=ingest_metadata.model_dump_json(exclude_none=True),
+                deadline=admission_deadline,
+            )
+        except _QueueAdmissionTimeout as exc:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "trajectory_queue_admission_timeout",
+                    "message": (
+                        "Queue admission timed out; trajectory ingestion may be "
+                        "partial."
+                    ),
+                    "job_id": created.job_id,
+                    "accepted_events": accepted_events,
+                    "total_events": len(documents),
+                    "ingestion_may_be_partial": True,
+                },
+                headers=exc.headers,
+            ) from exc
         if isinstance(accepted, Response):
             return accepted
 
     return created
+
+
+async def _submit_event_with_retry(
+    *,
+    request: Request,
+    job_id: str,
+    filename: str,
+    payload: bytes,
+    metadata: str,
+    deadline: float,
+) -> IngestAccepted | Response:
+    loop = asyncio.get_running_loop()
+    while True:
+        upload = UploadFile(file=BytesIO(payload), filename=filename)
+        try:
+            return await ingest.submit_document_to_job(
+                request,
+                job_id,
+                upload,
+                metadata=metadata,
+                manifest_entry_id=None,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 429:
+                raise
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise _QueueAdmissionTimeout(exc.headers) from exc
+            delay = _retry_delay_seconds(exc.headers)
+            await asyncio.sleep(min(delay, remaining))
+            if loop.time() >= deadline:
+                raise _QueueAdmissionTimeout(exc.headers) from exc
+
+
+def _retry_delay_seconds(headers: dict[str, str] | None) -> float:
+    value = (headers or {}).get("Retry-After")
+    if value is not None:
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            pass
+    return 0.25
