@@ -857,6 +857,57 @@ async def test_rejected_standalone_submission_unregisters_pending(
 
 
 @pytest.mark.anyio
+async def test_gateway_spool_failure_restores_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.routers import ingest
+    from nemo_retriever.service.services import sidecar_store
+
+    unregistered: list[str] = []
+    restored: list[str] = []
+
+    async def _spool_failure(*_args: Any, **_kwargs: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ingest, "_gateway_enqueue", _spool_failure)
+    monkeypatch.setattr(
+        ingest,
+        "_register_document_under_job",
+        lambda **_kwargs: (SimpleNamespace(), True),
+    )
+    monkeypatch.setattr(
+        ingest,
+        "get_job_tracker",
+        lambda: SimpleNamespace(unregister_pending=unregistered.append),
+    )
+    monkeypatch.setattr(
+        sidecar_store,
+        "get_sidecar_store",
+        lambda: SimpleNamespace(restore=restored.append),
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(config=SimpleNamespace(mode="gateway"))
+        )
+    )
+
+    with pytest.raises(OSError, match="disk full"):
+        await ingest._submit_job_work_item(
+            request,
+            PoolType.BATCH,
+            WorkItem(
+                id="spooled",
+                job_id="job",
+                sidecar_attachment=("sidecar-key", SimpleNamespace()),
+            ),
+            manifest_entry_id=None,
+        )
+
+    assert unregistered == ["spooled"]
+    assert restored == ["sidecar-key"]
+
+
+@pytest.mark.anyio
 async def test_gateway_enqueue_unregisters_pending_when_broker_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi import HTTPException
 

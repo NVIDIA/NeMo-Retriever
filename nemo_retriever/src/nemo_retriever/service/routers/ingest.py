@@ -786,7 +786,7 @@ async def _submit_job_work_item(
                 write=item.write,
                 sidecar=item.sidecar_attachment[1] if item.sidecar_attachment is not None else None,
             )
-        except HTTPException:
+        except (HTTPException, OSError):
             _rollback_rejected_work_item(item)
             raise
     else:
