@@ -22,7 +22,6 @@ import asyncio
 import hashlib
 import json
 import re
-import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -45,11 +44,7 @@ from nemo_retriever.service import tracing
 from nemo_retriever.service.routers.dashboard import VdbQueryRequest, vdb_query
 from nemo_retriever.service.routers.ingest import _route_by_page_count
 from nemo_retriever.service.services.job_tracker import get_job_tracker
-from nemo_retriever.service.services.pipeline_pool import (
-    PoolType,
-    WorkItem,
-    get_pipeline_pool,
-)
+from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
 from nemo_retriever.service.utils.file_type import FileCategory
 from .conftest import create_test_job
 
@@ -269,303 +264,6 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
     assert item.pipeline_spec["extraction_mode"] == "pdf"
     assert item.pipeline_spec["extract_params"]["dpi"] == 300
     assert item.pipeline_spec["stage_order"] == ["extract"]
-
-
-def test_trajectory_adapter_uses_standard_text_ingestion(
-    app_with_stub_pool: TestClient,
-    captured_items: list[WorkItem],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _active_collection(*_args, **_kwargs):
-        return SimpleNamespace(
-            status_code=200,
-            json=lambda: {"status": "active"},
-        )
-
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._vectordb_get",
-        _active_collection,
-    )
-    app_with_stub_pool.app.state.config.vectordb = VectorDbConfig(
-        enabled=True,
-        vectordb_url="http://vectordb",
-    )
-    trajectory = {
-        "schema_version": "ATIF-v1.7",
-        "session_id": "session-1",
-        "steps": [
-            {
-                "step_id": "user-1",
-                "source": "user",
-                "message": [{"type": "text", "text": "Question"}],
-            },
-            {
-                "step_id": "agent-1",
-                "timestamp": "2026-01-01T00:00:01Z",
-                "source": "agent",
-                "message": "Answer",
-            },
-        ],
-    }
-
-    response = app_with_stub_pool.post(
-        "/v1/adapters/trajectory/ingest",
-        files={
-            "file": (
-                "trajectory.json",
-                json.dumps(trajectory).encode(),
-                "application/json",
-            )
-        },
-        data={
-            "metadata": json.dumps(
-                {
-                    "collection_name": "episodic-memory",
-                    "exclude_tool_names": ["memory_query"],
-                }
-            )
-        },
-    )
-
-    assert response.status_code == 202, response.text
-    assert response.json()["expected_documents"] == 2
-    _wait_for_items(captured_items, 2)
-    assert [item.payload.decode() for item in captured_items] == [
-        "Question",
-        "Answer",
-    ]
-    assert all(
-        item.pipeline_spec is not None
-        and item.pipeline_spec["extraction_mode"] == "text"
-        for item in captured_items
-    )
-    assert captured_items[1].write.document_metadata == {
-        "subtype": "agent_trajectory",
-        "source_path": (
-            "agent-trajectory://session/session-1/step/agent-1/event/message"
-        ),
-        "session_id": "session-1",
-        "step_id": "agent-1",
-        "event_id": "message",
-        "event_type": "message",
-        "timestamp": "2026-01-01T00:00:01Z",
-        "role": "assistant",
-        "schema_version": "ATIF-v1.7",
-        "source": "agent",
-    }
-
-
-def test_trajectory_adapter_treats_empty_trajectory_as_no_op(
-    app_with_stub_pool: TestClient,
-) -> None:
-    response = app_with_stub_pool.post(
-        "/v1/adapters/trajectory/ingest",
-        files={
-            "file": (
-                "trajectory.json",
-                b'{"session_id":"session-1","steps":[]}',
-                "application/json",
-            )
-        },
-        data={"metadata": json.dumps({"collection_name": "episodic-memory"})},
-    )
-
-    assert response.status_code == 202
-    assert response.json() == {
-        "job_id": None,
-        "expected_documents": 0,
-        "status": "completed",
-        "no_op": True,
-        "created_at": None,
-        "label": None,
-        "trace_id": None,
-        "collection_name": "episodic-memory",
-    }
-
-
-def test_trajectory_adapter_retries_only_queue_rejected_event(
-    app_with_stub_pool: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _active_collection(*_args, **_kwargs):
-        return SimpleNamespace(status_code=200, json=lambda: {"status": "active"})
-
-    attempts: dict[str, int] = {}
-    accepted: list[str] = []
-
-    async def _submit(_pool_type: PoolType, item: WorkItem) -> bool:
-        filename = item.filename or ""
-        attempts[filename] = attempts.get(filename, 0) + 1
-        if filename == "trajectory-000000.txt" and attempts[filename] == 1:
-            return False
-        accepted.append(filename)
-        return True
-
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._vectordb_get",
-        _active_collection,
-    )
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._RETRY_AFTER_SECONDS",
-        "0",
-    )
-    app_with_stub_pool.app.state.config.vectordb = VectorDbConfig(
-        enabled=True,
-        vectordb_url="http://vectordb",
-    )
-    pool = get_pipeline_pool()
-    assert pool is not None
-    monkeypatch.setattr(pool, "submit", _submit)
-
-    response = app_with_stub_pool.post(
-        "/v1/adapters/trajectory/ingest",
-        files={
-            "file": (
-                "trajectory.json",
-                (
-                    b'{"session_id":"session-1","steps":['
-                    b'{"step_id":1,"source":"user","message":"one"},'
-                    b'{"step_id":2,"source":"agent","message":"two"}]}'
-                ),
-                "application/json",
-            )
-        },
-        data={"metadata": json.dumps({"collection_name": "episodic-memory"})},
-    )
-
-    assert response.status_code == 202, response.text
-    assert attempts == {
-        "trajectory-000000.txt": 2,
-        "trajectory-000001.txt": 1,
-    }
-    assert accepted == [
-        "trajectory-000000.txt",
-        "trajectory-000001.txt",
-    ]
-    tracker = get_job_tracker()
-    assert tracker is not None
-    job = tracker.get_job(response.json()["job_id"])
-    assert len(job.document_ids) == 2
-    assert job.counts["pending"] == 2
-
-
-def test_trajectory_adapter_uses_one_admission_deadline_per_request(
-    app_with_stub_pool: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _active_collection(*_args, **_kwargs):
-        return SimpleNamespace(status_code=200, json=lambda: {"status": "active"})
-
-    deadlines: list[float] = []
-
-    async def _submit(**kwargs):
-        deadlines.append(kwargs["deadline"])
-        return SimpleNamespace()
-
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._vectordb_get",
-        _active_collection,
-    )
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.trajectory._submit_event_with_retry",
-        _submit,
-    )
-    app_with_stub_pool.app.state.config.vectordb = VectorDbConfig(
-        enabled=True,
-        vectordb_url="http://vectordb",
-    )
-
-    response = app_with_stub_pool.post(
-        "/v1/adapters/trajectory/ingest",
-        files={
-            "file": (
-                "trajectory.json",
-                (
-                    b'{"session_id":"session-1","steps":['
-                    b'{"step_id":1,"source":"user","message":"one"},'
-                    b'{"step_id":2,"source":"agent","message":"two"}]}'
-                ),
-                "application/json",
-            )
-        },
-        data={"metadata": json.dumps({"collection_name": "episodic-memory"})},
-    )
-
-    assert response.status_code == 202, response.text
-    assert len(deadlines) == 2
-    assert deadlines[0] == deadlines[1]
-
-
-def test_trajectory_adapter_bounds_queue_retries_without_inflating_counts(
-    app_with_stub_pool: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _active_collection(*_args, **_kwargs):
-        return SimpleNamespace(status_code=200, json=lambda: {"status": "active"})
-
-    attempts = 0
-
-    async def _reject(_pool_type: PoolType, item: WorkItem) -> bool:
-        nonlocal attempts
-        if item.filename == "trajectory-000000.txt":
-            return True
-        attempts += 1
-        return False
-
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._vectordb_get",
-        _active_collection,
-    )
-    monkeypatch.setattr(
-        "nemo_retriever.service.routers.ingest._RETRY_AFTER_SECONDS",
-        "0.001",
-    )
-    app_with_stub_pool.app.state.config.vectordb = VectorDbConfig(
-        enabled=True,
-        vectordb_url="http://vectordb",
-    )
-    pool = get_pipeline_pool()
-    assert pool is not None
-    monkeypatch.setattr(pool, "submit", _reject)
-
-    started = time.monotonic()
-    response = app_with_stub_pool.post(
-        "/v1/adapters/trajectory/ingest",
-        files={
-            "file": (
-                "trajectory.json",
-                (
-                    b'{"session_id":"session-1","steps":['
-                    b'{"step_id":1,"source":"user","message":"one"},'
-                    b'{"step_id":2,"source":"agent","message":"two"}]}'
-                ),
-                "application/json",
-            )
-        },
-        data={
-            "metadata": json.dumps(
-                {
-                    "collection_name": "episodic-memory",
-                    "queue_admission_timeout_seconds": 0.01,
-                }
-            )
-        },
-    )
-    elapsed = time.monotonic() - started
-
-    assert response.status_code == 429
-    assert elapsed < 0.5
-    detail = response.json()["detail"]
-    assert detail["code"] == "trajectory_queue_admission_timeout"
-    assert detail["accepted_events"] == 1
-    assert detail["total_events"] == 2
-    assert detail["ingestion_may_be_partial"] is True
-    assert attempts >= 2
-    tracker = get_job_tracker()
-    assert tracker is not None
-    job = tracker.get_job(detail["job_id"])
-    assert len(job.document_ids) == 1
-    assert job.counts["pending"] == 1
 
 
 def test_ingest_rejects_trust_sensitive_override(
@@ -1113,6 +811,49 @@ def test_upload_to_missing_job_returns_404(app_with_stub_pool: TestClient) -> No
         data={"metadata": "{}"},
     )
     assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.anyio
+async def test_rejected_standalone_submission_unregisters_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.routers import ingest
+
+    unregistered: list[str] = []
+
+    async def _reject(_pool_type: PoolType, _item: WorkItem) -> None:
+        raise HTTPException(status_code=429, detail="queue full")
+
+    monkeypatch.setattr(ingest, "_enqueue_or_reject", _reject)
+    monkeypatch.setattr(
+        ingest,
+        "_register_document_under_job",
+        lambda **_kwargs: (SimpleNamespace(), True),
+    )
+    monkeypatch.setattr(
+        ingest,
+        "get_job_tracker",
+        lambda: type(
+            "Tracker",
+            (),
+            {"unregister_pending": staticmethod(unregistered.append)},
+        )(),
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(config=SimpleNamespace(mode="standalone"))
+        )
+    )
+
+    with pytest.raises(HTTPException, match="429"):
+        await ingest._submit_job_work_item(
+            request,
+            PoolType.BATCH,
+            WorkItem(id="rejected", job_id="job"),
+            manifest_entry_id=None,
+        )
+
+    assert unregistered == ["rejected"]
 
 
 @pytest.mark.anyio
