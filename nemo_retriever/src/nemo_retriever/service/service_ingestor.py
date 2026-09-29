@@ -586,7 +586,6 @@ class ServiceIngestor(ingestor):
             and not any(
                 spec.get(k)
                 for k in (
-                    "trajectory_params",
                     "extract_params",
                     "embed_params",
                     "dedup_params",
@@ -752,24 +751,6 @@ class ServiceIngestor(ingestor):
                 allowed=_DEFAULT_ALLOWED_EXTRACT_KEYS,
             )
         self._pipeline_spec["extraction_mode"] = extraction_mode
-        if split_config is not None:
-            self._pipeline_spec["split_config"] = split_config
-        self._record_stage("extract")
-        return self
-
-    def extract_agent_trajectory(
-        self,
-        *,
-        exclude_tool_names: Sequence[str] = (),
-        tool_output_char_limit: int | None = None,
-        split_config: Optional[dict[str, Any]] = None,
-    ) -> "ServiceIngestor":
-        """Record canonical ATIF trajectory projection on the service."""
-        self._pipeline_spec["extraction_mode"] = "trajectory"
-        self._pipeline_spec["trajectory_params"] = {
-            "exclude_tool_names": list(exclude_tool_names),
-            "tool_output_char_limit": tool_output_char_limit,
-        }
         if split_config is not None:
             self._pipeline_spec["split_config"] = split_config
         self._record_stage("extract")

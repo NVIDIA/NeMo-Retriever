@@ -35,7 +35,7 @@ from pydantic import ConfigDict, Field
 from nemo_retriever.common.schemas.base import RichModel
 
 
-ExtractionMode = Literal["pdf", "image", "auto", "text", "html", "audio", "trajectory"]
+ExtractionMode = Literal["pdf", "image", "auto", "text", "html", "audio"]
 StageName = Literal["extract", "dedup", "caption", "embed", "store", "filter", "webhook"]
 
 
@@ -70,7 +70,6 @@ class PipelineSpec(RichModel):
     # Extraction stage selector (mirrors GraphIngestor._extraction_mode).
     extraction_mode: ExtractionMode = "auto"
 
-    trajectory_params: Optional[dict[str, Any]] = None
     extract_params: Optional[dict[str, Any]] = None
     embed_params: Optional[dict[str, Any]] = None
     dedup_params: Optional[dict[str, Any]] = None
@@ -108,7 +107,6 @@ class PipelineSpec(RichModel):
         """
         return (
             self.extraction_mode in ("pdf", "auto")
-            and self.trajectory_params is None
             and self.extract_params is None
             and self.embed_params is None
             and self.dedup_params is None

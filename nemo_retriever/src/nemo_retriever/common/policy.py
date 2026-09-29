@@ -97,8 +97,6 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
     }
 )
 
-_ALLOWED_TRAJECTORY_KEYS: frozenset[str] = frozenset({"exclude_tool_names", "tool_output_char_limit"})
-
 _DEFAULT_ALLOWED_EMBED_KEYS: frozenset[str] = frozenset(
     {
         "input_type",
@@ -609,7 +607,6 @@ def validate_pipeline_spec(
     result_schema_only = (
         spec.result_schema != "legacy"
         and spec.extraction_mode in ("pdf", "auto")
-        and spec.trajectory_params is None
         and spec.extract_params is None
         and spec.embed_params is None
         and spec.dedup_params is None
@@ -665,7 +662,6 @@ def validate_pipeline_spec(
     # Endpoint/API-key denylist applies to every params block, even ones
     # we currently accept — defense in depth in case a new field name
     # slips into the allowlist without being audited.
-    _scrub_trust_sensitive(spec.trajectory_params, "trajectory")
     _scrub_trust_sensitive(spec.extract_params, "extract")
     _scrub_trust_sensitive(spec.embed_params, "embed")
     _scrub_trust_sensitive(spec.dedup_params, "dedup")
@@ -690,7 +686,6 @@ def validate_pipeline_spec(
             status_code=400,
         )
 
-    _enforce_allowlist(spec.trajectory_params, _ALLOWED_TRAJECTORY_KEYS, "trajectory", mode=policy.mode)
     _enforce_allowlist(spec.extract_params, policy.allowed_extract_keys, "extract", mode=policy.mode)
     _enforce_allowlist(spec.embed_params, policy.allowed_embed_keys, "embed", mode=policy.mode)
     _enforce_allowlist(spec.dedup_params, policy.allowed_dedup_keys, "dedup", mode=policy.mode)

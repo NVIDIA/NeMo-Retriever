@@ -7,9 +7,6 @@
 from __future__ import annotations
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.operators.graph_ops.agent_trajectory_operator import (
-    AgentTrajectoryProjectionOperator,
-)
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.operators.graph_ops.custom_operator import UDFOperator
@@ -24,7 +21,6 @@ from nemo_retriever.operators.graph_ops.webhook_operator import WebhookNotifyOpe
 __all__ = [
     "AbstractExecutor",
     "AbstractOperator",
-    "AgentTrajectoryProjectionOperator",
     "ArchetypeOperator",
     "CPUOperator",
     "FileListLoaderOperator",

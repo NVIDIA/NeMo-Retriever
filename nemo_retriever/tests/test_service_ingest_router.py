@@ -266,6 +266,90 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
     assert item.pipeline_spec["stage_order"] == ["extract"]
 
 
+def test_trajectory_adapter_uses_standard_text_ingestion(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _active_collection(*_args, **_kwargs):
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"status": "active"},
+        )
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.routers.ingest._vectordb_get",
+        _active_collection,
+    )
+    app_with_stub_pool.app.state.config.vectordb = VectorDbConfig(
+        enabled=True,
+        vectordb_url="http://vectordb",
+    )
+    trajectory = {
+        "schema_version": "ATIF-v1.7",
+        "session_id": "session-1",
+        "steps": [
+            {
+                "step_id": "user-1",
+                "source": "user",
+                "message": [{"type": "text", "text": "Question"}],
+            },
+            {
+                "step_id": "agent-1",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "source": "agent",
+                "message": "Answer",
+            },
+        ],
+    }
+
+    response = app_with_stub_pool.post(
+        "/v1/adapters/trajectory/ingest",
+        files={
+            "file": (
+                "trajectory.json",
+                json.dumps(trajectory).encode(),
+                "application/json",
+            )
+        },
+        data={
+            "metadata": json.dumps(
+                {
+                    "collection_name": "episodic-memory",
+                    "exclude_tool_names": ["memory_query"],
+                }
+            )
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["expected_documents"] == 2
+    _wait_for_items(captured_items, 2)
+    assert [item.payload.decode() for item in captured_items] == [
+        "Question",
+        "Answer",
+    ]
+    assert all(
+        item.pipeline_spec is not None
+        and item.pipeline_spec["extraction_mode"] == "text"
+        for item in captured_items
+    )
+    assert captured_items[1].write.document_metadata == {
+        "subtype": "agent_trajectory",
+        "source_path": (
+            "agent-trajectory://session/session-1/step/agent-1/event/message"
+        ),
+        "session_id": "session-1",
+        "step_id": "agent-1",
+        "event_id": "message",
+        "event_type": "message",
+        "timestamp": "2026-01-01T00:00:01Z",
+        "role": "assistant",
+        "schema_version": "ATIF-v1.7",
+        "source": "agent",
+    }
+
+
 def test_ingest_rejects_trust_sensitive_override(
     app_with_stub_pool: TestClient,
 ) -> None:
