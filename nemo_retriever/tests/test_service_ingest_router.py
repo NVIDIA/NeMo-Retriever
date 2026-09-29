@@ -350,6 +350,34 @@ def test_trajectory_adapter_uses_standard_text_ingestion(
     }
 
 
+def test_trajectory_adapter_treats_empty_trajectory_as_no_op(
+    app_with_stub_pool: TestClient,
+) -> None:
+    response = app_with_stub_pool.post(
+        "/v1/adapters/trajectory/ingest",
+        files={
+            "file": (
+                "trajectory.json",
+                b'{"session_id":"session-1","steps":[]}',
+                "application/json",
+            )
+        },
+        data={"metadata": json.dumps({"collection_name": "episodic-memory"})},
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "job_id": None,
+        "expected_documents": 0,
+        "status": "completed",
+        "no_op": True,
+        "created_at": None,
+        "label": None,
+        "trace_id": None,
+        "collection_name": "episodic-memory",
+    }
+
+
 def test_ingest_rejects_trust_sensitive_override(
     app_with_stub_pool: TestClient,
 ) -> None:

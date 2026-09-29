@@ -36,9 +36,22 @@ class TrajectoryIngestRequest(RichModel):
     tool_output_char_limit: int | None = Field(default=None, ge=0)
 
 
+class TrajectoryIngestResponse(RichModel):
+    """One adapter submission, including an explicit empty-trajectory result."""
+
+    job_id: str | None
+    expected_documents: int
+    status: str
+    no_op: bool = False
+    created_at: str | None = None
+    label: str | None = None
+    trace_id: str | None = None
+    collection_name: str | None = None
+
+
 @router.post(
     "/adapters/trajectory/ingest",
-    response_model=JobCreatedResponse,
+    response_model=TrajectoryIngestResponse,
     status_code=202,
     summary="Project an ATIF trajectory and ingest it as text documents",
 )
@@ -49,7 +62,7 @@ async def ingest_trajectory(
         default="{}",
         description="JSON-encoded TrajectoryIngestRequest options",
     ),
-) -> JobCreatedResponse | Response:
+) -> JobCreatedResponse | TrajectoryIngestResponse | Response:
     """Preprocess ATIF at the service boundary, then use standard text ingestion."""
     try:
         options = TrajectoryIngestRequest(**json.loads(metadata))
@@ -67,9 +80,12 @@ async def ingest_trajectory(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not documents:
-        raise HTTPException(
-            status_code=422,
-            detail="trajectory contains no indexable text events",
+        return TrajectoryIngestResponse(
+            job_id=None,
+            expected_documents=0,
+            status="completed",
+            no_op=True,
+            collection_name=options.collection_name,
         )
 
     created = await ingest.create_job(
