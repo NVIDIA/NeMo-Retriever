@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 
@@ -56,6 +56,17 @@ _OUTPUT_COLUMNS = [
     "rank",
     "has_valid_final_results",
     "is_final_result",
+]
+_ANSWER_OUTPUT_COLUMNS = [
+    "query_id",
+    "query_text",
+    "answer",
+    "citations",
+    "message",
+    "succeeded",
+    "error_category",
+    "error_message",
+    "error_exception_class",
 ]
 
 
@@ -167,6 +178,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         retriever_fn_accepts_query_id: bool = False,
         retriever_top_k: int = 500,
         target_top_k: int = 10,
+        mode: Literal["select", "answer"] = "select",
         max_steps: int = 200,
         num_concurrent: int = 8,
         api_key: Optional[str] = None,
@@ -184,6 +196,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._retriever_fn_accepts_query_id = retriever_fn_accepts_query_id
         self._retriever_top_k = retriever_top_k
         self._target_top_k = target_top_k
+        if mode not in ("select", "answer"):
+            raise ValueError(f"mode must be 'select' or 'answer', got {mode!r}.")
+        self._mode = mode
         self._max_steps = max_steps
         self._num_concurrent = num_concurrent
         self._api_key = api_key
@@ -259,9 +274,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             )
             self._agent = Agent(
                 config=AgentConfig(
-                    mode="select",
+                    mode=self._mode,
                     target_top_k=int(self._target_top_k),
-                    enforce_top_k=True,
                     user_msg_type="with_results",
                     extended_relevance=True,
                     enable_think=False,
@@ -322,7 +336,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         query_rows = [(str(r["query_id"]), str(r["query_text"])) for _, r in data.iterrows()]
 
         if not query_rows:
-            return pd.DataFrame(columns=_OUTPUT_COLUMNS)
+            columns = _OUTPUT_COLUMNS if self._mode == "select" else _ANSWER_OUTPUT_COLUMNS
+            return pd.DataFrame(columns=columns)
         if len(query_rows) == 1:
             # Fast path: single query, no threading overhead.
             rows.extend(self._run_single_query(*query_rows[0]))
@@ -345,7 +360,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 rows.extend(results_by_qid.get(qid, []))
 
         if not rows:
-            return pd.DataFrame(columns=_OUTPUT_COLUMNS)
+            columns = _OUTPUT_COLUMNS if self._mode == "select" else _ANSWER_OUTPUT_COLUMNS
+            return pd.DataFrame(columns=columns)
 
         return pd.DataFrame(rows)
 
@@ -374,10 +390,37 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         persist_atif_trajectory(result.atif_trace)
 
         if result.error is not None and result.error.category in _FATAL_AGENT_ERROR_CATEGORIES:
+            operation = "retrieval" if self._mode == "select" else "answer"
             raise _FatalAgentError(
-                f"Agentic retrieval failed ({result.error.category}): {result.error.message} "
+                f"Agentic {operation} failed ({result.error.category}): {result.error.message} "
                 "Check the configured agent LLM, embedding, vector database, and reranker settings and connectivity."
             )
+
+        if self._mode == "answer":
+            error_category = result.error.category if result.error is not None else None
+            error_message = result.error.message if result.error is not None else None
+            error_exception_class = result.error.exception_class if result.error is not None else None
+            message = result.end_payload.get("message") if isinstance(result.end_payload, dict) else None
+            logger.info(
+                "ReActAgentOperator: query=%s done retrieval_steps=%d succeeded=%s citations=%s",
+                query_id,
+                len(result.retrieval_log),
+                result.succeeded,
+                (result.citations or [])[:_LOG_DOC_ID_LIMIT],
+            )
+            return [
+                {
+                    "query_id": str(query_id),
+                    "query_text": str(query_text),
+                    "answer": result.answer,
+                    "citations": result.citations,
+                    "message": message,
+                    "succeeded": result.succeeded,
+                    "error_category": error_category,
+                    "error_message": error_message,
+                    "error_exception_class": error_exception_class,
+                }
+            ]
 
         # Private agent retrieval_log entries are {"input", "tool_name",
         # "query_type", "output": [ {id, score, text|note, ...} ]}. The exploded

@@ -23,7 +23,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import httpx
@@ -46,7 +46,7 @@ from nemo_retriever.common.schemas.responses import (
     PageIngestAccepted,
     SidecarUploadResponse,
 )
-from nemo_retriever.service.query_schema import QueryRequest, QueryResponse
+from nemo_retriever.service.query_schema import AgenticAnswerResponse, QueryRequest, QueryResponse
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.models.llm.types import (
     AnswerRequest as CoreAnswerRequest,
@@ -102,6 +102,7 @@ SSE_KEEPALIVE_TIMEOUT_S = 30.0
 class ServiceAnswerRequest(BaseModel):
     query: str
     top_k: int = Field(default=5, ge=1, le=1000)
+    mode: Literal["classic", "agentic"] = "classic"
     include_chunks: bool = False
     include_metadata: bool = False
     reasoning_enabled: bool | None = None
@@ -112,6 +113,17 @@ class ServiceAnswerRequest(BaseModel):
     def _validate_judge_reference(self) -> "ServiceAnswerRequest":
         if self.judge and self.reference is None:
             raise ValueError("judge requires reference")
+        if self.mode == "agentic" and (
+            self.judge
+            or self.reference is not None
+            or self.reasoning_enabled is not None
+            or self.include_chunks
+            or self.include_metadata
+        ):
+            raise ValueError(
+                "mode='agentic' cannot be combined with judge, reference, reasoning_enabled, "
+                "include_chunks, or include_metadata"
+            )
         return self
 
 
@@ -1695,10 +1707,10 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
 
 @router.post(
     "/answer",
-    response_model=AnswerResult,
+    response_model=AnswerResult | AgenticAnswerResponse,
     summary="Search ingested documents and generate an answer",
 )
-async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
+async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult | AgenticAnswerResponse:
     """Retrieve context from VectorDB and answer with the configured LLM."""
     import httpx
 
@@ -1710,10 +1722,15 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             detail="VectorDB is not enabled in the service configuration.",
         )
 
-    if not config.llm.enabled:
+    if req.mode == "classic" and not config.llm.enabled:
         raise HTTPException(
             status_code=404,
             detail="LLM answer generation is not enabled in the service configuration.",
+        )
+    if req.mode == "agentic" and not config.agentic.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="Agentic answer generation is not enabled in the service configuration.",
         )
 
     mode = _mode(request)
@@ -1723,24 +1740,20 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             detail="Answer endpoint is not available on worker pods. Use the gateway.",
         )
 
-    answer_req = CoreAnswerRequest(
-        query=req.query,
-        top_k=req.top_k,
-        reasoning_enabled=req.reasoning_enabled,
-        reference=req.reference,
-        judge_enabled=req.judge,
-    )
-
     vectordb_url = config.vectordb.vectordb_url.rstrip("/")
     target = f"{vectordb_url}/v1/query"
+    query_body: dict[str, Any] = {"query": req.query, "top_k": req.top_k}
+    if req.mode == "agentic":
+        query_body.update({"agentic": True, "agentic_mode": "answer"})
 
     try:
         from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        timeout = config.agentic.request_timeout_s if req.mode == "agentic" else 60.0
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 target,
-                json={"query": answer_req.query, "top_k": answer_req.top_k},
+                json=query_body,
                 headers={
                     "X-NRL-Scope": authorized_scope(request),
                     **internal_auth_headers(config.vectordb.internal_api_token),
@@ -1755,6 +1768,23 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
     if resp.status_code != 200:
         return _proxied_response(resp)
+    if req.mode == "agentic":
+        try:
+            return AgenticAnswerResponse.model_validate(resp.json())
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            logger.error("VectorDB returned an invalid agentic answer response: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="VectorDB returned an invalid agentic answer response.",
+            ) from exc
+
+    answer_req = CoreAnswerRequest(
+        query=req.query,
+        top_k=req.top_k,
+        reasoning_enabled=req.reasoning_enabled,
+        reference=req.reference,
+        judge_enabled=req.judge,
+    )
 
     payload = resp.json()
     result_sets = payload.get("results") or []

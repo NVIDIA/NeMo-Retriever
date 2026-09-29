@@ -10,6 +10,7 @@ Run with:
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -59,13 +60,18 @@ def _run(config: AgentConfig, end_call: str, end_args: dict, seen: list | None =
     agent = Agent(
         config=config,
         llm=create_llm(create_llm_config("callable", model="test-model"), completion_fn=completion),
-        retrieve_tool=create_retrieve_tool("default", lambda _query, _top_k: []),
+        retrieve_tool=create_retrieve_tool(
+            "default",
+            lambda _query, _top_k: [
+                {"id": doc_id, "text": f"Evidence from {doc_id}", "score": 1.0} for doc_id in _CITATIONS
+            ],
+        ),
     )
     return agent.run_sync("How much capacity?", query_id="q1")
 
 
 def _answer_config() -> AgentConfig:
-    return AgentConfig(mode="answer", user_msg_type="simple", on_error="never_raise")
+    return AgentConfig(mode="answer", user_msg_type="with_results", on_error="never_raise")
 
 
 def _offered_tool_names(call_kwargs: dict) -> set:
@@ -107,6 +113,52 @@ class TestAnswerModeRun:
         )
         assert result.succeeded
         assert result.citations == []
+
+    def test_unknown_string_citation_is_not_salvaged_from_malformed_call(self):
+        result = _run(
+            AgentConfig(
+                mode="answer",
+                user_msg_type="with_results",
+                on_error="never_raise",
+                max_steps=1,
+            ),
+            "log_answer",
+            {"answer": _ANSWER, "citations": ["ghost", 42], "message": "Malformed citation list."},
+        )
+
+        assert not result.succeeded
+        assert result.error is not None
+        assert result.error.category == "max_steps"
+        assert result.citations is None
+        assert result.end_payload is None
+
+    def test_answer_mode_normalizes_select_only_prompt_settings(self):
+        llm = create_llm(
+            create_llm_config("callable", model="test-model"),
+            completion_fn=lambda **_kwargs: _tool_call_response(
+                "log_answer",
+                {"answer": _ANSWER, "citations": []},
+            ),
+        )
+        retrieve_tool = create_retrieve_tool("default", lambda _query, _top_k: [])
+
+        with patch(
+            "nemo_retriever._agentic.nemo_agent.agent.render_system_prompt",
+            return_value="answer prompt",
+        ) as render_prompt:
+            Agent(
+                config=AgentConfig(
+                    mode="answer",
+                    enforce_top_k=True,
+                    target_top_k=99,
+                    end_tool_with_msg=False,
+                ),
+                llm=llm,
+                retrieve_tool=retrieve_tool,
+            )
+
+        assert render_prompt.call_args.kwargs["enforce_top_k"] is False
+        assert render_prompt.call_args.kwargs["top_k"] is None
 
     def test_select_mode_leaves_answer_and_citations_unset(self):
         result = _run(
@@ -204,6 +256,12 @@ class TestLogAnswerSalvage:
             "answer": _ANSWER,
             "citations": ["doc_1"],
             "message": "m",
+        }
+
+    def test_explicit_empty_citations_are_preserved_when_salvaging_answer(self):
+        assert LogAnswer().salvage_payload({"answer": _ANSWER, "citations": []}) == {
+            "answer": _ANSWER,
+            "citations": [],
         }
 
     def test_message_alone_salvages_nothing(self):

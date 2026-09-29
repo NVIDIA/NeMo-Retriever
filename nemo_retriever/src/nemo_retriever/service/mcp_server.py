@@ -272,6 +272,25 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
+    async def agentic_answer(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        """Call integrated ReAct answer mode through ``POST /v1/answer``."""
+        async with self._client(timeout_s=self._settings.agentic_request_timeout_s) as client:
+            resp = await client.post(
+                "/v1/answer",
+                json={
+                    "query": query,
+                    "top_k": top_k,
+                    "mode": "agentic",
+                },
+            )
+        self._raise_for_status(resp)
+        return dict(self._json_or_text(resp))
+
     async def answer(
         self,
         query: str,
@@ -590,6 +609,16 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         )
         async def agentic_query(query: str, top_k: int = 5) -> dict[str, Any]:
             return await service.agentic_query(query, top_k=top_k)
+
+        @mcp.tool(
+            name="agentic_answer",
+            description=(
+                "Research a query through an iterative retrieval agent and return its integrated answer, "
+                "validated citation document IDs, and the corresponding retrieved citation hits."
+            ),
+        )
+        async def agentic_answer(query: str, top_k: int = 5) -> dict[str, Any]:
+            return await service.agentic_answer(query, top_k=top_k)
 
     @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(

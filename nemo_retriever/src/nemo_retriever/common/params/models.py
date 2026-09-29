@@ -514,6 +514,13 @@ class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
     extract_images: bool = True
+    extract_nested_images: bool = Field(
+        default=False,
+        description=(
+            "When extract_images is enabled for PDFium extraction, also emit decoded raster IMAGE objects nested "
+            "inside Form XObjects. Each placement is emitted, including repeated uses of the same bitmap."
+        ),
+    )
     extract_tables: bool = True
     extract_charts: bool = True
     extract_infographics: bool = False
@@ -578,6 +585,10 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if self.extract_nested_images and not self.extract_images:
+            raise ValueError(
+                "extract_nested_images=True requires extract_images=True because nested images extend image output."
+            )
         if self.method != "nemotron_parse" and (
             self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
         ):

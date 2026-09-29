@@ -15,9 +15,11 @@ try:
 except ImportError:
     cv2 = None
 
+from nemo_retriever.common.api.util.metadata.aggregators import Base64Image
 from nemo_retriever.common.api.util.pdf.pdfium import (
     convert_bitmap_to_corrected_numpy,
     extract_image_like_objects_from_pdfium_page,
+    extract_nested_simple_images_from_pdfium_page,
     is_scanned_page as _is_scanned_page,
 )
 
@@ -69,11 +71,31 @@ def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
         "render_mode": params.render_mode,
         "extract_text": params.extract_text,
         "extract_images": params.extract_images,
+        "extract_nested_images": params.extract_nested_images,
         "extract_tables": params.extract_tables,
         "extract_charts": params.extract_charts,
         "extract_infographics": params.extract_infographics,
         "extract_page_as_image": params.extract_page_as_image,
         "api_key": params.api_key,
+    }
+
+
+def _base64_image_to_record(image: Base64Image) -> Dict[str, Any]:
+    """Convert an extracted image to the normalized page-record schema.
+
+    Args:
+        image: Extracted image and its page-space bounding box.
+
+    Returns:
+        Image payload with a normalized bounding box.
+    """
+    max_width = float(image.max_width) if image.max_width else 1.0
+    max_height = float(image.max_height) if image.max_height else 1.0
+    x0, y0, x1, y1 = image.bbox
+    return {
+        "bbox_xyxy_norm": [x0 / max_width, y0 / max_height, x1 / max_width, y1 / max_height],
+        "text": "",
+        "image_b64": image.image,
     }
 
 
@@ -227,6 +249,7 @@ def pdf_extraction(
     pdf_binary: Any,
     extract_text: bool = False,
     extract_images: bool = False,
+    extract_nested_images: bool = False,
     extract_tables: bool = False,
     extract_charts: bool = False,
     extract_infographics: bool = False,
@@ -368,27 +391,27 @@ def pdf_extraction(
 
                     # Extract cropped images from pdfium page objects.
                     detected_images: List[Dict[str, Any]] = []
+                    nested_image_error: Optional[Dict[str, Any]] = None
                     if extract_images:
                         try:
                             base64_images = extract_image_like_objects_from_pdfium_page(page)
-                            for img in base64_images:
-                                max_w = float(img.max_width) if img.max_width else 1.0
-                                max_h = float(img.max_height) if img.max_height else 1.0
-                                x0, y0, x1, y1 = img.bbox
-                                detected_images.append(
-                                    {
-                                        "bbox_xyxy_norm": [
-                                            x0 / max_w,
-                                            y0 / max_h,
-                                            x1 / max_w,
-                                            y1 / max_h,
-                                        ],
-                                        "text": "",
-                                        "image_b64": img.image,
-                                    }
-                                )
+                            detected_images.extend(_base64_image_to_record(img) for img in base64_images)
                         except Exception:
                             pass  # Image extraction failure should not crash the pipeline.
+
+                        if extract_nested_images:
+                            try:
+                                nested_images = extract_nested_simple_images_from_pdfium_page(page)
+                            except Exception as e:
+                                report_error("pdf_extraction:nested_images", e)
+                                nested_image_error = {
+                                    "stage": "nested_images",
+                                    "type": e.__class__.__name__,
+                                    "message": str(e),
+                                    "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
+                                }
+                            else:
+                                detected_images.extend(_base64_image_to_record(img) for img in nested_images)
 
                     page_record: Dict[str, Any] = {
                         "path": pdf_path,
@@ -405,7 +428,7 @@ def pdf_extraction(
                             "needs_ocr_for_text": ocr_extraction_needed_for_text,
                             "dpi": dpi,
                             "source_path": pdf_path,
-                            "error": None,
+                            "error": nested_image_error,
                         },
                     }
 

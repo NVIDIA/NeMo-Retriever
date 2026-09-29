@@ -73,6 +73,31 @@ def test_service_client_query_accepts_empty_hits(monkeypatch) -> None:
     assert RetrieverServiceClient(base_url="http://svc:7670").query("deployment?", top_k=2) == [[]]
 
 
+def test_service_client_agentic_answer_posts_mode_and_validates_response(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _install_query_response(
+        monkeypatch,
+        {
+            "answer": "Revenue grew 4%.",
+            "citations": ["report_7"],
+            "citation_hits": [{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+            "succeeded": True,
+            "query_mode": "agentic_answer",
+        },
+        calls,
+    )
+
+    result = RetrieverServiceClient(base_url="http://svc:7670").agentic_answer("What changed?", top_k=3)
+
+    assert result.answer == "Revenue grew 4%."
+    assert result.citations == ["report_7"]
+    assert calls[0]["timeout"].read == 1800.0
+    assert calls[1] == {
+        "url": "http://svc:7670/v1/answer",
+        "json": {"query": "What changed?", "top_k": 3, "mode": "agentic"},
+    }
+
+
 @pytest.mark.parametrize(
     ("body", "match"),
     [

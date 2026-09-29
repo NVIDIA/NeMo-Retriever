@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from nemo_retriever.models.llm.types import GenerationResult, JudgeResult
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
+    AgenticConfig,
     AuthConfig,
     LLMConfig,
     LoggingConfig,
@@ -29,6 +30,11 @@ from nemo_retriever.service.config import (
 
 def test_llm_config_defaults_to_reasoning_enabled_for_external_provider_safety() -> None:
     assert LLMConfig().reasoning_enabled is True
+
+
+def test_llm_config_defaults_to_lightning() -> None:
+    assert LLMConfig().model == "openai/nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert LLMConfig().max_tokens == 4096
 
 
 def test_llm_config_allows_empty_model_when_disabled_for_helm_default() -> None:
@@ -62,10 +68,15 @@ def app_with_answer_config(monkeypatch: pytest.MonkeyPatch, tmp_path):
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
         vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+        agentic=AgenticConfig(
+            enabled=True,
+            llm_model="agent-model",
+            invoke_url="https://llm.example/v1/chat/completions",
+        ),
         llm=LLMConfig(
             enabled=True,
-            model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            api_base="http://llama-3-3-nemotron-super-49b-v1-5:8000/v1",
+            model="openai/nvidia/nemotron-3.5-lightning-30b-a3b",
+            api_base="http://answer-llm:8000/v1",
             api_key="not-needed",
             max_tokens=128,
             timeout=180.0,
@@ -77,10 +88,15 @@ def app_with_answer_config(monkeypatch: pytest.MonkeyPatch, tmp_path):
         yield client
 
 
+@pytest.mark.parametrize("use_defaults", [True, False])
 def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
     app_with_answer_config: TestClient,
     monkeypatch: pytest.MonkeyPatch,
+    use_defaults: bool,
 ) -> None:
+    if use_defaults:
+        app_with_answer_config.app.state.config.llm.max_tokens = LLMConfig().max_tokens
+        app_with_answer_config.app.state.config.llm.reasoning_enabled = LLMConfig().reasoning_enabled
     requests: list[dict[str, Any]] = []
 
     class _FakeResponse:
@@ -90,7 +106,11 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
                 "results": [
                     {
                         "hits": [
-                            {"text": "Super-49B is the answer generator.", "source": "doc.pdf", "page_number": 1},
+                            {
+                                "text": "Nemotron 3.5 Lightning is the answer generator.",
+                                "source": "doc.pdf",
+                                "page_number": 1,
+                            },
                             {"text": "NRL queries LanceDB before generation.", "source": "doc.pdf", "page_number": 2},
                         ]
                     }
@@ -121,7 +141,7 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
         generate=lambda query, chunks, *, reasoning_enabled=None: GenerationResult(
             answer=f"{query}: {len(chunks)} chunks",
             latency_s=0.25,
-            model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            model="openai/nvidia/nemotron-3.5-lightning-30b-a3b",
         )
     )
 
@@ -136,7 +156,10 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
     assert body["query"] == "What generates answers?"
     assert body["answer"] == "What generates answers?: 2 chunks"
     assert body["chunk_count"] == 2
-    assert body["chunks"] == ["Super-49B is the answer generator.", "NRL queries LanceDB before generation."]
+    assert body["chunks"] == [
+        "Nemotron 3.5 Lightning is the answer generator.",
+        "NRL queries LanceDB before generation.",
+    ]
     assert body["metadata"] == [
         {"source": "doc.pdf", "page_number": 1},
         {"source": "doc.pdf", "page_number": 2},
@@ -150,19 +173,120 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
         }
     ]
     from_kwargs.assert_called_once_with(
-        model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        api_base="http://llama-3-3-nemotron-super-49b-v1-5:8000/v1",
+        model="openai/nvidia/nemotron-3.5-lightning-30b-a3b",
+        api_base="http://answer-llm:8000/v1",
         api_key="not-needed",
         temperature=0.0,
         top_p=None,
-        max_tokens=128,
+        max_tokens=4096 if use_defaults else 128,
         extra_params={},
         num_retries=3,
         timeout=180.0,
         rag_system_prompt=None,
         rag_system_prompt_prefix=None,
-        reasoning_enabled=False,
+        reasoning_enabled=use_defaults,
     )
+
+
+def test_answer_agentic_mode_validates_integrated_answer_and_uses_agentic_timeout(
+    app_with_answer_config: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[dict[str, Any]] = []
+    timeouts: list[float] = []
+    payload = {
+        "answer": "Revenue grew 4%.",
+        "citations": ["report_7"],
+        "citation_hits": [{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+        "succeeded": True,
+        "message": None,
+        "error": None,
+        "query_mode": "agentic_answer",
+        "usage": None,
+    }
+
+    class _FakeResponse:
+        status_code = 200
+        content = json.dumps(payload).encode()
+        headers = {"content-type": "application/json"}
+
+        def json(self) -> dict[str, Any]:
+            return payload
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            timeouts.append(kwargs["timeout"])
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs) -> _FakeResponse:
+            requests.append({"url": url, **kwargs})
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+
+    with patch("nemo_retriever.models.llm.clients.LiteLLMClient.from_kwargs") as from_kwargs:
+        response = app_with_answer_config.post(
+            "/v1/answer",
+            json={"query": "What changed?", "top_k": 3, "mode": "agentic"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == payload
+    assert timeouts == [1800.0]
+    assert requests == [
+        {
+            "url": "http://vectordb:7671/v1/query",
+            "json": {
+                "query": "What changed?",
+                "top_k": 3,
+                "agentic": True,
+                "agentic_mode": "answer",
+            },
+            "headers": {"X-NRL-Scope": "default"},
+        }
+    ]
+    from_kwargs.assert_not_called()
+
+
+def test_answer_agentic_mode_rejects_invalid_vectordb_response(
+    app_with_answer_config: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        status_code = 200
+        content = b'{"answer": "missing required status"}'
+        headers = {"content-type": "application/json"}
+
+        def json(self) -> dict[str, Any]:
+            return {"answer": "missing required status"}
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs) -> _FakeResponse:
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+
+    response = app_with_answer_config.post(
+        "/v1/answer",
+        json={"query": "What changed?", "mode": "agentic"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "VectorDB returned an invalid agentic answer response."
 
 
 def test_answer_preserves_vectordb_error_content_type(
@@ -527,8 +651,8 @@ def test_answer_scores_with_opt_in_judge(
     assert body["chunks"] is None
     assert body["metadata"] is None
     judge_from_kwargs.assert_called_once_with(
-        model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        api_base="http://llama-3-3-nemotron-super-49b-v1-5:8000/v1",
+        model="openai/nvidia/nemotron-3.5-lightning-30b-a3b",
+        api_base="http://answer-llm:8000/v1",
         api_key="not-needed",
         extra_params={},
         num_retries=3,
@@ -572,7 +696,7 @@ def test_answer_returns_502_when_llm_generation_fails(
         generate=lambda query, chunks, *, reasoning_enabled=None: GenerationResult(
             answer="",
             latency_s=0.0,
-            model="openai/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            model="openai/nvidia/nemotron-3.5-lightning-30b-a3b",
             error="connection refused",
         )
     )

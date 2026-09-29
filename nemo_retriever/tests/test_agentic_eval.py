@@ -164,6 +164,80 @@ def test_agentic_retriever_returns_and_pops_query_usage():
 
 
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_answer_returns_hydrated_validated_citations():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    usage = {"prompt_tokens": 11, "completion_tokens": 6, "total_tokens": 17}
+    response = _make_tool_call_response(
+        "log_answer",
+        {"answer": "The matching document answers the question.", "citations": ["doc_1"]},
+        usage=usage,
+    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=lambda **_: response):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").answer_with_usage(["customer-q"], ["find doc"])
+
+    assert result.usage == {"customer-q": {"main_agent": usage}}
+    assert result.answers["answer"].tolist() == ["The matching document answers the question."]
+    assert result.answers["citations"].tolist() == [["doc_1"]]
+    assert result.answers["succeeded"].tolist() == [True]
+    citation_hits = result.answers.iloc[0]["citation_hits"]
+    assert citation_hits == [
+        {
+            "source": {"source_id": "/tmp/clip.wav"},
+            "source_id": "/tmp/doc.pdf",
+            "page_number": 1,
+            "pdf_page": "doc_1",
+            "metadata": {"segment_start_seconds": 1.0, "segment_end_seconds": 3.0},
+            "text": "matching document",
+            "_score": 0.9,
+            "doc_id": "doc_1",
+            "rank": 1,
+            "result_source": "citation",
+        }
+    ]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_answer_retries_unretrieved_citation():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    responses = iter(
+        [
+            _make_tool_call_response(
+                "log_answer",
+                {"answer": "Unsupported first attempt.", "citations": ["invented"]},
+                tc_id="call_1",
+            ),
+            _make_tool_call_response(
+                "log_answer",
+                {"answer": "Supported retry.", "citations": ["doc_1"]},
+                tc_id="call_2",
+            ),
+        ]
+    )
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    with patch(
+        "nemo_retriever.query.agentic._build_agent_chat_completion_fn",
+        return_value=lambda **_: next(responses),
+    ):
+        result = AgenticRetriever(cfg, match_mode="pdf_page").answer(["q"], ["find doc"])
+
+    assert result["answer"].tolist() == ["Supported retry."]
+    assert result["citations"].tolist() == [["doc_1"]]
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_answer_rejects_duplicate_query_ids_before_running():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    retriever = AgenticRetriever(AgenticRetrievalConfig(llm_model="nemotron-8b"), match_mode="pdf_page")
+
+    with pytest.raises(ValueError, match="query_ids must be unique"):
+        retriever.answer_with_usage(["duplicate", "duplicate"], ["first query", "second query"])
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
 def test_agentic_retriever_isolates_usage_for_concurrent_queries():
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
@@ -389,6 +463,69 @@ def test_agentic_query_documents_with_metadata_normalizes_usage():
     assert result.usage["output_tokens"] == 6
     assert result.usage["total_tokens"] == 20
     assert set(result.usage["stages"]) == {"main_agent", "top1_agent"}
+    retriever.unload.assert_called_once()
+
+
+def test_agentic_answer_documents_with_metadata_preserves_error_and_usage():
+    from nemo_retriever.query.agentic import AgenticAnswerResult
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest
+    from nemo_retriever.query.workflow import agentic_answer_documents_with_metadata
+
+    retriever = MagicMock()
+    retriever.answer_with_usage.return_value = AgenticAnswerResult(
+        answers=pd.DataFrame(
+            {
+                "query_id": ["0"],
+                "query_text": ["find doc"],
+                "answer": ["Best effort"],
+                "citations": [["doc_1"]],
+                "citation_hits": [[{"doc_id": "doc_1", "rank": 1, "result_source": "citation"}]],
+                "message": [None],
+                "succeeded": [False],
+                "error_category": ["max_steps"],
+                "error_message": ["Reached max steps"],
+                "error_exception_class": [None],
+            }
+        ),
+        usage={"0": {"main_agent": {"prompt_tokens": 11, "completion_tokens": 4, "total_tokens": 15}}},
+    )
+    request = QueryRequest(
+        query="find doc",
+        agentic=QueryAgenticOptions(enabled=True, llm_model="m", invoke_url=_REMOTE_URL),
+    )
+
+    with patch("nemo_retriever.query.workflow.build_agentic_retriever", return_value=retriever):
+        result = agentic_answer_documents_with_metadata(request)
+
+    assert result.answer == "Best effort"
+    assert result.citations == ["doc_1"]
+    assert result.succeeded is False
+    assert result.error == {"category": "max_steps", "message": "Reached max steps"}
+    assert result.usage["total_tokens"] == 15
+    retriever.unload.assert_called_once()
+
+
+def test_agentic_answer_documents_empty_result_has_recovery_guidance():
+    from nemo_retriever.query.agentic import AgenticAnswerResult
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest
+    from nemo_retriever.query.workflow import agentic_answer_documents_with_metadata
+
+    retriever = MagicMock()
+    retriever.answer_with_usage.return_value = AgenticAnswerResult(answers=pd.DataFrame(), usage={})
+    request = QueryRequest(
+        query="find doc",
+        agentic=QueryAgenticOptions(enabled=True, llm_model="m", invoke_url=_REMOTE_URL),
+    )
+
+    with patch("nemo_retriever.query.workflow.build_agentic_retriever", return_value=retriever):
+        result = agentic_answer_documents_with_metadata(request)
+
+    assert result.error is not None
+    assert result.error["category"] == "unexpected"
+    assert "Retry the query" in result.error["message"]
+    assert "embedding endpoints" in result.error["message"]
+    assert "indexed data" in result.error["message"]
+    assert "service logs" in result.error["message"]
     retriever.unload.assert_called_once()
 
 

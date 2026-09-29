@@ -275,9 +275,15 @@ retriever query "summarize the deployment options" \
   --agentic-invoke-url http://localhost:9000/v1/chat/completions \
   --embed-invoke-url http://localhost:8000/v1 \
   --agentic-react-max-steps 5
+
+# integrated answer plus validated citation IDs and hydrated citation hits
+retriever query "what changed in the latest report?" \
+  --agentic \
+  --agentic-mode answer \
+  --include-usage
 ```
 
-Agentic mode returns the agent's ranked documents as JSON. The dense path
+Agentic select mode returns the agent's ranked documents as JSON. The dense path
 projects each hit to five fields: `modality`, `page_number`, `score`,
 `source`, and `text`. Agentic mode does not use that projection. It prints
 the internal hit dictionary plus `doc_id`, `rank`, and `result_source`.
@@ -299,9 +305,9 @@ Agentic retrieval reuses the same `--top-k`, `--vdb-op`, `--lancedb-uri`, `--qdr
 Agentic retrieval uses the selected table's model automatically when
 `--embed-model-name` is omitted.
 
-The default `retriever query --agentic` output remains a JSON hits list. Add
-`--include-usage` to print a JSON object with `hits` and exact provider-reported
-LLM usage:
+The default `retriever query --agentic` select-mode output remains a JSON hits
+list. Add `--include-usage` to print a JSON object with `hits` and exact
+provider-reported LLM usage:
 
 ```bash
 retriever query "how does the ingestion pipeline handle tables?" \
@@ -348,8 +354,20 @@ fusion) -> SelectionAgentOperator -> ranked results`:
   emits ranked document IDs. Those IDs are then rehydrated from the retrieval-hop
   hit dictionary.
 
+`--agentic-mode answer` uses the same iterative retriever but ends inside the
+ReAct loop with an integrated answer. It intentionally bypasses RRF and the
+selection agent because those stages produce a document ranking, not an answer.
+The output contains `answer`, `citations`, `citation_hits`, `succeeded`, `error`,
+and optional `usage`. Citation IDs must have been returned by a retrieval hop;
+`citation_hits` preserves citation order and contains the corresponding full
+retrieval metadata. In answer mode, `--include-usage` adds `usage` to that answer
+object; it does not return the select-mode `{ "hits": ..., "usage": ... }`
+envelope.
+
 Agentic-only knobs (apply only with `--agentic`):
 
+- `--agentic-mode` (default `select`) — return ranked documents with `select`, or
+  an integrated answer and citations with `answer`.
 - `--agentic-llm-model` — local profile alias/model ID when no invoke URL is
   provided (`nemotron-8b` by default; `super-49b` also supported), or the remote
   model ID when `--agentic-invoke-url` is provided.
@@ -379,8 +397,9 @@ Agentic-only knobs (apply only with `--agentic`):
   calls; omit to use the endpoint/model default (`0.0` = greedy). Local and
   non-NVIDIA OpenAI-compatible endpoints allow up to `2.0`; NVIDIA-hosted
   endpoints allow up to `1.0`.
-- `--include-usage` (default: off) — replace the default hits-list output with
-  an object that contains `hits` and provider-reported LLM `usage`.
+- `--include-usage` (default: off) — in select mode, replace the default hits
+  list with an object containing `hits` and provider-reported LLM `usage`; in
+  answer mode, add `usage` to the answer, citations, status, and error object.
 
 <!-- --8<-- [end:quickstart] -->
 

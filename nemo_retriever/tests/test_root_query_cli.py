@@ -506,6 +506,58 @@ def test_root_query_agentic_include_usage_emits_envelope(monkeypatch) -> None:
     }
 
 
+def test_root_query_agentic_answer_mode_emits_answer_envelope(monkeypatch) -> None:
+    from nemo_retriever.query.workflow import AgenticAnswerDocumentsResult
+
+    usage = {
+        "input_tokens": 12,
+        "cache_tokens": 4,
+        "output_tokens": 5,
+        "total_tokens": 17,
+        "stages": {"main_agent": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}},
+    }
+    monkeypatch.setattr(
+        query_cli_app,
+        "query_agentic_answer_with_metadata",
+        lambda _request: AgenticAnswerDocumentsResult(
+            answer="Revenue grew 4%.",
+            citations=["report_7"],
+            citation_hits=[{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+            succeeded=True,
+            message=None,
+            error=None,
+            usage=usage,
+        ),
+    )
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "what changed?",
+            "--agentic",
+            "--agentic-mode",
+            "answer",
+            "--include-usage",
+            "--agentic-llm-model",
+            "model",
+            "--agentic-invoke-url",
+            "https://llm.example/v1/chat/completions",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "answer": "Revenue grew 4%.",
+        "citations": ["report_7"],
+        "citation_hits": [{"doc_id": "report_7", "rank": 1, "result_source": "citation"}],
+        "succeeded": True,
+        "message": None,
+        "error": None,
+        "usage": usage,
+    }
+
+
 def test_root_query_include_usage_requires_agentic() -> None:
     result = RUNNER.invoke(cli_main.app, ["query", "hello", "--include-usage"])
 

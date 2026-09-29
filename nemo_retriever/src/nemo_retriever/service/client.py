@@ -71,7 +71,7 @@ from nemo_retriever.service.errors import (
     RetrieverServiceNotFoundError,
     RetrieverServiceValidationError,
 )
-from nemo_retriever.service.query_schema import QueryResponse
+from nemo_retriever.service.query_schema import AgenticAnswerResponse, QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,8 @@ _BULK_POLL_INTERVAL_S = 5.0
 _BULK_POLL_TIMEOUT_S = 1800.0
 _MAX_UPLOAD_RETRIES = 10
 _DEFAULT_RETRY_AFTER = 2.0
+_DEFAULT_REQUEST_TIMEOUT_S = 300.0
+_DEFAULT_AGENTIC_REQUEST_TIMEOUT_S = 1800.0
 
 _T = TypeVar("_T")
 
@@ -284,13 +286,21 @@ class RetrieverServiceClient:
             status_code=resp.status_code,
         )
 
-    async def _arequest(self, method: str, path: str, **kwargs: Any) -> Any:
+    async def _arequest(
+        self,
+        method: str,
+        path: str,
+        *,
+        request_timeout_s: float = _DEFAULT_REQUEST_TIMEOUT_S,
+        **kwargs: Any,
+    ) -> Any:
         # Construct the client inside the coroutine. ``_run`` may drive this on
         # a worker thread's event loop, and a client bound to a different loop
         # fails there — so do not hoist it to ``__init__`` to pool connections.
         try:
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers
+                timeout=httpx.Timeout(request_timeout_s, connect=30.0),
+                headers=self._auth_headers,
             ) as client:
                 resp = await client.request(method, f"{self._base_url}{path}", **kwargs)
         except httpx.HTTPError as exc:
@@ -596,6 +606,72 @@ class RetrieverServiceClient:
         if collection_name and isinstance(query, str):
             return [self._query_hit(hit) for hit in parsed[0]]
         return parsed
+
+    def agentic_answer(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        request_timeout_s: float = _DEFAULT_AGENTIC_REQUEST_TIMEOUT_S,
+    ) -> AgenticAnswerResponse:
+        """Research and answer a query with the service's integrated ReAct agent.
+
+        Parameters
+        ----------
+        query:
+            Question for the retrieval agent.
+        top_k:
+            Documents requested from each retrieval step.
+        request_timeout_s:
+            End-to-end HTTP timeout. Defaults to 30 minutes because an agentic
+            run can make many sequential LLM and retrieval calls.
+
+        Returns
+        -------
+        AgenticAnswerResponse
+            Integrated answer, validated citations, hydrated citation hits,
+            status, errors, and provider-reported usage.
+        """
+        return self._run(
+            self.aagentic_answer(
+                query,
+                top_k=top_k,
+                request_timeout_s=request_timeout_s,
+            )
+        )
+
+    async def aagentic_answer(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        request_timeout_s: float = _DEFAULT_AGENTIC_REQUEST_TIMEOUT_S,
+    ) -> AgenticAnswerResponse:
+        """Asynchronously run integrated agentic answer mode.
+
+        Parameters
+        ----------
+        query:
+            Question for the retrieval agent.
+        top_k:
+            Documents requested from each retrieval step.
+        request_timeout_s:
+            End-to-end HTTP timeout. Defaults to 30 minutes because an agentic
+            run can make many sequential LLM and retrieval calls.
+
+        Returns
+        -------
+        AgenticAnswerResponse
+            Integrated answer, validated citations, hydrated citation hits,
+            status, errors, and provider-reported usage.
+        """
+        body = await self._arequest(
+            "POST",
+            "/v1/answer",
+            request_timeout_s=request_timeout_s,
+            json={"query": str(query), "top_k": int(top_k), "mode": "agentic"},
+        )
+        return self._model(AgenticAnswerResponse, body, "agentic answer")
 
     # ------------------------------------------------------------------
     # Job lifecycle

@@ -30,6 +30,12 @@ class TestExtractParams:
         for method in ("pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"):
             assert method in error
 
+    def test_nested_image_extraction_requires_image_extraction(self) -> None:
+        with pytest.raises(ValidationError, match="extract_nested_images=True requires extract_images=True"):
+            ExtractParams(extract_images=False, extract_nested_images=True)
+
+        assert ExtractParams(extract_images=True, extract_nested_images=True).extract_nested_images is True
+
     def test_extraction_method_schema_describes_supported_and_legacy_values(self) -> None:
         schema = ExtractParams.model_json_schema()["properties"]["method"]
 
