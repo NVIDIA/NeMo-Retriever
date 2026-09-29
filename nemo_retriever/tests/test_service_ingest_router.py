@@ -857,8 +857,13 @@ async def test_rejected_standalone_submission_unregisters_pending(
 
 
 @pytest.mark.anyio
-async def test_gateway_spool_failure_restores_sidecar(
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("disk full"), ValueError("invalid work record")],
+)
+async def test_gateway_admission_failure_restores_sidecar(
     monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
 ) -> None:
     from nemo_retriever.service.routers import ingest
     from nemo_retriever.service.services import sidecar_store
@@ -867,7 +872,7 @@ async def test_gateway_spool_failure_restores_sidecar(
     restored: list[str] = []
 
     async def _spool_failure(*_args: Any, **_kwargs: Any) -> None:
-        raise OSError("disk full")
+        raise failure
 
     monkeypatch.setattr(ingest, "_gateway_enqueue", _spool_failure)
     monkeypatch.setattr(
@@ -891,7 +896,7 @@ async def test_gateway_spool_failure_restores_sidecar(
         )
     )
 
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(type(failure), match=str(failure)):
         await ingest._submit_job_work_item(
             request,
             PoolType.BATCH,
