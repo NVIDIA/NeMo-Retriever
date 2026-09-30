@@ -51,6 +51,7 @@ def test_query_override_paths_include_agentic_fields() -> None:
         "query.agentic_text_truncation",
         "query.agentic_num_concurrent",
         "query.agentic_temperature",
+        "query.agentic_timeout_s",
         "query.agentic_llm_client",
     ):
         assert key in QUERY_OVERRIDE_PATHS
@@ -73,6 +74,7 @@ def test_build_query_request_populates_agentic() -> None:
                 "agentic_text_truncation": 4000,
                 "agentic_num_concurrent": 4,
                 "agentic_temperature": 0.5,
+                "agentic_timeout_s": 300.5,
                 "agentic_llm_client": "litellm",
             }
         ),
@@ -93,6 +95,8 @@ def test_build_query_request_populates_agentic() -> None:
     assert agentic.text_truncation == 4000
     assert agentic.num_concurrent == 4
     assert agentic.temperature == pytest.approx(0.5)
+    assert agentic.timeout_s == 300.5
+    assert build_agentic_config(request).timeout_s == 300.5
     assert agentic.llm_client == "litellm"
 
 
@@ -101,6 +105,7 @@ def test_build_query_request_agentic_defaults_when_absent() -> None:
     assert request.agentic == QueryAgenticOptions()
     assert request.agentic.enabled is False
     assert request.agentic.temperature is None
+    assert request.agentic.timeout_s == 120.0
 
 
 def test_build_agentic_config_maps_request_and_top_k_override() -> None:
@@ -112,6 +117,7 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
             invoke_url="http://localhost/v1/chat/completions",
             num_concurrent=4,
             temperature=0.0,
+            timeout_s=240.0,
         ),
     )
     cfg = build_agentic_config(request, top_k=10)
@@ -119,6 +125,7 @@ def test_build_agentic_config_maps_request_and_top_k_override() -> None:
     assert cfg.llm_backend == "openai_compatible"
     assert cfg.top_k == 10  # harness sets this to the deepest BEIR k
     assert cfg.num_concurrent == 4
+    assert cfg.timeout_s == 240.0
 
 
 def test_build_agentic_config_defaults_to_local_vllm_nemotron_8b() -> None:
@@ -129,6 +136,7 @@ def test_build_agentic_config_defaults_to_local_vllm_nemotron_8b() -> None:
     assert cfg.llm_backend == "in_process"
     assert cfg.local_llm_backend == "vllm"
     assert cfg.llm_model == "nemotron-8b"
+    assert cfg.timeout_s == 120.0
 
 
 def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
@@ -223,3 +231,15 @@ def test_run_beir_queries_invalid_agentic_config_is_structured_failure(tmp_path)
             run_beir_queries(writer, resolved, None, request)
     assert excinfo.value.exit_code == EXIT_INVALID
     assert excinfo.value.failure.failure_reason == "invalid_agentic_config"
+
+
+@pytest.mark.parametrize("timeout_s", [0.0, -1.0, float("nan"), float("inf")])
+@pytest.mark.parametrize("from_benchmark", [False, True])
+def test_typed_query_timeout_validation(timeout_s, from_benchmark) -> None:
+    if from_benchmark:
+        request = build_query_request(_resolved({"agentic": True, "agentic_timeout_s": timeout_s}), "q")
+    else:
+        request = QueryRequest(query="q", agentic=QueryAgenticOptions(enabled=True, timeout_s=timeout_s))
+
+    with pytest.raises(ValueError, match="timeout_s"):
+        build_agentic_config(request)

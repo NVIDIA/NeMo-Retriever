@@ -138,6 +138,7 @@ QUERY_OVERRIDE_PATHS = {
     "query.agentic_text_truncation",
     "query.agentic_num_concurrent",
     "query.agentic_temperature",
+    "query.agentic_timeout_s",
     "query.agentic_llm_client",
 }
 EVALUATION_OVERRIDE_PATHS = {
@@ -451,6 +452,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
             text_truncation=int(query.get("agentic_text_truncation") or 0),
             num_concurrent=int(query.get("agentic_num_concurrent") or 1),
             temperature=(float(query["agentic_temperature"]) if query.get("agentic_temperature") is not None else None),
+            timeout_s=float(query.get("agentic_timeout_s", 120.0)),
             llm_client=query.get("agentic_llm_client"),
         ),
     )
