@@ -575,7 +575,6 @@ def _append_ordered_transform_stages(
         and embed_params is not None
         and embed_params.text_column == "text"
         and embed_params.output_column == "text_embeddings_1b_v2"
-        and pending_stages.count("embed") == 1
         and pending_stages[-1] == "embed"
     )
 

@@ -189,6 +189,7 @@ def test_compact_reshape_preserves_records_across_ray_blocks(tmp_path, monkeypat
     from functools import partial
     import hashlib
     from io import BytesIO
+    import json
 
     from PIL import Image
 
@@ -264,6 +265,9 @@ def test_compact_reshape_preserves_records_across_ray_blocks(tmp_path, monkeypat
             result = RayDataExecutor(graph).ingest(source, return_results=False)
             summaries.append(result.to_dict("records"))
             records = lancedb.connect(uri).open_table("chunks").to_arrow().to_pylist()
+            for record in records:
+                # Detection counts move into metadata earlier, changing JSON key order.
+                record["metadata"] = json.loads(record["metadata"])
             stored.append(sorted(records, key=lambda row: (row["id"], row["text"], row["vector"])))
         assert summaries[0] == summaries[1]
         assert stored[0] == stored[1]
