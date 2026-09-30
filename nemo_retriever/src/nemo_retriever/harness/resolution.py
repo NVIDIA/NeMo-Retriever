@@ -409,6 +409,10 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
 def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryRequest:
     query = _mapping_payload("query", resolved.get("query"))
     _validate_keys("query", query, _override_child_keys("query", QUERY_OVERRIDE_PATHS))
+    try:
+        agentic_timeout_s = float(query.get("agentic_timeout_s", 120.0))
+    except (TypeError, ValueError):
+        _invalid_config("query.agentic_timeout_s", "must be a number")
     ingest_storage = dict((resolved.get("ingest") or {}).get("storage") or {})
     lancedb_uri = query.get("lancedb_uri") or ingest_storage.get("lancedb_uri") or "lancedb"
     table_name = query.get("table_name") or ingest_storage.get("table_name") or "nemo-retriever"
@@ -452,7 +456,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
             text_truncation=int(query.get("agentic_text_truncation") or 0),
             num_concurrent=int(query.get("agentic_num_concurrent") or 1),
             temperature=(float(query["agentic_temperature"]) if query.get("agentic_temperature") is not None else None),
-            timeout_s=float(query.get("agentic_timeout_s", 120.0)),
+            timeout_s=agentic_timeout_s,
             llm_client=query.get("agentic_llm_client"),
         ),
     )

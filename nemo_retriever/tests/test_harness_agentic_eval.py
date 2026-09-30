@@ -243,3 +243,37 @@ def test_typed_query_timeout_validation(timeout_s, from_benchmark) -> None:
 
     with pytest.raises(ValueError, match="timeout_s"):
         build_agentic_config(request)
+
+
+@pytest.mark.parametrize("timeout_s", [None, "invalid", [], {}])
+def test_benchmark_timeout_conversion_reports_invalid_config(timeout_s) -> None:
+    from nemo_retriever.harness.contracts import EXIT_INVALID, HarnessRunError
+
+    with pytest.raises(HarnessRunError) as caught:
+        build_query_request(_resolved({"agentic": True, "agentic_timeout_s": timeout_s}), "q")
+    error = caught.value
+    assert error.exit_code == EXIT_INVALID
+    assert error.failure.failed_phase == "resolve"
+    assert error.failure.failure_reason == "invalid_benchmark_config"
+    assert error.failure.message == "query.agentic_timeout_s: must be a number"
+
+
+def test_null_timeout_override_returns_configuration_failure(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from nemo_retriever.harness import execution
+    from nemo_retriever.harness.contracts import EXIT_INVALID
+
+    monkeypatch.setattr(execution, "resolve_ingest_plan", lambda request: SimpleNamespace(documents=()))
+    monkeypatch.setattr(execution, "run_ingest_workflow", lambda plan, dry_run: {})
+    outcome = execution.run_benchmark(
+        "jp20_beir",
+        output_dir=str(tmp_path / "run"),
+        overrides=(f'dataset.path="{tmp_path}"', "query.agentic=true", "query.agentic_timeout_s=null"),
+        dry_run=True,
+    )
+    assert outcome.exit_code == EXIT_INVALID
+    failure = outcome.results["failure"]
+    assert failure["failed_phase"] == "resolve"
+    assert failure["failure_reason"] == "invalid_benchmark_config"
+    assert failure["message"] == "query.agentic_timeout_s: must be a number"
