@@ -12,8 +12,11 @@ import pandas as pd
 from PIL import Image
 import pytest
 
-from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows, explode_content_to_rows
-from nemo_retriever.common.modality.embedding_transport import _project_embedding_transport
+from nemo_retriever.common.modality.content_transforms import (
+    _compact_embedding_rows,
+    collapse_content_to_page_rows,
+    explode_content_to_rows,
+)
 from nemo_retriever.common.schemas.embedding import embedding_text_input
 from nemo_retriever.common.vdb.records import to_client_vdb_records
 from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy, prepare_embedding_inputs
@@ -100,7 +103,6 @@ def test_modalities_captions_and_image_uris_preserve_consumer_contract(
     assert _records(compact) == _records(rich)
     admitted_rich, admitted_compact = _admit(rich), _admit(compact)
     assert _inputs(admitted_compact) == _inputs(admitted_rich)
-    assert admitted_compact["metadata"].tolist() == admitted_rich["metadata"].tolist()
     assert _records(admitted_compact) == _records(admitted_rich)
 
 
@@ -133,7 +135,7 @@ def test_upstream_store_and_dedup_keep_required_rich_payload(tmp_path, dedup, st
     assert list(tmp_path.glob("*.png"))
     assert bool(stored.iloc[0]["page_image"].get("image_b64")) != strip_base64
     rich = explode_content_to_rows(stored, modality="text_image", content_columns=("images",))
-    compact = _project_embedding_transport(rich)
+    compact = _compact_embedding_rows(rich)
     assert _inputs(compact) == _inputs(rich)
     assert compact["_image_b64"].fillna("").tolist() == rich["_image_b64"].fillna("").tolist()
     assert _records(compact) == _records(rich)
@@ -160,15 +162,18 @@ def test_optional_consumers_precede_compact_reshape(tmp_path, caption, dedup, st
     assert len(nodes[:-3]) == sum((caption, dedup, store))
 
 
-@pytest.mark.parametrize("case", ["full_results", "after_embed", "duplicate_embed", "custom_text", "no_sink"])
+@pytest.mark.parametrize("case", ["full_results", "after_embed", "custom_text", "custom_output", "no_sink"])
 def test_other_graph_shapes_keep_rich_rows(tmp_path, case):
     from nemo_retriever.common.params import EmbedParams, StoreParams, VdbUploadParams
     from nemo_retriever.graph.ingestor_runtime import build_post_extract_graph
     from nemo_retriever.graph.executor import RayDataExecutor
 
-    orders = {"after_embed": ("embed", "store"), "duplicate_embed": ("embed", "embed")}
+    orders = {"after_embed": ("embed", "store")}
     graph = build_post_extract_graph(
-        embed_params=EmbedParams(text_column="custom" if case == "custom_text" else "text"),
+        embed_params=EmbedParams(
+            text_column="custom" if case == "custom_text" else "text",
+            output_column="custom" if case == "custom_output" else "text_embeddings_1b_v2",
+        ),
         store_params=StoreParams(storage_uri=str(tmp_path)) if case == "after_embed" else None,
         stage_order=orders.get(case, ()),
         vdb_upload_params=VdbUploadParams() if case != "no_sink" else None,
@@ -178,7 +183,7 @@ def test_other_graph_shapes_keep_rich_rows(tmp_path, case):
     for node in nodes:
         if getattr(node.operator, "name", None) == "ExplodeContentToRows":
             output = node.operator.process(pd.DataFrame([{"text": "body", "page_image": {"image_b64": "data"}}]))
-            assert "page_image" in output
+            assert output.iloc[0]["page_image"]["image_b64"] == "data"
 
 
 @pytest.mark.parametrize("reshape", [collapse_content_to_page_rows, explode_content_to_rows])
@@ -190,17 +195,49 @@ def test_image_only_rows_keep_embedding_input_and_stored_record(reshape):
     assert _records(compact) == _records(rich)
 
 
-@pytest.mark.parametrize("identity", ["id", "content_metadata"])
+@pytest.mark.parametrize("identity", ["id", "content_metadata", "top_level_id", "element_id"])
 def test_builtin_metadata_preserves_overflow_identity_and_exact_text(identity):
     exact = "alpha \n omega and further text"
     metadata = {"id": "element-A"} if identity == "id" else {"content_metadata": {"id": "element-A"}}
     frame = pd.DataFrame([{"text": exact, "metadata": metadata, "path": "doc.pdf", "page_number": 7}])
-    rich, compact = _admit(frame), _admit(_project_embedding_transport(frame))
+    if identity in {"top_level_id", "element_id"}:
+        frame["metadata"] = [{}]
+        frame["id" if identity == "top_level_id" else "element_id"] = "element-A"
+    frame["custom_column"] = "retained"
+    rich, compact = _admit(frame), _admit(_compact_embedding_rows(frame))
+    assert compact["custom_column"].tolist() == rich["custom_column"].tolist()
     assert len(rich) > 1
     assert "".join(_inputs(compact)) == exact
     assert _inputs(compact) == _inputs(rich)
     assert compact["metadata"].tolist() == rich["metadata"].tolist()
     assert _records(compact) == _records(rich)
+
+
+def test_compaction_preserves_detection_metadata_precedence_without_mutating_source():
+    metadata = {"custom": "retained", "content_metadata": {"ocr_table_detections": 7}}
+    frame = pd.DataFrame(
+        [
+            {
+                "text": "body",
+                "metadata": metadata,
+                "table": [{"text": "table"}],
+                "chart": [],
+                "page_elements_v3": {"regions": [{"label": "table"}]},
+                "table_structure_v1": {"image_b64": "large raster"},
+                "table_structure_ocr_v1": {"regions": []},
+            }
+        ]
+    )
+    compact = _compact_embedding_rows(frame)
+    assert not {"table", "chart", "page_elements_v3", "table_structure_v1", "table_structure_ocr_v1"}.intersection(
+        compact.columns
+    )
+    assert compact.iloc[0]["metadata"] == {
+        "custom": "retained",
+        "content_metadata": {"ocr_table_detections": 7, "ocr_chart_detections": 0},
+    }
+    assert metadata == {"custom": "retained", "content_metadata": {"ocr_table_detections": 7}}
+    assert _records(compact) == _records(frame)
 
 
 def test_errors_keep_original_stage_payload_and_failure_details():
@@ -219,7 +256,7 @@ def test_errors_keep_original_stage_payload_and_failure_details():
             }
         ]
     )
-    compact = _project_embedding_transport(frame)
+    compact = _compact_embedding_rows(frame)
     assert all("image_b64" not in value for value in compact["page_image"])
     assert compact["page_elements_v3"].tolist() == frame["page_elements_v3"].tolist()
     ingestor = GraphIngestor(run_mode="batch").extract(page_elements_invoke_url="http://invalid.test")
