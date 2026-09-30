@@ -187,6 +187,10 @@ def test_public_summary_rejects_incompatible_options(run_mode, upload, error_pol
 def test_empty_summary_does_not_start_ray(monkeypatch):
     ingestor = GraphIngestor(run_mode="batch").texts([" "]).vdb_upload()
     monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: pytest.fail("empty input must not start Ray"))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.vdb._construct_vdb",
+        lambda **kwargs: pytest.fail("empty input must not initialize or validate the VDB backend"),
+    )
     result = ingestor.ingest(return_results=False)
     assert result.to_dict("records") == [{"input_rows": 0, "submitted_records": 0}]
     assert ingestor.get_dataset() is result
