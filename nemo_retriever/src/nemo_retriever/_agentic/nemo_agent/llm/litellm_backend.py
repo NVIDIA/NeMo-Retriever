@@ -229,7 +229,7 @@ class LiteLLMConfig(BaseLLMConfig):
     backend: Literal["litellm"] = "litellm"
     thinking: Optional[Dict[str, Any]] = None
     api_version: Optional[str] = None
-    timeout_s: Optional[float] = Field(default=None, gt=0)
+    timeout_s: Optional[float] = Field(default=None, gt=0, description="Per-request timeout in seconds")
     num_retries: Optional[int] = 4
     drop_params: bool = True
     allowed_openai_params: Optional[List[str]] = None
