@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import threading
+import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
@@ -193,8 +195,15 @@ class VLLMAgentChatLLM(BaseModel):
         """Run one chat completion on the in-process engine.
 
         ``temperature=None`` means *unset* and maps to ``0.0`` (greedy).
+        ``timeout_s`` bounds the caller's wait, including the shared engine lock.
+        A timed-out inference continues in a daemon thread with the lock held
+        until it finishes; synchronous vLLM chat cannot be safely cancelled.
         """
-        _ = (invoke_url, api_key, timeout_s, max_retries, max_429_retries)
+        timeout_s = float(timeout_s)
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError("timeout_s must be positive and finite")
+        deadline = time.monotonic() + timeout_s
+        _ = (invoke_url, api_key, max_retries, max_429_retries)
         if model and model != self._model_path:
             logger.debug("Ignoring per-call model=%r for local agent LLM already loaded as %r", model, self._model_path)
 
@@ -208,9 +217,7 @@ class VLLMAgentChatLLM(BaseModel):
             chat_kwargs["tools"] = active_tools
 
         local_messages = self._normalize_messages(messages, tools=active_tools)
-        with self._lock:
-            self._require_loaded()
-            outputs = self._llm.chat(local_messages, sampling_params=sampling_params, **chat_kwargs)
+        outputs = self._chat_with_timeout(local_messages, sampling_params, chat_kwargs, deadline, timeout_s)
 
         request_output = outputs[0]
         completion = request_output.outputs[0]
@@ -238,6 +245,47 @@ class VLLMAgentChatLLM(BaseModel):
             ],
             "usage": _usage_from_outputs(request_output, completion),
         }
+
+    def _chat_with_timeout(
+        self,
+        messages: list[dict[str, Any]],
+        sampling_params: Any,
+        chat_kwargs: dict[str, Any],
+        deadline: float,
+        timeout_s: float,
+    ) -> Any:
+        timeout_message = f"Local agent LLM request timed out after {timeout_s} seconds"
+        remaining = max(0.0, deadline - time.monotonic())
+        if remaining <= 0 or not self._lock.acquire(timeout=min(remaining, threading.TIMEOUT_MAX)):
+            raise TimeoutError(timeout_message)
+
+        done = threading.Event()
+        outcome: dict[str, Any] = {}
+
+        def run_chat() -> None:
+            try:
+                self._require_loaded()
+                outcome["outputs"] = self._llm.chat(messages, sampling_params=sampling_params, **chat_kwargs)
+            except BaseException as exc:
+                outcome["error"] = exc
+            finally:
+                # Keep the engine serialized even when the caller has timed out.
+                self._lock.release()
+                done.set()
+
+        # An executor's non-daemon threads would stall process exit after timeout.
+        worker = threading.Thread(target=run_chat, name="local-agent-llm", daemon=True)
+        try:
+            worker.start()
+        except BaseException:
+            self._lock.release()
+            raise
+        remaining = max(0.0, deadline - time.monotonic())
+        if not done.wait(timeout=min(remaining, threading.TIMEOUT_MAX)):
+            raise TimeoutError(timeout_message)
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["outputs"]
 
     def _build_chat_kwargs(self, extra_body: Optional[dict[str, Any]]) -> dict[str, Any]:
         chat_kwargs = deepcopy(self._request_extras)
@@ -285,12 +333,17 @@ class VLLMAgentChatLLM(BaseModel):
         Unlike embed/rerank holders that only ``del`` the ``LLM`` and rely on
         process exit, the agent chat path must call ``engine_core.shutdown()``:
         vLLM V1 generation spawns a multiprocess ``VLLM::EngineCore`` that can
-        keep the parent process alive after results are returned.
+        keep the parent process alive after results are returned. Raises
+        ``TimeoutError`` if in-flight inference holds the lock for 30 seconds.
         """
 
-        with self._lock:
+        if not self._lock.acquire(timeout=_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S):
+            raise TimeoutError("Local agent LLM unload timed out waiting for in-flight inference")
+        try:
             llm = self._llm
             self._llm = None
+        finally:
+            self._lock.release()
 
         if llm is None:
             return
