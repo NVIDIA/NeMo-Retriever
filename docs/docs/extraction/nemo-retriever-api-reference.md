@@ -42,11 +42,21 @@ A nonempty optional glob passed to `.files()` also counts as a configured
 source. If it matches no files, `.ingest()` can return an empty result, and the
 streaming methods can yield no results.
 
+In the `inprocess` and `batch` run modes, `.files()` and
+`create_ingestor(documents=...)` also accept directories, which expand
+recursively to their supported files. A directory that contains no supported
+files raises `FileNotFoundError`.
+
 ### Select a supported extraction method
 
 `ExtractParams` validates `method` when you construct the model. For PDF
 extraction, use `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The
-`audio` value remains available for the legacy params-driven audio path. For
+default, `pdfium_hybrid`, uses native PDF text and OCR for pages that it detects
+as scanned. It also runs page-element detection and OCR for text-only
+configurations, and it OCRs image inputs. To use native PDF text only, set
+`method="pdfium"`.
+
+The `audio` value remains available for the legacy params-driven audio path. For
 new audio pipelines, use [`GraphIngestor.extract_audio()`](#graph-ingestor)
 instead.
 
