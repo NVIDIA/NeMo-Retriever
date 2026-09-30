@@ -503,17 +503,20 @@ class AgenticRetriever:
         OpenAI-compatible endpoint mode is a no-op. Local vLLM mode shuts down
         this instance's EngineCore so CLI/harness jobs can exit cleanly. Embed
         and rerank models stay on ``self._retriever`` and are released with the
-        process, matching dense harness BEIR behavior.
+        process, matching dense harness BEIR behavior. If local cleanup raises,
+        retain the owned LLM so callers can retry ``unload()``.
         """
 
         with self._lock:
             chat_fn = self._chat_completion_fn
+            if chat_fn is None:
+                return
+            unload = getattr(chat_fn, "unload", None)
+            if callable(unload):
+                unload()
+            # Clear ownership only after cleanup succeeds. In particular, a
+            # timed-out inference may still hold the local engine lock.
             self._chat_completion_fn = None
-        if chat_fn is None:
-            return
-        unload = getattr(chat_fn, "unload", None)
-        if callable(unload):
-            unload()
 
     def answer(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return one integrated agentic answer per query.
