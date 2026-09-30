@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Sequence
 
 import pandas as pd
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -170,7 +172,7 @@ class AgenticSelectionOutputOperator(AbstractOperator):
         return data
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class AgenticRetrievalConfig:
     """Configuration for graph-backed agentic retrieval."""
 
@@ -216,13 +218,42 @@ class AgenticRetrievalConfig:
     # Optional upper bound on tokens in each agent LLM response.
     max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
     # Per-request timeout in seconds for both agent LLM stages.
-    timeout_s: float = 120.0
+    timeout_s: float = Field(
+        default=120.0,
+        gt=0,
+        allow_inf_nan=False,
+        description="Per-request timeout in seconds for both agent LLM stages",
+    )
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
     # Wider pre-filter and pre-rerank candidate pool for each retrieval hop.
     candidate_k: Optional[int] = None
+
+    @field_validator("llm_model", mode="before")
+    @classmethod
+    def _normalize_model_input(cls, value: Any) -> Any:
+        return "" if value is None else value
+
+    @field_validator(
+        "react_max_steps",
+        "text_truncation",
+        "top_k",
+        "num_concurrent",
+        "candidate_k",
+        "local_tensor_parallel_size",
+        "local_max_model_len",
+        "local_max_num_seqs",
+        "max_tokens",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_integer_input(cls, value: Any, info: ValidationInfo) -> Any:
+        # Preserve integer-like strings (e.g. "5.0") and existing error messages.
+        if value is None:
+            return None
+        return agentic_int_value(value, field_name=str(info.field_name))
 
     def __post_init__(self) -> None:
         invoke_url = _none_if_empty(self.invoke_url)
@@ -312,18 +343,6 @@ class AgenticRetrievalConfig:
             if candidate_k < int(self.top_k):
                 raise ValueError(f"candidate_k ({candidate_k}) must be greater than or equal to top_k ({self.top_k}).")
             object.__setattr__(self, "candidate_k", candidate_k)
-
-        object.__setattr__(
-            self,
-            "timeout_s",
-            agentic_float_range_value(
-                self.timeout_s,
-                field_name="timeout_s",
-                min_value=0.0,
-                max_value=float("inf"),
-                min_exclusive=True,
-            ),
-        )
 
         local_tp_error = agentic_int_min_error(
             self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1

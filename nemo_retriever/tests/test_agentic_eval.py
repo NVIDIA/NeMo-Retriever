@@ -1033,3 +1033,40 @@ def test_agentic_timeout_reaches_final_selection_callable():
         any(tool["function"]["name"] == "log_selected_documents" for tool in request["tools"]) for request in requests
     )
     assert all(request["timeout_s"] == 300.0 for request in requests)
+
+
+def test_agentic_config_timeout_schema_and_dataclass_compatibility():
+    from dataclasses import FrozenInstanceError, asdict, replace
+
+    from pydantic import TypeAdapter, ValidationError
+    from pydantic.dataclasses import is_pydantic_dataclass
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    assert is_pydantic_dataclass(AgenticRetrievalConfig)
+    adapter = TypeAdapter(AgenticRetrievalConfig)
+    timeout_schema = adapter.json_schema()["properties"]["timeout_s"]
+    assert timeout_schema["default"] == 120.0
+    assert timeout_schema["exclusiveMinimum"] == 0
+    assert timeout_schema["description"] == "Per-request timeout in seconds for both agent LLM stages"
+
+    config = adapter.validate_python({"timeout_s": "300.5"})
+    assert config.timeout_s == 300.5
+    assert config.llm_model == "nemotron-8b"
+    assert asdict(config)["timeout_s"] == 300.5
+    assert replace(config, timeout_s=240.0).timeout_s == 240.0
+    with pytest.raises(FrozenInstanceError):
+        config.timeout_s = 240.0
+    with pytest.raises(ValidationError, match="unexpected_setting"):
+        adapter.validate_python({"unexpected_setting": 1})
+
+
+@pytest.mark.parametrize("timeout_s", [0, -1, float("nan"), float("inf"), None])
+def test_agentic_config_dict_validation_rejects_invalid_timeout(timeout_s):
+    from pydantic import TypeAdapter, ValidationError
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValidationError) as error:
+        TypeAdapter(AgenticRetrievalConfig).validate_python({"timeout_s": timeout_s})
+    assert error.value.errors()[0]["loc"] == ("timeout_s",)
