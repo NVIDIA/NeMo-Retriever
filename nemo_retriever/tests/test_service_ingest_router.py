@@ -839,11 +839,7 @@ async def test_rejected_standalone_submission_unregisters_pending(
             {"unregister_pending": staticmethod(unregistered.append)},
         )(),
     )
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(config=SimpleNamespace(mode="standalone"))
-        )
-    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(config=SimpleNamespace(mode="standalone"))))
 
     with pytest.raises(HTTPException, match="429"):
         await ingest._submit_job_work_item(
@@ -890,11 +886,7 @@ async def test_gateway_admission_failure_restores_sidecar(
         "get_sidecar_store",
         lambda: SimpleNamespace(restore=restored.append),
     )
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(config=SimpleNamespace(mode="gateway"))
-        )
-    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(config=SimpleNamespace(mode="gateway"))))
 
     with pytest.raises(type(failure), match=str(failure)):
         await ingest._submit_job_work_item(
