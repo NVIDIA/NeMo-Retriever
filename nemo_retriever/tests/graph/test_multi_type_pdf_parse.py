@@ -92,7 +92,7 @@ def test_parse_branch_renders_pages_before_the_parse_actor(monkeypatch) -> None:
     )
     op._run_pdf_pipeline(pd.DataFrame({"path": ["/tmp/doc.pdf", "/tmp/doc2.pdf"]}))
 
+    # the rows that reach the parse stage carry an image it can read
+    assert seen_by_parse == [2]
     assert "PDFExtractionActor" in ran
     assert ran.index("PDFExtractionActor") < ran.index("NemotronParseActor")
-    # and the rows that reach the parse stage carry an image it can read
-    assert seen_by_parse == [2]
