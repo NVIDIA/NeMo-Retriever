@@ -15,6 +15,7 @@ from nemo_retriever.operators.graph_ops.file_loader_operator import FileListLoad
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.graph_pipeline_registry import GraphPipelineRegistry, default_registry
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.operators.graph_ops.parquet_operator import ParquetReaderOperator, ParquetWriterOperator
 from nemo_retriever.operators.graph_ops.store_operator import StoreOperator
 from nemo_retriever.operators.graph_ops.webhook_operator import WebhookNotifyOperator
 
@@ -30,6 +31,8 @@ __all__ = [
     "InprocessExecutor",
     "MultiTypeExtractOperator",
     "Node",
+    "ParquetReaderOperator",
+    "ParquetWriterOperator",
     "RayDataExecutor",
     "StoreOperator",
     "UDFOperator",

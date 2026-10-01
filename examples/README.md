@@ -17,6 +17,7 @@ Start with these guides and notebooks:
 For advanced scenarios, use these guides and notebooks:
 
 - [Build a Custom Vector Database Operator](building_vdb_operator.ipynb)
+- [What Does It Cost to Reindex with a Better Embedding Model?](reindex_embedding_model.ipynb) — extract once to Parquet, reindex with Gemma 300M, Nemotron 3 Embed 1B, and 8B, and compare GPU cost with retrieval quality
 - [Try Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
 - [Multimodal RAG with LangChain](langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](llama_index_multimodal_rag.ipynb)
