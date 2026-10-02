@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "officeqa_pro_v2_beir",
+  "benchmark": "officeqa_pro_v2_beir",
+  "mode": "batch",
+  "timeout_seconds": 86400,
+  "require": [
+    "files==1435",
+    "query_count==90"
+  ],
+  "set": {}
+}

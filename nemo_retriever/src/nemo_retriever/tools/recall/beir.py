@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
 VALID_BEIR_LOADERS: frozenset[str] = frozenset(
-    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
+    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "officeqa_pro_v2_csv", "vidore_hf"}
 )
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -322,6 +322,8 @@ def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Pat
         return EARNINGS_ANNOTATIONS_PATH
     if loader_name == "jp20_csv" and dataset_str.lower() == "jp20":
         return JP20_ANNOTATIONS_PATH
+    if loader_name == "officeqa_pro_v2_csv":
+        raise ValueError(f"officeqa_pro_v2_csv requires dataset_name to be a path to a CSV file, got {dataset_name!r}")
     raise ValueError(
         f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
     )
@@ -461,6 +463,43 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
         queries=queries,
         qrels=qrels,
     )
+
+
+def _load_officeqa_pro_v2_csv_dataset(*, dataset_name: str, doc_id_field: str) -> BeirDataset:
+    if doc_id_field != "pdf_basename":
+        raise ValueError(f"officeqa_pro_v2_csv only supports doc_id_field='pdf_basename', got {doc_id_field!r}")
+
+    dataset_path = _resolve_annotations_csv_path(dataset_name, loader_name="officeqa_pro_v2_csv")
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Annotations CSV not found: {dataset_path}")
+
+    query_ids: list[str] = []
+    queries: list[str] = []
+    qrels: dict[str, dict[str, int]] = {}
+    with dataset_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or not {"uid", "question", "source_files"}.issubset(reader.fieldnames):
+            raise ValueError("OfficeQA Pro v2 query CSV requires uid, question, and source_files")
+        for line, row in enumerate(reader, start=2):
+            query_id = (row["uid"] or "").strip()
+            question = (row["question"] or "").strip()
+            documents: dict[str, int] = {}
+            for source in (row["source_files"] or "").split(";"):
+                filename = source.strip()
+                if not filename:
+                    continue
+                source_path = Path(filename)
+                if source_path.name != filename or source_path.suffix != ".txt" or not source_path.stem:
+                    raise ValueError(f"Invalid OfficeQA Pro v2 source_files entry on line {line}")
+                documents[source_path.stem] = 1
+            if not query_id or not question or not documents or query_id in qrels:
+                raise ValueError(f"Invalid OfficeQA Pro v2 question on line {line}")
+            query_ids.append(query_id)
+            queries.append(question)
+            qrels[query_id] = documents
+    if not query_ids:
+        raise ValueError("OfficeQA Pro v2 query CSV contains no questions")
+    return BeirDataset(dataset_name=str(dataset_name), query_ids=query_ids, queries=queries, qrels=qrels)
 
 
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
@@ -608,6 +647,8 @@ def load_beir_dataset(
             dataset_name=dataset_name,
             doc_id_field=str(doc_id_field),
         )
+    if loader_name == "officeqa_pro_v2_csv":
+        return _load_officeqa_pro_v2_csv_dataset(dataset_name=dataset_name, doc_id_field=str(doc_id_field))
     if loader_name != "vidore_hf":
         raise ValueError(f"Unsupported BEIR loader: {loader}")
 

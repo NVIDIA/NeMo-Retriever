@@ -90,6 +90,15 @@ DATASETS: dict[str, DatasetSpec] = {
         beir_doc_id_field="pdf_basename",
         description="FinanceBench PDF retrieval benchmark.",
     ),
+    "officeqa_pro_v2": DatasetSpec(
+        name="officeqa_pro_v2",
+        path="/datasets/nv-ingest/officeqa_pro_v2/corpus",
+        query_file=None,
+        input_type="pdf",
+        beir_loader="officeqa_pro_v2_csv",
+        beir_doc_id_field="pdf_basename",
+        description="OfficeQA Pro v2 PDF document retrieval benchmark (gated dataset).",
+    ),
     "bo10k": DatasetSpec(
         name="bo10k",
         path="/datasets/nv-ingest/bo10k",
@@ -233,6 +242,16 @@ BENCHMARKS: dict[str, BenchmarkSpec] = {
         summary_keys=DEFAULT_SUMMARY_KEYS,
         tags=("beir", "finance", "pdf"),
         description="FinanceBench end-to-end BEIR retrieval benchmark.",
+    ),
+    "officeqa_pro_v2_beir": BenchmarkSpec(
+        name="officeqa_pro_v2_beir",
+        dataset="officeqa_pro_v2",
+        ingest=_base_ingest(profile="auto"),
+        query=_base_query(top_k=10),
+        evaluation=_beir_eval(DATASETS["officeqa_pro_v2"]),
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "finance", "officeqa", "pdf"),
+        description="OfficeQA Pro v2 end-to-end document retrieval benchmark.",
     ),
     "earnings_beir": BenchmarkSpec(
         name="earnings_beir",

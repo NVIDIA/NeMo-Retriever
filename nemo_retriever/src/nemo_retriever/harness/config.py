@@ -18,7 +18,15 @@ DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
 VALID_EVALUATION_MODES = {"none", "audio_recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none"}
-VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
+VALID_BEIR_LOADERS = {
+    "bo10k_csv",
+    "bo767_csv",
+    "earnings_csv",
+    "financebench_json",
+    "jp20_csv",
+    "officeqa_pro_v2_csv",
+    "vidore_hf",
+}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}

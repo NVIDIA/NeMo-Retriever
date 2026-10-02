@@ -129,6 +129,13 @@ def test_resolve_beir_dataset_options_supports_vidore_dataset_name() -> None:
     assert options.doc_id_field == "pdf_basename"
 
 
+def test_resolve_beir_dataset_options_does_not_assume_officeqa_csv_path() -> None:
+    options = resolve_beir_dataset_options(dataset_name="officeqa_pro_v2")
+
+    assert options.loader is None
+    assert options.dataset_name == "officeqa_pro_v2"
+
+
 def test_resolve_beir_dataset_options_preserves_explicit_overrides(tmp_path: Path) -> None:
     annotations = tmp_path / "custom.csv"
 
@@ -287,6 +294,36 @@ def test_load_beir_dataset_supports_financebench_json_pdf_basename(tmp_path: Pat
         "q1": {"AAPL_2023": 1},
         "q2": {"MSFT_2022": 1},
     }
+
+
+def test_load_officeqa_pro_v2_csv_maps_multiple_source_files_to_pdf_ids(tmp_path: Path) -> None:
+    annotations = tmp_path / "query.csv"
+    annotations.write_text(
+        "uid,question,source_files\n"
+        'q1,"Compare the filings","first.report.txt; second.txt"\n'
+        'q2,"Find revenue",third.txt\n',
+        encoding="utf-8-sig",
+    )
+
+    dataset = load_beir_dataset("officeqa_pro_v2_csv", dataset_name=str(annotations), doc_id_field="pdf_basename")
+
+    assert dataset.query_ids == ["q1", "q2"]
+    assert dataset.queries == ["Compare the filings", "Find revenue"]
+    assert dataset.qrels == {"q1": {"first.report": 1, "second": 1}, "q2": {"third": 1}}
+
+
+def test_load_officeqa_pro_v2_csv_requires_explicit_path() -> None:
+    with pytest.raises(ValueError, match="requires dataset_name to be a path to a CSV file"):
+        load_beir_dataset("officeqa_pro_v2_csv", dataset_name="officeqa_pro_v2", doc_id_field="pdf_basename")
+
+
+@pytest.mark.parametrize("source_files", ["", "subdir/first.txt", "first.pdf"])
+def test_load_officeqa_pro_v2_csv_rejects_invalid_sources(tmp_path: Path, source_files: str) -> None:
+    annotations = tmp_path / "query.csv"
+    annotations.write_text(f"uid,question,source_files\nq1,Question,{source_files}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="OfficeQA Pro v2"):
+        load_beir_dataset("officeqa_pro_v2_csv", dataset_name=str(annotations), doc_id_field="pdf_basename")
 
 
 def test_load_beir_dataset_preserves_dotted_pdf_basenames_without_extension(tmp_path: Path) -> None:
