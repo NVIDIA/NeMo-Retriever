@@ -111,10 +111,17 @@ def test_default_checkpoint_agrees_between_warmup_actor_and_admission(backend, n
         ):
             warm_local_models({"embed": spec["embed"]})
             actor = _BatchEmbedActor(params=params)
+            other_actor = _BatchEmbedActor(params=params)
             embedding_input.configure_embedding_input_policy(actor._kwargs)
 
         assert all(call.args[0] == model_id for call in resolve.call_args_list)
         assert actor._model is get_warmed_model("embed")
+        warmed = actor._model
+        actor.unload()
+        actor.unload()
+        warmed.unload.assert_not_called()
+        assert other_actor._model is warmed
+        assert get_warmed_model("embed") is warmed
         create.assert_called_once()
         admission.assert_not_called()
         assert tokenizer.call_args.args[0] == model_id
@@ -260,6 +267,10 @@ def test_gpu_actor_loads_requested_embedder_when_warmed_identity_differs() -> No
     assert actor._model is not warmed
     create_local_embedder.assert_called_once()
     assert create_local_embedder.call_args.args[0].revision == "b" * 40
+    actor.unload()
+    actor.unload()
+    requested.unload.assert_called_once_with()
+    warmed.unload.assert_not_called()
 
     clear_warmed_models()
 

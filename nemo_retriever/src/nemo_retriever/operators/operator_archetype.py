@@ -90,6 +90,17 @@ class ArchetypeOperator(AbstractOperator):
     def __call__(self, data: Any, **kwargs: Any) -> Any:
         return self._resolve_delegate()(data, **kwargs)
 
+    def unload(self) -> None:
+        """Release only an existing delegate, without resolving a new operator."""
+        delegate = getattr(self, "_resolved_delegate", None)
+        if delegate is None:
+            return
+        unload = getattr(delegate, "unload", None)
+        if callable(unload):
+            unload()
+        self._resolved_delegate = None
+        self._resolved_delegate_key = None
+
     def _resolve_delegate(self, resources: ClusterResources | Resources | None = None) -> AbstractOperator:
         if not hasattr(self, "_resolved_delegate"):
             self._resolved_delegate = None

@@ -47,6 +47,9 @@ class FakeRetriever:
         self.top_k = int(kwargs.get("top_k", 10))
         self.query_calls = []
 
+    def unload(self) -> None:
+        """Match the retriever lifecycle API without owning model resources."""
+
     def query(self, query: str, *, top_k: int | None = None, candidate_k: int | None = None):
         self.query_calls.append({"query": query, "top_k": top_k, "candidate_k": candidate_k})
         if self.graph is not None:
@@ -675,7 +678,9 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
     )
 
     cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
-    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn), patch.object(
+        FakeRetriever, "unload", autospec=True
+    ) as mock_unload:
         df_query, result, gold, retrieved, metrics = run_agentic_audio_recall_evaluation(
             query_csv=query_csv,
             cfg=cfg,
@@ -683,6 +688,7 @@ def test_run_agentic_audio_recall_evaluation_computes_metrics(tmp_path):
         )
 
     assert df_query["golden_answer"].tolist() == ["clip	0.000000	4.000000"]
+    mock_unload.assert_called_once()
     assert result["doc_id"].tolist()[0] == audio_doc_id
     assert gold == ["clip	0.000000	4.000000"]
     assert retrieved[0][0] == audio_doc_id
@@ -752,7 +758,7 @@ def test_run_agentic_beir_evaluation_loads_queries_and_qrels():
 
     with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn), patch(
         "nemo_retriever.query.agentic.load_beir_dataset", return_value=beir_dataset
-    ) as mock_loader:
+    ) as mock_loader, patch.object(FakeRetriever, "unload", autospec=True) as mock_unload:
         df_query, result, qrels, run, metrics = run_agentic_beir_evaluation(
             loader="vidore_hf",
             dataset_name="vidore_v3_finance_en",
@@ -762,6 +768,7 @@ def test_run_agentic_beir_evaluation_loads_queries_and_qrels():
         )
 
     mock_loader.assert_called_once()
+    mock_unload.assert_called_once()
     assert df_query["query_id"].tolist() == ["q1"]
     assert result["doc_id"].tolist()[0] == "doc"
     assert qrels == {"q1": {"doc": 1}}
