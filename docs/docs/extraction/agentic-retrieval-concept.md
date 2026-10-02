@@ -14,9 +14,9 @@ NeMo Retriever Library includes first-class agentic selection and answer paths.
 `retriever query --agentic --agentic-mode answer`, `/v1/query` with
 `agentic_mode=answer`, `/v1/answer` with `mode=agentic`, the Python service
 client's `agentic_answer` methods, and the MCP `agentic_answer` tool run answer
-mode. Both use a Reason and Act (ReAct) loop over the same LanceDB table that
-one-pass retrieval uses. You do not have to implement the agent loop in
-application code.
+mode. Both use a Reason and Act (ReAct) loop over the same LanceDB table or
+Qdrant collection that one-pass retrieval uses. You do not have to implement
+the agent loop in application code.
 
 Selection mode ranks documents rather than chunks. CLI `--agentic` output is
 the retrieval-hop hit plus `doc_id`, `rank`, and `result_source`; it is not the

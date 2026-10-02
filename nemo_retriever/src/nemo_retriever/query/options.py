@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Sequence
 
+from nemo_retriever.common.vdb.targets import VdbOpValue, VdbTarget
+
 QueryRetrievalMode = Literal["auto", "dense", "hybrid", "sparse"]
 
 
@@ -16,8 +18,8 @@ class QueryRetrievalOptions:
     candidate_k: int | None = None
     page_dedup: bool = False
     content_types: str | Sequence[str] | None = None
-    # ``auto`` lets LanceDB table capability detection choose dense, hybrid, or
-    # sparse retrieval. Explicit modes are expert overrides.
+    # ``auto`` lets index capability detection choose dense, hybrid, or sparse
+    # retrieval. Explicit modes are expert overrides.
     retrieval_mode: QueryRetrievalMode = "auto"
 
 
@@ -42,6 +44,12 @@ class QueryRerankOptions:
 class QueryStorageOptions:
     lancedb_uri: str = "lancedb"
     table_name: str = "nemo-retriever"
+    vdb_op: VdbOpValue = "lancedb"
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+
+    def target(self) -> VdbTarget:
+        return VdbTarget.from_options(self)
 
 
 @dataclass(frozen=True)

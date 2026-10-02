@@ -48,13 +48,13 @@ For the full guide—including custom operator classes, executors, and graph sha
 
 ## Custom vector databases { #custom-vector-databases }
 
-The supported user path for vector storage is **[LanceDB](vdbs.md)** (`vdb_op="lancedb"`). That page covers upload, semantic retrieval, metadata filtering, and LanceDB deployment characteristics.
+The supported user path for vector storage is **[LanceDB](vdbs.md)** (`vdb_op="lancedb"`). That page covers upload, semantic retrieval, metadata filtering, and LanceDB deployment characteristics. The library also includes a [Qdrant backend](vdbs.md#use-qdrant) (`vdb_op="qdrant"`).
 
 To integrate a different vector store, implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface and wire it through graph [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) / [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py). NVIDIA validates the first-party LanceDB operator; you are responsible for testing and maintaining other backends.
 
 ### Repository guides
 
-- [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
+- [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base, the LanceDB reference implementation, and the Qdrant backend
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
 

@@ -58,6 +58,8 @@ def _start_local_vectordb(cfg):
         parsed.hostname,
         "--port",
         str(port),
+        "--vdb-op",
+        vdb.vdb_op,
         "--lancedb-uri",
         vdb.lancedb_uri,
         "--table-name",
@@ -84,6 +86,10 @@ def _start_local_vectordb(cfg):
         command += ["--embed-model-provider-prefix", vdb.embed_model_provider_prefix]
     if vdb.internal_api_token:
         child_env["NRL_INTERNAL_VDB_TOKEN"] = vdb.internal_api_token
+    if vdb.qdrant_url:
+        command += ["--qdrant-url", vdb.qdrant_url]
+    if vdb.qdrant_api_key:
+        child_env["QDRANT_API_KEY"] = vdb.qdrant_api_key
     if not vdb.expiration_cleanup_enabled:
         command += ["--disable-expiration-cleanup"]
     command += ["--reconciliation-interval-seconds", str(vdb.reconciliation_interval_seconds)]
@@ -114,7 +120,7 @@ def _start_local_vectordb(cfg):
             raise RuntimeError(
                 f"VectorDB exited during startup with status {process.returncode}. "
                 "Inspect the VectorDB logs above and verify the embedding configuration, "
-                "LanceDB path, and port 7671 availability."
+                "vector database settings, and port 7671 availability."
             )
         try:
             with urlopen(health_url, timeout=1) as response:
@@ -126,7 +132,7 @@ def _start_local_vectordb(cfg):
     raise RuntimeError(
         f"VectorDB did not become ready at {health_url} within 30 seconds. "
         "Inspect the VectorDB logs above and verify the embedding configuration, "
-        "LanceDB path, and port 7671 availability."
+        "vector database settings, and port 7671 availability."
     )
 
 

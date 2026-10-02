@@ -333,7 +333,7 @@ def test_manifest_entry_replay_is_capacity_neutral_and_identity_stable() -> None
 
 
 def test_raw_storage_selection_is_rejected_for_query_requests() -> None:
-    for key in ("table_name", "lancedb_uri", "uri", "physical_table"):
+    for key in ("table_name", "lancedb_uri", "uri", "physical_table", "vdb_op", "qdrant_url", "qdrant_api_key"):
         try:
             QueryRequest.model_validate({"query": "x", key: "untrusted"})
         except ValueError:

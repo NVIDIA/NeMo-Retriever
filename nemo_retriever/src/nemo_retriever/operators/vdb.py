@@ -17,6 +17,7 @@ from nemo_retriever.common.vdb.records import (
     _iter_client_vdb_records,
     normalize_retrieval_results,
     to_client_vdb_records,
+    to_sparse_client_vdb_records,
     validate_collection_retrieval_results,
 )
 from nemo_retriever.common.vdb.sidecar_metadata import (
@@ -146,10 +147,14 @@ class IngestVdbOperator(AbstractOperator):
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
+    def _client_records(self, data: Any) -> list[list[dict[str, Any]]]:
+        # Graph ingest emits flat rows, while VDB.run expects nested NRL records.
+        if getattr(self._vdb, "sparse", False):
+            return to_sparse_client_vdb_records(data)
+        return to_client_vdb_records(data)
+
     def process(self, data: Any, **kwargs: Any) -> Any:
-        # Graph ingest emits flat embedded rows, while
-        # nv-ingest-client VDB.run still expects nested Nemo Retriever Library (NRL) records.
-        records = to_client_vdb_records(data)
+        records = self._client_records(data)
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             records = apply_sidecar_metadata_to_client_batches(
                 records,
@@ -226,7 +231,7 @@ class PutVdbOperator(IngestVdbOperator):
     The underlying VDB implementation must override
     :meth:`~nemo_retriever.vdb.adt_vdb.VDB.put` with a real
     stable-key in-place replace; currently this is implemented by
-    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. ``VDB.put`` itself
+    :class:`~nemo_retriever.vdb.lancedb.LanceDB` and :class:`~nemo_retriever.vdb.qdrant.Qdrant`. ``VDB.put`` itself
     raises :class:`NotImplementedError`, so backends that have not
     overridden it are detected at construction time and fail fast rather
     than silently no-oping at runtime.
@@ -253,7 +258,7 @@ class PutVdbOperator(IngestVdbOperator):
         self._table_name = table_name
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        records = to_client_vdb_records(data)
+        records = self._client_records(data)
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             records = apply_sidecar_metadata_to_client_batches(
                 records,

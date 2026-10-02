@@ -34,14 +34,14 @@ for record in result.to_dict(orient="records"):
 
 Iterate the DataFrame, or convert it with `to_dict(orient="records")`, then send text, path, and metadata to your retriever.
 
-The public `retriever ingest` CLI runs extraction, embedding, and LanceDB indexing as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query LanceDB table. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
+The public `retriever ingest` CLI runs extraction, embedding, and vector indexing (LanceDB by default, or Qdrant with `--vdb-op qdrant`) as one workflow. It does not return extraction-only rows. Use that command when you want a ready-to-query index. For CLI usage, refer to the [Retriever CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli).
 
 For Python ingest and indexing, refer to [Ingest documents into a searchable VDB collection](workflow-document-ingestion.md). After you have an index, the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/llama_index_multimodal_rag.ipynb) and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/langchain_multimodal_rag.ipynb) show framework integration.
 
 ## Where does NeMo Retriever Library ingest to? { #where-does-nrl-ingest-to }
 
 NeMo Retriever Library supports extracting text representations of various forms of content,
-and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk for the supported ingestion path.
+and ingesting to a vector database. **[LanceDB](https://lancedb.com/)** stores vectors as local Lance files on disk by default. **[Qdrant](vdbs.md#use-qdrant)** is supported as a server-based alternative.
 You can ingest to other data stores; however, you must configure other data stores yourself.
 For more information, refer to [Vector databases](vdbs.md).
 

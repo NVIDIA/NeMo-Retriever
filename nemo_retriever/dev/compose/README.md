@@ -250,6 +250,20 @@ Set `judge.model` to `openai/nvidia/nemotron-3.5-lightning-30b-a3b` and
 `judge.api_base` to `http://localhost:8000/v1` in the skill-eval configuration.
 Override the host port with `JUDGE_HTTP_PORT` when needed.
 
+### Qdrant
+
+`qdrant.compose.yaml` adds a Qdrant server and points the VectorDB service at it
+instead of LanceDB. Set `QDRANT_API_KEY` to enable authentication on both.
+
+```bash
+docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml \
+  -f nemo_retriever/dev/compose/qdrant.compose.yaml up -d
+```
+
+The overlay also works with `service-mode.local-models.compose.yaml` when listed
+last. To use an external Qdrant server, skip the overlay and set `NRL_VDB_OP=qdrant`,
+`QDRANT_URL`, and `QDRANT_API_KEY` for `service-mode.compose.yaml`.
+
 ### Neo4j
 
 `neo4j.compose.yaml` starts the graph development database. Set

@@ -5,8 +5,8 @@
 """Public collection/document lifecycle routes.
 
 The gateway owns authentication and forwards only logical resource names and
-the authenticated scope. LanceDB locations and physical table names never
-cross this boundary.
+the authenticated scope. Vector database locations (LanceDB paths, Qdrant
+servers) and physical table names never cross this boundary.
 """
 
 from __future__ import annotations

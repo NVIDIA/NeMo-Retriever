@@ -15,6 +15,7 @@ import yaml
 from pydantic import ConfigDict, Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.vdb.targets import VdbOpValue, qdrant_api_key_from_env
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 MCPQueryMethods = Literal["classic", "agentic", "all"]
@@ -432,7 +433,7 @@ class WorkQueueConfig(RichModel):
 
 
 class VectorDbConfig(RichModel):
-    """Configuration for the dedicated VectorDB pod (LanceDB + query endpoint)."""
+    """Configuration for the dedicated VectorDB pod (LanceDB or Qdrant, plus the query endpoint)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -449,8 +450,20 @@ class VectorDbConfig(RichModel):
         ge=1,
         description=("Maximum number of concurrent queries handled by a supervised " "VectorDB child."),
     )
+    vdb_op: VdbOpValue = Field(
+        default="lancedb",
+        description="Vector database backend: lancedb (embedded, uses lancedb_uri) or qdrant (server).",
+    )
     lancedb_uri: str = "/data/vectordb"
-    table_name: str = "nemo_retriever"
+    qdrant_url: str | None = Field(
+        default=None,
+        description="Qdrant server URL when vdb_op is qdrant. Defaults to http://localhost:6333.",
+    )
+    qdrant_api_key: str | None = Field(
+        default=None,
+        description="Qdrant API key when vdb_op is qdrant. Prefer the QDRANT_API_KEY environment variable.",
+    )
+    table_name: str = Field(default="nemo_retriever", description="LanceDB table or Qdrant collection name.")
     index_mode: Literal["auto", "dense", "hybrid"] = "auto"
     embed_model: str = "nvidia/nemotron-3-embed-1b"
     embed_model_provider_prefix: str | None = None
@@ -706,9 +719,11 @@ def load_config(
         internal_token = internal_token.strip()
     if internal_token:
         raw.setdefault("vectordb", {})["internal_api_token"] = internal_token
+    if (raw.get("vectordb") or {}).get("vdb_op") == "qdrant" and (qdrant_api_key := qdrant_api_key_from_env()):
+        raw["vectordb"]["qdrant_api_key"] = qdrant_api_key
     config = ServiceConfig(**raw)
 
-    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "password", "secret"})
+    _REDACTED_FIELDS = frozenset({"api_key", "api_token", "internal_api_token", "qdrant_api_key", "password", "secret"})
 
     from rich.console import Console
     from rich.tree import Tree

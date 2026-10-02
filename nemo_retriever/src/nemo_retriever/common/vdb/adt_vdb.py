@@ -18,7 +18,7 @@ Methods that need backend-specific execution options accept `**kwargs` so
 options such as LanceDB's metadata predicate, refinement factors, and hybrid
 search flags can flow through without changing the ABC.
 
-See `nemo_retriever/vdb/README.md` for the concrete `LanceDB` backend and
+See `nemo_retriever/common/vdb/README.md` for the concrete `LanceDB` and `Qdrant` backends and
 the `IngestVdbOperator` / `RetrieveVdbOperator` wrappers, including the
 metadata-filtering section and its reference notebook.
 """
@@ -26,7 +26,7 @@ metadata-filtering section and its reference notebook.
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
@@ -80,6 +80,20 @@ class CollectionWriteContext:
             object.__setattr__(self, "operation", IngestOperation(self.operation))
 
 
+RetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
+
+
+@dataclass(frozen=True)
+class IndexCapabilities:
+    """What one index can serve, used to route queries."""
+
+    has_vector: bool
+    has_fts: bool
+    retrieval_mode: RetrievalMode
+    vector_column: str | None
+    text_column: str | None
+
+
 @dataclass(frozen=True, slots=True)
 class CollectionWriteResult:
     """Backend-neutral counts returned after a collection write."""
@@ -95,7 +109,8 @@ class VDB(ABC):
     intentionally small; backend-specific options (connection URIs, index
     tuning, search filters) are passed via `**kwargs`.
 
-    The reference implementation is `LanceDB` (see `lancedb.py`). For an
+    The reference implementation is `LanceDB` (see `lancedb.py`). `Qdrant`
+    (see `qdrant.py`) implements the same interface for a Qdrant server. For an
     overview of how `IngestVdbOperator` and `RetrieveVdbOperator` consume
     this interface, see the package README.
 
@@ -217,6 +232,17 @@ class VDB(ABC):
     def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
         """Return one metadata value for the selected index, if available."""
         return None
+
+    def index_capabilities(self, **kwargs: Any) -> IndexCapabilities | None:
+        """Describe the index for query routing, or return ``None`` if it does not exist.
+
+        Backends that keep this default are not routed.
+        """
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not report index capabilities.")
+
+    def sparse_retrieval(self, query_texts: list[str], **kwargs: Any) -> list[list[dict[str, Any]]]:
+        """Search with raw query strings and no embeddings, returning one hit list per query."""
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not support sparse retrieval.")
 
     def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
         """Replace a batch of existing rows in the target table/index.

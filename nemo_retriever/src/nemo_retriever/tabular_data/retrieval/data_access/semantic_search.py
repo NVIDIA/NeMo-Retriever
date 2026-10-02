@@ -20,6 +20,9 @@ The filter shape is chosen by the VDB the caller plugged in (read off
   ``PGVector.similarity_search_with_score_by_vector(..., filter=)``). The
   customer's VDB is responsible for storing ``label`` / ``database_name``
   as top-level columns so the keys match.
+* ``"qdrant"`` — a Qdrant payload filter on ``metadata.label`` /
+  ``metadata.database_name``, passed as ``query_filter``. Selected for the
+  built-in Qdrant backend (``vdb_op="qdrant"`` or an injected instance).
 """
 
 from __future__ import annotations
@@ -27,12 +30,14 @@ from __future__ import annotations
 import ast
 import json
 import logging
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, get_args
+
+from nemo_retriever.common.vdb.records import hit_rank
 
 if TYPE_CHECKING:
     from nemo_retriever.graph.retriever import Retriever
 
-MetadataFilterFormat = Literal["sql", "dict"]
+MetadataFilterFormat = Literal["sql", "dict", "qdrant"]
 
 logger = logging.getLogger(__name__)
 
@@ -91,16 +96,6 @@ def _parse_hit_metadata(hit: dict) -> dict:
     return {}
 
 
-def _vector_distance_value(distance: object | None) -> float:
-    """Coerce a vector ``_distance`` score (L2) to float; lower is better. Missing → +inf."""
-    if distance is None:
-        return float("inf")
-    try:
-        return float(distance)
-    except (TypeError, ValueError):
-        return float("inf")
-
-
 def _resolve_label_k(per_label_k: "int | dict[str, int]", label: str | None) -> int:
     """Return the top-k for *label* given a scalar or per-label dict."""
     if isinstance(per_label_k, dict):
@@ -134,10 +129,23 @@ def _build_metadata_where_clause(
       ``{"label": "Column"}``; multiple labels become ``{"label": [...]}``
       (which langchain-pgvector interprets as an ``IN``-list).
 
+    * ``"qdrant"`` — Qdrant filter dict over the ``metadata.label`` and
+      ``metadata.database_name`` payload keys, suitable for
+      ``query_filter``.
+
     Returns ``None`` when neither *labels* nor *database_name* is supplied.
     """
     if not labels and not database_name:
         return None
+
+    if fmt == "qdrant":
+        conditions: list[dict] = []
+        if labels:
+            match = {"value": labels[0]} if len(labels) == 1 else {"any": list(labels)}
+            conditions.append({"key": "metadata.label", "match": match})
+        if database_name:
+            conditions.append({"key": "metadata.database_name", "match": {"value": database_name}})
+        return {"must": conditions}
 
     if fmt == "dict":
         out: dict = {}
@@ -161,13 +169,19 @@ def _metadata_filter_format(retriever: "Retriever") -> MetadataFilterFormat:
 
     Tabular callers construct the VDB themselves and pass it as
     ``Retriever(vdb_kwargs={"vdb": instance})``, so the instance is reachable
-    through ``retriever.vdb_kwargs["vdb"]``. Falls back to ``"sql"`` when no
-    instance is exposed (e.g. the reference :class:`LanceDB` reached via
+    through ``retriever.vdb_kwargs["vdb"]``. A retriever configured with
+    ``vdb_op="qdrant"`` uses the Qdrant format, and a caller-owned graph uses the
+    format of its retrieval operator's VDB. Otherwise falls back to
+    ``"sql"`` (e.g. the reference :class:`LanceDB` reached via
     ``vdb_op="lancedb"``), preserving historical behavior.
     """
-    vdb = (getattr(retriever, "vdb_kwargs", None) or {}).get("vdb")
-    fmt = getattr(vdb, "metadata_filter_format", "sql")
-    return fmt if fmt in ("sql", "dict") else "sql"
+    vdb_kwargs = getattr(retriever, "vdb_kwargs", None) or {}
+    vdb = vdb_kwargs.get("vdb")
+    if vdb is None and getattr(retriever, "graph", None) is not None:
+        vdb = getattr(retriever._index_operator(), "_vdb", None)
+    default = "qdrant" if str(vdb_kwargs.get("vdb_op") or "").strip().lower() == "qdrant" else "sql"
+    fmt = getattr(vdb, "metadata_filter_format", default)
+    return fmt if fmt in get_args(MetadataFilterFormat) else "sql"
 
 
 def _hits_to_semantic_rows(
@@ -181,7 +195,8 @@ def _hits_to_semantic_rows(
     at most *per_label_k* rows are kept (best-first).  *per_label_k* can
     be a single int (same cap for every label) or a ``{label: k}`` dict.
 
-    ``score`` is the raw vector ``_distance`` (lower is better).
+    ``score`` is lower-is-better: the raw vector ``_distance``, or the
+    negated ``_relevance_score`` / ``_score`` for backends that report those.
     """
     label_counts: dict[str, int] = {}
     rows: list[dict] = []
@@ -198,7 +213,7 @@ def _hits_to_semantic_rows(
         if cnt >= _resolve_label_k(per_label_k, lab_str):
             continue
         label_counts[lab_str] = cnt + 1
-        score = _vector_distance_value(hit.get("_distance"))
+        score = hit_rank(hit)
         rows.append(
             {
                 "text": (hit.get("text") or "").strip(),
@@ -240,7 +255,8 @@ def search_semantic_index(
             database_name=database_name,
             fmt=fmt,
         )
-        vdb_kwargs = {"where": where_clause} if where_clause else None
+        filter_key = "query_filter" if fmt == "qdrant" else "where"
+        vdb_kwargs = {filter_key: where_clause} if where_clause else None
         top_k = _resolve_label_k(per_label_k, label) if where_clause else DEFAULT_FETCH_LIMIT
         hits = retriever.query(entity, top_k=top_k, vdb_kwargs=vdb_kwargs)
         all_hits.extend(hits)

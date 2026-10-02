@@ -6,7 +6,7 @@
 Reranking stage using nvidia/llama-nemotron-rerank-vl-1b-v2.
 
 Provides:
-  - ``rerank_hits``         – rerank a list of LanceDB hits for a single query
+  - ``rerank_hits``         – rerank a list of vector database hits for a single query
   - ``NemotronRerankActor`` – Ray Data-compatible stateful actor for batch DataFrames
 
 Remote endpoint
@@ -249,7 +249,7 @@ def _rerank_via_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Public helper: rerank LanceDB hits for a single query
+# Public helper: rerank vector database hits for a single query
 # ---------------------------------------------------------------------------
 
 
@@ -268,7 +268,7 @@ def rerank_hits(
     modality: str = "text",
 ) -> List[Dict[str, Any]]:
     """
-    Rerank *hits* (list of LanceDB result dicts) by relevance to *query*.
+    Rerank *hits* (list of vector database result dicts) by relevance to *query*.
 
     Each hit that has a ``text_key`` field is scored; hits without text are
     placed at the end.  The returned list is sorted highest-score first and
@@ -279,7 +279,7 @@ def rerank_hits(
     query:
         The search query.
     hits:
-        LanceDB result dicts (as returned by ``Retriever.queries()``).
+        Retrieval result dicts (as returned by ``Retriever.queries()``).
     model:
         A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
         *rerank_invoke_url* is set.
