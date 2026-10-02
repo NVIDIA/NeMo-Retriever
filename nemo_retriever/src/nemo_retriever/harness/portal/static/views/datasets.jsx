@@ -201,7 +201,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
     beir_dataset_name: dataset?.beir_dataset_name || "",
     beir_split: dataset?.beir_split || "test",
     beir_query_language: dataset?.beir_query_language || "",
-    beir_doc_id_field: dataset?.beir_doc_id_field || "pdf_basename",
+    beir_doc_id_field: dataset?.beir_doc_id_field || "pdf_page",
     beir_ks: (dataset?.beir_ks || [1,3,5,10]).join(", "),
     embed_model_name: dataset?.embed_model_name || "",
     embed_modality: dataset?.embed_modality || "text",
@@ -288,10 +288,14 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
               <div>
                 <label style={labelStyle}>Input Type</label>
                 <select className="select" style={{width:'100%'}} value={form.input_type} onChange={e=>set('input_type',e.target.value)}>
+                  <option value="auto">auto</option>
                   <option value="pdf">pdf</option>
+                  <option value="doc">doc</option>
+                  <option value="txt">txt</option>
+                  <option value="html">html</option>
                   <option value="image">image</option>
-                  <option value="text">text</option>
                   <option value="audio">audio</option>
+                  <option value="video">video</option>
                 </select>
               </div>
               <div>
@@ -362,6 +366,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
                     <select className="select" style={{width:'100%'}} value={form.beir_doc_id_field} onChange={e=>set('beir_doc_id_field',e.target.value)}>
                       <option value="pdf_basename">pdf_basename</option>
                       <option value="pdf_page">pdf_page</option>
+                      <option value="pdf_page_modality">pdf_page_modality</option>
                       <option value="source_id">source_id</option>
                       <option value="path">path</option>
                     </select>
