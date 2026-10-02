@@ -16,7 +16,7 @@ import os
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from .base_backend import BaseLLMBackend, BaseLLMConfig
 from .errors import ContentPolicyError, ContextLimitError, LLMCallError, RateLimitError
@@ -197,6 +197,8 @@ class LiteLLMConfig(BaseLLMConfig):
         routed the same way.
     api_version:
         Provider API version (e.g. Azure-style endpoints).
+    timeout_s:
+        Per-request timeout in seconds, forwarded as LiteLLM ``timeout`` when set.
     num_retries:
         litellm-internal retry count for transient errors. Distinct from the
         base class's rate-limit pause loop. Overridable per call
@@ -227,6 +229,7 @@ class LiteLLMConfig(BaseLLMConfig):
     backend: Literal["litellm"] = "litellm"
     thinking: Optional[Dict[str, Any]] = None
     api_version: Optional[str] = None
+    timeout_s: Optional[float] = Field(default=None, gt=0, description="Per-request timeout in seconds")
     num_retries: Optional[int] = 4
     drop_params: bool = True
     allowed_openai_params: Optional[List[str]] = None
@@ -288,6 +291,8 @@ class LiteLLMBackend(BaseLLMBackend):
             num_retries=config.num_retries,
             max_completion_tokens=config.max_completion_tokens,
         )
+        if config.timeout_s is not None:
+            self.completion_kwargs["timeout"] = config.timeout_s
         if config.drop_params:
             self.completion_kwargs["drop_params"] = config.drop_params
         if config.allowed_openai_params:

@@ -221,6 +221,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
         "temperature": request.agentic.temperature,
+        "timeout_s": request.agentic.timeout_s,
         "llm_client": request.agentic.llm_client,
     }
     if request.agentic.llm_backend:

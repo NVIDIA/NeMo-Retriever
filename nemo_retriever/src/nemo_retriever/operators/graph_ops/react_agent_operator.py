@@ -186,6 +186,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         parallel_tool_calls: Optional[bool] = None,
         reasoning_effort: Optional[str] = None,
         temperature: Optional[float] = None,
+        timeout_s: float = 120.0,
         backend: str = "callable",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
@@ -204,6 +205,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._api_key = api_key
         self._max_tokens = max_tokens
         self._parallel_tool_calls = parallel_tool_calls
+        self._timeout_s = timeout_s
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
         self._backend = backend
@@ -228,6 +230,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             temperature=self._temperature,
             parallel_tool_calls=self._parallel_tool_calls,
             max_completion_tokens=self._max_tokens,
+            timeout_s=self._timeout_s,
         )
         completion_fn = self._chat_completion_fn
         if self._backend == "callable" and completion_fn is None:

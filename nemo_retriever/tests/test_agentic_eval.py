@@ -116,8 +116,9 @@ def _dispatch_chat_fn(react_response, selection_response):
     return fn
 
 
+@pytest.mark.parametrize("timeout_s", [120.0, 300.0])
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_runs_graph_with_wrapped_retriever():
+def test_agentic_retriever_runs_graph_with_wrapped_retriever(timeout_s):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
@@ -128,12 +129,21 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever():
         _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "doc_1 is best"}),
     )
 
+    requests = []
+    dispatch = chat_fn
+
+    def chat_fn(**kwargs):
+        requests.append(kwargs)
+        return dispatch(**kwargs)
+
     # In-process path -> callable client backend; inject the fake completion fn.
-    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", timeout_s=timeout_s)
     with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
         retriever = AgenticRetriever(cfg, match_mode="pdf_page")
         result = retriever.retrieve(["0"], ["find doc"])
 
+    assert requests
+    assert all(request["timeout_s"] == timeout_s for request in requests)
     assert "local_ingest_embed_backend" not in retriever._retriever.kwargs["embed_kwargs"]
     assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source", "hit"]
     assert result["query_id"].tolist() == ["0"] * 10
@@ -173,10 +183,18 @@ def test_agentic_retriever_answer_returns_hydrated_validated_citations():
         {"answer": "The matching document answers the question.", "citations": ["doc_1"]},
         usage=usage,
     )
-    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b")
-    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=lambda **_: response):
+    requests = []
+
+    def chat_fn(**kwargs):
+        requests.append(kwargs)
+        return response
+
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", timeout_s=300.0)
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
         result = AgenticRetriever(cfg, match_mode="pdf_page").answer_with_usage(["customer-q"], ["find doc"])
 
+    assert requests
+    assert all(request["timeout_s"] == 300.0 for request in requests)
     assert result.usage == {"customer-q": {"main_agent": usage}}
     assert result.answers["answer"].tolist() == ["The matching document answers the question."]
     assert result.answers["citations"].tolist() == [["doc_1"]]
@@ -976,3 +994,79 @@ def test_agentic_config_passes_tensor_parallel_size_to_local_llm():
         max_model_len=None,
         max_num_seqs=None,
     )
+
+
+@pytest.mark.parametrize("timeout_s", [0, -1, float("nan"), float("inf"), float("-inf"), None, "invalid"])
+def test_agentic_config_rejects_invalid_timeout(timeout_s):
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="timeout_s"):
+        AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, timeout_s=timeout_s)
+
+
+def test_agentic_config_normalizes_timeout():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    cfg = AgenticRetrievalConfig(llm_model="m", invoke_url=_REMOTE_URL, timeout_s="300.5")
+    assert cfg.timeout_s == 300.5
+
+
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_timeout_reaches_final_selection_callable():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    requests = []
+    dispatch = _dispatch_chat_fn(
+        _make_tool_call_response("final_results", {"doc_ids": [], "message": "", "search_successful": "false"}),
+        _make_tool_call_response("log_selected_documents", {"doc_ids": ["doc_1"], "message": "best"}),
+    )
+
+    def chat_fn(**kwargs):
+        requests.append(kwargs)
+        return dispatch(**kwargs)
+
+    cfg = AgenticRetrievalConfig(llm_model="nemotron-8b", timeout_s=300.0, react_max_steps=1)
+    with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn", return_value=chat_fn):
+        AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["q"], ["find doc"])
+
+    assert any(
+        any(tool["function"]["name"] == "log_selected_documents" for tool in request["tools"]) for request in requests
+    )
+    assert all(request["timeout_s"] == 300.0 for request in requests)
+
+
+def test_agentic_config_timeout_schema_and_dataclass_compatibility():
+    from dataclasses import FrozenInstanceError, asdict, replace
+
+    from pydantic import TypeAdapter, ValidationError
+    from pydantic.dataclasses import is_pydantic_dataclass
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    assert is_pydantic_dataclass(AgenticRetrievalConfig)
+    adapter = TypeAdapter(AgenticRetrievalConfig)
+    timeout_schema = adapter.json_schema()["properties"]["timeout_s"]
+    assert timeout_schema["default"] == 120.0
+    assert timeout_schema["exclusiveMinimum"] == 0
+    assert timeout_schema["description"] == "Per-request timeout in seconds for both agent LLM stages"
+
+    config = adapter.validate_python({"timeout_s": "300.5"})
+    assert config.timeout_s == 300.5
+    assert config.llm_model == "nemotron-8b"
+    assert asdict(config)["timeout_s"] == 300.5
+    assert replace(config, timeout_s=240.0).timeout_s == 240.0
+    with pytest.raises(FrozenInstanceError):
+        config.timeout_s = 240.0
+    with pytest.raises(ValidationError, match="unexpected_setting"):
+        adapter.validate_python({"unexpected_setting": 1})
+
+
+@pytest.mark.parametrize("timeout_s", [0, -1, float("nan"), float("inf"), None])
+def test_agentic_config_dict_validation_rejects_invalid_timeout(timeout_s):
+    from pydantic import TypeAdapter, ValidationError
+
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValidationError) as error:
+        TypeAdapter(AgenticRetrievalConfig).validate_python({"timeout_s": timeout_s})
+    assert error.value.errors()[0]["loc"] == ("timeout_s",)

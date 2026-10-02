@@ -416,3 +416,134 @@ def test_local_llm_returns_an_openai_shaped_response() -> None:
     assert response["choices"][0]["message"] == {"role": "assistant", "content": "hello"}
     assert response["choices"][0]["finish_reason"] == "stop"
     assert response["usage"]["total_tokens"] == 3
+
+
+def test_local_llm_timeout_bounds_inference_and_queued_calls(monkeypatch) -> None:
+    import time
+
+    import pytest
+
+    from nemo_retriever.models.local import agent_llm
+    from nemo_retriever._agentic.nemo_agent.llm import LLMCallError, create_llm, create_llm_config
+
+    llm = _offline_llm(MagicMock())
+    outputs = llm._llm.chat.return_value
+    started = threading.Event()
+    release = threading.Event()
+
+    def stalled_chat(*args, **kwargs):
+        started.set()
+        release.wait()
+        return outputs
+
+    llm._llm.chat.side_effect = stalled_chat
+    backend = create_llm(create_llm_config("callable", model=llm.model_name, timeout_s=0.05), completion_fn=llm)
+    try:
+        before = time.monotonic()
+        with pytest.raises(LLMCallError, match="timed out") as error:
+            backend.completion(messages=[{"role": "user", "content": "q"}])
+        assert isinstance(error.value.__cause__, TimeoutError)
+        assert time.monotonic() - before < 1.0
+        assert started.is_set()
+
+        # A timed-out chat keeps its lock; another request must not start GPU work.
+        before = time.monotonic()
+        with pytest.raises(TimeoutError, match="timed out"):
+            llm(messages=[{"role": "user", "content": "q"}], timeout_s=0.05)
+        assert time.monotonic() - before < 1.0
+        assert llm._llm.chat.call_count == 1
+
+        # Cleanup must also return if the engine is still stalled.
+        monkeypatch.setattr(agent_llm, "_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S", 0.01)
+        with pytest.raises(TimeoutError, match="unload timed out"):
+            llm.unload()
+        assert llm._llm is not None
+    finally:
+        release.set()
+        assert llm._lock.acquire(timeout=1.0)
+        llm._lock.release()
+
+    # Once the original inference completes, the same engine can be used again.
+    llm._llm.chat.side_effect = None
+    response = llm(messages=[{"role": "user", "content": "q"}], timeout_s=1.0)
+    assert response["choices"][0]["message"]["content"] == "hello"
+
+
+def test_local_llm_propagates_inference_exception_and_releases_lock() -> None:
+    import pytest
+
+    llm = _offline_llm(MagicMock())
+    error = RuntimeError("inference failed")
+    llm._llm.chat.side_effect = error
+    with pytest.raises(RuntimeError, match="inference failed") as caught:
+        llm(messages=[{"role": "user", "content": "q"}], timeout_s=1.0)
+    assert caught.value is error
+    assert llm._lock.acquire(timeout=1.0)
+    llm._lock.release()
+
+
+def test_local_llm_rejects_invalid_timeout_before_inference() -> None:
+    import pytest
+
+    llm = _offline_llm(MagicMock())
+    for timeout_s in (0, -1, float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="timeout_s must be positive and finite"):
+            llm(messages=[{"role": "user", "content": "q"}], timeout_s=timeout_s)
+    llm._llm.chat.assert_not_called()
+
+
+def test_agentic_retriever_can_retry_cleanup_after_inference_timeout(monkeypatch) -> None:
+    import pytest
+    from unittest.mock import patch
+
+    from nemo_retriever.models.local import agent_llm
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    llm = _offline_llm(MagicMock())
+    engine = llm._llm
+    outputs = engine.chat.return_value
+    started = threading.Event()
+    release = threading.Event()
+
+    def stalled_chat(*args, **kwargs):
+        started.set()
+        release.wait()
+        return outputs
+
+    engine.chat.side_effect = stalled_chat
+    monkeypatch.setattr(agent_llm, "_VLLM_ENGINE_SHUTDOWN_TIMEOUT_S", 0.01)
+    empty_cache = MagicMock()
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, empty_cache=empty_cache))
+    )
+    with patch("nemo_retriever.query.agentic.Retriever"):
+        retriever = AgenticRetriever(AgenticRetrievalConfig(llm_model="nemotron-8b"))
+    retriever._chat_completion_fn = llm
+
+    try:
+        with pytest.raises(TimeoutError, match="request timed out"):
+            llm(messages=[{"role": "user", "content": "q"}], timeout_s=0.05)
+        assert started.is_set()
+        with pytest.raises(TimeoutError, match="unload timed out"):
+            retriever.unload()
+
+        assert retriever._chat_completion_fn is llm
+        assert llm._llm is engine
+        engine.llm_engine.engine_core.shutdown.assert_not_called()
+        empty_cache.assert_not_called()
+        # Failure must also release the retriever lock, and must not load a replacement.
+        with patch("nemo_retriever.query.agentic._build_agent_chat_completion_fn") as build:
+            assert retriever._get_chat_completion_fn() is llm
+            build.assert_not_called()
+    finally:
+        release.set()
+        assert llm._lock.acquire(timeout=1.0)
+        llm._lock.release()
+
+    retriever.unload()
+    assert retriever._chat_completion_fn is None
+    assert llm._llm is None
+    engine.llm_engine.engine_core.shutdown.assert_called_once_with(timeout=0.01)
+    empty_cache.assert_called_once_with()
+    retriever.unload()  # Successful cleanup remains idempotent.
+    engine.llm_engine.engine_core.shutdown.assert_called_once()

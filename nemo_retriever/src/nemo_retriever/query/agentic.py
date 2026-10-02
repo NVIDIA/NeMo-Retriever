@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Literal, Optional, Sequence
 
 import pandas as pd
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
@@ -170,7 +172,7 @@ class AgenticSelectionOutputOperator(AbstractOperator):
         return data
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class AgenticRetrievalConfig:
     """Configuration for graph-backed agentic retrieval."""
 
@@ -215,12 +217,43 @@ class AgenticRetrievalConfig:
     llm_client: Optional[str] = None
     # Optional upper bound on tokens in each agent LLM response.
     max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
+    # Per-request timeout in seconds for both agent LLM stages.
+    timeout_s: float = Field(
+        default=120.0,
+        gt=0,
+        allow_inf_nan=False,
+        description="Per-request timeout in seconds for both agent LLM stages",
+    )
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
     # Wider pre-filter and pre-rerank candidate pool for each retrieval hop.
     candidate_k: Optional[int] = None
+
+    @field_validator("llm_model", mode="before")
+    @classmethod
+    def _normalize_model_input(cls, value: Any) -> Any:
+        return "" if value is None else value
+
+    @field_validator(
+        "react_max_steps",
+        "text_truncation",
+        "top_k",
+        "num_concurrent",
+        "candidate_k",
+        "local_tensor_parallel_size",
+        "local_max_model_len",
+        "local_max_num_seqs",
+        "max_tokens",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_integer_input(cls, value: Any, info: ValidationInfo) -> Any:
+        # Preserve integer-like strings (e.g. "5.0") and existing error messages.
+        if value is None:
+            return None
+        return agentic_int_value(value, field_name=str(info.field_name))
 
     def __post_init__(self) -> None:
         invoke_url = _none_if_empty(self.invoke_url)
@@ -479,6 +512,7 @@ class AgenticRetriever:
             temperature=self._cfg.temperature,
             backend=self._cfg.llm_client,
             max_tokens=self._cfg.max_tokens,
+            timeout_s=self._cfg.timeout_s,
             chat_completion_fn=chat_completion_fn,
         )
 
@@ -488,17 +522,20 @@ class AgenticRetriever:
         OpenAI-compatible endpoint mode is a no-op. Local vLLM mode shuts down
         this instance's EngineCore so CLI/harness jobs can exit cleanly. Embed
         and rerank models stay on ``self._retriever`` and are released with the
-        process, matching dense harness BEIR behavior.
+        process, matching dense harness BEIR behavior. If local cleanup raises,
+        retain the owned LLM so callers can retry ``unload()``.
         """
 
         with self._lock:
             chat_fn = self._chat_completion_fn
+            if chat_fn is None:
+                return
+            unload = getattr(chat_fn, "unload", None)
+            if callable(unload):
+                unload()
+            # Clear ownership only after cleanup succeeds. In particular, a
+            # timed-out inference may still hold the local engine lock.
             self._chat_completion_fn = None
-        if chat_fn is None:
-            return
-        unload = getattr(chat_fn, "unload", None)
-        if callable(unload):
-            unload()
 
     def answer(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return one integrated agentic answer per query.
@@ -658,6 +695,7 @@ class AgenticRetriever:
             temperature=self._cfg.temperature,
             backend=self._cfg.llm_client,
             max_tokens=self._cfg.max_tokens,
+            timeout_s=self._cfg.timeout_s,
             chat_completion_fn=chat_completion_fn,
         )
         pipeline = (
