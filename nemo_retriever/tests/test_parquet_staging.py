@@ -309,3 +309,16 @@ def test_operator_rejects_unsupported_staging_and_fallback_paths(tmp_path) -> No
     operator = IngestVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": str(tmp_path), STAGE_PARQUET_VDB_KWARG: target})
     with pytest.raises(RuntimeError, match="terminal VDB upload of a Ray batch graph"):
         operator.process(pd.DataFrame([_graph_row(0)]))
+
+
+def test_long_rows_get_smaller_row_groups(tmp_path, monkeypatch) -> None:
+    from nemo_retriever.common.vdb import staged_parquet
+
+    monkeypatch.setattr(staged_parquet, "_ROW_GROUP_BYTES", 1 << 20)
+    rows = [{**_graph_row(index), "text": f"chunk {index} " + "filler " * 20_000} for index in range(30)]
+
+    result = stage_blocks([pd.DataFrame(rows)], target=_target(tmp_path), policy=_policy())
+
+    metadata = pq.read_metadata(tmp_path / result["parts"][0]["path"])
+    assert metadata.num_row_groups > 1 and metadata.num_rows == 30
+    assert max(metadata.row_group(index).num_rows for index in range(metadata.num_row_groups)) <= 7

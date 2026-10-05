@@ -43,6 +43,9 @@ ATTEMPT_INFIX = ".attempt-"
 PART_SUFFIX = ".parquet"
 TEMP_SUFFIX = ".tmp"
 _ROW_GROUP_ROWS = 4096
+# A Parquet reader batch retains its whole decoded row group, so cap row
+# groups well below the cached loader's default 256 MiB retained-bytes limit.
+_ROW_GROUP_BYTES = 64 << 20
 # Bound the diagnostics one write task returns to the driver.
 _MAX_REPORTED_ITEMS = 20
 
@@ -249,13 +252,24 @@ def part_name(row_ids: Sequence[str]) -> str:
     return f"part-{digest[:32]}{PART_SUFFIX}"
 
 
+def row_group_rows(batch: pa.RecordBatch) -> int:
+    """Rows per row group so a decoded group of the widest rows stays under ``_ROW_GROUP_BYTES``."""
+    if not batch.num_rows:
+        return 1
+    widths = 4 * batch.schema.field("vector").type.list_size + sum(
+        pc.binary_length(batch.column(name)).to_numpy(zero_copy_only=False)
+        for name in ("id", "text", "source", "metadata")
+    )
+    return max(1, min(_ROW_GROUP_ROWS, _ROW_GROUP_BYTES // max(1, int(widths.max()))))
+
+
 def publish_part(batch: pa.RecordBatch, *, stage_dir: str, directory: str, name: str) -> dict[str, Any]:
     """Write one Parquet part to a temporary file, fsync it, and rename it into place."""
     os.makedirs(directory, exist_ok=True)
     final_path = os.path.join(directory, name)
     temp_path = os.path.join(directory, f".{name}.{uuid.uuid4().hex}{TEMP_SUFFIX}")
     try:
-        pq.write_table(pa.Table.from_batches([batch]), temp_path, row_group_size=_ROW_GROUP_ROWS)
+        pq.write_table(pa.Table.from_batches([batch]), temp_path, row_group_size=row_group_rows(batch))
         fd = os.open(temp_path, os.O_RDONLY)
         try:
             os.fsync(fd)
