@@ -10,6 +10,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Upload to LanceDB](#upload-to-lancedb)
     - [Direct LanceDB ingest and retrieval](#direct-lancedb-ingest-and-retrieval)
     - [Load cached vectors from Parquet](#load-cached-vectors-from-parquet)
+    - [Row IDs](#lancedb-row-ids)
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
 - [LanceDB deployment characteristics](#lancedb-deployment-characteristics)
@@ -268,6 +269,23 @@ described under [Backends with `VDB` implementations](#vdb-backends-implementati
 An explicit operation ID adds content hashing for retry verification.
 Graph ingestion and the `retriever ingest` CLI continue through their existing
 record-based paths.
+### Row IDs { #lancedb-row-ids }
+
+Graph ingestion stores a row ID in the `id` column of each LanceDB row. This includes local and batch CLI ingest, `.vdb_upload()` on `create_ingestor(...)`, and records that you convert with `to_client_vdb_records()`. If an input row has a nonblank `metadata.content_metadata.id` or `metadata.id`, the library stores that value and checks `content_metadata.id` first. Otherwise, the library stores a deterministic 64-character hexadecimal ID. This ID is a versioned SHA-256 hash of the following row properties:
+
+- The source file path and page number.
+- The raw element kind, for example `text`, `table`, `table_caption`, `chart`, `infographic`, `audio`, or `video_frame`.
+- The bounding box.
+- The text chunk position (`chunk_index` and `chunk_count`).
+- The media time window and segment (`segment_start_seconds`, `segment_end_seconds`, `frame_timestamp_seconds`, and `segment_index`).
+- The [embedding split](embedding.md#text-input-overflow) position (`chunk_index`, `chunk_count`, `start_token`, and `end_token`).
+- The SHA-256 hash of the embedded text.
+
+Row order and Ray batch boundaries do not affect the ID, so a rerun over the same files that produces the same text also produces the same IDs. If the embedded text changes, the ID changes. For example, image captioning uses a default sampling temperature of `1.0`, so a rerun can produce different captions and new IDs for those rows.
+
+The ID is not a uniqueness constraint. Append mode (`--append` on the CLI, or `overwrite=False` in the LanceDB `vdb_kwargs`) does not check for duplicates. If you append the same input twice, the table stores duplicate rows that share an ID.
+
+`LanceDB.put()` and `PutVdbOperator` use `id` as their default key, so they can update graph-ingested rows in place. A record whose embedded text changed has a new ID that matches no stored row, so `put()` raises `KeyError`. `LanceDB.retrieval()` hits include the `id` column, but `Retriever.query` hits do not. Tables that the dedicated VectorDB service writes, including collection-managed tables, use a different schema without an `id` column.
 
 ## Semantic retrieval { #semantic-retrieval }
 
