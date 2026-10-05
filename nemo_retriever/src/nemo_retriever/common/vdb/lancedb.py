@@ -461,6 +461,15 @@ def _get_text_for_element(element):
         return metadata.get("content")
 
 
+def _record_row_id(metadata: Any, content_meta: Any) -> str:
+    """Return the record's row ID; an explicit content ID wins and blank IDs are absent."""
+    for container in (content_meta, metadata):
+        row_id = container.get("id") if isinstance(container, dict) else None
+        if row_id is not None and str(row_id).strip():
+            return str(row_id)
+    return ""
+
+
 def _create_lancedb_result(
     element: dict[str, Any],
     *,
@@ -506,16 +515,13 @@ def _create_lancedb_result(
             return None, "dropped_no_text"
         text = ""
 
-    row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-    if row_id is None and isinstance(metadata, dict):
-        row_id = metadata.get("id")
     return (
         {
             "vector": embedding,
             "text": text,
             "metadata": _json_str(content_meta),
             "source": _json_str(metadata.get("source_metadata", {})),
-            "id": str(row_id) if row_id is not None else "",
+            "id": _record_row_id(metadata, content_meta),
         },
         None,
     )
@@ -663,14 +669,11 @@ def _create_sparse_lancedb_result(element: dict[str, Any]) -> dict[str, Any] | N
         logger.debug("No text found for sparse entity: %s page: %s", source_name, page_number)
         return None
 
-    row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-    if row_id is None and isinstance(metadata, dict):
-        row_id = metadata.get("id")
     return {
         "text": text,
         "metadata": _json_str(content_meta),
         "source": _json_str(metadata.get("source_metadata", {})),
-        "id": str(row_id) if row_id is not None else "",
+        "id": _record_row_id(metadata, content_meta),
     }
 
 

@@ -16,7 +16,7 @@ from nemo_retriever.common.vdb.adt_vdb import (
     UnsupportedVDBOperation,
     VDB,
 )
-from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
+from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError, graph_row_id
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
 from nemo_retriever.operators.vdb import PutVdbOperator
@@ -206,6 +206,7 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
                 {
                     "document_type": "text",
                     "metadata": {
+                        "id": graph_row_id(data[0]),
                         "embedding": [0.1] * 2048,
                         "content": "graph chunk",
                         "content_metadata": {"page_number": 7},
@@ -624,6 +625,7 @@ def test_put_operator_delegates_records_with_configured_key_and_table_name() -> 
             {
                 "document_type": "text",
                 "metadata": {
+                    "id": graph_row_id(data[0]),
                     "embedding": [0.1] * 2048,
                     "content": "graph chunk",
                     "content_metadata": {"page_number": 7},
