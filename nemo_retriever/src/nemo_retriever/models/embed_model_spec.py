@@ -20,6 +20,7 @@ EmbedModelFamily = Literal["text", "vl"]
 _MODEL_PROFILES: dict[str, tuple[EmbedModelFamily, str]] = {
     "llama_bidirec": ("text", "LlamaBidirectionalModel"),
     "llama_nemotron_vl": ("vl", "LlamaNemotronVLModel"),
+    "mistral3": ("text", "Mistral3Model"),
     "ministral3": ("text", "Ministral3Model"),
 }
 _DEFAULT_QUERY_PREFIX = "query: "
@@ -166,13 +167,21 @@ def _spec_from_config(
             f"expected [{expected_architecture!r}] for the {family} dense embedding profile."
         )
 
-    if model_type == "ministral3" and config.get("is_causal") is not False:
+    is_causal = config.get("is_causal")
+    if model_type == "mistral3" and is_causal is None:
+        text_config = config.get("text_config")
+        if isinstance(text_config, dict):
+            is_causal = text_config.get("is_causal")
+    if model_type in {"mistral3", "ministral3"} and is_causal is not False:
         raise ValueError(
-            f"Embedding model {model_id!r} uses unsupported is_causal={config.get('is_causal')!r}; "
-            "dense Ministral3 embedding profiles require is_causal=false."
+            f"Embedding model {model_id!r} uses unsupported is_causal={is_causal!r}; "
+            "dense Mistral3 embedding profiles require is_causal=false."
         )
 
-    dimension_config = config.get("llm_config") if family == "vl" else config
+    if model_type == "mistral3":
+        dimension_config = config.get("text_config")
+    else:
+        dimension_config = config.get("llm_config") if family == "vl" else config
     dimension = dimension_config.get("hidden_size") if isinstance(dimension_config, dict) else None
     if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
         raise ValueError(

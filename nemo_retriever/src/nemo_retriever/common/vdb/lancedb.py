@@ -9,6 +9,7 @@ import os
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timezone
 from itertools import chain
@@ -22,6 +23,7 @@ import lancedb
 import pyarrow as pa
 import pyarrow.compute as pc
 from filelock import FileLock
+from lancedb.index import HnswFlat, HnswPq, HnswSq, IvfFlat, IvfPq, IvfSq
 
 from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
@@ -84,6 +86,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_VECTOR_DIM: Final[int] = 2048
 _DEFAULT_STREAM_BATCH_BYTES: Final[int] = 256 << 20
+_DEFAULT_TARGET_PARTITION_SIZE: Final[int] = 1 << 20
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
 _RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
 _NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
@@ -273,6 +276,82 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
         return None
     cap = num_rows - 1
     return min(int(requested), max(1, cap))
+
+
+def _vector_index_config(
+    index_type: object,
+    *,
+    metric: str,
+    num_partitions: int | None,
+    target_partition_size: int | None,
+    num_sub_vectors: int | None,
+    num_bits: int,
+    max_iterations: int,
+    sample_rate: int,
+    hnsw_m: int,
+    hnsw_ef_construction: int,
+    accelerator: str | None,
+) -> Any | None:
+    """Build a LanceDB unified vector-index configuration when supported."""
+
+    normalized = str(index_type or "").strip().upper().replace("-", "_")
+    common = {
+        "distance_type": metric,
+        "num_partitions": num_partitions,
+        "target_partition_size": target_partition_size,
+        "max_iterations": max_iterations,
+        "sample_rate": sample_rate,
+        "accelerator": accelerator,
+    }
+    hnsw = {**common, "m": hnsw_m, "ef_construction": hnsw_ef_construction}
+    if normalized in {"HNSW_SQ", "IVF_HNSW_SQ"}:
+        return HnswSq(**hnsw)
+    if normalized in {"HNSW_FLAT", "IVF_HNSW_FLAT"}:
+        return HnswFlat(**hnsw)
+    if normalized in {"HNSW_PQ", "IVF_HNSW_PQ"}:
+        return HnswPq(**hnsw, num_sub_vectors=num_sub_vectors, num_bits=num_bits)
+    if normalized == "IVF_SQ":
+        return IvfSq(**common)
+    if normalized == "IVF_FLAT":
+        return IvfFlat(**common)
+    if normalized == "IVF_PQ":
+        return IvfPq(**common, num_sub_vectors=num_sub_vectors, num_bits=num_bits)
+    return None
+
+
+def _json_escape_arrow_strings(values: Any) -> Any:
+    """JSON-escape a string Arrow array without converting vectors to Python."""
+
+    escaped = pc.fill_null(pc.cast(values, pa.string()), "")
+    for pattern, replacement in (
+        ("\\", "\\\\"),
+        ('"', '\\"'),
+        ("\b", "\\b"),
+        ("\f", "\\f"),
+        ("\n", "\\n"),
+        ("\r", "\\r"),
+        ("\t", "\\t"),
+    ):
+        escaped = pc.replace_substring(escaped, pattern=pattern, replacement=replacement)
+    return escaped
+
+
+def _arrow_json_object(fields: Sequence[tuple[str, Any]]) -> Any:
+    """Create a JSON object from Arrow string columns using vectorized kernels."""
+
+    pieces: list[Any] = [pa.scalar("{")]
+    for index, (name, values) in enumerate(fields):
+        if index:
+            pieces.append(pa.scalar(","))
+        pieces.extend(
+            (
+                pa.scalar(json.dumps(str(name), ensure_ascii=False) + ':"'),
+                _json_escape_arrow_strings(values),
+                pa.scalar('"'),
+            )
+        )
+    pieces.extend((pa.scalar("}"), pa.scalar("")))
+    return pc.binary_join_element_wise(*pieces)
 
 
 def _with_retrieval_mode_metadata(
@@ -711,8 +790,17 @@ class LanceDB(VDB):
         table_name: str = "nemo-retriever",
         index_type: str = "IVF_HNSW_SQ",
         metric: str = "l2",
-        num_partitions: int = 16,
-        num_sub_vectors: int = 256,
+        num_partitions: int | None = None,
+        target_partition_size: int | None = None,
+        num_sub_vectors: int | None = 256,
+        num_bits: int = 8,
+        max_iterations: int = 50,
+        sample_rate: int = 256,
+        hnsw_m: int = 20,
+        hnsw_ef_construction: int = 300,
+        index_accelerator: str | None = None,
+        index_cache_size_bytes: int | None = None,
+        metadata_cache_size_bytes: int | None = None,
         hybrid: bool = False,
         sparse: bool = False,
         fts_language: str = "English",
@@ -727,6 +815,7 @@ class LanceDB(VDB):
         stream_batch_bytes: int = _DEFAULT_STREAM_BATCH_BYTES,
         stream_optimize: bool = False,
         stream_operation_id: str | None = None,
+        input_format: str = "nrl",
         **kwargs,
     ):
         create_index = kwargs.pop("create_index", None)
@@ -739,6 +828,27 @@ class LanceDB(VDB):
 
         if vector_dim is not None and int(vector_dim) <= 0:
             raise ValueError(f"vector_dim must be positive; got {vector_dim}")
+        if num_partitions is not None and target_partition_size is not None:
+            raise ValueError("Pass only one partition control: num_partitions or target_partition_size.")
+        if num_partitions is None and target_partition_size is None:
+            target_partition_size = _DEFAULT_TARGET_PARTITION_SIZE
+        for name, value in (
+            ("num_partitions", num_partitions),
+            ("target_partition_size", target_partition_size),
+            ("num_sub_vectors", num_sub_vectors),
+            ("num_bits", num_bits),
+            ("max_iterations", max_iterations),
+            ("sample_rate", sample_rate),
+            ("hnsw_m", hnsw_m),
+            ("hnsw_ef_construction", hnsw_ef_construction),
+            ("index_cache_size_bytes", index_cache_size_bytes),
+            ("metadata_cache_size_bytes", metadata_cache_size_bytes),
+        ):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value <= 0):
+                raise ValueError(f"{name} must be a positive integer or None")
+        input_format = str(input_format).strip().lower()
+        if input_format not in {"nrl", "embedding_parquet"}:
+            raise ValueError("input_format must be 'nrl' or 'embedding_parquet'")
         if sparse and hybrid:
             raise ValueError("LanceDB sparse ingest cannot also be hybrid; pass only one retrieval mode.")
         if isinstance(stream_batch_bytes, bool) or not isinstance(stream_batch_bytes, int) or stream_batch_bytes <= 0:
@@ -756,7 +866,20 @@ class LanceDB(VDB):
         self.index_type = index_type
         self.metric = metric
         self.num_partitions = num_partitions
+        self.target_partition_size = target_partition_size
         self.num_sub_vectors = num_sub_vectors
+        self.num_bits = num_bits
+        self.max_iterations = max_iterations
+        self.sample_rate = sample_rate
+        self.hnsw_m = hnsw_m
+        self.hnsw_ef_construction = hnsw_ef_construction
+        self.index_accelerator = index_accelerator
+        self.index_cache_size_bytes = index_cache_size_bytes
+        self.metadata_cache_size_bytes = metadata_cache_size_bytes
+        self._lancedb_session = lancedb.Session(
+            index_cache_size_bytes=index_cache_size_bytes,
+            metadata_cache_size_bytes=metadata_cache_size_bytes,
+        )
         self.hybrid = hybrid
         self.sparse = bool(sparse)
         self.fts_language = fts_language
@@ -770,9 +893,18 @@ class LanceDB(VDB):
         self.stream_batch_bytes = stream_batch_bytes
         self.stream_optimize = stream_optimize
         self.stream_operation_id = stream_operation_id
+        self.input_format = input_format
         # Remote stores and private service schemas retain the legacy path.
         self.supports_stream_ingest = (
             _is_filesystem_lancedb_uri(self.uri) and not service_table_schema and service_index_mode is None
+        )
+        # Canonicalize batches in parallel, but retain one final table writer.
+        self.supports_prepared_stream_ingest = bool(
+            self.supports_stream_ingest
+            and self.overwrite
+            and not self.sparse
+            and self.vector_dim is not None
+            and self.stream_operation_id is None
         )
         self._service_table_schema = service_table_schema
         self._service_index_mode = str(service_index_mode) if service_index_mode is not None else None
@@ -887,7 +1019,7 @@ class LanceDB(VDB):
         with self._connection_lock:
             connection = self._connections.get(resolved_uri)
             if connection is None:
-                connection = lancedb.connect(uri=resolved_uri)
+                connection = lancedb.connect(uri=resolved_uri, session=self._lancedb_session)
                 self._connections[resolved_uri] = connection
             return connection
 
@@ -1305,8 +1437,15 @@ class LanceDB(VDB):
         table=None,
         index_type="IVF_HNSW_SQ",
         metric="l2",
-        num_partitions=16,
-        num_sub_vectors=256,
+        num_partitions: int | None = None,
+        target_partition_size: int | None = None,
+        num_sub_vectors: int | None = 256,
+        num_bits: int = 8,
+        max_iterations: int = 50,
+        sample_rate: int = 256,
+        hnsw_m: int = 20,
+        hnsw_ef_construction: int = 300,
+        index_accelerator: str | None = None,
         hybrid: bool | None = None,
         sparse: bool | None = None,
         fts_language: str | None = None,
@@ -1314,9 +1453,10 @@ class LanceDB(VDB):
     ):
         """Create vector and optionally FTS indexes on the LanceDB table.
 
-        For IVF index types, ``num_partitions`` is clamped so that
-        ``num_partitions < row_count`` (Lance K-means requirement). Empty or
-        single-row tables skip the vector index; hybrid FTS may still be built.
+        ``target_partition_size`` lets LanceDB derive the partition count as
+        the table grows. For explicit IVF partition counts, ``num_partitions``
+        is clamped so that ``num_partitions < row_count``. Empty or single-row
+        tables skip the vector index; hybrid FTS may still be built.
         """
         hybrid = hybrid if hybrid is not None else self.hybrid
         sparse = sparse if sparse is not None else self.sparse
@@ -1330,22 +1470,24 @@ class LanceDB(VDB):
             _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
             return
 
+        if num_partitions is not None and target_partition_size is not None:
+            raise ValueError("Pass only one partition control: num_partitions or target_partition_size.")
+        if num_partitions is None and target_partition_size is None:
+            target_partition_size = _DEFAULT_TARGET_PARTITION_SIZE
+
         num_rows = int(table.count_rows())
-        requested_partitions = int(num_partitions)
         use_ivf = _is_ivf_vector_index(index_type)
-        effective_partitions: int | None
-        if use_ivf:
-            effective_partitions = _effective_ivf_num_partitions(num_rows, requested_partitions)
+        if use_ivf and num_rows < 2:
+            effective_partitions = None
+        elif use_ivf and num_partitions is not None:
+            effective_partitions = _effective_ivf_num_partitions(num_rows, int(num_partitions))
         else:
-            effective_partitions = requested_partitions
+            effective_partitions = num_partitions
 
         vector_index_start = time.perf_counter()
-        if use_ivf and effective_partitions is None:
+        if use_ivf and effective_partitions is None and num_rows < 2:
             if num_rows == 0:
-                logger.warning(
-                    "Skipping LanceDB vector index: empty table (index_type=%s).",
-                    index_type,
-                )
+                logger.warning("Skipping LanceDB vector index: empty table (index_type=%s).", index_type)
             else:
                 logger.info(
                     "Skipping LanceDB vector index: IVF needs at least two rows (got %d; index_type=%s).",
@@ -1353,24 +1495,44 @@ class LanceDB(VDB):
                     index_type,
                 )
         else:
-            partitions_for_index = (
-                int(effective_partitions) if effective_partitions is not None else requested_partitions
-            )
-            if use_ivf and partitions_for_index != requested_partitions:
+            partitions_for_index = int(effective_partitions) if effective_partitions is not None else None
+            if use_ivf and num_partitions is not None and partitions_for_index != num_partitions:
                 logger.info(
                     "Clamping num_partitions from %d to %d (table has %d rows; IVF requires partitions < row count).",
-                    requested_partitions,
+                    num_partitions,
                     partitions_for_index,
                     num_rows,
                 )
-            table.create_index(
-                index_type=index_type,
+            config = _vector_index_config(
+                index_type,
                 metric=metric,
                 num_partitions=partitions_for_index,
+                target_partition_size=target_partition_size,
                 num_sub_vectors=num_sub_vectors,
-                vector_column_name="vector",
-                replace=True,
+                num_bits=num_bits,
+                max_iterations=max_iterations,
+                sample_rate=sample_rate,
+                hnsw_m=hnsw_m,
+                hnsw_ef_construction=hnsw_ef_construction,
+                accelerator=index_accelerator,
             )
+            if config is None:
+                table.create_index(
+                    index_type=index_type,
+                    metric=metric,
+                    num_partitions=partitions_for_index,
+                    target_partition_size=target_partition_size,
+                    num_sub_vectors=num_sub_vectors,
+                    accelerator=index_accelerator,
+                    vector_column_name="vector",
+                    replace=True,
+                )
+            else:
+                table.create_index(
+                    "vector",
+                    config=config,
+                    replace=True,
+                )
             wait_for_column_index(table, "vector", covered_rows=num_rows)
             _record_timing("lancedb.vector_index_ready", time.perf_counter() - vector_index_start)
 
@@ -1447,8 +1609,16 @@ class LanceDB(VDB):
                 "build_index": self.build_index,
                 "index_type": str(self.index_type),
                 "metric": str(self.metric),
-                "num_partitions": int(self.num_partitions),
-                "num_sub_vectors": int(self.num_sub_vectors),
+                "num_partitions": self.num_partitions,
+                "target_partition_size": self.target_partition_size,
+                "num_sub_vectors": self.num_sub_vectors,
+                "num_bits": self.num_bits,
+                "max_iterations": self.max_iterations,
+                "sample_rate": self.sample_rate,
+                "hnsw_m": self.hnsw_m,
+                "hnsw_ef_construction": self.hnsw_ef_construction,
+                "index_accelerator": self.index_accelerator,
+                "input_format": self.input_format,
                 "fts_language": str(self.fts_language),
                 "hybrid": self.hybrid,
                 "sparse": self.sparse,
@@ -1583,7 +1753,7 @@ class LanceDB(VDB):
     ) -> None:
         """Validate data and indexes before recording durable success."""
 
-        fresh_table = lancedb.connect(uri=self.uri).open_table(self.table_name)
+        fresh_table = self._connect().open_table(self.table_name)
         if self.build_index:
             self._maintain_indexes(None, fresh_table)
         if self.stream_optimize:
@@ -1717,7 +1887,7 @@ class LanceDB(VDB):
 
         stats = _StreamStats(vector_dim=self.vector_dim)
         with self._write_lock:
-            db = lancedb.connect(uri=self.uri)
+            db = self._connect()
             try:
                 existing_table = db.open_table(self.table_name)
             except ValueError as exc:
@@ -1865,6 +2035,172 @@ class LanceDB(VDB):
                     retry_operation_id=operation_id,
                 ) from exc
 
+    def prepare_stream_ingest_batch(self, records: Iterable[dict[str, Any]]) -> pa.Table:
+        """Convert one graph batch into canonical LanceDB Arrow columns."""
+
+        if not self.supports_prepared_stream_ingest:
+            raise UnsupportedVDBOperation(
+                "LanceDB prepared streaming requires a local, dense, non-durable overwrite "
+                "with an explicit vector_dim."
+            )
+
+        stats = _StreamStats(vector_dim=self.vector_dim)
+        rows = self._iter_stream_rows(records, stats)
+        policy_rows = _apply_deferred_bad_vector_policy(
+            rows,
+            vector_dim=int(self.vector_dim or 0),
+            sparse=False,
+            on_bad_vectors=self.on_bad_vectors,
+            fill_value=self.fill_value,
+        )
+        schema = self._stream_schema(self.vector_dim)
+        prepared = list(
+            _checked_batches(
+                policy_rows,
+                schema=schema,
+                max_batch_bytes=self.stream_batch_bytes,
+                stats=stats,
+                include_digest=False,
+            )
+        )
+        return pa.Table.from_batches(prepared, schema=schema)
+
+    def prepare_embedding_parquet_batch(self, batch: Any) -> pa.Table:
+        """Project staged embedding Parquet into LanceDB columns without copying vectors to Python."""
+
+        if self.input_format != "embedding_parquet":
+            raise UnsupportedVDBOperation("Set input_format='embedding_parquet' for staged embedding input.")
+        if not self.supports_prepared_stream_ingest:
+            raise UnsupportedVDBOperation("Embedding Parquet input requires prepared local dense streaming.")
+        if isinstance(batch, pa.RecordBatch):
+            batch = pa.Table.from_batches([batch])
+        if not isinstance(batch, pa.Table):
+            raise TypeError(f"Embedding Parquet batches must be pyarrow.Table, got {type(batch).__name__}.")
+
+        required = {"id", "document_id", "text", "url", "file_path", "dump", "source_id", "vector"}
+        missing = sorted(required.difference(batch.column_names))
+        if missing:
+            raise ValueError(f"Embedding Parquet batch is missing required column(s): {', '.join(missing)}")
+        vector_type = batch.schema.field("vector").type
+        if not pa.types.is_fixed_size_list(vector_type) or vector_type.list_size != self.vector_dim:
+            raise ValueError(
+                f"Embedding Parquet vector type must be fixed_size_list<float32>[{self.vector_dim}]; "
+                f"got {vector_type}."
+            )
+        if vector_type.value_type != pa.float32():
+            raise ValueError(f"Embedding Parquet vectors must contain float32 values; got {vector_type.value_type}.")
+
+        metadata = _arrow_json_object(
+            (
+                ("id", batch.column("id")),
+                ("document_id", batch.column("document_id")),
+                ("type", pa.repeat("text", batch.num_rows)),
+            )
+        )
+        source = _arrow_json_object(
+            (
+                ("source_id", batch.column("source_id")),
+                ("source_name", batch.column("url")),
+                ("url", batch.column("url")),
+                ("file_path", batch.column("file_path")),
+                ("dump", batch.column("dump")),
+                ("document_id", batch.column("document_id")),
+            )
+        )
+        schema = self._stream_schema(self.vector_dim)
+        return pa.Table.from_arrays(
+            [batch.column("vector"), batch.column("text"), metadata, source, batch.column("id")],
+            schema=schema,
+        )
+
+    def _write_prepared_stream_batches(self, batches: Iterable[Any]) -> None:
+        """Write canonical Arrow batches without materializing Python rows."""
+
+        schema = self._stream_schema(self.vector_dim)
+        stats = _StreamStats(vector_dim=self.vector_dim)
+
+        def canonical_batches() -> Iterator[pa.RecordBatch]:
+            for value in batches:
+                if isinstance(value, pa.Table):
+                    value_batches = value.to_batches()
+                elif isinstance(value, pa.RecordBatch):
+                    value_batches = (value,)
+                else:
+                    raise TypeError(
+                        "Prepared LanceDB stream batches must be pyarrow.Table or "
+                        f"pyarrow.RecordBatch, got {type(value).__name__}."
+                    )
+                for batch in value_batches:
+                    if batch.num_rows == 0:
+                        continue
+                    if not _schemas_have_same_fields(batch.schema, schema):
+                        raise ValueError(
+                            "Prepared LanceDB batch schema does not match the configured table schema: "
+                            f"expected={schema}, actual={batch.schema}."
+                        )
+                    stats.client_records += int(batch.num_rows)
+                    stats.rows_written += int(batch.num_rows)
+                    yield batch.replace_schema_metadata(schema.metadata)
+
+        prepared = canonical_batches()
+        first_batch = next(prepared, None)
+        if first_batch is None:
+            return
+
+        with self._write_lock:
+            db = self._connect()
+            try:
+                existing_table = db.open_table(self.table_name)
+            except ValueError as exc:
+                if not _is_missing_lancedb_table_error(exc):
+                    raise
+                existing_table = None
+
+            base_version: int | None = None
+            if existing_table is not None:
+                existing_table.checkout_latest()
+                _assert_lancedb_table_ready(existing_table)
+                base_version = int(existing_table.version)
+
+            data_version = self._mutate_stream_data(
+                db=db,
+                existing_table=existing_table,
+                markers=None,
+                mode="overwrite",
+                base_version=base_version,
+                schema=schema,
+                batches=chain((first_batch,), prepared),
+                stats=stats,
+            )
+            try:
+                self._finalize_stream_write(
+                    markers=None,
+                    data_version=data_version,
+                    expected_schema=schema,
+                    expected_rows=stats.rows_written,
+                    stats=stats,
+                )
+            except Exception as exc:  # noqa: BLE001 - terminal post-commit boundary.
+                logger.error(
+                    "Prepared LanceDB data committed at version %s but finalization failed for table %r.",
+                    data_version,
+                    self.table_name,
+                    exc_info=True,
+                )
+                raise DataCommittedFinalizationError(
+                    self.table_name,
+                    data_version,
+                    retry_operation_id=None,
+                ) from exc
+
+    def stream_ingest_prepared_batches(self, batches: Iterable[Any]) -> None:
+        """Ingest canonical Arrow batches through one LanceDB mutation."""
+
+        if not self.supports_prepared_stream_ingest:
+            raise UnsupportedVDBOperation("LanceDB prepared streaming is unavailable for this configuration.")
+        with self._stream_lock, _table_mutation_lock(self.uri, self.table_name):
+            self._write_prepared_stream_batches(batches)
+
     def stream_ingest(self, records: Iterable[dict[str, Any]]) -> None:
         """Ingest canonical records through one bounded LanceDB lifecycle.
 
@@ -1995,7 +2331,14 @@ class LanceDB(VDB):
                     index_type=self.index_type,
                     metric=self.metric,
                     num_partitions=self.num_partitions,
+                    target_partition_size=self.target_partition_size,
                     num_sub_vectors=self.num_sub_vectors,
+                    num_bits=self.num_bits,
+                    max_iterations=self.max_iterations,
+                    sample_rate=self.sample_rate,
+                    hnsw_m=self.hnsw_m,
+                    hnsw_ef_construction=self.hnsw_ef_construction,
+                    index_accelerator=self.index_accelerator,
                     hybrid=self.hybrid,
                     sparse=self.sparse,
                     fts_language=self.fts_language,
@@ -2204,6 +2547,9 @@ class LanceDB(VDB):
             Optional :class:`HybridFusionPolicy`. When present, each hybrid leg
             retrieves at least ``candidate_depth`` rows, applies weighted RRF,
             and returns only the requested ``top_k`` rows.
+        retrieval_workers:
+            Number of query vectors searched concurrently. The default of 1
+            preserves serialized behavior. Results retain input query order.
         """
         hybrid = kwargs.pop("hybrid", self.hybrid)
         hybrid_fusion = kwargs.pop("hybrid_fusion", None)
@@ -2215,6 +2561,10 @@ class LanceDB(VDB):
         top_k = int(kwargs.pop("top_k", 10))
         refine_factor = int(kwargs.pop("refine_factor", 50))
         n_probe = int(kwargs.pop("n_probe", kwargs.pop("nprobes", 64)))
+        retrieval_workers = int(kwargs.pop("retrieval_workers", 1))
+        if retrieval_workers <= 0:
+            raise ValueError("retrieval_workers must be positive")
+        distance_type = str(kwargs.pop("metric", kwargs.pop("distance_type", self.metric)))
         vector_column_name = str(kwargs.pop("vector_column_name", "vector"))
 
         search_kwargs_raw = kwargs.pop("search_kwargs", None)
@@ -2269,11 +2619,11 @@ class LanceDB(VDB):
                     f"got query_texts={len(query_texts_list)} vectors={len(vectors_for_search)}."
                 )
         else:
-            vectors_for_search = vectors
+            vectors_for_search = list(vectors)
             query_texts_list = []
 
-        search_results = []
-        for idx, vector in enumerate(vectors_for_search):
+        def search_one(item: tuple[int, Sequence[float]]) -> list[dict[str, Any]]:
+            idx, vector = item
             if hybrid:
 
                 def build_query(text: str, *, query_vector=vector):
@@ -2281,6 +2631,7 @@ class LanceDB(VDB):
                         table.search(vector_column_name=vector_column_name, **search_kwargs)
                         .vector(query_vector)
                         .text(text)
+                        .distance_type(distance_type)
                     )
                     if where_clause is not None:
                         query = query.where(where_clause)
@@ -2300,12 +2651,18 @@ class LanceDB(VDB):
                     results = results[:top_k]
             else:
                 query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
+                query = query.distance_type(distance_type)
                 if where_clause is not None:
                     query = query.where(where_clause)
                 query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
                 if result_fields is not None:
                     query = query.select(result_fields)
                 results = query.to_list()
-            search_results.append(results)
+            return results
 
-        return search_results
+        indexed_vectors = list(enumerate(vectors_for_search))
+        if retrieval_workers == 1 or len(indexed_vectors) <= 1:
+            return [search_one(item) for item in indexed_vectors]
+        worker_count = min(retrieval_workers, len(indexed_vectors))
+        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="lancedb-query") as pool:
+            return list(pool.map(search_one, indexed_vectors))

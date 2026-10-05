@@ -180,6 +180,38 @@ class EmbeddingInputPolicy:
             )
         return best
 
+    def _largest_fitting_character_end(self, text: str, start: int) -> int:
+        """Find a source-text boundary whose formatted input fits exactly."""
+        low = start + 1
+        high = len(text)
+        best = start
+        while low <= high:
+            candidate = (low + high) // 2
+            if self._formatted_token_count(text[start:candidate]) <= self.max_tokens:
+                best = candidate
+                low = candidate + 1
+            else:
+                high = candidate - 1
+        if best == start:
+            raise ValueError(
+                "Embedding input cannot fit one source character after applying the model prefix and special tokens"
+            )
+        return best
+
+    def _split_exact_source(self, text: str) -> tuple[EmbeddingSplitChild, ...]:
+        """Split exact source slices when tokenizer decode is not reversible."""
+        children: list[EmbeddingSplitChild] = []
+        character_start = 0
+        token_start = 0
+        while character_start < len(text):
+            character_end = self._largest_fitting_character_end(text, character_start)
+            chunk = text[character_start:character_end]
+            token_end = token_start + len(self.tokenizer.encode(chunk, add_special_tokens=False))
+            children.append(EmbeddingSplitChild(content=chunk, start_token=token_start, end_token=token_end))
+            character_start = character_end
+            token_start = token_end
+        return tuple(children)
+
     def _split(self, text: str) -> tuple[EmbeddingSplitChild, ...]:
         token_ids = self.tokenizer.encode(text, add_special_tokens=False)
         children: list[EmbeddingSplitChild] = []
@@ -197,17 +229,11 @@ class EmbeddingInputPolicy:
                     break
                 end -= 1
             else:
-                raise ValueError(
-                    "Embedding input cannot be split without changing its token sequence; "
-                    "use the exact reversible tokenizer for this embedding model."
-                )
+                return self._split_exact_source(text)
             children.append(EmbeddingSplitChild(content=chunk, start_token=start, end_token=end))
             start = end
         if "".join(child.content for child in children) != text:
-            raise ValueError(
-                "Embedding input cannot be split without changing its source text; "
-                "use the exact reversible tokenizer for this embedding model."
-            )
+            return self._split_exact_source(text)
         return tuple(children)
 
     def plan(self, texts: Sequence[str]) -> tuple[EmbeddingSplitPlan, ...]:

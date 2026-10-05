@@ -8,6 +8,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Keep the embedding model aligned](#lancedb-embedding-model-compatibility)
 - [LanceDB Overview](#why-lancedb)
 - [Upload to LanceDB](#upload-to-lancedb)
+- [Elasticsearch with NVIDIA cuVS](#elasticsearch-cuvs)
     - [Direct LanceDB ingest and retrieval](#direct-lancedb-ingest-and-retrieval)
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
@@ -282,6 +283,164 @@ These settings apply only to `LanceDB.stream_ingest()`. Legacy `run()` and
 `RayDataExecutor.build_dataset()` remains lazy and builds the complete legacy
 graph, including the global VDB stage. In-process and service execution do not
 select streaming ingest and retain their existing VDB dispatch.
+
+For a terminal, side-effect-only streaming sink, construct `RayDataExecutor`
+with `retain_stream_ingest_output=False`. This prevents the driver from retaining
+every embedded batch after it sends the batch to the bounded VDB queue. The
+default remains `True` for compatibility, and pipelines with stages after the
+VDB sink always retain the batches required by those stages.
+
+#### Configure Ray streaming buffers
+
+`RayDataExecutor` provides the following settings for an eligible streaming VDB
+sink:
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `stream_ingest_prefetch_batches` | `1` | Sets the number of Ray Dataset batches that the local iterator prefetches. |
+| `stream_ingest_queue_size` | `4` | Sets the maximum number of batches or spool descriptors waiting for the storage actor. |
+| `stream_ingest_prepare_concurrency` | `None` | Enables parallel conversion to prepared Arrow batches with the specified number of workers. |
+| `stream_ingest_spool_directory` | `None` | Stores prepared Arrow IPC batches in a unique run subdirectory before the serialized VDB sink consumes them. |
+| `stream_ingest_spool_max_bytes` | `None` | Bounds the total bytes in outstanding spool files. The producer waits when the bound is reached. |
+
+Disk-backed spooling requires `stream_ingest_prepare_concurrency`. The executor
+queues lightweight file descriptors instead of the prepared Arrow contents.
+The sink deletes each spool file after it hands the corresponding actions to the
+backend stream. Use a spool path on storage with enough free capacity for the
+configured byte bound. The spool is a bounded performance buffer, not a durable
+replay log: a backend failure can occur after a consumed spool file is removed.
+Use deterministic document IDs and a resumable backend configuration when exact
+recovery is required. A failed or interrupted run can leave its unique run
+subdirectory for inspection or manual cleanup.
+
+The spool decouples embedding from short sink stalls and preserves more
+continuous GPU work. It does not make the serialized sink faster. Size the
+prefetch and queue settings for the workload, and set
+`stream_ingest_spool_max_bytes` to prevent unbounded disk use. The workload's
+80% GPU utilization guarantee applies only to the steady-state embedding phase.
+Startup, final queue draining, and LanceDB index construction do not perform
+embedding and are outside that utilization guarantee.
+
+Workload-specific scripts can select larger values than the general executor
+defaults. Override them with `--stream-prefetch-batches`,
+`--stream-queue-size`, `--stream-spool-directory`, and
+`--stream-spool-max-gib`.
+
+#### Stage FineWeb embeddings in Parquet
+
+Set `--embedding-parquet-output` to run the FineWeb script in embedding-only
+mode. This mode replaces the LanceDB sink with a Parquet writer. It does not
+create a LanceDB table or build a vector index.
+
+The following command writes reusable embedding artifacts:
+
+```bash
+uv run python nemo_retriever/scripts/ingest_fineweb_parquet.py \
+  --input /data/fineweb/deduplicated \
+  --embedding-parquet-output /data/fineweb/embedding_parquet
+```
+
+Configure Parquet output with the following flags:
+
+| Flag | Default | Behavior |
+| --- | --- | --- |
+| `--embedding-parquet-output` | `None` | Enables embedding-only mode and sets the output directory. |
+| `--parquet-write-workers` | `32` | Sets concurrent Ray Data Parquet writers. |
+| `--parquet-min-rows-per-file` | `32768` | Sets the preferred minimum number of rows in each output file. |
+| `--parquet-max-rows-per-file` | `65536` | Sets the maximum number of rows in each output file. This value must be at least the minimum. |
+
+The script fails if the output path already exists. It does not append,
+overwrite, or resume an incomplete directory. Use a new path, or inspect and
+explicitly remove an incomplete output before you retry. The writer uses Zstandard
+compression, writes column statistics, and preserves a stable Arrow schema.
+
+With the default `--vector-dim 2048`, each row has the following schema:
+
+| Column | Arrow type | Content |
+| --- | --- | --- |
+| `id` | Non-null string | Chunk ID for split text, or the stable document ID for unsplit text. |
+| `document_id` | Non-null string | Stable identity of the source document. |
+| `text` | Non-null string | Text represented by the vector. |
+| `url` | Non-null string | Selected source URL, or an empty string. |
+| `file_path` | Non-null string | Selected source path, or an empty string. |
+| `dump` | Non-null string | Selected source dump identifier, or an empty string. |
+| `source_id` | Non-null string | Source identity, with the stable document ID as fallback. |
+| `parent_id` | Nullable string | Parent identifier for split text. |
+| `chunk_index` | Nullable `int32` | Zero-based position of a split chunk. |
+| `chunk_count` | Nullable `int32` | Number of chunks generated from the parent text. |
+| `start_token` | Nullable `int32` | Inclusive start token for the split chunk. |
+| `end_token` | Nullable `int32` | Exclusive end token for the split chunk. |
+| `metadata` | Non-null string | Compact JSON metadata without the duplicated embedding value. |
+| `embedding_model` | Non-null string | Model identifier supplied by `--model`. |
+| `embedding_revision` | Non-null string | Revision supplied by `--model-revision`, or an empty string. |
+| `vector` | Non-null `fixed_size_list<float32>[2048]` | Dense embedding. The fixed width follows `--vector-dim`. |
+
+For split text, `id` comes from `embedding_split.chunk_id`, and the nullable
+lineage fields come from `embedding_split`. For unsplit text, the script derives
+stable document identity from available document, content, source, URL, or file
+path metadata. The Arrow schema also records the model, revision, and vector
+dimension as schema metadata.
+
+Use the staged artifacts in a three-phase workflow:
+
+1. Generate and validate the embedding Parquet dataset. This phase can keep the
+   GPUs busy without waiting for a serialized LanceDB mutation.
+2. Import the staged rows into a persisted LanceDB table, and build the vector
+   index as a separate phase. Keep the model, revision, and vector dimension
+   unchanged during import.
+3. Benchmark retrieval against the completed persisted index. Do not include
+   embedding generation or index construction in query-latency measurements.
+
+The FineWeb script implements the first phase when you set
+`--embedding-parquet-output`. Run the importer and index builder separately so
+you can retry storage work without recomputing embeddings.
+
+Use `scripts/index_fineweb_embeddings.py` for the second phase. The script builds
+a sink-only graph with `IngestVdbOperator`, reads only the eight required staged
+columns, and keeps the fixed-size vector buffer in Arrow. The LanceDB backend
+uses `input_format="embedding_parquet"` to project source and content metadata
+without converting vectors to Python lists.
+
+The default `IVF_HNSW_SQ` configuration uses cosine distance, HNSW `M=20`,
+`ef_construction=300`, and a target partition size of 1,048,576 rows. Set either
+`target_partition_size` or `num_partitions`, but not both. When neither is set
+on the LanceDB operator, it uses the 1,048,576-row target. LanceDB derives the
+partition count from the final table size. `index_accelerator="cuda"` accelerates
+only IVF training; it does not accelerate HNSW graph construction.
+
+For repeated queries, set `index_cache_size_bytes` and
+`metadata_cache_size_bytes` on the LanceDB operator. The operator creates one
+LanceDB session and shares its caches across backend-owned connections. Size the
+index cache for the number of partitions that `nprobes` can touch. The first
+query against a partition loads it from storage; later queries reuse the cached
+index data.
+
+The following command creates a 10,000,000-row gate before a full import:
+
+```bash
+uv run python nemo_retriever/scripts/index_fineweb_embeddings.py \
+  --input /data/fineweb/embeddings_parquet \
+  --output /data/fineweb/lancedb_gate_10m \
+  --limit 10000000 \
+  --target-partition-size 1048576 \
+  --temp-directory /data/fineweb/lancedb_tmp \
+  --ray-temp-directory /tmp/nrl-ray
+```
+
+Keep `--ray-temp-directory` short enough for Unix-domain socket paths.
+`--temp-directory` is independently used for LanceDB index shuffle data and
+should point to spacious storage.
+
+The gate verifies row count, index coverage, exact-vector self-retrieval, and
+cold compared with warm query latency. Use a new output path for each run. After
+the gate succeeds, add `--full-corpus` and select a new output directory to
+index every staged row.
+
+Use `ParquetTextActor.projected_columns()` as the `columns` argument to
+`ray.data.read_parquet()`. The scan then reads only `text`, `url`, `file_path`,
+`id`, and `dump`. The actor maps `id` to stable content identity and preserves
+`url`, `file_path`, and `dump` as source provenance before the embed and VDB
+stages. It does not read or reuse an existing embedding column.
 
 ### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 

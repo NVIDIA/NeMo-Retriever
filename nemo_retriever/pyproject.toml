@@ -103,12 +103,19 @@ dependencies = [
   # targets the public NVCF Parakeet endpoint (the default) or any remote NIM.
   "nvidia-riva-client>=2.25.1",
   # Exact tokenizer-only TXT/HTML chunking (no transformers, torch, or weights).
-  # Transformers 5.17 requires tokenizers 0.23.1 or newer.
-  "tokenizers>=0.23.1",
+  # Transformers 5.12 uses tokenizers 0.22-0.23; newer local profiles select
+  # their stricter compatible tokenizer through the Transformers requirement.
+  "tokenizers>=0.22.0",
   "huggingface-hub>=0.34.0",
 ]
 
 [project.optional-dependencies]
+
+# Elasticsearch dense-vector backend. NVIDIA cuVS is installed and configured
+# on Elasticsearch data nodes, not in the NRL Python environment.
+elasticsearch = [
+  "elasticsearch>=9.0,<10",
+]
 
 # Core ``pip install nemo-retriever`` (no extras) supports remote HTTP NIM and the
 # ``retriever ingest`` / ``retriever query`` CLIs without ``tritonclient``. Triton gRPC is imported only

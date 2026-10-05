@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import fcntl
+import os
 import warnings
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
@@ -49,6 +51,7 @@ class LlamaNemotronEmbed1BV2Embedder:
     document_prefix: str = "passage: "
 
     _llm: Any = field(default=None, init=False, repr=False)
+    _vllm_port_lock: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.device is not None:
@@ -70,6 +73,27 @@ class LlamaNemotronEmbed1BV2Embedder:
         configure_global_hf_cache_base(self.hf_cache_dir)
         model_id = resolve_local_embed_model(self.model_id, backend="vllm")
         max_model_len = int(self.max_length) if int(self.max_length) > 0 else None
+        # Concurrent local engines otherwise race while probing an ephemeral TCP
+        # port. Hold an exclusive lock for the process lifetime so every live Ray
+        # actor receives a disjoint 32-port block. Preserve explicit operator
+        # configuration when VLLM_PORT is already set.
+        if "VLLM_PORT" not in os.environ:
+            lock_dir = "/tmp/nemo_retriever_vllm_port_blocks"
+            os.makedirs(lock_dir, exist_ok=True)
+            start_slot = os.getpid() % 1_400
+            for offset in range(1_400):
+                slot = (start_slot + offset) % 1_400
+                lock_handle = open(f"{lock_dir}/{slot}.lock", "a+")
+                try:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    lock_handle.close()
+                    continue
+                self._vllm_port_lock = lock_handle
+                os.environ["VLLM_PORT"] = str(20_000 + slot * 32)
+                break
+            else:
+                raise RuntimeError("No free vLLM port block is available")
         self._llm = create_vllm_llm(
             str(model_id),
             revision=resolve_embed_model_revision(model_id, self.revision),

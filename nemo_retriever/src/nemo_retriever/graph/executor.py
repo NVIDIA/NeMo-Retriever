@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from dataclasses import dataclass
 import math
+import os
+from pathlib import Path
+from queue import Empty, Full
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
 import pandas as pd
@@ -42,6 +46,9 @@ logger = logging.getLogger(__name__)
 # Reuses the same baseline constant as the batch ingest mode.
 _DEFAULT_GPU_OPERATOR_NUM_GPUS = OCR_GPUS_PER_ACTOR
 _STREAM_INGEST_PREFETCH_BATCHES = 1
+_STREAM_INGEST_QUEUE_SIZE = 4
+_STREAM_INGEST_QUEUE_PUT_TIMEOUT_SECONDS = 1.0
+_STREAM_INGEST_QUEUE_END = "nemo_retriever.stream_ingest.end"
 _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 
 # Ray can briefly report stale available resources after a Dataset releases its
@@ -181,6 +188,129 @@ class _ArrowPandasOperatorAdapter:
 
     def __call__(self, table: Any) -> Any:
         return self._operator(arrow_table_to_pandas(table))
+
+
+class _StreamingVdbPrepareActor:
+    """Canonicalize VDB batches in parallel without mutating storage."""
+
+    def __init__(self, operator_class: type, operator_kwargs: dict[str, Any]) -> None:
+        self._operator = operator_class(**operator_kwargs)
+
+    def __call__(self, batch: Any) -> Any:
+        return self._operator._prepare_stream_batch(batch)
+
+
+@dataclass(frozen=True, slots=True)
+class _SpooledStreamBatch:
+    """Driver-written Arrow IPC batch consumed by the streaming sink actor."""
+
+    path: str
+    rows: int
+    bytes: int
+
+
+def _write_stream_spool_batch(batch: Any, spool_directory: Path, sequence: int) -> _SpooledStreamBatch:
+    """Persist one prepared Arrow batch atomically outside Ray's object store."""
+
+    import pyarrow as pa
+
+    if isinstance(batch, pa.RecordBatch):
+        table = pa.Table.from_batches([batch])
+    elif isinstance(batch, pa.Table):
+        table = batch
+    else:
+        raise TypeError(f"Prepared stream spool requires a pyarrow batch, got {type(batch).__name__}.")
+
+    final_path = spool_directory / f"batch-{sequence:012d}.arrow"
+    temporary_path = final_path.with_suffix(".arrow.tmp")
+    with pa.OSFile(str(temporary_path), "wb") as sink:
+        with pa.ipc.new_file(sink, table.schema) as writer:
+            writer.write_table(table)
+    os.replace(temporary_path, final_path)
+    return _SpooledStreamBatch(
+        path=str(final_path),
+        rows=int(table.num_rows),
+        bytes=int(final_path.stat().st_size),
+    )
+
+
+class _StreamingVdbActor:
+    """Own one streaming VDB operator behind a bounded Ray queue."""
+
+    def __init__(self, operator_class: type, operator_kwargs: dict[str, Any], prepared: bool = False) -> None:
+        self._operator = operator_class(**operator_kwargs)
+        self._prepared = bool(prepared)
+
+    def consume(self, input_queue: Any, spool_ack_queue: Any | None = None) -> dict[str, Any]:
+        batches = 0
+        rows = 0
+        spooled_batches = 0
+        spooled_bytes = 0
+        queue_wait_seconds = 0.0
+
+        def queued_batches() -> Iterator[Any]:
+            nonlocal batches, rows, spooled_batches, spooled_bytes, queue_wait_seconds
+            while True:
+                started = time.perf_counter()
+                batch = input_queue.get()
+                queue_wait_seconds += time.perf_counter() - started
+                if isinstance(batch, str) and batch == _STREAM_INGEST_QUEUE_END:
+                    return
+                batches += 1
+                if isinstance(batch, _SpooledStreamBatch):
+                    import pyarrow as pa
+
+                    rows += batch.rows
+                    spooled_batches += 1
+                    spooled_bytes += batch.bytes
+                    source = pa.memory_map(batch.path, "r")
+                    try:
+                        yield pa.ipc.open_file(source).read_all()
+                    finally:
+                        source.close()
+                        try:
+                            os.unlink(batch.path)
+                        finally:
+                            if spool_ack_queue is not None:
+                                spool_ack_queue.put(batch.bytes)
+                    continue
+                rows += int(getattr(batch, "num_rows", len(batch)))
+                yield batch
+
+        started = time.perf_counter()
+        if self._prepared:
+            self._operator._stream_ingest_prepared(queued_batches())
+        else:
+            self._operator._stream_ingest(queued_batches())
+        result = {
+            "actor_pid": os.getpid(),
+            "batches": batches,
+            "rows": rows,
+            "spooled_batches": spooled_batches,
+            "spooled_bytes": spooled_bytes,
+            "elapsed_seconds": time.perf_counter() - started,
+            "queue_wait_seconds": queue_wait_seconds,
+            "operator_timings": dict(getattr(self._operator, "_stream_ingest_timings", {})),
+        }
+        logger.info("Streaming VDB actor stats: %s", result)
+        return result
+
+
+def _put_stream_ingest_item(input_queue: Any, item: Any, sink_ref: Any) -> None:
+    """Put one item without hanging when the consumer actor fails or exits."""
+
+    import ray
+
+    while True:
+        try:
+            input_queue.put(item, timeout=_STREAM_INGEST_QUEUE_PUT_TIMEOUT_SECONDS)
+            return
+        except Full:
+            ready, _ = ray.wait([sink_ref], timeout=0)
+            if not ready:
+                continue
+            result = ray.get(ready[0])
+            raise RuntimeError(f"Streaming VDB actor returned before consuming the complete input: {result!r}")
 
 
 def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPandasOperatorAdapter]:
@@ -534,11 +664,29 @@ class RayDataExecutor(AbstractExecutor):
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         auto_concurrency_nodes: Optional[Set[str]] = None,
         source_cpu_reservation: float = 0,
+        retain_stream_ingest_output: bool = True,
+        stream_ingest_prepare_concurrency: int | None = None,
+        stream_ingest_prefetch_batches: int = _STREAM_INGEST_PREFETCH_BATCHES,
+        stream_ingest_queue_size: int = _STREAM_INGEST_QUEUE_SIZE,
+        stream_ingest_spool_directory: str | os.PathLike[str] | None = None,
+        stream_ingest_spool_max_bytes: int | None = None,
     ) -> None:
         super().__init__(graph)
         source_cpu_reservation = float(source_cpu_reservation)
         if not math.isfinite(source_cpu_reservation) or source_cpu_reservation < 0:
             raise ValueError("source_cpu_reservation must be a finite, non-negative CPU value.")
+        if stream_ingest_prepare_concurrency is not None and int(stream_ingest_prepare_concurrency) <= 0:
+            raise ValueError("stream_ingest_prepare_concurrency must be positive or None.")
+        if int(stream_ingest_prefetch_batches) <= 0:
+            raise ValueError("stream_ingest_prefetch_batches must be positive.")
+        if int(stream_ingest_queue_size) <= 0:
+            raise ValueError("stream_ingest_queue_size must be positive.")
+        if stream_ingest_spool_max_bytes is not None and int(stream_ingest_spool_max_bytes) <= 0:
+            raise ValueError("stream_ingest_spool_max_bytes must be positive or None.")
+        if stream_ingest_spool_directory is None and stream_ingest_spool_max_bytes is not None:
+            raise ValueError("stream_ingest_spool_max_bytes requires stream_ingest_spool_directory.")
+        if not isinstance(retain_stream_ingest_output, bool):
+            raise TypeError("retain_stream_ingest_output must be a boolean.")
         self._preflight_cluster_resources: ClusterResources | None = None
         self._ray_address = ray_address
         self._source_cpu_reservation = source_cpu_reservation
@@ -552,6 +700,18 @@ class RayDataExecutor(AbstractExecutor):
         self._default_num_gpus = num_gpus
         self._node_overrides = node_overrides or {}
         self._auto_concurrency_nodes = auto_concurrency_nodes or set()
+        self._retain_stream_ingest_output = retain_stream_ingest_output
+        self._stream_ingest_prepare_concurrency = (
+            int(stream_ingest_prepare_concurrency) if stream_ingest_prepare_concurrency is not None else None
+        )
+        self._stream_ingest_prefetch_batches = int(stream_ingest_prefetch_batches)
+        self._stream_ingest_queue_size = int(stream_ingest_queue_size)
+        self._stream_ingest_spool_directory = (
+            Path(stream_ingest_spool_directory) if stream_ingest_spool_directory is not None else None
+        )
+        self._stream_ingest_spool_max_bytes = (
+            int(stream_ingest_spool_max_bytes) if stream_ingest_spool_max_bytes is not None else None
+        )
         self._resources_preflight_complete = False
 
     def _has_remote_endpoint(self, node: Node) -> bool:
@@ -645,7 +805,7 @@ class RayDataExecutor(AbstractExecutor):
         if sink_index is None:
             return ray_dataset_to_pandas(self.build_dataset(data))
 
-        sink_operator = nodes[sink_index].operator
+        sink_node = nodes[sink_index]
         has_downstream_nodes = sink_index + 1 < len(nodes)
 
         dataset = self._build_dataset(
@@ -653,27 +813,114 @@ class RayDataExecutor(AbstractExecutor):
             segment="before_stream_ingest",
         )
 
+        import ray
+        from ray.util.queue import Queue
+
+        prepared_ingest = False
+        if self._stream_ingest_prepare_concurrency is not None:
+            if has_downstream_nodes or self._retain_stream_ingest_output:
+                raise ValueError(
+                    "Prepared VDB streaming requires a terminal sink with retain_stream_ingest_output=False."
+                )
+            if not sink_node.operator._supports_prepared_stream_ingest():
+                raise ValueError("The configured VDB sink does not support prepared Arrow streaming.")
+            dataset = dataset.map_batches(
+                _StreamingVdbPrepareActor,
+                batch_size=None,
+                batch_format="pyarrow",
+                num_cpus=1,
+                num_gpus=0,
+                concurrency=self._stream_ingest_prepare_concurrency,
+                fn_constructor_kwargs={
+                    "operator_class": sink_node.operator_class,
+                    "operator_kwargs": sink_node.operator_kwargs,
+                },
+            )
+            prepared_ingest = True
+
+        if self._stream_ingest_spool_directory is not None and not prepared_ingest:
+            raise ValueError("Disk-backed VDB spooling requires stream_ingest_prepare_concurrency.")
+
+        spool_directory: Path | None = None
+        if self._stream_ingest_spool_directory is not None:
+            spool_directory = self._stream_ingest_spool_directory / f"stream-{os.getpid()}-{time.time_ns()}"
+            spool_directory.mkdir(parents=True, exist_ok=False)
+
         terminal_frames: list[pd.DataFrame] = []
         batch_iterator = iter(
             dataset.iter_batches(
                 batch_format=None,
                 batch_size=None,
-                prefetch_batches=_STREAM_INGEST_PREFETCH_BATCHES,
+                prefetch_batches=self._stream_ingest_prefetch_batches,
             )
         )
 
-        def retained_batches() -> Iterator[pd.DataFrame]:
-            for block in batch_iterator:
-                frame = arrow_table_to_pandas(block)
-                terminal_frames.append(frame)
-                yield frame
+        input_queue = Queue(maxsize=self._stream_ingest_queue_size, actor_options={"num_cpus": 0})
+        spool_ack_queue = Queue(maxsize=0, actor_options={"num_cpus": 0}) if spool_directory is not None else None
+        # The graph planner already assigns the full logical CPU budget to the
+        # Ray Data operator pools. Keep storage in its own actor/process without
+        # claiming an additional scheduling slot, which would deadlock a fully
+        # admitted graph before its first source task can run.
+        sink_type = ray.remote(num_cpus=0)(_StreamingVdbActor)
+        sink_actor = sink_type.remote(
+            sink_node.operator_class,
+            sink_node.operator_kwargs,
+            prepared_ingest,
+        )
+        sink_ref = sink_actor.consume.remote(input_queue, spool_ack_queue)
+        outstanding_spool_bytes = 0
+        spool_sequence = 0
+
+        def drain_spool_acknowledgements(*, block: bool = False) -> None:
+            nonlocal outstanding_spool_bytes
+            if spool_ack_queue is None:
+                return
+            while True:
+                try:
+                    released = spool_ack_queue.get(block=block, timeout=1.0 if block else None)
+                except Empty:
+                    return
+                outstanding_spool_bytes = max(0, outstanding_spool_bytes - int(released))
+                block = False
 
         try:
-            sink_operator._stream_ingest(retained_batches())
+            for block in batch_iterator:
+                if has_downstream_nodes or self._retain_stream_ingest_output:
+                    terminal_frames.append(arrow_table_to_pandas(block))
+                queue_item: Any = block
+                if spool_directory is not None:
+                    estimated_bytes = int(getattr(block, "nbytes", 0))
+                    max_spool_bytes = self._stream_ingest_spool_max_bytes
+                    drain_spool_acknowledgements()
+                    while (
+                        max_spool_bytes is not None
+                        and outstanding_spool_bytes > 0
+                        and outstanding_spool_bytes + estimated_bytes > max_spool_bytes
+                    ):
+                        ready, _ = ray.wait([sink_ref], timeout=0)
+                        if ready:
+                            result = ray.get(ready[0])
+                            raise RuntimeError(
+                                "Streaming VDB actor returned while the disk spool was backpressured: " f"{result!r}"
+                            )
+                        drain_spool_acknowledgements(block=True)
+                    queue_item = _write_stream_spool_batch(block, spool_directory, spool_sequence)
+                    spool_sequence += 1
+                    outstanding_spool_bytes += queue_item.bytes
+                _put_stream_ingest_item(input_queue, queue_item, sink_ref)
+            _put_stream_ingest_item(input_queue, _STREAM_INGEST_QUEUE_END, sink_ref)
+            self._last_stream_ingest_stats = ray.get(sink_ref)
+            drain_spool_acknowledgements()
+            if spool_directory is not None:
+                spool_directory.rmdir()
         finally:
             close = getattr(batch_iterator, "close", None)
             if callable(close):
                 close()
+            input_queue.shutdown(force=True)
+            if spool_ack_queue is not None:
+                spool_ack_queue.shutdown(force=True)
+            ray.kill(sink_actor, no_restart=True)
 
         if has_downstream_nodes:
             import ray.data as rd

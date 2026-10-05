@@ -63,7 +63,13 @@ def build_local_ray_runtime_env() -> dict[str, Any]:
     return {"env_vars": ray_env_vars, "py_executable": sys.executable}
 
 
-def ensure_local_ray_runtime(ray_address: str | None = None, *, log_to_driver: bool | None = None) -> object:
+def ensure_local_ray_runtime(
+    ray_address: str | None = None,
+    *,
+    log_to_driver: bool | None = None,
+    object_store_memory: int | None = None,
+    temp_dir: str | None = None,
+) -> object:
     """Import Ray and initialize it with Retriever's local worker runtime env."""
 
     with without_uv_run_env():
@@ -78,5 +84,13 @@ def ensure_local_ray_runtime(ray_address: str | None = None, *, log_to_driver: b
             }
             if log_to_driver is not None:
                 init_kwargs["log_to_driver"] = log_to_driver
+            if object_store_memory is not None:
+                if ray_address:
+                    raise ValueError("object_store_memory can only be set for a local Ray runtime")
+                init_kwargs["object_store_memory"] = int(object_store_memory)
+            if temp_dir is not None:
+                if ray_address:
+                    raise ValueError("temp_dir can only be set for a local Ray runtime")
+                init_kwargs["_temp_dir"] = temp_dir
             ray.init(**init_kwargs)
         return ray
