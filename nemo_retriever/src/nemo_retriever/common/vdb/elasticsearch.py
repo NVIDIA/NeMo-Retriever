@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import json
 
@@ -469,10 +470,13 @@ class Elasticsearch(VDB):
         num_candidates = int(kwargs.pop("num_candidates", self.num_candidates))
         if num_candidates < top_k:
             raise ValueError("num_candidates must be greater than or equal to top_k")
+        retrieval_workers = int(kwargs.pop("retrieval_workers", 1))
+        if retrieval_workers <= 0:
+            raise ValueError("retrieval_workers must be positive")
         result_fields = kwargs.pop("result_fields", None)
         query_filter = kwargs.pop("filter", kwargs.pop("_filter", None))
-        results: list[list[dict[str, Any]]] = []
-        for vector in queries:
+
+        def search_one(vector: Sequence[float]) -> list[dict[str, Any]]:
             knn: dict[str, Any] = {
                 "field": "vector",
                 "query_vector": list(vector),
@@ -497,8 +501,14 @@ class Elasticsearch(VDB):
                 if "_score" in hit:
                     item["_score"] = hit["_score"]
                 query_hits.append(item)
-            results.append(query_hits)
-        return results
+            return query_hits
+
+        query_vectors = list(queries)
+        if retrieval_workers == 1 or len(query_vectors) <= 1:
+            return [search_one(vector) for vector in query_vectors]
+        worker_count = min(retrieval_workers, len(query_vectors))
+        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="elasticsearch-query") as pool:
+            return list(pool.map(search_one, query_vectors))
 
     def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
         response = self.client.indices.get_mapping(index=self.index_name)

@@ -122,6 +122,29 @@ def test_retrieval_uses_ten_thousand_candidates_and_excludes_vectors() -> None:
     ]
 
 
+def test_concurrent_retrieval_preserves_query_order() -> None:
+    class EchoClient(_FakeClient):
+        def search(self, *, index: str, body: dict[str, Any]) -> dict[str, Any]:
+            vector = body["knn"]["query_vector"]
+            return {"hits": {"hits": [{"_id": str(vector[0]), "_source": {"text": "hit"}}]}}
+
+    backend = Elasticsearch(client=EchoClient(), vector_dim=2)
+    results = backend.retrieval(
+        [[0.1, 0.2], [0.3, 0.4]],
+        top_k=1,
+        retrieval_workers=2,
+    )
+
+    assert [hits[0]["id"] for hits in results] == ["0.1", "0.3"]
+
+
+def test_retrieval_rejects_nonpositive_worker_count() -> None:
+    backend = Elasticsearch(client=_FakeClient(), vector_dim=2)
+
+    with pytest.raises(ValueError, match="retrieval_workers must be positive"):
+        backend.retrieval([[0.1, 0.2]], retrieval_workers=0)
+
+
 def test_stream_ingest_converts_nrl_records_to_bulk_actions() -> None:
     client = _FakeClient()
     captured: list[dict[str, Any]] = []
