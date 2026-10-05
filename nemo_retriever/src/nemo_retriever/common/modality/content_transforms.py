@@ -58,6 +58,16 @@ def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _row_content_type(row_dict: Dict[str, Any]) -> str:
+    """Return the extractor-assigned row kind, defaulting page rows to ``text``.
+
+    Mixed auto-mode batches concatenate PDF pages with audio/video rows, so a
+    media row must keep its kind instead of being relabeled as page text.
+    """
+    content_type = row_dict.get("_content_type")
+    return content_type if isinstance(content_type, str) and content_type.strip() else "text"
+
+
 def _normalize_bbox(value: Any) -> Any:
     """Return bbox coordinates in a stable non-tensor container."""
     if hasattr(value, "to_numpy") and callable(value.to_numpy):
@@ -130,7 +140,7 @@ def explode_content_to_rows(
         if isinstance(page_text, str) and page_text.strip():
             page_row = _deep_copy_row(row_dict)
             page_row["_embed_modality"] = text_mod
-            page_row["_content_type"] = "text"
+            page_row["_content_type"] = _row_content_type(row_dict)
             if text_mod in IMAGE_MODALITIES:
                 page_row["_image_b64"] = page_image_b64
             page_row["_stored_image_uri"] = page_stored_uri
@@ -175,7 +185,7 @@ def explode_content_to_rows(
         if not exploded_any:
             preserved = _deep_copy_row(row_dict)
             preserved["_embed_modality"] = text_mod
-            preserved["_content_type"] = "text"
+            preserved["_content_type"] = _row_content_type(row_dict)
             if text_mod in IMAGE_MODALITIES:
                 preserved["_image_b64"] = page_image_b64
             preserved["_stored_image_uri"] = page_stored_uri

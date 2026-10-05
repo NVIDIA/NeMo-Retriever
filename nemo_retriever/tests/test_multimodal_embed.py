@@ -207,6 +207,69 @@ class TestExplodeContentToRows:
         assert result["_content_type"].tolist() == ["text", "table", "chart"]
         assert result.iloc[0]["table"] is not result.iloc[1]["table"]
 
+    @pytest.mark.parametrize("content_type", ["audio", "video_frame", "audio_visual"])
+    @pytest.mark.parametrize("media_text", ["spoken words", ""])
+    def test_mixed_batch_preserves_extracted_row_kind(self, content_type, media_text):
+        """Auto-mode batches keep media row kinds when a PDF row carries structured content."""
+        pdf_df = pd.DataFrame(
+            {
+                "path": ["doc.pdf"],
+                "text": ["page text"],
+                "table": [[{"text": "table text"}]],
+            }
+        )
+        media_df = pd.DataFrame(
+            {
+                "path": ["clip.mp4"],
+                "text": [media_text],
+                "_content_type": [content_type],
+                "metadata": [{"_content_type": content_type}],
+            }
+        )
+        # MultiTypeExtractOperator concatenates per-type outputs the same way.
+        batch = pd.concat([pdf_df, media_df], ignore_index=True, sort=False)
+
+        mixed = explode_content_to_rows(batch)
+        alone = explode_content_to_rows(media_df)
+
+        assert mixed["_content_type"].tolist() == ["text", "table", content_type]
+        assert mixed.iloc[2]["_content_type"] == alone.iloc[0]["_content_type"]
+        assert mixed.iloc[2]["_embed_modality"] == "text"
+
+    def test_mixed_batch_audio_row_keeps_record_type_and_fidelity(self):
+        """An audio row sharing a batch with PDF tables still uploads as transcribed audio."""
+        from nemo_retriever.common.vdb.records import to_client_vdb_records
+
+        batch = pd.concat(
+            [
+                pd.DataFrame(
+                    {
+                        "text": ["page text"],
+                        "table": [[{"text": "table text"}]],
+                        "metadata": [{"embedding": [0.1, 0.2]}],
+                    }
+                ),
+                pd.DataFrame(
+                    {
+                        "text": ["spoken words"],
+                        "_content_type": ["audio"],
+                        "metadata": [{"embedding": [0.3, 0.4], "_content_type": "audio"}],
+                    }
+                ),
+            ],
+            ignore_index=True,
+            sort=False,
+        )
+
+        records = to_client_vdb_records(explode_content_to_rows(batch))[0]
+        content_metadata = [record["metadata"]["content_metadata"] for record in records]
+
+        assert [(cm["type"], cm["fidelity"]) for cm in content_metadata] == [
+            ("text", "verbatim"),
+            ("table", "ocr"),
+            ("audio", "transcribed"),
+        ]
+
     @pytest.mark.parametrize("value", [np.array(1, dtype=object), np.ones((2, 2))])
     def test_non_collection_arrays_are_not_expanded(self, value):
         result = explode_content_to_rows(pd.DataFrame({"text": ["page text"], "table": [value]}))
