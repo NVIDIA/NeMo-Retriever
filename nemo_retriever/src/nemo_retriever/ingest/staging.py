@@ -264,7 +264,11 @@ def reconcile_stage_dir(stage_dir: str, manifest: StagingManifest, planned_shard
     if os.path.isdir(shards_root):
         for name in sorted(os.listdir(shards_root)):
             if name not in committed:
-                shutil.rmtree(os.path.join(shards_root, name))
+                path = os.path.join(shards_root, name)
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
                 removed.append(name)
         if removed:
             fsync_dir(shards_root)

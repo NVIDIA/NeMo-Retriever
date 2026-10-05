@@ -283,8 +283,14 @@ def test_reconcile_removes_uncommitted_directories_and_names_damaged_shards(tmp_
     with open(os.path.join(orphan, "part-x.parquet"), "wb") as handle:
         handle.write(b"stale")
 
-    assert staging.reconcile_stage_dir(stage_dir, manifest, [shard.shard_id]) == [os.path.basename(orphan)]
-    assert not os.path.exists(orphan)
+    stray = os.path.join(stage_dir, "shards", "notes.txt")
+    with open(stray, "w") as handle:
+        handle.write("not a shard")
+
+    assert staging.reconcile_stage_dir(stage_dir, manifest, [shard.shard_id]) == sorted(
+        [os.path.basename(orphan), "notes.txt"]
+    )
+    assert not os.path.exists(orphan) and not os.path.exists(stray)
 
     with open(os.path.join(stage_dir, record["parts"][0]["path"]), "wb") as handle:
         handle.write(b"damaged")
