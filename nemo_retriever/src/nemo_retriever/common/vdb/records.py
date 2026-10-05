@@ -43,7 +43,8 @@ _CONTENT_PROVENANCE_METADATA_KEYS = (
 # Row identity is versioned so a future change to its inputs cannot silently
 # reuse an earlier ID for different content.
 _ROW_ID_DOMAIN = b"nemo-retriever-graph-row-id-v1\0"
-# Provenance floats are rounded so float32/float64 round trips keep one identity.
+# Provenance floats are rounded to absorb representation noise. Widening is
+# exact, but narrowing a float64 to float32 can still cross a rounding step.
 _ROW_ID_FLOAT_DIGITS = 6
 _ROW_ID_CHUNK_KEYS = ("chunk_index", "chunk_count")
 _ROW_ID_MEDIA_KEYS = ("segment_start_seconds", "segment_end_seconds", "frame_timestamp_seconds", "segment_index")
@@ -358,9 +359,10 @@ def graph_row_identity(row: Mapping[str, Any]) -> dict[str, Any]:
     element kind, bounding box, text-chunk position, media time window and
     segment, embedding-split position, and the SHA-256 of their embedded text.
     Absent and null fields are equivalent, integral floats equal integers, and
-    other floats are rounded to six decimal places, so Arrow round trips and
-    the rows that share a Ray block cannot change identity. Position and
-    arrival order never contribute.
+    other floats are rounded to six decimal places. Arrow round trips and the
+    rows that share a Ray block therefore cannot change identity, provided a
+    stage does not narrow provenance floats to a smaller type between runs.
+    Position and arrival order never contribute.
     """
     metadata = _dict_or_empty(row.get("metadata"))
     content_metadata = _dict_or_empty(metadata.get("content_metadata"))
