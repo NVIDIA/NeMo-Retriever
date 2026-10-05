@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gc
 import weakref
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
@@ -184,13 +185,38 @@ def test_public_summary_rejects_incompatible_options(run_mode, upload, error_pol
         ingestor.ingest(return_results=False, return_failures=return_failures)
 
 
-def test_empty_summary_does_not_start_ray(monkeypatch):
+def test_empty_summary_validates_without_starting_ray_or_writing(monkeypatch):
     ingestor = GraphIngestor(run_mode="batch").texts([" "]).vdb_upload()
+    backend = StreamingBackend()
+    construct = Mock(return_value=backend)
     monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: pytest.fail("empty input must not start Ray"))
-    monkeypatch.setattr(
-        "nemo_retriever.operators.vdb._construct_vdb",
-        lambda **kwargs: pytest.fail("empty input must not initialize or validate the VDB backend"),
-    )
+    monkeypatch.setattr("nemo_retriever.operators.vdb._construct_vdb", construct)
+    monkeypatch.setattr(backend, "stream_ingest", lambda records: pytest.fail("empty input must not write to the VDB"))
+
     result = ingestor.ingest(return_results=False)
+
+    construct.assert_called_once()
     assert result.to_dict("records") == [{"input_rows": 0, "submitted_records": 0}]
     assert ingestor.get_dataset() is result
+
+
+@pytest.mark.parametrize("shape", ["legacy_sink", "downstream", "invalid_config"])
+def test_empty_summary_rejects_invalid_pipeline(monkeypatch, shape):
+    ingestor = GraphIngestor(run_mode="batch").texts([" "]).vdb_upload()
+    backend = StreamingBackend()
+    construct = Mock(return_value=backend)
+    expected_error = "terminal VDB"
+    if shape == "legacy_sink":
+        backend.supports_stream_ingest = False
+    elif shape == "downstream":
+        ingestor.webhook(endpoint_url="http://invalid.test/webhook")
+    else:
+        construct.side_effect = ValueError("invalid backend configuration")
+        expected_error = "invalid backend configuration"
+    monkeypatch.setattr("nemo_retriever.operators.vdb._construct_vdb", construct)
+    monkeypatch.setattr(ingestor, "_ensure_batch_runtime", lambda: pytest.fail("validation must happen before Ray"))
+
+    with pytest.raises(ValueError, match=expected_error):
+        ingestor.ingest(return_results=False)
+
+    construct.assert_called_once()

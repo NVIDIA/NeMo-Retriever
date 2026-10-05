@@ -622,7 +622,7 @@ class RayDataExecutor(AbstractExecutor):
         return ordered
 
     @staticmethod
-    def _stream_ingest_index(nodes: List[Node]) -> int | None:
+    def _stream_ingest_index(nodes: List[Node], *, require_terminal: bool = False) -> int | None:
         """Return one VDB streaming position, falling back for ambiguous graphs."""
         from nemo_retriever.operators.vdb import IngestVdbOperator
 
@@ -631,7 +631,10 @@ class RayDataExecutor(AbstractExecutor):
             for index, node in enumerate(nodes)
             if isinstance(node.operator, IngestVdbOperator) and node.operator._supports_stream_ingest()
         ]
-        return positions[0] if len(positions) == 1 else None
+        sink_index = positions[0] if len(positions) == 1 else None
+        if require_terminal and (sink_index is None or sink_index != len(nodes) - 1):
+            raise ValueError("return_results=False requires a terminal VDB that supports streaming ingest")
+        return sink_index
 
     def ingest(
         self,
@@ -678,9 +681,7 @@ class RayDataExecutor(AbstractExecutor):
     ) -> Any:
         """Execute ingestion with optional stage-error validation before upload."""
         nodes = self._linearize(self.graph)
-        sink_index = self._stream_ingest_index(nodes)
-        if not return_results and (sink_index is None or sink_index != len(nodes) - 1):
-            raise ValueError("return_results=False requires a terminal VDB that supports streaming ingest")
+        sink_index = self._stream_ingest_index(nodes, require_terminal=not return_results)
         if sink_index is None:
             return ray_dataset_to_pandas(self.build_dataset(data))
 

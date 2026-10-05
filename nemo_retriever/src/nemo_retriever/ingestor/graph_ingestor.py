@@ -907,15 +907,6 @@ class GraphIngestor(ingestor):
             If URL fetching or a collected graph stage fails and
             ``return_failures`` is false.
         """
-        self._validate_input_sources(self._inline_texts)
-        self._prepare_url_inputs()
-        try:
-            return self._ingest_prepared(params, **kwargs)
-        finally:
-            self._cleanup_url_inputs()
-
-    def _ingest_prepared(self, params: Any = None, **kwargs: Any) -> Any:
-        """Execute ingestion after URL inputs have been fetched and classified."""
         return_failures = self._resolve_execute_flag(params, kwargs, "return_failures", default=False)
         return_results = self._resolve_execute_flag(params, kwargs, "return_results", default=True)
         if not return_results:
@@ -923,17 +914,23 @@ class GraphIngestor(ingestor):
                 raise ValueError("return_results=False requires run_mode='batch' with a VDB upload")
             if return_failures or self._error_policy == "collect":
                 raise ValueError("return_results=False requires error_policy='raise' and return_failures=False")
+        self._validate_input_sources(self._inline_texts)
+        self._prepare_url_inputs()
+        try:
+            return self._ingest_prepared(return_failures=return_failures, return_results=return_results)
+        finally:
+            self._cleanup_url_inputs()
+
+    def _ingest_prepared(self, *, return_failures: bool, return_results: bool) -> Any:
+        """Execute ingestion after URL inputs have been fetched and classified."""
         if (
-            not self._documents
+            return_results
+            and not self._documents
             and not self._url_documents()
             and not self._all_buffers()
             and is_blank_inline_corpus(self._inline_texts)
         ):
             result = empty_text_chunks_df()
-            if not return_results:
-                import pandas as pd
-
-                result = pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
             if self._run_mode == "batch":
                 self._rd_dataset = result
             else:
@@ -1015,7 +1012,6 @@ class GraphIngestor(ingestor):
         post_extract_order: tuple[str, ...],
         return_results: bool = True,
     ) -> Any:
-        ray, cluster_resources = self._ensure_batch_runtime()
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
             extract_params=effective_extraction.extract_params,
@@ -1035,6 +1031,20 @@ class GraphIngestor(ingestor):
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
         )
+        if (
+            not return_results
+            and not self._documents
+            and not self._buffers
+            and is_blank_inline_corpus(self._inline_texts)
+        ):
+            import pandas as pd
+
+            RayDataExecutor._stream_ingest_index(RayDataExecutor._linearize(graph), require_terminal=True)
+            result = pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
+            self._rd_dataset = result
+            return result
+
+        ray, cluster_resources = self._ensure_batch_runtime()
         effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.total_gpu_count() == 0
         derived_overrides = batch_tuning_to_node_overrides(
             effective_extraction.extract_params,
