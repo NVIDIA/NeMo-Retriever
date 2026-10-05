@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
@@ -15,7 +17,11 @@ from typing import Any, TypedDict
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
-from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
+from nemo_retriever.common.schemas.embedding import (
+    EMBEDDING_SPLIT_METADATA_KEY,
+    embedding_record_content,
+    embedding_split_content,
+)
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -33,6 +39,15 @@ _CONTENT_PROVENANCE_METADATA_KEYS = (
     "segment_end_seconds",
     "frame_timestamp_seconds",
 )
+
+# Row identity is versioned so a future change to its inputs cannot silently
+# reuse an earlier ID for different content.
+_ROW_ID_DOMAIN = b"nemo-retriever-graph-row-id-v1\0"
+# Provenance floats are rounded so float32/float64 round trips keep one identity.
+_ROW_ID_FLOAT_DIGITS = 6
+_ROW_ID_CHUNK_KEYS = ("chunk_index", "chunk_count")
+_ROW_ID_MEDIA_KEYS = ("segment_start_seconds", "segment_end_seconds", "frame_timestamp_seconds", "segment_index")
+_ROW_ID_SPLIT_KEYS = ("chunk_index", "chunk_count", "start_token", "end_token")
 
 
 def normalize_content_type(value: Any) -> str | None:
@@ -285,6 +300,100 @@ def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metada
     return None
 
 
+def _graph_source_path(row: Mapping[str, Any], metadata: Mapping[str, Any]) -> str:
+    """Return the source path stored as the record's ``source_metadata.source_id``."""
+    return _first_str(
+        metadata.get("source_path"),
+        row.get("path"),
+        row.get("source_id"),
+        row.get("source"),
+        metadata.get("source_id"),
+    )
+
+
+def _identity_value(value: Any) -> Any:
+    """Canonicalize one provenance value; ``None`` and non-finite floats mean absent."""
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        value = tolist()
+    if isinstance(value, (list, tuple)):
+        return [_identity_value(item) for item in value]
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        value = round(value, _ROW_ID_FLOAT_DIGITS)
+        return int(value) if value.is_integer() else value
+    return str(value)
+
+
+def _identity_fields(source: Any, keys: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(source, Mapping):
+        return {}
+    fields = {key: _identity_value(source.get(key)) for key in keys}
+    return {key: value for key, value in fields.items() if value is not None}
+
+
+def _graph_row_kind(row: Mapping[str, Any], metadata: Mapping[str, Any]) -> str:
+    """Return the raw element kind, which stays stable when batch reshaping relabels rows.
+
+    Media extractors record their kind in ``metadata._content_type``. Batch
+    reshaping can relabel the row-level value as ``text`` depending on which
+    rows share a Ray block, so the metadata value wins. Missing kinds are text.
+    Raw kinds keep ``table`` and ``table_caption`` rows of one detection apart.
+    """
+    for value in (metadata.get("_content_type"), row.get("_content_type"), row.get("content_type")):
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+    return "text"
+
+
+def graph_row_identity(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the fields that identify one embedded graph row.
+
+    Two rows are the same row when they have the same source path, page, raw
+    element kind, bounding box, text-chunk position, media time window and
+    segment, embedding-split position, and the SHA-256 of their embedded text.
+    Absent and null fields are equivalent, integral floats equal integers, and
+    other floats are rounded to six decimal places, so Arrow round trips and
+    the rows that share a Ray block cannot change identity. Position and
+    arrival order never contribute.
+    """
+    metadata = _dict_or_empty(row.get("metadata"))
+    content_metadata = _dict_or_empty(metadata.get("content_metadata"))
+    text = _text_from_graph_row(row) or ""
+    identity = {
+        "source": _graph_source_path(row, metadata),
+        "page": _page_number_from_graph_row(row, content_metadata),
+        "kind": _graph_row_kind(row, metadata),
+        "bbox": _identity_value(_bbox_from_graph_row(row)),
+        "chunk": _identity_fields(metadata, _ROW_ID_CHUNK_KEYS),
+        "media": _identity_fields(metadata, _ROW_ID_MEDIA_KEYS),
+        "split": _identity_fields(metadata.get(EMBEDDING_SPLIT_METADATA_KEY), _ROW_ID_SPLIT_KEYS),
+        "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    }
+    return {key: value for key, value in identity.items() if value not in (None, "", {})}
+
+
+def graph_row_id(row: Mapping[str, Any]) -> str:
+    """Return the deterministic 64-character hex ID of one embedded graph row.
+
+    The ID is the versioned SHA-256 of :func:`graph_row_identity`.
+    """
+    payload = json.dumps(graph_row_identity(row), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(_ROW_ID_DOMAIN + payload.encode("utf-8")).hexdigest()
+
+
+def _explicit_row_id(metadata: Mapping[str, Any], content_metadata: Mapping[str, Any]) -> Any:
+    for value in (content_metadata.get("id"), metadata.get("id")):
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
 def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: bool = True) -> dict[str, Any] | None:
     metadata = _dict_or_empty(row.get("metadata"))
 
@@ -326,13 +435,7 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
         if key in metadata:
             content_metadata.setdefault(key, metadata[key])
 
-    source_path = _first_str(
-        metadata.get("source_path"),
-        row.get("path"),
-        row.get("source_id"),
-        row.get("source"),
-        metadata.get("source_id"),
-    )
+    source_path = _graph_source_path(row, metadata)
     source_name = Path(source_path).name if source_path else str(row.get("filename") or row.get("source_id") or "")
     source_metadata = _dict_or_empty(metadata.get("source_metadata"))
     if source_path:
@@ -341,6 +444,8 @@ def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: boo
         source_metadata.setdefault("source_name", source_name)
 
     record_metadata = dict(metadata)
+    if _explicit_row_id(metadata, content_metadata) is None:
+        record_metadata["id"] = graph_row_id(row)
     if embedding is not None:
         record_metadata["embedding"] = embedding
     record_metadata["content"] = "" if text is None else text
