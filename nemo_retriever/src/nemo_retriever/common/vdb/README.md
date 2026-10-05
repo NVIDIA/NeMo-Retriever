@@ -1,11 +1,11 @@
-# Vector DB operators and LanceDB
+# Vector DB operators, LanceDB, and Elasticsearch
 
 This package wraps **vector database backends** behind a small `VDB` interface (`adt_vdb.py`) and exposes two graph-style operators:
 
 - **`IngestVdbOperator`** — writes embedded pipeline rows into a VDB (ingestion).
 - **`RetrieveVdbOperator`** — runs similarity search given **precomputed query vectors** (retrieval).
 
-The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`.
+The built-in backend keys are **`lancedb`** and **`elasticsearch`**. `get_vdb_op_cls()` resolves them to `LanceDB` and `Elasticsearch`, respectively.
 
 The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not expose a backend-agnostic VDB configuration surface.
 
@@ -59,16 +59,158 @@ streaming path when the graph has one eligible `IngestVdbOperator` whose backend
 sets `supports_stream_ingest = True`.
 
 On that path, the executor owns Ray batch iteration, prefetch, iterator cleanup,
-retention of the historical pandas result, and downstream ordering. The
-operator converts those batches into canonical records before the backend sees
-them. The executor does not import LanceDB or pass Ray objects across the VDB
-interface.
+optional retention of the historical pandas result, and downstream ordering.
+It sends
+native Arrow blocks through a bounded queue to a dedicated storage actor. That
+actor owns `IngestVdbOperator`, converts graph rows into canonical records, and
+drives the backend stream while upstream operators continue producing blocks.
+Embedding and storage therefore remain separate graph operators and separate
+Ray actors. The executor does not import LanceDB, and only canonical records
+cross the `VDB.stream_ingest()` interface.
 
 Backends with `supports_stream_ingest = False` retain the historical
 global-batch path. `IngestVdbOperator.REQUIRES_GLOBAL_BATCH` causes the complete
 dataset to be repartitioned to one block before `VDB.run(records)` executes.
 `PutVdbOperator` explicitly opts out of streaming so its update-only semantics
 remain on that path.
+
+For terminal, side-effect-only sinks, pass
+`retain_stream_ingest_output=False` to `RayDataExecutor` so the driver does not
+retain every streamed batch. The default is `True`, and downstream stages still
+retain the input required to continue the graph.
+
+Use the following `RayDataExecutor` arguments to tune buffering between Ray
+Dataset production and the serialized storage actor:
+
+| Argument | Default | Purpose |
+| --- | --- | --- |
+| `stream_ingest_prefetch_batches` | `1` | Number of batches prefetched by the local Ray Dataset iterator. |
+| `stream_ingest_queue_size` | `4` | Maximum number of batches or spool descriptors waiting for the sink actor. |
+| `stream_ingest_prepare_concurrency` | `None` | Number of parallel workers that convert graph rows to prepared Arrow batches. |
+| `stream_ingest_spool_directory` | `None` | Parent directory for a unique run directory that holds prepared Arrow IPC batches. |
+| `stream_ingest_spool_max_bytes` | `None` | Maximum bytes across outstanding spool files before the producer waits. |
+
+Disk-backed spooling requires `stream_ingest_prepare_concurrency`. The producer
+writes each prepared Arrow batch to the run directory and queues a lightweight
+descriptor. The sink reads the file and removes it after handing the corresponding
+actions to the backend stream. Set `stream_ingest_spool_max_bytes` according to
+available disk capacity. Spooling absorbs temporary sink stalls, but it does not
+increase the throughput of the serialized VDB mutation and is not a durable
+replay log. Use deterministic document IDs and backend resume semantics when
+exact recovery is required. A failed or interrupted run can leave its unique run
+subdirectory for inspection or manual cleanup.
+
+For example, configure a terminal LanceDB sink with parallel preparation and a
+bounded disk spool as follows:
+
+```python
+executor = RayDataExecutor(
+    graph,
+    retain_stream_ingest_output=False,
+    stream_ingest_prepare_concurrency=32,
+    stream_ingest_prefetch_batches=8,
+    stream_ingest_queue_size=65_536,
+    stream_ingest_spool_directory="/data/vdb_spool",
+    stream_ingest_spool_max_bytes=8 * 1024**4,
+)
+```
+
+The FineWeb Parquet workload in `scripts/ingest_fineweb_parquet.py` uses the
+example buffering values by default. Its spool flags are
+`--stream-spool-directory` and `--stream-spool-max-gib`; its in-memory buffer
+flags are `--stream-prefetch-batches` and `--stream-queue-size`. The workload's
+80% GPU utilization guarantee applies only during steady-state embedding.
+Startup, final queue draining, and LanceDB index construction do not run the
+embedder and are outside that utilization guarantee.
+
+### FineWeb embedding Parquet staging
+
+Pass `--embedding-parquet-output PATH` to
+`scripts/ingest_fineweb_parquet.py` to replace the LanceDB sink with
+`EmbeddingParquetActor`. This mode writes embedded rows to Parquet and does not
+create a LanceDB table or vector index.
+
+The staging-specific flags and defaults are:
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--embedding-parquet-output` | `None` | Enable embedding-only mode and select the output directory. |
+| `--parquet-write-workers` | `32` | Run this many concurrent Ray Data Parquet writers. |
+| `--parquet-min-rows-per-file` | `32768` | Prefer at least this many rows in each output file. |
+| `--parquet-max-rows-per-file` | `65536` | Limit each output file to this many rows. This value cannot be smaller than the minimum. |
+
+The output path must not exist. The script raises `FileExistsError` before it
+starts Ray when the path exists, and Ray Data also uses `SaveMode.ERROR`. The
+script does not append, overwrite, or resume staging output. Inspect and remove
+an incomplete directory explicitly, or select a new path before retrying.
+
+The writer uses Zstandard level 1 compression, writes statistics, and uses
+dictionary encoding for `dump`, `embedding_model`, and `embedding_revision`.
+With the default 2,048-dimensional model, the stable row schema is:
+
+| Column | Arrow type | Meaning |
+| --- | --- | --- |
+| `id` | Non-null string | Split chunk ID, or stable document ID. |
+| `document_id` | Non-null string | Stable source-document identity. |
+| `text` | Non-null string | Embedded text. |
+| `url` | Non-null string | Selected source URL, or an empty string. |
+| `file_path` | Non-null string | Selected source path, or an empty string. |
+| `dump` | Non-null string | Selected source dump, or an empty string. |
+| `source_id` | Non-null string | Source identity, with document identity as fallback. |
+| `parent_id` | Nullable string | Split parent identity. |
+| `chunk_index` | Nullable `int32` | Split chunk position. |
+| `chunk_count` | Nullable `int32` | Total chunks for the parent. |
+| `start_token` | Nullable `int32` | Inclusive split start token. |
+| `end_token` | Nullable `int32` | Exclusive split end token. |
+| `metadata` | Non-null string | Compact JSON metadata with the embedding value removed. |
+| `embedding_model` | Non-null string | Value passed through `--model`. |
+| `embedding_revision` | Non-null string | Value passed through `--model-revision`, or an empty string. |
+| `vector` | Non-null `fixed_size_list<float32>[2048]` | Dense vector. Its fixed width follows `--vector-dim`. |
+
+`EmbeddingParquetActor` takes split identity and lineage from
+`metadata.embedding_split`. It uses `chunk_id` for the row `id`, and preserves
+`parent_id`, `chunk_index`, `chunk_count`, `start_token`, and `end_token`.
+Without a split, it derives document identity from the available document,
+content, source, URL, or file path metadata. The Arrow schema metadata records
+the embedding model, revision, and vector dimension.
+
+Use staging as the first step in the following workflow:
+
+1. Generate and validate the embedding Parquet dataset.
+2. Import those rows into a persisted LanceDB table, and build the vector index
+   without rerunning the embedder.
+3. Benchmark retrieval against the completed persisted index.
+
+Run the sink-only importer with `scripts/index_fineweb_embeddings.py`. It reads
+only `id`, `document_id`, `text`, `url`, `file_path`, `dump`, `source_id`, and
+`vector`. Set `input_format="embedding_parquet"` on the LanceDB backend to route
+these Arrow batches directly through `IngestVdbOperator`. The projection keeps
+the fixed-size vector buffer in Arrow and creates the LanceDB `metadata` and
+`source` JSON columns with vectorized Arrow kernels. It does not expand vectors
+into Python lists.
+
+The following command builds a 10,000,000-row validation index:
+
+```bash
+uv run python scripts/index_fineweb_embeddings.py \
+  --limit 10000000 \
+  --target-partition-size 1048576 \
+  --temp-directory /data/fineweb/lancedb_tmp \
+  --ray-temp-directory /tmp/nrl-ray \
+  --output /data/lancedb_gate_10m
+```
+
+Keep `--ray-temp-directory` short enough for Unix-domain socket paths.
+`--temp-directory` is independently used for LanceDB index shuffle data and
+should point to spacious storage.
+
+Separating these phases keeps LanceDB serialization and index construction from
+backpressuring GPU embedding. It also lets you retry import and index work
+without recomputing the vectors. Keep the staged model, revision, and dimension
+unchanged during import. Benchmark the persisted index only after construction
+finishes. Use `--full-corpus` with a new output directory after the gate passes.
+For retrieval, set `index_cache_size_bytes` and `metadata_cache_size_bytes` on
+the LanceDB backend to share a bounded session cache across its connections.
 
 The public `RayDataExecutor.build_dataset()` method also retains its historical
 behavior. It returns the full lazy graph, including the global VDB stage, and
@@ -148,7 +290,14 @@ Common constructor arguments include:
 | `table_name`    | Table name (default `nemo-retriever`) |
 | `overwrite`     | Table create mode vs append |
 | `vector_dim`    | Expected embedding dimension (default 2048) |
-| `index_type` / `metric` / `num_partitions` / `num_sub_vectors` | Vector index tuning |
+| `index_type` / `metric` | Vector index type and distance metric. |
+| `num_partitions` | Explicit IVF partition count. Do not combine it with `target_partition_size`. |
+| `target_partition_size` | Target rows per IVF partition. When both partition controls are omitted, the operator uses `1_048_576`. |
+| `max_iterations` / `sample_rate` | IVF K-means training controls. The defaults are `50` and `256`. |
+| `hnsw_m` / `hnsw_ef_construction` | HNSW graph controls. The defaults are `20` and `300`. |
+| `index_accelerator` | Optional IVF training accelerator, such as `cuda`. It does not accelerate HNSW graph construction. |
+| `index_cache_size_bytes` / `metadata_cache_size_bytes` | Optional LanceDB session cache budgets shared by backend-owned connections. |
+| `input_format` | Use `embedding_parquet` only for the staged embedding schema. The default is `nrl`. |
 | `hybrid`        | Also build the LanceDB FTS/BM25 index on ingested `text` |
 | `on_bad_vectors`| `drop`, `fill`, `null`, or `error` |
 | `stream_batch_bytes` | Maximum Arrow bytes per packed streaming batch (default 256 MiB) |
@@ -165,6 +314,24 @@ Retry an overwrite, create, or other recoverable finalization failure only when
 the exception instructs you to use the original explicit ID. If the original
 attempt did not set an ID, do not replay records after a known commit and
 finalization failure.
+
+## Elasticsearch with NVIDIA cuVS
+
+Use `vdb_op="elasticsearch"` for the SDK and graph-operator path. Install the optional Python client with `pip install "nemo-retriever[elasticsearch]"`. The root CLI remains LanceDB-first.
+
+The backend defaults to a 2,048-dimensional `float` field with `index_options.type="int8_hnsw"`, `m=64`, `ef_construction=2000`, cosine similarity, and `num_candidates=10000` per kNN query. The first three values are persisted in the dense-vector mapping. `num_candidates` is a retrieval parameter and is also recorded in mapping metadata for inspection.
+
+`require_gpu=True` is the default. Before creating an index, the backend checks `GET _xpack/usage?filter_path=gpu_vector_indexing` and fails unless the cluster reports an enabled GPU node. Elasticsearch must run with a compatible NVIDIA GPU, CUDA and cuVS runtime libraries, an eligible license, and `vectors.indexing.use_gpu=true`. cuVS accelerates HNSW graph construction; retrieval uses the persisted HNSW graph on the CPU.
+
+Both overwrite and append ingestion support the bounded NRL streaming path. By
+default, a failed overwrite deletes its incomplete replacement. Set
+`delete_index_on_failure=False` and use deterministic document IDs to preserve a
+partial index safely. Retry with `overwrite=False` and the same IDs to upsert
+the corpus without introducing duplicates. `transport_max_retries`,
+`retry_on_timeout` controls transient request recovery for parallel bulk
+workers. The bulk retry and backoff settings apply only when `bulk_workers=1`
+and the backend uses `streaming_bulk`. The collection and document lifecycle methods are not
+implemented for this backend.
 
 ---
 

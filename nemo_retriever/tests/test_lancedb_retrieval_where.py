@@ -88,6 +88,20 @@ def test_retrieval_where_filters_rows() -> None:
     assert filtered[0][0]["text"] == "alpha"
 
 
+def test_concurrent_retrieval_preserves_query_order() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
+    results = op.retrieval(
+        [[1.0, 0.0], [0.0, 1.0]],
+        top_k=1,
+        table_path=d,
+        table_name="t",
+        retrieval_workers=2,
+    )
+    assert [hits[0]["text"] for hits in results] == ["alpha", "beta"]
+
+
 def test_retrieval_filter_alias() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)

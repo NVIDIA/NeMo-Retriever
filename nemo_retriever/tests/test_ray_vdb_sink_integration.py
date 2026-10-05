@@ -176,3 +176,93 @@ def test_ray_streams_three_blocks_into_real_lancedb_and_preserves_contract(tmp_p
         assert not [name for name in stored_table.tags.list() if name.startswith("nemo_sink_")]
     finally:
         ray.shutdown()
+
+
+@pytest.mark.integration
+def test_ray_prepares_vdb_batches_in_parallel_and_writes_arrow_native(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    monkeypatch.setenv("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
+
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=6, num_gpus=0, include_dashboard=False, log_to_driver=False)
+
+    try:
+        dataset = ray.data.from_arrow([_source_table(i) for i in range(3)], override_num_blocks=3)
+        graph = Graph() >> IngestVdbOperator(
+            vdb_op="lancedb",
+            vdb_kwargs={
+                "uri": str(tmp_path),
+                "table_name": "prepared_chunks",
+                "vector_dim": 2,
+                "overwrite": True,
+                "build_index": False,
+                "stream_operation_id": None,
+            },
+        )
+        executor = RayDataExecutor(
+            graph,
+            retain_stream_ingest_output=False,
+            stream_ingest_prepare_concurrency=2,
+        )
+
+        result = executor.ingest(dataset)
+
+        assert result.empty
+        stats = executor._last_stream_ingest_stats
+        assert stats["rows"] == 6
+        assert stats["operator_timings"]["converted_records"] == 6
+        assert stats["operator_timings"]["prepared_arrow"] is True
+        stored = lancedb.connect(str(tmp_path)).open_table("prepared_chunks").to_arrow().sort_by("id")
+        assert stored.column_names == ["vector", "text", "metadata", "source", "id"]
+        assert stored.column("id").to_pylist() == [f"row-{row_id}" for row_id in range(6)]
+        assert [len(vector) for vector in stored.column("vector").to_pylist()] == [2] * 6
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.integration
+def test_ray_spools_prepared_batches_and_removes_consumed_files(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    monkeypatch.setenv("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
+
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=6, num_gpus=0, include_dashboard=False, log_to_driver=False)
+
+    try:
+        dataset = ray.data.from_arrow([_source_table(i) for i in range(6)], override_num_blocks=6)
+        graph = Graph() >> IngestVdbOperator(
+            vdb_op="lancedb",
+            vdb_kwargs={
+                "uri": str(tmp_path / "lancedb"),
+                "table_name": "spooled_chunks",
+                "vector_dim": 2,
+                "overwrite": True,
+                "build_index": False,
+                "stream_operation_id": None,
+            },
+        )
+        spool_root = tmp_path / "spool"
+        executor = RayDataExecutor(
+            graph,
+            retain_stream_ingest_output=False,
+            stream_ingest_prepare_concurrency=2,
+            stream_ingest_prefetch_batches=2,
+            stream_ingest_queue_size=16,
+            stream_ingest_spool_directory=spool_root,
+            stream_ingest_spool_max_bytes=1 << 20,
+        )
+
+        result = executor.ingest(dataset)
+
+        assert result.empty
+        stats = executor._last_stream_ingest_stats
+        assert stats["rows"] == 12
+        assert stats["spooled_batches"] > 0
+        assert stats["spooled_bytes"] > 0
+        assert list(spool_root.iterdir()) == []
+        stored = lancedb.connect(str(tmp_path / "lancedb")).open_table("spooled_chunks")
+        assert stored.count_rows() == 12
+    finally:
+        ray.shutdown()

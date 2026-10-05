@@ -127,6 +127,7 @@ class RetrievalHit(TypedDict, total=False):
     """
 
     text: str
+    id: str
     metadata: dict[str, Any]
     source: str
     source_id: str
@@ -603,6 +604,8 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         "pdf_basename": pdf_basename,
         "pdf_page": (f"{pdf_basename}_{page_number}" if pdf_basename and page_number is not None else ""),
     }
+    if hit.get("id") is not None:
+        normalized["id"] = str(hit["id"])
     chunk_id = hit.get("chunk_id")
     if chunk_id:
         normalized.update(

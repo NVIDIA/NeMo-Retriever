@@ -11,7 +11,12 @@ def get_vdb_op_cls(vdb_op: str):
     Returns the class if found, else raises ValueError.
     """
 
-    available_vdb_ops = ["lancedb"]
+    available_vdb_ops = ["elasticsearch", "lancedb"]
+
+    if vdb_op == "elasticsearch":
+        from nemo_retriever.common.vdb.elasticsearch import Elasticsearch
+
+        return Elasticsearch
 
     if vdb_op == "lancedb":
         from nemo_retriever.common.vdb.lancedb import LanceDB

@@ -259,6 +259,57 @@ def test_stream_ingest_is_lazy_and_byte_bounded_with_legacy_query_parity(
     ]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "LanceDB streaming ingest currently builds BM25 only after the input is exhausted; "
+        "new vocabulary is not searchable at each committed prefix"
+    ),
+)
+def test_hybrid_stream_makes_new_vocabulary_searchable_before_input_exhaustion(
+    tmp_path: Path,
+) -> None:
+    """Each committed stream prefix updates BM25 before requesting more input."""
+
+    records = _records(0, 16, padding=200)
+    records[0]["metadata"]["content"] = "earlyvocabulary handbook introduction"
+    records[8]["metadata"]["content"] = "latevocabulary quasarzeta supplement"
+
+    def assert_searchable(term: str, expected_id: str) -> None:
+        try:
+            table = _table(tmp_path)
+        except (FileNotFoundError, ValueError):
+            pytest.fail(
+                f"stream requested more input before publishing a searchable BM25 index for {term!r}",
+                pytrace=False,
+            )
+
+        text_indexes = [index for index in table.list_indices() if "text" in tuple(index.columns or ())]
+        assert text_indexes, f"stream prefix containing {term!r} has no BM25/FTS index"
+        hits = table.search(term, query_type="fts").limit(10).to_list()
+        assert any(
+            hit["id"] == expected_id for hit in hits
+        ), f"new vocabulary {term!r} was not incorporated before the stream requested more input"
+
+    def record_stream() -> Iterator[dict[str, Any]]:
+        for row_index, record in enumerate(records):
+            if row_index == 8:
+                assert_searchable("earlyvocabulary", "row-0")
+            elif row_index == 15:
+                assert_searchable("latevocabulary", "row-8")
+            yield record
+
+    backend = _backend(
+        tmp_path,
+        build_index=True,
+        hybrid=True,
+        index_type="IVF_FLAT",
+        num_partitions=2,
+        stream_batch_bytes=1024,
+    )
+    backend.stream_ingest(record_stream())
+
+
 def test_conversion_failure_does_not_commit_a_partial_stream(tmp_path: Path) -> None:
     backend = _backend(tmp_path)
     rows = pd.DataFrame(
@@ -592,30 +643,37 @@ def test_default_finalization_failure_reports_committed_version_without_durable_
     assert _state(tmp_path)[0] == committed_ids + ["row-20", "row-21"]
 
 
-@pytest.mark.parametrize(
-    ("num_partitions", "error_type"),
-    [(None, TypeError), (float("inf"), OverflowError)],
-)
-def test_default_post_commit_index_config_error_reports_committed_version(
-    tmp_path: Path,
-    num_partitions: Any,
-    error_type: type[Exception],
-) -> None:
+def test_automatic_target_partition_size_builds_index_after_append(tmp_path: Path) -> None:
     _backend(tmp_path).stream_ingest(_records(0, 2))
     backend = _backend(
         tmp_path,
         overwrite=False,
         build_index=True,
         index_type="IVF_FLAT",
-        num_partitions=num_partitions,
+        num_partitions=None,
     )
 
-    with pytest.raises(DataCommittedFinalizationError, match="Do not replay these records") as failure:
-        backend.stream_ingest(_records(10, 12))
+    backend.stream_ingest(_records(10, 12))
 
-    assert isinstance(failure.value.__cause__, error_type)
-    assert failure.value.data_version == _table(tmp_path).version
+    assert backend.target_partition_size == 1_048_576
     assert _state(tmp_path)[0] == ["row-0", "row-1", "row-10", "row-11"]
+    assert _table(tmp_path).list_indices()
+
+
+@pytest.mark.parametrize("num_partitions", [float("inf"), 0, -1, True, 1.5])
+def test_invalid_partition_count_fails_before_commit(tmp_path: Path, num_partitions: Any) -> None:
+    _backend(tmp_path).stream_ingest(_records(0, 2))
+
+    with pytest.raises(ValueError, match="num_partitions must be a positive integer or None"):
+        _backend(
+            tmp_path,
+            overwrite=False,
+            build_index=True,
+            index_type="IVF_FLAT",
+            num_partitions=num_partitions,
+        )
+
+    assert _state(tmp_path)[0] == ["row-0", "row-1"]
 
 
 def test_explicit_operation_id_resumes_finalization_after_reconstruction(
