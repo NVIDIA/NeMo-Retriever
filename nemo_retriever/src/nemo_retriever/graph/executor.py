@@ -647,6 +647,10 @@ class RayDataExecutor(AbstractExecutor):
 
         sink_operator = nodes[sink_index].operator
         has_downstream_nodes = sink_index + 1 < len(nodes)
+        if getattr(sink_operator, "_stage_target", None) is not None:
+            if has_downstream_nodes:
+                raise ValueError("Parquet staging requires the VDB upload to be the final graph stage")
+            return self._stage_parquet(data, sink_operator)
 
         dataset = self._build_dataset(
             data,
@@ -696,6 +700,24 @@ class RayDataExecutor(AbstractExecutor):
         schema = dataset.schema()
         names = getattr(schema, "names", None)
         return pd.DataFrame(columns=list(names) if names is not None else None)
+
+    def _stage_parquet(self, data: Any, sink_operator: Any) -> pd.DataFrame:
+        """Stage the terminal upload as Parquet from Ray write tasks.
+
+        The plan ends with a Ray write operator, so Ray Data backpressure
+        governs upstream stages, no consumed batch is retained, and the driver
+        receives one metadata row per write task.
+        """
+        datasink = sink_operator._staging_datasink()
+        dataset = self._build_dataset(data, segment="before_stream_ingest")
+        # Write tasks reserve no CPU: preflight may give every CPU to actor
+        # pools, and the concurrency cap bounds what the writes can use.
+        dataset.write_datasink(
+            datasink,
+            ray_remote_args={"num_cpus": 0},
+            concurrency=datasink.target.write_concurrency,
+        )
+        return pd.DataFrame(datasink.results or [])
 
     def build_dataset(self, data: Any, **kwargs: Any) -> Any:
         """Build a lazy Ray Data pipeline from the graph.

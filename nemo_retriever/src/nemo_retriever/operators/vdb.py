@@ -28,6 +28,11 @@ from nemo_retriever.common.vdb.sidecar_metadata import (
 )
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 
+#: Private ``vdb_kwargs`` key carrying a ``StageTarget`` mapping. When set, the
+#: Ray executor stages the terminal upload as Parquet from write tasks instead
+#: of streaming records through the driver.
+STAGE_PARQUET_VDB_KWARG = "_stage_parquet"
+
 
 def _construct_vdb(
     *,
@@ -126,6 +131,7 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
+        stage_target = clean_kwargs.pop(STAGE_PARQUET_VDB_KWARG, None)
         super().__init__(
             vdb=vdb,
             vdb_op=vdb_op,
@@ -142,11 +148,29 @@ class IngestVdbOperator(AbstractOperator):
                 sidecar["meta_fields"],
             )
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        self._stage_target = None if stage_target is None else dict(stage_target)
+        if self._stage_target is not None:
+            if sidecar is not None:
+                raise ValueError("Parquet staging does not support sidecar metadata")
+            if not self._supports_stream_ingest():
+                raise ValueError("Parquet staging requires a LanceDB table on the local filesystem")
+            self._staging_datasink()
+
+    def _staging_datasink(self) -> Any:
+        """Return a new datasink for the configured Parquet staging target."""
+        from nemo_retriever.common.vdb.staged_parquet import StagedParquetDatasink
+
+        return StagedParquetDatasink.for_vdb(self._stage_target, self._vdb)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
+    def _reject_staging_fallback(self) -> None:
+        if self._stage_target is not None:
+            raise RuntimeError("Parquet staging runs only as the terminal VDB upload of a Ray batch graph")
+
     def process(self, data: Any, **kwargs: Any) -> Any:
+        self._reject_staging_fallback()
         # Graph ingest emits flat embedded rows, while
         # nv-ingest-client VDB.run still expects nested Nemo Retriever Library (NRL) records.
         records = to_client_vdb_records(data)
@@ -178,6 +202,7 @@ class IngestVdbOperator(AbstractOperator):
 
         if not self._supports_stream_ingest():
             raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
+        self._reject_staging_fallback()
 
         records: Iterable[dict[str, Any]] = _iter_client_vdb_records(_iter_batch_rows(batches))
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
