@@ -220,6 +220,13 @@ StoreImagesUriOption = Annotated[
     str | None,
     typer.Option("--store-images-uri", help="Store extracted images at this local path or fsspec-compatible URI."),
 ]
+StageDirOption = Annotated[
+    str | None,
+    typer.Option(
+        "--stage-dir",
+        help="Write embedded rows as Parquet in this new or empty local directory, then load LanceDB from it.",
+    ),
+]
 OverwriteOption = Annotated[
     bool,
     typer.Option(

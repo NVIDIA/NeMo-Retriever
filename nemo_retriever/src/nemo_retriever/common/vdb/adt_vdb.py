@@ -28,6 +28,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+import pyarrow as pa
+
 from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
     CollectionDeleteResult,
@@ -428,6 +430,43 @@ class VDB(ABC):
     def health(self) -> dict[str, Any]:
         """Return optional backend-specific operational health details."""
         return {}
+
+    def ingest_arrow(self, reader: pa.RecordBatchReader, *, expected_rows: int | None = None) -> None:
+        """Load existing cached vectors from a single-pass Arrow reader.
+
+        This optional capability leaves existing record ingestion unchanged.
+        The reader contains canonical ``vector``, ``id``, ``text``, ``source``
+        and ``metadata`` columns, with fixed-size float32 vectors. Producers
+        own bounded source reads; adapters own native writes, any required
+        wire conversion, and index finalization.
+
+        The default raises before consuming input. Concrete backends must
+        explicitly implement the capability; there is no Python-row fallback.
+
+        Parameters
+        ----------
+        reader
+            Single-pass reader of canonical cached-vector batches. The producer
+            bounds retained input buffers; implementing adapters consume the reader.
+        expected_rows
+            Optional non-negative total number of input rows to persist.
+            ``None`` disables comparison with a caller-supplied count.
+
+        Returns
+        -------
+        None
+            After an implementing adapter completes its write and finalization.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement cached Arrow loading. Concrete
+            adapters document their validation and storage exceptions.
+        """
+        raise UnsupportedVDBOperation(
+            f"{type(self).__name__} does not implement ingest_arrow(); "
+            "use an adapter that supports cached Arrow loading."
+        )
 
     def stream_ingest(self, records: Iterable[dict[str, Any]]) -> None:
         """Ingest a lazy stream of canonical NRL record dictionaries.

@@ -27,6 +27,7 @@ from nemo_retriever.ingest.plan import (
     IngestRunModeValue,
     IngestRuntimeOptions,
     IngestSourceOptions,
+    IngestStagingOptions,
     IngestStorageOptions,
     resolve_ingest_plan,
     validate_ingest_index_mode,
@@ -64,6 +65,7 @@ _BATCH_ONLY_FLAGS = {
     "embed_batch_size": "--embed-batch-size",
     "embed_cpus_per_actor": "--embed-cpus-per-actor",
     "embed_gpus_per_actor": "--embed-gpus-per-actor",
+    "stage_dir": "--stage-dir",
 }
 
 
@@ -162,6 +164,10 @@ def _build_storage_options(values: Mapping[str, Any]) -> IngestStorageOptions:
     return IngestStorageOptions(**_matching_option_values(values, IngestStorageOptions))
 
 
+def _build_staging_options(values: Mapping[str, Any]) -> IngestStagingOptions:
+    return IngestStagingOptions(**_matching_option_values(values, IngestStagingOptions))
+
+
 def _build_graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestPlanRequest:
     batch_enabled = run_mode == "batch"
     return IngestPlanRequest(
@@ -175,6 +181,7 @@ def _build_graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRu
         embed=_build_embed_options(values, batch=_build_embed_batch_options(values, enabled=batch_enabled)),
         image_store=_build_image_store_options(values),
         storage=_build_storage_options(values),
+        staging=_build_staging_options(values),
     )
 
 
@@ -225,6 +232,7 @@ def _graph_ingest_command(
     store_images_uri: opts.StoreImagesUriOption = None,
     overwrite: opts.OverwriteOption = True,
     index_mode: opts.IndexModeOption = "auto",
+    stage_dir: opts.StageDirOption = None,
     ray_address: opts.RayAddressOption = None,
     ray_log_to_driver: opts.RayLogToDriverOption = None,
     page_elements_invoke_url: opts.PageElementsInvokeUrlOption = None,
