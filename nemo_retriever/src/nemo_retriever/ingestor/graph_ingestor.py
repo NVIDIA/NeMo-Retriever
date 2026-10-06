@@ -1034,7 +1034,8 @@ class GraphIngestor(ingestor):
         if (
             not return_results
             and not self._documents
-            and not self._buffers
+            and not self._url_documents()
+            and not self._all_buffers()
             and is_blank_inline_corpus(self._inline_texts)
         ):
             import pandas as pd
@@ -1074,11 +1075,14 @@ class GraphIngestor(ingestor):
             ),
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
-        result = executor._ingest(
-            executor_input,
-            return_results=return_results,
-            validate_batch=self._raise_for_stage_errors if not return_results else None,
-        )
+        if return_results:
+            result = executor.ingest(executor_input)
+        else:
+            result = executor._ingest(
+                executor_input,
+                return_results=False,
+                validate_batch=self._raise_for_stage_errors,
+            )
         self._rd_dataset = result
         return result
 

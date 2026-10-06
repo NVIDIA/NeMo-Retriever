@@ -243,7 +243,9 @@ class ExtractionBranchExecutor:
         combined = normalized[0]
         for branch_ds in normalized[1:]:
             combined = combined.union(branch_ds)
-        return post_executor._ingest(combined, return_results=self.return_results, validate_batch=self.validate_batch)
+        if self.return_results:
+            return post_executor.ingest(combined)
+        return post_executor._ingest(combined, return_results=False, validate_batch=self.validate_batch)
 
     def _execute_inprocess(self) -> Any:
         frames = []

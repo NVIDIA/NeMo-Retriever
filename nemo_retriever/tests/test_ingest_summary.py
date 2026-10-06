@@ -99,6 +99,28 @@ def test_summary_does_not_return_success_on_finalization_failure(monkeypatch):
     assert batches.closed
 
 
+@pytest.mark.parametrize("rejected_batch", [0, 1])
+def test_summary_validates_before_submitting_each_batch(monkeypatch, rejected_batch):
+    batches = GeneratedBatches()
+    backend = StreamingBackend()
+    executor = executor_for(monkeypatch, backend, batches)
+    validated = []
+
+    def validate_batch(frame):
+        batch_index = len(validated)
+        assert backend.texts == [f"page-{i}" for i in range(batch_index)]
+        validated.append(frame.iloc[0]["text"])
+        if batch_index == rejected_batch:
+            raise ValueError("rejected stage error")
+
+    with pytest.raises(ValueError, match="rejected stage error"):
+        executor._ingest(object(), return_results=False, validate_batch=validate_batch)
+
+    assert validated == [f"page-{i}" for i in range(rejected_batch + 1)]
+    assert backend.texts == [f"page-{i}" for i in range(rejected_batch)]
+    assert batches.closed
+
+
 @pytest.mark.parametrize("shape", ["no_sink", "legacy_sink", "downstream"])
 def test_summary_rejects_unsupported_graph_before_execution(monkeypatch, shape):
     backend = StreamingBackend()

@@ -649,8 +649,12 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path, return
             executor_calls.append({"method": "build_dataset", "data": data})
             return datasets.pop(0)
 
+        def ingest(self, data: Any) -> Any:
+            executor_calls.append({"method": "ingest", "data": data, "kwargs": {}})
+            return pd.DataFrame({"done": [True]})
+
         def _ingest(self, data: Any, **kwargs: Any) -> Any:
-            executor_calls.append({"method": "ingest", "data": data, "kwargs": kwargs})
+            executor_calls.append({"method": "_ingest", "data": data, "kwargs": kwargs})
             return pd.DataFrame({"done": [True]})
 
     monkeypatch.setattr(GraphIngestor, "_ensure_batch_runtime", lambda self: (_FakeRay(), FakeCluster()))
@@ -663,16 +667,19 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path, return
         ingestor.vdb_upload()
     result = ingestor.ingest(return_results=return_results)
 
-    assert [call["method"] for call in executor_calls] == ["build_dataset", "build_dataset", "ingest"]
+    assert [call["method"] for call in executor_calls] == [
+        "build_dataset",
+        "build_dataset",
+        "ingest" if return_results else "_ingest",
+    ]
     combined = executor_calls[2]["data"]
     assert isinstance(combined, _FakeDataset)
     assert len(combined.unioned) == 1
     assert combined.normalized_columns == ("path", "pdf_value", "image_value")
     assert result["done"].tolist() == [True]
-    assert executor_calls[2]["kwargs"] == {
-        "return_results": return_results,
-        "validate_batch": None if return_results else ingestor._raise_for_stage_errors,
-    }
+    assert executor_calls[2]["kwargs"] == (
+        {} if return_results else {"return_results": False, "validate_batch": ingestor._raise_for_stage_errors}
+    )
 
 
 def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_path) -> None:
@@ -705,7 +712,7 @@ def test_batch_branch_preflight_precedes_dataset_construction(monkeypatch, tmp_p
             calls.append("build")
             return datasets.pop(0)
 
-        def _ingest(self, data: Any, **kwargs: Any) -> Any:
+        def ingest(self, data: Any, **kwargs: Any) -> Any:
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 
@@ -754,7 +761,7 @@ def test_batch_branch_preflight_counts_file_and_inline_datasets(monkeypatch, tmp
             calls.append("build")
             return datasets.pop(0)
 
-        def _ingest(self, data: Any, **kwargs: Any) -> Any:
+        def ingest(self, data: Any, **kwargs: Any) -> Any:
             calls.append("ingest")
             return pd.DataFrame({"done": [True]})
 

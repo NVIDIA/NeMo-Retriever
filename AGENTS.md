@@ -60,13 +60,6 @@ DORI unavailability must not block documentation work.
 - Do not add lint, hooks, or CI from agent guidance alone. Those require a separately reviewed repository change.
 - Do not create or modify `CLAUDE.md` as part of documentation-agent setup.
 
-## Git Workflow
-
-- Use the existing `.pre-commit-config.yaml` for local checks. Before the first commit in a checkout, run `pre-commit install` to enable the repository's commit hook.
-- Before committing, run `pre-commit run --files <changed-files>` on the files included in the commit. If a hook modifies files, review the changes, stage them again, and rerun the checks until they pass.
-- Before pushing or updating a PR, run `pre-commit run --all-files`, matching the existing pre-commit CI job. Resolve failures before pushing; report any environment blocker instead of claiming validation passed.
-- Do not bypass hooks with `--no-verify` or `SKIP` unless the user explicitly authorizes it. Sign off commits as required by `CONTRIBUTING.md`.
-
 ## Validation Shortcuts
 
 | Change type | Validation |
