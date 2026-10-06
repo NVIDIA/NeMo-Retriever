@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from nemo_retriever.common.vdb.adt_vdb import (
@@ -683,6 +684,17 @@ def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
         "first chunk",
         "second chunk",
     ]
+    assert streaming._stream_ingest_timings["converted_records"] == 2
+
+    pulls.clear()
+    arrow_vdb = StreamingFakeVDB()
+    arrow_operator = IngestVdbOperator(vdb=arrow_vdb)
+    assert arrow_operator._stream_ingest([pa.Table.from_pylist(_graph_rows())]) is None
+    assert [record["metadata"]["content"] for record in arrow_vdb.stream_records] == [
+        "first chunk",
+        "second chunk",
+    ]
+    assert arrow_operator._stream_ingest_timings["converted_records"] == 2
 
     partial_rows = _graph_rows()
     partial_rows[1]["text_embeddings_1b_v2"] = {"embedding": []}

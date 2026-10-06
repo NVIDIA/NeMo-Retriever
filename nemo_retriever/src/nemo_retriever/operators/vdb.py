@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+import time
 from typing import Any
 
 import pandas as pd
@@ -43,11 +44,20 @@ def _construct_vdb(
     return vdb if vdb is not None else get_vdb_op_cls(str(vdb_op))(**dict(vdb_kwargs or {}))
 
 
-def _iter_batch_rows(batches: Iterable[pd.DataFrame]) -> Iterator[dict[str, Any]]:
-    """Yield graph rows from the executor's retained pandas batches."""
+def _iter_batch_rows(batches: Iterable[Any]) -> Iterator[dict[str, Any]]:
+    """Yield graph rows from pandas or native Arrow executor batches."""
 
     for batch in batches:
-        yield from batch.to_dict(orient="records")
+        if isinstance(batch, pd.DataFrame):
+            yield from batch.to_dict(orient="records")
+            continue
+
+        import pyarrow as pa
+
+        if isinstance(batch, (pa.Table, pa.RecordBatch)):
+            yield from batch.to_pylist()
+            continue
+        raise TypeError(f"Streaming VDB batches must be pandas or Arrow, got {type(batch).__name__}")
 
 
 def _coerce_embedding_vector(value: Any) -> list[float] | None:
@@ -173,13 +183,30 @@ class IngestVdbOperator(AbstractOperator):
 
         return bool(getattr(self._vdb, "supports_stream_ingest", False))
 
-    def _stream_ingest(self, batches: Iterable[pd.DataFrame]) -> None:
+    def _stream_ingest(self, batches: Iterable[Any]) -> None:
         """Lazily convert executor batches and delegate one backend stream."""
 
         if not self._supports_stream_ingest():
             raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
 
-        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(_iter_batch_rows(batches))
+        conversion_seconds = 0.0
+        converted_records = 0
+        raw_records = iter(_iter_client_vdb_records(_iter_batch_rows(batches)))
+
+        def timed_records() -> Iterator[dict[str, Any]]:
+            nonlocal conversion_seconds, converted_records
+            while True:
+                started = time.perf_counter()
+                try:
+                    record = next(raw_records)
+                except StopIteration:
+                    conversion_seconds += time.perf_counter() - started
+                    return
+                conversion_seconds += time.perf_counter() - started
+                converted_records += 1
+                yield record
+
+        records: Iterable[dict[str, Any]] = timed_records()
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             undecorated_records = records
 
@@ -202,7 +229,15 @@ class IngestVdbOperator(AbstractOperator):
             yield from record_stream
             exhausted = True
 
+        started = time.perf_counter()
         self._vdb.stream_ingest(required_records())
+        total_seconds = time.perf_counter() - started
+        self._stream_ingest_timings = {
+            "total_seconds": total_seconds,
+            "conversion_seconds": conversion_seconds,
+            "backend_seconds_excluding_conversion": max(0.0, total_seconds - conversion_seconds),
+            "converted_records": converted_records,
+        }
         if not exhausted:
             raise RuntimeError(
                 f"{type(self._vdb).__name__}.stream_ingest() returned before consuming the record stream"
