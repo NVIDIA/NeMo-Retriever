@@ -660,7 +660,7 @@ serviceConfig:
 
   # Agentic (ReAct) retrieval exposed as POST /v1/query with agentic=true and the
   # agentic_query MCP tool. The LLM runs inside the vectordb pod because that
-  # pod owns the LanceDB volume.
+  # pod owns the vector store.
   agentic:
     enabled: false
     llmModel: ""
@@ -702,12 +702,22 @@ serviceConfig:
   sidecarStore:
     maxPayloadBytes: 33554432
 
-  # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
+  # VectorDB pod configuration.  When enabled, a dedicated VectorDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
   # /v1/query to it for retrieval.
   vectordb:
     enabled: true
+    # "lancedb" stores the index on the pod's volume, and "qdrant" uses an existing Qdrant 1.18+ server.
+    backend: "lancedb"
     lancedbUri: "/data/vectordb"
+    qdrant:
+      # Required for backend qdrant, e.g. http://qdrant.qdrant.svc:6333.
+      url: ""
+      # Existing Secret with the API key. Leave name empty for no authentication.
+      apiKeySecret:
+        name: ""
+        key: api-key
+    # LanceDB table or Qdrant collection name.
     tableName: "nemo_retriever"
     # auto creates hybrid storage when fresh and preserves existing physical indexes.
     # Use hybrid explicitly to upgrade an existing dense table by adding FTS.

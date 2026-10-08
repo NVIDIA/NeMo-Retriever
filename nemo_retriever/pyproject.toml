@@ -201,6 +201,11 @@ tabular = [
   "langgraph>=1.2.0",
 ]
 
+# Qdrant vector database backend (``vdb_op="qdrant"``). LanceDB stays the default.
+qdrant = [
+  "qdrant-client>=1.18.0",
+]
+
 # BEIR benchmarking and evaluation tools (not needed for production use).
 # Keep open-clip-torch here for compatibility with existing benchmark installs;
 # the production-facing Nemotron Parse path uses the dedicated extra above.
@@ -224,7 +229,7 @@ dev = [
 
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
-  "nemo_retriever[service,local,multimedia,nemotron-parse,tabular,benchmarks,llm]",
+  "nemo_retriever[service,local,multimedia,nemotron-parse,tabular,benchmarks,llm,qdrant]",
 ]
 
 [project.scripts]

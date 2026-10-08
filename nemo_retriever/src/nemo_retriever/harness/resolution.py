@@ -126,6 +126,9 @@ QUERY_OVERRIDE_PATHS = {
     "query.reranker_api_key",
     "query.lancedb_uri",
     "query.table_name",
+    "query.vdb_op",
+    "query.qdrant_url",
+    "query.qdrant_api_key",
     "query.agentic",
     "query.agentic_llm_model",
     "query.agentic_invoke_url",
@@ -413,6 +416,11 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
     table_name = query.get("table_name") or ingest_storage.get("table_name") or "nemo-retriever"
     query["lancedb_uri"] = lancedb_uri
     query["table_name"] = table_name
+    backend = {
+        key: query.get(key) if query.get(key) is not None else ingest_storage.get(key)
+        for key in ("vdb_op", "qdrant_url", "qdrant_api_key")
+    }
+    backend["vdb_op"] = backend["vdb_op"] or "lancedb"
     resolved["query"] = query
     return QueryRequest(
         query=query_text,
@@ -437,6 +445,9 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         storage=QueryStorageOptions(
             lancedb_uri=str(lancedb_uri),
             table_name=str(table_name),
+            vdb_op=str(backend["vdb_op"]),
+            qdrant_url=backend["qdrant_url"],
+            qdrant_api_key=backend["qdrant_api_key"],
         ),
         agentic=QueryAgenticOptions(
             enabled=bool(query.get("agentic", False)),
@@ -465,6 +476,8 @@ def query_plan_payload(plan: ResolvedQueryPlan) -> dict[str, Any]:
             "content_types": plan.content_types,
             "lancedb_uri": plan.lancedb_uri,
             "table_name": plan.table_name,
+            "vdb_op": plan.vdb_target.vdb_op,
+            "vdb_target": plan.vdb_target.describe(),
             "embed_kwargs": plan.embed_kwargs,
             "retrieval_mode": plan.retrieval_mode,
             "rerank": plan.rerank,

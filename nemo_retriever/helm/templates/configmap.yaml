@@ -245,7 +245,11 @@ auth:
 {{- if .Values.serviceConfig.vectordb.enabled }}
 vectordb:
   enabled: true
+  vdb_op: {{ include "nemo-retriever.vectordb.backend" . | quote }}
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
+{{- with (.Values.serviceConfig.vectordb.qdrant | default dict).url }}
+  qdrant_url: {{ . | quote }}
+{{- end }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
   index_mode: {{ .Values.serviceConfig.vectordb.indexMode | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}

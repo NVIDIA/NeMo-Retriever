@@ -30,7 +30,7 @@ Output is a **Ray Dataset** (Ray Data) or **pandas** `DataFrame` listing extract
 
 ## Embeddings and retrieval { #embeddings-and-retrieval }
 
-Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) for downstream semantic search in your application. For upload and retrieval APIs, refer to [Vector databases](vdbs.md). For text and multimodal embedding options, refer to [Embeddings](embedding.md). For iterative, tool-driven retrieval over that index, refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
+Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) (the default) or [Qdrant](vdbs.md#use-qdrant) for downstream semantic search in your application. For upload and retrieval APIs, refer to [Vector databases](vdbs.md). For text and multimodal embedding options, refer to [Embeddings](embedding.md). For iterative, tool-driven retrieval over that index, refer to [Agentic retrieval (concept)](agentic-retrieval-concept.md) and [Workflow: Agentic retrieval](workflow-agentic-retrieval.md).
 
 ## Chunking { #chunking }
 

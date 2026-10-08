@@ -837,3 +837,18 @@ nemo-retriever.runtime.image
 {{- $svc.image.pullPolicy -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+VectorDB storage backend ("lancedb" or "qdrant"). Fails on invalid settings.
+*/}}
+{{- define "nemo-retriever.vectordb.backend" -}}
+{{- $vectordb := .Values.serviceConfig.vectordb -}}
+{{- $backend := $vectordb.backend | default "lancedb" -}}
+{{- if not (has $backend (list "lancedb" "qdrant")) -}}
+{{- fail "serviceConfig.vectordb.backend must be one of: lancedb, qdrant" -}}
+{{- end -}}
+{{- if and (eq $backend "qdrant") (not ($vectordb.qdrant | default dict).url) -}}
+{{- fail "serviceConfig.vectordb.backend=qdrant requires serviceConfig.vectordb.qdrant.url (for example http://qdrant.qdrant.svc:6333)" -}}
+{{- end -}}
+{{- $backend -}}
+{{- end -}}

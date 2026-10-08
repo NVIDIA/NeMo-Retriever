@@ -2,13 +2,16 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Policy for resolving requested ingest modes against an existing LanceDB table."""
+"""Policy for resolving requested ingest modes against an existing LanceDB table or Qdrant collection."""
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table_object
+
+if TYPE_CHECKING:
+    from nemo_retriever.common.vdb.targets import VdbTarget
 
 RequestedIngestIndexMode = Literal["auto", "dense", "hybrid", "sparse"]
 ResolvedIngestIndexMode = Literal["dense", "hybrid", "sparse"]
@@ -70,4 +73,16 @@ def inspect_existing_lancedb_mode(uri: str, table_name: str) -> ResolvedIngestIn
         raise ValueError(
             f"Cannot determine physical retrieval capabilities for LanceDB table {table_name!r} at {uri!r}."
         )
+    return cast(ResolvedIngestIndexMode, capabilities.retrieval_mode)
+
+
+def inspect_existing_index_mode(target: "VdbTarget") -> ResolvedIngestIndexMode | None:
+    """Return the physical mode of the target index, or ``None`` when absent."""
+    if target.vdb_op == "lancedb":
+        return inspect_existing_lancedb_mode(target.lancedb_uri, target.table_name)
+    capabilities = target.backend().index_capabilities()
+    if capabilities is None:
+        return None
+    if capabilities.retrieval_mode == "unknown":
+        raise ValueError(f"Cannot determine physical retrieval capabilities for {target.describe()}.")
     return cast(ResolvedIngestIndexMode, capabilities.retrieval_mode)

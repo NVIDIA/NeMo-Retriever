@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import nemo_retriever.service.vectordb_app as vectordb_module
+from nemo_retriever.common.vdb.targets import VdbTarget
 from nemo_retriever.common.schemas.collections import (
     CollectionCreateRequest,
     CollectionDeleteResult,
@@ -463,8 +464,7 @@ def _embedding_records() -> list[list[dict[str, Any]]]:
 def test_production_vdb_records_embedding_model_on_new_table(tmp_path) -> None:
     model = "nvidia/nemotron-3-embed-1b"
     backend = vectordb_module._production_vdb(
-        lancedb_uri=str(tmp_path),
-        table_name="fresh",
+        target=VdbTarget(lancedb_uri=str(tmp_path), table_name="fresh"),
         expiration_cleanup_enabled=True,
         embed_model=model,
     )
@@ -484,8 +484,7 @@ def test_production_vdb_rejects_untagged_existing_table(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="does not record its embedding model"):
         vectordb_module._production_vdb(
-            lancedb_uri=str(tmp_path),
-            table_name="untagged",
+            target=VdbTarget(lancedb_uri=str(tmp_path), table_name="untagged"),
             expiration_cleanup_enabled=True,
             embed_model="nvidia/nemotron-3-embed-1b",
         )
@@ -502,8 +501,7 @@ def test_production_vdb_rejects_existing_table_model_mismatch(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="uses embedding model.*llama-nemotron.*configured for.*nemotron-3"):
         vectordb_module._production_vdb(
-            lancedb_uri=str(tmp_path),
-            table_name="old-model",
+            target=VdbTarget(lancedb_uri=str(tmp_path), table_name="old-model"),
             expiration_cleanup_enabled=True,
             embed_model="nvidia/nemotron-3-embed-1b",
         )
@@ -528,8 +526,7 @@ def test_production_vdb_accepts_existing_table_model_match(stored_model: str, tm
     ).run(_embedding_records())
 
     backend = vectordb_module._production_vdb(
-        lancedb_uri=str(tmp_path),
-        table_name="matching-model",
+        target=VdbTarget(lancedb_uri=str(tmp_path), table_name="matching-model"),
         expiration_cleanup_enabled=True,
         embed_model=configured_model,
     )
@@ -539,8 +536,7 @@ def test_production_vdb_accepts_existing_table_model_match(stored_model: str, tm
 
 def test_production_vdb_defaults_to_hybrid_without_vector_index_build(tmp_path) -> None:
     backend = vectordb_module._production_vdb(
-        lancedb_uri=str(tmp_path),
-        table_name="hybrid",
+        target=VdbTarget(lancedb_uri=str(tmp_path), table_name="hybrid"),
         expiration_cleanup_enabled=True,
         embed_model="nvidia/nemotron-3-embed-1b",
     )
@@ -554,8 +550,7 @@ def test_production_vdb_dense_mode_preserves_legacy_service_write_without_index_
     monkeypatch,
 ) -> None:
     backend = vectordb_module._production_vdb(
-        lancedb_uri=str(tmp_path),
-        table_name="legacy",
+        target=VdbTarget(lancedb_uri=str(tmp_path), table_name="legacy"),
         expiration_cleanup_enabled=True,
         embed_model="nvidia/nemotron-3-embed-1b",
         index_mode="dense",

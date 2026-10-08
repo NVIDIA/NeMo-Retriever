@@ -1,4 +1,4 @@
-{{- if and .Values.serviceConfig.vectordb.enabled .Values.topology.vectordb.persistence.enabled }}
+{{- if and .Values.serviceConfig.vectordb.enabled .Values.topology.vectordb.persistence.enabled (eq (include "nemo-retriever.vectordb.backend" .) "lancedb") }}
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $vdb := .Values.topology.vectordb -}}
 apiVersion: v1
