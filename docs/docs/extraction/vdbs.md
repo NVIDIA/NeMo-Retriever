@@ -10,6 +10,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Upload to LanceDB](#upload-to-lancedb)
     - [Return a batch ingest summary](#batch-ingest-summary)
     - [Direct LanceDB ingest and retrieval](#direct-lancedb-ingest-and-retrieval)
+    - [Load cached vectors from Parquet](#load-cached-vectors-from-parquet)
 - [Semantic retrieval](#semantic-retrieval)
 - [Metadata and filtering](#metadata-and-filtering)
 - [LanceDB deployment characteristics](#lancedb-deployment-characteristics)
@@ -70,6 +71,10 @@ You can omit `.embed()` if a custom stage provides an embedding in `metadata["em
 ## Keep the embedding model aligned { #lancedb-embedding-model-compatibility }
 
 Dense and hybrid retrieval require query and stored vectors from the same embedding model. New LanceDB tables record the canonical model in `nemo_retriever.embedding_model_name`. A local `Retriever` uses that model automatically and rejects an explicit query model that differs from it. Dense and hybrid queries also reject legacy or third-party tables that do not contain this metadata because compatibility cannot be verified. Local sparse retrieval is exempt because it does not create a dense query vector.
+
+When you append with embedding model or revision metadata, LanceDB checks known
+values against the table. A recorded revision requires a matching incoming
+revision, even when the incoming model name is absent.
 
 The default changed from `nvidia/llama-nemotron-embed-vl-1b-v2` to `nvidia/nemotron-3-embed-1b`. Before you migrate a persistent table:
 
@@ -226,6 +231,98 @@ Query ingested tables with `LanceDB.retrieval()` (precomputed vectors) or with [
 
 To use a custom operator, pass a `VDB` instance as `vdb` to `IngestVdbOperator` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb)).
 
+### Load cached vectors from Parquet { #load-cached-vectors-from-parquet }
+
+Use `LanceDB.ingest_arrow()` when you already have vectors in Arrow or Parquet.
+This direct API reads a single-pass `pyarrow.RecordBatchReader` and passes bounded
+Arrow batches to one LanceDB table mutation. It avoids converting vectors to
+Python lists or rows to dictionaries. It then validates the stored table and
+builds the configured vector and optional full-text indexes.
+
+Provide cached data in the following schema:
+
+- `vector`: the fixed-size list type `pa.list_(pa.float32(), vector_dim)`.
+- `id`, `text`, `source`, and `metadata`: string columns.
+- Additional columns: LanceDB-compatible Arrow types.
+
+Use nullable element fields without field metadata for fixed-size-list columns.
+Fixed-size lists nested inside another Arrow type are unsupported.
+
+Store `source` and `metadata` as the JSON strings expected by the retrieval path.
+The API rejects invalid schemas, null vectors, and nonfinite vector values.
+Cached Arrow input does not apply `on_bad_vectors` filtering.
+It preserves valid vectors, row order, typed columns, and user schema metadata
+for new or overwritten tables. Retrieval-mode tags follow
+the configured dense or hybrid mode. Appends retain the existing table's schema
+and metadata and reject known embedding-model or revision conflicts.
+Recovery markers from a previous table write are excluded from the new table.
+
+Read Parquet in bounded batches instead of loading the entire file with
+`read_table()` or converting it with `to_pylist()`. The following example loads
+an existing cache without generating embeddings:
+
+```python
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from nemo_retriever.common.vdb.lancedb import LanceDB
+
+parquet = pq.ParquetFile("cached-vectors.parquet")
+reader = pa.RecordBatchReader.from_batches(
+    parquet.schema_arrow,
+    parquet.iter_batches(batch_size=8192),
+)
+vdb = LanceDB(
+    uri="./lancedb_cached",
+    table_name="cached-vectors",
+    vector_dim=2048,
+    embedding_model_name="nvidia/nemotron-3-embed-1b",
+)
+vdb.ingest_arrow(reader, expected_rows=parquet.metadata.num_rows)
+```
+
+Set `vector_dim` to your cached embedding length and `embedding_model_name` to
+the model that produced your cache. `expected_rows` is optional;
+when supplied, it must match the number of rows consumed from the reader.
+Choose the Parquet batch size for your vector dimensions and additional columns.
+`stream_batch_bytes` limits retained Arrow buffers in each input batch. Oversized
+batches fail; read smaller source batches instead of slicing an already
+materialized table, which can retain its entire allocation.
+
+Use `cached_vector_schema(dim)` to define the canonical fields and types for
+your cached Arrow data:
+
+```python
+from nemo_retriever.common.vdb.arrow import cached_vector_schema
+
+schema = cached_vector_schema(2048)
+```
+
+`LanceDB` uses the constructor's `embedding_model_name` and optional
+`embedding_model_revision` for both cached and record ingestion. It writes
+this configured identity to the table and uses it for append compatibility
+checks. Nonempty model or revision tags in the reader schema must match the
+corresponding constructor setting. Mismatches fail before input is read or the
+table is changed. Other user schema metadata is preserved. Storage accepts
+vectors without a known model. Dense and hybrid `Retriever` queries require a
+recorded model.
+
+`ingest_arrow()` supports the same local filesystem configurations and streaming
+lifecycle controls as `stream_ingest()`. Configure `hybrid=True` to also build the
+full-text index. For durable retries, persist and reuse `stream_operation_id` as
+described under [Backends with `VDB` implementations](#vdb-backends-implementations).
+An explicit operation ID binds the input schema, row content, and table-result
+settings for retry verification.
+
+Enabling `stream_operation_id` hashes each row during the initial load and
+retries. This detects changed content regardless of input batching, but can
+substantially reduce throughput for large cached-vector loads. The default
+`stream_operation_id=None` skips content hashing. Measure loading throughput
+with the operation ID setting you plan to deploy.
+
+Graph ingestion and the `retriever ingest` CLI continue through their existing
+record-based paths.
+
 ## Semantic retrieval { #semantic-retrieval }
 
 Semantic retrieval uses dense embeddings to find content that is similar in meaning to a query. In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
@@ -323,12 +420,21 @@ the exception instructs you to resume with the original explicit
 `stream_operation_id`. If the original attempt did not set an ID, do not replay
 records after a known commit and finalization failure.
 
-These settings apply only to `LanceDB.stream_ingest()`. Legacy `run()` and
-`put()` calls reject non-default streaming settings instead of ignoring them.
+These settings apply to `LanceDB.stream_ingest()` and `LanceDB.ingest_arrow()`.
+Legacy `run()` and `put()` calls reject non-default streaming settings instead
+of ignoring them.
 
 `RayDataExecutor.build_dataset()` remains lazy and builds the complete legacy
 graph, including the global VDB stage. In-process and service execution do not
 select streaming ingest and retain their existing VDB dispatch.
+
+`VDB.ingest_arrow(reader, *, expected_rows=None)` is a separate optional,
+non-abstract capability for cached vectors. Its input is a
+`pyarrow.RecordBatchReader`, which a supporting backend consumes synchronously
+through one write. LanceDB implements this capability for local tables. The base
+implementation raises `UnsupportedVDBOperation` without consuming the reader.
+Custom backends can implement their own conversion at the database boundary;
+existing subclasses do not need to implement this method.
 
 ### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 

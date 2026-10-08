@@ -33,6 +33,13 @@ iterable of canonical record dictionaries and returns after consuming it to
 exhaustion. The default flag is `False`, so existing subclasses retain the
 `VDB.run(records)` path. Overriding the method alone does not enable streaming.
 
+`VDB.ingest_arrow(reader, *, expected_rows=None)` is a separate optional,
+non-abstract capability for existing cached vectors. It accepts a single-pass
+`pyarrow.RecordBatchReader`. The default method raises
+`UnsupportedVDBOperation` without reading input, so existing custom backends do
+not need to implement it. A supporting backend owns validation, persistence,
+and any conversion required by its write API.
+
 ---
 
 ## `IngestVdbOperator` (ingestion)
@@ -127,6 +134,17 @@ table mutation, validation, index coverage, and optional optimization. Without
 `stream_operation_id`, it stores no durable idempotency history, and retry scope
 matches legacy fixed-table ingestion.
 
+`LanceDB.ingest_arrow()` loads cached vectors from a bounded
+`pyarrow.RecordBatchReader` through the same local write, validation, index, and
+recovery lifecycle as `stream_ingest()`. Its schema requires a fixed-size
+`float32` vector and string `id`, `text`, `source`, and `metadata` columns.
+Additional columns must use LanceDB-compatible Arrow types.
+
+`nemo_retriever.common.vdb.arrow.cached_vector_schema(dim)` defines the canonical
+fields and types. Configure embedding identity through the `LanceDB` constructor.
+For schema requirements, bounded Parquet loading, and embedding metadata, refer
+to [Load cached vectors from Parquet](https://docs.nvidia.com/nemo/retriever/latest/extraction/vdbs/#load-cached-vectors-from-parquet).
+
 An explicit `stream_operation_id` enables durable request, stored-row, version,
 and finalization checks. Its identity covers the rows produced after configured
 bad-vector filtering and the table-result settings. Dropped input records are
@@ -154,6 +172,9 @@ Common constructor arguments include:
 | `stream_batch_bytes` | Maximum Arrow bytes per packed streaming batch (default 256 MiB) |
 | `stream_optimize` | Run LanceDB optimization after a streaming write (default `False`) |
 | `stream_operation_id` | Optional caller-persisted ID for durable retries; binds stored rows after configured filtering and table-result settings; the default `None` stores no durable idempotency history |
+
+The streaming controls also apply to `LanceDB.ingest_arrow()`. Graph operators
+and the root CLI continue to use their existing record ingestion paths.
 
 Persist an explicit operation ID before the first attempt. If an append commits
 but its durable data marker is not recorded, do not replay it. Inspect the
@@ -326,6 +347,9 @@ flowchart LR
     R1[to_client_vdb_records]
     L1[LanceDB.run / stream_ingest]
     G --> IVO --> R1 --> L1
+    C[Cached Arrow / Parquet batches]
+    L3[LanceDB.ingest_arrow]
+    C --> L3
   end
 
   subgraph retrieve
@@ -337,10 +361,12 @@ flowchart LR
   end
 
   L1 -->[(LanceDB table on disk)]
+  L3 -->[(same table)]
   L2 -->[(same table)]
 ```
 
 - **Ingest**: flat rows → canonical records → **`LanceDB.run`** or **`LanceDB.stream_ingest`** → table + indexes.
+- **Cached vectors**: bounded Arrow reader → **`LanceDB.ingest_arrow`** → table + indexes.
 - **Retrieve**: strings → vectors → **`RetrieveVdbOperator`** → **`LanceDB.retrieval`** → hit lists.
 
 For implementation details, refer to `operators/vdb.py`, `adt_vdb.py`,
