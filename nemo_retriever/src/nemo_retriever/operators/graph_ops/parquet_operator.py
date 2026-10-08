@@ -132,64 +132,76 @@ class ParquetWriterOperator(AbstractOperator, CPUOperator):
 class ParquetReaderOperator(AbstractOperator, CPUOperator):
     """Load rows written by :class:`ParquetWriterOperator` (or any row-per-record Parquet).
 
-    Accepts a path, a list of paths, or a DataFrame with a ``path`` column such as the one
-    ``InprocessExecutor.ingest`` builds. A directory contributes every ``*.parquet`` file in it.
+    Accepts a path, a list of paths, or a DataFrame with ``path`` and optional ``bytes`` columns
+    such as the ones ``InprocessExecutor`` and ``RayDataExecutor`` build. A directory contributes
+    every ``*.parquet`` file in it.
     The operator takes no constructor arguments.
     """
 
-    def preprocess(self, data: Any, **kwargs: Any) -> list[Path]:
-        """Resolve the input into a list of Parquet files.
+    def preprocess(self, data: Any, **kwargs: Any) -> list[Path | bytes]:
+        """Resolve the input into a list of Parquet sources.
 
         Parameters
         ----------
         data : str, pathlib.Path, list, or pandas.DataFrame
             A file or directory path, a list of them, or a DataFrame whose ``path`` column holds
             them. A directory expands to its ``*.parquet`` files in sorted order; subdirectories
-            are not searched.
+            are not searched. When the DataFrame also has a ``bytes`` column, as executors build
+            for the first operator of a graph, each row's bytes are read instead of its path, so
+            workers that cannot see the original files still work.
         **kwargs : Any
             Unused; accepted for the operator interface.
 
         Returns
         -------
-        list[pathlib.Path]
-            Parquet files to read, in order.
+        list[pathlib.Path | bytes]
+            Parquet files, or their contents, to read in order.
 
         Raises
         ------
         TypeError
             If ``data`` is none of the supported input types.
         FileNotFoundError
-            If a listed path does not exist.
+            If a path that must be read from disk does not exist.
         """
         if isinstance(data, (str, Path)):
             sources = [data]
         elif isinstance(data, list):
             sources = data
         elif isinstance(data, pd.DataFrame) and "path" in data.columns:
-            sources = data["path"].tolist()
+            if "bytes" in data.columns:
+                sources = [
+                    payload if isinstance(payload, (bytes, bytearray)) else path
+                    for payload, path in zip(data["bytes"], data["path"])
+                ]
+            else:
+                sources = data["path"].tolist()
         else:
             raise TypeError(
                 "data must be a Parquet path, a list of paths, or a DataFrame with a 'path' column, "
                 f"got {type(data).__name__}"
             )
-        files: list[Path] = []
+        resolved: list[Path | bytes] = []
         for source in sources:
+            if isinstance(source, (bytes, bytearray)):
+                resolved.append(bytes(source))
+                continue
             path = Path(source)
             if not path.exists():
                 raise FileNotFoundError(
                     f"Parquet path {str(path)!r} does not exist. Pass the output_dir that "
                     "ParquetWriterOperator wrote to, or a .parquet file inside it."
                 )
-            files.extend(sorted(path.glob("*.parquet")) if path.is_dir() else [path])
-        return files
+            resolved.extend(sorted(path.glob("*.parquet")) if path.is_dir() else [path])
+        return resolved
 
-    def process(self, data: list[Path], **kwargs: Any) -> pd.DataFrame:
-        """Read the files and concatenate their rows.
+    def process(self, data: list[Path | bytes], **kwargs: Any) -> pd.DataFrame:
+        """Read the sources and concatenate their rows.
 
         Parameters
         ----------
-        data : list[pathlib.Path]
-            Parquet files from :meth:`preprocess`.
+        data : list[pathlib.Path | bytes]
+            Parquet files or file contents from :meth:`preprocess`.
         **kwargs : Any
             Unused; accepted for the operator interface.
 

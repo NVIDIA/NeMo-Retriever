@@ -87,6 +87,26 @@ def test_reader_rejects_missing_path(tmp_path):
         ParquetReaderOperator().run(tmp_path / "missing")
 
 
+def test_reader_reads_delivered_bytes_when_path_is_not_local(tmp_path):
+    rows = _rows()
+    ParquetWriterOperator(output_dir=str(tmp_path)).run(rows)
+    payload = next(tmp_path.glob("*.parquet")).read_bytes()
+    batch = pd.DataFrame({"bytes": [payload], "path": ["/on/another/node/part-0.parquet"]})
+
+    loaded = ParquetReaderOperator().run(batch)
+
+    assert loaded["metadata"].tolist() == rows["metadata"].tolist()
+
+
+def test_reader_falls_back_to_path_when_bytes_are_missing(tmp_path):
+    ParquetWriterOperator(output_dir=str(tmp_path)).run(_rows())
+    path = next(tmp_path.glob("*.parquet"))
+
+    loaded = ParquetReaderOperator().run(pd.DataFrame({"bytes": [None], "path": [str(path)]}))
+
+    assert loaded["text"].tolist() == ["first page", "a table"]
+
+
 def test_reader_returns_empty_frame_for_empty_directory(tmp_path):
     assert ParquetReaderOperator().run(tmp_path).empty
 
