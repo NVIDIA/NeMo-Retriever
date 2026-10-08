@@ -345,7 +345,12 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
 
     def unload(self) -> None:
         """Release GPU memory held by the vLLM engine."""
-        del self._llm
+        llm = self._llm
+        if llm is None:
+            return
+
+        llm.llm_engine.engine_core.shutdown(timeout=30.0)
         self._llm = None
+        del llm
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

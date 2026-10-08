@@ -483,6 +483,16 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             gpu_memory_utilization=float(self._kwargs.get("reranker_gpu_memory_utilization", 0.5)),
         )
 
+    def unload(self) -> None:
+        """Release the owned reranker, retaining it if cleanup fails."""
+        model = self._model
+        if model is None:
+            return
+        unload = getattr(model, "unload", None)
+        if callable(unload):
+            unload()
+        self._model = None
+
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 

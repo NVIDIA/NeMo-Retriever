@@ -32,6 +32,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
         self._params = params
         self._kwargs = build_embed_kwargs(params)
+        self._owns_model = False
 
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
         if endpoint:
@@ -55,6 +56,18 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             return
 
         self._model = local_spec.create()
+        self._owns_model = True
+
+    def unload(self) -> None:
+        """Release an owned embedder or detach a borrowed warmed model."""
+        model = self._model
+        if model is None:
+            return
+        unload = getattr(model, "unload", None)
+        if self._owns_model and callable(unload):
+            unload()
+        self._model = None
+        self._owns_model = False
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

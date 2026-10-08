@@ -483,22 +483,21 @@ class AgenticRetriever:
         )
 
     def unload(self) -> None:
-        """Release the in-process agent LLM owned by this retriever.
+        """Release the owned agent LLM and inner retriever's cached query graph.
 
-        OpenAI-compatible endpoint mode is a no-op. Local vLLM mode shuts down
-        this instance's EngineCore so CLI/harness jobs can exit cleanly. Embed
-        and rerank models stay on ``self._retriever`` and are released with the
-        process, matching dense harness BEIR behavior.
+        Retain ownership when cleanup fails so a later call can retry.
+        Serialize inner retriever cleanup with active retrieval hops.
         """
-
         with self._lock:
-            chat_fn = self._chat_completion_fn
-            self._chat_completion_fn = None
-        if chat_fn is None:
-            return
-        unload = getattr(chat_fn, "unload", None)
-        if callable(unload):
-            unload()
+            try:
+                chat_fn = self._chat_completion_fn
+                if chat_fn is not None:
+                    unload = getattr(chat_fn, "unload", None)
+                    if callable(unload):
+                        unload()
+                    self._chat_completion_fn = None
+            finally:
+                self._retriever.unload()
 
     def answer(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return one integrated agentic answer per query.
