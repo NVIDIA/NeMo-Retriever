@@ -21,10 +21,10 @@ import base64
 import io
 import json
 import re
+import threading
 import time
 import traceback
 
-import numpy as np
 import pandas as pd
 
 from nemo_retriever.common.modality.parse.nemotron_parse_postprocessing import (
@@ -69,9 +69,10 @@ _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
+def _error_payload(*, stage: str, exc: BaseException, raw_output: Optional[str] = None) -> Dict[str, Any]:
     return {
         "timing": None,
+        "raw_output": raw_output,
         "error": {
             "stage": str(stage),
             "type": exc.__class__.__name__,
@@ -275,11 +276,15 @@ def _route_tool_call_elements(
     return table_items, chart_items, infographic_items, page_text
 
 
-def _decode_page_image(page_image_b64: str) -> np.ndarray:
-    """Decode a base64 page image to an HWC uint8 numpy array."""
+def _decode_page_image(page_image_b64: str) -> "Image.Image":
+    """Decode a base64 page image to a loaded RGB PIL image."""
     raw = base64.b64decode(page_image_b64)
     with Image.open(io.BytesIO(raw)) as im:
-        return np.asarray(im.convert("RGB"), dtype=np.uint8).copy()
+        image = im.convert("RGB")
+    # The previous NumPy handoff dropped file metadata such as EXIF orientation; later
+    # normalization (vLLM's exif_transpose) must see the same image as before.
+    image.info.clear()
+    return image
 
 
 # ---------------------------------------------------------------------------
@@ -333,13 +338,13 @@ def nemotron_parse_pages(
     all_chart: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_infographic: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_text: List[Optional[str]] = [None] * n_rows
-    all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(n_rows)]
+    all_meta: List[Dict[str, Any]] = [{"timing": None, "raw_output": None, "error": None} for _ in range(n_rows)]
 
     t0_total = time.perf_counter()
 
     # -- Phase 1: collect page images that need inference ----------------
     batch_indices: List[int] = []  # index into batch_df
-    batch_images: List[Any] = []  # numpy arrays (local) or b64 strings (remote)
+    batch_images: List[Any] = []  # RGB PIL images (local) or b64 strings (remote)
 
     for idx, row in enumerate(batch_df.itertuples(index=False)):
         page_image = getattr(row, "page_image", None) or {}
@@ -353,18 +358,11 @@ def nemotron_parse_pages(
                 batch_images.append(_decode_page_image(page_image_b64))
             batch_indices.append(idx)
         except Exception as e:
-            all_meta[idx] = {
-                "timing": None,
-                "error": {
-                    "stage": "nemotron_parse_pages_decode",
-                    "type": e.__class__.__name__,
-                    "message": str(e),
-                    "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-                },
-            }
+            all_meta[idx] = _error_payload(stage="nemotron_parse_pages_decode", exc=e)
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
+    local_finish_reasons: List[Optional[str]] = [None] * len(batch_indices)
     uses_tool_call_routing = False
     contract: _ResolvedNemotronParseContract | None = None
     if batch_images:
@@ -417,11 +415,21 @@ def nemotron_parse_pages(
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
                 # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
-                invoke_batch = getattr(model, "invoke_batch", None)
-                if invoke_batch is not None:
-                    raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
+                invoke_with_finish_reasons = getattr(model, "invoke_batch_with_finish_reasons", None)
+                if callable(invoke_with_finish_reasons):
+                    local_results = list(invoke_with_finish_reasons(batch_images, task_prompt=task_prompt))
+                    if len(local_results) != len(batch_images):
+                        raise RuntimeError(
+                            "Local Nemotron Parse returned a different number of completions than page images"
+                        )
+                    raw_texts = [str(text or "") for text, _ in local_results]
+                    local_finish_reasons = [str(finish_reason or "unknown") for _, finish_reason in local_results]
                 else:
-                    raw_texts = [str(model.invoke(img, task_prompt=task_prompt) or "").strip() for img in batch_images]
+                    invoke_batch = getattr(model, "invoke_batch", None)
+                    if invoke_batch is not None:
+                        raw_texts = [str(t or "") for t in invoke_batch(batch_images, task_prompt=task_prompt)]
+                    else:
+                        raw_texts = [str(model.invoke(img, task_prompt=task_prompt) or "") for img in batch_images]
         except BaseException as e:
             if (
                 contract is not None
@@ -440,20 +448,16 @@ def nemotron_parse_pages(
                 hint.__cause__ = e
                 e = hint
             print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
-            err = {
-                "stage": "nemotron_parse_pages",
-                "type": e.__class__.__name__,
-                "message": str(e),
-                "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-            }
+            payload = _error_payload(stage="nemotron_parse_pages", exc=e)
             for i in batch_indices:
-                all_meta[i] = {"timing": None, "error": err}
+                all_meta[i] = dict(payload)
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
     route_fn = _route_tool_call_elements if uses_tool_call_routing else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
+        all_meta[idx]["raw_output"] = raw_text
         try:
             fp_tables, fp_charts, fp_infographics, fp_text = route_fn(
                 raw_text,
@@ -466,16 +470,15 @@ def nemotron_parse_pages(
             all_infographic[idx] = fp_infographics
             if fp_text is not None:
                 all_text[idx] = fp_text
+            finish_reason = local_finish_reasons[pos]
+            if finish_reason is not None and finish_reason.lower() != "stop":
+                all_meta[idx]["error"] = {
+                    "stage": "nemotron_parse_pages_finish_reason",
+                    "type": "IncompleteModelOutputError",
+                    "message": (f"Local Nemotron Parse ended with finish_reason={finish_reason!r}"),
+                }
         except BaseException as e:
-            all_meta[idx] = {
-                "timing": None,
-                "error": {
-                    "stage": "nemotron_parse_pages_route",
-                    "type": e.__class__.__name__,
-                    "message": str(e),
-                    "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
-                },
-            }
+            all_meta[idx] = _error_payload(stage="nemotron_parse_pages_route", exc=e, raw_output=raw_text)
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:
@@ -504,7 +507,14 @@ def nemotron_parse_pages(
 
 
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor.
+
+    ``async_engine=True`` loads the model on vLLM's async engine so the actor can
+    run several batches at once; the executor decides how many.
+    """
+
+    # Concurrent actor tasks must not each start an engine on the same GPU.
+    _model_lock = threading.Lock()
 
     def __init__(
         self,
@@ -522,9 +532,11 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
+        async_engine: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+        self._async_engine = bool(async_engine)
         self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
         validate_nemotron_parse_endpoint_list(self._invoke_url)
@@ -549,18 +561,49 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
-    def _ensure_model(self) -> None:
-        """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
-        if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+    def _ensure_model(self) -> Any:
+        """Load the local vLLM model on first use (i.e. on the worker, not the driver) and return it."""
+        model = self._model
+        if model is not None or self._invoke_url:
+            return model
+        with self._model_lock:
+            if self._model is None:
+                from nemo_retriever.models.local import NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+                self._model = NemotronParseV12(task_prompt=self._task_prompt, async_engine=self._async_engine)
+            return self._model
+
+    @classmethod
+    def supports_concurrent_calls(cls, operator_kwargs: dict[str, Any]) -> bool:
+        """Report whether the executor may run several batches on one actor at once.
+
+        Args:
+            operator_kwargs: Constructor keyword arguments for this actor.
+
+        Returns:
+            True only with ``async_engine=True``; the offline vLLM engine is not thread-safe.
+        """
+        return bool(operator_kwargs.get("async_engine"))
+
+    def close(self) -> None:
+        """Release the local model and the GPU memory its engine holds.
+
+        Safe to call more than once and from any thread. Batches already running
+        on the async engine are cancelled; a later batch loads the model again.
+        """
+        with self._model_lock:
+            model, self._model = getattr(self, "_model", None), None
+        if model is not None:
+            model.close()
+
+    # Ray Data deletes the actor's operator when the actor exits gracefully.
+    __del__ = close
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        self._ensure_model()
+        model = self._ensure_model()
         return nemotron_parse_pages(
             data,
-            model=self._model,
+            model=model,
             invoke_url=self._invoke_url,
             nemotron_parse_model=self._nemotron_parse_model,
             api_key=self._api_key,
