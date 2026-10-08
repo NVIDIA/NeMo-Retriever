@@ -82,6 +82,11 @@ def test_reader_rejects_unsupported_input():
         ParquetReaderOperator().run(42)
 
 
+def test_reader_rejects_missing_path(tmp_path):
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        ParquetReaderOperator().run(tmp_path / "missing")
+
+
 def test_reader_returns_empty_frame_for_empty_directory(tmp_path):
     assert ParquetReaderOperator().run(tmp_path).empty
 
