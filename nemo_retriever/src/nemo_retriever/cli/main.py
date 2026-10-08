@@ -15,12 +15,7 @@ from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(
-    help=(
-        "NeMo Retriever product workflows: ingest content, query an index, "
-        "or operate the service."
-    )
-)
+app = typer.Typer(help="NeMo Retriever product workflows: ingest content, query an index, or operate the service.")
 
 # Service sub-app is always available (lightweight, no GPU deps).
 from nemo_retriever.service.cli import app as service_app  # noqa: E402
