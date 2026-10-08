@@ -165,13 +165,18 @@ class TestLiteLLMCompletionKwargs:
 
     def test_forwarded_when_set(self):
         pytest.importorskip("litellm")
-        backend = LiteLLMBackend(LiteLLMConfig(model="gpt-4o-mini", temperature=0.3, parallel_tool_calls=True))
+        backend = LiteLLMBackend(
+            LiteLLMConfig(model="gpt-4o-mini", temperature=0.3, parallel_tool_calls=True, timeout_s=300.0)
+        )
+        assert backend.completion_kwargs["timeout"] == 300.0
+        assert "timeout_s" not in backend.completion_kwargs
         assert backend.completion_kwargs["temperature"] == 0.3
         assert backend.completion_kwargs["parallel_tool_calls"] is True
 
     def test_omitted_when_none(self):
         pytest.importorskip("litellm")
         backend = LiteLLMBackend(LiteLLMConfig(model="gpt-4o-mini"))
+        assert "timeout" not in backend.completion_kwargs
         assert "temperature" not in backend.completion_kwargs
         assert "parallel_tool_calls" not in backend.completion_kwargs
 

@@ -69,6 +69,8 @@ class QueryAgenticOptions:
     text_truncation: int = 0
     num_concurrent: int = 1
     temperature: float | None = None
+    # Per-request timeout in seconds for both agent LLM stages.
+    timeout_s: float = 120.0
     # LLM client (see AgenticRetrievalConfig.llm_client). Optional: defaults to
     # ``callable`` for both in-process and remote runs when unset.
     llm_client: str | None = None

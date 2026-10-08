@@ -138,6 +138,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         base_url: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         temperature: Optional[float] = None,
+        timeout_s: float = 120.0,
         backend: str = "callable",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
@@ -150,6 +151,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
+        self._timeout_s = timeout_s
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
         self._backend = backend
@@ -188,6 +190,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             temperature=self._temperature,
             parallel_tool_calls=self._parallel_tool_calls,
             max_completion_tokens=self._max_tokens,
+            timeout_s=self._timeout_s,
         )
         completion_fn = self._chat_completion_fn
         if self._backend == "callable" and completion_fn is None:
