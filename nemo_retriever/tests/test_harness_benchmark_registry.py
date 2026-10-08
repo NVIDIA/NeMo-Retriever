@@ -35,6 +35,20 @@ VIDORE_V3_DATASET_FACTS = {
 RUNFILES_DIR = Path(__file__).resolve().parents[1] / "harness" / "runfiles"
 
 
+def test_officeqa_pro_v2_benchmark_and_runfile() -> None:
+    dataset = get_dataset("officeqa_pro_v2")
+    benchmark = get_benchmark("officeqa_pro_v2_beir")
+    request = load_runfile(RUNFILES_DIR / "officeqa_pro_v2_beir.json")
+
+    assert dataset.beir_loader == "officeqa_pro_v2_csv"
+    assert dataset.query_file is None
+    assert dataset.beir_doc_id_field == "pdf_basename"
+    assert benchmark.dataset == dataset.name
+    assert benchmark.evaluation["loader"] == dataset.beir_loader
+    assert request.requirements == ("files==1435", "query_count==90")
+    assert request.timeout_seconds == 86400
+
+
 @pytest.mark.parametrize(("runfile_name", "modality"), BO767_VL_HYBRID_RUNFILES.items())
 def test_bo767_vl_hybrid_runfiles_resolve_expected_sweep(runfile_name: str, modality: str) -> None:
     request = load_runfile(RUNFILES_DIR / runfile_name)

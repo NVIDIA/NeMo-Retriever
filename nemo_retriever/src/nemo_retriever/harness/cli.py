@@ -24,7 +24,7 @@ from nemo_retriever.harness.revamp_runner import (
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
 from nemo_retriever.harness.runfile import load_runfile
-from nemo_retriever.harness.runsets import run_runfiles, run_runset
+from nemo_retriever.harness.runsets import run_benchmark_with_timeout, run_runfiles, run_runset
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
     build_slack_payload,
@@ -162,6 +162,7 @@ def run_command(
     try:
         runfile_payload = None
         runfile_path = None
+        runfile_timeout_seconds = None
         if runfile is not None:
             if benchmark is not None:
                 raise HarnessRunError(
@@ -183,6 +184,7 @@ def run_command(
             dry_run = dry_run or bool(request.dry_run)
             runfile_payload = dict(request.payload)
             runfile_path = str(request.source_path)
+            runfile_timeout_seconds = request.timeout_seconds
         if benchmark is None:
             raise HarnessRunError(
                 EXIT_INVALID,
@@ -193,18 +195,24 @@ def run_command(
                     message="Pass a benchmark argument or --runfile.",
                 ),
             )
-        outcome = run_benchmark(
-            benchmark,
-            output_dir=output_dir,
-            run_id=run_id,
-            mode=mode or "local",
-            overrides=set_values or (),
-            requirements=requirements or (),
-            dry_run=dry_run,
-            service_endpoint=service_endpoint,
-            runfile_payload=runfile_payload,
-            runfile_path=runfile_path,
-        )
+        run_options = {
+            "output_dir": output_dir,
+            "run_id": run_id,
+            "mode": mode or "local",
+            "overrides": set_values or (),
+            "requirements": requirements or (),
+            "service_endpoint": service_endpoint,
+            "runfile_payload": runfile_payload,
+            "runfile_path": runfile_path,
+        }
+        if runfile_timeout_seconds is not None and not dry_run:
+            outcome = run_benchmark_with_timeout(
+                benchmark,
+                timeout_seconds=runfile_timeout_seconds,
+                **run_options,
+            )
+        else:
+            outcome = run_benchmark(benchmark, dry_run=dry_run, **run_options)
     except HarnessRunError as exc:
         typer.echo(exc.failure.message, err=True)
         raise typer.Exit(code=exc.exit_code) from exc

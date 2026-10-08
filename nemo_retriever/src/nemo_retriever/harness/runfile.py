@@ -26,6 +26,7 @@ _ALLOWED_RUNFILE_KEYS = {
     "require",
     "requirements",
     "dry_run",
+    "timeout_seconds",
 }
 
 
@@ -39,6 +40,7 @@ class RunFileRequest:
     overrides: tuple[str, ...]
     requirements: tuple[str, ...]
     dry_run: bool | None
+    timeout_seconds: float | None
     source_path: Path
     payload: Mapping[str, Any]
 
@@ -151,6 +153,14 @@ def load_runfile(path: Path) -> RunFileRequest:
     if dry_run is not None and not isinstance(dry_run, bool):
         raise _invalid("Runfile 'dry_run' must be true or false.")
 
+    timeout_seconds = payload.get("timeout_seconds")
+    if timeout_seconds is not None and (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not 0 < timeout_seconds < float("inf")
+    ):
+        raise _invalid("Runfile 'timeout_seconds' must be a finite positive number.")
+
     return RunFileRequest(
         benchmark=benchmark,
         name=_optional_string(payload, "name"),
@@ -160,6 +170,7 @@ def load_runfile(path: Path) -> RunFileRequest:
         overrides=_overrides_from_payload(payload.get("set")),
         requirements=_requirements_from_payload(payload),
         dry_run=dry_run,
+        timeout_seconds=float(timeout_seconds) if timeout_seconds is not None else None,
         source_path=source_path,
         payload=payload,
     )

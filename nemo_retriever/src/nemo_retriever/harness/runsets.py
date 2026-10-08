@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
 
-from nemo_retriever.harness.artifact_writer import redact
+from nemo_retriever.harness.artifact_writer import redact, utc_now
 from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr, working_tree_dirty
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
 from nemo_retriever.harness.contracts import (
@@ -21,11 +21,13 @@ from nemo_retriever.harness.contracts import (
     EXIT_SUCCESS,
     FailurePayload,
     HarnessRunError,
+    PHASE_VALUES,
     RunOutcome,
 )
 from nemo_retriever.harness.dataset_paths import load_dataset_paths
 from nemo_retriever.harness.execution import PreparedBenchmark, preflight_benchmark, run_prepared_benchmark
-from nemo_retriever.harness.json_io import artifact_write_error, write_json
+from nemo_retriever.harness.json_io import artifact_write_error, read_json_object, write_json
+from nemo_retriever.harness.resolution import make_run_id, resolve_artifact_dir
 from nemo_retriever.harness.runfile import load_runfile
 
 _SESSION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -43,6 +45,7 @@ class PreparedRun:
     runfile_payload: dict[str, Any] | None = None
     runfile_path: str | None = None
     summary_mode: str | None = None
+    timeout_seconds: float | None = None
 
 
 def _invalid_runfile(message: str) -> HarnessRunError:
@@ -169,6 +172,7 @@ def _failed_result_payload(
 def _failed_child_outcome(
     *,
     benchmark: str,
+    run_id: str,
     artifact_dir: Path,
     dry_run: bool,
     exc: Exception,
@@ -195,6 +199,30 @@ def _failed_child_outcome(
         artifact_dir.mkdir(parents=True, exist_ok=True)
         results_path: Path | None = artifact_dir / "results.json"
         write_json(results_path, result)
+        status_path = artifact_dir / "status.json"
+        try:
+            previous_status = read_json_object(status_path)
+        except (FileNotFoundError, OSError, ValueError):
+            previous_status = {}
+        if previous_status.get("run_id") != run_id:
+            previous_status = {}
+        phase = previous_status.get("phase")
+        if not isinstance(phase, str) or phase not in PHASE_VALUES:
+            phase = failure.failed_phase if failure.failed_phase in PHASE_VALUES else "resolve"
+        write_json(
+            status_path,
+            {
+                "run_id": run_id,
+                "benchmark": benchmark,
+                "status": "failed",
+                "phase": phase,
+                "started_at": previous_status.get("started_at") or utc_now(),
+                "updated_at": utc_now(),
+                "artifact_dir": str(artifact_dir.resolve()),
+                "results_path": "results.json",
+                "failure": failure.to_dict(),
+            },
+        )
     except Exception as write_exc:
         exit_code = EXIT_ARTIFACT_WRITE_FAILURE
         if isinstance(write_exc, HarnessRunError) and write_exc.exit_code == EXIT_ARTIFACT_WRITE_FAILURE:
@@ -258,6 +286,13 @@ def _run_prepared_benchmark_isolated(
 ) -> RunOutcome:
     """Run one child with a process boundary that releases Ray and dataframe memory."""
 
+    # The child creates a fresh status file after startup. Clear any status from
+    # a previous run before launching it so a startup failure cannot reuse it.
+    try:
+        (Path(output_dir) / "status.json").unlink(missing_ok=True)
+    except OSError as exc:
+        raise artifact_write_error(exc) from exc
+
     context = multiprocessing.get_context("spawn")
     receive_connection, send_connection = context.Pipe(duplex=False)
     process = context.Process(
@@ -280,10 +315,10 @@ def _run_prepared_benchmark_isolated(
 
     message: tuple[str, Any] | None = None
     try:
-        if not receive_connection.poll(_ISOLATED_CHILD_TIMEOUT_SECONDS):
+        timeout_seconds = getattr(run, "timeout_seconds", None) or _ISOLATED_CHILD_TIMEOUT_SECONDS
+        if not receive_connection.poll(timeout_seconds):
             raise TimeoutError(
-                f"isolated benchmark {run.name!r} exceeded the "
-                f"{_ISOLATED_CHILD_TIMEOUT_SECONDS:g}-second child timeout"
+                f"isolated benchmark {run.name!r} exceeded the " f"{timeout_seconds:g}-second child timeout"
             )
         try:
             message = receive_connection.recv()
@@ -313,6 +348,76 @@ def _run_prepared_benchmark_isolated(
     if message_type != "outcome" or not isinstance(payload, RunOutcome):
         raise RuntimeError("isolated benchmark process returned an invalid outcome")
     return payload
+
+
+def run_benchmark_with_timeout(
+    benchmark: str,
+    *,
+    timeout_seconds: float,
+    output_dir: str | None = None,
+    run_id: str | None = None,
+    mode: str = "local",
+    overrides: Sequence[str] = (),
+    requirements: Sequence[str] = (),
+    service_endpoint: str | None = None,
+    runfile_payload: dict[str, Any] | None = None,
+    runfile_path: str | None = None,
+) -> RunOutcome:
+    """Run one benchmark in an isolated process with a deadline.
+
+    A child timeout or process failure produces a failed outcome and writes
+    ``results.json`` and ``status.json`` in the artifact directory. Preflight
+    failures occur before the child starts and raise ``HarnessRunError``.
+
+    Args:
+        benchmark: Name of a registered benchmark.
+        timeout_seconds: Finite, positive deadline in seconds for child execution.
+        output_dir: Artifact directory. Uses the default artifacts root if omitted.
+        run_id: Artifact run identifier. Generates one if omitted.
+        mode: Execution mode (``local``, ``batch``, or ``service``).
+        overrides: Benchmark configuration overrides as ``KEY=VALUE`` strings.
+        requirements: Summary metric gates to enforce after execution.
+        service_endpoint: Retriever service URL for service mode.
+        runfile_payload: Runfile content to include in the run artifacts.
+        runfile_path: Source runfile path to include in the run artifacts.
+
+    Returns:
+        The benchmark outcome, including the exit code and artifact paths.
+
+    Raises:
+        HarnessRunError: Preflight finds an invalid benchmark, configuration,
+            metric gate, or missing dataset input. Correct the reported input
+            and retry the run.
+    """
+
+    prepared = preflight_benchmark(
+        benchmark,
+        mode=mode,
+        overrides=overrides,
+        requirements=requirements,
+        dry_run=False,
+        service_endpoint=service_endpoint,
+    )
+    effective_run_id = run_id or make_run_id(benchmark)
+    artifact_dir = resolve_artifact_dir(benchmark, effective_run_id, output_dir)
+    run = PreparedRun(
+        name=benchmark,
+        artifact_name=effective_run_id,
+        prepared=prepared,
+        runfile_payload=runfile_payload,
+        runfile_path=runfile_path,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        return _run_prepared_benchmark_isolated(run, output_dir=str(artifact_dir), run_id=effective_run_id)
+    except Exception as exc:
+        return _failed_child_outcome(
+            benchmark=benchmark,
+            run_id=effective_run_id,
+            artifact_dir=artifact_dir,
+            dry_run=False,
+            exc=exc,
+        )
 
 
 def _session_summary(
@@ -381,6 +486,7 @@ def _run_session(
         except Exception as exc:
             outcome = _failed_child_outcome(
                 benchmark=run.prepared.benchmark,
+                run_id=run_id,
                 artifact_dir=artifact_dir,
                 dry_run=run.prepared.dry_run,
                 exc=exc,
@@ -519,6 +625,7 @@ def run_runfiles(
                 runfile_payload=dict(request.payload),
                 runfile_path=str(request.source_path),
                 summary_mode=effective_mode,
+                timeout_seconds=request.timeout_seconds,
             )
         )
         expanded_runs.append(
@@ -535,6 +642,7 @@ def run_runfiles(
                 "overrides": list(effective_overrides),
                 "requirements": list(effective_requirements),
                 "dry_run": bool(dry_run),
+                "timeout_seconds": request.timeout_seconds or _ISOLATED_CHILD_TIMEOUT_SECONDS,
             }
         )
 
