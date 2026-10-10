@@ -767,6 +767,47 @@ def test_elastic_actor_pool_mode_uses_requested_heuristic_bounds() -> None:
     )
 
 
+def test_elastic_actor_pool_mode_preserves_explicit_ocr_bounds() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=64, gpu_count=2),
+        available_resources=Resources(cpu_count=64, gpu_count=2),
+    )
+    extract_params = ExtractParams(
+        batch_tuning=BatchTuningParams(
+            actor_pool_mode="elastic",
+            ocr_min_workers=1,
+            ocr_initial_workers=1,
+            ocr_max_workers=2,
+        )
+    )
+
+    overrides = batch_tuning_to_node_overrides(extract_params, None, cluster_resources=cluster)
+
+    assert overrides["OCRActor"]["concurrency"] == (1, 2, 1)
+    assert overrides["OCRActor"].get("elastic_pool") is None
+
+
+def test_elastic_actor_pool_mode_preserves_explicit_embed_bounds() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=64, gpu_count=2),
+        available_resources=Resources(cpu_count=64, gpu_count=2),
+    )
+    embed_params = EmbedParams(
+        model_name="nvidia/llama-nemotron-embed-1b-v2",
+        batch_tuning=BatchTuningParams(
+            actor_pool_mode="elastic",
+            embed_workers_min=1,
+            embed_workers_initial=1,
+            embed_workers_max=2,
+        ),
+    )
+
+    overrides = batch_tuning_to_node_overrides(None, embed_params, cluster_resources=cluster)
+
+    assert overrides["_BatchEmbedActor"]["concurrency"] == (1, 2, 1)
+    assert overrides["_BatchEmbedActor"].get("elastic_pool") is None
+
+
 def test_default_actor_pool_mode_keeps_heuristic_worker_counts_fixed() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=64, gpu_count=2),
