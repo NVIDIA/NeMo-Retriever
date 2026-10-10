@@ -77,6 +77,131 @@ Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI inge
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
 
+### Allow the OCR actor pool to grow
+
+In batch mode, you can give Ray Data bounds for the OCR actor pool in the
+dedicated PDF extraction graph. Set all 3 fields, `ocr_min_workers`,
+`ocr_initial_workers`, and `ocr_max_workers`, in `BatchTuningParams`. Each
+value must be a positive integer, with
+`ocr_min_workers <= ocr_initial_workers <= ocr_max_workers`. Do not combine
+these fields with `ocr_workers`.
+
+Use these bounds when extraction resolves to the dedicated PDF graph. PDF-only
+inputs infer this mode, or you can set `extraction_mode="pdf"` explicitly.
+Batch `auto`, image, HTML, audio, and other extraction graphs do not have this
+OCR actor pool. The PDF graph also omits it with `method="nemotron_parse"` or
+when text, table, chart, and infographic extraction are all disabled. When a
+batch mixes PDFs with other file types, the bounds apply only to the PDF OCR
+pool. A run with no OCR actor pool rejects the bounds with a `ValueError`.
+
+The following example starts with 2 OCR actors and allows Ray Data to grow
+the pool to 4 actors when work and resources are available.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(["data/multimodal_test.pdf"])
+    .extract(
+        extraction_mode="pdf",
+        batch_tuning=BatchTuningParams(
+            ocr_min_workers=2,
+            ocr_initial_workers=2,
+            ocr_max_workers=4,
+        )
+    )
+    .embed()
+    .ingest()
+)
+```
+
+If you construct an ingest plan in Python, `IngestExtractBatchOptions` accepts
+the same 3 fields. Leaving them unset preserves existing automatic sizing or
+an explicit fixed `ocr_workers` count.
+
+Preflight checks the initial OCR pool against the available resource budget.
+It does not reserve resources for all maximum-size pools at startup. Ray Data
+decides whether to grow the OCR pool within these bounds. Growth depends on
+queued work, its autoscaling policy, and available scheduling resources. An
+idle GPU or an upstream actor exiting does not guarantee immediate growth.
+
+Ray Data can also shrink the pool toward `ocr_min_workers` as demand falls.
+After OCR consumes all its inputs, Ray Data retires its actors as their work
+completes, including actors at the minimum size. The minimum does not keep
+OCR models resident until the rest of the pipeline finishes.
+
+CPU and GPU requests are logical scheduling reservations. A fractional GPU
+request does not assign that percentage of physical GPU utilization or limit
+model memory. Pool growth creates actors with the configured per-actor
+requests; it does not resize the resource requests of existing actors.
+
+Compare actor counts and queued work in Ray Data with the
+`nrl.batch::ocr.startup` and `nrl.batch::ocr.batch` ranges in Nsight Systems.
+Check when additional actors start processing and whether their startup cost
+offsets the time saved processing the remaining OCR work. A lazily loaded
+model can perform initialization inside its first batch range.
+
+## Profile batch ingestion with Nsight Systems
+
+Batch mode emits NVIDIA Tools Extension (NVTX) ranges from the driver and Ray
+actor processes through the `nvtx` Python package, which is installed with NeMo
+Retriever Library. These host annotations do not require PyTorch or a GPU.
+Use NVIDIA Nsight Systems to correlate these semantic stages
+with CUDA and operating system activity. Start with a representative, bounded
+input because profiler tracing can increase runtime and report size.
+
+Run a batch ingest under `nsys profile` as follows:
+
+```bash
+nsys profile \
+  --trace=nvtx,cuda,osrt \
+  --sample=none \
+  --wait=all \
+  --output=nrl-batch-profile \
+  -- retriever ingest batch /path/to/your/pdfs
+```
+
+The command writes `nrl-batch-profile.nsys-rep`. Open the report in the Nsight
+Systems graphical interface, or run `nsys-ui nrl-batch-profile.nsys-rep` on a
+workstation with the interface installed. Search the timeline for
+`nrl.batch::` to find the following ranges.
+
+| Range | Interpretation |
+| --- | --- |
+| `nrl.batch::pdf_split.batch` | One PDF split actor call that splits a batch of documents into single-page PDFs. |
+| `nrl.batch::pdf_extract.batch` | One PDF extraction actor call that extracts text and images from a batch of pages. |
+| `nrl.batch::page_elements.startup` | One Page Elements actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::page_elements.batch` | One Page Elements actor processing call. |
+| `nrl.batch::table_structure.startup` | One Table Structure actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::table_structure.batch` | One Table Structure actor processing call. |
+| `nrl.batch::ocr.startup` | One OCR actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::ocr.batch` | One OCR actor processing call. |
+| `nrl.batch::embedding.startup` | One embedding actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::embedding.batch` | One embedding actor processing call. |
+| `nrl.batch::ray.materialize` | Materialization of a terminal Ray dataset into a pandas DataFrame. This range can include lazy upstream execution. |
+| `nrl.batch::pipeline.terminal_stream` | Consumption of the lazy upstream pipeline and streaming of its records to the vector database backend. This range is not pure vector database time. |
+| `nrl.batch::result.concat` | Concatenation of retained frames when the graph ends at a streaming vector database sink and at least one batch was consumed. This range is absent when the sink has downstream nodes or the input has no batches. |
+
+Local and remote (endpoint-backed) Page Elements, Table Structure, OCR, and embedding actors emit the same ranges; for remote actors, the batch range includes network requests to the endpoint.
+
+Ranges from concurrent Ray actors can overlap. Their durations include CPU
+preparation, waits, and calls into inference backends. They do not represent
+CUDA kernel time by themselves. In the timeline, compare range boundaries with
+the CUDA activity rows to identify the stage that remains active near pipeline
+completion and to find idle gaps between batches.
+
+You can also print an aggregate NVTX summary:
+
+```bash
+nsys stats --report nvtx_sum nrl-batch-profile.nsys-rep
+```
+
+The summary adds durations from all matching ranges. With concurrent actors,
+the summed duration can exceed wall-clock time, so use the timeline to reason
+about overlap and the critical path.
+
 ## Tune remote OCR request batching
 
 Remote OCR batches cropped regions across the page rows supplied to one OCR actor call. This behavior applies to in-process, batch, and service ingestion with a remote OCR NIM. It preserves page and region output order.
@@ -92,7 +217,7 @@ The execution mode determines how page rows reach the OCR actor and how many act
 | Mode | OCR batching and concurrency |
 | --- | --- |
 | `inprocess` | OCR batches across the page rows in the current graph stage, including pages of one PDF. It uses the remote request pool without Ray. |
-| `batch` | In the dedicated PDF graph, Ray supplies page-row batches to OCR actors. `ocr_inference_batch_size` also sets this Ray row-batch size, while `ocr_workers` controls the number of actors. Remote request limits apply separately within each actor. |
+| `batch` | In the dedicated PDF graph, Ray supplies page-row batches to OCR actors. `ocr_inference_batch_size` also sets this Ray row-batch size. `ocr_workers` sets a fixed actor count, or the OCR pool bounds permit autoscaling. Remote request limits apply separately within each actor. |
 | `service` | Each service worker runs an in-process graph. The whole-document route splits the PDF inside that graph, so OCR can batch across its pages. Service worker counts control concurrent work items. |
 
 In service mode, use `.extract(inference_batch_size=...)` to set the request batch size. The default service policy does not accept client overrides for `batch_tuning` or `remote_retry`. The server controls NIM endpoints and credentials. Across Ray actors or service workers, total request concurrency can exceed the per-actor limit.
