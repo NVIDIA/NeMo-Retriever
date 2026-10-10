@@ -226,6 +226,11 @@ class IngestStorageOptions:
 
 
 @dataclass(frozen=True)
+class IngestStagingOptions:
+    stage_dir: str | None = None
+
+
+@dataclass(frozen=True)
 class IngestPlanRequest:
     source: IngestSourceOptions
     runtime: IngestRuntimeOptions = field(default_factory=IngestRuntimeOptions)
@@ -237,6 +242,7 @@ class IngestPlanRequest:
     embed: IngestEmbedOptions = field(default_factory=IngestEmbedOptions)
     image_store: IngestImageStoreOptions = field(default_factory=IngestImageStoreOptions)
     storage: IngestStorageOptions = field(default_factory=IngestStorageOptions)
+    staging: IngestStagingOptions = field(default_factory=IngestStagingOptions)
 
 
 def _validate_run_mode(run_mode: str) -> IngestRunModeValue:
@@ -324,6 +330,7 @@ class ResolvedIngestPlan:
     lancedb_uri: str
     table_name: str
     sparse: bool = False
+    staging: IngestStagingOptions | None = None
 
     def extract_call_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {}
@@ -620,6 +627,24 @@ def _split_config_for_families(
     return split_config or None
 
 
+def _resolve_staging(
+    staging: IngestStagingOptions, *, run_mode: str, index_mode: str, storage: IngestStorageOptions
+) -> IngestStagingOptions | None:
+    if staging.stage_dir is None:
+        return None
+    from nemo_retriever.common.vdb.lancedb import _is_filesystem_lancedb_uri
+
+    if run_mode != "batch":
+        raise ValueError("--stage-dir requires `retriever ingest batch`.")
+    if index_mode == "sparse" or not storage.overwrite:
+        raise ValueError(
+            "--stage-dir loads a dense or hybrid table and replaces it; it does not support sparse or append."
+        )
+    if "://" in staging.stage_dir or not _is_filesystem_lancedb_uri(storage.lancedb_uri):
+        raise ValueError("--stage-dir and --lancedb-uri must be local filesystem paths.")
+    return IngestStagingOptions(stage_dir=str(Path(staging.stage_dir).expanduser().resolve()))
+
+
 def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     """Resolve root ingest options into ordinary params for one extract call.
 
@@ -650,6 +675,9 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         existing_mode=existing_index_mode,
     )
     validated_audio_split_type = _validate_audio_split_type(media.audio_split_type)
+    staging = _resolve_staging(
+        request.staging, run_mode=validated_run_mode, index_mode=resolved_index_mode, storage=storage
+    )
     document_list = expand_ingest_documents(source.documents, input_type=validated_input_type)
     branches = plan_extraction_branches(build_input_manifest(document_list))
     _validate_profile_manifest(validated_profile, branches)
@@ -818,4 +846,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
         sparse=resolved_index_mode == "sparse",
+        staging=staging,
     )

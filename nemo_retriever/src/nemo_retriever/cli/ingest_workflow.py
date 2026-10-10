@@ -92,6 +92,7 @@ def _ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
         "embed": _params_to_dry_run_dict(plan.embed_params),
         "store": _params_to_dry_run_dict(plan.store_params),
         "vdb_upload": _params_to_dry_run_dict(plan.vdb_params),
+        "staging": None if plan.staging is None else asdict(plan.staging),
     }
 
 

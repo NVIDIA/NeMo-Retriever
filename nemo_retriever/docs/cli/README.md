@@ -417,6 +417,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
+| `--stage-dir` | unset | Batch only. Write embedded rows as Parquet in this new or empty local directory, then load LanceDB from it. Replaces the table; does not support `--append` or `--index-mode sparse`. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--embed-model-name` | `nvidia/nemotron-3-embed-1b` | Logical default embedding model. Local vLLM resolves it to the NVFP4 checkpoint on Blackwell and BF16 otherwise. |
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. Explicit `hf` use resolves the logical default to the BF16 checkpoint. |
@@ -434,7 +435,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--quiet/--no-quiet` | quiet | Suppress verbose progress output by default. |
 
 Batch-only options include `--ray-address`, `--ray-log-to-driver`,
-`--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers`,
+`--stage-dir`, `--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers`,
 `--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
 related batch-size / CPU / GPU tuning flags.
 

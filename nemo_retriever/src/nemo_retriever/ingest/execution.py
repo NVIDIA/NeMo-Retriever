@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from typing import Any, Sequence
@@ -102,6 +103,9 @@ def execute_ingest_plan(
             produced no rows or failed to add rows to an append target.
     """
 
+    if plan.staging is not None:
+        return _execute_staged_ingest_plan(plan)
+
     lancedb_target = _resolve_lancedb_target(plan)
     if verify_rows and lancedb_target is None:
         raise ValueError(
@@ -142,6 +146,39 @@ def execute_ingest_plan(
             "lancedb_target": f"{lancedb_uri}/{table_name}",
             "profile": plan.profile,
             "branch_summary": format_branch_summary(plan.branches),
+        },
+    )
+
+
+def _execute_staged_ingest_plan(plan: ResolvedIngestPlan) -> IngestExecutionResult:
+    """Stage embedded rows as Parquet from Ray write tasks, then load them into LanceDB."""
+    from nemo_retriever.ingest.staging import load_stage, prepare_stage_dir
+    from nemo_retriever.ingest.staging_sink import StageTarget
+    from nemo_retriever.operators.vdb import STAGE_PARQUET_VDB_KWARG
+
+    vdb_kwargs = dict(plan.vdb_params.vdb_kwargs)
+    unstaged = dataclasses.replace(plan, staging=None)
+    target = StageTarget(
+        prepare_stage_dir(plan.staging.stage_dir),
+        stage_error_columns=tuple(sorted(build_ingest_pipeline(unstaged)._remote_stage_diagnostics())),
+    )
+    params = plan.vdb_params.model_copy(update={"vdb_kwargs": {**vdb_kwargs, STAGE_PARQUET_VDB_KWARG: target}})
+    results = build_ingest_pipeline(dataclasses.replace(unstaged, vdb_params=params)).ingest()
+    loaded = load_stage(target.stage_dir, results, lancedb_kwargs=vdb_kwargs)
+    return IngestExecutionResult(
+        plan=plan,
+        result=loaded,
+        n_rows=loaded["rows"],
+        # Like the default path, count the rows the graph produced, including any the upload rules skipped.
+        result_n_rows=loaded["input_rows"],
+        initial_n_rows=None,
+        lancedb_uri=loaded["uri"],
+        table_name=loaded["table_name"],
+        run_metadata={
+            "lancedb_target": f"{loaded['uri']}/{loaded['table_name']}",
+            "profile": plan.profile,
+            "branch_summary": format_branch_summary(plan.branches),
+            "staging": loaded,
         },
     )
 

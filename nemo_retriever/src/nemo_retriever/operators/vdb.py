@@ -29,6 +29,11 @@ from nemo_retriever.common.vdb.sidecar_metadata import (
 )
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 
+#: ``vdb_kwargs`` key carrying a ``StageTarget``. When set, the Ray executor
+#: stages the terminal upload as Parquet from write tasks instead of streaming
+#: records through the driver.
+STAGE_PARQUET_VDB_KWARG = "stage_parquet_target"
+
 
 def _construct_vdb(
     *,
@@ -127,6 +132,7 @@ class IngestVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
+        stage_target = clean_kwargs.pop(STAGE_PARQUET_VDB_KWARG, None)
         super().__init__(
             vdb=vdb,
             vdb_op=vdb_op,
@@ -143,11 +149,22 @@ class IngestVdbOperator(AbstractOperator):
                 sidecar["meta_fields"],
             )
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
+        self.stage_target = stage_target
+        if stage_target is not None and sidecar is not None:
+            raise ValueError("Parquet staging does not support sidecar metadata")
+
+    def staging_datasink(self) -> Any:
+        """Return a datasink that stages this upload as Parquet."""
+        from nemo_retriever.ingest.staging_sink import StagedParquetDatasink
+
+        return StagedParquetDatasink(self.stage_target, self._vdb)
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
+        if self.stage_target is not None:
+            raise RuntimeError("Parquet staging runs only as the terminal VDB upload of a Ray batch graph")
         # Graph ingest emits flat embedded rows, while
         # nv-ingest-client VDB.run still expects nested Nemo Retriever Library (NRL) records.
         records = to_client_vdb_records(data)
