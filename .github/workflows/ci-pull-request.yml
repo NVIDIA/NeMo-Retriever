@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # Fast pre-commit checks (runs first)
   pre-commit:
