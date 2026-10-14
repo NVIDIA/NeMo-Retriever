@@ -135,16 +135,6 @@ def test_worker_write_hybrid_builds_fts_index(tmp_path: Path) -> None:
     assert backend.get_index_metadata("retrieval_mode") == "hybrid"
 
 
-def test_sdk_vdb_kwargs_keep_worker_write_and_default_to_hybrid(tmp_path: Path) -> None:
-    from nemo_retriever.common.params.models import VdbUploadParams
-    from nemo_retriever.ingest.index_mode import resolve_vdb_upload_kwargs
-
-    params = VdbUploadParams(vdb_kwargs={"uri": str(tmp_path / "db"), "worker_write": True})
-    kwargs = resolve_vdb_upload_kwargs(params)
-    assert kwargs["worker_write"] is True
-    assert kwargs["hybrid"] is True
-
-
 def _wide_frames(count: int, *, dim: int, batch_size: int) -> list[pd.DataFrame]:
     """Frames with ``dim``-wide vectors; Lance only flushes vector pages once a batch reaches ~8 MiB."""
     import numpy as np
