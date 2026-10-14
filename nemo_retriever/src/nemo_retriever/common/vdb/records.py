@@ -445,7 +445,7 @@ def _raise_for_empty_vdb_conversion(
     )
 
 
-class _ConversionTally:
+class ConversionTally:
     """Count graph rows that produced no record and raise the stream's fail-closed errors."""
 
     def __init__(self, *, embedding_column: str) -> None:
@@ -469,6 +469,26 @@ class _ConversionTally:
         else:
             reason = "missing embedding" if missing_embedding else "missing searchable text or image backing"
             self._rejection_reasons[reason] += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        """JSON-safe counts, so a worker can hand its tally to the driver."""
+        return {
+            "row_count": self.row_count,
+            "converted_count": self.converted_count,
+            "upstream_error_count": self._upstream_error_count,
+            "upstream_error_fields": dict(self._upstream_error_fields),
+            "rejection_reasons": dict(self._rejection_reasons),
+            "missing_embeddings": self._missing_embeddings,
+        }
+
+    def absorb(self, snapshot: dict[str, Any]) -> None:
+        """Add another tally's :meth:`snapshot` to this one."""
+        self.row_count += int(snapshot["row_count"])
+        self.converted_count += int(snapshot["converted_count"])
+        self._upstream_error_count += int(snapshot["upstream_error_count"])
+        self._upstream_error_fields.update(snapshot["upstream_error_fields"])
+        self._rejection_reasons.update(snapshot["rejection_reasons"])
+        self._missing_embeddings += int(snapshot["missing_embeddings"])
 
     def finish(self) -> None:
         if self.converted_count and self._missing_embeddings:
@@ -497,7 +517,7 @@ def _iter_client_vdb_records(
     stream on exhaustion, matching :func:`to_client_vdb_records`.
     """
 
-    tally = _ConversionTally(embedding_column=embedding_column)
+    tally = ConversionTally(embedding_column=embedding_column)
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -580,6 +600,7 @@ def iter_canonical_record_batches(
     batches: Iterable[tuple[list[dict[str, Any]], pa.Array]],
     *,
     embedding_column: str = "embedding",
+    tally: ConversionTally | None = None,
 ) -> Iterator[CanonicalRecordBatch]:
     """Lazily convert graph row batches into :class:`CanonicalRecordBatch` values.
 
@@ -592,6 +613,8 @@ def iter_canonical_record_batches(
             embedding or null.
         embedding_column: Name of the embedding column, used to find upstream
             ``{embedding_column}_error`` messages for the error summary.
+        tally: Counts into this tally and leaves ``finish()`` to the caller, for
+            inputs that are only one partition of a larger upload.
 
     Yields:
         One :class:`CanonicalRecordBatch` per input item that still has
@@ -604,7 +627,9 @@ def iter_canonical_record_batches(
             while others had them (no partial write), or if no row converted.
     """
 
-    tally = _ConversionTally(embedding_column=embedding_column)
+    finish = tally is None
+    if tally is None:
+        tally = ConversionTally(embedding_column=embedding_column)
     for rows, vectors in batches:
         if len(rows) != len(vectors):
             raise ValueError(f"Embedding column has {len(vectors)} rows but the batch has {len(rows)}")
@@ -625,7 +650,8 @@ def iter_canonical_record_batches(
             indices.append(index)
         if records:
             yield CanonicalRecordBatch(records, vectors.take(pa.array(indices, type=pa.int64())))
-    tally.finish()
+    if finish:
+        tally.finish()
 
 
 def to_client_vdb_records(rows: Any, *, embedding_column: str = "embedding") -> list[list[dict[str, Any]]]:

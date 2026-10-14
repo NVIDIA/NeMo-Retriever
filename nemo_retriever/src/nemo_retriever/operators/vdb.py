@@ -17,6 +17,7 @@ from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, Unsupporte
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.records import (
     CanonicalRecordBatch,
+    ConversionTally,
     _iter_client_vdb_records,
     embedding_arrow_column,
     embedding_vector,
@@ -240,9 +241,11 @@ class IngestVdbOperator(AbstractOperator):
     def _write_partition(self, frame: pd.DataFrame) -> dict[str, Any]:
         """Ray-worker side of worker_write: canonical projection of one block, written as Lance fragments."""
 
+        tally = ConversionTally(embedding_column=self._embedding_column)
         record_batches = iter_canonical_record_batches(
             _iter_batch_rows_with_vectors([frame], embedding_column=self._embedding_column),
             embedding_column=self._embedding_column,
+            tally=tally,
         )
         submitted_records = 0
 
@@ -254,11 +257,21 @@ class IngestVdbOperator(AbstractOperator):
 
         receipt = self._vdb.write_partition(counted_batches())
         receipt["submitted_records"] = submitted_records
+        # The fail-closed rules (no row converted, searchable rows without embeddings) are
+        # decided over the whole upload in ``_commit_partitions``, not per partition.
+        receipt["conversion"] = tally.snapshot()
         return receipt
 
     def _commit_partitions(self, receipts: list[dict[str, Any]]) -> int:
-        """Driver side of worker_write: commit every receipt in one Lance version; return submitted records."""
+        """Driver side of worker_write: commit every receipt in one Lance version; return submitted records.
 
+        Applies the stream path's conversion rules once, over all partitions, before anything is committed.
+        """
+
+        tally = ConversionTally(embedding_column=self._embedding_column)
+        for receipt in receipts:
+            tally.absorb(receipt["conversion"])
+        tally.finish()
         self._vdb.commit_partitions(receipts)
         return sum(int(receipt["submitted_records"]) for receipt in receipts)
 

@@ -768,6 +768,7 @@ class RayDataExecutor(AbstractExecutor):
                 validate_batch(frame)
             receipt = operator_class(**operator_kwargs)._write_partition(frame)
             receipt["fragments"] = json.dumps(receipt["fragments"])
+            receipt["conversion"] = json.dumps(receipt["conversion"])
             receipt["input_rows"] = len(frame)
             return pd.DataFrame([receipt])
 
@@ -777,7 +778,10 @@ class RayDataExecutor(AbstractExecutor):
             batch_size=rows_per_task,
             zero_copy_batch=True,
         ).take_all()
-        receipts = [{**row, "fragments": json.loads(row["fragments"])} for row in receipt_rows]
+        receipts = [
+            {**row, "fragments": json.loads(row["fragments"]), "conversion": json.loads(row["conversion"])}
+            for row in receipt_rows
+        ]
         submitted_records = sink_node.operator._commit_partitions(receipts)
         input_rows = sum(int(receipt["input_rows"]) for receipt in receipts)
         return pd.DataFrame([{"input_rows": input_rows, "submitted_records": submitted_records}])
@@ -804,7 +808,8 @@ class RayDataExecutor(AbstractExecutor):
             segment="before_stream_ingest",
         )
 
-        if not return_results and sink_operator._supports_worker_write():
+        supports_worker_write = getattr(sink_operator, "_supports_worker_write", None)
+        if not return_results and supports_worker_write is not None and supports_worker_write():
             return self._worker_write_ingest(dataset, nodes[sink_index], validate_batch=validate_batch)
 
         terminal_frames: list[pd.DataFrame] = []

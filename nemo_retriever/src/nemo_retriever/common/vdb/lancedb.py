@@ -166,6 +166,16 @@ def _optimize_lancedb_table(table: Any) -> None:
     compaction keep the writer's page size.
     """
 
+    try:
+        import lance  # noqa: F401 - LanceDB only exposes compaction options through pylance.
+    except ImportError:
+        logger.warning(
+            "pylance is not installed; LanceDB optimize() may rewrite vector pages larger than %d rows, "
+            "which slows index-bypass scans. Install pylance to keep the writer's page size.",
+            _LANCE_ROWS_PER_PAGE,
+        )
+        table.optimize()
+        return
     dataset = table.to_lance()
     dataset.optimize.compact_files(batch_size=_LANCE_ROWS_PER_PAGE)
     dataset.cleanup_old_versions()
@@ -963,6 +973,16 @@ class LanceDB(VDB):
         self.worker_write_rows = int(worker_write_rows)
         if self.worker_write and not self.supports_stream_ingest_batches:
             raise ValueError("worker_write=True requires a dense (non-sparse) local LanceDB table")
+        if self.worker_write and self.stream_operation_id is not None:
+            raise ValueError(
+                "worker_write=True does not support stream_operation_id: the worker path keeps no durable "
+                "recovery markers, so an operation-ID retry would append the rows again"
+            )
+        if self.worker_write and self.vector_dim is None:
+            raise ValueError(
+                "worker_write=True requires an explicit vector_dim: each write task would otherwise infer "
+                "the width from its own first vector"
+            )
         self._service_table_schema = service_table_schema
         self._service_index_mode = str(service_index_mode) if service_index_mode is not None else None
         self._writes_since_optimize = 0
@@ -2039,8 +2059,9 @@ class LanceDB(VDB):
         """Driver side of the worker-native sink: one Lance commit, then the stream path's finalize.
 
         Differences from ``stream_ingest_batches``: no durable recovery markers / ``stream_operation_id``
-        (the single commit is the recovery point), no stream digest, and drop counts are tallied per
-        partition instead of one end-of-stream log line.
+        (the single commit is the recovery point; a finalization failure after it raises
+        ``DataCommittedFinalizationError`` so the caller does not replay the rows), no stream digest, and
+        drop counts are tallied per partition instead of one end-of-stream log line.
         """
 
         import lance
@@ -2101,13 +2122,23 @@ class LanceDB(VDB):
                 operation = lance.LanceOperation.Overwrite(schema, fragments)
                 expected_rows = stats.rows_written
             dataset = lance.LanceDataset.commit(self._lance_table_uri(), operation, read_version=base_version)
-            self._finalize_stream_write(
-                markers=None,
-                data_version=int(dataset.version),
-                expected_schema=expected_schema,
-                expected_rows=expected_rows,
-                stats=stats,
-            )
+            data_version = int(dataset.version)
+            try:
+                self._finalize_stream_write(
+                    markers=None,
+                    data_version=data_version,
+                    expected_schema=expected_schema,
+                    expected_rows=expected_rows,
+                    stats=stats,
+                )
+            except Exception as exc:  # noqa: BLE001 - the data is committed; callers must not replay it.
+                logger.error(
+                    "LanceDB data committed at version %s but finalization failed for table %r.",
+                    data_version,
+                    self.table_name,
+                    exc_info=True,
+                )
+                raise DataCommittedFinalizationError(self.table_name, data_version) from exc
 
     def _write_stream(self, source: _StreamSource, *, operation_id: str | None) -> None:
         """Consume one canonical stream through one coordinated LanceDB mutation."""

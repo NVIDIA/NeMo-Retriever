@@ -16,7 +16,9 @@ import pytest
 lancedb = pytest.importorskip("lancedb", minversion="0.34.0")
 lance = pytest.importorskip("lance")
 
+from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError
 from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.records import VdbUploadError
 from nemo_retriever.graph.executor import arrow_table_to_pandas
 from nemo_retriever.operators.vdb import IngestVdbOperator
 
@@ -163,3 +165,52 @@ def test_optimize_keeps_vector_page_size(tmp_path: Path) -> None:
     assert len(after) == 1 and sum(rows for rows, _ in after) == count, after
     assert _max_rows_per_page(after) <= _LANCE_ROWS_PER_PAGE, after
     assert _rows(uri).num_rows == count
+
+
+def _unsearchable_row(row_id: int) -> dict[str, Any]:
+    """A status-style row with no text and no embedding; the stream path skips it."""
+    row = _row(row_id, text="")
+    row["embedding"] = None
+    return row
+
+
+def test_worker_write_rejects_options_it_cannot_honor(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="stream_operation_id"):
+        _backend(tmp_path / "db", worker_write=True, stream_operation_id="job-1")
+    with pytest.raises(ValueError, match="vector_dim"):
+        _backend(tmp_path / "db", worker_write=True, vector_dim=None)
+
+
+def test_worker_write_finalization_failure_reports_committed_data(tmp_path: Path, monkeypatch) -> None:
+    uri = tmp_path / "db"
+    backend = _backend(uri, worker_write=True)
+
+    def failing_finalize(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("index build failed")
+
+    monkeypatch.setattr(backend, "_finalize_stream_write", failing_finalize)
+    with pytest.raises(DataCommittedFinalizationError, match="version 1"):
+        _worker_write(backend, _frames([_row(index) for index in range(4)], batch_size=2))
+    assert _rows(uri).num_rows == 4
+
+
+def test_worker_write_skips_unsearchable_partition_when_others_have_rows(tmp_path: Path) -> None:
+    uri = tmp_path / "db"
+    frames = _frames([_unsearchable_row(0), _unsearchable_row(1), _row(2), _row(3)], batch_size=2)
+    assert _worker_write(_backend(uri, worker_write=True), frames) == 2
+    assert _rows(uri)["text"].to_pylist() == ["chunk 2", "chunk 3"]
+
+
+def test_worker_write_applies_fail_closed_rules_over_the_whole_upload(tmp_path: Path) -> None:
+    uri = tmp_path / "db"
+    only_unsearchable = _frames([_unsearchable_row(0), _unsearchable_row(1)], batch_size=1)
+    with pytest.raises(VdbUploadError):
+        _worker_write(_backend(uri, worker_write=True), only_unsearchable)
+
+    missing = _row(0)
+    missing["embedding"] = None
+    partial = _frames([missing, _row(1)], batch_size=1)
+    with pytest.raises(VdbUploadError, match="missing embeddings"):
+        _worker_write(_backend(uri, worker_write=True), partial)
+    # Fragments may be on disk, but nothing was committed: no manifest exists.
+    assert not list((uri / "chunks.lance").glob("_versions/*.manifest"))
