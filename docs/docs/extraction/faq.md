@@ -60,7 +60,7 @@ No. Chart-labeled PDF regions are not routed through Omni captioning. Refer to [
 
 For scanned documents, or documents with complex layouts,
 you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `method="nemotron_parse"`.
-Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
+When you explicitly select Nemotron Parse 2.0, the library routes its `<class_Chart>` output to chart modality rows. Parse v1.2 remains the local and self-hosted default. For model selection and chart routing, refer to [Select Nemotron Parse 2.0](nemo-retriever-api-reference.md#select-nemotron-parse-2-0) and [Charts and infographics](multimodal-extraction.md#charts-and-infographics).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why does Helm report deployed while PersistentVolumeClaims stay Pending? { #helm-deployed-pending-pvcs }
@@ -108,7 +108,7 @@ For advanced scenarios, you might want to use library mode with self-hosted NIM 
 You can set custom endpoints for each NIM. 
 For examples of `*_ENDPOINT` variables, refer to [Environment variables](environment-config.md) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md).
 
-When you explicitly configure remote NIM endpoints in Python library mode, graph ingestion raises a `GraphIngestionError` if a stage reports row-level connection or inference errors. This makes unreachable services visible to callers instead of returning a DataFrame that looks successful. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`. Refer to the [Python API error contract](nemo-retriever-api-reference.md#error-and-failure-contract) and [Python API error triage](troubleshoot.md#python-api-error-triage) for error signals, extraction-path mappings, and escalation criteria.
+When you explicitly configure remote NIM endpoints or select local `method="nemotron_parse"` in Python library mode, graph ingestion raises `GraphIngestionError` for row-level connection or inference errors. This includes local Parse initialization failures. To intentionally keep partial results with row-level error payloads, pass `error_policy="collect"` to `GraphIngestor` or `create_ingestor`. For Parse, verify each page's `inference_status`; native PDF text alone does not establish successful inference. Refer to the [Python API error contract](nemo-retriever-api-reference.md#error-and-failure-contract) and [Python API error triage](troubleshoot.md#python-api-error-triage) for error signals, extraction-path mappings, and escalation criteria.
 
 ## What parameters or settings can I adjust to optimize extraction from my documents or data? { #optimize-extraction-parameters }
 

@@ -13,8 +13,8 @@ observe one or more of the following:
 - Python configuration or dependency exceptions, such as `ValueError`,
   `ImportError`, or `RuntimeError`.
 - `GraphIngestionError` for row-level failures from explicitly configured
-  remote NIM stages in `run_mode="inprocess"` or `"batch"` when
-  `error_policy="raise"` (the default).
+  remote NIM stages or explicitly selected local Nemotron Parse in
+  `run_mode="inprocess"` or `"batch"` when `error_policy="raise"` (the default).
 - HTTP status codes or gRPC errors returned by a remote NIM or by the
   Retriever service. These are transport or upstream-service statuses, not
   NeMo Retriever-specific error codes.
@@ -151,19 +151,140 @@ Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.
 
-For local `nemotron_parse` extraction in NeMo Retriever Library 26.08, omit
-`nemotron_parse_model` to use the default model, or set it to
-`nvidia/NVIDIA-Nemotron-Parse-v1.2`. Other local model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before pipeline
-execution. To use a remote Nemotron Parse endpoint, configure
-`nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract.
+For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
+`nvidia/NVIDIA-Nemotron-Parse-v1.2`, or select
+`nvidia/NVIDIA-Nemotron-Parse-2.0` explicitly. These are the supported local
+Hugging Face model IDs. Other local IDs raise a Pydantic `ValidationError`
+before pipeline execution. The `nemotron_parse_model`,
+`nemotron_parse_invoke_url`, and `nemotron_parse_predict_text_in_pic` options
+require `method="nemotron_parse"` when you set them explicitly.
+
+### Select Nemotron Parse 2.0 { #select-nemotron-parse-2-0 }
+
+Install `nemo-retriever[local,nemotron-parse]` for local GPU inference. The
+following example selects Parse 2.0 and extracts a PDF.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["report.pdf"])
+    .extract(
+        ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0",
+            nemotron_parse_predict_text_in_pic=True,
+        )
+    )
+    .ingest()
+)
+```
+
+For remote inference, install `nemo-retriever[nemotron-parse]` and configure
+`nemotron_parse_invoke_url` or `invoke_url`. Select the model ID that matches
+the endpoint. The following example uses NVIDIA-hosted Parse 2.0.
+Set `NVIDIA_API_KEY` in your environment before running it.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+result = (
+    create_ingestor(run_mode="inprocess")
+    .files(["report.pdf"])
+    .extract(
+        ExtractParams(
+            method="nemotron_parse",
+            nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-2.0",
+        )
+    )
+    .ingest()
+)
+```
+
+For a self-hosted Parse 2.0 NIM, replace the URL with your NIM's
+`/v1/chat/completions` URL and set
+`nemotron_parse_model="nvidia/nemotron-parse-v2.0"`. Omitting the remote model
+selects `nvidia/nemotron-parse` for NVIDIA-hosted inference or
+`nvidia/nemotron-parse-v1.2` for self-hosted inference.
+Refer to [Nemotron Parse endpoint contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+
+Set `nemotron_parse_predict_text_in_pic` on `ExtractParams` to control text
+extraction inside pictures. The following values select the task prompt.
+
+| Value | Behavior |
+| --- | --- |
+| `True` | Selects `<predict_text_in_pic>`. |
+| `False` | Selects `<predict_no_text_in_pic>`. |
+| `None` (default) | Retains the existing prompt and model defaults. |
+
+This option preserves the bounding-box, class, and Markdown tokens needed
+for structured output. If you pass both `task_prompt` and the boolean to a
+Parse actor directly, the boolean overrides only the picture-text token.
+
+Explicit `True` or `False` works with local models and remote tagged-output
+models at `/v1/chat/completions` endpoints, including explicitly selected
+hosted Parse 2.0. It is unsupported for the image-only hosted default,
+`nvidia/nemotron-parse`, and remote endpoints that cannot carry a task prompt.
+These combinations raise a configuration error before inference.
+
+You can also select the model, endpoint, and picture-text behavior through
+the typed ingest plan interface. `IngestExtractOptions` exposes the same
+three options, all with a default of `None`. The following example resolves
+a hosted Parse 2.0 request into a pipeline, embeds the results, and uploads
+them to the configured LanceDB table.
+
+```python
+from nemo_retriever.ingest.execution import build_ingest_pipeline
+from nemo_retriever.ingest.plan import (
+    IngestExtractOptions,
+    IngestPlanRequest,
+    IngestSourceOptions,
+    IngestStorageOptions,
+    resolve_ingest_plan,
+)
+
+request = IngestPlanRequest(
+    source=IngestSourceOptions(documents=["report.pdf"]),
+    extract=IngestExtractOptions(
+        method="nemotron_parse",
+        nemotron_parse_model="nvidia/nemotron-parse-2.0",
+        nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+        nemotron_parse_predict_text_in_pic=False,
+    ),
+    storage=IngestStorageOptions(
+        lancedb_uri="parse-2-0-index",
+        table_name="reports",
+    ),
+)
+plan = resolve_ingest_plan(request)
+result = build_ingest_pipeline(plan).ingest()
+```
+
+The typed pipeline uses the configured embedding defaults. Install the
+local inference dependencies for local embedding, or configure a remote
+embedding endpoint with `IngestEmbedOptions`. To select local Parse 2.0 in
+the request, omit `nemotron_parse_invoke_url` and use
+`nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-2.0"`. For batch execution,
+set `runtime=IngestRuntimeOptions(run_mode="batch")` in the request. Import
+both option classes from `nemo_retriever.ingest.plan`.
+
+In service mode, the server owns the Parse endpoint and model selection.
+Configure `nim_endpoints.nemotron_parse_invoke_url` and
+`nim_endpoints.nemotron_parse_model` on the server, or use the corresponding
+Helm values. Clients cannot override those settings. For deployment guidance,
+refer to [Nemotron Parse with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nemotron-parse-optional).
 
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when
-an explicitly configured remote NIM stage reports a row-level error. The
-exception retains the underlying records in `exc.records`. When available, its
+an explicitly configured remote NIM stage or explicitly selected local
+Nemotron Parse reports a row-level error. This applies to `.ingest()`,
+`.ingest_stream()`, and `.aingest_stream()`. The exception retains the
+underlying records in `exc.records`. When available, its
 message identifies the stage, invoke URL, and HTTP status in a form similar to
 `[stage=OCR NIM url=https://... http=503]`, followed by a troubleshooting hint.
 
@@ -177,23 +298,72 @@ visible. In service mode, failures are also available from
 
 ### What the raise error policy covers
 
-The strict policy applies only to stages where you explicitly configure a
-remote NIM invoke URL. It does not raise for local-only PDFium parsing,
+The strict policy applies to stages where you explicitly configure a remote
+NIM invoke URL and to local extraction selected with
+`method="nemotron_parse"`. It does not raise for local-only PDFium parsing,
 caption, audio or video, or ASR failures, even when those stages populate
 row-level error fields.
 
-| Configured invoke URL | DataFrame column scanned | Stage label in messages |
+| Explicit configuration | DataFrame column scanned | Stage label in messages |
 | --- | --- | --- |
 | `page_elements_invoke_url` | `output_column` (default `page_elements_v3`) | Page Elements NIM |
 | `ocr_invoke_url` | `ocr` | OCR NIM |
 | `table_structure_invoke_url` | `table_structure_ocr_v1` | Table Structure NIM |
 | `nemotron_parse_invoke_url` or `invoke_url` | `nemotron_parse_v1_2` | Nemotron Parse NIM |
+| `method="nemotron_parse"` without an invoke URL | `nemotron_parse_v1_2` | Local Nemotron Parse |
 | `embed_invoke_url` or `embedding_endpoint` | `output_column` (default `text_embeddings_1b_v2`) | Embedding NIM |
+
+Nemotron Parse retains the `nemotron_parse_v1_2` metadata and error column
+when you select Parse 2.0. Model initialization failures and incomplete batch
+responses are errors even when native PDF text is available. In collect mode,
+that text can remain in the result alongside the Parse error. Text presence
+alone does not prove that Parse inference succeeded.
 
 Caption and ASR use remote endpoints but are outside this raise path today.
 Remote caption failures can abort the whole ingest instead of returning a
 partial DataFrame. ASR failures can omit affected rows while logging a
 warning, which can look like an empty transcript unless you inspect logs.
+
+### Verify Nemotron Parse inference { #verify-nemotron-parse-inference }
+
+Each page's `nemotron_parse_v1_2` diagnostic payload includes an
+`inference_status` with one of the following values.
+
+| Value | Meaning |
+| --- | --- |
+| `succeeded` | Inference returned a response for this input page. A legitimate blank-page response can contain no extracted text. |
+| `failed` | Model initialization, inference, or response validation failed. Inspect the adjacent `error` payload. |
+| `skipped` | The page was not submitted for inference, for example because its rendered image was missing. |
+
+A completed response containing an explicit empty string remains valid for a
+blank page. Missing or non-string local model responses fail validation.
+For chat-completions endpoints, responses without a choice, message, or
+supported text or tool output also fail validation. These malformed responses
+do not count as successful blank-page inference.
+
+These statuses describe execution, not output correctness. Inspect structured
+output and evaluate retrieval quality separately. Do not count missing status
+fields or native PDF text as successful Parse inference.
+
+When you execute a resolved ingest plan through `execute_ingest_plan()`,
+`IngestExecutionResult.to_summary_dict()` includes an optional
+`parse_inference` mapping for Parse extraction. It summarizes unique source
+pages from the returned diagnostic columns without rerunning ingestion.
+Duplicate modality rows do not inflate the page count, and a duplicate success
+cannot mask a failure or missing evidence for the same page. The mapping
+contains the following counts.
+
+| Count | Meaning |
+| --- | --- |
+| `pages_seen` | Unique source pages represented in the result. |
+| `pages_succeeded` | Pages with successful inference evidence. |
+| `pages_failed` | Pages with failed inference evidence. |
+| `pages_skipped` | Pages skipped before inference. |
+| `pages_missing_evidence` | Pages without a valid source/page identity or recognized inference status. |
+
+Compare these counts with the expected input page count before treating a
+Parse run as complete. An extraction row count can differ from the number of
+pages because one page can produce several modality rows.
 
 ### Row-level error payloads
 
@@ -389,6 +559,7 @@ Use the following public import paths:
 - Import parameter models from `nemo_retriever.common.params`.
 - Import `RetrieveVdbOperator` from `nemo_retriever.operators.vdb`.
 - Import `NemotronRerankActor` from `nemo_retriever.operators.rerank`.
+- Import `NemotronParse20` from `nemo_retriever.models.local` for direct local model use.
 
 ### Public ingestion factory { #public-ingestion-factory }
 
@@ -574,6 +745,34 @@ Import these names from `nemo_retriever.models.llm`. That package path is the su
 ::: nemo_retriever.models.llm.clients.judge.LLMJudge
     options:
       heading_level: 4
+      show_docstring_description: false
+
+### Local Nemotron Parse 2.0 model { #local-nemotron-parse-2-0-model }
+
+`NemotronParse20` loads the pinned
+`nvidia/NVIDIA-Nemotron-Parse-2.0` checkpoint through vLLM. It accepts the
+same constructor options as `NemotronParseV12`, with a different default
+`model_path`. For document ingestion, select the model through `ExtractParams`
+as shown in [Select Nemotron Parse 2.0](#select-nemotron-parse-2-0).
+
+The opt-in Parse 2.0 path pins revision
+`b6742064f4a8cf22a10383ece5e7fbead355ac04`. Its lightweight encoder
+configuration avoids a recursive configuration-code import from
+`nvidia/C-RADIOv2-H` during vLLM startup. Direct Transformers inference still
+loads C-RADIO. The library applies the checkpoint's
+`vllm_tied_patch/sitecustomize.py` compatibility patch in the parent process
+and spawned vLLM workers while preserving existing `PYTHONPATH` entries.
+The patch ties the head only when the model configuration requests tied
+embeddings and the checkpoint does not supply explicit output-head weights.
+
+For disconnected deployments, cache this exact revision before enabling
+offline mode. Refer to [Local Parse inference fails or returns only native PDF
+text](troubleshoot.md#local-parse-inference-evidence).
+
+::: nemo_retriever.models.local.nemotron_parse_2_0.NemotronParse20
+    options:
+      heading_level: 4
+      docstring_style: numpy
       show_docstring_description: false
 
 ### Parameter models { #generated-parameter-models }

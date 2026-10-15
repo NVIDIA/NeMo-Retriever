@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Nemotron Parse v1.2 pipeline stage.
+Nemotron Parse v1.2 and v2.0 pipeline stage.
 
 Runs the Nemotron Parse model on full page images to extract structured
 document content (text, tables, charts, infographics) in a single pass,
@@ -38,7 +38,13 @@ from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completions_images
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.params import RemoteRetryParams
-from nemo_retriever.common.params.utils import validate_nemotron_parse_endpoint_list
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+    NEMOTRON_PARSE_LOCAL_V2_MODEL,
+    validate_nemotron_parse_endpoint_list,
+    validate_nemotron_parse_local_model,
+    validate_nemotron_parse_text_in_pic,
+)
 
 try:
     from PIL import Image
@@ -51,9 +57,25 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
+NEMOTRON_PARSE_V2_MODEL = "nvidia/nemotron-parse-v2.0"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
-NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE_HOSTED_V2_MODEL = "nvidia/nemotron-parse-2.0"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+
+
+def _resolve_nemotron_parse_task_prompt(task_prompt: str, predict_text_in_pic: bool | None) -> str:
+    """Override only the picture-text control, preserving other task-prompt tokens."""
+    prompt = str(task_prompt)
+    if predict_text_in_pic is None:
+        return prompt
+    token = "<predict_text_in_pic>" if predict_text_in_pic else "<predict_no_text_in_pic>"
+    pattern = r"<predict_(?:no_)?text_in_pic>"
+    match = re.search(pattern, prompt)
+    if match is None:
+        return prompt + token
+    prompt = re.sub(pattern, "", prompt)
+    return prompt[: match.start()] + token + prompt[match.start() :]
+
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -71,6 +93,7 @@ _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
 
 def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
     return {
+        "inference_status": "failed",
         "timing": None,
         "error": {
             "stage": str(stage),
@@ -154,8 +177,9 @@ def _route_parsed_elements(
 
 class _NemotronParseContractProfile(str, Enum):
     HOSTED_TOOL_CALL = "hosted_tool_call"
-    LEGACY_TOOL_CALL = "legacy_tool_call"
     V1_2_TAGGED = "v1_2_tagged"
+    V2_0_TAGGED = "v2_0_tagged"
+    HOSTED_V2_0_TAGGED = "hosted_v2_0_tagged"
 
 
 @dataclass(frozen=True)
@@ -166,15 +190,7 @@ class _ResolvedNemotronParseContract:
 
     @property
     def uses_tool_call_routing(self) -> bool:
-        return self.profile in {
-            _NemotronParseContractProfile.HOSTED_TOOL_CALL,
-            _NemotronParseContractProfile.LEGACY_TOOL_CALL,
-        }
-
-
-def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
-    normalized = model_name.lower()
-    return bool(re.search(r"v1[._][01](?!\d)", normalized))
+        return self.profile == _NemotronParseContractProfile.HOSTED_TOOL_CALL
 
 
 def _is_nvidia_build_endpoint(invoke_url: str) -> bool:
@@ -199,8 +215,10 @@ def _resolve_nemotron_parse_contract(
     normalized_model = resolved_model.lower()
     if normalized_model == NEMOTRON_PARSE_HOSTED_MODEL:
         profile = _NemotronParseContractProfile.HOSTED_TOOL_CALL
-    elif _is_legacy_nemotron_parse_model(normalized_model):
-        profile = _NemotronParseContractProfile.LEGACY_TOOL_CALL
+    elif normalized_model == NEMOTRON_PARSE_HOSTED_V2_MODEL:
+        profile = _NemotronParseContractProfile.HOSTED_V2_0_TAGGED
+    elif normalized_model == NEMOTRON_PARSE_V2_MODEL:
+        profile = _NemotronParseContractProfile.V2_0_TAGGED
     else:
         profile = _NemotronParseContractProfile.V1_2_TAGGED
 
@@ -218,7 +236,7 @@ def _route_tool_call_elements(
     extract_charts: bool,
     extract_infographics: bool,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
-    """Route hosted or legacy tool-call JSON into pipeline content channels."""
+    """Route NVIDIA Build tool-call JSON into pipeline content channels."""
 
     try:
         parsed = json.loads(raw_json_text)
@@ -300,11 +318,12 @@ def nemotron_parse_pages(
     extract_infographics: bool = False,
     nemotron_parse_model: Optional[str] = None,
     task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+    nemotron_parse_predict_text_in_pic: Optional[bool] = None,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Run Nemotron Parse v1.2 on full page images.
+    """Run Nemotron Parse v1.2 or v2.0 on full page images.
 
     Each page is parsed in a single model call.  The structured output is
     split by element class (Text, Table, Chart, Picture, …) and routed to
@@ -325,6 +344,8 @@ def nemotron_parse_pages(
     use_remote = bool(invoke_url)
     if use_remote:
         validate_nemotron_parse_endpoint_list(invoke_url)
+    validate_nemotron_parse_text_in_pic(invoke_url, nemotron_parse_model, nemotron_parse_predict_text_in_pic)
+    task_prompt = _resolve_nemotron_parse_task_prompt(task_prompt, nemotron_parse_predict_text_in_pic)
     if not use_remote and model is None:
         raise ValueError("A local `model` is required when `invoke_url` is not provided.")
 
@@ -333,7 +354,9 @@ def nemotron_parse_pages(
     all_chart: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_infographic: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_text: List[Optional[str]] = [None] * n_rows
-    all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(n_rows)]
+    all_meta: List[Dict[str, Any]] = [
+        {"timing": None, "error": None, "inference_status": "skipped"} for _ in range(n_rows)
+    ]
 
     t0_total = time.perf_counter()
 
@@ -354,6 +377,7 @@ def nemotron_parse_pages(
             batch_indices.append(idx)
         except Exception as e:
             all_meta[idx] = {
+                "inference_status": "failed",
                 "timing": None,
                 "error": {
                     "stage": "nemotron_parse_pages_decode",
@@ -374,8 +398,14 @@ def nemotron_parse_pages(
                     contract = _resolve_nemotron_parse_contract(invoke_url, nemotron_parse_model)
                     uses_tool_call_routing = contract.uses_tool_call_routing
                     extra_body: Dict[str, Any] = {"max_tokens": 8192}
-                    if contract.profile == _NemotronParseContractProfile.LEGACY_TOOL_CALL:
-                        extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
+                    if contract.profile == _NemotronParseContractProfile.V2_0_TAGGED:
+                        # Parse 2.0 NIMs require their documented decoding options.
+                        extra_body = {
+                            # The NIM context includes the task prompt; reserve headroom.
+                            "max_tokens": 8192,
+                            "top_k": 1,
+                            "skip_special_tokens": False,
+                        }
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
@@ -383,8 +413,15 @@ def nemotron_parse_pages(
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         task_prompt=None if uses_tool_call_routing else task_prompt,
+                        require_response=True,
                         repetition_penalty=(
-                            None if contract.profile == _NemotronParseContractProfile.HOSTED_TOOL_CALL else 1.1
+                            None
+                            if contract.profile
+                            in {
+                                _NemotronParseContractProfile.HOSTED_TOOL_CALL,
+                                _NemotronParseContractProfile.HOSTED_V2_0_TAGGED,
+                            }
+                            else 1.1
                         ),
                         extra_body=extra_body,
                         max_retries=int(retry.remote_max_retries),
@@ -416,26 +453,37 @@ def nemotron_parse_pages(
                         )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
-                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
+                # Local vLLM Parse model: uses task_prompt and returns tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
-                    raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
+                    raw_texts = list(invoke_batch(batch_images, task_prompt=task_prompt))
                 else:
-                    raw_texts = [str(model.invoke(img, task_prompt=task_prompt) or "").strip() for img in batch_images]
+                    raw_texts = [model.invoke(img, task_prompt=task_prompt) for img in batch_images]
+            if len(raw_texts) != len(batch_indices):
+                raise ValueError(
+                    f"Nemotron Parse returned {len(raw_texts)} responses for {len(batch_indices)} page images"
+                )
+            if any(not isinstance(text, str) for text in raw_texts):
+                raise ValueError("Nemotron Parse returned a missing or non-text inference response")
         except BaseException as e:
             if (
                 contract is not None
                 and nemotron_parse_model
                 and contract.has_build_endpoint
-                and contract.profile == _NemotronParseContractProfile.V1_2_TAGGED
+                and contract.profile
+                in {
+                    _NemotronParseContractProfile.V1_2_TAGGED,
+                    _NemotronParseContractProfile.V2_0_TAGGED,
+                }
                 and "text input" in str(e).lower()
             ):
                 hint = ValueError(
                     "Nemotron Parse model/contract mismatch: NVIDIA Build model "
                     "`nvidia/nemotron-parse` uses an image-only tool-call contract, but "
-                    f"`{contract.model}` selected the v1.2 text-control-token contract. "
-                    "Use `nemotron_parse_model='nvidia/nemotron-parse'` with Build, or send "
-                    "the versioned v1.2 model to a compatible self-hosted endpoint."
+                    f"`{contract.model}` selected a tagged text-control-token contract. "
+                    "Use `nemotron_parse_model='nvidia/nemotron-parse'` for the default Build model or "
+                    "`nemotron_parse_model='nvidia/nemotron-parse-2.0'` for hosted Parse 2.0, or send "
+                    "the versioned Parse model to a compatible self-hosted endpoint."
                 )
                 hint.__cause__ = e
                 e = hint
@@ -447,7 +495,7 @@ def nemotron_parse_pages(
                 "traceback": "".join(traceback.format_exception(type(e), e, e.__traceback__)),
             }
             for i in batch_indices:
-                all_meta[i] = {"timing": None, "error": err}
+                all_meta[i] = {"timing": None, "error": err, "inference_status": "failed"}
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
@@ -466,8 +514,10 @@ def nemotron_parse_pages(
             all_infographic[idx] = fp_infographics
             if fp_text is not None:
                 all_text[idx] = fp_text
+            all_meta[idx]["inference_status"] = "succeeded"
         except BaseException as e:
             all_meta[idx] = {
+                "inference_status": "failed",
                 "timing": None,
                 "error": {
                     "stage": "nemotron_parse_pages_route",
@@ -504,7 +554,7 @@ def nemotron_parse_pages(
 
 
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initialises the selected Parse model once per actor."""
 
     def __init__(
         self,
@@ -515,6 +565,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_predict_text_in_pic: Optional[bool] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -528,9 +579,15 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
         validate_nemotron_parse_endpoint_list(self._invoke_url)
+        if not self._invoke_url:
+            self._nemotron_parse_model = validate_nemotron_parse_local_model(nemotron_parse_model)
+        validate_nemotron_parse_text_in_pic(
+            self._invoke_url, self._nemotron_parse_model, nemotron_parse_predict_text_in_pic
+        )
+        self._nemotron_parse_predict_text_in_pic = nemotron_parse_predict_text_in_pic
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        self._task_prompt = str(task_prompt)
+        self._task_prompt = _resolve_nemotron_parse_task_prompt(task_prompt, nemotron_parse_predict_text_in_pic)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -552,9 +609,13 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse20, NemotronParseV12
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            model_class = {
+                NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL: NemotronParseV12,
+                NEMOTRON_PARSE_LOCAL_V2_MODEL: NemotronParse20,
+            }[self._nemotron_parse_model]
+            self._model = model_class(model_path=self._nemotron_parse_model, task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
@@ -563,6 +624,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             model=self._model,
             invoke_url=self._invoke_url,
             nemotron_parse_model=self._nemotron_parse_model,
+            nemotron_parse_predict_text_in_pic=self._nemotron_parse_predict_text_in_pic,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -615,6 +677,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_predict_text_in_pic: Optional[bool] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -630,9 +693,11 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         )
         self._nemotron_parse_model = nemotron_parse_model
         validate_nemotron_parse_endpoint_list(self._invoke_url)
+        validate_nemotron_parse_text_in_pic(self._invoke_url, nemotron_parse_model, nemotron_parse_predict_text_in_pic)
+        self._nemotron_parse_predict_text_in_pic = nemotron_parse_predict_text_in_pic
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        self._task_prompt = str(task_prompt)
+        self._task_prompt = _resolve_nemotron_parse_task_prompt(task_prompt, nemotron_parse_predict_text_in_pic)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -654,6 +719,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             model=self._model,
             invoke_url=self._invoke_url,
             nemotron_parse_model=self._nemotron_parse_model,
+            nemotron_parse_predict_text_in_pic=self._nemotron_parse_predict_text_in_pic,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -710,6 +776,7 @@ class NemotronParseActor(ArchetypeOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_predict_text_in_pic: Optional[bool] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -726,6 +793,7 @@ class NemotronParseActor(ArchetypeOperator):
             extract_infographics=extract_infographics,
             nemotron_parse_invoke_url=nemotron_parse_invoke_url,
             nemotron_parse_model=nemotron_parse_model,
+            nemotron_parse_predict_text_in_pic=nemotron_parse_predict_text_in_pic,
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
