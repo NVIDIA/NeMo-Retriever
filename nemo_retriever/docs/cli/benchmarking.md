@@ -34,5 +34,5 @@ retriever benchmark extract /path/to/your/pdfs \
 ```
 
 Stage commands report rows per second, or chunk rows per second for audio. They
-do not produce the NRB artifact contract and should not be used as retrieval
+do not produce end-to-end benchmark results and should not be used as retrieval
 quality evidence.
