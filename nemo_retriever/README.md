@@ -869,10 +869,11 @@ After installing the headers, restart the pipeline.
 
 ## Benchmarking
 
-End-to-end Retriever experiments and benchmark orchestration are maintained in
-the [NeMo Retriever Benchmark (NRB) repository](https://gitlab-master.nvidia.com/aire/agents/nemo-retriever-benchmark/).
-This repository continues to provide the library, CLI workflows, service
-implementation, and Helm chart that NRB benchmarks.
+NVIDIA runs end-to-end Retriever benchmarks with an internal benchmarking
+harness. To evaluate retrieval on your own setup, use the example notebooks in
+[`examples/`](../examples/), such as
+[ViDoRe v3 HR ingestion and retrieval evaluation](../examples/vidore_v3_hr.ipynb)
+and [RAG evaluation with RAGAS](../examples/nrl_ragas.ipynb).
 
 ### Ingest image storage
 
