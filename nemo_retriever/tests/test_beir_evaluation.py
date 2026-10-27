@@ -482,7 +482,8 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
                 "top_k": 10,
                 "rerank": False,
                 "rerank_kwargs": {
-                    "model_name": "nvidia/llama-nemotron-rerank-1b-v2",
+                    "model_name": None,
+                    "remote_default_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
                     "rerank_invoke_url": None,
                     "api_key": "",
                     "batch_size": 32,

@@ -24,11 +24,15 @@ NEMOTRON_35_EMBED_NVFP4_MODEL = "nvidia/Nemotron-3.5-Embed-1B-NVFP4"
 DEFAULT_LOCAL_EMBED_MODEL = NEMOTRON_35_EMBED_BF16_MODEL
 VL_EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+NEMOTRON_35_RERANK_MODEL = "nvidia/Nemotron-3.5-Rerank-8B-BF16"
+DEFAULT_LOCAL_RERANK_MODEL = NEMOTRON_35_RERANK_MODEL
 
 _VL_RERANK_MODEL_IDS = frozenset(
     {
         VL_RERANK_MODEL,
         "llama-nemotron-rerank-vl-1b-v2",
+        NEMOTRON_35_RERANK_MODEL,
+        "Nemotron-3.5-Rerank-8B-BF16",
     }
 )
 
@@ -112,6 +116,38 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_nat
 def is_vl_rerank_model(model_name: str | None) -> bool:
     """Return True if *model_name* refers to the VL reranker model."""
     return (model_name or "") in _VL_RERANK_MODEL_IDS
+
+
+def resolve_rerank_model(model_name: str | None, *, local: bool) -> str:
+    """Resolve a reranker identity without changing remote defaults.
+
+    Args:
+        model_name: Optional checkpoint ID or supported short name.
+        local: Select the N3.5 local default when True, or the existing VL 1B
+            endpoint default when False. Explicit identities are preserved.
+
+    Returns:
+        Canonical checkpoint ID. Unknown explicit IDs pass through unchanged.
+    """
+    if not model_name:
+        return DEFAULT_LOCAL_RERANK_MODEL if local else VL_RERANK_MODEL
+    aliases = {
+        "Nemotron-3.5-Rerank-8B-BF16": NEMOTRON_35_RERANK_MODEL,
+        "llama-nemotron-rerank-vl-1b-v2": VL_RERANK_MODEL,
+    }
+    return aliases.get(model_name, model_name)
+
+
+def default_rerank_max_length(model_name: str) -> int:
+    """Return the model-specific default input token budget.
+
+    Args:
+        model_name: Explicit local checkpoint ID or supported short name.
+
+    Returns:
+        10,240 for N3.5, otherwise the legacy 512-token operator default.
+    """
+    return 10240 if resolve_rerank_model(model_name, local=True) == NEMOTRON_35_RERANK_MODEL else 512
 
 
 def create_local_embedder(
@@ -353,23 +389,47 @@ def create_local_reranker(
 ) -> "BaseModel":
     """Create the appropriate local reranker model (VL or text-only).
 
-    Dispatches to ``NemotronRerankVLV2VLLM`` (default) or
-    ``NemotronRerankVLV2`` when *model_name* matches a VL reranker ID,
-    depending on *backend*.  Otherwise returns the text-only
-    ``NemotronRerankV2``.
+    Omitted model names select Nemotron 3.5 Rerank 8B BF16. Explicit legacy
+    models retain their original adapters, including the HF-only text reranker.
 
     Parameters
     ----------
+    model_name:
+        Checkpoint ID. Defaults to the local N3.5 8B checkpoint.
+    device:
+        HF inference device. vLLM accepts the first visible CUDA device only.
+    hf_cache_dir:
+        Optional Hugging Face cache directory.
     backend:
-        ``"vllm"`` (default) uses vLLM's pooling runner for the VL
-        reranker.  ``"hf"`` uses HuggingFace
-        ``AutoModelForSequenceClassification``.  Only affects VL reranker
-        dispatch; the text-only reranker always uses HuggingFace.
+        ``"vllm"`` (default) uses in-process vLLM classification.
+        ``"hf"`` uses native Transformers. The legacy text-only reranker
+        always uses Hugging Face.
     gpu_memory_utilization:
         Fraction of GPU memory for the vLLM engine (only used when
         *backend* is ``"vllm"``).
+
+    Returns
+    -------
+    BaseModel
+        Local reranker exposing score, score_pairs, and explicit unload.
+
+    Raises
+    ------
+    ValueError
+        If the backend, device, or model configuration is unsupported.
+    RuntimeError, OSError, ImportError
+        If runtime dependencies, checkpoint loading, or GPU initialization fail.
     """
     b = normalize_backend(backend, _LOCAL_RERANKER_BACKENDS, field_name="backend", default="vllm")
+    model_name = resolve_rerank_model(model_name, local=True)
+    if model_name == NEMOTRON_35_RERANK_MODEL:
+        from nemo_retriever.models.local.nemotron35_rerank import Nemotron35Reranker, Nemotron35RerankerHF
+
+        if b == "vllm":
+            return Nemotron35Reranker(
+                device=device, hf_cache_dir=hf_cache_dir, gpu_memory_utilization=gpu_memory_utilization
+            )
+        return Nemotron35RerankerHF(device=device, hf_cache_dir=hf_cache_dir)
     if is_vl_rerank_model(model_name):
         if b == "vllm":
             from nemo_retriever.models.local.nemotron_rerank_vl_v2 import NemotronRerankVLV2VLLM

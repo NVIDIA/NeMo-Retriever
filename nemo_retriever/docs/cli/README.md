@@ -150,6 +150,18 @@ scripts/launch_local_service_with_vectordb.sh \
 
 The example configuration leaves NIM endpoints unset and uses local Hugging Face models. The launcher validates `/v1/health` on the service and VectorDB, then keeps both processes running until you stop it with `Ctrl+C`.
 
+Local query reranking remains disabled by default. To enable it without a
+reranking NIM, set `local_models.enabled: true` and
+`local_models.rerank.enabled: true`, and send queries with `rerank: true`.
+The local reranker defaults to `nvidia/Nemotron-3.5-Rerank-8B-BF16` with
+`local_models.rerank.backend: vllm`; select `hf` for the Hugging Face backend.
+Leave `local_models.rerank.max_length` unset or `null` to select the model
+profile: 10,240 tokens for Nemotron 3.5, or 512 for an explicit legacy model.
+The service loads the local reranker lazily on the first reranking request
+and unloads it during shutdown.
+A configured `nim_endpoints.rerank_invoke_url` takes precedence and retains
+the remote reranker default. Helm and Compose NIM defaults are unchanged.
+
 ```bash
 retriever service start --config my-retriever-service.yaml --launch-vectordb
 ```
@@ -189,7 +201,18 @@ retriever query "What is in this document?" \
 ```
 
 Passing `--rerank` without `--reranker-invoke-url` uses the local GPU reranker,
-not this hosted endpoint.
+`nvidia/Nemotron-3.5-Rerank-8B-BF16`, not this hosted endpoint. Reranking stays
+opt-in, and the default modality remains text. Use `--reranker-model-name`
+to retain an explicitly selected legacy checkpoint. The larger local BF16
+model needs more GPU memory and can be slower than the previous 1B default;
+visual inputs need additional memory. Refer to
+[Local GPU reranking](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#local-gpu-reranking)
+for capacity guidance. Explicit remote URLs continue to use their endpoint's
+model contract and do not select the local checkpoint.
+
+When execution falls back to the CPU actor and no model or endpoint is set,
+it retains the hosted 1B reranker and requires `NVIDIA_API_KEY` or
+`NGC_API_KEY`. It does not attempt to load the local 8B checkpoint.
 
 A Cohere-style `/v1/rerank` URL is a gateway route, not an NVIDIA-hosted NIM
 endpoint. Pass the full URL that your gateway exposes, for example

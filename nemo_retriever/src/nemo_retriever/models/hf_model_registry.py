@@ -24,6 +24,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 HF_MODEL_REVISIONS: dict[str, str] = {
+    "nvidia/Nemotron-3.5-Rerank-8B-BF16": "f88f8d9104726747791283ab156d2fcdb29e90a7",
     "nvidia/llama-3.2-nv-embedqa-1b-v2": "cefc2394cc541737b7867df197984cf23f05367f",
     "nvidia/llama-nemotron-embed-1b-v2": "113abe4acafa848e77ead9c0623205e511932348",
     "nvidia/parakeet-ctc-1.1b": "20e63a0fed6aedba145b74b826dbd41df0941730",

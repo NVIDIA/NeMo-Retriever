@@ -20,12 +20,18 @@ __all__ = [
     "NemotronParse35",
     "NemotronRerankV2",
     "NemotronRerankVLV2",
+    "Nemotron35Reranker",
+    "Nemotron35RerankerHF",
     "NemotronVLMCaptioner",
     "ParakeetCTC1B1ASR",
 ]
 
 
 def __getattr__(name: str):
+    if name in {"Nemotron35Reranker", "Nemotron35RerankerHF"}:
+        from nemo_retriever.models.local.nemotron35_rerank import Nemotron35Reranker, Nemotron35RerankerHF
+
+        return {"Nemotron35Reranker": Nemotron35Reranker, "Nemotron35RerankerHF": Nemotron35RerankerHF}[name]
     if name == "NemotronPageElementsV3":
         from nemo_retriever.models.local.nemotron_page_elements_v3 import NemotronPageElementsV3
 

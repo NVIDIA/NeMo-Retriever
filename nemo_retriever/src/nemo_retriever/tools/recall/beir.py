@@ -166,7 +166,7 @@ class BeirConfig:
     local_hf_batch_size: int = 32
     local_query_max_length: int = 128
     reranker: bool = False
-    reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
+    reranker_model_name: str | None = None
     reranker_endpoint: str | None = None
     reranker_api_key: str = ""
     reranker_batch_size: int = 32
@@ -906,7 +906,10 @@ def evaluate_lancedb_beir(
         )
 
     rerank_kw = {
-        "model_name": str(cfg.reranker_model_name),
+        "model_name": cfg.reranker_model_name,
+        # Preserve BEIR's text-only endpoint default, including CPU fallback;
+        # only GPU-local execution should adopt the new local checkpoint.
+        "remote_default_model_name": "nvidia/llama-nemotron-rerank-1b-v2",
         "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
         "api_key": (cfg.reranker_api_key or "").strip(),
         "batch_size": int(cfg.reranker_batch_size),
