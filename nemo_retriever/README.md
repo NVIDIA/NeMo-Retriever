@@ -97,6 +97,14 @@ uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org
 
 Skip this step if you are using remote NIM inference only.
 
+Local vLLM inference also requires a writable FlashInfer cache and HTTPS
+access to `edge.urm.nvidia.com` for missing GPU kernel artifacts. The default
+artifact cache is `~/.cache/flashinfer/cubins`. Before running offline, prefetch
+artifacts and exercise your intended model on matching GPU hardware. Refer to
+[Local GPU kernel cache](../docs/docs/extraction/prerequisites-support-matrix.md#local-gpu-kernel-cache)
+for the prefetch command and cache configuration. Model weights require
+separate caching.
+
 ## Run the pipeline
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
@@ -144,7 +152,7 @@ from nemo_retriever import create_ingestor
 
 texts = ["some text", "another longer text"]
 
-chunks = (
+summary = (
   create_ingestor(run_mode="batch")
   .texts(texts)
   .embed()
@@ -152,6 +160,10 @@ chunks = (
   .ingest()
 )
 ```
+
+This batch pipeline ends in the default streaming-capable LanceDB upload, so
+`.ingest()` returns a summary with `input_rows` and `submitted_records`.
+Pass `return_results=True` if you need the embedded rows.
 
 Each string is treated as a raw document and split with `TextChunkParams`
 defaults. To override chunking for every text source in the ingest, add
@@ -179,8 +191,18 @@ uv run python nemo_retriever/src/nemo_retriever/examples/batch_pipeline.py /path
 
 ```python
 # ingestor.ingest() actually executes the pipeline
-chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
+chunks = ingestor.ingest(return_results=True)  # Extracted rows as a pandas.DataFrame.
 ```
+
+Omitting `return_results` or setting it to `None` selects the pipeline default.
+Batch graphs return a summary only with a final streaming-capable VDB upload,
+`error_policy="raise"`, and `return_failures=False`. Other graph configurations
+return full records. In service mode, `.ingest()` and `.ingest_async()` return
+completion metadata without downloading rows; pass `return_results=True` to
+populate `ServiceIngestResult.dataframe`. `.save_to_disk(...)` still fetches
+payloads needed to write files. Refer to
+[ingest result defaults](../docs/docs/extraction/nemo-retriever-api-reference.md#return-ingest-results)
+for the complete contract.
 
 ### Ingest a test corpus (CLI)
 
@@ -623,7 +645,7 @@ ingestor = (
   ingestor.files(documents)
   .extract(split_config={"text": {"max_tokens": 5}, "html": {"max_tokens": 5}}) # 1024 by default, set low here to demonstrate chunking
 )
-results = ingestor.ingest()
+results = ingestor.ingest(return_results=True)
 document_path = results["path"].iloc[0]
 document_results = results[results["path"] == document_path]
 markdown_doc = to_markdown(document_results)
@@ -855,10 +877,11 @@ After installing the headers, restart the pipeline.
 
 ## Benchmarking
 
-End-to-end Retriever experiments and benchmark orchestration are maintained in
-the [NeMo Retriever Benchmark (NRB) repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
-This repository continues to provide the library, CLI workflows, service
-implementation, and Helm chart that NRB benchmarks.
+NVIDIA runs end-to-end Retriever benchmarks with an internal benchmarking
+harness. To evaluate retrieval on your own setup, use the example notebooks in
+[`examples/`](../examples/), such as
+[ViDoRe v3 HR ingestion and retrieval evaluation](../examples/vidore_v3_hr.ipynb)
+and [RAG evaluation with RAGAS](../examples/nrl_ragas.ipynb).
 
 ### Ingest image storage
 

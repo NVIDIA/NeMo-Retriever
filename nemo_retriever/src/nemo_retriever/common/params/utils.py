@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
 
-NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE35_MODEL = "nvidia/Nemotron-3.5-Parse"
+NEMOTRON_PARSE_V12_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = NEMOTRON_PARSE35_MODEL
+NEMOTRON_PARSE_LOCAL_MODELS = (NEMOTRON_PARSE35_MODEL, NEMOTRON_PARSE_V12_MODEL)
 
 
 def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
@@ -89,6 +92,9 @@ def build_embed_option_kwargs(
     embed_cpus_per_actor: float | None = None,
     embed_gpus_per_actor: float | None = None,
     embed_model_revision: str | None = None,
+    embed_inference_batch_size: int | None = None,
+    embed_reshape_workers: int | None = None,
+    embed_repartition: bool | None = None,
 ) -> Dict[str, Any]:
     """Build ``EmbedParams`` kwargs from CLI/request option values."""
     embed_kwargs: Dict[str, Any] = {}
@@ -114,9 +120,13 @@ def build_embed_option_kwargs(
         embed_kwargs["structured_elements_modality"] = structured_elements_modality
     if embed_granularity is not None:
         embed_kwargs["embed_granularity"] = embed_granularity
+    if embed_inference_batch_size is not None:
+        embed_kwargs["embed_inference_batch_size"] = embed_inference_batch_size
     embed_tuning = _build_embed_batch_tuning(
         embed_workers=embed_workers,
+        embed_reshape_workers=embed_reshape_workers,
         embed_batch_size=embed_batch_size,
+        embed_repartition=embed_repartition,
         embed_cpus_per_actor=embed_cpus_per_actor,
         embed_gpus_per_actor=embed_gpus_per_actor,
     )
@@ -128,7 +138,9 @@ def build_embed_option_kwargs(
 def _build_embed_batch_tuning(
     *,
     embed_workers: int | None,
+    embed_reshape_workers: int | None,
     embed_batch_size: int | None,
+    embed_repartition: bool | None,
     embed_cpus_per_actor: float | None,
     embed_gpus_per_actor: float | None,
 ) -> BatchTuningParams | None:
@@ -138,7 +150,9 @@ def _build_embed_batch_tuning(
         key: value
         for key, value in {
             "embed_workers": embed_workers,
+            "embed_reshape_workers": embed_reshape_workers,
             "embed_batch_size": embed_batch_size,
+            "embed_repartition": embed_repartition,
             "embed_cpus_per_actor": embed_cpus_per_actor,
             "gpu_embed": embed_gpus_per_actor,
         }.items()

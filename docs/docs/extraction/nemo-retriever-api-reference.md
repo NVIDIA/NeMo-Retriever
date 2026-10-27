@@ -151,13 +151,82 @@ Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.
 
-For local `nemotron_parse` extraction in NeMo Retriever Library 26.08, omit
-`nemotron_parse_model` to use the default model, or set it to
-`nvidia/NVIDIA-Nemotron-Parse-v1.2`. Other local model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before pipeline
-execution. To use a remote Nemotron Parse endpoint, configure
+For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
+`nvidia/Nemotron-3.5-Parse` through in-process vLLM on a CUDA GPU with BF16
+weights. You can also select this checkpoint explicitly with
+`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. To retain the local v1.2
+vLLM path, set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"`.
+Do not configure an invoke URL for either local path. Install the local GPU
+and Parse dependencies with
+`pip install "nemo-retriever[local,nemotron-parse]"`.
+
+The following example uses the default local Parse 3.5 checkpoint. Standalone
+scripts need the `__main__` guard to prevent ingestion from running again in
+spawned workers.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    result = (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+            )
+        )
+        .ingest()
+    )
+    return result
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
+from the same revision pinned in the model registry. It registers the plugin
+in vLLM workers automatically; no separate plugin installation is required.
+During engine startup, the adapter temporarily selects the pinned plugin
+snapshot and forces `VLLM_WORKER_MULTIPROC_METHOD="spawn"`. It restores both
+environment settings after startup, including when startup fails.
+The adapter executes checkpoint custom code with `trust_remote_code=True`.
+Review the checkpoint and plugin code before use. The adapter retains the
+existing task prompt, which disables text prediction inside pictures. The
+default extraction method remains `pdfium_hybrid`; select
+`method="nemotron_parse"` to use Parse.
+
+The `NemotronParse35` adapter loads lazily. Before downloading checkpoint
+assets, its first nonempty inference call validates the requested CUDA device.
+Unavailable CUDA raises `RuntimeError`. The vLLM backend accepts only `cuda`
+or `cuda:0` within the worker's visible GPU set; other devices raise
+`ValueError` during construction. Direct
+`NemotronParse35()` calls, the CLI, and the graph pipeline default to vLLM.
+Direct adapter callers can select `NemotronParse35(backend="transformers")`
+for Transformers GPU inference, or
+`NemotronParse35(backend="transformers", device="cpu")` for CPU inference.
+The adapter does not fall back to Transformers or CPU automatically.
+Batch parsing converts and generates one page at a time, preserving input
+order without retaining converted copies of the entire batch. If a page fails,
+the adapter does not return a partial batch.
+
+Both local Parse adapters accept PIL images, image paths, and HWC or CHW
+NumPy arrays and tensors with 1, 3, or 4 channels. Arrays and tensors can
+include a leading batch dimension of size one. If both layouts are possible,
+inputs are interpreted as HWC. Inputs are converted to RGB; invalid shapes
+and nonfinite pixels raise `ValueError`. Parse 3.5 scales floating-point
+pixels in `[0, 1]` to `[0, 255]`. The v1.2 adapter retains its legacy scaling
+heuristic for floating-point inputs whose maximum is at most `1.5`.
+
+Other local Parse model values, including
+`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before
+pipeline execution. To use a remote Nemotron Parse endpoint, configure
 `nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract.
+the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
+unchanged.
 
 ### Choose raise or collect behavior
 
@@ -188,7 +257,7 @@ row-level error fields.
 | `ocr_invoke_url` | `ocr` | OCR NIM |
 | `table_structure_invoke_url` | `table_structure_ocr_v1` | Table Structure NIM |
 | `nemotron_parse_invoke_url` or `invoke_url` | `nemotron_parse_v1_2` | Nemotron Parse NIM |
-| `embed_invoke_url` or `embedding_endpoint` | `output_column` (default `text_embeddings_1b_v2`) | Embedding NIM |
+| `embed_invoke_url` or `embedding_endpoint` | `{output_column}_error` (default `embedding_error`) | Embedding NIM |
 
 Caption and ASR use remote endpoints but are outside this raise path today.
 Remote caption failures can abort the whole ingest instead of returning a
@@ -217,6 +286,12 @@ product-wide error-code enum. HTTP status codes usually appear inside
 `message` text rather than as a separate `status_code` field; when a
 structured status is present, `GraphIngestionError` can include it in the
 rendered exception.
+
+The embedding stage does not use the nested shape. Its output column defaults
+to `embedding` and can be changed with `EmbedParams.output_column`. It sets
+`{output_column}` to null when it produces no vector. `{output_column}_error`
+is null on success or when there is no embeddable content, and contains a
+one-line message only when embedding fails.
 
 ```python
 import os
@@ -423,12 +498,34 @@ service = create_ingestor(run_mode="service", base_url="http://localhost:7670")
 
 `GraphIngestor` methods include `extract_html()`, `extract_audio()`, `extract_video()`, `get_error_rows()`, and `get_dataset()`. `get_error_rows()` filters rows that contain stage error payloads from a pandas DataFrame or Ray Dataset. If you omit `dataset`, it uses the dataset retained from the last `ingest()` call. `get_dataset()` returns that retained dataset.
 
-In batch mode, `.ingest(return_results=False)` returns a one-row summary
-instead of retaining full result records. You can also pass
-`IngestExecuteParams(return_results=False)` through `params`. This requires a
-final streaming VDB upload stage and the default raise error policy. Refer to
-[Return a batch ingest summary](vdbs.md#batch-ingest-summary) for the counts,
-requirements, and an example. `get_dataset()` then returns the summary.
+#### Choose whether to return result rows { #return-ingest-results }
+
+`IngestExecuteParams.return_results` defaults to `None`. Omitting the setting
+or passing `None` selects the behavior for your pipeline, as shown below.
+You can pass the setting directly to `.ingest()` or through `params`.
+
+| Pipeline | Default result |
+| --- | --- |
+| Batch graph with a final streaming-capable VDB upload, `error_policy="raise"`, and `return_failures=False`. | A one-row summary DataFrame with `input_rows` and `submitted_records`. |
+| Other graph configurations, including in-process and extraction-only pipelines. | Full result rows in a DataFrame. |
+| Service `.ingest()` and `.ingest_async()`. | Completion metadata and failures in `ServiceIngestResult`, with `.dataframe=None`. |
+
+Pass `return_results=True` when your application reads extracted rows. In
+service mode, this also fetches completed result payloads into
+`ServiceIngestResult.dataframe`. Requesting embeddings or a result schema
+does not enable result fetching by itself.
+
+Explicit `GraphIngestor.ingest(return_results=False)` requires the batch
+summary configuration above. Other graph configurations raise
+`ValueError`. In batch summary mode, `get_dataset()` returns the summary.
+Refer to [Return a batch ingest summary](vdbs.md#batch-ingest-summary) for
+supported backends and count definitions.
+
+Direct `RayDataExecutor.ingest()` also defaults `return_results` to `None`.
+It returns a summary when the graph has one streaming-capable VDB upload as
+its final stage, and full records for other graphs. Pass `return_results=True`
+to retain full records. Explicit `False` requires that terminal streaming VDB
+configuration and raises `ValueError` otherwise.
 
 ::: nemo_retriever.ingestor.graph_ingestor.GraphIngestor
     options:
@@ -450,10 +547,18 @@ requirements, and an example. `get_dataset()` then returns the summary.
 
 Service-only methods include `split()`, `pdf_split_config()`, `save_to_disk()`, `ingest_stream()`, `aingest_stream()`, and `cancel()`. `cancel()` is part of the public class. It currently raises `NotImplementedError` because the service does not expose a cancel endpoint.
 
+By default, `.ingest()` and `.ingest_async()` skip result downloads. Job IDs,
+document IDs, completion events, and failures remain available on the returned
+`ServiceIngestResult`. Pass `return_results=True` to populate `.dataframe`.
+The future returned by `.ingest_async()` produces the same result contract.
+
+Calling `.save_to_disk(...)` still fetches the payloads needed to write files.
+Without `return_results=True`, those payloads are not retained in `.dataframe`.
+
 #### Choose a service result schema { #service-result-schema }
 
-`ServiceIngestor.ingest()` returns result rows in the `legacy` schema by
-default. You can pass `result_schema="compact"` to use the compact schema.
+When you request result rows, `ServiceIngestor.ingest()` uses the `legacy`
+schema by default. You can pass `result_schema="compact"` to use the compact schema.
 The schemas return text and embeddings as follows.
 
 | Schema | Text | Embeddings |
@@ -482,7 +587,7 @@ result = (
     create_ingestor(run_mode="service", base_url="http://localhost:7670")
     .texts(["Text to embed and return."])
     .embed()
-    .ingest(result_schema="compact", return_embeddings=True)
+    .ingest(return_results=True, result_schema="compact", return_embeddings=True)
 )
 
 for row in result.dataframe.to_dict(orient="records"):
