@@ -56,8 +56,10 @@ Review for:
 
 Treat every tracked file as public, including agent guidance and setup guides.
 Flag added links or references to private repositories or internal services,
-including internal hostnames, repository paths, endpoints, package sources,
-and operational setup instructions.
+including private infrastructure details such as hostnames, repository paths,
+endpoints, package sources, and deployment-specific setup instructions.
+General tool interfaces, local setup commands, and safeguards are not violations
+by themselves when they do not disclose private infrastructure details.
 When a workflow or its documentation moves to a private system, recommend a
 generic description and supported public documentation or checked-in examples.
 Do not request a link to the private replacement or repeat private details in

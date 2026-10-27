@@ -49,7 +49,7 @@
     },
     {
       "id": "no-private-infrastructure-references",
-      "rule": "Treat every tracked file as public, including documentation, examples, comments, notebooks, agent guidance, and setup guides. Flag added links or references to private repositories or internal services, including internal hostnames, repository namespaces or paths, endpoints, package sources, and operational setup instructions. When a workflow moves to a private system, recommend a generic description and supported public documentation or checked-in examples; do not request a link to the private replacement. Do not repeat private details in review comments; refer to the affected file and lines instead.",
+      "rule": "Treat every tracked file as public, including documentation, examples, comments, notebooks, agent guidance, and setup guides. Flag added links or references to private repositories or internal services, including private infrastructure details such as hostnames, repository namespaces or paths, endpoints, package sources, and deployment-specific setup instructions. General tool interfaces, local setup commands, and safeguards are not violations by themselves when they do not disclose private infrastructure details. When a workflow moves to a private system, recommend a generic description and supported public documentation or checked-in examples; do not request a link to the private replacement. Do not repeat private details in review comments; refer to the affected file and lines instead.",
       "severity": "high"
     },
     {
