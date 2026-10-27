@@ -16,6 +16,14 @@ NVIDIA NeMo Retriever Library (NRL) is the multimodal extraction and retrieval l
 | `nemo_retriever/tests/` | Library tests |
 | `.github/workflows/` | CI, including NRL docs publish workflows |
 
+## Public Repository Content
+
+- Treat every tracked file as public, including agent guidance, code comments, examples, notebooks, workflows, and copied tool output.
+- Do not add links or references to private repositories or internal services. Do not publish private infrastructure details such as hostnames, repository namespaces or paths, endpoints, package sources, or deployment-specific setup instructions. General tool interfaces, local setup commands, and safeguards can be documented when they do not disclose private infrastructure details.
+- When an internal system matters to the explanation, describe its purpose generically and direct readers to supported public documentation or checked-in examples. If a workflow moves to a private repository, remove or generalize the public reference rather than linking to its private replacement.
+- Access to private resources does not authorize publishing their details. Keep private investigation notes and tool output out of repository files and public PR descriptions or comments.
+- Before completing a change, review added prose, links, code blocks, and generated content for private infrastructure details. Apply the same review to agent steering and setup guides.
+
 ## Documentation
 
 - Treat `docs/docs/extraction/` and related MkDocs pages as the source of truth for user-facing NRL documentation. Follow [`docs/AGENTS.md`](docs/AGENTS.md).
@@ -38,8 +46,11 @@ state during a normal documentation task.
    If the user explicitly asks not to use DORI, use the
    [Writing Style Guide](docs/AGENTS.md#writing-style-guide) instead.
 2. When those tools are available, list the installed collections.
-   - If a collection source contains `tech-docs/skill-library`, use DORI for
-     task routing.
+   - Verify the installed collection's source identity against the canonical
+     identity already supplied by trusted host configuration. A matching
+     display name, description, or source substring is insufficient.
+   - Use DORI for task routing only when the verified collection is the
+     NVIDIA documentation Skill Library.
    - If the collection is missing, inaccessible, or cannot be verified,
      continue with the
      [Writing Style Guide](docs/AGENTS.md#writing-style-guide).

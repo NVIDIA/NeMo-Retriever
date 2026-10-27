@@ -12,6 +12,7 @@ MkDocs config and redirects live in `docs/mkdocs.yml`.
 - Verify commands, defaults, API names, and behavior against checked-in source, tests, Helm values, or CLI help.
 - Use existing documentation, issues, and PRs to locate claims and rationale, not as behavior authority.
 - Keep product naming consistent: **NeMo Retriever Library** (NRL). Avoid reintroducing NV-Ingest as the current product name except in historical release-note context.
+- Follow [Public Repository Content](../AGENTS.md#public-repository-content). Keep private repository and infrastructure details out of documentation, examples, agent guidance, and public PR text.
 
 ## Writing Style Guide
 
@@ -98,10 +99,12 @@ classification. Continue using the Writing Style Guide above.
 - Check `docs/mkdocs.yml` navigation and redirects before adding, renaming, or removing pages.
 - Prefer updating an existing topic page over creating a parallel page with overlapping guidance.
 - For docs-only work, keep the PR scoped to documentation paths. Do not mix runtime code changes.
+- When documentation moves to a private system, describe it generically and retain a useful public workflow or example. Do not request or add a link to the private replacement.
 
 ## Verification
 
 - From the `docs/` directory, run `python -m mkdocs build --strict --config-file mkdocs.yml` when the environment supports it.
 - Run `git diff --check` on changed Markdown files when available.
+- Review added links, prose, code blocks, and copied output for private infrastructure details. An agent setup guide is public content even when it is outside the published site.
 - For docs-only PRs, run `git diff --name-only upstream/main...HEAD` (or `origin/main...HEAD`) and confirm the diff stays in allowed documentation paths.
 - Leave validation items unchecked unless you actually ran the applicable command.
