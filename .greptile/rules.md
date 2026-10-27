@@ -52,6 +52,17 @@ Review for:
 - Test fixtures that contain real credentials
 - Configuration files committed with actual secrets
 
+### Public Repository Content
+
+Treat every tracked file as public, including agent guidance and setup guides.
+Flag added links or references to private repositories or internal services,
+including internal hostnames, repository paths, endpoints, package sources,
+and operational setup instructions.
+When a workflow or its documentation moves to a private system, recommend a
+generic description and supported public documentation or checked-in examples.
+Do not request a link to the private replacement or repeat private details in
+review comments. Refer to the affected file and lines instead.
+
 ### Input Validation at Boundaries
 
 Every entry point (API endpoint, CLI command, client method) must validate:
