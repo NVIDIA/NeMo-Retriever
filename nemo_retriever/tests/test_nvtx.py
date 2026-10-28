@@ -372,7 +372,9 @@ def test_ray_pipeline_ingest_decorator(capture_ranges, monkeypatch: pytest.Monke
     ]
 
     capture_ranges.clear()
-    stream_node = SimpleNamespace(operator=SimpleNamespace(_stream_ingest=lambda batches: 3))
+    stream_node = SimpleNamespace(
+        operator=SimpleNamespace(_stream_ingest=lambda batches: 3, _supports_worker_write=lambda: False)
+    )
     monkeypatch.setattr(executor, "_linearize", lambda graph: [stream_node])
     monkeypatch.setattr(executor, "_stream_ingest_index", lambda nodes, *, require_terminal=False: 0)
     dataset = SimpleNamespace(iter_batches=lambda **kwargs: iter(()))

@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The opt-in worker-native fragment sink stores exactly what the columnar driver stream stores."""
+"""The worker-native fragment sink stores exactly what the columnar driver stream stores."""
 
 from __future__ import annotations
 
@@ -56,12 +56,20 @@ def _rows(uri: Path) -> pa.Table:
     return table.sort_by("id")
 
 
-def _worker_write(backend: LanceDB, frames: list[pd.DataFrame]) -> int:
+def _operator_write(operator: IngestVdbOperator, frames: list[pd.DataFrame]) -> int:
     """Drive the two halves the executor runs: one receipt per Ray block, then one driver commit."""
-    operator = IngestVdbOperator(vdb=backend)
-    receipts = [operator._write_partition(frame) for frame in frames]
-    assert all(len(receipt["fragments"]) <= 1 for receipt in receipts)
-    return operator._commit_partitions(receipts)
+    with operator._worker_write() as writer:
+        receipts = [writer._write_partition(frame) for frame in frames]
+        assert all(len(receipt["fragments"]) <= 1 for receipt in receipts)
+        return writer._commit_partitions(receipts)
+
+
+def _worker_write(backend: LanceDB, frames: list[pd.DataFrame]) -> int:
+    return _operator_write(IngestVdbOperator(vdb=backend), frames)
+
+
+def _staged_files(uri: Path) -> list[Path]:
+    return sorted((uri / ".nemo-retriever-staging").rglob("*.lance"))
 
 
 def test_worker_write_matches_columnar_stream(tmp_path: Path) -> None:
@@ -102,7 +110,7 @@ def test_worker_write_overwrite_then_append(tmp_path: Path) -> None:
 
 def test_worker_write_without_partitions_creates_no_table(tmp_path: Path) -> None:
     backend = _backend(tmp_path / "db")
-    assert IngestVdbOperator(vdb=backend)._commit_partitions([]) == 0
+    assert _worker_write(backend, []) == 0
     assert "chunks" not in lancedb.connect(str(tmp_path / "db")).list_tables().tables
 
 
@@ -225,8 +233,8 @@ def test_worker_write_applies_fail_closed_rules_over_the_whole_upload(tmp_path: 
     partial = _frames([missing, _row(1)], batch_size=1)
     with pytest.raises(VdbUploadError, match="missing embeddings"):
         _worker_write(_backend(uri), partial)
-    # Fragments may be on disk, but nothing was committed: no manifest exists.
-    assert not list((uri / "chunks.lance").glob("_versions/*.manifest"))
+    assert not (uri / "chunks.lance").exists()
+    assert _staged_files(uri) == []
 
 
 def _data_files(uri: Path) -> list[Path]:
@@ -246,6 +254,7 @@ def test_rejected_upload_removes_its_fragment_files(tmp_path: Path) -> None:
     with pytest.raises(VdbUploadError, match="missing embeddings"):
         _worker_write(_backend(uri), _frames([_row(1), _row(2), missing], batch_size=2))
     assert _data_files(uri) == []
+    assert _staged_files(uri) == []
 
 
 def test_rejected_append_keeps_committed_files_and_removes_its_own(tmp_path: Path) -> None:
@@ -257,7 +266,17 @@ def test_rejected_append_keeps_committed_files_and_removes_its_own(tmp_path: Pat
     with pytest.raises(ValueError, match="model"):
         _worker_write(append, _frames([_row(index) for index in range(4, 8)], batch_size=2))
     assert _data_files(uri) == committed
+    assert _staged_files(uri) == []
     assert _rows(uri).num_rows == 4
+
+
+def test_next_write_removes_files_staged_by_a_killed_process(tmp_path: Path) -> None:
+    uri = tmp_path / "db"
+    stale = uri / ".nemo-retriever-staging" / "chunks" / "data" / "killed.lance"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"")
+    assert _worker_write(_backend(uri), _frames([_row(0)], batch_size=1)) == 1
+    assert _staged_files(uri) == []
 
 
 class _RecordingDataset:
@@ -306,9 +325,7 @@ def test_executor_worker_write_batch_format_and_driver_node(
     assert result["submitted_records"].tolist() == [3]
 
 
-def test_executor_removes_finished_fragments_when_a_write_actor_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_failed_write_task_leaves_no_fragment_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ray = pytest.importorskip("ray")
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.pipeline_graph import Node
@@ -330,7 +347,8 @@ def test_executor_removes_finished_fragments_when_a_write_actor_fails(
     monkeypatch.setattr(ray, "get_runtime_context", lambda: SimpleNamespace(get_node_id=lambda: "a" * 56))
     with pytest.raises(RuntimeError, match="write actor failed"):
         RayDataExecutor.__new__(RayDataExecutor)._worker_write_ingest(dataset, node)
-    assert not list((uri / "chunks.lance" / "data").glob("*"))
+    assert _data_files(uri) == []
+    assert _staged_files(uri) == []
 
 
 def test_worker_write_operation_id_retry_does_not_append_again(tmp_path: Path) -> None:
@@ -388,9 +406,9 @@ def test_worker_write_applies_sidecar_metadata_like_the_stream(tmp_path: Path) -
     kwargs = {"vdb_op": "lancedb", "vdb_kwargs": vdb_kwargs("worker")}
     operator = IngestVdbOperator(**kwargs)
     assert operator._supports_worker_write()
-    write = operator._partition_writer()
-    sidecar.unlink()  # The write actors use the driver's lookup, not the file.
-    assert operator._commit_partitions([write(frame) for frame in frames]) == 5
+    with operator._worker_write() as writer:
+        sidecar.unlink()  # The write actors use the driver's lookup, not the file.
+        assert writer._commit_partitions([writer._write_partition(frame) for frame in frames]) == 5
 
     expected, actual = _rows(tmp_path / "stream"), _rows(tmp_path / "worker")
     assert actual.equals(expected)
@@ -457,9 +475,10 @@ def test_worker_write_operation_id_empty_retry_cannot_skip_finalization(tmp_path
 def test_worker_write_ships_a_supplied_backend_to_the_tasks(tmp_path: Path) -> None:
     cloudpickle = pytest.importorskip("cloudpickle")
     operator = IngestVdbOperator(vdb=_backend(tmp_path / "db"))
-    write = cloudpickle.loads(cloudpickle.dumps(operator._partition_writer()))
     frames = _frames([_row(index) for index in range(5)], batch_size=2)
-    assert operator._commit_partitions([write(frame) for frame in frames]) == 5
+    with operator._worker_write() as writer:
+        task_writer = cloudpickle.loads(cloudpickle.dumps(writer))
+        assert writer._commit_partitions([task_writer._write_partition(frame) for frame in frames]) == 5
     assert _rows(tmp_path / "db").num_rows == 5
 
 
@@ -472,8 +491,7 @@ def test_worker_append_without_vector_dim_takes_the_table_width(tmp_path: Path) 
     stream = IngestVdbOperator(vdb=_backend(tmp_path / "stream", overwrite=False, vector_dim=None))
     stream_submitted = stream._stream_ingest(iter(frames))
     operator = IngestVdbOperator(vdb=_backend(tmp_path / "worker", overwrite=False, vector_dim=None))
-    write = operator._partition_writer()
-    assert operator._commit_partitions([write(frame) for frame in frames]) == stream_submitted
+    assert _operator_write(operator, frames) == stream_submitted
 
     assert _rows(tmp_path / "worker").equals(_rows(tmp_path / "stream"))
 
