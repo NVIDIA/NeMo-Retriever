@@ -8,11 +8,12 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import tempfile
 import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from datetime import datetime, timezone
 from itertools import chain
 from pathlib import Path
@@ -139,7 +140,6 @@ def _local_table_lock(uri: str, table_name: str, *, phase: str) -> AbstractConte
     return FileLock(lock_dir / f"{phase}-{table_token}.lock")
 
 
-# Data-file version LanceDB 0.34's writer emits for its default ``data_storage_version="stable"``.
 # Rows per Lance page for fixed-size-list vector columns. Lance flushes a vector page only at the
 # boundary of an Arrow batch, after the page reached its ~8 MiB target, so a batch larger than that
 # becomes one oversized page (``max_rows_per_group``/``max_bytes_per_file`` do not split it). 1024
@@ -148,7 +148,6 @@ def _local_table_lock(uri: str, table_name: str, *, phase: str) -> AbstractConte
 # (brute-force) vector scans, with ANN unaffected. ``write_fragments`` and ``compact_files`` both
 # take their batch size from here so worker-written and compacted tables keep the writer's layout.
 _LANCE_ROWS_PER_PAGE = 1024
-_WORKER_WRITE_ROWS_PER_BATCH = _LANCE_ROWS_PER_PAGE
 
 
 def _rebatched(batches: Iterable[pa.RecordBatch], rows: int) -> Iterator[pa.RecordBatch]:
@@ -168,28 +167,11 @@ def _optimize_lancedb_table(table: Any) -> None:
     compaction keep the writer's page size.
     """
 
-    try:
-        import lance  # noqa: F401 - LanceDB only exposes compaction options through pylance.
-    except ImportError:
-        logger.warning(
-            "pylance is not installed; LanceDB optimize() may rewrite vector pages larger than %d rows, "
-            "which slows index-bypass scans. Install pylance to keep the writer's page size.",
-            _LANCE_ROWS_PER_PAGE,
-        )
-        table.optimize()
-        return
     dataset = table.to_lance()
     dataset.optimize.compact_files(batch_size=_LANCE_ROWS_PER_PAGE)
     dataset.cleanup_old_versions()
     dataset.optimize.optimize_indices()
     table.checkout_latest()
-
-
-def _fragment_json(fragment: Any) -> str:
-    """Serialize ``lance.fragment.FragmentMetadata`` to the string ``from_json`` accepts."""
-
-    encoded = fragment.to_json()
-    return encoded if isinstance(encoded, str) else json.dumps(encoded)
 
 
 def _table_mutation_lock(uri: str, table_name: str) -> AbstractContextManager[Any]:
@@ -995,6 +977,7 @@ class LanceDB(VDB):
         if self.worker_write_rows < 1:
             raise ValueError(f"worker_write_rows must be a positive integer, got {worker_write_rows!r}")
         self.supports_worker_write = self.supports_stream_ingest
+        self._staging_uri: str | None = None
         self._service_table_schema = service_table_schema
         self._service_index_mode = str(service_index_mode) if service_index_mode is not None else None
         self._writes_since_optimize = 0
@@ -2035,6 +2018,41 @@ class LanceDB(VDB):
                 worker.vector_dim = _schema_vector_dim(_table_schema(table))
         return worker
 
+    @contextmanager
+    def worker_write(self) -> Iterator["LanceDB"]:
+        """Hold this table's write locks for one worker-native write and yield the backend the write tasks use.
+
+        The write tasks put their fragments in a staging directory beside the table, and
+        :meth:`commit_partitions` moves them into the table just before its one commit. Leaving the block
+        deletes the staging directory, so a write that fails, is rejected, or is interrupted leaves no
+        files in the table. The next write to the table deletes a staging directory left by a killed
+        process. As with :meth:`stream_ingest`, writes to one table run one at a time.
+
+        Yields:
+            LanceDB: A settings-only copy for the Ray write tasks (:meth:`write_partition`) and the
+            driver commit (:meth:`commit_partitions`).
+
+        Raises:
+            ValueError: If the table is not on a local filesystem path.
+        """
+
+        staging = Path(self._lance_table_uri()).parent / ".nemo-retriever-staging" / self.table_name
+        with self._stream_lock, _table_mutation_lock(self.uri, self.table_name):
+            shutil.rmtree(staging, ignore_errors=True)
+            worker = self._worker_copy()
+            worker._staging_uri = str(staging)
+            try:
+                yield worker
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+
+    def _move_staged_files(self, fragments: list[Any]) -> None:
+        staged, table_data = Path(self._staging_uri) / "data", Path(self._lance_table_uri()) / "data"
+        table_data.mkdir(parents=True, exist_ok=True)
+        for fragment in fragments:
+            for data_file in fragment.files:
+                os.replace(staged / data_file.path, table_data / data_file.path)
+
     def _lance_table_uri(self) -> str:
         path = _filesystem_lancedb_path(self.uri)
         if path is None:
@@ -2073,7 +2091,7 @@ class LanceDB(VDB):
         """Write one partition of canonical record dictionaries as Lance fragments (worker side, sparse tables).
 
         ``write_partition`` for the record form that ``stream_ingest`` takes. Nothing is committed: the
-        caller passes the receipt to ``commit_partitions`` on the driver, or to ``discard_partitions``.
+        caller passes the receipt to ``commit_partitions`` on the driver.
 
         Parameters
         ----------
@@ -2100,7 +2118,14 @@ class LanceDB(VDB):
         import lance.fragment
 
         stats = _StreamStats(vector_dim=self.vector_dim)
-        receipt: dict[str, Any] = {"fragments": [], "rows_written": 0, "client_records": 0, "vector_dim": 0}
+        receipt: dict[str, Any] = {
+            "fragments": [],
+            "rows_written": 0,
+            "client_records": 0,
+            "vector_dim": 0,
+            "stored_hash_sum": "0",
+            "stored_hash_xor": "0",
+        }
         if not source.open(stats):
             receipt["client_records"] = stats.client_records
             return receipt
@@ -2114,17 +2139,17 @@ class LanceDB(VDB):
                     stats=stats,
                     include_digest=self.stream_operation_id is not None,
                 ),
-                _WORKER_WRITE_ROWS_PER_BATCH,
+                _LANCE_ROWS_PER_PAGE,
             ),
         )
         fragments = lance.fragment.write_fragments(
             reader,
-            self._lance_table_uri(),
+            self._staging_uri,
             schema=schema,
             data_storage_version=self._worker_write_storage_version(),
         )
         receipt.update(
-            fragments=[_fragment_json(fragment) for fragment in fragments],
+            fragments=[json.dumps(fragment.to_json()) for fragment in fragments],
             rows_written=stats.rows_written,
             client_records=stats.client_records,
             vector_dim=int(stats.vector_dim or 0),
@@ -2134,48 +2159,24 @@ class LanceDB(VDB):
         )
         return receipt
 
-    def discard_partitions(self, receipts: Iterable[dict[str, Any]]) -> None:
-        """Delete the data files that ``write_partition`` wrote for receipts that will never be committed.
-
-        Only files named in these receipts are removed, so a rejected upload leaves no orphaned
-        fragments behind and committed table data is never touched.
-        """
-
-        data_dir = Path(self._lance_table_uri()) / "data"
-        for receipt in receipts:
-            for encoded in receipt.get("fragments") or ():
-                fragment = json.loads(encoded) if isinstance(encoded, str) else encoded
-                for data_file in fragment.get("files") or ():
-                    try:
-                        (data_dir / data_file["path"]).unlink(missing_ok=True)
-                    except OSError:
-                        logger.warning("Could not remove uncommitted Lance data file %s", data_file["path"])
-
     def commit_partitions(self, receipts: Iterable[dict[str, Any]]) -> None:
         """Driver side of the worker-native sink: one Lance commit, then the stream path's finalize.
 
-        With ``stream_operation_id`` the commit records the same durable Lance tags as the stream path,
-        with the digest combined from the partitions' row hashes, so a retry that finds the operation
-        committed drops its own fragments instead of appending them again. A finalization failure after
-        the commit raises ``DataCommittedFinalizationError``.
+        Call it on the backend that :meth:`worker_write` yields, inside that block. With
+        ``stream_operation_id`` the commit records the same durable Lance tags as the stream path, with
+        the digest combined from the partitions' row hashes, so a retry that finds the operation
+        committed leaves its own fragments in staging instead of appending them again.
+
+        Args:
+            receipts: The receipts :meth:`write_partition` or :meth:`write_partition_records` returned.
+
+        Raises:
+            ValueError: If partitions disagree on the vector width, or an append does not match the
+                table's schema or embedding model.
+            VdbOperationConflict: If ``stream_operation_id`` was committed with different rows.
+            DataCommittedFinalizationError: If the data was committed but finalization failed.
         """
 
-        receipts = list(receipts)
-        progress = {"commit_attempted": False}
-        try:
-            self._commit_worker_partitions(receipts, progress)
-        except Exception as exc:
-            # Before the commit nothing references the fragments, so a rejected upload removes them.
-            # Once the commit was attempted, the files may belong to a table version: keep them.
-            if not progress["commit_attempted"]:
-                # Type only: validation errors can quote row content; the caller gets the full exception.
-                logger.error(
-                    "Worker-write upload rejected before commit (%s); removing its fragments.", type(exc).__name__
-                )
-                self.discard_partitions(receipts)
-            raise
-
-    def _commit_worker_partitions(self, receipts: list[dict[str, Any]], progress: dict[str, bool]) -> None:
         from lance.fragment import FragmentMetadata
 
         operation_id = self.stream_operation_id
@@ -2184,9 +2185,9 @@ class LanceDB(VDB):
         for receipt in receipts:
             stats.client_records += int(receipt["client_records"])
             stats.rows_written += int(receipt["rows_written"])
-            stats.stored_hash_sum += int(receipt.get("stored_hash_sum") or 0)
-            stats.stored_hash_xor ^= int(receipt.get("stored_hash_xor") or 0)
-            dim = int(receipt.get("vector_dim") or 0)
+            stats.stored_hash_sum += int(receipt["stored_hash_sum"])
+            stats.stored_hash_xor ^= int(receipt["stored_hash_xor"])
+            dim = int(receipt["vector_dim"])
             if dim:
                 if stats.vector_dim is None:
                     stats.vector_dim = dim
@@ -2194,7 +2195,7 @@ class LanceDB(VDB):
                     raise ValueError(f"worker partitions disagree on vector_dim: {dim} vs {stats.vector_dim}")
             fragments.extend(FragmentMetadata.from_json(encoded) for encoded in receipt["fragments"])
 
-        with self._stream_lock, _table_mutation_lock(self.uri, self.table_name), self._write_lock:
+        with self._write_lock:
             db = lancedb.connect(uri=self.uri)
             try:
                 existing_table = db.open_table(self.table_name)
@@ -2254,19 +2255,16 @@ class LanceDB(VDB):
                     base_schema=base_schema,
                     stats=stats,
                 )
-                if markers is None or markers.state == "data":
-                    # An earlier attempt with this operation ID committed the same rows: drop this copy.
-                    self.discard_partitions(receipts)
-                    if markers is None:
-                        return
-                else:
+                # An earlier attempt with this operation ID committed the same rows: commit nothing.
+                if markers is None:
+                    return
+                if markers.state != "data":
                     base_version = markers.base_version
 
             if markers is not None and markers.state == "data":
                 data_version = int(markers.recorded_version)
             elif appending and stats.rows_written == 0:
                 # As the stream path: an append whose rows were all dropped keeps the table version.
-                self.discard_partitions(receipts)
                 existing_table.checkout_latest()
                 data_version = int(existing_table.version)
                 if markers is not None:
@@ -2280,7 +2278,6 @@ class LanceDB(VDB):
                     existing_table=existing_table,
                     markers=markers,
                     stats=stats,
-                    progress=progress,
                 )
 
             if self.overwrite or existing_table is None or recovered_create:
@@ -2319,7 +2316,6 @@ class LanceDB(VDB):
         existing_table: Any | None,
         markers: SinkOperationMarkers | None,
         stats: _StreamStats,
-        progress: dict[str, bool],
     ) -> int:
         """Commit the worker fragments as one Lance version and record the durable data marker."""
 
@@ -2328,7 +2324,7 @@ class LanceDB(VDB):
         operation: Any = (
             lance.LanceOperation.Append(fragments) if appending else lance.LanceOperation.Overwrite(schema, fragments)
         )
-        progress["commit_attempted"] = True
+        self._move_staged_files(fragments)
         try:
             dataset = lance.LanceDataset.commit(self._lance_table_uri(), operation, read_version=base_version)
         except Exception:

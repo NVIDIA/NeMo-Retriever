@@ -368,15 +368,17 @@ then runs the same index build and validation as the streaming path. Hybrid tabl
 get their full-text index in that step. When `vector_dim` is `None`, an append
 uses the width of the existing table. For a new table, each write actor infers the
 width, and the commit fails when the actors disagree.
-Write actors run on the Ray node of the driver, because the driver commit reads the
-fragments from the local table path. If the upload is rejected before the commit,
-for example because searchable rows have no embeddings, the fragment files that
-the write actors created are deleted.
+Write actors run on the Ray node of the driver and write their fragments to a
+staging directory beside the table. The driver commit moves them into the table.
+A write that fails, is rejected (for example because searchable rows have no
+embeddings), or is interrupted leaves no files in the table: its staging
+directory is deleted, and the next write to the table deletes one left by a
+killed process. As on the streaming path, writes to one table run one at a time.
 
 With `stream_operation_id`, the commit records the same durable markers as the
 streaming path. The digest combines row hashes from every write actor, so it does
 not depend on how Ray partitions the rows. A retry that finds the operation
-already committed deletes its own fragments instead of appending them again.
+already committed discards its own fragments instead of appending them again.
 
 Sparse (full-text only) tables and sidecar metadata use the same worker writes.
 The sidecar file is read once on the driver, and its lookup is sent to the

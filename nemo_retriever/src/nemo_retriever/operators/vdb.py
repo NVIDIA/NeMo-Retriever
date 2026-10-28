@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import nvtx
@@ -16,7 +18,6 @@ import pyarrow as pa
 from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, UnsupportedVDBOperation, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.records import (
-    VdbUploadError,
     CanonicalRecordBatch,
     ConversionTally,
     _iter_client_vdb_records,
@@ -172,16 +173,7 @@ class IngestVdbOperator(AbstractOperator):
         if getattr(self._vdb, "supports_stream_ingest_batches", False):
             return self._stream_ingest_batches(batches)
 
-        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(
-            _iter_batch_rows(batches),
-            embedding_column=self._embedding_column,
-        )
-        sidecar = self._sidecar_decorator()
-        if sidecar is not None:
-            undecorated_records = records
-            records = (sidecar(record) for record in undecorated_records)
-
-        record_stream = records
+        record_stream = self._canonical_records(batches)
         exhausted = False
         submitted_records = 0
 
@@ -202,20 +194,13 @@ class IngestVdbOperator(AbstractOperator):
     def _stream_ingest_batches(self, batches: Iterable[pd.DataFrame]) -> int:
         """Stream canonical record batches, keeping each batch's vectors in one Arrow column."""
 
-        record_batches = iter_canonical_record_batches(
-            _iter_batch_rows_with_vectors(batches, embedding_column=self._embedding_column),
-            embedding_column=self._embedding_column,
-        )
-        sidecar = self._sidecar_decorator()
+        record_batches = self._canonical_batches(batches)
         exhausted = False
         submitted_records = 0
 
         def required_batches() -> Iterator[CanonicalRecordBatch]:
             nonlocal exhausted, submitted_records
             for batch in record_batches:
-                if sidecar is not None:
-                    for record in batch.records:
-                        sidecar(record)
                 submitted_records += len(batch.records)
                 yield batch
             exhausted = True
@@ -232,64 +217,33 @@ class IngestVdbOperator(AbstractOperator):
 
         return bool(getattr(self._vdb, "supports_worker_write", False))
 
-    def _partition_writer(self) -> Callable[[pd.DataFrame], dict[str, Any]]:
-        """Return a picklable ``frame -> receipt`` function for Ray write tasks.
+    @contextmanager
+    def _worker_write(self) -> Iterator["IngestVdbOperator"]:
+        """Yield the picklable copy of this sink that one worker-native write runs on.
 
-        It carries a settings-only copy of this sink's backend and the sidecar lookup built on the
-        driver, so write tasks do not re-read the sidecar file.
+        Ray write tasks call its ``_write_partition`` and the driver its ``_commit_partitions``. It
+        carries the backend from ``worker_write()`` and the sidecar lookup built on the driver, so
+        write tasks do not re-read the sidecar file.
         """
 
-        operator_class, embedding_column = type(self), self._embedding_column
-        vdb = self._vdb._worker_copy()
-        spec, lookup = self._sidecar_spec, self._sidecar_lookup
-        if spec is not None:
-            spec = {key: value for key, value in spec.items() if key != "meta_dataframe"}
-
-        def write(frame: pd.DataFrame) -> dict[str, Any]:
-            operator = operator_class(vdb=vdb, embedding_column=embedding_column)
-            operator._sidecar_spec, operator._sidecar_lookup = spec, lookup
-            return operator._write_partition(frame)
-
-        return write
+        with self._vdb.worker_write() as vdb:
+            writer = copy.copy(self)
+            writer._vdb = vdb
+            if self._sidecar_spec is not None:
+                writer._sidecar_spec = {
+                    key: value for key, value in self._sidecar_spec.items() if key != "meta_dataframe"
+                }
+            yield writer
 
     def _write_partition(self, frame: pd.DataFrame) -> dict[str, Any]:
         """Ray-worker side of the worker-native sink: canonical projection of one block, written as Lance fragments."""
 
         tally = ConversionTally(embedding_column=self._embedding_column)
-        sidecar = self._sidecar_decorator()
-        submitted_records = 0
-
-        if getattr(self._vdb, "supports_stream_ingest_batches", False):
-            record_batches = iter_canonical_record_batches(
-                _iter_batch_rows_with_vectors([frame], embedding_column=self._embedding_column),
-                embedding_column=self._embedding_column,
-                tally=tally,
-            )
-
-            def counted_batches() -> Iterator[CanonicalRecordBatch]:
-                nonlocal submitted_records
-                for batch in record_batches:
-                    if sidecar is not None:
-                        for record in batch.records:
-                            sidecar(record)
-                    submitted_records += len(batch.records)
-                    yield batch
-
-            receipt = self._vdb.write_partition(counted_batches())
+        if self._vdb.supports_stream_ingest_batches:
+            receipt = self._vdb.write_partition(self._canonical_batches([frame], tally=tally))
         else:
             # Sparse tables carry no vector column, so they take the per-record projection.
-            records = _iter_client_vdb_records(
-                _iter_batch_rows([frame]), embedding_column=self._embedding_column, tally=tally
-            )
-
-            def counted_records() -> Iterator[dict[str, Any]]:
-                nonlocal submitted_records
-                for record in records:
-                    submitted_records += 1
-                    yield record if sidecar is None else sidecar(record)
-
-            receipt = self._vdb.write_partition_records(counted_records())
-        receipt["submitted_records"] = submitted_records
+            receipt = self._vdb.write_partition_records(self._canonical_records([frame], tally=tally))
         # The fail-closed rules (no row converted, searchable rows without embeddings) are
         # decided over the whole upload in ``_commit_partitions``, not per partition.
         receipt["conversion"] = tally.snapshot()
@@ -304,13 +258,32 @@ class IngestVdbOperator(AbstractOperator):
         tally = ConversionTally(embedding_column=self._embedding_column)
         for receipt in receipts:
             tally.absorb(receipt["conversion"])
-        try:
-            tally.finish()
-        except VdbUploadError:
-            self._vdb.discard_partitions(receipts)
-            raise
+        tally.finish()
         self._vdb.commit_partitions(receipts)
-        return sum(int(receipt["submitted_records"]) for receipt in receipts)
+        return tally.converted_count
+
+    def _canonical_records(
+        self, batches: Iterable[pd.DataFrame], *, tally: ConversionTally | None = None
+    ) -> Iterator[dict[str, Any]]:
+        records = _iter_client_vdb_records(
+            _iter_batch_rows(batches), embedding_column=self._embedding_column, tally=tally
+        )
+        sidecar = self._sidecar_decorator()
+        return records if sidecar is None else (sidecar(record) for record in records)
+
+    def _canonical_batches(
+        self, batches: Iterable[pd.DataFrame], *, tally: ConversionTally | None = None
+    ) -> Iterator[CanonicalRecordBatch]:
+        sidecar = self._sidecar_decorator()
+        for batch in iter_canonical_record_batches(
+            _iter_batch_rows_with_vectors(batches, embedding_column=self._embedding_column),
+            embedding_column=self._embedding_column,
+            tally=tally,
+        ):
+            if sidecar is not None:
+                for record in batch.records:
+                    sidecar(record)
+            yield batch
 
     def _sidecar_decorator(self) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
         """Return the in-place sidecar merge for one canonical record, or None when unconfigured."""
