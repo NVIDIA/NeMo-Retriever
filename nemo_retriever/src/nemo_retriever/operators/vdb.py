@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -227,12 +226,12 @@ class IngestVdbOperator(AbstractOperator):
         """
 
         with self._vdb.worker_write() as vdb:
-            writer = copy.copy(self)
-            writer._vdb = vdb
+            writer = type(self)(vdb=vdb, embedding_column=self._embedding_column)
             if self._sidecar_spec is not None:
                 writer._sidecar_spec = {
                     key: value for key, value in self._sidecar_spec.items() if key != "meta_dataframe"
                 }
+                writer._sidecar_lookup = self._sidecar_lookup
             yield writer
 
     def _write_partition(self, frame: pd.DataFrame) -> dict[str, Any]:

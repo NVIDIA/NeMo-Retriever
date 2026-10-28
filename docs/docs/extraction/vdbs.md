@@ -371,7 +371,7 @@ width, and the commit fails when the actors disagree.
 Write actors run on the Ray node of the driver and write their fragments to a
 staging directory beside the table. The driver commit moves them into the table.
 A write that fails, is rejected (for example because searchable rows have no
-embeddings), or is interrupted leaves no files in the table: its staging
+embeddings), or is interrupted before the commit leaves no files in the table: its staging
 directory is deleted, and the next write to the table deletes one left by a
 killed process. As on the streaming path, writes to one table run one at a time.
 
