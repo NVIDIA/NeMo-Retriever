@@ -282,7 +282,7 @@ def test_next_write_removes_files_staged_by_a_killed_process(tmp_path: Path) -> 
 def test_worker_write_rejects_a_table_name_that_is_a_path(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     (outside / "data").mkdir(parents=True)
-    with pytest.raises(ValueError, match="Table names"):
+    with pytest.raises(ValueError, match="(?i)table name"):
         _worker_write(_backend(tmp_path / "db", table_name=str(outside)), _frames([_row(0)], batch_size=1))
     assert (outside / "data").is_dir()
 
