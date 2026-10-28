@@ -19,7 +19,7 @@ lance = pytest.importorskip("lance")
 
 from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError
 from nemo_retriever.common.vdb._lancedb_stream_state import VdbOperationConflict
-from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb import LanceDB, _table_token
 from nemo_retriever.common.vdb.records import VdbUploadError
 from nemo_retriever.graph.executor import arrow_table_to_pandas
 from nemo_retriever.operators.vdb import IngestVdbOperator
@@ -272,11 +272,19 @@ def test_rejected_append_keeps_committed_files_and_removes_its_own(tmp_path: Pat
 
 def test_next_write_removes_files_staged_by_a_killed_process(tmp_path: Path) -> None:
     uri = tmp_path / "db"
-    stale = uri / ".nemo-retriever-staging" / "chunks" / "data" / "killed.lance"
+    stale = uri / ".nemo-retriever-staging" / _table_token("chunks") / "data" / "killed.lance"
     stale.parent.mkdir(parents=True)
     stale.write_bytes(b"")
     assert _worker_write(_backend(uri), _frames([_row(0)], batch_size=1)) == 1
     assert _staged_files(uri) == []
+
+
+def test_worker_write_rejects_a_table_name_that_is_a_path(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    (outside / "data").mkdir(parents=True)
+    with pytest.raises(ValueError, match="Table names"):
+        _worker_write(_backend(tmp_path / "db", table_name=str(outside)), _frames([_row(0)], batch_size=1))
+    assert (outside / "data").is_dir()
 
 
 class _RecordingDataset:

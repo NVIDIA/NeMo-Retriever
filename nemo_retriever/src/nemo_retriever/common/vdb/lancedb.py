@@ -24,6 +24,7 @@ from urllib.request import url2pathname
 
 import lancedb
 import numpy as np
+from lancedb.util import validate_table_name
 import pyarrow as pa
 from filelock import FileLock
 
@@ -136,8 +137,13 @@ def _local_table_lock(uri: str, table_name: str, *, phase: str) -> AbstractConte
     root = root.expanduser().resolve()
     lock_dir = root / ".nemo-retriever-locks"
     lock_dir.mkdir(parents=True, exist_ok=True)
-    table_token = hashlib.sha256(table_name.encode("utf-8")).hexdigest()[:24]
-    return FileLock(lock_dir / f"{phase}-{table_token}.lock")
+    return FileLock(lock_dir / f"{phase}-{_table_token(table_name)}.lock")
+
+
+def _table_token(table_name: str) -> str:
+    """Filesystem-safe name for per-table lock and staging paths."""
+
+    return hashlib.sha256(table_name.encode("utf-8")).hexdigest()[:24]
 
 
 # Rows per Lance page for fixed-size-list vector columns. Lance flushes a vector page only at the
@@ -2024,19 +2030,21 @@ class LanceDB(VDB):
 
         The write tasks put their fragments in a staging directory beside the table, and
         :meth:`commit_partitions` moves them into the table just before its one commit. Leaving the block
-        deletes the staging directory, so a write that fails, is rejected, or is interrupted leaves no
-        files in the table. The next write to the table deletes a staging directory left by a killed
-        process. As with :meth:`stream_ingest`, writes to one table run one at a time.
+        deletes the staging directory, so a write that fails, is rejected, or is interrupted before the
+        commit leaves no files in the table. The next write to the table deletes a staging directory left
+        by a killed process. As with :meth:`stream_ingest`, writes to one table run one at a time.
 
         Yields:
             LanceDB: A settings-only copy for the Ray write tasks (:meth:`write_partition`) and the
             driver commit (:meth:`commit_partitions`).
 
         Raises:
-            ValueError: If the table is not on a local filesystem path.
+            ValueError: If the table name is not a valid LanceDB table name, or the table is not on a
+                local filesystem path.
         """
 
-        staging = Path(self._lance_table_uri()).parent / ".nemo-retriever-staging" / self.table_name
+        validate_table_name(self.table_name)
+        staging = Path(self._lance_table_uri()).parent / ".nemo-retriever-staging" / _table_token(self.table_name)
         with self._stream_lock, _table_mutation_lock(self.uri, self.table_name):
             shutil.rmtree(staging, ignore_errors=True)
             worker = self._worker_copy()
