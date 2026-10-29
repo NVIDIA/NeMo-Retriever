@@ -48,7 +48,7 @@ class DuckDB(VDB):
         overwrite: bool = True,
         worker_write_rows: int = 2048,
     ) -> None:
-        self.path = str(path)
+        self.path = str(Path(path).absolute())
         self.table_name = table_name
         self.overwrite = overwrite
         self.worker_write_rows = worker_write_rows
@@ -56,6 +56,7 @@ class DuckDB(VDB):
 
     @contextmanager
     def worker_write(self) -> Iterator["DuckDB"]:
+        """Yield a writer copy that stages into its own folder; leaving deletes that folder."""
         writer = copy.copy(self)
         writer._staging = self._staging / uuid.uuid4().hex
         writer._staging.mkdir(parents=True)
@@ -65,6 +66,7 @@ class DuckDB(VDB):
             shutil.rmtree(writer._staging, ignore_errors=True)
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
+        """Write one Parquet file from canonical records; return ``{"files": [...], "rows": n}``."""
         rows = []
         for record in records:
             fields, _drop_reason = stored_row_fields(record)
@@ -77,6 +79,7 @@ class DuckDB(VDB):
         return {"files": [str(path)], "rows": len(rows)}
 
     def commit_partitions(self, receipts: list[dict[str, Any]]) -> None:
+        """Load every receipt's files into the table in one transaction."""
         files = [file for receipt in receipts for file in receipt["files"]]
         if not files:
             return
@@ -90,21 +93,30 @@ class DuckDB(VDB):
             connection.commit()
 
     def run(self, records: Iterable[Iterable[dict[str, Any]]]) -> None:
+        """Write batches of canonical records from the driver through the same staging and commit."""
         with self.worker_write() as writer:
             receipt = writer.write_partition_records(record for batch in records for record in batch)
             writer.commit_partitions([receipt])
 
     def create_index(self, **kwargs: Any) -> None:
-        pass
+        """No-op: ``commit_partitions`` creates the table."""
 
     def write_to_index(self, records: list, **kwargs: Any) -> None:
+        """Same as :meth:`run`."""
         self.run(records)
 
-    def retrieval(self, queries: list, **kwargs: Any):
-        raise UnsupportedVDBOperation("DuckDB is write-only.")
+    def retrieval(self, queries: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
+        """Not supported.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            Always; use LanceDB to retrieve.
+        """
+        raise UnsupportedVDBOperation("DuckDB is write-only; use LanceDB to retrieve.")
 
     @staticmethod
-    def _collections_not_supported(*args: Any, **kwargs: Any):
+    def _collections_not_supported(*args: Any, **kwargs: Any) -> Any:
         raise UnsupportedVDBOperation("DuckDB does not implement the collection API.")
 
     create_collection = get_collection = list_collections = update_collection = delete_collection = (

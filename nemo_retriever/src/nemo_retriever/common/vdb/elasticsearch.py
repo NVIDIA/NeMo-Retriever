@@ -43,6 +43,7 @@ class Elasticsearch(VDB):
         self.worker_write_rows = worker_write_rows
         self.timeout = timeout
         self._write_index = ""
+        self._committed = False
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         response = requests.request(method, f"{self.url}/{path}", timeout=self.timeout, **kwargs)
@@ -51,6 +52,7 @@ class Elasticsearch(VDB):
 
     @contextmanager
     def worker_write(self) -> Iterator["Elasticsearch"]:
+        """Yield a writer copy that fills a new index; leaving without a commit deletes that index."""
         writer = copy.copy(self)
         writer._write_index = f"{self.index_name}-{uuid.uuid4().hex}"
         self._request(
@@ -70,11 +72,18 @@ class Elasticsearch(VDB):
         )
         try:
             yield writer
-        except BaseException:
-            self._request("DELETE", writer._write_index)
-            raise
+        finally:
+            if not writer._committed:
+                self._request("DELETE", writer._write_index)
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
+        """Bulk-index canonical records into this write's index; return ``{"rows": n}``.
+
+        Raises
+        ------
+        RuntimeError
+            If Elasticsearch rejects any document in the bulk request.
+        """
         lines = []
         for record in records:
             fields, _drop_reason = stored_row_fields(record)
@@ -93,6 +102,13 @@ class Elasticsearch(VDB):
         return {"rows": len(lines) // 2}
 
     def commit_partitions(self, receipts: list[dict[str, Any]]) -> None:
+        """Refresh this write's index, check its count, and point the alias at it in one step.
+
+        Raises
+        ------
+        RuntimeError
+            If the index holds a different number of documents than the receipts report.
+        """
         rows = sum(receipt["rows"] for receipt in receipts)
         self._request("POST", f"{self._write_index}/_refresh")
         # A failed task may have written documents no receipt accounts for.
@@ -108,26 +124,36 @@ class Elasticsearch(VDB):
                 previous = list(current.json())
                 actions += [{"remove": {"index": index, "alias": self.index_name}} for index in previous]
         self._request("POST", "_aliases", json={"actions": actions})
+        self._committed = True
         for index in previous:
             if not self._request("GET", f"{index}/_alias")[index]["aliases"]:
                 self._request("DELETE", index)
 
     def run(self, records: Iterable[Iterable[dict[str, Any]]]) -> None:
+        """Write batches of canonical records from the driver through the same index and alias swap."""
         with self.worker_write() as writer:
             receipt = writer.write_partition_records(record for batch in records for record in batch)
             writer.commit_partitions([receipt])
 
     def create_index(self, **kwargs: Any) -> None:
-        pass
+        """No-op: :meth:`worker_write` creates each write's index."""
 
     def write_to_index(self, records: list, **kwargs: Any) -> None:
+        """Same as :meth:`run`."""
         self.run(records)
 
-    def retrieval(self, queries: list, **kwargs: Any):
-        raise UnsupportedVDBOperation("Elasticsearch is write-only.")
+    def retrieval(self, queries: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
+        """Not supported.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            Always; use LanceDB to retrieve.
+        """
+        raise UnsupportedVDBOperation("Elasticsearch is write-only; use LanceDB to retrieve.")
 
     @staticmethod
-    def _collections_not_supported(*args: Any, **kwargs: Any):
+    def _collections_not_supported(*args: Any, **kwargs: Any) -> Any:
         raise UnsupportedVDBOperation("Elasticsearch does not implement the collection API.")
 
     create_collection = get_collection = list_collections = update_collection = delete_collection = (

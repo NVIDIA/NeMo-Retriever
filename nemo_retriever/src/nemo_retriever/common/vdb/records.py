@@ -890,7 +890,7 @@ def normalize_retrieval_results(
     return normalized
 
 
-def stored_json(value) -> str:
+def stored_json(value: Any) -> str:
     """
     Convert Python objects (dict/list/etc.) to a compact JSON string.
 
@@ -907,7 +907,7 @@ def stored_json(value) -> str:
         return str(value)
 
 
-def element_text(element):
+def element_text(element: dict[str, Any]) -> str | None:
     """
     Extract searchable text from an element based on document_type.
 
