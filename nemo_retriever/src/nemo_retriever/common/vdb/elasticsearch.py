@@ -55,6 +55,7 @@ class Elasticsearch(VDB):
         """Yield a writer copy that fills a new index; leaving without a confirmed commit discards that index."""
         writer = copy.copy(self)
         writer._write_index = f"{self.index_name}-{uuid.uuid4().hex}"
+        writer._committed = False
         self._request(
             "PUT",
             writer._write_index,
