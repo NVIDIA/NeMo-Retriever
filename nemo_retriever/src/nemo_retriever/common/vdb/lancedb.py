@@ -38,7 +38,6 @@ from nemo_retriever.common.schemas.collections import (
     DocumentInfo,
     DocumentPage,
 )
-from nemo_retriever.common.schemas.embedding import EMBEDDING_SPLIT_METADATA_KEY, embedding_split_content
 from nemo_retriever.common.vdb._lancedb_stream import (
     _apply_bad_vector_policy,
     _apply_deferred_bad_vector_policy,
@@ -89,7 +88,7 @@ from nemo_retriever.common.vdb.lancedb_schema import (
     lancedb_schema,
     normalize_content_type,
 )
-from nemo_retriever.common.vdb.records import CanonicalRecordBatch
+from nemo_retriever.common.vdb.records import CanonicalRecordBatch, element_text, stored_json, stored_row_fields
 
 logger = logging.getLogger(__name__)
 
@@ -259,23 +258,6 @@ def _stabilize_fill_vectors(
         else:
             stabilized.append({**row, "vector": list(replacement)} if status != "valid" else row)
     return stabilized
-
-
-def _json_str(value) -> str:
-    """
-    Convert Python objects (dict/list/etc.) to a compact JSON string.
-
-    LanceDB table schema stores `metadata` and `source` as strings, so we must
-    serialize nested structures before ingestion.
-    """
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
-    except Exception:
-        return str(value)
 
 
 def _maybe_parse_json(value):
@@ -481,37 +463,6 @@ def _record_timing(event: str, duration_s: float, extra: dict | None = None):
         f.write(json.dumps(payload) + "\n")
 
 
-def _get_text_for_element(element):
-    """
-    Extract searchable text from an element based on document_type.
-
-    This prevents base64-encoded images from being stored in the text field.
-    """
-    doc_type = element.get("document_type")
-    metadata = element.get("metadata", {})
-
-    if doc_type == "text":
-        return metadata.get("content")
-    elif doc_type == "structured":
-        # Tables, charts, infographics
-        table_meta = metadata.get("table_metadata", {})
-        return table_meta.get("table_content")
-    elif doc_type == "image":
-        # Use caption/OCR text, not raw base64 image data
-        image_meta = metadata.get("image_metadata", {})
-        content_meta = metadata.get("content_metadata", {})
-        if content_meta.get("subtype") == "page_image":
-            return image_meta.get("text")
-        else:
-            return image_meta.get("caption")
-    elif doc_type == "audio":
-        audio_meta = metadata.get("audio_metadata", {})
-        return audio_meta.get("audio_transcript")
-    else:
-        # Fallback for unknown types
-        return metadata.get("content")
-
-
 def _create_lancedb_result(
     element: dict[str, Any],
     *,
@@ -534,51 +485,10 @@ def _create_lancedb_result(
         )
         return None, "dropped_bad_length"
 
-    fields, drop_reason = _lancedb_row_fields(element)
+    fields, drop_reason = stored_row_fields(element)
     if fields is None:
         return None, drop_reason
     return {"vector": embedding, **fields}, None
-
-
-def _lancedb_row_fields(element: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
-    """Project the stored string columns of one canonical record; the vector is handled by the caller."""
-
-    metadata = element.get("metadata", {})
-    doc_type = element.get("document_type")
-    content_meta = metadata.get("content_metadata", {})
-    split_content = embedding_split_content(metadata)
-    text = split_content if split_content is not None else _get_text_for_element(element)
-    if split_content is not None:
-        content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
-
-    if split_content is None and (not isinstance(text, str) or not text.strip()):
-        is_canonical_image = (
-            doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
-        )
-        if not is_canonical_image:
-            source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-            page_number = content_meta.get("page_number") if isinstance(content_meta, dict) else None
-            logger.debug(
-                "No text found for entity: %s page: %s type: %s",
-                source_name,
-                page_number,
-                doc_type,
-            )
-            return None, "dropped_no_text"
-        text = ""
-
-    row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
-    if row_id is None and isinstance(metadata, dict):
-        row_id = metadata.get("id")
-    return (
-        {
-            "text": text,
-            "metadata": _json_str(content_meta),
-            "source": _json_str(metadata.get("source_metadata", {})),
-            "id": str(row_id) if row_id is not None else "",
-        },
-        None,
-    )
 
 
 def _log_lancedb_result_counts(counts: dict[str, int], *, expected_dim: int | None) -> None:
@@ -696,8 +606,8 @@ def _to_service_lancedb_row(row: dict[str, Any]) -> dict[str, Any] | None:
     )
     if wide_row is None:
         return None
-    wide_row["metadata"] = _json_str(content_metadata)
-    wide_row["source"] = _json_str(source_metadata)
+    wide_row["metadata"] = stored_json(content_metadata)
+    wide_row["source"] = stored_json(source_metadata)
     wide_row["content_type"] = content_type or ""
     return wide_row
 
@@ -716,7 +626,7 @@ def _to_service_lancedb_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _create_sparse_lancedb_result(element: dict[str, Any]) -> dict[str, Any] | None:
     metadata = element.get("metadata", {})
     content_meta = metadata.get("content_metadata", {})
-    text = _get_text_for_element(element)
+    text = element_text(element)
     if not isinstance(text, str) or not text.strip():
         source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
         page_number = content_meta.get("page_number") if isinstance(content_meta, dict) else None
@@ -728,8 +638,8 @@ def _create_sparse_lancedb_result(element: dict[str, Any]) -> dict[str, Any] | N
         row_id = metadata.get("id")
     return {
         "text": text,
-        "metadata": _json_str(content_meta),
-        "source": _json_str(metadata.get("source_metadata", {})),
+        "metadata": stored_json(content_meta),
+        "source": stored_json(metadata.get("source_metadata", {})),
         "id": str(row_id) if row_id is not None else "",
     }
 
@@ -1659,7 +1569,7 @@ class LanceDB(VDB):
             fields: list[dict[str, Any]] = []
             kept: list[int] = []
             for index, record in enumerate(batch.records):
-                row_fields, _drop_reason = _lancedb_row_fields(record)
+                row_fields, _drop_reason = stored_row_fields(record)
                 if row_fields is None:
                     counts["dropped_no_text"] += 1
                     continue
