@@ -43,7 +43,6 @@ class Elasticsearch(VDB):
         self.worker_write_rows = worker_write_rows
         self.timeout = timeout
         self._write_index = ""
-        self._committed = False
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         response = requests.request(method, f"{self.url}/{path}", timeout=self.timeout, **kwargs)
@@ -52,7 +51,7 @@ class Elasticsearch(VDB):
 
     @contextmanager
     def worker_write(self) -> Iterator["Elasticsearch"]:
-        """Yield a writer copy that fills a new index; leaving without a commit deletes that index."""
+        """Yield a writer copy that fills a new index; leaving deletes that index unless the alias points at it."""
         writer = copy.copy(self)
         writer._write_index = f"{self.index_name}-{uuid.uuid4().hex}"
         self._request(
@@ -73,7 +72,8 @@ class Elasticsearch(VDB):
         try:
             yield writer
         finally:
-            if not writer._committed:
+            published = requests.get(f"{self.url}/{writer._write_index}/_alias/{self.index_name}", timeout=self.timeout)
+            if published.status_code == 404:
                 self._request("DELETE", writer._write_index)
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -124,7 +124,6 @@ class Elasticsearch(VDB):
                 previous = list(current.json())
                 actions += [{"remove": {"index": index, "alias": self.index_name}} for index in previous]
         self._request("POST", "_aliases", json={"actions": actions})
-        self._committed = True
         for index in previous:
             if not self._request("GET", f"{index}/_alias")[index]["aliases"]:
                 self._request("DELETE", index)
