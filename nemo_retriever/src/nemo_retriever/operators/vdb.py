@@ -235,13 +235,12 @@ class IngestVdbOperator(AbstractOperator):
             yield writer
 
     def _write_partition(self, frame: pd.DataFrame) -> dict[str, Any]:
-        """Ray-worker side of the worker-native sink: canonical projection of one block, written as Lance fragments."""
+        """Ray-worker side of the worker-native sink: write the canonical projection of one block."""
 
         tally = ConversionTally(embedding_column=self._embedding_column)
         if self._vdb.supports_stream_ingest_batches:
             receipt = self._vdb.write_partition(self._canonical_batches([frame], tally=tally))
         else:
-            # Sparse tables carry no vector column, so they take the per-record projection.
             receipt = self._vdb.write_partition_records(self._canonical_records([frame], tally=tally))
         # The fail-closed rules (no row converted, searchable rows without embeddings) are
         # decided over the whole upload in ``_commit_partitions``, not per partition.
@@ -249,7 +248,7 @@ class IngestVdbOperator(AbstractOperator):
         return receipt
 
     def _commit_partitions(self, receipts: list[dict[str, Any]]) -> int:
-        """Driver side of the worker-native sink: commit every receipt in one Lance version; return submitted records.
+        """Driver side of the worker-native sink: commit every receipt at once; return submitted records.
 
         Applies the stream path's conversion rules once, over all partitions, before anything is committed.
         """

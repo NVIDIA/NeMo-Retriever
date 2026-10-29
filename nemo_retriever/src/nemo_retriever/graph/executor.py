@@ -702,16 +702,16 @@ class RayDataExecutor(AbstractExecutor):
         validate_batch: Callable[[pd.DataFrame], None] | None = None,
         preserve_pandas_blocks: bool = False,
     ) -> pd.DataFrame:
-        """Worker-native LanceDB sink: a pool of long-lived Ray Data write actors projects and writes
-        Lance fragments; the driver commits once.
+        """Worker-native VDB sink: a pool of long-lived Ray Data write actors projects and writes
+        the rows; the driver commits once.
 
         Each of the ``_WORKER_WRITE_ACTORS`` actors runs ``_write_partition`` on one bundle of
         ``worker_write_rows`` rows per call and returns a one-row receipt frame. Receipts are the only
         data that crosses to the driver. ``validate_batch`` runs inside the actor before the write, so a
         stage error surfaces as a ``RayTaskError`` wrapping it.
         Blocks that upstream stages deliberately keep in pandas are handed over as pandas, not re-encoded
-        as Arrow. Write actors run on the driver's node, where the commit moves their staged fragments
-        into the table.
+        as Arrow. Write actors run on the driver's node, so backends that stage local files can commit
+        them from the driver.
         """
         import ray
         from ray.data import ActorPoolStrategy
