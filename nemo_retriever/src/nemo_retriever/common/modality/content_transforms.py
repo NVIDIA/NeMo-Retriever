@@ -25,6 +25,10 @@ def _is_content_collection(value: Any) -> bool:
 
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
     """Combine page text with OCR content text for embedding."""
+    if isinstance(row.get("ordered_page_text"), str):
+        ordered_text = row.get("ordered_page_text")
+        if isinstance(ordered_text, str):
+            return ordered_text
     parts = []
     base = row.get(text_column)
     if isinstance(base, str) and base.strip():

@@ -454,13 +454,10 @@ def table_structure_ocr_page_elements(
                 structure_results[ci] = [d for d in parsed if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE]
         else:
             for ci, (_, _, crop_array) in enumerate(flat_crops):
-                chw = torch.from_numpy(crop_array).permute(2, 0, 1).contiguous().to(dtype=torch.float32)
                 h, w = crop_array.shape[:2]
-                x = chw.unsqueeze(0)
-                try:
-                    pre = table_structure_model.preprocess(x, (h, w))
-                except TypeError:
-                    pre = table_structure_model.preprocess(x)
+                from nemo_retriever.common.modality.page_postprocessing import prepare_detector_input
+
+                pre = torch.from_numpy(prepare_detector_input(crop_array, tuple(table_structure_model.input_shape)))
                 if isinstance(pre, torch.Tensor) and pre.ndim == 3:
                     pre = pre.unsqueeze(0)
                 pred = table_structure_model.invoke(pre, (h, w))
