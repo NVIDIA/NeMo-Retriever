@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Nemotron Parse v1.2 pipeline stage.
+Nemotron Parse pipeline stage for native multipart and legacy contracts.
 
 Runs the Nemotron Parse model on full page images to extract structured
 document content (text, tables, charts, infographics) in a single pass,
@@ -38,7 +38,12 @@ from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.models.nim.chat_completions import invoke_chat_completions_images
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.params import RemoteRetryParams
-from nemo_retriever.common.params.utils import validate_nemotron_parse_endpoint_list
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+    NEMOTRON_PARSE_LOCAL_MODELS,
+    NEMOTRON_PARSE35_MODEL,
+    validate_nemotron_parse_endpoint_list,
+)
 
 try:
     from PIL import Image
@@ -52,7 +57,6 @@ except Exception:  # pragma: no cover
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
-NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
@@ -304,7 +308,7 @@ def nemotron_parse_pages(
     nim_client: NIMClient | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Run Nemotron Parse v1.2 on full page images.
+    """Run Nemotron Parse on full page images.
 
     Each page is parsed in a single model call.  The structured output is
     split by element class (Text, Table, Chart, Picture, …) and routed to
@@ -312,6 +316,9 @@ def nemotron_parse_pages(
     ``infographic``).  Non-structured elements (headings, body text, …) are
     concatenated into the ``text`` column, replacing the upstream pdfium
     extraction when ``extract_text`` is ``True``.
+
+    Native ``/v1/parse`` endpoints return tagged content in ``content``, which
+    uses the same element routing. Untagged Markdown is preserved as page text.
     """
     retry = remote_retry or RemoteRetryParams(
         remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
@@ -367,10 +374,36 @@ def nemotron_parse_pages(
     raw_texts: List[str] = [""] * len(batch_indices)
     uses_tool_call_routing = False
     contract: _ResolvedNemotronParseContract | None = None
+    native_parse = False
     if batch_images:
         try:
             if use_remote:
-                if "/v1/chat/completions" in invoke_url:
+                endpoints = validate_nemotron_parse_endpoint_list(invoke_url)
+                native_endpoints = [urlsplit(url).path.rstrip("/") == "/v1/parse" for url in endpoints]
+                if any(native_endpoints) and not all(native_endpoints):
+                    raise ValueError("Do not mix native /v1/parse and legacy Parse endpoint contracts.")
+                native_parse = all(native_endpoints)
+                if native_parse:
+                    client = nim_client or NIMClient(max_pool_workers=int(retry.remote_max_pool_workers))
+                    try:
+                        responses = client.invoke_parse_pages(
+                            invoke_url=invoke_url,
+                            image_b64_list=batch_images,
+                            api_key=api_key,
+                            timeout_s=float(request_timeout_s),
+                            max_retries=int(retry.remote_max_retries),
+                            max_429_retries=int(retry.remote_max_429_retries),
+                        )
+                    finally:
+                        if nim_client is None:
+                            client.shutdown()
+                    raw_texts = [response["content"].strip() for response in responses]
+                    for idx, response in zip(batch_indices, responses):
+                        all_meta[idx]["native_parse"] = {
+                            "finish_reason": response.get("finish_reason"),
+                            "usage": response.get("usage"),
+                        }
+                elif "/v1/chat/completions" in invoke_url:
                     contract = _resolve_nemotron_parse_contract(invoke_url, nemotron_parse_model)
                     uses_tool_call_routing = contract.uses_tool_call_routing
                     extra_body: Dict[str, Any] = {"max_tokens": 8192}
@@ -416,7 +449,7 @@ def nemotron_parse_pages(
                         )
                     raw_texts = [_extract_parse_text(item) for item in response_items]
             else:
-                # Local vLLM model (v1.2): uses task_prompt, returns tagged text.
+                # Local models use task_prompt and return tagged text.
                 invoke_batch = getattr(model, "invoke_batch", None)
                 if invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
@@ -455,6 +488,13 @@ def nemotron_parse_pages(
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
         try:
+            if native_parse and not extract_classes_bboxes(raw_text)[0]:
+                # Only complete bounding-box/class sequences select the tagged
+                # router. Literal or incomplete tags remain page Markdown.
+                if not extract_text:
+                    raise ValueError("Untagged native Parse content requires extract_text=True.")
+                all_text[idx] = raw_text
+                continue
             fp_tables, fp_charts, fp_infographics, fp_text = route_fn(
                 raw_text,
                 extract_tables=extract_tables,
@@ -504,7 +544,7 @@ def nemotron_parse_pages(
 
 
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable that initialises the selected local Parse model once per actor."""
 
     def __init__(
         self,
@@ -550,11 +590,19 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         return data
 
     def _ensure_model(self) -> None:
-        """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
+        """Load the selected local model on the worker rather than the driver."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.models.local import NemotronParseV12
+            model_id = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+            if model_id not in NEMOTRON_PARSE_LOCAL_MODELS:
+                raise ValueError(f"Unsupported local Nemotron Parse model: {model_id}")
+            if model_id == NEMOTRON_PARSE35_MODEL:
+                from nemo_retriever.models.local import NemotronParse35
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+                self._model = NemotronParse35(task_prompt=self._task_prompt, backend="vllm")
+            else:
+                from nemo_retriever.models.local import NemotronParseV12
+
+                self._model = NemotronParseV12(task_prompt=self._task_prompt)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()

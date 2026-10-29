@@ -308,7 +308,7 @@ def test_main_text_embed_module_doc_example() -> None:
         df,
         task_config={"embedder": local_embedder, "endpoint_url": None, "local_batch_size": 64},
     )
-    assert out_df.loc[0, "metadata"]["embedding"] == [0.0, 1.0]
+    assert out_df.loc[0, "embedding"] == [0.0, 1.0]
 
 
 def test_clustering_doc_boxes_overlap_example() -> None:
@@ -483,25 +483,6 @@ def test_set_trace_timestamps_with_parent_context_doc() -> None:
     calls = {c.args[0]: c.args[1] for c in control_message.set_timestamp.call_args_list}
     assert calls["trace::entry::pdf_extractor::yolox_inference"] == ts1
     assert calls["trace::exit::pdf_extractor::yolox_inference"] == ts2
-
-
-def test_neo4j_setup_doc_import_matches_package() -> None:
-    """``tabular_data/neo4j/SETUP.md`` — import path resolves (connectivity optional)."""
-    from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
-
-    assert callable(get_neo4j_conn)
-
-
-@pytest.mark.skipif(
-    not all(k in __import__("os").environ for k in ("NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD")),
-    reason="Neo4j env vars not set",
-)
-def test_neo4j_setup_doc_connectivity() -> None:
-    """Runs only when ``NEO4J_*`` env is present (integration)."""
-    from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
-
-    conn = get_neo4j_conn()
-    conn.verify_connectivity()
 
 
 def test_graph_pipeline_registry_register_docstring_pattern() -> None:

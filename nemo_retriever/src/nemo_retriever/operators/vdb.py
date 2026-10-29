@@ -9,12 +9,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from typing import Any
 
+import nvtx
 import pandas as pd
 
 from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, UnsupportedVDBOperation, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.records import (
     _iter_client_vdb_records,
+    embedding_vector,
     normalize_retrieval_results,
     to_client_vdb_records,
     validate_collection_retrieval_results,
@@ -50,63 +52,23 @@ def _iter_batch_rows(batches: Iterable[pd.DataFrame]) -> Iterator[dict[str, Any]
         yield from batch.to_dict(orient="records")
 
 
-def _coerce_embedding_vector(value: Any) -> list[float] | None:
-    if isinstance(value, dict):
-        value = value.get("embedding")
-    if not isinstance(value, list):
-        tolist = getattr(value, "tolist", None)
-        if callable(tolist):
-            value = tolist()
-    if isinstance(value, list) and value:
-        try:
-            return [float(x) for x in value]
-        except (TypeError, ValueError):
-            return None
-    return None
-
-
-def _is_direct_embedding_column(column_name: object) -> bool:
-    name = str(column_name).strip().lower()
-    return "embedding" in name or name == "vector" or name.endswith("_vector")
-
-
-def _embedding_error(value: Any) -> str | None:
-    if not isinstance(value, dict):
-        return None
-    error = value.get("error")
-    if error is None:
-        return None
-    message = str(error).strip()
-    return message or None
-
-
-def query_vectors_from_embedded_dataframe(df: pd.DataFrame) -> list[list[float]]:
-    """Extract one query vector per row from batch-embed output (metadata or payload columns)."""
+def query_vectors_from_embedded_dataframe(
+    df: pd.DataFrame,
+    *,
+    embedding_column: str = "embedding",
+) -> list[list[float]]:
+    """Return one query vector per row from the embed stage's output column."""
+    if embedding_column not in df.columns:
+        raise ValueError(f"Expected query embeddings in the '{embedding_column}' column; columns={list(df.columns)}")
+    error_column = f"{embedding_column}_error"
+    errors = df[error_column].tolist() if error_column in df.columns else [None] * len(df)
     vectors: list[list[float]] = []
-    for _, row in df.iterrows():
-        vec: list[float] | None = None
-        embedding_error: str | None = None
-        md = row.get("metadata")
-        if isinstance(md, dict):
-            vec = _coerce_embedding_vector(md)
-            embedding_error = _embedding_error(md)
-        if vec is None:
-            for col in df.columns:
-                if col == "metadata":
-                    continue
-                val = row.get(col)
-                if isinstance(val, dict) or _is_direct_embedding_column(col):
-                    vec = _coerce_embedding_vector(val)
-                    embedding_error = embedding_error or _embedding_error(val)
-                if vec is not None:
-                    break
-        if vec is None:
-            error_suffix = f"; embedding error: {embedding_error}" if embedding_error else ""
-            raise ValueError(
-                "Expected query embeddings in each row's metadata['embedding'] or a payload column "
-                f"with key 'embedding'; columns={list(df.columns)}{error_suffix}"
-            )
-        vectors.append(vec)
+    for index, (value, error) in enumerate(zip(df[embedding_column].tolist(), errors)):
+        vector = embedding_vector(value)
+        if vector is None:
+            suffix = f"; embedding error: {error}" if isinstance(error, str) and error.strip() else ""
+            raise ValueError(f"Query row {index} has no vector in the '{embedding_column}' column{suffix}")
+        vectors.append(vector)
     return vectors
 
 
@@ -123,14 +85,20 @@ class IngestVdbOperator(AbstractOperator):
         vdb: VDB | None = None,
         vdb_op: str | None = None,
         vdb_kwargs: dict[str, Any] | None = None,
+        _embedding_params: Any | None = None,
+        embedding_column: str = "embedding",
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, sidecar = split_sidecar_from_vdb_kwargs(merged)
+        deferred_metadata = {"_embedding_params": _embedding_params} if _embedding_params is not None else {}
         super().__init__(
             vdb=vdb,
             vdb_op=vdb_op,
             vdb_kwargs=merged,
+            **deferred_metadata,
+            embedding_column=embedding_column,
         )
+        self._embedding_column = embedding_column
         self._vdb_kwargs = clean_kwargs
         self._sidecar_spec = sidecar
         self._sidecar_lookup: dict[str, dict[str, Any]] | None = None
@@ -149,7 +117,7 @@ class IngestVdbOperator(AbstractOperator):
     def process(self, data: Any, **kwargs: Any) -> Any:
         # Graph ingest emits flat embedded rows, while
         # nv-ingest-client VDB.run still expects nested Nemo Retriever Library (NRL) records.
-        records = to_client_vdb_records(data)
+        records = to_client_vdb_records(data, embedding_column=self._embedding_column)
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             records = apply_sidecar_metadata_to_client_batches(
                 records,
@@ -173,13 +141,17 @@ class IngestVdbOperator(AbstractOperator):
 
         return bool(getattr(self._vdb, "supports_stream_ingest", False))
 
+    @nvtx.annotate("nrl.batch::pipeline.terminal_stream", color="blue")
     def _stream_ingest(self, batches: Iterable[pd.DataFrame]) -> int:
         """Write one backend stream and return the number of canonical records submitted."""
 
         if not self._supports_stream_ingest():
             raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
 
-        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(_iter_batch_rows(batches))
+        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(
+            _iter_batch_rows(batches),
+            embedding_column=self._embedding_column,
+        )
         if self._sidecar_spec is not None and self._sidecar_lookup is not None:
             undecorated_records = records
 
@@ -216,65 +188,6 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
 
-class PutVdbOperator(IngestVdbOperator):
-    """Replace existing rows of a VDB table in place on a stable row key.
-
-    Unlike :class:`IngestVdbOperator` (which orchestrates create_index +
-    write_to_index, optionally overwriting the whole table), this operator
-    calls ``vdb.put(records, ...)`` so that only rows whose ``key`` is in
-    ``records`` are touched. Existing rows that match by ``key`` are
-    replaced; rows in ``records`` whose ``key`` is not already present in
-    the table raise :class:`KeyError` (``put`` never inserts new rows),
-    and rows in the table that are not referenced are left untouched.
-
-    The underlying VDB implementation must override
-    :meth:`~nemo_retriever.vdb.adt_vdb.VDB.put` with a real
-    stable-key in-place replace; currently this is implemented by
-    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. ``VDB.put`` itself
-    raises :class:`NotImplementedError`, so backends that have not
-    overridden it are detected at construction time and fail fast rather
-    than silently no-oping at runtime.
-    """
-
-    def __init__(
-        self,
-        *,
-        vdb: VDB | None = None,
-        vdb_op: str | None = None,
-        vdb_kwargs: dict[str, Any] | None = None,
-        key: str = "id",
-        table_name: str | None = None,
-    ) -> None:
-        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
-        # ``put`` is part of the abstract VDB contract, but the base
-        # class provides a NotImplementedError stub for backends that
-        # cannot support stable-key puts. Treat a not-overridden stub
-        # as "unsupported" so misuse surfaces here instead of at the
-        # first write.
-        if getattr(type(self._vdb), "put", None) is VDB.put:
-            raise NotImplementedError(f"VDB backend {type(self._vdb).__name__!r} does not implement put(); ")
-        self._key = key
-        self._table_name = table_name
-
-    def process(self, data: Any, **kwargs: Any) -> Any:
-        records = to_client_vdb_records(data)
-        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
-            records = apply_sidecar_metadata_to_client_batches(
-                records,
-                lookup=self._sidecar_lookup,
-                meta_fields=self._sidecar_spec["meta_fields"],
-                join_key=self._sidecar_spec["meta_join_key"],
-            )
-        if records and any(batch for batch in records):
-            self._vdb.put(records, table_name=self._table_name, key=self._key)
-        return data
-
-    def _supports_stream_ingest(self) -> bool:
-        """Keep update-only put semantics on the historical global-batch path."""
-
-        return False
-
-
 class RetrieveVdbOperator(AbstractOperator):
     """Retrieve hits from an nv-ingest-client VDB using precomputed query vectors."""
 
@@ -285,6 +198,8 @@ class RetrieveVdbOperator(AbstractOperator):
         vdb_op: str | None = None,
         vdb_kwargs: dict[str, Any] | None = None,
         explode_for_rerank: bool = False,
+        _query_text_column: str | None = None,
+        embedding_column: str = "embedding",
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
@@ -294,11 +209,89 @@ class RetrieveVdbOperator(AbstractOperator):
             vdb_op=vdb_op,
             vdb_kwargs=clean_kwargs,
             explode_for_rerank=explode_for_rerank,
+            _query_text_column=_query_text_column,
+            embedding_column=embedding_column,
         )
         self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
         self._vdb = _construct_vdb(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs)
         self._explode_for_rerank = bool(explode_for_rerank)
+        self._query_text_column = _query_text_column
+        self._embedding_column = embedding_column
+
+    def run(self, data: Any, **kwargs: Any) -> Any:
+        """Retrieve hits, regrouping expanded rows for the default query graph.
+
+        Without ``_query_text_column``, use the standard operator lifecycle:
+        extract vectors from an embedded DataFrame when needed, retrieve, and
+        optionally prepare the hits for reranking. Direct vector callers and
+        caller-supplied graphs retain this path's existing result contract.
+
+        The default query graph sets ``_query_text_column``. This path searches
+        each embedded row with its matching chunk text, then fuses split-row
+        rankings into one group per original query using reciprocal rank fusion
+        with ``k=60``. Unsplit rankings and scores remain unchanged.
+
+        Parameters
+        ----------
+        data : Any
+            Precomputed query vectors or an embedded pandas DataFrame for the
+            standard path. The expansion path requires an embedded DataFrame
+            with ``_nrl_query_index`` and the configured query text column.
+            Preserve both columns through embedding. Each integer index refers
+            to a position in the original ``query_texts`` sequence; repeated
+            query strings still have distinct indices. The text column contains
+            each row's admitted chunk text, not the original full query.
+        **kwargs : Any
+            Retrieval options passed to the VDB. For the expansion path,
+            ``query_texts`` must contain the original full input query strings
+            in input order. ``top_k`` limits the fused candidates per original
+            query and defaults to 10. When reranking is enabled, these original
+            strings pair with the fused hits. Collection retrieval requires
+            both ``scope`` and ``collection_name``.
+
+        Returns
+        -------
+        Any
+            Ranked hit lists in input query order. With ``explode_for_rerank``
+            and nonempty ``query_texts``, list results become a long DataFrame
+            containing the original queries and hit payloads for the downstream
+            reranker; this method does not rerank them itself. Collection
+            results retain their ``(hit_lists, metadata)`` tuple: the expansion
+            path regroups only the hit lists and preserves the metadata
+            unchanged. Tuple results are not expanded into a rerank DataFrame.
+
+        Raises
+        ------
+        ValueError
+            If expansion columns, embeddings, original query indices, or
+            per-row retrieval groups are missing or invalid. Preserve the index
+            and text columns through embedding, provide the original full
+            ``query_texts``, and require one VDB result group per embedded row.
+            Every original query must retain at least one embedded row. For a
+            collection configuration error, provide both ``scope`` and
+            ``collection_name``. Backend validation errors also propagate.
+        """
+        if self._query_text_column is None:
+            return super().run(data, **kwargs)
+        from nemo_retriever.query.expansion import QUERY_INDEX_COLUMN, regroup_query_hits
+
+        if not isinstance(data, pd.DataFrame) or not {QUERY_INDEX_COLUMN, self._query_text_column} <= set(data.columns):
+            raise ValueError(
+                f"Query embedding output must be a pandas DataFrame containing {QUERY_INDEX_COLUMN!r} "
+                f"and {self._query_text_column!r}; preserve these columns through embedding and pass "
+                "the original full input query strings as query_texts"
+            )
+        query_texts = list(kwargs.get("query_texts") or [])
+        vectors = self.preprocess(data, **kwargs)
+        aligned = {**kwargs, "query_texts": data[self._query_text_column].tolist()}
+        hits = self.process(vectors, **aligned)
+        chunks = hits[0] if isinstance(hits, tuple) else hits
+        grouped = regroup_query_hits(
+            chunks, data[QUERY_INDEX_COLUMN].tolist(), query_count=len(query_texts), top_k=int(kwargs.get("top_k", 10))
+        )
+        result = (grouped, hits[1]) if isinstance(hits, tuple) else grouped
+        return self.postprocess(result, **kwargs)
 
     def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
         """Read one index metadata value through the configured VDB."""
@@ -306,7 +299,7 @@ class RetrieveVdbOperator(AbstractOperator):
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         if isinstance(data, pd.DataFrame):
-            return query_vectors_from_embedded_dataframe(data)
+            return query_vectors_from_embedded_dataframe(data, embedding_column=self._embedding_column)
         return data
 
     def process(
@@ -355,4 +348,6 @@ class RetrieveVdbOperator(AbstractOperator):
 
         if not isinstance(data, list):
             return data
-        return hits_lists_to_rerank_dataframe(list(query_texts), data)
+        return hits_lists_to_rerank_dataframe(
+            list(query_texts), data, include_query_index=self._query_text_column is not None
+        )

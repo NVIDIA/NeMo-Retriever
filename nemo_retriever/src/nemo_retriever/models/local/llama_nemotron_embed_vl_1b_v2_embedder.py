@@ -8,11 +8,12 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
+import nvtx
 import torch
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
-from nemo_retriever.common.nvtx import gpu_inference_range
+from nemo_retriever.models.inference.image import decode_base64_image
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -26,18 +27,6 @@ def _to_normalized_cpu(out: Any) -> torch.Tensor:
     if isinstance(out, torch.Tensor):
         return _l2_normalize(out.detach().cpu())
     return _l2_normalize(torch.as_tensor(out, dtype=torch.float32).cpu())
-
-
-def _b64_to_pil(b64_str: str):
-    import base64
-    import io
-
-    from PIL import Image
-
-    try:
-        return Image.open(io.BytesIO(base64.b64decode(b64_str))).convert("RGB")
-    except Exception as exc:
-        raise ValueError(f"Failed to decode base64 image: {exc}") from exc
 
 
 @dataclass
@@ -112,6 +101,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         if p is not None and hasattr(self._model, "processor"):
             self._model.processor.p_max_length = p
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed", color="blue")
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -121,10 +111,10 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("text")
-            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(texts_list), mode="doc_text"):
-                out = self._model.encode_documents(texts=texts_list)
+            out = self._model.encode_documents(texts=texts_list)
         return _to_normalized_cpu(out)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_queries", color="blue")
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -133,10 +123,10 @@ class LlamaNemotronEmbedVL1BV2Embedder:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
-            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(texts_list), mode="query"):
-                out = self._model.encode_queries(texts_list)
+            out = self._model.encode_queries(texts_list)
         return _to_normalized_cpu(out)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_images", color="blue")
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed images (base64-encoded). Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -146,10 +136,10 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("image")
-            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(image_dicts), mode="doc_image"):
-                out = self._model.encode_documents(images=image_dicts)
+            out = self._model.encode_documents(images=image_dicts)
         return _to_normalized_cpu(out)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_text_image", color="blue")
     def embed_text_image(
         self, texts: Sequence[str], images_b64: Sequence[str], *, batch_size: int = 64
     ) -> torch.Tensor:
@@ -166,8 +156,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         with torch.inference_mode(), warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="`input_embeds` is deprecated", category=FutureWarning)
             self._set_p_max_length("text_image")
-            with gpu_inference_range("LlamaNemotronEmbedVL1B", batch_size=len(paired_images), mode="doc_text_image"):
-                out = self._model.encode_documents(texts=paired_texts, images=paired_images)
+            out = self._model.encode_documents(texts=paired_texts, images=paired_images)
         return _to_normalized_cpu(out)
 
     def unload(self) -> None:
@@ -259,6 +248,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         tensor = torch.tensor(vectors, dtype=torch.float32)
         return _l2_normalize(tensor) if self.normalize else tensor
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed", color="blue")
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document texts. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -276,6 +266,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         )
         return self._finalize_vectors(vectors)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_queries", color="blue")
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -293,6 +284,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         )
         return self._finalize_vectors(vectors)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_images", color="blue")
     def embed_images(self, images_b64: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed images (base64-encoded). Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
@@ -303,7 +295,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
 
         prompt_dicts = [
-            {"prompt": f"{self.document_prefix}<image> ", "multi_modal_data": {"image": _b64_to_pil(b64)}}
+            {"prompt": f"{self.document_prefix}<image> ", "multi_modal_data": {"image": decode_base64_image(b64)}}
             for b64 in valid_b64
         ]
         vectors = embed_multimodal_with_vllm_llm(
@@ -314,6 +306,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         )
         return self._finalize_vectors(vectors)
 
+    @nvtx.annotate("nrl.model::llama_nemotron_embed_vl.embed_text_image", color="blue")
     def embed_text_image(
         self, texts: Sequence[str], images_b64: Sequence[str], *, batch_size: int = 64
     ) -> torch.Tensor:
@@ -332,7 +325,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
             return torch.empty((0, self.output_dimension), dtype=torch.float32)
 
         prompt_dicts = [
-            {"prompt": f"{self.document_prefix}<image> {text}", "multi_modal_data": {"image": _b64_to_pil(b64)}}
+            {"prompt": f"{self.document_prefix}<image> {text}", "multi_modal_data": {"image": decode_base64_image(b64)}}
             for text, b64 in zip(paired_texts, paired_b64)
         ]
         vectors = embed_multimodal_with_vllm_llm(

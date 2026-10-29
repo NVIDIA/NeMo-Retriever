@@ -19,7 +19,6 @@ from nemo_retriever.common.vdb.adt_vdb import (
 from nemo_retriever.common.vdb.records import RetrievalContractError, VdbUploadError
 from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
 from nemo_retriever.operators import vdb as vdb_operator_module
-from nemo_retriever.operators.vdb import PutVdbOperator
 
 
 class _CollectionContractStub(VDB):
@@ -45,7 +44,6 @@ class FakeVDB(_CollectionContractStub):
         super().__init__(**kwargs)
         self.run_calls: list[Any] = []
         self.retrieval_calls: list[tuple[Any, dict[str, Any]]] = []
-        self.put_calls: list[tuple[Any, dict[str, Any]]] = []
         self.write_collection_calls: list[tuple[Any, CollectionWriteContext]] = []
         self.retrieve_collection_calls: list[tuple[Any, dict[str, Any]]] = []
 
@@ -76,10 +74,6 @@ class FakeVDB(_CollectionContractStub):
     def run(self, records: Any) -> dict[str, Any]:
         self.run_calls.append(records)
         return {"records": records}
-
-    def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
-        self.put_calls.append((records, dict(kwargs)))
-        return {"put": sum(len(b) for b in records)}
 
     def write_collection(self, records: list, *, context: CollectionWriteContext) -> CollectionWriteResult:
         self.write_collection_calls.append((records, context))
@@ -138,14 +132,14 @@ def _graph_rows() -> list[dict[str, Any]]:
     return [
         {
             "text": "first chunk",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             "path": "/tmp/doc-a.pdf",
             "page_number": 1,
             "metadata": {"content_metadata": {"type": "text"}},
         },
         {
             "text": "second chunk",
-            "text_embeddings_1b_v2": {"embedding": [0.2] * 2048},
+            "embedding": [0.2] * 2048,
             "path": "/tmp/doc-a.pdf",
             "page_number": 2,
             "metadata": {"content_metadata": {"type": "text"}},
@@ -192,7 +186,7 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
     data = [
         {
             "text": "graph chunk",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             "source_id": "/tmp/doc-a.pdf",
             "page_number": 7,
         }
@@ -245,7 +239,7 @@ def test_ingest_operator_rejects_unembedded_content_when_embedded_row_is_filtere
     operator = IngestVdbOperator(vdb=vdb)
     data = pd.DataFrame(
         [
-            {"text": "", "metadata": {"embedding": [0.1]}},
+            {"text": "", "embedding": [0.1]},
             {"text": "extracted chunk"},
         ]
     )
@@ -271,7 +265,7 @@ def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(
         {
             "text": text,
             "document_type": "structured",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             "_image_b64": "page-image",
             "source_id": "/tmp/scanned.pdf",
             "page_number": 7,
@@ -310,7 +304,7 @@ def test_ingest_operator_rejects_noncanonical_image_payload_without_truthiness(
     data = [
         {
             "text": "",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             "_image_b64": image_payload,
             "source_id": "/tmp/scanned.pdf",
             "page_number": 7,
@@ -334,7 +328,7 @@ def test_ingest_operator_retains_image_only_row_with_stored_image_uri(
     data = [
         {
             "text": "",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             uri_field: "file:///tmp/scanned-page-7.png",
             "source_id": "/tmp/scanned.pdf",
             "page_number": 7,
@@ -358,7 +352,7 @@ def test_ingest_operator_rejects_nonempty_batch_with_zero_uploadable_records() -
     data = [
         {
             "text": "",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "embedding": [0.1] * 2048,
             "source_id": "/tmp/empty.pdf",
             "page_number": 1,
         }
@@ -378,10 +372,8 @@ def test_ingest_operator_rejects_runtime_empty_vectors_before_backend_call() -> 
     data = [
         {
             "text": text,
-            "text_embeddings_1b_v2": {
-                "embedding": [],
-                "error": "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause",
-            },
+            "embedding": None,
+            "embedding_error": "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause",
         }
         for text in ("valid neighbor before", "valid neighbor after")
     ]
@@ -470,6 +462,26 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
     ]
 
 
+@pytest.mark.parametrize("has_hits", [False, True])
+def test_retrieve_operator_rerank_preserves_direct_dataframe_schema(
+    monkeypatch: pytest.MonkeyPatch, has_hits: bool
+) -> None:
+    vdb = FakeVDB()
+    if not has_hits:
+        monkeypatch.setattr(vdb, "retrieval", lambda vectors, **kwargs: [[]])
+    operator = RetrieveVdbOperator(vdb=vdb, explode_for_rerank=True)
+
+    result = operator.run([[0.1, 0.2]], query_texts=["current"], top_k=3)
+
+    assert list(result.columns) == ["query", "text", "_hit"]
+    if has_hits:
+        assert result["query"].tolist() == ["current"]
+        assert result["text"].tolist() == ["retrieved chunk"]
+        assert result.iloc[0]["_hit"]["_distance"] == 0.12
+    else:
+        assert result.empty
+
+
 def test_retrieve_operator_reads_index_metadata_from_any_vdb() -> None:
     class MetadataVDB(FakeVDB):
         def get_index_metadata(self, key: str, **kwargs: Any) -> str | None:
@@ -550,93 +562,6 @@ def test_constructor_requires_exactly_one_vdb_source() -> None:
         IngestVdbOperator(vdb=FakeVDB(), vdb_op="lancedb")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PutVdbOperator
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class _StubPutVDB(_CollectionContractStub):
-    """VDB subclass that intentionally does NOT override ``put``.
-
-    Used to exercise the construction-time guard in
-    :class:`PutVdbOperator.__init__`, which compares
-    ``type(self._vdb).put is VDB.put`` to detect backends that
-    inherit the base-class ``NotImplementedError`` stub.
-
-    Note: this class being instantiable at all is itself a regression
-    check — :meth:`VDB.put` must NOT be decorated with
-    ``@abstractmethod``; otherwise ABC machinery would reject this class
-    before the operator-level guard could run, making the guard dead code.
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-
-    def create_index(self, **kwargs: Any) -> None:
-        return None
-
-    def write_to_index(self, records: list, **kwargs: Any) -> None:
-        return None
-
-    def retrieval(self, queries: list, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        return []
-
-    def run(self, records: Any) -> None:
-        return None
-
-
-def test_put_operator_rejects_vdb_without_put_override() -> None:
-    """Backends inheriting the ``VDB.put`` stub fail fast at construction."""
-    stub = _StubPutVDB()
-    # Sanity-check the precondition the guard relies on: the subclass really
-    # is using the inherited stub, not its own implementation. If this ever
-    # fails, the guard's identity comparison would silently never fire.
-    assert type(stub).put is VDB.put
-
-    with pytest.raises(NotImplementedError, match=r"does not implement put"):
-        PutVdbOperator(vdb=stub)
-
-
-def test_put_operator_delegates_records_with_configured_key_and_table_name() -> None:
-    """Happy path: nv-ingest-converted records reach ``vdb.put`` with the configured key/table."""
-    vdb = FakeVDB()
-    operator = PutVdbOperator(vdb=vdb, key="entity_id", table_name="entities")
-
-    data = [
-        {
-            "text": "graph chunk",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
-            "source_id": "/tmp/doc-a.pdf",
-            "page_number": 7,
-        }
-    ]
-
-    assert operator(data) is data
-
-    assert vdb.run_calls == []
-    assert len(vdb.put_calls) == 1
-    call_records, call_kwargs = vdb.put_calls[0]
-    assert call_kwargs == {"table_name": "entities", "key": "entity_id"}
-    # The records that reach the backend must already be in nv-ingest-client
-    # shape (same conversion IngestVdbOperator performs), not the flat graph rows.
-    assert call_records == [
-        [
-            {
-                "document_type": "text",
-                "metadata": {
-                    "embedding": [0.1] * 2048,
-                    "content": "graph chunk",
-                    "content_metadata": {"page_number": 7},
-                    "source_metadata": {
-                        "source_id": "/tmp/doc-a.pdf",
-                        "source_name": "doc-a.pdf",
-                    },
-                },
-            }
-        ]
-    ]
-
-
 def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
     pulls: list[int] = []
 
@@ -673,7 +598,6 @@ def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
     legacy_vdb = FakeVDB()
     legacy = IngestVdbOperator(vdb=legacy_vdb)
     legacy_duck = IngestVdbOperator(vdb=LegacyDuckVDB())
-    put = PutVdbOperator(vdb=streaming_vdb)
 
     assert streaming._stream_ingest(batches()) == 2
     assert pulls == [0, 1]
@@ -685,7 +609,8 @@ def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
     ]
 
     partial_rows = _graph_rows()
-    partial_rows[1]["text_embeddings_1b_v2"] = {"embedding": []}
+    partial_rows[1]["embedding"] = None
+    partial_rows[1]["embedding_error"] = "embedding failed"
     fail_closed_vdb = StreamingFakeVDB()
     pulls.clear()
     with pytest.raises(VdbUploadError, match="refusing a partial write"):
@@ -698,52 +623,9 @@ def test_custom_vdb_stream_capability_and_legacy_fallback() -> None:
         legacy._stream_ingest(batches())
     with pytest.raises(UnsupportedVDBOperation, match="does not implement stream_ingest"):
         legacy_duck._stream_ingest(batches())
-    with pytest.raises(UnsupportedVDBOperation, match="does not implement stream_ingest"):
-        put._stream_ingest(batches())
     with pytest.raises(RuntimeError, match="returned before consuming the record stream"):
         operator = IngestVdbOperator(vdb=EarlyReturningVDB())
         operator._stream_ingest([pd.DataFrame(_graph_rows())])
-
-
-def test_put_operator_merges_sidecar_metadata_into_records_before_put() -> None:
-    """Sidecar kwargs are split out from ``vdb_kwargs`` and applied before delegation."""
-    vdb = FakeVDB()
-    meta_df = pd.DataFrame(
-        {
-            "source_id": ["/tmp/doc-a.pdf"],
-            "category": ["legal"],
-        }
-    )
-    operator = PutVdbOperator(
-        vdb=vdb,
-        vdb_kwargs={
-            "meta_dataframe": meta_df,
-            "meta_source_field": "source_id",
-            "meta_fields": ["category"],
-            "meta_join_key": "source_id",
-        },
-        key="id",
-        table_name="my_table",
-    )
-
-    data = [
-        {
-            "text": "graph chunk",
-            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
-            "source_id": "/tmp/doc-a.pdf",
-            "page_number": 7,
-        }
-    ]
-
-    assert operator.process(data) is data
-
-    assert len(vdb.put_calls) == 1
-    call_records, call_kwargs = vdb.put_calls[0]
-    assert call_kwargs == {"table_name": "my_table", "key": "id"}
-    merged_content_meta = call_records[0][0]["metadata"]["content_metadata"]
-    # Sidecar column merged in alongside the per-row ``page_number``.
-    assert merged_content_meta["category"] == "legal"
-    assert merged_content_meta["page_number"] == 7
 
 
 def test_ingest_operator_preserves_sidecar_kwargs_for_graph_reconstruction() -> None:

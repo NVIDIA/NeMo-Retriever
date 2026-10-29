@@ -69,6 +69,7 @@ chunks = (
     .embed(
         batch_tuning=BatchTuningParams(
             embed_workers=2,
+            embed_reshape_workers=4,
         )
     )
     .ingest()
@@ -78,6 +79,161 @@ chunks = (
 Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI ingest options](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docs/cli/README.md).
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
+
+### Tune embedding preparation and remote requests
+
+Embedding preparation, actor batches, and HTTP requests have separate concurrency and batch-size controls. Pass the following settings through `.embed(...)` in the Python API.
+
+| Setting | Behavior |
+| --- | --- |
+| `batch_tuning.embed_reshape_workers` | Sets a positive concurrency limit for the CPU stages that collapse content into page rows or expand content into element rows before embedding. |
+| `batch_tuning.embed_workers` | Sets the number of Ray embedding actors. |
+| `batch_tuning.embed_batch_size` | Sets the number of rows in each Ray embedding actor batch. |
+| `inference_batch_size` | Limits the number of inputs in each embedding inference batch. |
+| `embed_inference_batch_size` | Adds a limit on the number of image-bearing inputs in each remote embedding HTTP request. |
+| `nim_http_max_concurrent` | Caps concurrent remote embedding HTTP requests within each actor batch. |
+
+Set `embed_reshape_workers` when CPU content preparation limits throughput. This setting applies to the named `CollapseContentToPageRows` and `ExplodeContentToRows` graph stages when present.
+
+For remote image-bearing inputs, the request size is at most `min(inference_batch_size, embed_inference_batch_size)`. For example, `.embed(inference_batch_size=32, embed_inference_batch_size=8)` sends at most 8 image-bearing inputs per request. Select a multimodal model that your endpoint supports, as described in [multimodal embedding](embedding.md).
+
+Benchmark these settings with representative documents. Monitor CPU capacity, endpoint GPU memory, HTTP errors, and output counts as you increase concurrency or batch sizes.
+
+### Control row repartitioning
+
+!!! note "Unreleased controls"
+
+    These repartition controls are under development. They are not available
+    in current NVIDIA `main` or a released package.
+
+In batch mode, the following `BatchTuningParams` controls enable size-based Ray
+repartitioning before each stage. Each control defaults to `True`.
+
+| Stage | Control | Row-batch setting |
+| --- | --- | --- |
+| Page Elements | `page_elements_repartition` | `page_elements_batch_size` |
+| Table Structure | `table_structure_repartition` | `table_structure_batch_size` |
+| Embedding | `embed_repartition` | `embed_batch_size` |
+
+When enabled and a stage has a positive batch size, the library uses that size
+as `target_num_rows_per_block` before the stage runs. Set a control to `False`
+to omit this derived block-size target. The stage still uses its configured
+batch size and worker settings. Required grouping in other graph stages still
+applies.
+
+The following example disables these three block-size targets. Replace
+`/path/to/your/document.pdf` with a PDF file that you supply.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(["/path/to/your/document.pdf"])
+    .extract(
+        batch_tuning=BatchTuningParams(
+            page_elements_repartition=False,
+            table_structure_repartition=False,
+        )
+    )
+    .embed(
+        batch_tuning=BatchTuningParams(
+            embed_repartition=False,
+        )
+    )
+    .ingest()
+)
+```
+
+For typed ingest plans, set the extraction controls in
+`IngestExtractBatchOptions` and the embedding control in
+`IngestEmbedBatchOptions`. These optional fields default to `None`, which
+preserves the `True` defaults when the shared ingest plan resolves them.
+Compare throughput, memory use, errors, and extracted outputs against a
+representative baseline after changing these controls.
+
+## Profile batch ingestion with Nsight Systems
+
+Batch mode emits NVIDIA Tools Extension (NVTX) ranges from the driver and Ray
+actor processes through the `nvtx` Python package, which is installed with NeMo
+Retriever Library. These host annotations do not require PyTorch or a GPU.
+Use NVIDIA Nsight Systems to correlate these semantic stages
+with CUDA and operating system activity. Start with a representative, bounded
+input because profiler tracing can increase runtime and report size.
+
+Run a batch ingest under `nsys profile` as follows:
+
+```bash
+nsys profile \
+  --trace=nvtx,cuda,osrt \
+  --sample=none \
+  --wait=all \
+  --output=nrl-batch-profile \
+  -- retriever ingest batch /path/to/your/pdfs
+```
+
+The command writes `nrl-batch-profile.nsys-rep`. Open the report in the Nsight
+Systems graphical interface, or run `nsys-ui nrl-batch-profile.nsys-rep` on a
+workstation with the interface installed. Search the timeline for `nrl.batch::`,
+`nrl.model::`, and `nrl.remote::` to find the following ranges.
+
+| Range | Interpretation |
+| --- | --- |
+| `nrl.batch::pipeline.ingest` | One complete `RayDataExecutor` run on the driver, including `return_results=False` summary mode. Use this range for batch pipeline wall-clock time. Driver-side setup before the run, such as building and normalizing manifest branch datasets, is outside this range. |
+| `nrl.batch::pdf_split.batch` | One PDF split actor call that splits a batch of documents into single-page PDFs. |
+| `nrl.batch::pdf_extract.batch` | One PDF extraction actor call that extracts text and images from a batch of pages. |
+| `nrl.batch::page_elements.startup` | One Page Elements actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::page_elements.batch` | One Page Elements actor processing call. |
+| `nrl.batch::table_structure.startup` | One Table Structure actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::table_structure.batch` | One Table Structure actor processing call. |
+| `nrl.batch::ocr.startup` | One OCR actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::ocr.batch` | One OCR actor processing call. |
+| `nrl.batch::embedding.startup` | One embedding actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::embedding.batch` | One embedding actor processing call. |
+| `nrl.batch::ray.materialize` | Materialization of a terminal Ray dataset into a pandas DataFrame. This range can include lazy upstream execution. |
+| `nrl.batch::pipeline.terminal_stream` | Consumption of the lazy upstream pipeline and streaming of its records to the vector database backend. This range is not pure vector database time. |
+| `nrl.batch::result.concat` | Concatenation of retained frames when the graph ends at a streaming vector database sink and at least one batch was consumed. This range is absent when the sink has downstream nodes or the input has no batches. |
+
+Local and remote (endpoint-backed) Page Elements, Table Structure, OCR, and embedding actors emit the same ranges; for remote actors, the batch range includes network requests to the endpoint.
+
+Local model operations also emit stable, decorator-based ranges. These ranges
+wrap existing high-level methods, so they can include CPU input preparation,
+one or more backend calls, and output processing. Compare them with CUDA
+activity in the Nsight Systems timeline to isolate device execution.
+
+| Range | Interpretation |
+| --- | --- |
+| `nrl.model::llama_nemotron_embed_vl.embed` | One local document text embedding operation. |
+| `nrl.model::llama_nemotron_embed_vl.embed_queries` | One local query embedding operation. |
+| `nrl.model::llama_nemotron_embed_vl.embed_images` | One local image embedding operation. |
+| `nrl.model::llama_nemotron_embed_vl.embed_text_image` | One local paired text-image embedding operation. |
+| `nrl.model::ocr_v2.invoke` | One end-to-end Nemotron OCR v2 wrapper call, including input conversion and all backend calls. This is the model used by the current local OCR actor. |
+| `nrl.model::page_elements.invoke` | One local Page Elements model call, including the initialization check and model execution. Output scaling runs in the separate `postprocess` call, outside this range. |
+| `nrl.model::table_structure.invoke` | One local Table Structure operation, including input preparation, model execution, and output scaling. |
+| `nrl.model::vlm_captioner.caption_batch` | One local visual language model batch captioning operation. |
+| `nrl.model::parakeet_ctc.decode_batch` | One local Parakeet CTC chunk-batch operation, including feature preparation, model execution, and greedy decoding. |
+
+Remote NVIDIA Inference Microservice (NIM) calls emit
+`nrl.remote::nim.request`. This range covers one HTTP request and its retry and
+backoff lifecycle. Compare it with the enclosing actor batch range to separate
+remote service wait time from local preparation and response processing.
+
+Ranges from concurrent Ray actors can overlap. Their durations include CPU
+preparation, waits, and calls into inference backends. They do not represent
+CUDA kernel time by themselves. In the timeline, compare range boundaries with
+the CUDA activity rows to identify the stage that remains active near pipeline
+completion and to find idle gaps between batches.
+
+You can also print an aggregate NVTX summary:
+
+```bash
+nsys stats --report nvtx_sum nrl-batch-profile.nsys-rep
+```
+
+The summary adds durations from all matching ranges. With concurrent actors,
+the summed duration can exceed wall-clock time, so use the timeline to reason
+about overlap and the critical path.
 
 ## Tune remote OCR request batching
 

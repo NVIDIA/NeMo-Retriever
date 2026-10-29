@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os.path
 from types import SimpleNamespace
 
 import huggingface_hub
@@ -54,6 +55,17 @@ def _ministral_config(**overrides):
     return config
 
 
+def _gemma_config(**overrides):
+    config = {
+        "model_type": "gemma3_text",
+        "architectures": ["Gemma3TextModel"],
+        "hidden_size": 768,
+        "use_bidirectional_attention": True,
+    }
+    config.update(overrides)
+    return config
+
+
 def _vl_config(**overrides):
     config = {
         "model_type": "llama_nemotron_vl",
@@ -76,6 +88,35 @@ def test_local_text_checkpoint_is_resolved_from_model_type(tmp_path):
     assert spec.revision is None
     assert spec.requires_vllm is False
     assert spec.max_input_tokens == 8192
+
+
+@pytest.mark.parametrize("path_style", ["absolute", "relative", "tilde"])
+def test_local_template_uses_same_path_resolution_as_checkpoint(tmp_path, monkeypatch, path_style):
+    from nemo_retriever.models.inference.retrieval_template import load_retrieval_template
+
+    _write_config(tmp_path, _text_config())
+    template = "{{ messages[0].content }} {{ messages[1].content }}"
+    (tmp_path / "chat_template.jinja").write_text(template, encoding="utf-8")
+    if path_style == "tilde":
+        model_id = "~/" + tmp_path.name
+        expanduser = os.path.expanduser
+        monkeypatch.setattr(
+            os.path, "expanduser", lambda value: str(tmp_path.parent) if value == "~" else expanduser(value)
+        )
+    elif path_style == "relative":
+        monkeypatch.chdir(tmp_path.parent)
+        model_id = "./" + tmp_path.name
+    else:
+        model_id = str(tmp_path)
+    monkeypatch.setattr(
+        huggingface_hub, "hf_hub_download", lambda *args, **kwargs: pytest.fail("Local checkpoint must not access Hub")
+    )
+    load_retrieval_template.cache_clear()
+    try:
+        assert resolve_embed_model_spec(model_id).revision is None
+        assert load_retrieval_template(model_id, None) == template
+    finally:
+        load_retrieval_template.cache_clear()
 
 
 def test_vl_checkpoint_uses_declared_document_input_limit(tmp_path):
@@ -122,7 +163,7 @@ def test_local_modelopt_checkpoint_requires_vllm(tmp_path, config, family, quant
 def test_local_checkpoint_rejects_unsupported_architecture(tmp_path):
     _write_config(tmp_path, {"model_type": "bert"})
 
-    with pytest.raises(ValueError, match="supported Nemotron embed model types"):
+    with pytest.raises(ValueError, match="supported dense embed model types"):
         resolve_embed_model_spec(str(tmp_path))
 
 
@@ -195,6 +236,44 @@ def test_ministral_checkpoint_requires_explicit_non_causal_config(tmp_path, is_c
         resolve_embed_model_spec(str(tmp_path))
 
 
+def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path):
+    _write_config(tmp_path, _gemma_config())
+    _write_prompt_config(
+        tmp_path,
+        {
+            "query": "task: search result | query: ",
+            "document": "title: none | text: ",
+        },
+    )
+    _write_sentence_config(tmp_path, max_seq_length=2048)
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.family == "text"
+    assert spec.output_dimension == 768
+    assert spec.query_prefix == "task: search result | query: "
+    assert spec.document_prefix == "title: none | text: "
+    assert spec.max_input_tokens == 2048
+    assert spec.requires_vllm is True
+
+
+@pytest.mark.parametrize("use_bidirectional_attention", [False, None])
+def test_gemma_checkpoint_requires_bidirectional_attention(tmp_path, use_bidirectional_attention):
+    _write_config(tmp_path, _gemma_config(use_bidirectional_attention=use_bidirectional_attention))
+
+    with pytest.raises(ValueError, match="Gemma 3 embedding profiles require use_bidirectional_attention=true"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_gemma_checkpoint_rejects_hf_backend(tmp_path):
+    from nemo_retriever.models.embed_model_spec import validate_embed_model_backend
+
+    _write_config(tmp_path, _gemma_config())
+
+    with pytest.raises(ValueError, match="requires backend='vllm'"):
+        validate_embed_model_backend(resolve_embed_model_spec(str(tmp_path)), "hf")
+
+
 @pytest.mark.parametrize(
     "config",
     [
@@ -223,7 +302,7 @@ def test_ministral_checkpoint_requires_explicit_non_causal_config(tmp_path, is_c
 def test_other_mistral_checkpoint_formats_remain_rejected(tmp_path, config):
     _write_config(tmp_path, config)
 
-    with pytest.raises(ValueError, match="unsupported model_type"):
+    with pytest.raises(ValueError, match="unsupported (model_type|architectures)"):
         resolve_embed_model_spec(str(tmp_path))
 
 

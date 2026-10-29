@@ -33,17 +33,25 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
-from nemo_retriever.graph.executor import arrow_table_to_pandas, call_pandas_function_on_arrow
+from nemo_retriever.graph.executor import (
+    arrow_table_to_pandas,
+    call_pandas_function_on_arrow,
+    resolve_batch_return_results,
+)
 from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
+from nemo_retriever.ingestor.execute_flags import resolve_return_results_option
 from nemo_retriever.graph.ingestor_runtime import (
     batch_tuning_to_node_overrides,
     build_graph,
     default_concurrency_node_names,
 )
 from nemo_retriever.ingestor.manifest import (
+    DEFAULT_AUDIO_SPLIT_INTERVAL,
+    DEFAULT_VIDEO_FRAME_FPS,
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
     build_input_manifest,
+    default_asr_params,
     format_branch_summary,
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
@@ -80,6 +88,7 @@ from nemo_retriever.common.params import (
 from nemo_retriever.common.input_files import (
     PDF_DOCUMENT_INPUT_TYPES,
     _is_explicit_glob_path,
+    expand_input_directories,
     expand_input_file_patterns,
     input_type_for_path,
 )
@@ -103,7 +112,8 @@ from nemo_retriever.common.modality.txt.split import empty_text_chunks_df
 _ERROR_FIELD_KEYS = ERROR_FIELD_KEYS
 _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
-_DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
+_DEFAULT_EMBED_COLUMN = "embedding"
+_DEFAULT_EMBED_ERROR_COLUMN = f"{_DEFAULT_EMBED_COLUMN}_error"
 _ERROR_MESSAGE_LIMIT = 256
 _SOURCE_IDENTIFIER_COLUMNS = ("document_id", "path", "source_path", "metadata", "source_id", "source_name")
 logger = logging.getLogger(__name__)
@@ -448,6 +458,15 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
     return params
 
 
+def _coerce_audio_chunk_params(params: Any, kwargs: dict[str, Any]) -> Any:
+    """Build audio chunk params; size splits default to ``DEFAULT_AUDIO_SPLIT_INTERVAL``."""
+    if kwargs.get("split_type", "size") != "size":
+        return _coerce(params, kwargs, default_factory=AudioChunkParams)
+    return _coerce(
+        params, kwargs, default_factory=lambda: AudioChunkParams(split_interval=DEFAULT_AUDIO_SPLIT_INTERVAL)
+    )
+
+
 class GraphIngestor(ingestor):
     """Ingestor that constructs and executes operator graphs directly.
 
@@ -499,7 +518,8 @@ class GraphIngestor(ingestor):
         show_progress: bool = True,
         error_policy: str = "raise",
     ) -> None:
-        super().__init__(documents=documents)
+        super().__init__()
+        self.files(documents or [])
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"run_mode must be 'batch' or 'inprocess', got {run_mode!r}")
         if error_policy not in {"raise", "collect"}:
@@ -582,8 +602,8 @@ class GraphIngestor(ingestor):
         return self
 
     def files(self, documents: Union[str, List[str]]) -> "GraphIngestor":
-        """Set the input file paths or glob patterns."""
-        self._documents = [documents] if isinstance(documents, str) else list(documents)
+        """Set the input file paths, glob patterns, or directories (expanded to their supported files)."""
+        self._documents = expand_input_directories([documents] if isinstance(documents, str) else list(documents))
         return self
 
     def texts(self, texts: Union[str, Sequence[str]]) -> Self:
@@ -710,8 +730,8 @@ class GraphIngestor(ingestor):
     ) -> "GraphIngestor":
         """Configure audio extraction (extraction_mode='audio')."""
         self._extraction_mode = "audio"
-        self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
-        self._asr_params = asr_params or ASRParams()
+        self._audio_chunk_params = _coerce_audio_chunk_params(params, kwargs)
+        self._asr_params = asr_params or default_asr_params()
         self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
@@ -746,9 +766,9 @@ class GraphIngestor(ingestor):
         directly with that file.
         """
         self._extraction_mode = "auto"
-        self._audio_chunk_params = _coerce(params, kwargs, default_factory=AudioChunkParams)
-        self._asr_params = asr_params or ASRParams()
-        self._video_frame_params = video_frame_params or VideoFrameParams()
+        self._audio_chunk_params = _coerce_audio_chunk_params(params, kwargs)
+        self._asr_params = asr_params or default_asr_params()
+        self._video_frame_params = video_frame_params or VideoFrameParams(fps=DEFAULT_VIDEO_FRAME_FPS)
         self._video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
         self._av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         if extract_params is not None:
@@ -885,13 +905,14 @@ class GraphIngestor(ingestor):
             ``input_rows`` and ``submitted_records`` instead of retaining the
             extracted records. Requires a terminal streaming VDB upload,
             ``error_policy='raise'``, and ``return_failures=False``. Submitted
-            records are counted before any backend filtering.
+            records are counted before any backend filtering. Omitted values
+            and ``None`` select this summary for eligible batch graphs and
+            full records otherwise. Set ``True`` to retain extracted rows.
 
         Returns
         -------
         pandas.DataFrame
-            Extracted rows for ``run_mode='batch'`` or
-            ``run_mode='inprocess'``.
+            Extracted rows, or summary counts for an eligible batch VDB upload.
         tuple[pandas.DataFrame, list[tuple[str, str]]]
             ``(result, failures)`` when ``return_failures=True``. Failures use
             service-style ``(source, error)`` tuples.
@@ -908,8 +929,16 @@ class GraphIngestor(ingestor):
             ``return_failures`` is false.
         """
         return_failures = self._resolve_execute_flag(params, kwargs, "return_failures", default=False)
-        return_results = self._resolve_execute_flag(params, kwargs, "return_results", default=True)
-        if not return_results:
+        return_results = resolve_return_results_option(params, kwargs)
+        summary_eligible = (
+            self._run_mode == "batch"
+            and self._vdb_upload_params is not None
+            and self._error_policy == "raise"
+            and not return_failures
+        )
+        if return_results is None and not summary_eligible:
+            return_results = True
+        if return_results is False:
             if self._run_mode != "batch" or self._vdb_upload_params is None:
                 raise ValueError("return_results=False requires run_mode='batch' with a VDB upload")
             if return_failures or self._error_policy == "collect":
@@ -921,14 +950,14 @@ class GraphIngestor(ingestor):
         finally:
             self._cleanup_url_inputs()
 
-    def _ingest_prepared(self, *, return_failures: bool, return_results: bool) -> Any:
+    def _ingest_prepared(self, *, return_failures: bool, return_results: bool | None) -> Any:
         """Execute ingestion after URL inputs have been fetched and classified."""
         if (
             return_results
             and not self._documents
             and not self._url_documents()
             and not self._all_buffers()
-            and is_blank_inline_corpus(self._inline_texts)
+            and is_blank_inline_corpus(self._inline_texts or [])
         ):
             result = empty_text_chunks_df()
             if self._run_mode == "batch":
@@ -989,7 +1018,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        return_results: bool = True,
+        return_results: bool | None = None,
     ) -> Any:
         if self._run_mode == "batch":
             return self._execute_single_graph_batch(
@@ -1010,7 +1039,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        return_results: bool = True,
+        return_results: bool | None = None,
     ) -> Any:
         graph = build_graph(
             extraction_mode=effective_extraction.extraction_mode,
@@ -1031,17 +1060,18 @@ class GraphIngestor(ingestor):
             webhook_params=self._webhook_params,
             stage_order=post_extract_order,
         )
+        return_results = resolve_batch_return_results(graph, return_results)
         if (
-            not return_results
-            and not self._documents
+            not self._documents
             and not self._url_documents()
             and not self._all_buffers()
-            and is_blank_inline_corpus(self._inline_texts)
+            and is_blank_inline_corpus(self._inline_texts or [])
         ):
             import pandas as pd
 
-            RayDataExecutor._stream_ingest_index(RayDataExecutor._linearize(graph), require_terminal=True)
-            result = pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
+            result = (
+                empty_text_chunks_df() if return_results else pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
+            )
             self._rd_dataset = result
             return result
 
@@ -1076,7 +1106,7 @@ class GraphIngestor(ingestor):
         )
         executor_input = self._inline_text_dataset(ray.data) if self._inline_texts else self._documents
         if return_results:
-            result = executor.ingest(executor_input)
+            result = executor.ingest(executor_input, return_results=True)
         else:
             result = executor._ingest(
                 executor_input,
@@ -1129,7 +1159,7 @@ class GraphIngestor(ingestor):
         *,
         dedup_params: DedupParams | None,
         post_extract_order: tuple[str, ...],
-        return_results: bool = True,
+        return_results: bool | None = None,
     ) -> Any:
         result = ExtractionBranchExecutor(
             run_mode=self._run_mode,
@@ -1164,7 +1194,7 @@ class GraphIngestor(ingestor):
             allow_no_gpu=self._allow_no_gpu,
             ensure_batch_runtime=self._ensure_batch_runtime,
             return_results=return_results,
-            validate_batch=self._raise_for_stage_errors if not return_results else None,
+            validate_batch=self._raise_for_stage_errors,
         ).execute()
         self._rd_dataset = result if self._run_mode == "batch" else None
         return result
@@ -1343,6 +1373,17 @@ class GraphIngestor(ingestor):
     def _iter_stage_errors_from_value(cls, value: Any, *, path: str = "") -> Iterator[dict[str, Any]]:
         yield from iter_stage_errors_from_value(value, path=path)
 
+    @classmethod
+    def _iter_column_errors(
+        cls, column: str, value: Any, *, string_error_columns: Iterable[str] = (_DEFAULT_EMBED_ERROR_COLUMN,)
+    ) -> Iterator[dict[str, Any]]:
+        """Yield stage errors from one cell; ``string_error_columns`` hold a plain error string."""
+        if column in string_error_columns and isinstance(value, str):
+            if value.strip():
+                yield {"path": "error", "error": value}
+            return
+        yield from cls._iter_stage_errors_from_value(value)
+
     @staticmethod
     def _row_value(row: Any, key: str) -> Any:
         if isinstance(row, dict):
@@ -1404,11 +1445,18 @@ class GraphIngestor(ingestor):
         return identifier, _format_public_failure_message(record)
 
     @classmethod
-    def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    def _stage_error_records(
+        cls,
+        batch: Any,
+        *,
+        columns: Iterable[str] | None = None,
+        string_error_columns: Iterable[str] = (_DEFAULT_EMBED_ERROR_COLUMN,),
+    ) -> list[dict[str, Any]]:
         iter_batches = getattr(batch, "iter_batches", None)
         if getattr(batch, "columns", None) is None and not callable(iter_batches):
             return []
         requested_columns = list(columns) if columns is not None else None
+        string_error_columns = frozenset(string_error_columns)
 
         batches = iter_batches(batch_format="pyarrow") if callable(iter_batches) else (batch,)
 
@@ -1446,7 +1494,9 @@ class GraphIngestor(ingestor):
                 row = {column: values[row_position] for column, values in column_values.items()}
                 source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
-                    for record in cls._iter_stage_errors_from_value(row[column]):
+                    for record in cls._iter_column_errors(
+                        column, row[column], string_error_columns=string_error_columns
+                    ):
                         records.append(
                             {
                                 "row_index": row_index,
@@ -1458,8 +1508,10 @@ class GraphIngestor(ingestor):
         return records
 
     @staticmethod
-    def _has_error(v: Any) -> bool:
-        return any(GraphIngestor._iter_stage_errors_from_value(v))
+    def _has_error(
+        v: Any, column: str = "", string_error_columns: Iterable[str] = (_DEFAULT_EMBED_ERROR_COLUMN,)
+    ) -> bool:
+        return any(GraphIngestor._iter_column_errors(column, v, string_error_columns=string_error_columns))
 
     @staticmethod
     def _param_value(params: Any, field: str) -> Any:
@@ -1482,6 +1534,10 @@ class GraphIngestor(ingestor):
     @classmethod
     def _params_has_configured_field(cls, params: Any, fields: tuple[str, ...]) -> bool:
         return any(cls._is_configured(cls._param_value(params, field)) for field in fields)
+
+    def _embed_error_column(self) -> str:
+        output_column = self._param_value(self._embed_params, "output_column") or _DEFAULT_EMBED_COLUMN
+        return f"{output_column}_error"
 
     def _remote_stage_error_columns(self) -> set[str]:
         """Backwards-compatible thin shim over :meth:`_remote_stage_diagnostics`.
@@ -1538,7 +1594,7 @@ class GraphIngestor(ingestor):
                 role="nemotron_parse",
             )
         if self._params_has_configured_field(self._embed_params, _REMOTE_EMBED_ENDPOINT_FIELDS):
-            column = self._param_value(self._embed_params, "output_column") or _DEFAULT_EMBED_COLUMN
+            column = self._embed_error_column()
             url = self._param_value(self._embed_params, "embed_invoke_url") or self._param_value(
                 self._embed_params, "embedding_endpoint"
             )
@@ -1557,7 +1613,9 @@ class GraphIngestor(ingestor):
         diagnostics = self._remote_stage_diagnostics()
         if not diagnostics:
             return
-        records = self._stage_error_records(result, columns=set(diagnostics.keys()))
+        records = self._stage_error_records(
+            result, columns=set(diagnostics.keys()), string_error_columns=(self._embed_error_column(),)
+        )
         if records:
             raise GraphIngestionError(records, stage_diagnostics=diagnostics)
 
@@ -1577,7 +1635,7 @@ class GraphIngestor(ingestor):
         # Without them, scan all columns so ``return_failures=True`` can expose
         # local collected failures instead of silently returning an empty list.
         columns = set(diagnostics.keys()) if diagnostics else None
-        return self._stage_error_records(result, columns=columns)
+        return self._stage_error_records(result, columns=columns, string_error_columns=(self._embed_error_column(),))
 
     def _collect_failure_tuples(self, result: Any) -> list[tuple[str, str]]:
         return [self._public_failure_tuple(record) for record in self._collect_failure_records(result)]
@@ -1592,7 +1650,7 @@ class GraphIngestor(ingestor):
         return result
 
     @staticmethod
-    def extract_error_rows(batch: Any) -> Any:
+    def extract_error_rows(batch: Any, string_error_columns: Iterable[str] = (_DEFAULT_EMBED_ERROR_COLUMN,)) -> Any:
         if batch is None:
             return batch
         columns = getattr(batch, "columns", None)
@@ -1601,9 +1659,16 @@ class GraphIngestor(ingestor):
         if len(columns) == 0:
             return batch.iloc[0:0]
 
-        mask = batch[columns[0]].apply(GraphIngestor._has_error).astype(bool)
+        string_error_columns = frozenset(string_error_columns)
+        mask = (
+            batch[columns[0]]
+            .apply(GraphIngestor._has_error, column=str(columns[0]), string_error_columns=string_error_columns)
+            .astype(bool)
+        )
         for c in columns[1:]:
-            mask = mask | batch[c].apply(GraphIngestor._has_error).astype(bool)
+            mask = mask | batch[c].apply(
+                GraphIngestor._has_error, column=str(c), string_error_columns=string_error_columns
+            ).astype(bool)
         return batch[mask]
 
     def get_error_rows(self, dataset: Any = None) -> Any:
@@ -1612,12 +1677,13 @@ class GraphIngestor(ingestor):
         target = dataset if dataset is not None else self._rd_dataset
         if target is None:
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
+        string_error_columns = (self._embed_error_column(),)
         if isinstance(target, pd.DataFrame):
-            return self.extract_error_rows(target)
+            return self.extract_error_rows(target, string_error_columns)
         return target.map_batches(
             call_pandas_function_on_arrow,
             batch_format="pyarrow",
-            fn_kwargs={"fn": self.extract_error_rows},
+            fn_kwargs={"fn": self.extract_error_rows, "fn_kwargs": {"string_error_columns": string_error_columns}},
         )
 
     def get_dataset(self) -> Any:

@@ -15,6 +15,7 @@ import yaml
 from pydantic import ConfigDict, Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.models import DEFAULT_LOCAL_RERANK_MODEL, default_rerank_max_length
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 MCPQueryMethods = Literal["classic", "agentic", "all"]
@@ -91,11 +92,17 @@ class LocalRerankConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    model_name: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    model_name: str = DEFAULT_LOCAL_RERANK_MODEL
     backend: Literal["hf", "vllm"] = "vllm"
     gpu_memory_utilization: float = Field(default=0.5, gt=0, le=1)
-    max_length: int = Field(default=512, ge=1, le=8192)
+    max_length: int | None = Field(default=None, ge=1, le=10240)
     batch_size: int = Field(default=32, ge=1)
+
+    @model_validator(mode="after")
+    def _resolve_max_length(self) -> "LocalRerankConfig":
+        if self.max_length is None:
+            self.max_length = default_rerank_max_length(self.model_name)
+        return self
 
 
 class LocalModelsConfig(RichModel):

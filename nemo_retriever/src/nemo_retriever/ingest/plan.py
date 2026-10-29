@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Literal, Sequence, cast
 
 from nemo_retriever.ingestor.manifest import (
+    DEFAULT_AUDIO_SPLIT_INTERVAL,
+    DEFAULT_VIDEO_FRAME_FPS,
     ExtractionBranchPlan,
     build_input_manifest,
     plan_extraction_branches,
@@ -37,16 +39,17 @@ from nemo_retriever.common.params import (
 from nemo_retriever.common.input_files import (
     AUTO_INPUT_EXTENSIONS,
     INPUT_TYPE_EXTENSIONS,
+    expand_input_directories,
     expand_input_file_patterns,
-    resolve_input_files,
 )
 from nemo_retriever.ingest.index_mode import (
     RequestedIngestIndexMode,
     inspect_existing_lancedb_mode,
+    lancedb_index_mode_kwargs,
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model
+from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model, resolve_local_embed_model
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 IngestRunModeValue = Literal["inprocess", "batch"]
@@ -72,8 +75,6 @@ _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "audio",
     "video",
 )
-_AUDIO_SPLIT_INTERVAL = 500000
-_VIDEO_FRAME_FPS = 0.5
 _VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES = 2
 _DEFAULT_TEXT_CHUNK_MAX_TOKENS = 1024
 _DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS = 150
@@ -115,6 +116,8 @@ class IngestExtractBatchOptions:
     nemotron_parse_batch_size: int | None = None
     nemotron_parse_gpus_per_actor: float | None = None
     actor_pool_mode: ActorPoolModeValue | None = None
+    page_elements_repartition: bool | None = None
+    table_structure_repartition: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +192,8 @@ class IngestEmbedBatchOptions:
     embed_cpus_per_actor: float | None = None
     embed_gpus_per_actor: float | None = None
     actor_pool_mode: ActorPoolModeValue | None = None
+    embed_reshape_workers: int | None = None
+    embed_repartition: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +208,7 @@ class IngestEmbedOptions:
     structured_elements_modality: str | None = None
     embed_granularity: str | None = None
     batch: IngestEmbedBatchOptions = field(default_factory=IngestEmbedBatchOptions)
+    embed_inference_batch_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -278,18 +284,7 @@ def validate_ingest_document_types(documents: Sequence[str], *, input_type: Inge
 
 
 def expand_ingest_documents(documents: Sequence[str], *, input_type: IngestInputTypeValue = "auto") -> list[str]:
-    inputs: list[str] = []
-    for document in documents:
-        raw_document = str(document)
-        path = Path(raw_document).expanduser()
-        if path.is_dir():
-            directory_files = resolve_input_files(path, input_type)
-            if not directory_files:
-                raise FileNotFoundError(f"No supported ingest files found under directory: {path}")
-            inputs.extend(str(file) for file in directory_files)
-        else:
-            inputs.append(raw_document)
-
+    inputs = expand_input_directories([str(document) for document in documents], input_type=input_type)
     document_list = expand_input_file_patterns(inputs)
     validate_ingest_document_types(document_list, input_type=input_type)
     return document_list
@@ -406,7 +401,7 @@ def _resolve_media_params(
         return None, _build_asr_params(segment_audio=media.segment_audio, needed=False), None, None, None
 
     split_interval = (
-        int(media.audio_split_interval) if media.audio_split_interval is not None else _AUDIO_SPLIT_INTERVAL
+        int(media.audio_split_interval) if media.audio_split_interval is not None else DEFAULT_AUDIO_SPLIT_INTERVAL
     )
     audio_chunk_params = AudioChunkParams(
         enabled=bool(media.video_extract_audio) if media.video_extract_audio is not None and needs_video else True,
@@ -420,7 +415,7 @@ def _resolve_media_params(
 
     video_frame_params = VideoFrameParams(
         enabled=bool(media.video_extract_frames) if media.video_extract_frames is not None else True,
-        fps=float(media.video_frame_fps) if media.video_frame_fps is not None else _VIDEO_FRAME_FPS,
+        fps=float(media.video_frame_fps) if media.video_frame_fps is not None else DEFAULT_VIDEO_FRAME_FPS,
         dedup=bool(media.video_frame_dedup) if media.video_frame_dedup is not None else True,
     )
     video_text_dedup_params = VideoFrameTextDedupParams(
@@ -548,6 +543,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
             "pdf_extract_num_cpus": batch.pdf_extract_cpus_per_task,
             "page_elements_workers": batch.page_elements_workers,
             "page_elements_batch_size": batch.page_elements_batch_size,
+            "page_elements_repartition": batch.page_elements_repartition,
             "page_elements_cpus_per_actor": batch.page_elements_cpus_per_actor,
             "gpu_page_elements": batch.page_elements_gpus_per_actor,
             "ocr_workers": batch.ocr_workers,
@@ -556,6 +552,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
             "gpu_ocr": batch.ocr_gpus_per_actor,
             "table_structure_workers": batch.table_structure_workers,
             "table_structure_batch_size": batch.table_structure_batch_size,
+            "table_structure_repartition": batch.table_structure_repartition,
             "table_structure_cpus_per_actor": batch.table_structure_cpus_per_actor,
             "gpu_table_structure": batch.table_structure_gpus_per_actor,
             "nemotron_parse_workers": batch.nemotron_parse_workers,
@@ -679,7 +676,24 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     if extract_tuning is not None:
         extract_kwargs["batch_tuning"] = extract_tuning
 
-    embedding_model_name = None if resolved_index_mode == "sparse" else resolve_embed_model(embed.embed_model_name)
+    remote_embedding = bool(str(embed.embed_invoke_url or "").strip())
+    legacy_n3 = bool(embed.embed_model_name) and resolve_embed_model(embed.embed_model_name) == NEMOTRON_3_EMBED_MODEL
+    # Unspecified defaults depend on the selected graph actor: GPU actors
+    # use local N3.5, while CPU actors supply the hosted N3 endpoint. The
+    # resolved graph shares that actor's identity with the index writer.
+    embedding_model_name = (
+        None
+        if resolved_index_mode == "sparse" or (not remote_embedding and not embed.embed_model_name)
+        else (
+            resolve_embed_model(embed.embed_model_name)
+            if remote_embedding or legacy_n3
+            else resolve_local_embed_model(
+                embed.embed_model_name,
+                backend=embed.local_ingest_embed_backend or "vllm",
+                allow_native_nvfp4=validated_run_mode != "batch",
+            )
+        )
+    )
     embedding_model_revision = None
     if (
         embedding_model_name is not None
@@ -689,7 +703,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         embedding_model_revision = resolve_embed_model_revision(embedding_model_name, None)
     embed_runtime_model_name = (
         embedding_model_name
-        if embed.embed_model_name is not None or embed.embed_model_provider_prefix is not None
+        if not remote_embedding or embed.embed_model_name is not None or embed.embed_model_provider_prefix is not None
         else None
     )
     embed_kwargs = build_embed_option_kwargs(
@@ -703,8 +717,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         text_elements_modality=embed.text_elements_modality,
         structured_elements_modality=embed.structured_elements_modality,
         embed_granularity=embed.embed_granularity,
+        embed_inference_batch_size=embed.embed_inference_batch_size,
         embed_workers=embed.batch.embed_workers,
+        embed_reshape_workers=embed.batch.embed_reshape_workers,
         embed_batch_size=embed.batch.embed_batch_size,
+        embed_repartition=embed.batch.embed_repartition,
         embed_cpus_per_actor=embed.batch.embed_cpus_per_actor,
         embed_gpus_per_actor=embed.batch.embed_gpus_per_actor,
         embed_actor_pool_mode=embed.batch.actor_pool_mode,
@@ -716,11 +733,8 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         "table_name": storage.table_name,
         "overwrite": bool(storage.overwrite),
     }
-    # Keep dense ingest kwargs unchanged unless the index mode needs additional LanceDB behavior.
-    if resolved_index_mode == "sparse":
-        vdb_upload_kwargs["sparse"] = True
-    elif resolved_index_mode == "hybrid":
-        vdb_upload_kwargs["hybrid"] = True
+    # Pass the resolved mode explicitly so the upload does not resolve ``auto`` again.
+    vdb_upload_kwargs.update(lancedb_index_mode_kwargs(resolved_index_mode))
     if embedding_model_name is not None:
         vdb_upload_kwargs["embedding_model_name"] = embedding_model_name
         if embed.embed_model_name is not None:

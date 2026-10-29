@@ -21,8 +21,19 @@ from nemo_retriever.models.inference.embedding_input import (
     prepare_embedding_inputs,
     resolve_embedding_input_policy,
 )
+from nemo_retriever.models.inference.main_text_embed import _close_embed_http_resources
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
+
+
+@pytest.fixture(autouse=True)
+def _isolate_embed_http_resources():
+    # Each test owns its MockTransport; keep pooled clients within that test.
+    _close_embed_http_resources()
+    try:
+        yield
+    finally:
+        _close_embed_http_resources()
 
 
 class _LengthEmbedder:
@@ -212,9 +223,11 @@ def test_systemic_failure_is_not_replayed_or_exposed(caplog) -> None:
         {"unembedded": 1, "failed": 1},
         {"unembedded": 1, "failed": 1},
     ]
-    assert result.loc[0, "text_embeddings_1b_v2"]["error"] == (
-        "RuntimeError: embedding batch failed; inspect embed-stage logs for the cause"
+    assert (
+        result["embedding_error"].tolist()
+        == ["RuntimeError: embedding batch failed; inspect embed-stage logs for the cause"] * 2
     )
+    assert not any("echoed document" in error for error in result["embedding_error"])
     assert "failed=2 embedded=0 unembedded=2" in caplog.text
 
 
@@ -254,7 +267,7 @@ def test_oversized_middle_row_is_split_below_the_formatted_model_limit(caplog) -
         "after",
     ]
     assert result["page_number"].tolist() == [2, 7, 7, 7, 9]
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 5
+    assert result["embedding"].notna().tolist() == [True] * 5
 
     child_metadata = result.loc[1:3, "metadata"].tolist()
     assert [metadata["chunk_index"] for metadata in child_metadata] == [4, 4, 4]
@@ -323,7 +336,7 @@ def test_split_children_reach_text_embedder_without_whitespace_normalization() -
 
     assert result["text"].tolist() == [" x ", "ab ", " cd"]
     assert embedder.calls == [["passage: x", "passage: ab ", "passage:  cd"]]
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True, True, True]
+    assert result["embedding"].notna().tolist() == [True, True, True]
 
 
 @pytest.mark.parametrize(("input_type", "prefix"), [("passage", "p"), ("query", "q")])
@@ -355,7 +368,7 @@ def test_whitespace_only_split_child_preserves_local_embedder_cardinality(
 
     assert result["text"].tolist() == ["x", " ab", " ", "y"]
     assert model_inputs == ["x", " ab", " ", "y"]
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True, True, True, True]
+    assert result["embedding"].notna().tolist() == [True, True, True, True]
 
 
 @pytest.mark.parametrize("text", ["😀" * 40, "中文 café 😀\n" * 20])
@@ -369,7 +382,7 @@ def test_unicode_splits_preserve_text_tokens_and_neighbors(text: str) -> None:
 
     assert result.iloc[0]["text"] == "before"
     assert result.iloc[-1]["text"] == "after"
-    assert result["text_embeddings_1b_v2_has_embedding"].all()
+    assert result["embedding"].notna().all()
     expected_inputs = ["passage: " + value for value in result["text"]]
     assert [value for batch in embedder.calls for value in batch] == expected_inputs * 2
     assert all(
@@ -469,7 +482,7 @@ def test_text_image_without_image_is_split_on_the_actual_text_route() -> None:
     assert model.calls == [["ab", "  ", "cd"]]
     assert model.call_batch_sizes == [8]
     assert result["page_number"].tolist() == [7, 7, 7]
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True, True, True]
+    assert result["embedding"].notna().tolist() == [True, True, True]
 
 
 def test_default_text_image_fallback_preserves_raw_text_and_multimodal_batch_cap() -> None:
@@ -507,7 +520,7 @@ def test_nullable_default_modality_neighbor_is_not_lost_from_a_mixed_batch() -> 
 
     assert result["row_id"].tolist() == ["before", "long", "long", "long", "nullable-neighbor", "image"]
     assert result["row_id"].tolist().count("nullable-neighbor") == 1
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 6
+    assert result["embedding"].notna().tolist() == [True] * 6
     assert model.image_calls == [["image-data"]]
 
 
@@ -565,7 +578,8 @@ def test_policy_resolver_caps_runtime_length_at_checkpoint_support(monkeypatch, 
         "nvidia/Nemotron-3-Embed-1B-BF16",
     ],
 )
-def test_default_remote_policy_uses_pinned_nemotron3_checkpoint(model_name) -> None:
+@pytest.mark.parametrize("endpoint_key", ["embedding_endpoint", "embed_invoke_url"])
+def test_default_remote_policy_uses_pinned_nemotron3_checkpoint(model_name, endpoint_key) -> None:
     from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
     from nemo_retriever.models.inference import embedding_input
 
@@ -581,11 +595,48 @@ def test_default_remote_policy_uses_pinned_nemotron3_checkpoint(model_name) -> N
         patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint) as resolve,
         patch.object(embedding_input, "load_chunk_tokenizer") as tokenizer,
     ):
-        policy = resolve_embedding_input_policy(model_name, configured_max_tokens=8192, input_type="passage")
+        policy = embedding_input.configure_embedding_input_policy(
+            {
+                endpoint_key: "https://nim.example/v1/embeddings",
+                "model_name": model_name,
+                "max_length": 8192,
+                "input_type": "passage",
+            }
+        )
 
     assert resolve.call_args.args[0] == model_id
     tokenizer.assert_called_once_with(model_id, cache_dir=None, revision=HF_MODEL_REVISIONS[model_id])
     assert policy.prefix == "passage: "
+
+
+def test_default_local_policy_uses_pinned_nemotron35_checkpoint() -> None:
+    from nemo_retriever.models import NEMOTRON_35_EMBED_BF16_MODEL
+    from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
+    from nemo_retriever.models.inference import embedding_input
+
+    model_id = NEMOTRON_35_EMBED_BF16_MODEL
+    checkpoint = Mock(
+        model_id=model_id,
+        revision=HF_MODEL_REVISIONS[model_id],
+        model_type="mistral3",
+        max_input_tokens=32768,
+        document_prefix="passage:",
+        document_prefix_declared=True,
+    )
+    with (
+        patch.object(embedding_input, "resolve_embed_model_spec", return_value=checkpoint) as resolve,
+        patch.object(embedding_input, "load_chunk_tokenizer") as tokenizer,
+        patch.object(embedding_input, "load_retrieval_template", return_value="checkpoint-template") as template,
+    ):
+        policy = embedding_input.configure_embedding_input_policy({"max_length": 8192})
+
+    assert resolve.call_args.args[0] == model_id
+    tokenizer.assert_called_once_with(model_id, cache_dir=None, revision=HF_MODEL_REVISIONS[model_id])
+    template.assert_called_once_with(model_id, HF_MODEL_REVISIONS[model_id], None)
+    assert policy.prefix == "passage:"
+    assert policy.max_tokens == 8192
+    assert policy.retrieval_template == "checkpoint-template"
+    assert policy.add_special_tokens is False
 
 
 def test_policy_resolver_rejects_missing_checkpoint_input_limit(monkeypatch, tmp_path) -> None:
@@ -661,7 +712,7 @@ def test_local_actor_reuses_checkpoint_when_local_metadata_changes(monkeypatch, 
     policy = actor._kwargs["embedding_input_policy"]
     assert policy.prefix == checkpoint.document_prefix == "document: "
     assert policy.max_tokens == checkpoint.max_input_tokens == 32
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True]
+    assert result["embedding"].notna().tolist() == [True]
     tokenizer.assert_called_once()
 
 
@@ -803,7 +854,7 @@ def test_runtime_max_length_bounds_text_for_both_models_and_backends(monkeypatch
             <= min(limit, checkpoint.max_input_tokens)
             for text in result["text"]
         )
-        assert result["text_embeddings_1b_v2_has_embedding"].all()
+        assert result["embedding"].notna().all()
         outputs.append(result)
 
     assert outputs[0]["text"].tolist() == source["text"].tolist()
@@ -849,7 +900,7 @@ def test_remote_default_text_image_fallback_preserves_raw_text_and_batch_cap() -
 
     assert sorted(len(payload["input"]) for payload in payloads) == [1, 4]
     assert sorted(text for payload in payloads for text in payload["input"]) == sorted(source_texts)
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 5
+    assert result["embedding"].notna().tolist() == [True] * 5
 
 
 @pytest.mark.parametrize(("with_policy", "split_text"), [(False, False), (True, False), (True, True)])
@@ -893,12 +944,12 @@ def test_remote_mixed_requests_preserve_image_policy_and_row_order(split_text: b
         prepare_embedding_inputs(source, policy=policy, default_modality="text_image").frame if with_policy else source
     )
     pd.testing.assert_frame_equal(result[source.columns], expected[source.columns])
-    assert result["text_embeddings_1b_v2_has_embedding"].all()
+    assert result["embedding"].notna().all()
     for _, row in result.iterrows():
         prompt = row["text"]
         if isinstance(row["_image_b64"], str):
             prompt = (prompt + "\n" if prompt else "") + "data:image/png;base64," + row["_image_b64"]
-        assert row["metadata"]["embedding"] == [float(ord(c)) for c in prompt]
+        assert np.asarray(row["embedding"], dtype=np.float32).tolist() == [float(ord(c)) for c in prompt]
     for payload in payloads:
         modalities = payload["modality"]
         modalities = [modalities] * len(payload["input"]) if isinstance(modalities, str) else modalities
@@ -926,7 +977,7 @@ def test_remote_image_batch_with_cached_text_policy_keeps_end_truncation(modalit
             embedding_input_policy=policy,
         )
 
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True]
+    assert result["embedding"].notna().tolist() == [True]
     assert len(payloads) == 1
     assert payloads[0]["truncate"] == "END"
 
@@ -996,8 +1047,8 @@ def test_local_and_remote_adapters_apply_the_same_split_policy() -> None:
     )
     assert not any(column.startswith("_embedding_input_") for column in local.columns)
     assert not any(column.startswith("_embedding_input_") for column in remote.columns)
-    assert local["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 5
-    assert remote["text_embeddings_1b_v2_has_embedding"].tolist() == [True] * 5
+    assert local["embedding"].notna().tolist() == [True] * 5
+    assert remote["embedding"].notna().tolist() == [True] * 5
     assert remote_payloads and all(payload["truncate"] == "NONE" for payload in remote_payloads)
 
 
@@ -1046,7 +1097,7 @@ def test_persisted_split_child_with_nullable_source_field_uses_exact_metadata_co
     result = embed_text_main_text_embed(row, model=model)
 
     assert model.calls == [["ab"]]
-    assert result["text_embeddings_1b_v2_has_embedding"].tolist() == [True]
+    assert result["embedding"].notna().tolist() == [True]
 
 
 def test_persisted_split_content_is_admitted_even_when_source_column_is_stale() -> None:

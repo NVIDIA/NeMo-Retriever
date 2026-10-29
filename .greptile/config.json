@@ -48,6 +48,11 @@
       "severity": "high"
     },
     {
+      "id": "no-private-infrastructure-references",
+      "rule": "Treat every tracked file as public, including documentation, examples, comments, notebooks, agent guidance, and setup guides. Flag added links or references to private repositories or internal services, including private infrastructure details such as hostnames, repository namespaces or paths, endpoints, package sources, and deployment-specific setup instructions. General tool interfaces, local setup commands, and safeguards are not violations by themselves when they do not disclose private infrastructure details. When a workflow moves to a private system, recommend a generic description and supported public documentation or checked-in examples; do not request a link to the private replacement. Do not repeat private details in review comments; refer to the affected file and lines instead.",
+      "severity": "high"
+    },
+    {
       "id": "no-circular-cross-package-imports",
       "rule": "The package dependency direction is strictly layered: api/ is the base (no upstream imports); client/ and src/ are parallel mid-level packages that each depend only on api/ -- client/ must NEVER import from src/, and src/ must NEVER import from client/; nemo_retriever/ is the top-level package that may depend on all three. Never import from a higher-level package into a lower-level one.",
       "scope": ["src/**/*.py", "api/**/*.py", "client/**/*.py", "nemo_retriever/**/*.py"],

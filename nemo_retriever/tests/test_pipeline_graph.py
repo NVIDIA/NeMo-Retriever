@@ -31,6 +31,7 @@ from nemo_retriever.common.params import (
     EmbedParams,
     ExtractParams,
     TextChunkParams,
+    VdbUploadParams,
     VideoFrameTextDedupParams,
 )
 from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
@@ -64,6 +65,30 @@ def test_post_extract_graph_can_skip_content_reshape() -> None:
     graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=False)
 
     assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+def test_post_extract_graph_wires_embed_output_column_to_vdb_upload(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nemo_retriever.graph.ingestor_runtime as runtime
+
+    class _CaptureUploadOperator(AbstractOperator):
+        def preprocess(self, data: Any, **kwargs: Any) -> Any:
+            return data
+
+        def process(self, data: Any, **kwargs: Any) -> Any:
+            return data
+
+        def postprocess(self, data: Any, **kwargs: Any) -> Any:
+            return data
+
+    monkeypatch.setattr(runtime, "IngestVdbOperator", _CaptureUploadOperator)
+    graph = build_post_extract_graph(
+        embed_params=EmbedParams(output_column="vec"),
+        vdb_upload_params=VdbUploadParams(),
+        reshape_content_before_embed=False,
+    )
+
+    upload = next(node.operator for node in _graph_nodes(graph) if isinstance(node.operator, _CaptureUploadOperator))
+    assert upload.embedding_column == "vec"
 
 
 def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
@@ -140,6 +165,7 @@ def test_auto_remote_page_embedding_without_local_extraction_resolves_to_cpu() -
     graph = build_graph(
         extraction_mode="auto",
         extract_params=ExtractParams(
+            method="pdfium",
             extract_text=True,
             extract_images=False,
             extract_tables=False,
@@ -366,6 +392,40 @@ class TestNode:
     def test_node_infers_private_constructor_attrs(self):
         node = Node(ParamsHolderOperator({"value": 9}))
         assert node.operator_kwargs == {"params": {"value": 9}}
+
+    def test_node_preserves_annotated_embedding_constructor(self):
+        from ray import cloudpickle
+
+        from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor
+
+        params = EmbedParams(embed_invoke_url="http://unused")
+        node = Node(_BatchEmbedActor(params=params))
+        assert node.operator_kwargs == {"params": params}
+        actor_class, kwargs = cloudpickle.loads(cloudpickle.dumps((node.operator_class, node.operator_kwargs)))
+        assert actor_class(**kwargs)._params == params
+
+    def test_node_preserves_annotated_cpu_embedding_constructor(self):
+        from ray import cloudpickle
+
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
+
+        params = EmbedParams(embed_invoke_url="http://unused")
+        node = Node(_BatchEmbedCPUActor(params=params))
+        assert node.operator_kwargs == {"params": params}
+        actor_class, kwargs = cloudpickle.loads(cloudpickle.dumps((node.operator_class, node.operator_kwargs)))
+        assert actor_class(**kwargs)._params == params
+
+    def test_node_preserves_annotated_table_structure_cpu_constructor(self, monkeypatch):
+        from ray import cloudpickle
+
+        from nemo_retriever.operators.extract.table import cpu_actor
+
+        monkeypatch.setattr(cpu_actor, "probe_endpoint", lambda *args, **kwargs: None)
+        operator = cpu_actor.TableStructureCPUActor(table_structure_invoke_url="http://unused")
+        node = Node(operator)
+        assert node.operator_kwargs["table_structure_invoke_url"] == "http://unused"
+        actor_class, kwargs = cloudpickle.loads(cloudpickle.dumps((node.operator_class, node.operator_kwargs)))
+        assert actor_class(**kwargs)._table_structure_invoke_url == "http://unused"
 
     def test_node_rejects_non_operator(self):
         with pytest.raises(TypeError, match="operator must be an AbstractOperator"):
@@ -1779,7 +1839,10 @@ class TestRayDataExecutor:
         executor = RayDataExecutor(g, node_overrides=overrides)
         assert executor._node_overrides == overrides
 
-    def test_ingest_rejects_invalid_data_type(self):
+    def test_ingest_rejects_invalid_data_type(self, monkeypatch):
+        import ray
+
+        monkeypatch.setattr("nemo_retriever.graph.executor.ensure_local_ray_runtime", lambda _address: ray)
         g = Graph()
         g.add_chain(AddOperator(1))
         executor = RayDataExecutor(g)

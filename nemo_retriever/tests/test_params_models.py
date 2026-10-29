@@ -51,8 +51,8 @@ class TestExtractParams:
                 ExtractParams(**{field: value})
 
     def test_normal_and_selected_parse_configurations_are_valid(self) -> None:
-        assert ExtractParams().method == "pdfium"
-        assert ExtractParams(invoke_url="http://generic").method == "pdfium"
+        assert ExtractParams().method == "pdfium_hybrid"
+        assert ExtractParams(invoke_url="http://generic").method == "pdfium_hybrid"
         params = ExtractParams(
             method="nemotron_parse",
             nemotron_parse_invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -81,6 +81,11 @@ class TestExtractParams:
         assert "nvidia/NVIDIA-Nemotron-Parse-v1.2" in error
         assert "nvidia/NVIDIA-Nemotron-Parse-2.0" in error
         assert "nemotron_parse_invoke_url" in error
+
+    @pytest.mark.parametrize("model_id", ["nvidia/NVIDIA-Nemotron-Parse-v1.2", "nvidia/Nemotron-3.5-Parse"])
+    def test_supported_local_parse_models_are_accepted(self, model_id: str) -> None:
+        params = ExtractParams(method="nemotron_parse", nemotron_parse_model=model_id)
+        assert params.nemotron_parse_model == model_id
 
     @pytest.mark.parametrize(
         "model",

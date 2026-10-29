@@ -202,8 +202,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             and config.local_models.enabled
             and config.local_models.warmup_on_startup
         ):
-            import asyncio
-
             from nemo_retriever.service.services.pipeline_executor import (
                 warmup_process_pool_workers,
             )
@@ -230,6 +228,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await shutdown_work_broker()
     await shutdown_proxy()
     await shutdown_pipeline_pool()
+    local_reranker = getattr(app.state, "local_reranker", None)
+    if local_reranker is not None:
+        unload = getattr(local_reranker, "unload", None)
+        if callable(unload):
+            await asyncio.to_thread(unload)
+        app.state.local_reranker = None
     shutdown_sidecar_store()
     shutdown_event_bus()
     shutdown_job_tracker()

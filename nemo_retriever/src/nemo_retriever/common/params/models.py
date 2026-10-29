@@ -13,7 +13,6 @@ from urllib.parse import urlparse
 
 from upath import UPath
 
-from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -26,7 +25,7 @@ from pydantic import (
 
 from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
 from nemo_retriever.common.params.utils import (
-    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
+    NEMOTRON_PARSE_LOCAL_MODELS,
     validate_nemotron_parse_endpoint_list,
 )
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
@@ -344,7 +343,14 @@ class IngestExecuteParams(_ParamsModel):
     show_progress: bool = False
     return_failures: bool = False
     return_traces: bool = False
-    return_results: bool = True
+    return_results: bool | None = Field(
+        default=None,
+        description=(
+            "Return full result rows when true. None selects the context default: "
+            "summary counts for eligible batch VDB uploads, metadata only for service ingestion, "
+            "and full rows for other graph pipelines."
+        ),
+    )
     result_schema: Literal["legacy", "compact"] = "legacy"
     return_embeddings: bool = False
     return_images: bool = False
@@ -480,8 +486,7 @@ class LanceDbParams(_ParamsModel):
     metric: str = "l2"
     num_partitions: int = 16
     num_sub_vectors: int = 256
-    embedding_column: str = "text_embeddings_1b_v2"
-    embedding_key: str = "embedding"
+    embedding_column: str = "embedding"
     include_text: bool = True
     text_column: str = "text"
     hybrid: bool = False
@@ -499,6 +504,13 @@ class BatchTuningParams(_ParamsModel):
     pdf_extract_num_cpus: float = 2
     pdf_extract_workers: Optional[int] = None
     page_elements_batch_size: int = 24
+    page_elements_repartition: bool = Field(
+        default=True,
+        description=(
+            "Whether to derive the Page Elements block-size target. False skips the target without changing "
+            "batch sizes or worker counts."
+        ),
+    )
     detect_batch_size: int = 24
     ocr_inference_batch_size: Optional[int] = None
     page_elements_workers: Optional[int] = None
@@ -508,9 +520,28 @@ class BatchTuningParams(_ParamsModel):
     ocr_cpus_per_actor: float = 1
     table_structure_workers: Optional[int] = None
     table_structure_batch_size: Optional[int] = None
+    table_structure_repartition: bool = Field(
+        default=True,
+        description=(
+            "Whether to derive the Table Structure block-size target. False skips the target without changing "
+            "batch sizes or worker counts."
+        ),
+    )
     table_structure_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
+    embed_reshape_workers: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Number of workers for content collapse/explode before embedding. None uses executor defaults.",
+    )
     embed_batch_size: int = 32
+    embed_repartition: bool = Field(
+        default=True,
+        description=(
+            "Whether to derive the embedding block-size target. False skips the target without changing "
+            "batch sizes or worker counts."
+        ),
+    )
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
@@ -546,7 +577,7 @@ class ExtractParams(_ParamsModel):
 
     # Extraction options
     method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
-        default="pdfium",
+        default="pdfium_hybrid",
         description=(
             "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
             "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
@@ -619,10 +650,10 @@ class ExtractParams(_ParamsModel):
             if (
                 not parse_endpoints
                 and self.nemotron_parse_model is not None
-                and self.nemotron_parse_model != NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+                and self.nemotron_parse_model not in NEMOTRON_PARSE_LOCAL_MODELS
             ):
                 raise ValueError(
-                    f"Local Nemotron Parse supports only `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` in this release; "
+                    f"Local Nemotron Parse supports only {', '.join(NEMOTRON_PARSE_LOCAL_MODELS)} in this release; "
                     f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
                     "to use a compatible remote model."
                 )
@@ -653,10 +684,7 @@ class EmbedParams(_ParamsModel):
     structured_elements_modality: Optional[str] = None  # per-type override for table/chart/infographic rows
     text_column: str = "text"
     inference_batch_size: int = 32
-    output_column: str = "text_embeddings_1b_v2"
-    embedding_dim_column: str = "text_embeddings_1b_v2_dim"
-    has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
-    embed_output_column: str = "text_embeddings_1b_v2"
+    output_column: str = "embedding"
     embed_inference_batch_size: int = 16
 
     local_ingest_embed_backend: str = (
@@ -1076,23 +1104,3 @@ class DedupParams(_ParamsModel):
     content_hash: bool = True
     bbox_iou: bool = True
     iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-
-
-# ---------------------------------------------------------------------------
-# Structured (database) ingestion params
-# ---------------------------------------------------------------------------
-
-
-class TabularExtractParams(_ParamsModel):
-    """Params for step 1: extract schema metadata and write to Neo4j.
-
-    Covers SQLAlchemy reflection of a live database and/or parsing of
-    pre-existing SQL DDL/query files.  Produces Database, Schema, Table,
-    Column, View and Query nodes together with their relationships.
-    The Neo4j connection is provided by get_neo4j_conn() (see
-    tabular_data.neo4j) and is not configured here.
-    """
-
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
-
-    connector: Optional[SQLDatabase] = None

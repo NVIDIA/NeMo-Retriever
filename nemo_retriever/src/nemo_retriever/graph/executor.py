@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterator
 import math
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
+import nvtx
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -49,6 +50,19 @@ _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 # not capacity held by another active workload.
 _RESOURCE_RELEASE_WAIT_SECONDS = 1.0
 _RESOURCE_RELEASE_POLL_SECONDS = 0.01
+
+
+def resolve_batch_return_results(graph: Graph, return_results: bool | None) -> bool:
+    """Default eligible terminal VDB graphs to summary mode before execution."""
+    if return_results is not None:
+        return_results = bool(return_results)
+    if return_results is True:
+        return True
+    nodes = RayDataExecutor._linearize(graph)
+    sink_index = RayDataExecutor._stream_ingest_index(nodes, require_terminal=return_results is False)
+    if return_results is False:
+        return False
+    return sink_index is None or sink_index != len(nodes) - 1
 
 
 def _contains_null_arrow_child(data_type: Any) -> bool:
@@ -133,6 +147,7 @@ def arrow_table_to_pandas(table: Any) -> pd.DataFrame:
     return _normalize_object_tensor_columns(_materialize_row_unsafe_columns(table, frame))
 
 
+@nvtx.annotate("nrl.batch::ray.materialize", color="blue")
 def ray_dataset_to_pandas(dataset: ray.data.Dataset) -> pd.DataFrame:
     """Materialize a Ray Dataset without returning malformed Arrow arrays.
 
@@ -658,7 +673,7 @@ class RayDataExecutor(AbstractExecutor):
         self,
         data: Any,
         *,
-        return_results: bool = True,
+        return_results: bool | None = None,
         **kwargs: Any,
     ) -> Any:
         """Run the graph and complete any streaming VDB write.
@@ -667,10 +682,14 @@ class RayDataExecutor(AbstractExecutor):
         ----------
         data : Any
             Input accepted by ``build_dataset``.
-        return_results : bool, default True
-            Return the full result frame. If false, release consumed batches
-            and return one row with ``input_rows`` and ``submitted_records``.
-            Submitted records are counted before backend filtering.
+        return_results : bool or None, default None
+            With ``None``, return a one-row summary when the graph has one
+            streaming-capable VDB upload as its final stage, and full result
+            rows otherwise. Set ``True`` to retain full results. Set ``False``
+            to require that terminal VDB configuration. Summary mode releases
+            consumed batches and returns ``input_rows`` and
+            ``submitted_records`` counts. Submitted records are counted before
+            backend filtering.
 
         Returns
         -------
@@ -688,13 +707,14 @@ class RayDataExecutor(AbstractExecutor):
         if kwargs:
             unsupported = ", ".join(sorted(kwargs))
             raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
-        return self._ingest(data, return_results=return_results)
+        return self._ingest(data, return_results=resolve_batch_return_results(self.graph, return_results))
 
+    @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest(
         self,
         data: Any,
         *,
-        return_results: bool = True,
+        return_results: bool,
         validate_batch: Callable[[pd.DataFrame], None] | None = None,
     ) -> Any:
         """Execute ingestion with optional stage-error validation before upload."""
@@ -759,7 +779,8 @@ class RayDataExecutor(AbstractExecutor):
             return ray_dataset_to_pandas(downstream)
 
         if terminal_frames:
-            return pd.concat(terminal_frames, ignore_index=True)
+            with nvtx.annotate("nrl.batch::result.concat", color="blue"):
+                return pd.concat(terminal_frames, ignore_index=True)
         schema = dataset.schema()
         names = getattr(schema, "names", None)
         return pd.DataFrame(columns=list(names) if names is not None else None)

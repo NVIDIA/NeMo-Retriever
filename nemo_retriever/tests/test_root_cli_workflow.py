@@ -13,6 +13,7 @@ import os
 import re
 import sys
 from typing import Any
+from unittest.mock import MagicMock
 from unittest.mock import create_autospec
 
 import pytest
@@ -53,6 +54,7 @@ def _successful_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
     # Most tests fake GraphIngestor; default row counts should look like a successful write.
     counts = itertools.count(1)
     monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: next(counts))
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: True)
 
 
 def _make_fake_ingestor() -> Any:
@@ -162,6 +164,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
     assert extract_params.extract_infographics is False
     assert extract_params.extract_page_as_image is True
     assert fake_ingestor.extract.call_args.kwargs == {}
+    # Graph actor selection, not the CLI driver, chooses the default checkpoint.
     assert fake_ingestor.embed.call_args.args == ()
     vdb_upload_params = fake_ingestor.vdb_upload.call_args.args[0]
     assert vdb_upload_params.vdb_op == "lancedb"
@@ -170,7 +173,6 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "table_name": "nemo-retriever",
         "overwrite": True,
         "hybrid": True,
-        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -194,6 +196,21 @@ def test_root_ingest_without_mode_defaults_to_local(monkeypatch, tmp_path) -> No
     assert fake_ingestor.files.call_args.args == ([str(document)],)
 
 
+def test_explicit_n3_keeps_legacy_index_identity(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "old-model.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **kwargs: fake_ingestor)
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "local", str(document), "--embed-model-name", NEMOTRON_3_EMBED_MODEL],
+    )
+    assert result.exit_code == 0, result.output
+    params = fake_ingestor.vdb_upload.call_args.args[0]
+    assert params.vdb_kwargs["embedding_model_name"] == NEMOTRON_3_EMBED_MODEL
+    assert "embedding_model_revision" not in params.vdb_kwargs
+
+
 def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "default-local-options.pdf"
@@ -212,7 +229,6 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "table_name": "nemo-retriever",
         "overwrite": False,
         "hybrid": True,
-        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
 
 
@@ -302,7 +318,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
-    assert captured["ingest_kwargs"] == {"return_results": True}
+    assert captured["ingest_kwargs"] == {"return_results": False}
     assert "through retriever service http://retriever-service:7670" in result.output
 
 
@@ -446,7 +462,12 @@ def test_root_ingest_service_mode_rejects_local_only_options(tmp_path, flag: str
     assert flag in result.output
 
 
-def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize("requested_model", [None, "nvidia/Nemotron-3.5-Embed-1B-NVFP4"])
+def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path, requested_model) -> None:
+    from nemo_retriever.models.hf_model_registry import get_hf_revision
+
+    driver_probe = MagicMock(side_effect=AssertionError("Batch defaults must not probe driver CUDA"))
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
     fake_ingestor = _make_fake_ingestor()
     create_calls: list[dict[str, Any]] = []
     first_document = tmp_path / "a.pdf"
@@ -462,19 +483,25 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
     monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
     monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 12)
 
-    result = RUNNER.invoke(
-        cli_main.app,
-        [
-            "ingest",
-            "batch",
-            str(first_document),
-            str(globbed_document.parent),
-            "--lancedb-uri",
-            "/tmp/lancedb",
-            "--table-name",
-            "docs",
-        ],
-    )
+    arguments = [
+        "ingest",
+        "batch",
+        str(first_document),
+        str(globbed_document.parent),
+        "--lancedb-uri",
+        "/tmp/lancedb",
+        "--table-name",
+        "docs",
+    ]
+    if requested_model:
+        arguments.extend(["--embed-model-name", requested_model])
+    result = RUNNER.invoke(cli_main.app, arguments)
+
+    if requested_model:
+        assert fake_ingestor.embed.call_args.args[0].model_name == requested_model
+    else:
+        assert fake_ingestor.embed.call_args.args == ()
+    driver_probe.assert_not_called()
 
     assert result.exit_code == 0
     assert create_calls == [{"run_mode": "batch"}]
@@ -486,7 +513,15 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
-        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
+        **(
+            {
+                "embedding_model_name": requested_model,
+                "embedding_model_revision": get_hf_revision(requested_model),
+                "vector_dim": None,
+            }
+            if requested_model
+            else {}
+        ),
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -506,7 +541,6 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "table_name": "nemo-retriever",
         "overwrite": False,
         "hybrid": True,
-        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
     }
 
 
@@ -1099,6 +1133,66 @@ def test_execute_ingest_plan_requires_vdb_stage_for_row_verification(monkeypatch
 
     with pytest.raises(ValueError, match="Row verification checks the effective VDB upload target"):
         ingest_execution.execute_ingest_plan(plan)
+
+
+@pytest.mark.parametrize("return_results", [None, True, False])
+def test_execute_ingest_plan_counts_summary_rows_and_forwards_option(monkeypatch, tmp_path, return_results) -> None:
+    import pandas as pd
+
+    fake_ingestor = _make_fake_ingestor()
+    fake_ingestor.ingest.return_value = pd.DataFrame([{"input_rows": 7, "submitted_records": 5}])
+    document = tmp_path / "summary.txt"
+    document.write_text("document")
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    counts = iter([2, 7])
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: next(counts))
+    plan = ingest_plan.resolve_ingest_plan(
+        ingest_plan.IngestPlanRequest(
+            source=ingest_plan.IngestSourceOptions(documents=[str(document)]),
+            runtime=ingest_plan.IngestRuntimeOptions(run_mode="batch"),
+            storage=ingest_plan.IngestStorageOptions(overwrite=False),
+        )
+    )
+
+    execution = ingest_execution.execute_ingest_plan(plan, return_results=return_results)
+
+    fake_ingestor.ingest.assert_called_once_with(return_results=return_results)
+    assert execution.result_n_rows == 7
+    assert execution.n_rows == 7
+    assert execution.to_summary_dict()["result_n_rows"] == 7
+
+
+def test_root_ingest_rejects_zero_summary_with_existing_table(monkeypatch, tmp_path) -> None:
+    import pandas as pd
+
+    document = tmp_path / "empty.txt"
+    document.write_text("document")
+    fake_ingestor = _make_fake_ingestor()
+    fake_ingestor.ingest.return_value = pd.DataFrame([{"input_rows": 0, "submitted_records": 0}])
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 9)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", str(document), "--append"])
+
+    assert result.exit_code != 0
+    assert "produced 0 rows before LanceDB write" in result.output
+
+
+def test_root_ingest_reports_summary_input_rows(monkeypatch, tmp_path) -> None:
+    import pandas as pd
+
+    document = tmp_path / "summary.txt"
+    document.write_text("document")
+    fake_ingestor = _make_fake_ingestor()
+    fake_ingestor.ingest.return_value = pd.DataFrame([{"input_rows": 7, "submitted_records": 5}])
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    counts = iter([2, 7])
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: next(counts))
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", str(document), "--append"])
+
+    assert result.exit_code == 0, result.output
+    assert "7 row(s)" in result.output
 
 
 def test_root_ingest_reports_empty_directory_error(tmp_path) -> None:
@@ -1874,7 +1968,8 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
-def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(("index_mode", "hybrid"), [("hybrid", True), ("dense", False)])
+def test_root_ingest_index_mode_passes_explicit_mode_into_vdb_kwargs(monkeypatch, tmp_path, index_mode, hybrid) -> None:
     fake_ingestor = _make_fake_ingestor()
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF-1.4\n")
@@ -1892,7 +1987,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
             "--table-name",
             "docs",
             "--index-mode",
-            "hybrid",
+            index_mode,
         ],
     )
 
@@ -1901,8 +1996,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "uri": "/tmp/lancedb",
         "table_name": "docs",
         "overwrite": True,
-        "hybrid": True,
-        "embedding_model_name": "nvidia/nemotron-3-embed-1b",
+        "hybrid": hybrid,
     }
 
 

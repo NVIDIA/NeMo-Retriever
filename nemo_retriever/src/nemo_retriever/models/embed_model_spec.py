@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Resolve dense Nemotron embedding checkpoints from immutable HF config."""
+"""Resolve dense embedding checkpoints (Nemotron and Gemma 3) from immutable HF config."""
 
 from __future__ import annotations
 
@@ -18,9 +18,11 @@ from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 EmbedModelFamily = Literal["text", "vl"]
 
 _MODEL_PROFILES: dict[str, tuple[EmbedModelFamily, str]] = {
+    "gemma3_text": ("text", "Gemma3TextModel"),
     "llama_bidirec": ("text", "LlamaBidirectionalModel"),
     "llama_nemotron_vl": ("vl", "LlamaNemotronVLModel"),
     "ministral3": ("text", "Ministral3Model"),
+    "mistral3": ("vl", "Mistral3Model"),
 }
 _DEFAULT_QUERY_PREFIX = "query: "
 _DEFAULT_DOCUMENT_PREFIX = "passage: "
@@ -45,6 +47,7 @@ class EmbedModelSpec:
     max_input_tokens: int | None = None
     query_prefix_declared: bool = False
     document_prefix_declared: bool = False
+    model_type: str | None = None
 
 
 def _read_config(path: Path, *, model_id: str) -> dict[str, Any]:
@@ -155,7 +158,7 @@ def _spec_from_config(
         supported = ", ".join(sorted(_MODEL_PROFILES))
         raise ValueError(
             f"Embedding model {model_id!r} uses unsupported model_type {model_type!r}; "
-            f"supported Nemotron embed model types are: {supported}."
+            f"supported dense embed model types are: {supported}."
         )
     family, expected_architecture = profile
 
@@ -172,7 +175,17 @@ def _spec_from_config(
             "dense Ministral3 embedding profiles require is_causal=false."
         )
 
-    dimension_config = config.get("llm_config") if family == "vl" else config
+    dimension_config = (
+        config.get("text_config")
+        if model_type == "mistral3"
+        else (config.get("llm_config") if family == "vl" else config)
+    )
+    if model_type == "mistral3" and (
+        not isinstance(dimension_config, dict)
+        or dimension_config.get("model_type") != "ministral3"
+        or dimension_config.get("is_causal") is not False
+    ):
+        raise ValueError(f"Embedding model {model_id!r} requires a bidirectional Ministral3 text_config.")
     dimension = dimension_config.get("hidden_size") if isinstance(dimension_config, dict) else None
     if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
         raise ValueError(
@@ -180,20 +193,30 @@ def _spec_from_config(
             "a positive hidden_size is required."
         )
 
-    pooling = str(config.get("pooling") or "").strip().lower()
-    if pooling != "avg":
-        raise ValueError(
-            f"Embedding model {model_id!r} uses unsupported pooling {pooling!r}; "
-            "dense Nemotron embedding profiles require 'avg'."
-        )
+    requires_vllm = False
+    if model_type == "gemma3_text":
+        if config.get("use_bidirectional_attention") is not True:
+            raise ValueError(
+                f"Embedding model {model_id!r} uses unsupported "
+                f"use_bidirectional_attention={config.get('use_bidirectional_attention')!r}; "
+                "Gemma 3 embedding profiles require use_bidirectional_attention=true."
+            )
+        # Gemma embedders pool and project through Sentence Transformers modules, which only vLLM applies.
+        requires_vllm = True
+    else:
+        pooling = str(config.get("pooling") or "").strip().lower()
+        if pooling != "avg":
+            raise ValueError(
+                f"Embedding model {model_id!r} uses unsupported pooling {pooling!r}; "
+                "dense Nemotron embedding profiles require 'avg'."
+            )
 
     quantization_config = config.get("quantization_config")
     quantization = None
-    requires_vllm = False
     if isinstance(quantization_config, dict):
         quant_method = str(quantization_config.get("quant_method") or "").strip().lower()
         quantization = str(quantization_config.get("quant_algo") or quant_method or "").strip() or None
-        if quant_method == "modelopt":
+        if quant_method in {"modelopt", "compressed-tensors"}:
             requires_vllm = True
 
     query_prefix, document_prefix, query_prefix_declared, document_prefix_declared = _prompt_prefixes(prompt_config)
@@ -220,6 +243,7 @@ def _spec_from_config(
         document_prefix_declared=document_prefix_declared,
         quantization=quantization,
         requires_vllm=requires_vllm,
+        model_type=model_type,
     )
 
 

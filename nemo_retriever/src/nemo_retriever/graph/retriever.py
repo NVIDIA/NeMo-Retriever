@@ -13,7 +13,6 @@ import pandas as pd
 
 from nemo_retriever.models import (
     NEMOTRON_3_EMBED_MODEL,
-    VL_RERANK_MODEL,
     resolve_embed_model,
     resolve_embed_model_spec,
 )
@@ -29,6 +28,7 @@ from nemo_retriever.common.vdb.lancedb_capabilities import (
 )
 from nemo_retriever.common.vdb.records import RetrievalHit, normalize_retrieval_results
 from nemo_retriever.query.shaping import shape_query_hits
+from nemo_retriever.query.expansion import QUERY_INDEX_COLUMN
 from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,9 @@ def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
 
 def _default_rerank_actor_kwargs() -> dict[str, Any]:
     return {
-        "model_name": VL_RERANK_MODEL,
+        # The concrete CPU/GPU actor selects the remote/local default. Do not
+        # send a local-only checkpoint to implicit hosted CPU fallback.
+        "model_name": None,
         "query_column": "query",
         "text_column": "text",
         "score_column": "rerank_score",
@@ -113,8 +115,8 @@ class Retriever:
         from nemo_retriever.common.params import EmbedParams
 
         base: dict[str, Any] = {
-            "model_name": NEMOTRON_3_EMBED_MODEL,
-            "embed_model_name": NEMOTRON_3_EMBED_MODEL,
+            "model_name": None,
+            "embed_model_name": None,
             "input_type": "query",
             "text_column": "text",
             "inference_batch_size": 32,
@@ -131,7 +133,7 @@ class Retriever:
             and overrides["local_ingest_embed_backend"] is None
         ):
             model_id = str(merged.get("embed_model_name") or merged.get("model_name") or "").strip()
-            if resolve_embed_model(model_id) == NEMOTRON_3_EMBED_MODEL:
+            if not model_id or resolve_embed_model(model_id) == NEMOTRON_3_EMBED_MODEL:
                 merged["local_ingest_embed_backend"] = "vllm"
             else:
                 spec = resolve_embed_model_spec(model_id, revision=merged.get("embed_model_revision"))
@@ -176,6 +178,8 @@ class Retriever:
         vdb_init = _coerce_vdb_init(self.vdb_kwargs)
         retrieve = RetrieveVdbOperator(
             explode_for_rerank=self.rerank,
+            _query_text_column=str(embed_params.text_column),
+            embedding_column=embed_params.output_column,
             **vdb_init,
         )
 
@@ -226,10 +230,10 @@ class Retriever:
             # actual retrieval to their configured inner retriever.
             text_col = str({**dict(self.embed_kwargs or {}), **dict(embed_extra or {})}.get("text_column") or "text")
         df = pd.DataFrame({text_col: query_texts})
-
-        # Hybrid retrieval relies on these ordered query strings staying aligned
-        # with the embedded rows produced from ``df``. If this query graph grows
-        # distributed/shuffled stages, carry row-local query text or IDs instead.
+        if self.graph is None:
+            # Embedding admission can expand a long query into several rows.
+            # Preserve its positional identity, including repeated query strings.
+            df[QUERY_INDEX_COLUMN] = range(len(query_texts))
         graph = self._get_graph(embed_extra=embed_extra)
 
         exec_kwargs: dict[str, Any] = {
@@ -394,7 +398,10 @@ class Retriever:
         configured_model = self._embedding_model_from_kwargs(self.embed_kwargs)
         explicit_model = runtime_model or configured_model
         model_name = explicit_model or index_model
-        model_name = resolve_embed_model(model_name)
+        # A persisted revision describes a concrete checkpoint, not a logical
+        # precision alias that can be reselected on the query driver's GPUs.
+        if not (explicit_model is None and index_revision):
+            model_name = resolve_embed_model(model_name)
         resolved["model_name"] = model_name
         resolved["embed_model_name"] = model_name
         if runtime_model and "embed_model_revision" not in resolved:
@@ -671,11 +678,6 @@ class Retriever:
     def pipeline(self, *, top_k: Optional[int] = None) -> "RetrieverPipelineBuilder":
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
         return RetrieverPipelineBuilder(self, top_k=effective_top_k)
-
-    def generate_sql(self, query: str) -> str:
-        from nemo_retriever.tabular_data.retrieval import generate_sql
-
-        return generate_sql(query)
 
 
 class RetrieverPipelineBuilder:

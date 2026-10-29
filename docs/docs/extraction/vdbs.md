@@ -65,17 +65,25 @@ result = (
 Bare `.vdb_upload()` writes to table `nemo-retriever`. Default `Retriever()`
 queries that table.
 
-You can omit `.embed()` if a custom stage provides an embedding in `metadata["embedding"]` or `text_embeddings_1b_v2["embedding"]`. Dense upload fails closed if any searchable row in a nonempty batch is missing an embedding. This includes a mixed batch where other rows have embeddings: the library raises `VdbUploadError`, a `ValueError` subclass, without committing the embedded subset. An extraction that produces no content completes without uploading records. For automatic handling of overlength text before upload, refer to [Text inputs that exceed the model limit](embedding.md#text-input-overflow).
+By default, `.vdb_upload()` creates new or overwritten tables as hybrid tables, with a full-text search index on `text` next to the vector index. When it appends, it keeps the existing table's mode. To create a dense-only table, set `"hybrid": False` in `vdb_kwargs`.
+
+`.embed()` writes each vector to `EmbedParams.output_column` (default `embedding`) as a list of `float32` values. Its corresponding error column (default `embedding_error`) is null on success or when there is no embeddable content. It contains a one-line message only when embedding fails.
+
+By default, upload reads vectors from `embedding`; when `.embed()` uses a custom `EmbedParams.output_column`, upload reads from that column. If you omit `.embed()`, a custom stage must write its vectors to `embedding`. In that case, set `embedding_model_name` in `vdb_kwargs` so that `Retriever` can verify query compatibility. Dense upload fails closed if any searchable row in a nonempty batch is missing an embedding. This includes a mixed batch where other rows have embeddings: the library raises `VdbUploadError`, a `ValueError` subclass, without committing the embedded subset. An extraction that produces no content completes without uploading records. For automatic handling of overlength text before upload, refer to [Text inputs that exceed the model limit](embedding.md#text-input-overflow).
 
 ## Keep the embedding model aligned { #lancedb-embedding-model-compatibility }
 
-Dense and hybrid retrieval require query and stored vectors from the same embedding model. New LanceDB tables record the canonical model in `nemo_retriever.embedding_model_name`. A local `Retriever` uses that model automatically and rejects an explicit query model that differs from it. Dense and hybrid queries also reject legacy or third-party tables that do not contain this metadata because compatibility cannot be verified. Local sparse retrieval is exempt because it does not create a dense query vector.
+Dense and hybrid retrieval require query and stored vectors from the same embedding model. New LanceDB tables record the canonical model in `nemo_retriever.embedding_model_name`. In the Python API, `.embed().vdb_upload()` resolves the concrete local checkpoint and immutable revision after selecting the embedding backend. The embedding actor and LanceDB writer share that identity, including when you omit the model override. Explicit `embedding_model_name` settings in `vdb_kwargs` remain authoritative. Remote and CPU embedding defaults remain unchanged. A local `Retriever` uses the recorded model and revision automatically and rejects an explicit query model that differs from it. Dense and hybrid queries also reject legacy or third-party tables that do not contain this metadata because compatibility cannot be verified. Local sparse retrieval is exempt because it does not create a dense query vector.
 
-The default changed from `nvidia/llama-nemotron-embed-vl-1b-v2` to `nvidia/nemotron-3-embed-1b`. Before you migrate a persistent table:
+The local checkpoint default on this development branch is Nemotron 3.5 Embed 1B. Remote and Helm embedding defaults remain Nemotron 3 Embed 1B. A default change does not migrate an existing table. Before you change the model used by a persistent table:
 
 1. Back up the LanceDB directory or persistent volume and retain the original corpus and ingest configuration.
 2. To keep the existing embedding space, query a tagged table with its recorded model. For a service deployment, explicitly set `serviceConfig.vectordb.embedModel` to the model used to create the table before startup.
 3. To adopt the new default, rebuild the table and re-ingest the complete corpus. For a CLI-managed table, run `retriever ingest` with the same URI and table name and pass `--overwrite` explicitly. Do not append new-model embeddings to the old table.
+
+New local Nemotron 3.5 indexes record the resolved precision-specific checkpoint and its pinned revision. Query uses that recorded identity rather than choosing a different precision from the current GPU. BF16 and NVFP4 checkpoint IDs remain distinct for index compatibility checks.
+
+Ray batch execution conservatively selects BF16 for an automatic checkpoint choice because the driver's CUDA devices do not establish worker GPU compatibility. An explicit precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision.
 
 An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 
@@ -113,10 +121,17 @@ For URI, table name, and other parameters, refer to the [Python API guide](nemo-
 
 ### Return a batch ingest summary { #batch-ingest-summary }
 
-When you only need to index documents, pass `return_results=False` to
-`.ingest()` in batch mode. This returns a one-row pandas `DataFrame` with
-counts, without retaining each consumed batch for the final result.
-The default `return_results=True` returns the full records.
+Batch `.ingest()` returns a one-row pandas `DataFrame` with counts by default
+when the pipeline ends in a streaming-capable VDB upload and uses
+`error_policy="raise"` with `return_failures=False`. It does not retain each
+consumed batch for the final result. The default local LanceDB configuration
+supports this path.
+
+Pass `return_results=True` when you need the full records for inspection or
+further processing. Omitting the setting or passing `None` keeps full records
+for other graph configurations. Refer to
+[Choose whether to return result rows](nemo-retriever-api-reference.md#return-ingest-results)
+for the defaults across run modes.
 
 The following example writes to the default local LanceDB table and returns
 a summary.
@@ -130,7 +145,7 @@ summary = (
     .extract(extract_text=True)
     .embed()
     .vdb_upload()
-    .ingest(return_results=False)
+    .ingest()
 )
 print(summary)
 ```
@@ -146,22 +161,29 @@ When no rows reach the upload stage, both counts are zero.
 Backend filtering or retry handling can change how many rows are written,
 so `submitted_records` is not a count of newly stored rows.
 
-This option requires a final VDB upload stage that supports streaming ingest,
-`error_policy="raise"`, and `return_failures=False`. The default local LanceDB
+Explicit `return_results=False` requires a final VDB upload stage that supports
+streaming ingest, `error_policy="raise"`, and `return_failures=False`. The default local LanceDB
 configuration supports it. For supported LanceDB locations, refer to
 [streaming ingest](#vdb-backends-implementations). Batch summary mode keeps the
 existing [raise error policy coverage](nemo-retriever-api-reference.md#what-the-raise-error-policy-covers).
 
-When the only input is blank inline text, ingestion validates the pipeline and
-VDB backend before returning zero counts. Invalid backend configuration,
-missing streaming support, or a stage after VDB upload raises an error.
+Direct `RayDataExecutor.ingest()` also selects summary mode by default when
+its graph has one streaming-capable VDB upload as the final stage. Other
+executor graphs return full records. Pass `return_results=True` to retain
+the records, or `False` to require a supported terminal VDB write.
+
+When the only input is blank inline text, summary mode validates the pipeline
+and VDB backend before returning zero counts. Invalid backend configuration
+raises an error. With explicit `return_results=False`, missing streaming
+support or a stage after VDB upload also raises an error.
 Valid blank input does not start Ray or write to the VDB.
 
 ### Direct LanceDB ingest and retrieval { #direct-lancedb-ingest-and-retrieval }
 
 You can also construct a `LanceDB` instance and call `run` and `retrieval` directly. This is the optional low-level path. Prefer `.vdb_upload()` for typical ingest.
 
-By default, graph ingest returns a pandas `DataFrame` of flat rows. Use the following input shapes:
+Pass `return_results=True` to graph `.ingest()` when you need a pandas
+`DataFrame` of flat rows for a separate upload. Use the following input shapes:
 
 - `LanceDB.run()` expects nested client record batches: a `list` of batches, and each batch is a `list` of record dictionaries. Convert graph or `DataFrame` rows with `to_client_vdb_records()` before you call `run()`.
 - `LanceDB.run()` does not accept the graph `DataFrame` or a flat `list` of dictionaries from `DataFrame.to_dict("records")`.
@@ -170,7 +192,7 @@ By default, graph ingest returns a pandas `DataFrame` of flat rows. Use the foll
 
 The following example uses a two-dimensional fixture so you can copy it without a GPU or embedding NIM:
 
-- Replace `graph_rows` with your `.ingest()` `DataFrame` when you already have embeddings.
+- Replace `graph_rows` with your `.ingest(return_results=True)` `DataFrame` when you already have embeddings.
 - Set `vector_dim` to your embedding length. The `LanceDB` default `vector_dim` is 2048.
 - The fixture sets `create_index=False` so the one-row table is written without building the default `IVF_HNSW_SQ` index. Default ingest builds that index.
 
@@ -185,12 +207,12 @@ from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.records import to_client_vdb_records
 from nemo_retriever.operators.vdb import IngestVdbOperator
 
-# Graph ingest rows after extract and embed. Substitute your .ingest() DataFrame.
+# Graph rows after extract and embed. Substitute your .ingest(return_results=True) DataFrame.
 graph_rows = pd.DataFrame(
     [
         {
             "text": "hello from graph",
-            "text_embeddings_1b_v2": {"embedding": [1.0, 0.0]},
+            "embedding": [1.0, 0.0],
             "path": "graph.pdf",
             "page_number": 2,
             "metadata": {},
@@ -291,7 +313,7 @@ Existing custom backends retain the global-batch `VDB.run(records)` path unless
 they opt in. For LanceDB, ordinary fixed-table configurations with scheme-less
 local paths or authority-free `file:///` URIs use bounded Arrow batches. Remote
 stores and private service schemas retain the
-global-batch path. `PutVdbOperator` does not use streaming ingest.
+global-batch path.
 
 For Ray batch ingestion, configure LanceDB streaming behavior in the LanceDB
 `vdb_kwargs`:
@@ -323,8 +345,8 @@ the exception instructs you to resume with the original explicit
 `stream_operation_id`. If the original attempt did not set an ID, do not replay
 records after a known commit and finalization failure.
 
-These settings apply only to `LanceDB.stream_ingest()`. Legacy `run()` and
-`put()` calls reject non-default streaming settings instead of ignoring them.
+These settings apply only to `LanceDB.stream_ingest()`. Legacy `run()` calls
+reject non-default streaming settings instead of ignoring them.
 
 `RayDataExecutor.build_dataset()` remains lazy and builds the complete legacy
 graph, including the global VDB stage. In-process and service execution do not

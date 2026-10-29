@@ -29,6 +29,51 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 >
 > When you use UV, create the environment with Python 3.12 — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
 
+### Local GPU kernel cache { #local-gpu-kernel-cache }
+
+Local vLLM inference uses FlashInfer, which downloads missing GPU kernel
+artifacts on demand. Allow HTTPS access to `edge.urm.nvidia.com` and provide a
+writable cache. The default artifact cache is `~/.cache/flashinfer/cubins`;
+set `FLASHINFER_CUBIN_DIR` before starting Python to use another directory.
+This setting relocates artifacts only. By default, runtime compilation
+caches remain under `~/.cache/flashinfer`.
+
+Use a fresh environment when upgrading. A retained `flashinfer-cubin==0.6.13`
+wheel prevents `flashinfer-python==0.6.14` from importing, even when
+`FLASHINFER_CUBIN_DIR` is set. If you reuse an environment, remove the old wheel
+with `python -m pip uninstall flashinfer-cubin`. Install a cubin wheel only
+when its version exactly matches FlashInfer; do not disable the version check.
+
+Before an offline deployment, prefetch artifacts in the installed local GPU
+environment while network access is available.
+
+```bash
+python -m flashinfer download-cubin
+```
+
+Inspect the command output for download or checksum failures; a zero exit code
+alone does not establish success. Run your intended model on matching GPU
+hardware to populate and validate runtime compilation caches. Retain both
+caches, the same dependency versions, and the same cache settings when moving
+offline. Kernel prefetching does not download model weights.
+
+### Local GPU reranking { #local-gpu-reranking }
+
+Opt-in local reranking defaults to `nvidia/Nemotron-3.5-Rerank-8B-BF16`.
+Install `nemo-retriever[local]` and use a CUDA GPU. This changes the local
+checkpoint only; the hosted, NIM, Helm, and Compose defaults remain unchanged.
+The reranker hardware rows below describe the existing 1B NIM, not this local
+8B model.
+
+The BF16 checkpoint has approximately 16 GiB of weights. GPU memory use also
+includes model execution, image processing, and backend caches. Weight size
+is not a minimum GPU-memory requirement. Visual inputs can need substantially
+more memory than text-only inputs. Compared with the previous 1B default,
+plan for higher memory use and latency, and validate retrieval quality on your
+corpus. Text-only reranking remains the default; images are opt-in. Refer to
+[Retrieve](nemo-retriever-api-reference.md#generated-retrieve-api) for backends
+and input limits.
+
 ## Kubernetes Helm Storage Requirements { #kubernetes-helm-storage-requirements }
 
 The production Helm chart requires a working persistent-volume provisioning and binding strategy. A default install creates **seven** PersistentVolumeClaims: three chart-managed service claims and four NIM Operator NIMCache claims for the core NIMs.
@@ -132,7 +177,7 @@ The production Helm chart reconciles NIM microservices through `nimOperator.<key
 | `ocr` | [nemotron-ocr-v2](https://build.nvidia.com/nvidia/nemotron-ocr-v2) | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` | Image OCR | Yes |
 | `vlm_embed` | [nemotron-3-embed-1b](https://build.nvidia.com/nvidia/nemotron-3-embed-1b) | `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2` | Text embedding | Yes |
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://build.nvidia.com/nvidia/llama-nemotron-rerank-vl-1b-v2) | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Reranking for improved retrieval accuracy | No |
-| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"`. Enabling the Helm Parse NIM also sets the service default method to `nemotron_parse`. The Python `ExtractParams` default is `pdfium`; the CLI `auto` profile selects `pdfium_hybrid`. | No |
+| `nemotron_parse` | [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` | Optional PDF `method="nemotron_parse"`. Enabling the Helm Parse NIM also sets the service default method to `nemotron_parse`. The Python `ExtractParams` default and the CLI `auto` profile select `pdfium_hybrid`. | No |
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | Image captioning when you enable the caption stage. This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation](#answer-generation). | No |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html) | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` | [Audio and video](audio-video.md) transcription | No |
 | `answer_llm` | [nemotron-3.5-lightning-30b-a3b](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b) | `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant` | Optional `/v1/answer` generation. The generic slot defaults to Nemotron 3.5 Lightning. You can override it to another OpenAI-compatible LLM or VLM, including Omni. Enabling this key does not configure agentic retrieval. Refer to [Self-hosted Helm Nemotron 3.5 Lightning](workflow-agentic-retrieval.md#self-hosted-helm-lightning) for agentic configuration. Not part of the default extraction pipeline. | No |
@@ -176,9 +221,13 @@ When you call [NVIDIA-hosted NIMs](deployment-options.md#when-to-use-nvidia-host
 
     - **Hosted Build** (`https://integrate.api.nvidia.com/v1/chat/completions`) resolves to model ID `nvidia/nemotron-parse` and uses an image-only tool-call contract.
     - **Self-hosted Parse v1.2** uses `nvidia/nemotron-parse-v1.2` and the tagged text-prompt contract. The Helm chart defaults to `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant`.
+    - **Self-hosted Nemotron 3.5 Parse** uses native `POST /v1/parse` with a multipart `document` image upload. The development Compose `nim-parse` profile defaults to `nvcr.io/nim/nvidia/nemotron-parse:latest`. This image does not expose `/v1/chat/completions`. Set `nemotron_parse_invoke_url` to the native endpoint, for example `http://localhost:8006/v1/parse` for a host client using the default Compose port. The container selects the model; `nemotron_parse_model="nvidia/nemotron-3.5-parse"` is not sent in the native request.
+
+    The native API returns extracted content in `content`. Bounding-box and class tags are routed through the existing tagged-content postprocessor to produce clean page text and the selected table, chart, and infographic elements. Untagged Markdown is preserved as whole-page text, including inline tables; this fallback requires text extraction to be enabled. The Parse hardware rows below describe the existing Helm image, not a hardware qualification of the native Compose image.
+
     To use hosted Build, set `nemotron_parse_invoke_url` to the Build chat-completions URL and set `method="nemotron_parse"`. You can normally omit `nemotron_parse_model` so the library selects the model automatically. If you set `nemotron_parse_model` explicitly, it must match the endpoint contract.
 
-    Each endpoint list must contain only hosted Build endpoints or only compatible self-hosted endpoints. The library rejects a list that mixes hosted Build and self-hosted endpoints because one extraction workflow uses one model ID and request contract. Setting `nemotron_parse_model` explicitly does not make a mixed list valid. To use both deployment types, configure separate ingestors or extraction workflows for each endpoint contract.
+    Each endpoint list must use one compatible request contract. Do not mix native `/v1/parse` endpoints with chat-completions or legacy endpoints. Hosted Build lists and self-hosted lists must also remain separate. The library rejects a list that mixes hosted Build and self-hosted endpoints because one extraction workflow uses one model ID and request contract. Setting `nemotron_parse_model` explicitly does not make a mixed list valid. To use both deployment types, configure separate ingestors or extraction workflows for each endpoint contract.
 
     For model/endpoint mismatch symptoms, refer to [Nemotron Parse model and endpoint mismatch](troubleshoot.md#nemotron-parse-model-endpoint-mismatch).
 
