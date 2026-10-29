@@ -24,7 +24,7 @@ class Elasticsearch(VDB):
 
     Each write fills a new index that searches cannot see; the commit points the
     alias at it, replacing (``overwrite=True``) or joining the indices already
-    behind it. A failed write deletes its index.
+    behind it. Overwrite deletes a replaced index unless another alias still uses it. A failed write deletes its index.
     """
 
     supports_worker_write = True
@@ -100,12 +100,17 @@ class Elasticsearch(VDB):
         if stored != rows:
             raise RuntimeError(f"Elasticsearch index holds {stored} documents, receipts report {rows}")
         actions: list[dict[str, Any]] = [{"add": {"index": self._write_index, "alias": self.index_name}}]
+        previous: list[str] = []
         if self.overwrite:
             current = requests.get(f"{self.url}/_alias/{self.index_name}", timeout=self.timeout)
             if current.status_code != 404:
                 current.raise_for_status()
-                actions += [{"remove_index": {"index": index}} for index in current.json()]
+                previous = list(current.json())
+                actions += [{"remove": {"index": index, "alias": self.index_name}} for index in previous]
         self._request("POST", "_aliases", json={"actions": actions})
+        for index in previous:
+            if not self._request("GET", f"{index}/_alias")[index]["aliases"]:
+                self._request("DELETE", index)
 
     def run(self, records: Iterable[Iterable[dict[str, Any]]]) -> None:
         with self.worker_write() as writer:

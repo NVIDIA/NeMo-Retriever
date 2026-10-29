@@ -35,7 +35,7 @@ _SCHEMA = pa.schema(
 class DuckDB(VDB):
     """Store canonical records in one DuckDB table.
 
-    Parquet files are staged in ``<path>.staging`` while the workers write; the
+    Each write stages its Parquet files in its own folder under ``<path>.staging`` while the workers write; the
     commit replaces (``overwrite=True``) or appends to the table and removes them.
     """
 
@@ -56,12 +56,13 @@ class DuckDB(VDB):
 
     @contextmanager
     def worker_write(self) -> Iterator["DuckDB"]:
-        shutil.rmtree(self._staging, ignore_errors=True)
-        self._staging.mkdir(parents=True)
+        writer = copy.copy(self)
+        writer._staging = self._staging / uuid.uuid4().hex
+        writer._staging.mkdir(parents=True)
         try:
-            yield copy.copy(self)
+            yield writer
         finally:
-            shutil.rmtree(self._staging, ignore_errors=True)
+            shutil.rmtree(writer._staging, ignore_errors=True)
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
         rows = []
@@ -85,7 +86,7 @@ class DuckDB(VDB):
             if self.overwrite:
                 connection.execute(f"DROP TABLE IF EXISTS {table}")
             connection.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM read_parquet(?) LIMIT 0", [files])
-            connection.execute(f"INSERT INTO {table} SELECT * FROM read_parquet(?)", [files])
+            connection.execute(f"INSERT INTO {table} BY NAME SELECT * FROM read_parquet(?)", [files])
             connection.commit()
 
     def run(self, records: Iterable[Iterable[dict[str, Any]]]) -> None:

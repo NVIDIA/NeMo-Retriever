@@ -135,6 +135,20 @@ def test_failed_write_keeps_the_committed_rows_and_discards_its_own(case) -> Non
     assert case.leftovers() == []
 
 
+def test_elasticsearch_overwrite_keeps_an_index_another_alias_uses(case) -> None:
+    if not isinstance(case, _ElasticsearchCase):
+        pytest.skip("Elasticsearch alias semantics")
+    _write(case.backend(), _frames(range(0, 2)))
+    (first,) = requests.get(f"{ES_URL}/_alias/{case.index}", timeout=30).json()
+    shared = f"{case.index}-shared"
+    requests.put(f"{ES_URL}/{first}/_alias/{shared}", timeout=30).raise_for_status()
+
+    _write(case.backend(), _frames(range(2, 3)))
+
+    assert case.rows() == _expected(range(2, 3))
+    assert requests.get(f"{ES_URL}/{shared}/_count", timeout=30).json()["count"] == 2
+
+
 def test_ray_write_actors_write_and_the_driver_commits_once(case, monkeypatch: pytest.MonkeyPatch) -> None:
     ray = pytest.importorskip("ray")
     from nemo_retriever.graph.executor import RayDataExecutor
