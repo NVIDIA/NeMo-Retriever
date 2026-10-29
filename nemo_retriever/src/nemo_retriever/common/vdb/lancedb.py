@@ -179,6 +179,39 @@ def _optimize_lancedb_table(table: Any) -> None:
     table.checkout_latest()
 
 
+def _lance_field_ids(fields: Iterable[Any], prefix: str = "") -> Iterator[tuple[str, int]]:
+    for field in fields:
+        name = f"{prefix}{field.name()}"
+        yield name, field.id()
+        yield from _lance_field_ids(field.children(), f"{name}.")
+
+
+def _append_field_ids(written: pa.Schema, table: Any) -> dict[int, int]:
+    """Map the field IDs of fragments written alone with ``written`` to the IDs ``table`` uses for those fields.
+
+    ``write_fragments`` on a staging path numbers fields in ``written`` order, while an append keeps the
+    table's IDs, which differ after a reorder or a dropped and re-added column.
+    """
+
+    from lance.schema import LanceSchema
+
+    table_ids = dict(_lance_field_ids(table.to_lance().lance_schema.fields()))
+    return {
+        field_id: table_ids[name] for name, field_id in _lance_field_ids(LanceSchema.from_pyarrow(written).fields())
+    }
+
+
+def _fragment_metadata(encoded: str, field_ids: dict[int, int] | None) -> Any:
+    from lance.fragment import FragmentMetadata
+
+    if field_ids is None:
+        return FragmentMetadata.from_json(encoded)
+    fragment = json.loads(encoded)
+    for data_file in fragment["files"]:
+        data_file["fields"] = [field_ids[field_id] for field_id in data_file["fields"]]
+    return FragmentMetadata.from_json(json.dumps(fragment))
+
+
 def _table_mutation_lock(uri: str, table_name: str) -> AbstractContextManager[Any]:
     """Return the process-shared mutation lock for a local LanceDB table."""
 
@@ -1959,6 +1992,8 @@ class LanceDB(VDB):
             shutil.rmtree(staging, ignore_errors=True)
             worker = self._worker_copy()
             worker._staging_uri = str(staging)
+            # Ray workers can run in another working directory, so they get absolute paths.
+            worker.uri = str(Path(self._lance_table_uri()).parent)
             try:
                 yield worker
             finally:
@@ -1975,7 +2010,7 @@ class LanceDB(VDB):
         path = _filesystem_lancedb_path(self.uri)
         if path is None:
             raise ValueError(f"worker_write requires a local LanceDB uri, got {self.uri!r}")
-        return str(path / f"{self.table_name}.lance")
+        return str((path / f"{self.table_name}.lance").absolute())
 
     def _worker_write_storage_version(self) -> str:
         """Lance data-file version for worker-written fragments.
@@ -2095,11 +2130,9 @@ class LanceDB(VDB):
             DataCommittedFinalizationError: If the data was committed but finalization failed.
         """
 
-        from lance.fragment import FragmentMetadata
-
         operation_id = self.stream_operation_id
         stats = _StreamStats(vector_dim=self.vector_dim)
-        fragments: list[FragmentMetadata] = []
+        encoded_fragments: list[str] = []
         for receipt in receipts:
             stats.client_records += int(receipt["client_records"])
             stats.rows_written += int(receipt["rows_written"])
@@ -2111,7 +2144,7 @@ class LanceDB(VDB):
                     stats.vector_dim = dim
                 elif dim != int(stats.vector_dim):
                     raise ValueError(f"worker partitions disagree on vector_dim: {dim} vs {stats.vector_dim}")
-            fragments.extend(FragmentMetadata.from_json(encoded) for encoded in receipt["fragments"])
+            encoded_fragments.extend(receipt["fragments"])
 
         with self._write_lock:
             db = lancedb.connect(uri=self.uri)
@@ -2188,8 +2221,9 @@ class LanceDB(VDB):
                 if markers is not None:
                     markers.mark_data(existing_table, version=data_version, rows=0, digest=stats.digest)
             else:
+                field_ids = _append_field_ids(base_schema, existing_table) if appending else None
                 data_version = self._commit_worker_fragments(
-                    fragments,
+                    [_fragment_metadata(encoded, field_ids) for encoded in encoded_fragments],
                     schema=schema,
                     appending=appending,
                     base_version=base_version,
