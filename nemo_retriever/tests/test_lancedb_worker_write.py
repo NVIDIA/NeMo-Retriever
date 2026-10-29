@@ -582,3 +582,16 @@ def test_worker_write_tasks_in_another_working_directory(tmp_path: Path, monkeyp
 
     assert _rows(driver_dir / "db").num_rows == 4
     assert not list(worker_dir.rglob("*"))
+
+
+def test_worker_write_expands_a_home_relative_uri(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home, cwd = tmp_path / "home", tmp_path / "cwd"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
+
+    assert _worker_write(_backend(Path("~/db")), _frames([_row(index) for index in range(3)], batch_size=2)) == 3
+
+    assert _rows(home / "db").num_rows == 3
+    assert not list(cwd.rglob("*"))

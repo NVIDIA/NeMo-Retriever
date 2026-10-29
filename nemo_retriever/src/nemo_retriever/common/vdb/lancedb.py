@@ -2010,7 +2010,7 @@ class LanceDB(VDB):
         path = _filesystem_lancedb_path(self.uri)
         if path is None:
             raise ValueError(f"worker_write requires a local LanceDB uri, got {self.uri!r}")
-        return str((path / f"{self.table_name}.lance").absolute())
+        return str((path.expanduser() / f"{self.table_name}.lance").absolute())
 
     def _worker_write_storage_version(self) -> str:
         """Lance data-file version for worker-written fragments.
