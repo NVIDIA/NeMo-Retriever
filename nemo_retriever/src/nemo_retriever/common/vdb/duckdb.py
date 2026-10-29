@@ -45,7 +45,7 @@ class DuckDB(VDB):
     table_name : str
         Table that receives the rows.
     overwrite : bool
-        Replace the table on commit when ``True``; append to it (creating it if missing) when ``False``.
+        Replace the table on commit when ``True`` (a write with no rows leaves it unchanged); append to it (creating it if missing) when ``False``.
     worker_write_rows : int
         Rows per ``write_partition_records`` call, so rows per staged Parquet file.
     """
@@ -62,7 +62,9 @@ class DuckDB(VDB):
         self.path = str(Path(path).expanduser().absolute())
         self.table_name = table_name
         self.overwrite = overwrite
-        self.worker_write_rows = worker_write_rows
+        self.worker_write_rows = int(worker_write_rows)
+        if self.worker_write_rows < 1:
+            raise ValueError(f"worker_write_rows must be at least 1, got {worker_write_rows!r}")
         self._staging = Path(f"{self.path}.staging")
 
     @contextmanager

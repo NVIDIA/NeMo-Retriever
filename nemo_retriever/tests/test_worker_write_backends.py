@@ -164,3 +164,18 @@ def test_ray_write_actors_write_and_the_driver_commits_once(case, monkeypatch: p
     assert summary["submitted_records"].tolist() == [10]
     assert case.rows() == _expected(range(0, 10))
     assert case.leftovers() == []
+
+
+def test_overwrite_with_no_rows_keeps_the_committed_rows(case) -> None:
+    _write(case.backend(), _frames(range(0, 3)))
+    assert _write(case.backend(), []) == 0
+    assert case.rows() == _expected(range(0, 3))
+    assert case.leftovers() == []
+
+
+@pytest.mark.parametrize("backend", [DuckDB, Elasticsearch])
+@pytest.mark.parametrize("rows", [0, -1])
+def test_worker_write_rows_must_be_positive(tmp_path: Path, backend, rows: int) -> None:
+    args = {"path": str(tmp_path / "db")} if backend is DuckDB else {}
+    with pytest.raises(ValueError, match="worker_write_rows"):
+        backend(worker_write_rows=rows, **args)

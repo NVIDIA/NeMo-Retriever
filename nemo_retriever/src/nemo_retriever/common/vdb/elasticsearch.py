@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import json
 import uuid
 from collections.abc import Iterable, Iterator
@@ -17,6 +18,8 @@ import requests
 
 from nemo_retriever.common.vdb.adt_vdb import VDB, UnsupportedVDBOperation
 from nemo_retriever.common.vdb.records import stored_row_fields
+
+logger = logging.getLogger(__name__)
 
 
 class Elasticsearch(VDB):
@@ -53,7 +56,9 @@ class Elasticsearch(VDB):
         self.url = url.rstrip("/")
         self.index_name = index_name
         self.overwrite = overwrite
-        self.worker_write_rows = worker_write_rows
+        self.worker_write_rows = int(worker_write_rows)
+        if self.worker_write_rows < 1:
+            raise ValueError(f"worker_write_rows must be at least 1, got {worker_write_rows!r}")
         self.timeout = timeout
         self._write_index = ""
         self._committed = False
@@ -93,10 +98,13 @@ class Elasticsearch(VDB):
     def _discard_uncommitted_index(self) -> None:
         # A commit that raised may still have swapped the alias before the error.
         published = requests.get(f"{self.url}/{self._write_index}/_alias/{self.index_name}", timeout=self.timeout)
-        if published.status_code == 404:
-            deleted = requests.delete(f"{self.url}/{self._write_index}", timeout=self.timeout)
-            if deleted.status_code != 404:
-                deleted.raise_for_status()
+        if published.ok:
+            return
+        if published.status_code != 404:
+            published.raise_for_status()
+        deleted = requests.delete(f"{self.url}/{self._write_index}", timeout=self.timeout)
+        if deleted.status_code != 404:
+            deleted.raise_for_status()
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
         """Bulk-index canonical records into this write's index; return ``{"rows": n}``.
@@ -132,6 +140,9 @@ class Elasticsearch(VDB):
             If the index holds a different number of documents than the receipts report.
         """
         rows = sum(receipt["rows"] for receipt in receipts)
+        if rows == 0:
+            # As LanceDB and DuckDB: a write with no rows leaves the alias unchanged.
+            return
         self._request("POST", f"{self._write_index}/_refresh")
         # A failed task may have written documents no receipt accounts for.
         stored = self._request("GET", f"{self._write_index}/_count")["count"]
@@ -147,9 +158,13 @@ class Elasticsearch(VDB):
                 actions += [{"remove": {"index": index, "alias": self.index_name}} for index in previous]
         self._request("POST", "_aliases", json={"actions": actions})
         self._committed = True
-        for index in previous:
-            if not self._request("GET", f"{index}/_alias")[index]["aliases"]:
-                self._request("DELETE", index)
+        try:
+            for index in previous:
+                if not self._request("GET", f"{index}/_alias")[index]["aliases"]:
+                    self._request("DELETE", index)
+        except requests.RequestException:
+            # The new index is already published; a replaced index left behind is only wasted space.
+            logger.warning("Could not delete replaced Elasticsearch indices %s", previous, exc_info=True)
 
     def run(self, records: Iterable[Iterable[dict[str, Any]]]) -> None:
         """Write batches of canonical records from the driver through the same index and alias swap."""
