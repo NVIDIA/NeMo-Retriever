@@ -13,7 +13,6 @@ import pandas as pd
 
 from nemo_retriever.models import (
     NEMOTRON_3_EMBED_MODEL,
-    VL_RERANK_MODEL,
     resolve_embed_model,
     resolve_embed_model_spec,
 )
@@ -62,7 +61,9 @@ def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
 
 def _default_rerank_actor_kwargs() -> dict[str, Any]:
     return {
-        "model_name": VL_RERANK_MODEL,
+        # The concrete CPU/GPU actor selects the remote/local default. Do not
+        # send a local-only checkpoint to implicit hosted CPU fallback.
+        "model_name": None,
         "query_column": "query",
         "text_column": "text",
         "score_column": "rerank_score",

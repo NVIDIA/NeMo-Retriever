@@ -13,7 +13,7 @@ import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import DEFAULT_LOCAL_RERANK_MODEL, NEMOTRON_3_EMBED_MODEL
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
@@ -307,7 +307,7 @@ def test_root_query_reports_missing_reranker_api_key_env() -> None:
 
 
 def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
-    """``--rerank`` alone enables rerank with the local VL default model."""
+    """``--rerank`` defers the default checkpoint to the selected actor."""
     retriever_calls: list[dict[str, Any]] = []
 
     class FakeRetriever:
@@ -327,7 +327,6 @@ def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
             "top_k": 10,
             "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
             "rerank": True,
-            "rerank_kwargs": {"model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2"},
         }
     ]
 
@@ -889,11 +888,12 @@ def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
     assert cfg["reranker_endpoint"] == "http://rr/v1/rerank"
     assert cfg["local_reranker_backend"] == "hf"
 
-    # 2. --rerank with no model name falls back to the default rerank model (gate stays on).
+    # 2. --rerank keeps the gate on while deferring the model to the selected actor.
     config_calls.clear()
     result = RUNNER.invoke(cli_main.app, base + ["--rerank"])
     assert result.exit_code == 0
-    assert config_calls[-1]["reranker"] == query_core._LOCAL_VL_RERANK_MODEL
+    assert config_calls[-1]["rerank"] is True
+    assert config_calls[-1]["reranker"] is None
 
     # 3. No rerank flags => no reranker key => backend rerank stays off (cfg default None).
     config_calls.clear()
@@ -1035,7 +1035,7 @@ def test_root_query_local_help_describes_model_resolution() -> None:
     assert "fall back" not in result.output
     assert query_cli_app.opts.DEFAULT_EMBED_MODEL == NEMOTRON_3_EMBED_MODEL
     assert "Default local reranker model" in result.output
-    assert VL_RERANK_MODEL in result.output
+    assert DEFAULT_LOCAL_RERANK_MODEL in result.output
 
 
 def test_root_query_service_help_hides_local_only_options() -> None:

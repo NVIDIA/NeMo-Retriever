@@ -610,6 +610,43 @@ for row in result.dataframe.to_dict(orient="records"):
 
 `Retriever` embeds queries, retrieves from a vector database, and can rerank results. Pass `embed_kwargs` that match `EmbedParams`, `vdb_kwargs` for `RetrieveVdbOperator`, and `rerank_kwargs` for `NemotronRerankActor`.
 
+Reranking remains opt-in. With `Retriever(rerank=True)` and no remote reranking
+endpoint, local GPU reranking defaults to
+`nvidia/Nemotron-3.5-Rerank-8B-BF16`. Explicit legacy model selections retain
+their existing adapters. Hosted NVIDIA endpoints, NIM, Helm, and Compose
+reranker defaults are unchanged.
+
+When execution selects the CPU actor and no reranker model or endpoint is
+configured, reranking retains the existing hosted 1B default. Configure
+`NVIDIA_API_KEY` or `NGC_API_KEY` for that fallback. It does not download the
+local 8B checkpoint.
+
+For Python agentic retrieval, `AgenticRetrievalConfig` from
+`nemo_retriever.query.agentic` accepts `rerank=True` without a `reranker` model
+ID. Each retrieval hop then selects the GPU-local or CPU-hosted default above.
+Setting an explicit `reranker` model also enables reranking and preserves that
+selection. Reranking remains disabled when both settings are omitted.
+
+The BEIR evaluator also selects Nemotron 3.5 for enabled local GPU reranking
+when `reranker_model_name` is omitted. Its remote and implicit CPU paths retain
+their existing text-only `nvidia/llama-nemotron-rerank-1b-v2` default, not the
+local 8B checkpoint.
+
+For direct local use, import `create_local_reranker` from
+`nemo_retriever.models`. Calling `create_local_reranker()` selects the same
+checkpoint with the `vllm` backend. Select `backend="hf"` for the Hugging Face
+backend. Standalone scripts that start vLLM must guard execution with
+`if __name__ == "__main__":` to avoid rerunning inference in spawned workers.
+
+The local adapter uses the checkpoint's processor and reranking chat template.
+Text remains the default modality; switching the checkpoint does not
+automatically add page images. Supply images explicitly when you need visual
+reranking. The library's local profile limits input to 10,240 tokens, including
+the query, template, document, and image tokens; this is not the checkpoint's
+native maximum. Overlength handling truncates document
+text only; queries and supplied images are preserved. Requests that cannot
+fit without truncating the query or image raise an error.
+
 With the default query graph, `Retriever.queries()` returns one hit list per
 input query, preserving input order and repeated identical inputs. Overlength
 queries are split losslessly, searched, and fused before optional reranking

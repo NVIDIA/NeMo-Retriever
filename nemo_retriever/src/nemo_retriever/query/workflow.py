@@ -15,10 +15,7 @@ from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
-
-_LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
 
 
 @dataclass(frozen=True)
@@ -80,7 +77,11 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
             rerank_kwargs["api_key"] = api_key
         return rerank_kwargs
 
-    local: dict[str, str] = {"model_name": options.reranker_model_name or _LOCAL_VL_RERANK_MODEL}
+    # Defer omitted identities to the resolved actor: N3.5 for a GPU actor,
+    # existing hosted 1B for implicit CPU fallback.
+    local: dict[str, str] = {}
+    if options.reranker_model_name:
+        local["model_name"] = options.reranker_model_name
     if options.reranker_backend:
         local["local_reranker_backend"] = options.reranker_backend
     return local
@@ -228,9 +229,8 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
     if request.embed.embed_model_provider_prefix:
         cfg_kwargs["query_embedder_provider_prefix"] = request.embed.embed_model_provider_prefix
     if request.rerank.enabled:
-        # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
-        # model name, so fall back to the default model when only --rerank is given.
-        cfg_kwargs["reranker"] = request.rerank.reranker_model_name or _LOCAL_VL_RERANK_MODEL
+        cfg_kwargs["rerank"] = True
+        cfg_kwargs["reranker"] = request.rerank.reranker_model_name
         cfg_kwargs["reranker_endpoint"] = request.rerank.reranker_invoke_url
         cfg_kwargs["reranker_api_key"] = resolve_remote_api_key(request.rerank.reranker_api_key) or ""
         if request.rerank.reranker_backend:

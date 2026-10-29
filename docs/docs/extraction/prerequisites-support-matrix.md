@@ -57,6 +57,23 @@ hardware to populate and validate runtime compilation caches. Retain both
 caches, the same dependency versions, and the same cache settings when moving
 offline. Kernel prefetching does not download model weights.
 
+### Local GPU reranking { #local-gpu-reranking }
+
+Opt-in local reranking defaults to `nvidia/Nemotron-3.5-Rerank-8B-BF16`.
+Install `nemo-retriever[local]` and use a CUDA GPU. This changes the local
+checkpoint only; the hosted, NIM, Helm, and Compose defaults remain unchanged.
+The reranker hardware rows below describe the existing 1B NIM, not this local
+8B model.
+
+The BF16 checkpoint has approximately 16 GiB of weights. GPU memory use also
+includes model execution, image processing, and backend caches. Weight size
+is not a minimum GPU-memory requirement. Visual inputs can need substantially
+more memory than text-only inputs. Compared with the previous 1B default,
+plan for higher memory use and latency, and validate retrieval quality on your
+corpus. Text-only reranking remains the default; images are opt-in. Refer to
+[Retrieve](nemo-retriever-api-reference.md#generated-retrieve-api) for backends
+and input limits.
+
 ## Kubernetes Helm Storage Requirements { #kubernetes-helm-storage-requirements }
 
 The production Helm chart requires a working persistent-volume provisioning and binding strategy. A default install creates **seven** PersistentVolumeClaims: three chart-managed service claims and four NIM Operator NIMCache claims for the core NIMs.

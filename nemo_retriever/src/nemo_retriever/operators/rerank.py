@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Reranking stage using nvidia/llama-nemotron-rerank-vl-1b-v2.
+Nemotron reranking stage with separate local and hosted model defaults.
 
 Provides:
   - ``rerank_hits``         – rerank a list of LanceDB hits for a single query
@@ -62,7 +62,12 @@ import pandas as pd
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.cpu_operator import CPUOperator
-from nemo_retriever.models import is_vl_rerank_model
+from nemo_retriever.models import (
+    NEMOTRON_35_RERANK_MODEL,
+    default_rerank_max_length,
+    is_vl_rerank_model,
+    resolve_rerank_model,
+)
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
@@ -80,6 +85,8 @@ _SCORE_COLUMN = "rerank_score"
 
 
 def _default_rerank_invoke_url(model_name: str | None) -> str:
+    if resolve_rerank_model(model_name, local=False) == NEMOTRON_35_RERANK_MODEL:
+        raise ValueError("N3.5 reranking requires a local GPU or an explicit remote endpoint.")
     if is_vl_rerank_model(model_name):
         return _DEFAULT_VL_RERANK_INVOKE_URL
     return _DEFAULT_RERANK_INVOKE_URL
@@ -259,9 +266,9 @@ def rerank_hits(
     *,
     model: Optional[Any] = None,
     rerank_invoke_url: Optional[str] = None,
-    model_name: str = _DEFAULT_MODEL,
+    model_name: str | None = None,
     api_key: str = "",
-    max_length: int = _DEFAULT_MAX_LENGTH,
+    max_length: int | None = None,
     batch_size: int = _DEFAULT_BATCH_SIZE,
     top_n: Optional[int] = None,
     text_key: str = "text",
@@ -281,19 +288,21 @@ def rerank_hits(
     hits:
         LanceDB result dicts (as returned by ``Retriever.queries()``).
     model:
-        A ``NemotronRerankV2`` instance (local GPU inference).  Ignored when
+        A local reranker instance exposing ``score()``. Ignored when
         *rerank_invoke_url* is set.
     rerank_invoke_url:
         Base URL of a vLLM / NIM ranking endpoint. Takes priority over
         *model*. Base URLs are normalized to ``/v1/ranking`` unless they
         already end with ``/reranking``.
     model_name:
-        Model identifier sent to the remote endpoint (default
-        ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
+        Model identifier for modality detection and remote requests. Omitted
+        values select the N3.5 local default when a model is supplied, or
+        the existing hosted VL 1B default for endpoint execution.
     api_key:
         Bearer token for the remote endpoint.
     max_length:
-        Tokenizer truncation length for local inference (max 8 192).
+        Expanded local token budget. Omitted values use 10,240 for N3.5
+        or the legacy 512-token default. Explicit values are preserved.
     batch_size:
         GPU forward-pass batch size for local inference.
     top_n:
@@ -311,6 +320,10 @@ def rerank_hits(
     """
     if not hits:
         return hits
+
+    model_name = resolve_rerank_model(model_name, local=model is not None and not rerank_invoke_url)
+    if max_length is None:
+        max_length = default_rerank_max_length(getattr(model, "model_name", model_name))
 
     documents = [str(h.get(text_key) or "") for h in hits]
 
@@ -415,7 +428,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     """
     Ray Data-compatible stateful actor for cross-encoder reranking.
 
-    Initialises ``nvidia/llama-nemotron-rerank-vl-1b-v2`` **once** per actor
+    Initialises the selected local reranker **once** per actor
     instance and reuses it across batches, avoiding repeated model loads.
 
     Each row in the input DataFrame is expected to have a *query* column and a
@@ -444,11 +457,13 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     Parameters
     ----------
     model_name:
-        HuggingFace model ID (default ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
+        Hugging Face model ID. Local GPU execution defaults to
+        ``nvidia/Nemotron-3.5-Rerank-8B-BF16``; CPU/remote resolution
+        retains the hosted VL 1B default. Explicit IDs are preserved.
     api_key:
         Bearer token for the remote endpoint.
     device:
-        Torch device string (default: ``"cuda"`` if available, else ``"cpu"``).
+        HF device or first visible CUDA device for vLLM.
     hf_cache_dir:
         Directory for HuggingFace model cache.
     query_column:
@@ -458,7 +473,8 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
     score_column:
         Output column name for rerank scores (default ``"rerank_score"``).
     max_length:
-        Tokenizer truncation length (default 512).
+        Expanded input budget. Omitted values use the model-specific default:
+        10,240 for N3.5 and 512 for legacy operator calls.
     batch_size:
         GPU forward-pass micro-batch size (default 32).
     sort_results:
@@ -475,8 +491,10 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             )
         from nemo_retriever.models import create_local_reranker
 
+        self._kwargs["model_name"] = resolve_rerank_model(self._kwargs.get("model_name"), local=True)
+
         self._model = create_local_reranker(
-            model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),
+            model_name=self._kwargs["model_name"],
             device=self._kwargs.get("device") or None,
             hf_cache_dir=str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None,
             backend=str(self._kwargs.get("local_reranker_backend", "vllm")),
@@ -506,11 +524,19 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
 
 
 class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
-    """CPU-only reranking actor that delegates to a remote endpoint."""
+    """CPU-only reranking actor that delegates to a remote endpoint.
+
+    An omitted ``model_name`` uses ``remote_default_model_name`` when provided
+    by a caller preserving its own remote default (such as BEIR); otherwise
+    it uses the existing hosted VL 1B model. Explicit model IDs take priority.
+    """
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
+        self._kwargs["model_name"] = resolve_rerank_model(
+            self._kwargs.get("model_name") or self._kwargs.get("remote_default_model_name"), local=False
+        )
         configured_url = _configured_rerank_invoke_url(self._kwargs)
         rerank_invoke_url = configured_url or _default_rerank_invoke_url(
             str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
@@ -570,13 +596,13 @@ def _rerank_batch(
     *,
     model: Optional[Any] = None,
     rerank_invoke_url: Optional[str] = None,
-    model_name: str = _DEFAULT_MODEL,
+    model_name: str | None = None,
     api_key: str = "",
     query_column: str = "query",
     text_column: str = "text",
     image_column: str = "",
     score_column: str = _SCORE_COLUMN,
-    max_length: int = _DEFAULT_MAX_LENGTH,
+    max_length: int | None = None,
     batch_size: int = _DEFAULT_BATCH_SIZE,
     sort_results: bool = True,
     **_ignored: Any,
@@ -589,6 +615,9 @@ def _rerank_batch(
     """
     if not isinstance(batch_df, pd.DataFrame):
         raise TypeError(f"Expected a pandas DataFrame, got {type(batch_df)}")
+    model_name = resolve_rerank_model(model_name, local=model is not None and not rerank_invoke_url)
+    if max_length is None:
+        max_length = default_rerank_max_length(getattr(model, "model_name", model_name))
 
     queries = batch_df[query_column].tolist()
     texts = batch_df[text_column].tolist()
