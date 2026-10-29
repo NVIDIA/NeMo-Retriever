@@ -522,3 +522,13 @@ def test_worker_append_with_every_row_dropped_keeps_the_table_version(tmp_path: 
 
     assert versions == {"stream": 0, "worker": 0}
     assert _rows(tmp_path / "worker").equals(_rows(tmp_path / "stream"))
+
+
+def test_worker_write_only_backend_is_the_terminal_sink() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.pipeline_graph import Node
+
+    backend = SimpleNamespace(supports_stream_ingest=False, supports_worker_write=True)
+    node = Node(IngestVdbOperator(vdb=backend))
+
+    assert RayDataExecutor._stream_ingest_index([node], require_terminal=True) == 0

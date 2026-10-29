@@ -647,11 +647,14 @@ class RayDataExecutor(AbstractExecutor):
         positions = [
             index
             for index, node in enumerate(nodes)
-            if isinstance(node.operator, IngestVdbOperator) and node.operator._supports_stream_ingest()
+            if isinstance(node.operator, IngestVdbOperator)
+            and (node.operator._supports_stream_ingest() or node.operator._supports_worker_write())
         ]
         sink_index = positions[0] if len(positions) == 1 else None
         if require_terminal and (sink_index is None or sink_index != len(nodes) - 1):
-            raise ValueError("return_results=False requires a terminal VDB that supports streaming ingest")
+            raise ValueError(
+                "return_results=False requires a terminal VDB that supports streaming or worker-native ingest"
+            )
         return sink_index
 
     def ingest(
@@ -684,7 +687,7 @@ class RayDataExecutor(AbstractExecutor):
         Raises
         ------
         ValueError
-            Summary mode requires a terminal VDB that supports streaming ingest.
+            Summary mode requires a terminal VDB that supports streaming or worker-native ingest.
         TypeError
             Additional keyword settings are not supported.
         """
