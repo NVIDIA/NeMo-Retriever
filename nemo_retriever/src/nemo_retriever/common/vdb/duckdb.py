@@ -59,7 +59,7 @@ class DuckDB(VDB):
         overwrite: bool = True,
         worker_write_rows: int = 2048,
     ) -> None:
-        self.path = str(Path(path).absolute())
+        self.path = str(Path(path).expanduser().absolute())
         self.table_name = table_name
         self.overwrite = overwrite
         self.worker_write_rows = worker_write_rows
