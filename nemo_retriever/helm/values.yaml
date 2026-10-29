@@ -547,12 +547,12 @@ serviceConfig:
     pageElementsInvokeUrl: ""
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
-    # Optional Nemotron Parse chat-completions endpoint. When the
+    # Optional Nemotron Parse endpoint. When the
     # operator-managed Parse NIM is enabled, its in-cluster URL is used
     # unless this explicit endpoint is set.
     nemotronParseInvokeUrl: ""
-    # Optional model override. Leave empty to infer the hosted
-    # nvidia/nemotron-parse or self-hosted v1.2 contract from the URL.
+    # Optional model override for hosted or legacy chat-completions endpoints.
+    # Native /v1/parse requests use the deployed model and omit this field.
     nemotronParseModel: ""
     embedInvokeUrl: ""
     # Optional remote reranker used by POST /v1/query with rerank=true.
@@ -1437,28 +1437,20 @@ nimOperator:
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"
 
-  # Nemotron Parse v1.2. Optional structured document parser.
+  # Nemotron 3.5 Parse. Optional structured document parser.
   #
   # Disabled by default per the 26.08.1 "optional and disabled by default"
   # contract (see docs/extraction/deployment-options.md). Enabling this
   # NIM also sets the default PDF extract method to nemotron_parse.
-  # This NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
-  # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
-  #
-  # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
-  # NIM SKU shipped alongside the 26.08.1 release; the `-variant` suffix
-  # marks it as the build that ships with the per-GPU TensorRT engine
-  # variants required by NIM Operator profile reconciliation, matching
-  # `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` and the row
-  # for Nemotron Parse in
-  # docs/extraction/prerequisites-support-matrix.md "Model hardware
-  # requirements". Override to a different NGC tag only when validated
-  # against the matching service/Helm release.
+  # Match the development Compose Parse NIM default. This image exposes
+  # native POST /v1/parse with a multipart document upload. The container
+  # selects the model, so native requests do not send a model field.
+  # Resolve and record the image digest when qualifying a mutable tag.
   nemotron_parse:
     enabled: false
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
-      tag: "1.7.0-variant"
+      repository: nvcr.io/nim/nvidia/nemotron-parse
+      tag: "latest"
       pullPolicy: IfNotPresent
       # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
       # chart-wide pull secret name(s) for this NIM only.
@@ -1496,6 +1488,10 @@ nimOperator:
         value: "8000"
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"
+
+      # Keep downloaded Parse weights under the writable model cache mount.
+      - name: NIM_ENGINE_MODEL_PATH
+        value: /model-store/parse
 
   # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning VLM
   # used by the image-captioning stage.
