@@ -48,8 +48,10 @@ def _construct_vdb(
 def _iter_batch_rows(batches: Iterable[pd.DataFrame]) -> Iterator[dict[str, Any]]:
     """Yield graph rows from the executor's retained pandas batches."""
 
+    from nemo_retriever.graph.executor import frame_to_records
+
     for batch in batches:
-        yield from batch.to_dict(orient="records")
+        yield from frame_to_records(batch)
 
 
 def query_vectors_from_embedded_dataframe(
