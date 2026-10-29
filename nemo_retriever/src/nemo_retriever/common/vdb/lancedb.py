@@ -2165,7 +2165,7 @@ class LanceDB(VDB):
             stored_hash_sum=str(stats.stored_hash_sum),
             stored_hash_xor=str(stats.stored_hash_xor),
         )
-            fragments=[encoded if isinstance(encoded := fragment.to_json(), str) else json.dumps(encoded) for fragment in fragments],
+        return receipt
 
     def commit_partitions(self, receipts: Iterable[dict[str, Any]]) -> None:
         """Driver side of the worker-native sink: one Lance commit, then the stream path's finalize.
