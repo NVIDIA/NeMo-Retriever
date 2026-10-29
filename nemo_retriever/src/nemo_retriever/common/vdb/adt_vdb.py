@@ -412,6 +412,16 @@ class VDB(ABC):
         :meth:`write_partition` or :meth:`write_partition_records` on; the driver
         then calls its :meth:`commit_partitions` once with every receipt. Leaving
         the context discards whatever the actors wrote that was not committed.
+
+        Returns
+        -------
+        AbstractContextManager[VDB]
+            Context manager yielding the writer copy for this write.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement worker-native writes.
         """
         raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement worker_write().")
 
@@ -420,15 +430,59 @@ class VDB(ABC):
 
         Called instead of :meth:`write_partition_records` when ``supports_stream_ingest_batches``
         is set. Nothing written here may be visible before :meth:`commit_partitions`.
+
+        Parameters
+        ----------
+        batches : Iterable[CanonicalRecordBatch]
+            Canonical records with their vectors in one Arrow column per batch.
+
+        Returns
+        -------
+        dict[str, Any]
+            Receipt passed to :meth:`commit_partitions` on the driver.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement batch partition writes.
         """
         raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement write_partition().")
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
-        """Write one partition of canonical record dictionaries from a Ray actor; return a JSON-safe receipt."""
+        """Write one partition of canonical record dictionaries from a Ray actor; return a JSON-safe receipt.
+
+        Nothing written here may be visible before :meth:`commit_partitions`.
+
+        Parameters
+        ----------
+        records : Iterable[dict[str, Any]]
+            Canonical records, each with its vector in ``metadata["embedding"]``.
+
+        Returns
+        -------
+        dict[str, Any]
+            Receipt passed to :meth:`commit_partitions` on the driver.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement record partition writes.
+        """
         raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement write_partition_records().")
 
     def commit_partitions(self, receipts: list[dict[str, Any]]) -> None:
-        """Make every receipt's rows visible in one step, on the driver."""
+        """Make every receipt's rows visible in one step, on the driver.
+
+        Parameters
+        ----------
+        receipts : list[dict[str, Any]]
+            Every receipt the write actors returned for this write.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement worker-native writes.
+        """
         raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement commit_partitions().")
 
     @abstractmethod
