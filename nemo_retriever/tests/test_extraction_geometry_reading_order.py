@@ -185,15 +185,16 @@ def test_native_exports_and_embedding_text_use_one_ordered_page():
     record = dict(
         page_number=1,
         text="legacy",
-        table=[{"text": "duplicate"}],
+        table=[{"text": "TABLE", "bbox_xyxy_norm": [0, 0.3, 1, 0.4]}],
+        ordered_regions=[{"label_name": "table", "text": "TABLE", "bbox_xyxy_norm": [0, 0.3, 1, 0.4]}],
         ordered_page_text="top\nTABLE\nbottom",
     )
     markdown = to_markdown_by_page([record])[1]
     assert "top\nTABLE\nbottom" in markdown
-    assert "legacy" not in markdown and "duplicate" not in markdown
+    assert "legacy" not in markdown and markdown.count("TABLE") == 1
     assert _combine_text_with_content(record, "text", ["table"]) == "top\nTABLE\nbottom"
     record.pop("ordered_page_text")
-    assert _combine_text_with_content(record, "text", ["table"]) == "legacy\n\nduplicate"
+    assert _combine_text_with_content(record, "text", ["table"]) == "legacy\n\nTABLE"
 
 
 def test_empty_table_is_explicit():
@@ -208,3 +209,62 @@ def test_empty_table_is_explicit():
         use_table_structure=False,
     )
     assert result.table_items[0]["text"] == "EMPTY TABLE"
+
+
+@pytest.mark.parametrize("as_array", [False, True])
+def test_ordered_page_embeddings_keep_later_captions_and_additional_content(as_array):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    table_bbox = [0, 0.2, 1, 0.3]
+    info_bbox = [0, 0.5, 1, 0.6]
+    record = dict(
+        text="legacy",
+        ordered_page_text="top\nTABLE\nINFO\nbottom",
+        ordered_regions=[
+            {"label_name": "table", "bbox_xyxy_norm": table_bbox, "text": "TABLE"},
+            {"label_name": "infographic", "bbox_xyxy_norm": info_bbox, "text": "INFO"},
+        ],
+        table=[{"bbox_xyxy_norm": table_bbox, "text": "TABLE", "caption": "table description"}],
+        infographic=[{"bbox_xyxy_norm": info_bbox, "text": "INFO", "caption": "infographic description"}],
+        image=[{"text": "image text", "caption": "image description"}],
+        custom=[{"text": "additional requested content"}],
+        ignored=[{"caption": "not requested"}],
+    )
+    if as_array:
+        for key in ("ordered_regions", "table", "infographic", "image", "custom"):
+            record[key] = np.array(record[key], dtype=object)
+    out = collapse_content_to_page_rows(
+        pd.DataFrame([record]), content_columns=("table", "infographic", "image", "custom")
+    )
+    assert out.iloc[0].text == (
+        "top\nTABLE\nINFO\nbottom\n\ntable description\n\ninfographic description"
+        "\n\nimage text\n\nimage description\n\nadditional requested content"
+    )
+    assert record["text"] == "legacy"
+
+
+def test_ordered_page_does_not_drop_equal_text_from_another_region():
+    from nemo_retriever.common.modality.content_transforms import _combine_text_with_content
+
+    record = dict(
+        ordered_page_text="same text",
+        ordered_regions=[{"label_name": "table", "text": "same text", "bbox_xyxy_norm": [0, 0, 1, 0.2]}],
+        table=[
+            {"text": "same text", "bbox_xyxy_norm": [0, 0, 1, 0.2]},
+            {"text": "same text", "bbox_xyxy_norm": [0, 0.5, 1, 0.7]},
+        ],
+    )
+    assert _combine_text_with_content(record, "text", ["table"]) == "same text\n\nsame text"
+
+
+@pytest.mark.parametrize("shape", [(40, 100, 3), (100, 40, 3), (40, 40, 3)])
+def test_remote_crop_padding_matches_local_pixels_without_numpy_roundtrip(shape):
+    crop = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
+    encoded = shared._np_rgb_to_b64_png(crop)
+    padded = shared._pad_remote_ocr_crop(encoded)
+    with Image.open(io.BytesIO(base64.b64decode(padded))) as image:
+        actual = np.asarray(image)
+    expected, _, _ = shared._prepare_ocr_crop(crop, "bottom_right")
+    np.testing.assert_array_equal(actual, expected)
+    if shape[0] == shape[1]:
+        assert padded == encoded

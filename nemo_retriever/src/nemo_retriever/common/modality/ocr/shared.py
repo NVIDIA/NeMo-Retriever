@@ -235,6 +235,20 @@ def _prepare_ocr_crop(crop_array: np.ndarray, padding: Optional[str] = None):
     return padded, original_hw, (side, side)
 
 
+def _pad_remote_ocr_crop(crop_b64: str) -> str:
+    """Pad an encoded RGB crop with Pillow, avoiding a NumPy conversion."""
+    with Image.open(io.BytesIO(base64.b64decode(crop_b64))) as image:
+        width, height = image.size
+        if width == height:
+            return crop_b64
+        side = max(width, height)
+        padded = Image.new("RGB", (side, side), (255, 255, 255))
+        padded.paste(image, (0, 0))
+        buffer = io.BytesIO()
+        padded.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def _ordered_blocks_to_text(preds: Any, crop_hw: Tuple[int, int], *, separator: str = "\n") -> str:
     """Apply research do_ocr's pixel-space DBSCAN row ordering."""
     from nemo_retriever.common.modality.table_and_chart import (
@@ -955,9 +969,7 @@ def _run_remote_ocr(
                 as_b64=True,
             )
             for label_name, bbox, crop_b64 in crops:
-                with Image.open(io.BytesIO(base64.b64decode(crop_b64))) as image:
-                    array, _, _ = _prepare_ocr_crop(np.asarray(image.convert("RGB")), "bottom_right")
-                crop_b64 = _np_rgb_to_b64_png(array)
+                crop_b64 = _pad_remote_ocr_crop(crop_b64)
                 if row_results[prepared.row_index].error is not None:
                     break
                 pending.append(_RemoteOCRCropJob(prepared.row_index, prepared.row, label_name, bbox, crop_b64))
