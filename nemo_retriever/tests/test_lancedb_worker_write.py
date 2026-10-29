@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -532,3 +533,52 @@ def test_worker_write_only_backend_is_the_terminal_sink() -> None:
     node = Node(IngestVdbOperator(vdb=backend))
 
     assert RayDataExecutor._stream_ingest_index([node], require_terminal=True) == 0
+
+
+def _reorder_columns(dataset: Any) -> None:
+    table = dataset.to_table()
+    lance.write_dataset(table.select(list(reversed(table.column_names))), dataset.uri, mode="overwrite")
+
+
+def _drop_and_re_add_text(dataset: Any) -> None:
+    texts = dataset.to_table(columns=["id", "text"])
+    dataset.drop_columns(["text"])
+    dataset.add_columns(pa.field("text", pa.string()))
+    dataset.merge_insert("id").when_matched_update_all().execute(texts)
+
+
+@pytest.mark.parametrize("evolve", [_reorder_columns, _drop_and_re_add_text], ids=["reordered", "re-added"])
+def test_worker_append_writes_each_value_to_its_own_column(tmp_path: Path, evolve) -> None:
+    uri = tmp_path / "db"
+    _worker_write(_backend(uri), _frames([_row(index) for index in range(3)], batch_size=3))
+    evolve(lance.dataset(str(uri / "chunks.lance")))
+
+    assert (
+        _worker_write(_backend(uri, overwrite=False), _frames([_row(index) for index in range(3, 6)], batch_size=2))
+        == 3
+    )
+
+    rows = {row["id"]: row for row in _rows(uri).to_pylist()}
+    assert len(rows) == 6
+    for index in range(6):
+        row = rows[f"row-{index}"]
+        assert row["text"] == f"chunk {index}"
+        assert json.loads(row["source"])["source_id"] == f"/tmp/doc-{index % 3}.pdf"
+        assert row["vector"] == pytest.approx(_row(index)["embedding"])
+
+
+def test_worker_write_tasks_in_another_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    driver_dir, worker_dir = tmp_path / "driver", tmp_path / "worker"
+    driver_dir.mkdir()
+    worker_dir.mkdir()
+    monkeypatch.chdir(driver_dir)
+    frames = _frames([_row(index) for index in range(4)], batch_size=2)
+
+    with IngestVdbOperator(vdb=_backend(Path("db")))._worker_write() as writer:
+        monkeypatch.chdir(worker_dir)
+        receipts = [writer._write_partition(frame) for frame in frames]
+        monkeypatch.chdir(driver_dir)
+        assert writer._commit_partitions(receipts) == 4
+
+    assert _rows(driver_dir / "db").num_rows == 4
+    assert not list(worker_dir.rglob("*"))
