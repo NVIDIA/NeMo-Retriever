@@ -45,7 +45,8 @@ class DuckDB(VDB):
     table_name : str
         Table that receives the rows.
     overwrite : bool
-        Replace the table on commit when ``True`` (a write with no rows leaves it unchanged); append to it (creating it if missing) when ``False``.
+        Replace the table on commit when ``True`` (a write with no rows leaves it unchanged);
+        append to it (creating it if missing) when ``False``.
     worker_write_rows : int
         Rows per ``write_partition_records`` call, so rows per staged Parquet file.
     """
