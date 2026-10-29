@@ -74,7 +74,10 @@ class Elasticsearch(VDB):
         finally:
             published = requests.get(f"{self.url}/{writer._write_index}/_alias/{self.index_name}", timeout=self.timeout)
             if published.status_code == 404:
-                self._request("DELETE", writer._write_index)
+                # A concurrent overwrite may already have deleted a published index.
+                deleted = requests.delete(f"{self.url}/{writer._write_index}", timeout=self.timeout)
+                if deleted.status_code != 404:
+                    deleted.raise_for_status()
 
     def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
         """Bulk-index canonical records into this write's index; return ``{"rows": n}``.
