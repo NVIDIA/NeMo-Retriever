@@ -25,6 +25,19 @@ class Elasticsearch(VDB):
     Each write fills a new index that searches cannot see; the commit points the
     alias at it, replacing (``overwrite=True``) or joining the indices already
     behind it. Overwrite deletes a replaced index unless another alias still uses it. A failed write deletes its index.
+
+    Parameters
+    ----------
+    url : str
+        Elasticsearch base URL.
+    index_name : str
+        Alias that readers search; each write's index is named ``<index_name>-<uuid>``.
+    overwrite : bool
+        Point the alias only at the new index when ``True``; add it next to the current indices when ``False``.
+    worker_write_rows : int
+        Rows per ``write_partition_records`` call, so documents per bulk request.
+    timeout : float
+        Seconds to wait for each HTTP request.
     """
 
     supports_worker_write = True

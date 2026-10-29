@@ -37,6 +37,17 @@ class DuckDB(VDB):
 
     Each write stages its Parquet files in its own folder under ``<path>.staging`` while the workers write; the
     commit replaces (``overwrite=True``) or appends to the table and removes them.
+
+    Parameters
+    ----------
+    path : str
+        DuckDB database file; made absolute so Ray write actors resolve the same staging folder.
+    table_name : str
+        Table that receives the rows.
+    overwrite : bool
+        Replace the table on commit when ``True``; append to it (creating it if missing) when ``False``.
+    worker_write_rows : int
+        Rows per ``write_partition_records`` call, so rows per staged Parquet file.
     """
 
     supports_worker_write = True
