@@ -28,9 +28,9 @@ These tests pin the chart-side fix:
   auto-wiring).
 * Explicit opt-in still reconciles them, so the documented
   ``--set nimOperator.<key>.enabled=true`` workflow keeps working.
-* The README and ``values.yaml`` document the ``1.7.0-variant`` tag
-  used by Parse + Omni so air-gapped mirror pipelines and
-  reproducibility audits can map it to the 26.08.1 release.
+* Parse opt-in uses the native Nemotron 3.5 image. The README documents
+  its mutable tag and the legacy Parse and Omni ``-variant`` tags for
+  air-gapped mirror pipelines and reproducibility audits.
 
 The integration tests shell out to ``helm template`` when ``helm`` is
 on ``$PATH``; otherwise they skip cleanly.
@@ -43,6 +43,8 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 from unittest import SkipTest, TestCase, main
+
+import yaml
 
 
 # Repo-relative paths exercised by every test in this module.
@@ -68,10 +70,10 @@ _RERANK_TEXT_SERVICE_NAME = "name: llama-nemotron-rerank-1b-v2"
 _PARSE_SERVICE_NAME = "name: nemotron-parse"
 _OMNI_SERVICE_NAME = "name: nemotron-3-nano-omni-30b-a3b-reasoning"
 
-# Image tags the chart pins for Parse and Omni in 26.08.1. Documenting it on
-# both ends (values.yaml comments + README) keeps air-gapped mirror
-# pipelines pointed at the right NGC tag.
-_PARSE_VARIANT_TAG = "1.7.0-variant"
+# Native Parse defaults and legacy image tags documented for mirror pipelines.
+_PARSE_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-parse"
+_PARSE_TAG = "latest"
+_LEGACY_PARSE_VARIANT_TAG = "1.7.0-variant"
 _OMNI_VARIANT_TAG = "2.0.4-variant"
 
 # Repositories the rerank NIM may be pinned to. The chart MUST point at
@@ -239,24 +241,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "the VL build instead.",
         )
 
-    def test_values_document_the_variant_tag(self) -> None:
-        """The ``1.7.0-variant`` tag must be explained in ``values.yaml``.
-
-        Customer-facing pain (3) from the bug report: ``1.7.0-variant``
-        is unsearchable on NGC and has no docs entry, so air-gapped
-        mirror pipelines and reproducibility audits cannot map the tag
-        to a known release. An inline comment in ``values.yaml`` is the
-        minimum bar — the README's "Image tag conventions" subsection
-        covers it in more depth.
-        """
+    def test_values_document_the_omni_variant_tag(self) -> None:
+        """The pinned Omni tag and ``-variant`` convention remain documented."""
         values = _read_required_file(_VALUES_YAML)
-        self.assertEqual(
-            values.count(f'tag: "{_PARSE_VARIANT_TAG}"'),
-            1,
-            "Expected exactly one Parse NIM image tag to be pinned to "
-            f"{_PARSE_VARIANT_TAG!r} (Parse)."
-            "Parse must retain its pinned tag.",
-        )
         self.assertEqual(
             values.count(f'tag: "{_OMNI_VARIANT_TAG}"'),
             1,
@@ -337,9 +324,9 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "values.yaml entries and per-NIM table can link to it.",
         )
         self.assertIn(
-            _PARSE_VARIANT_TAG,
+            _LEGACY_PARSE_VARIANT_TAG,
             readme,
-            f"README must mention the {_PARSE_VARIANT_TAG!r} tag verbatim so a "
+            f"README must mention the {_LEGACY_PARSE_VARIANT_TAG!r} tag verbatim so a "
             "`grep` for the tag inside the chart docs returns the "
             "explanation.",
         )
@@ -482,11 +469,17 @@ class OptionalNimsDefaultDisabledTests(TestCase):
             "the chart has broken the opt-in path while flipping the "
             "default.",
         )
-        # The pinned tag must travel with the opt-in.
-        self.assertIn(
-            f"tag: {_PARSE_VARIANT_TAG}",
-            proc.stdout,
-            f"Parse opt-in must render with the pinned {_PARSE_VARIANT_TAG!r} tag.",
+        # Check the Parse resource itself so another NIM cannot satisfy this.
+        parse_service = next(
+            manifest
+            for manifest in yaml.safe_load_all(proc.stdout)
+            if manifest and manifest["kind"] == "NIMService" and manifest["metadata"]["name"] == "nemotron-parse"
+        )
+        self.assertEqual(parse_service["spec"]["image"]["repository"], _PARSE_REPOSITORY)
+        self.assertEqual(
+            parse_service["spec"]["image"]["tag"],
+            _PARSE_TAG,
+            "Parse opt-in must render the native Nemotron 3.5 image.",
         )
 
     def test_helm_template_omni_opt_in_renders_nimservice_and_caption(self) -> None:

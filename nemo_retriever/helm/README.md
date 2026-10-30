@@ -504,6 +504,49 @@ The chart auto-wires the operator-managed in-cluster URLs of the three
 | `nimOperator.ocr` | `nemotron-ocr-v2` | `/v1/ocr` |
 | `nimOperator.vlm_embed`       | `nemotron-3-embed-1b` | `/v1/embeddings` |
 
+### Nemotron 3.5 Parse (optional) { #nemotron-35-parse-optional }
+
+Set `nimOperator.nemotron_parse.enabled=true` to deploy
+`nvcr.io/nim/nvidia/nemotron-parse:latest`. Parse remains disabled by default.
+When the NIM Operator CRDs are present and `nims.enabled=true`, enabling
+Parse sets the default PDF extraction method to `nemotron_parse` and
+connects the service to `http://nemotron-parse:8000/v1/parse`.
+
+The native endpoint accepts a multipart `document` image upload. It does
+not expose `/v1/chat/completions`. Leave
+`serviceConfig.nimEndpoints.nemotronParseModel` empty; the native API
+selects its model without a model field. Set
+`serviceConfig.nimEndpoints.nemotronParseInvokeUrl` to override the endpoint.
+Refer to [Parse endpoint contracts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+
+The chart sets `NIM_ENGINE_MODEL_PATH=/model-store/parse` for downloaded Parse
+weights. Ensure this path is writable by the container user when you
+customize storage or run the image outside the chart. An override of
+`nimOperator.nemotron_parse.env` replaces the complete list; preserve this
+setting or provide another writable model path.
+
+For an existing Parse v1.2 deployment, explicitly override the image and
+legacy endpoint together. The following values retain that contract.
+
+```yaml
+nimOperator:
+  nemotron_parse:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
+      tag: "1.7.0-variant"
+
+serviceConfig:
+  nimEndpoints:
+    nemotronParseInvokeUrl: http://nemotron-parse:8000/v1/chat/completions
+    nemotronParseModel: nvidia/nemotron-parse-v1.2
+```
+
+When upgrading an existing Parse deployment to the new image, follow
+[Changing a NIM image repository or tag](#changing-nim-image-repository-or-tag)
+to recreate its cache. Remove legacy endpoint and model overrides to use
+the native defaults.
+
 ### Query reranking (optional)
 
 The VL reranker NIM is optional and disabled by default. Set `nimOperator.rerankqa.enabled=true` to opt in, and keep `nims.enabled=true` (the default). When those flags are true and the NIM Operator CRDs are present, the chart auto-wires `nim_endpoints.rerank_invoke_url` and `rerank_model_name`. A `POST /v1/query` request with `rerank=true` then uses the in-cluster ranking Service. If `nims.enabled=false`, the chart does not auto-wire those fields. Set `serviceConfig.nimEndpoints.rerankInvokeUrl` to override, or to point at a hosted ranking endpoint. Refer to [Query-time reranking](#query-time-reranking) for the resolution order.
@@ -1273,7 +1316,7 @@ gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.env` | Native HTTP listener, NGC downloads, Nemotron 3.5 served alias, throughput mode, one GPU, and one engine stream. | Overrides replace the complete list. Refer to [Native embedding NIM](#native-embedding-nim). |
 | `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional). Set `true` to opt in — refer to [Query-time reranking](#query-time-reranking). Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
 | `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` | Default optional VL reranker NIM image. |
-| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` to deploy Parse. Enabling this NIM also sets the default PDF extract method to `nemotron_parse`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_parse.enabled`   | `false` | Nemotron 3.5 Parse NIM (optional). Set `true` to deploy Parse. Enabling this NIM also sets the default PDF extract method to `nemotron_parse`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tags follow the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). This VLM is also a supported configurable `/v1/answer` backend. Enabling this key does not enable `/v1/answer`. Refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Nemotron 3.5 Lightning defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). This opt-in does not enable agentic retrieval. Refer to [Agentic retrieval (self-hosted Nemotron 3.5 Lightning)](#agentic-retrieval-llm) for agentic endpoint configuration. Default `false` so installs do not silently claim an answer-generation GPU. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/nemotron-3.5-lightning-30b-a3b` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
@@ -1367,8 +1410,9 @@ The chart does not delete these resources automatically. The retained
 > The four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
 > are enabled and auto-wired by default. Optional NIMs stay off until
 > `nimOperator.<key>.enabled` is `true`. When you opt in, the chart
-> auto-wires Omni captioning and VL reranking into `nim_endpoints`
-> (refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b) and
+> auto-wires Parse, Omni captioning, and VL reranking into `nim_endpoints`
+> (refer to [Nemotron 3.5 Parse](#nemotron-35-parse-optional),
+> [Image captioning (Omni 30B)](#image-captioning-omni-30b), and
 > [Query-time reranking](#query-time-reranking)); other optional NIMs
 > still need an explicit serviceConfig hook (for example
 > `audioGrpcEndpoint` for Parakeet ASR). For minimal installs, prefer the
@@ -1454,22 +1498,26 @@ Tips:
 #### Image tag conventions { #image-tag-conventions }
 
 Most NIMs in this chart pin an exact NGC image tag in `values.yaml`.
-The embedding image uses the floating `nemotron-embed:latest` tag with
-`pullPolicy: Always` to match development Compose. Validate the resolved image
-with your service release before production rollout. For repeatable deployments,
-mirror a validated image under a fixed tag and override the embedding repository
-and tag. The following tag families appear in the chart:
+Embedding and Nemotron 3.5 Parse use floating `latest` tags. The embedding
+image uses `pullPolicy: Always` to match development Compose. Validate each
+resolved image with your service release before production rollout. For
+repeatable deployments, mirror a validated image under a fixed tag and override
+the corresponding `nimOperator.<key>.image.repository` and `.image.tag` values.
+The following tag families appear in the chart.
 
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
 | Floating tag | `nemotron-embed:latest` | Native embedding runtime. Resolve and validate the image before creating a fixed mirror tag. |
+| Floating tag | `nemotron-parse:latest` | Native Nemotron 3.5 Parse runtime with the `/v1/parse` API. Resolve and validate the image before creating a fixed mirror tag. |
 | Plain semver | `nemotron-object-detection:2.0.1` | A standard NIM release, identical bytes on every pull. Used by object detection, OCR, and the reranker / ASR NIMs. |
-| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
+| `<semver>-variant` | `nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`, `nemotron-3.5-lightning-30b-a3b:2.0.9-variant` | Versioned builds with GPU-specific profiles selected by the NIM Operator. Refer to the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table. |
 
-For air-gapped mirror pipelines, preserve the exact plain semver or `-variant`
-tag for pinned NIMs. For embedding, record the validated source digest and mirror
-that image under a fixed tag. Reusing `:latest` does not establish that retained
-model-cache contents match a newly resolved image. Follow the cache migration
+For air-gapped mirror pipelines, mirror each configured image and its model
+assets. Preserve the exact plain semver or `-variant` tag for pinned NIMs.
+For embedding and Parse, record the validated source digest and mirror that
+image under a fixed tag. Reusing `:latest` does not establish that retained
+model-cache contents match a newly resolved image. Validate image and
+model-profile compatibility on your target GPU. Follow the cache migration
 procedure when changing a repository or tag.
 
 If you want a different NIM build on a **new** install, override the tag
@@ -2398,7 +2446,7 @@ your release tag). Defaults below match
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.1` |
 | Text embed | `vlm_embed` | `nvcr.io/nim/nvidia/nemotron-embed:latest` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:2.3.0` |
-| Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
+| Nemotron 3.5 Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse:latest` |
 | Omni caption or configurable answer VLM (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant` |
 | Answer LLM (optional, Nemotron 3.5 Lightning default) | `answer_llm` | `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
