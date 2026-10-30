@@ -1055,7 +1055,7 @@ nimOperator:
   #     - rerankqa                                 (VL reranker,
   #                                                 ≈ 3.1 GiB GPU;
   #                                                 auto-wires rerank URL)
-  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU;
+  #     - nemotron_parse                           (Nemotron 3.5 Parse;
   #                                                 auto-wires Parse URL;
   #                                                 enabling also sets default
   #                                                 extract method)
@@ -1081,7 +1081,7 @@ nimOperator:
   # an additional dedicated GPU per NIM with no opt-in from the operator.
   # See helm/README.md "Recommended minimal install (26.8.2)" for the
   # opt-in flags and "Image tag conventions" for what the
-  # ``1.7.0-variant`` Parse and ``2.0.4-variant`` Omni tags mean.
+  # native Parse mutable tag and ``2.0.4-variant`` Omni tag mean.
   # ---------------------------------------------------------------------------
 
   # Page-element detector. Uses the combined nemotron-object-detection NIM image
