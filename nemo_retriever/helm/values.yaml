@@ -712,7 +712,7 @@ serviceConfig:
     # auto creates hybrid storage when fresh and preserves existing physical indexes.
     # Use hybrid explicitly to upgrade an existing dense table by adding FTS.
     indexMode: "auto"
-    embedModel: "nvidia/nemotron-3-embed-1b"
+    embedModel: "nvidia/nemotron-3.5-embed-1b"
     embedModelProviderPrefix: ""
     # How long a worker waits for the VectorDB pod to acknowledge a record
     # write. A write that is not acknowledged fails the document, so raise
@@ -1033,7 +1033,6 @@ nimOperator:
       NIM_ENABLE_OTEL: "true"
       NIM_OTEL_TRACES_EXPORTER: "otlp"
       NIM_OTEL_METRICS_EXPORTER: "otlp"
-      TRITON_OTEL_RATE: "1"
       OTEL_METRIC_EXPORT_INTERVAL: "5000"
 
   # ---------------------------------------------------------------------------
@@ -1248,16 +1247,16 @@ nimOperator:
       - name: NIM_ENGINE_MODEL_VARIANT
         value: multilingual
 
-  # Nemotron 3 Embed 1B. Used by the text embedding stage and
-  # the vectordb query path.
+  # Native Nemotron 3.5 Embed 1B. Used by ingestion and vectordb queries.
+  # Keep the legacy resource/DNS name when migrating an existing release.
   vlm_embed:
     enabled: true
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
     nimServiceName: nemotron-3-embed-1b
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-3-embed-1b
-      tag: "2.2.2"
-      pullPolicy: IfNotPresent
+      repository: nvcr.io/nim/nvidia/nemotron-embed
+      tag: "latest"
+      pullPolicy: Always
       # Empty inherits ngcImagePullSecret.name. Non-empty REPLACES the
       # chart-wide pull secret name(s) for this NIM only.
       pullSecrets: []
@@ -1283,24 +1282,30 @@ nimOperator:
       service:
         type: ClusterIP
         port: 8000
-        grpcPort: 8001
     otel:
       enabled: null
-      serviceName: ""
+      serviceName: "nemotron-embed"
       endpoint: ""
       env: {}
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      # Match serviceConfig.vectordb.embedModel for ingestion and queries.
+      # This alias does not select the checkpoint or precision.
+      - name: NIM_SERVER_SERVED_MODEL_NAME
+        value: "nvidia/nemotron-3.5-embed-1b"
+      # NIM Operator owns NIM_ENGINE_MODEL_PATH and mounts /model and /opt/cache.
       - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_PERFORMANCE_MODE
         value: "1"
       - name: NIM_ENGINE_COUNT
         value: "1"
-      # Optional: enable if your NIM build supports throughput mode for this SKU.
-      # - name: NIM_PERFORMANCE_MODE
-      #   value: "1"
+      # COUNT selects GPUs; STREAM_COUNT selects engine replicas per GPU.
+      - name: NIM_ENGINE_STREAM_COUNT
+        value: "1"
 
   # ---------------------------------------------------------------------------
   # Optional / advanced NIMs. Disabled by default unless noted below;

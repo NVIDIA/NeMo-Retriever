@@ -175,6 +175,7 @@ services:
       NIM_ENGINE_MODEL_PATH: ${NIM_EMBED_MODEL_PATH:-/model}/embed
       NIM_PERFORMANCE_MODE: "1"
       NIM_ENGINE_COUNT: "1"
+      NIM_ENGINE_STREAM_COUNT: "1"
       OMP_NUM_THREADS: "1"
     volumes:
       - "nim_embedding_cache:/opt/cache"

@@ -70,6 +70,8 @@ def test_embedding_nim_uses_native_runtime_and_matching_client_model() -> None:
     assert env["NIM_SERVER_SERVED_MODEL_NAME"] == f"${{NIM_EMBED_MODEL:-{model}}}"
     assert env["NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER"] == "ngc"
     assert env["NIM_SERVER_BIND_ADDR"] == "0.0.0.0:8000"
+    assert env["NIM_ENGINE_COUNT"] == "1"
+    assert env["NIM_ENGINE_STREAM_COUNT"] == "1"
     assert "NIM_HTTP_API_PORT" not in env
     assert not any(name.startswith("NIM_TRITON_") for name in env)
     assert env["NIM_ENGINE_MODEL_PATH"] == "${NIM_EMBED_MODEL_PATH:-/model}/embed"
