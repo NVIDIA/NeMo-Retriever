@@ -41,6 +41,14 @@ def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
     return text[:limit].rstrip() + "..."
 
 
+def _with_extra_body(fn: Callable[..., Dict[str, Any]], extra: Dict[str, Any]) -> Callable[..., Dict[str, Any]]:
+    def call(**kwargs: Any) -> Dict[str, Any]:
+        kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), **extra}
+        return fn(**kwargs)
+
+    return call
+
+
 class SelectionAgentOperator(AbstractOperator, CPUOperator):
     """Re-rank retrieved documents using an LLM-based selection agent.
 
@@ -112,6 +120,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     chat_completion_fn : callable, optional
         OpenAI-compatible completion callable (e.g. the local in-process vLLM
         adapter). When set, forwarded to the ``"callable"`` LLM backend.
+    max_candidates : int, optional
+        Only the best ``max_candidates`` RRF-ranked candidates reach the
+        selection agent. ``None`` (default) passes every candidate.
+    extra_body : dict, optional
+        Provider fields merged into every selection-agent request body, e.g.
+        ``{"chat_template_kwargs": {"enable_thinking": False}}``. Only applies
+        to the ``"callable"`` backend.
 
     Notes
     -----
@@ -140,8 +155,14 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         temperature: Optional[float] = None,
         backend: str = "callable",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+        max_candidates: Optional[int] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__()
+        if max_candidates is not None and int(max_candidates) < 1:
+            raise ValueError(f"max_candidates must be >= 1, got {max_candidates!r}.")
+        self._max_candidates = None if max_candidates is None else int(max_candidates)
+        self._extra_body = dict(extra_body or {})
         self._llm_model = llm_model
         self._top_k = top_k
         self._api_key = api_key
@@ -197,6 +218,8 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
 
             completion_fn = invoke_chat_completion_step
+        if completion_fn is not None and self._extra_body:
+            completion_fn = _with_extra_body(completion_fn, self._extra_body)
         kwargs = {"completion_fn": completion_fn} if completion_fn is not None else {}
         return create_llm(config, **kwargs)
 
@@ -279,9 +302,16 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 if self._text_truncation and int(self._text_truncation) > 0:
                     text = text[: int(self._text_truncation)]
                 documents.append({"id": doc_id, "text": text})
+                if self._max_candidates is not None and len(documents) >= self._max_candidates:
+                    break
             scores: Optional[Dict[str, float]] = None
             if "rrf_score" in ordered.columns:
-                scores = {str(row["doc_id"]): float(row["rrf_score"]) for _, row in ordered.iterrows()}
+                kept = {doc["id"] for doc in documents}
+                scores = {
+                    str(row["doc_id"]): float(row["rrf_score"])
+                    for _, row in ordered.iterrows()
+                    if str(row["doc_id"]) in kept
+                }
 
             logger.info(
                 "SelectionAgentOperator: query=%s candidates=%d query=%r",

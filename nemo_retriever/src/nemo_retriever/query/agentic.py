@@ -61,6 +61,7 @@ AGENTIC_LLM_BACKENDS = frozenset({"openai_compatible", "in_process"})
 AGENTIC_LOCAL_LLM_BACKEND = "vllm"
 AGENTIC_LOCAL_LLM_MODEL = "nemotron-8b"
 AGENTIC_LOCAL_LLM_BACKENDS = frozenset({"vllm"})
+AGENTIC_CONTROLLERS = frozenset({"llm", "jev"})
 
 # Raw embeddings are large and are not part of the classic hit envelope, so they
 # are dropped from the hits kept for rehydration.
@@ -222,6 +223,21 @@ class AgenticRetrievalConfig:
     top_k: int = AGENTIC_TARGET_TOP_K
     # Wider pre-filter and pre-rerank candidate pool for each retrieval hop.
     candidate_k: Optional[int] = None
+    # Who chooses the retrieval loop's actions: the agent LLM ("llm") or a System
+    # One model ("jev"), which leaves final ranking to the selection stage.
+    controller: str = "llm"
+    # System One endpoint (full URL including /v1/systemone), required when
+    # controller="jev". The key accepts "os.environ/VAR".
+    jev_url: Optional[str] = None
+    jev_model: str = "jev-latest"
+    jev_api_key: Optional[str] = None
+    # Extra JevControllerConfig fields (thresholds and budgets).
+    jev_controller_options: dict[str, Any] = field(default_factory=dict)
+    # Only the best N RRF candidates reach the selection agent (None = all).
+    selection_max_candidates: Optional[int] = None
+    # Provider fields merged into every selection-agent request body, e.g.
+    # {"chat_template_kwargs": {"enable_thinking": False}}.
+    selection_extra_body: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         invoke_url = _none_if_empty(self.invoke_url)
@@ -273,6 +289,15 @@ class AgenticRetrievalConfig:
         )
         object.__setattr__(self, "local_llm_backend", local_llm_backend)
 
+        controller = _normalize_agentic_choice(
+            self.controller, AGENTIC_CONTROLLERS, field_name="controller", default="llm"
+        )
+        object.__setattr__(self, "controller", controller)
+        jev_url = _none_if_empty(self.jev_url)
+        object.__setattr__(self, "jev_url", jev_url)
+        if controller == "jev" and not jev_url:
+            raise ValueError("controller='jev' requires jev_url.")
+
         llm_model = str(self.llm_model or "").strip()
         if not llm_model:
             if llm_backend == "in_process":
@@ -311,6 +336,13 @@ class AgenticRetrievalConfig:
             if candidate_k < int(self.top_k):
                 raise ValueError(f"candidate_k ({candidate_k}) must be greater than or equal to top_k ({self.top_k}).")
             object.__setattr__(self, "candidate_k", candidate_k)
+
+        if self.selection_max_candidates is not None:
+            max_candidates_error = agentic_int_min_error(
+                self.selection_max_candidates, field_name="selection_max_candidates", min_value=int(self.top_k)
+            )
+            if max_candidates_error:
+                raise ValueError(max_candidates_error)
 
         local_tp_error = agentic_int_min_error(
             self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1
@@ -481,6 +513,13 @@ class AgenticRetriever:
             backend=self._cfg.llm_client,
             max_tokens=self._cfg.max_tokens,
             chat_completion_fn=chat_completion_fn,
+            controller=self._cfg.controller if mode == "select" else "llm",
+            jev_client=(
+                {"url": self._cfg.jev_url, "model": self._cfg.jev_model, "api_key": self._cfg.jev_api_key}
+                if self._cfg.jev_url
+                else None
+            ),
+            jev_controller_options=dict(self._cfg.jev_controller_options),
         )
 
     def unload(self) -> None:
@@ -660,6 +699,8 @@ class AgenticRetriever:
             backend=self._cfg.llm_client,
             max_tokens=self._cfg.max_tokens,
             chat_completion_fn=chat_completion_fn,
+            max_candidates=self._cfg.selection_max_candidates,
+            extra_body=self._cfg.selection_extra_body,
         )
         pipeline = (
             AgenticQueryInputOperator()
