@@ -1,6 +1,12 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.vlm_embed.enabled true) -}}
 {{- $name := .Values.nimOperator.vlm_embed.nimServiceName -}}
 {{- $nimSecrets := dict "context" $ "key" "vlm_embed" "cfg" .Values.nimOperator.vlm_embed -}}
+{{- $downloadEnv := list -}}
+{{- range .Values.nimOperator.vlm_embed.env -}}
+{{- if eq .name "NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER" -}}
+{{- $downloadEnv = append $downloadEnv . -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
@@ -13,6 +19,10 @@ spec:
       pullSecret: {{ include "nemo-retriever.nimPullSecret" $nimSecrets | quote }}
       authSecret: {{ include "nemo-retriever.nimAuthSecret" $nimSecrets | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "vlm_embed") | nindent 6 }}
+  {{- with $downloadEnv }}
+  env:
+{{ toYaml . | indent 4 }}
+  {{- end }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.vlm_embed.storage.pvc.create }}
@@ -48,7 +58,7 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.vlm_embed.expose | indent 4 }}
   env:
-{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "vlm_embed" "name" $name) | nindent 4 }}
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "vlm_embed" "name" $name "triton" false) | nindent 4 }}
 {{ toYaml .Values.nimOperator.vlm_embed.env | indent 4 }}
     - name: NGC_API_KEY
       valueFrom:
