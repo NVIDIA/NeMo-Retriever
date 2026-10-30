@@ -9,10 +9,10 @@ from typing import Annotated, Literal
 import typer
 
 from nemo_retriever._agentic.nemo_agent.llm import get_available_backends
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import DEFAULT_LOCAL_RERANK_MODEL, NEMOTRON_3_EMBED_MODEL
 
 DEFAULT_EMBED_MODEL = NEMOTRON_3_EMBED_MODEL
-DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
+DEFAULT_RERANK_MODEL = DEFAULT_LOCAL_RERANK_MODEL
 
 # Advertised in --agentic-llm-client help; sourced from the registry so a newly
 # registered client shows up without editing this string.

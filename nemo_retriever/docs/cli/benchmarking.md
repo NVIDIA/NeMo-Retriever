@@ -1,7 +1,10 @@
 # Benchmarking with the Retriever CLI
 
-End-to-end experiments are maintained in the [NeMo Retriever Benchmark (NRB)
-repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
+NVIDIA runs end-to-end Retriever benchmarks with an internal benchmarking
+harness. To evaluate retrieval on your own setup, use the example notebooks in
+[`examples/`](../../../examples/), such as
+[ViDoRe v3 HR ingestion and retrieval evaluation](../../../examples/vidore_v3_hr.ipynb)
+and [RAG evaluation with RAGAS](../../../examples/nrl_ragas.ipynb).
 The product CLI retains internal stage micro-benchmarks for focused development
 measurements. For product workflows on your own inputs, use
 `retriever ingest` and `retriever query`.
@@ -31,5 +34,5 @@ retriever benchmark extract /path/to/your/pdfs \
 ```
 
 Stage commands report rows per second, or chunk rows per second for audio. They
-do not produce the NRB artifact contract and should not be used as retrieval
+do not produce end-to-end benchmark results and should not be used as retrieval
 quality evidence.

@@ -21,7 +21,6 @@ import pandas as pd
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
     AGENTIC_DEFAULT_CLIENT,
     agentic_llm_client_error,
@@ -186,6 +185,8 @@ class AgenticRetrievalConfig:
     reranker_endpoint: Optional[str] = None
     reranker_api_key: str = ""
     local_reranker_backend: str = "vllm"
+    rerank: bool = False
+    """Enable the default resolved reranker without specifying a model ID."""
     embed_modality: str = "text"
     llm_backend: Optional[str] = None
     llm_model: str = ""
@@ -422,9 +423,9 @@ class AgenticRetriever:
             },
             embed_kwargs=embed_kwargs,
             top_k=AGENTIC_RETRIEVER_TOP_K,
-            rerank=bool(cfg.reranker),
+            rerank=bool(cfg.rerank or cfg.reranker),
             rerank_kwargs={
-                "model_name": cfg.reranker or VL_RERANK_MODEL,
+                "model_name": cfg.reranker,
                 # NemotronRerankActor selects its remote CPU variant on
                 # ``rerank_invoke_url``; any other key silently loads a local model.
                 "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,

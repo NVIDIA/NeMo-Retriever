@@ -97,6 +97,14 @@ uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org
 
 Skip this step if you are using remote NIM inference only.
 
+Local vLLM inference also requires a writable FlashInfer cache and HTTPS
+access to `edge.urm.nvidia.com` for missing GPU kernel artifacts. The default
+artifact cache is `~/.cache/flashinfer/cubins`. Before running offline, prefetch
+artifacts and exercise your intended model on matching GPU hardware. Refer to
+[Local GPU kernel cache](../docs/docs/extraction/prerequisites-support-matrix.md#local-gpu-kernel-cache)
+for the prefetch command and cache configuration. Model weights require
+separate caching.
+
 ## Run the pipeline
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
@@ -869,10 +877,11 @@ After installing the headers, restart the pipeline.
 
 ## Benchmarking
 
-End-to-end Retriever experiments and benchmark orchestration are maintained in
-the [NeMo Retriever Benchmark (NRB) repository](https://gitlab-master.nvidia.com/charlesb/nemo-retriever-benchmark/).
-This repository continues to provide the library, CLI workflows, service
-implementation, and Helm chart that NRB benchmarks.
+NVIDIA runs end-to-end Retriever benchmarks with an internal benchmarking
+harness. To evaluate retrieval on your own setup, use the example notebooks in
+[`examples/`](../examples/), such as
+[ViDoRe v3 HR ingestion and retrieval evaluation](../examples/vidore_v3_hr.ipynb)
+and [RAG evaluation with RAGAS](../examples/nrl_ragas.ipynb).
 
 ### Ingest image storage
 

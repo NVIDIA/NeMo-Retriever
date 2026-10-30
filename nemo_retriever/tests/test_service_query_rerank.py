@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
+import pytest
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
@@ -170,10 +173,11 @@ def test_reranked_query_requires_main_service_reranker(monkeypatch, tmp_path) ->
     assert "rerank_invoke_url" in response.json()["detail"]
 
 
-def test_reranked_query_uses_lazy_local_main_service_model(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize("use_defaults", [False, True])
+def test_reranked_query_uses_lazy_local_main_service_model(monkeypatch, tmp_path, use_defaults: bool) -> None:
     _configure_noop_workers(monkeypatch)
     seen: dict[str, object] = {}
-    local_model = object()
+    local_model = SimpleNamespace(unload=MagicMock())
 
     class _Response:
         status_code = 200
@@ -214,14 +218,18 @@ def test_reranked_query_uses_lazy_local_main_service_model(monkeypatch, tmp_path
             "enabled": False,
             "device": "cuda:0",
             "hf_cache_dir": "/models",
-            "rerank": {
-                "enabled": True,
-                "model_name": "local-reranker",
-                "backend": "hf",
-                "gpu_memory_utilization": 0.6,
-                "max_length": 256,
-                "batch_size": 4,
-            },
+            "rerank": (
+                {"enabled": True}
+                if use_defaults
+                else {
+                    "enabled": True,
+                    "model_name": "local-reranker",
+                    "backend": "hf",
+                    "gpu_memory_utilization": 0.6,
+                    "max_length": 256,
+                    "batch_size": 4,
+                }
+            ),
         },
     )
 
@@ -231,24 +239,25 @@ def test_reranked_query_uses_lazy_local_main_service_model(monkeypatch, tmp_path
     assert response.status_code == 200
     assert seen["body"] == {"query": "revenue", "top_k": 50}
     assert seen["factory"] == {
-        "model_name": "local-reranker",
+        "model_name": config.local_models.rerank.model_name,
         "kwargs": {
-            "backend": "hf",
+            "backend": config.local_models.rerank.backend,
             "device": "cuda:0",
             "hf_cache_dir": "/models",
-            "gpu_memory_utilization": 0.6,
+            "gpu_memory_utilization": config.local_models.rerank.gpu_memory_utilization,
         },
     }
     assert seen["rerank"] == {
         "query": "revenue",
         "kwargs": {
             "model": local_model,
-            "model_name": "local-reranker",
-            "max_length": 256,
-            "batch_size": 4,
+            "model_name": config.local_models.rerank.model_name,
+            "max_length": config.local_models.rerank.max_length,
+            "batch_size": config.local_models.rerank.batch_size,
             "top_n": 1,
         },
     }
+    local_model.unload.assert_called_once_with()
 
 
 def test_false_rerank_string_uses_normal_query_path(monkeypatch, tmp_path) -> None:

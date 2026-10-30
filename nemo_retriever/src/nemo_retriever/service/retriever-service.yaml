@@ -91,10 +91,11 @@ local_models:
   # when using a remote/NIM reranker configured under ``nim_endpoints``.
   rerank:
     enabled: false
-    model_name: nvidia/llama-nemotron-rerank-vl-1b-v2
+    model_name: nvidia/Nemotron-3.5-Rerank-8B-BF16
     backend: vllm
     gpu_memory_utilization: 0.5
-    max_length: 512
+    # Null selects the model-specific limit (10240 for N3.5, 512 for legacy).
+    max_length: null
     batch_size: 32
 
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these

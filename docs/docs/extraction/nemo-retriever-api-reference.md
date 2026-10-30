@@ -151,13 +151,82 @@ Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
 silently select another extraction path.
 
-For local `nemotron_parse` extraction in NeMo Retriever Library 26.08, omit
-`nemotron_parse_model` to use the default model, or set it to
-`nvidia/NVIDIA-Nemotron-Parse-v1.2`. Other local model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before pipeline
-execution. To use a remote Nemotron Parse endpoint, configure
+For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
+`nvidia/Nemotron-3.5-Parse` through in-process vLLM on a CUDA GPU with BF16
+weights. You can also select this checkpoint explicitly with
+`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. To retain the local v1.2
+vLLM path, set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"`.
+Do not configure an invoke URL for either local path. Install the local GPU
+and Parse dependencies with
+`pip install "nemo-retriever[local,nemotron-parse]"`.
+
+The following example uses the default local Parse 3.5 checkpoint. Standalone
+scripts need the `__main__` guard to prevent ingestion from running again in
+spawned workers.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    result = (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+            )
+        )
+        .ingest()
+    )
+    return result
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
+from the same revision pinned in the model registry. It registers the plugin
+in vLLM workers automatically; no separate plugin installation is required.
+During engine startup, the adapter temporarily selects the pinned plugin
+snapshot and forces `VLLM_WORKER_MULTIPROC_METHOD="spawn"`. It restores both
+environment settings after startup, including when startup fails.
+The adapter executes checkpoint custom code with `trust_remote_code=True`.
+Review the checkpoint and plugin code before use. The adapter retains the
+existing task prompt, which disables text prediction inside pictures. The
+default extraction method remains `pdfium_hybrid`; select
+`method="nemotron_parse"` to use Parse.
+
+The `NemotronParse35` adapter loads lazily. Before downloading checkpoint
+assets, its first nonempty inference call validates the requested CUDA device.
+Unavailable CUDA raises `RuntimeError`. The vLLM backend accepts only `cuda`
+or `cuda:0` within the worker's visible GPU set; other devices raise
+`ValueError` during construction. Direct
+`NemotronParse35()` calls, the CLI, and the graph pipeline default to vLLM.
+Direct adapter callers can select `NemotronParse35(backend="transformers")`
+for Transformers GPU inference, or
+`NemotronParse35(backend="transformers", device="cpu")` for CPU inference.
+The adapter does not fall back to Transformers or CPU automatically.
+Batch parsing converts and generates one page at a time, preserving input
+order without retaining converted copies of the entire batch. If a page fails,
+the adapter does not return a partial batch.
+
+Both local Parse adapters accept PIL images, image paths, and HWC or CHW
+NumPy arrays and tensors with 1, 3, or 4 channels. Arrays and tensors can
+include a leading batch dimension of size one. If both layouts are possible,
+inputs are interpreted as HWC. Inputs are converted to RGB; invalid shapes
+and nonfinite pixels raise `ValueError`. Parse 3.5 scales floating-point
+pixels in `[0, 1]` to `[0, 255]`. The v1.2 adapter retains its legacy scaling
+heuristic for floating-point inputs whose maximum is at most `1.5`.
+
+Other local Parse model values, including
+`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before
+pipeline execution. To use a remote Nemotron Parse endpoint, configure
 `nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract.
+the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
+unchanged.
 
 ### Choose raise or collect behavior
 
@@ -540,6 +609,43 @@ for row in result.dataframe.to_dict(orient="records"):
 ### Retrieve { #generated-retrieve-api }
 
 `Retriever` embeds queries, retrieves from a vector database, and can rerank results. Pass `embed_kwargs` that match `EmbedParams`, `vdb_kwargs` for `RetrieveVdbOperator`, and `rerank_kwargs` for `NemotronRerankActor`.
+
+Reranking remains opt-in. With `Retriever(rerank=True)` and no remote reranking
+endpoint, local GPU reranking defaults to
+`nvidia/Nemotron-3.5-Rerank-8B-BF16`. Explicit legacy model selections retain
+their existing adapters. Hosted NVIDIA endpoints, NIM, Helm, and Compose
+reranker defaults are unchanged.
+
+When execution selects the CPU actor and no reranker model or endpoint is
+configured, reranking retains the existing hosted 1B default. Configure
+`NVIDIA_API_KEY` or `NGC_API_KEY` for that fallback. It does not download the
+local 8B checkpoint.
+
+For Python agentic retrieval, `AgenticRetrievalConfig` from
+`nemo_retriever.query.agentic` accepts `rerank=True` without a `reranker` model
+ID. Each retrieval hop then selects the GPU-local or CPU-hosted default above.
+Setting an explicit `reranker` model also enables reranking and preserves that
+selection. Reranking remains disabled when both settings are omitted.
+
+The BEIR evaluator also selects Nemotron 3.5 for enabled local GPU reranking
+when `reranker_model_name` is omitted. Its remote and implicit CPU paths retain
+their existing text-only `nvidia/llama-nemotron-rerank-1b-v2` default, not the
+local 8B checkpoint.
+
+For direct local use, import `create_local_reranker` from
+`nemo_retriever.models`. Calling `create_local_reranker()` selects the same
+checkpoint with the `vllm` backend. Select `backend="hf"` for the Hugging Face
+backend. Standalone scripts that start vLLM must guard execution with
+`if __name__ == "__main__":` to avoid rerunning inference in spawned workers.
+
+The local adapter uses the checkpoint's processor and reranking chat template.
+Text remains the default modality; switching the checkpoint does not
+automatically add page images. Supply images explicitly when you need visual
+reranking. The library's local profile limits input to 10,240 tokens, including
+the query, template, document, and image tokens; this is not the checkpoint's
+native maximum. Overlength handling truncates document
+text only; queries and supplied images are preserved. Requests that cannot
+fit without truncating the query or image raise an error.
 
 With the default query graph, `Retriever.queries()` returns one hit list per
 input query, preserving input order and repeated identical inputs. Overlength
