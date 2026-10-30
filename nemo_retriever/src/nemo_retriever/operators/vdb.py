@@ -6,17 +6,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import nvtx
 import pandas as pd
+import pyarrow as pa
 
 from nemo_retriever.common.vdb.adt_vdb import CollectionWriteContext, UnsupportedVDBOperation, VDB
 from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 from nemo_retriever.common.vdb.records import (
+    CanonicalRecordBatch,
+    ConversionTally,
     _iter_client_vdb_records,
+    embedding_arrow_column,
     embedding_vector,
+    iter_canonical_record_batches,
     normalize_retrieval_results,
     to_client_vdb_records,
     validate_collection_retrieval_results,
@@ -50,6 +56,21 @@ def _iter_batch_rows(batches: Iterable[pd.DataFrame]) -> Iterator[dict[str, Any]
 
     for batch in batches:
         yield from batch.to_dict(orient="records")
+
+
+def _iter_batch_rows_with_vectors(
+    batches: Iterable[pd.DataFrame], *, embedding_column: str
+) -> Iterator[tuple[list[dict[str, Any]], pa.Array]]:
+    """Yield each batch's graph rows without the embedding column, plus that column as Arrow."""
+
+    for batch in batches:
+        if embedding_column in batch.columns:
+            vectors = embedding_arrow_column(batch[embedding_column], length=len(batch))
+            rows = batch.drop(columns=[embedding_column]).to_dict(orient="records")
+        else:
+            vectors = pa.nulls(len(batch), pa.list_(pa.float32()))
+            rows = batch.to_dict(orient="records")
+        yield rows, vectors
 
 
 def query_vectors_from_embedded_dataframe(
@@ -148,25 +169,10 @@ class IngestVdbOperator(AbstractOperator):
         if not self._supports_stream_ingest():
             raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
 
-        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(
-            _iter_batch_rows(batches),
-            embedding_column=self._embedding_column,
-        )
-        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
-            undecorated_records = records
+        if getattr(self._vdb, "supports_stream_ingest_batches", False):
+            return self._stream_ingest_batches(batches)
 
-            def with_sidecar() -> Iterator[dict[str, Any]]:
-                for record in undecorated_records:
-                    yield _apply_sidecar_metadata_to_client_record(
-                        record,
-                        lookup=self._sidecar_lookup,
-                        meta_fields=self._sidecar_spec["meta_fields"],
-                        join_key=self._sidecar_spec["meta_join_key"],
-                    )
-
-            records = with_sidecar()
-
-        record_stream = records
+        record_stream = self._canonical_records(batches)
         exhausted = False
         submitted_records = 0
 
@@ -183,6 +189,111 @@ class IngestVdbOperator(AbstractOperator):
                 f"{type(self._vdb).__name__}.stream_ingest() returned before consuming the record stream"
             )
         return submitted_records
+
+    def _stream_ingest_batches(self, batches: Iterable[pd.DataFrame]) -> int:
+        """Stream canonical record batches, keeping each batch's vectors in one Arrow column."""
+
+        record_batches = self._canonical_batches(batches)
+        exhausted = False
+        submitted_records = 0
+
+        def required_batches() -> Iterator[CanonicalRecordBatch]:
+            nonlocal exhausted, submitted_records
+            for batch in record_batches:
+                submitted_records += len(batch.records)
+                yield batch
+            exhausted = True
+
+        self._vdb.stream_ingest_batches(required_batches())
+        if not exhausted:
+            raise RuntimeError(
+                f"{type(self._vdb).__name__}.stream_ingest_batches() returned before consuming the record stream"
+            )
+        return submitted_records
+
+    def _supports_worker_write(self) -> bool:
+        """Return whether ``ingest(return_results=False)`` writes this VDB from the Ray workers."""
+
+        return bool(getattr(self._vdb, "supports_worker_write", False))
+
+    @contextmanager
+    def _worker_write(self) -> Iterator["IngestVdbOperator"]:
+        """Yield the picklable copy of this sink that one worker-native write runs on.
+
+        Ray write tasks call its ``_write_partition`` and the driver its ``_commit_partitions``. It
+        carries the backend from ``worker_write()`` and the sidecar lookup built on the driver, so
+        write tasks do not re-read the sidecar file.
+        """
+
+        with self._vdb.worker_write() as vdb:
+            writer = type(self)(vdb=vdb, embedding_column=self._embedding_column)
+            if self._sidecar_spec is not None:
+                writer._sidecar_spec = {
+                    key: value for key, value in self._sidecar_spec.items() if key != "meta_dataframe"
+                }
+                writer._sidecar_lookup = self._sidecar_lookup
+            yield writer
+
+    def _write_partition(self, frame: pd.DataFrame) -> dict[str, Any]:
+        """Ray-worker side of the worker-native sink: write the canonical projection of one block."""
+
+        tally = ConversionTally(embedding_column=self._embedding_column)
+        if self._vdb.supports_stream_ingest_batches:
+            receipt = self._vdb.write_partition(self._canonical_batches([frame], tally=tally))
+        else:
+            receipt = self._vdb.write_partition_records(self._canonical_records([frame], tally=tally))
+        # The fail-closed rules (no row converted, searchable rows without embeddings) are
+        # decided over the whole upload in ``_commit_partitions``, not per partition.
+        receipt["conversion"] = tally.snapshot()
+        return receipt
+
+    def _commit_partitions(self, receipts: list[dict[str, Any]]) -> int:
+        """Driver side of the worker-native sink: commit every receipt at once; return submitted records.
+
+        Applies the stream path's conversion rules once, over all partitions, before anything is committed.
+        """
+
+        tally = ConversionTally(embedding_column=self._embedding_column)
+        for receipt in receipts:
+            tally.absorb(receipt["conversion"])
+        tally.finish()
+        self._vdb.commit_partitions(receipts)
+        return tally.converted_count
+
+    def _canonical_records(
+        self, batches: Iterable[pd.DataFrame], *, tally: ConversionTally | None = None
+    ) -> Iterator[dict[str, Any]]:
+        records = _iter_client_vdb_records(
+            _iter_batch_rows(batches), embedding_column=self._embedding_column, tally=tally
+        )
+        sidecar = self._sidecar_decorator()
+        return records if sidecar is None else (sidecar(record) for record in records)
+
+    def _canonical_batches(
+        self, batches: Iterable[pd.DataFrame], *, tally: ConversionTally | None = None
+    ) -> Iterator[CanonicalRecordBatch]:
+        sidecar = self._sidecar_decorator()
+        for batch in iter_canonical_record_batches(
+            _iter_batch_rows_with_vectors(batches, embedding_column=self._embedding_column),
+            embedding_column=self._embedding_column,
+            tally=tally,
+        ):
+            if sidecar is not None:
+                for record in batch.records:
+                    sidecar(record)
+            yield batch
+
+    def _sidecar_decorator(self) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+        """Return the in-place sidecar merge for one canonical record, or None when unconfigured."""
+        spec, lookup = self._sidecar_spec, self._sidecar_lookup
+        if spec is None or lookup is None:
+            return None
+        return lambda record: _apply_sidecar_metadata_to_client_record(
+            record,
+            lookup=lookup,
+            meta_fields=spec["meta_fields"],
+            join_key=spec["meta_join_key"],
+        )
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

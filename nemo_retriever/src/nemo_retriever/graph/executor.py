@@ -9,10 +9,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 import math
+import json
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
 import nvtx
 import pandas as pd
+import pyarrow as pa
 
 if TYPE_CHECKING:
     import ray.data
@@ -50,6 +52,7 @@ _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 # not capacity held by another active workload.
 _RESOURCE_RELEASE_WAIT_SECONDS = 1.0
 _RESOURCE_RELEASE_POLL_SECONDS = 0.01
+_WORKER_WRITE_ACTORS = 2
 
 
 def resolve_batch_return_results(graph: Graph, return_results: bool | None) -> bool:
@@ -644,11 +647,14 @@ class RayDataExecutor(AbstractExecutor):
         positions = [
             index
             for index, node in enumerate(nodes)
-            if isinstance(node.operator, IngestVdbOperator) and node.operator._supports_stream_ingest()
+            if isinstance(node.operator, IngestVdbOperator)
+            and (node.operator._supports_stream_ingest() or node.operator._supports_worker_write())
         ]
         sink_index = positions[0] if len(positions) == 1 else None
         if require_terminal and (sink_index is None or sink_index != len(nodes) - 1):
-            raise ValueError("return_results=False requires a terminal VDB that supports streaming ingest")
+            raise ValueError(
+                "return_results=False requires a terminal VDB that supports streaming or worker-native ingest"
+            )
         return sink_index
 
     def ingest(
@@ -681,7 +687,7 @@ class RayDataExecutor(AbstractExecutor):
         Raises
         ------
         ValueError
-            Summary mode requires a terminal VDB that supports streaming ingest.
+            Summary mode requires a terminal VDB that supports streaming or worker-native ingest.
         TypeError
             Additional keyword settings are not supported.
         """
@@ -690,6 +696,61 @@ class RayDataExecutor(AbstractExecutor):
             unsupported = ", ".join(sorted(kwargs))
             raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
         return self._ingest(data, return_results=resolve_batch_return_results(self.graph, return_results))
+
+    def _worker_write_ingest(
+        self,
+        dataset: Any,
+        sink_node: Node,
+        *,
+        validate_batch: Callable[[pd.DataFrame], None] | None = None,
+        preserve_pandas_blocks: bool = False,
+    ) -> pd.DataFrame:
+        """Worker-native VDB sink: a pool of long-lived Ray Data write actors projects and writes
+        the rows; the driver commits once.
+
+        Each of the ``_WORKER_WRITE_ACTORS`` actors runs ``_write_partition`` on one bundle of
+        ``worker_write_rows`` rows per call and returns a one-row receipt frame. Receipts are the only
+        data that crosses to the driver. ``validate_batch`` runs inside the actor before the write, so a
+        stage error surfaces as a ``RayTaskError`` wrapping it.
+        Blocks that upstream stages deliberately keep in pandas are handed over as pandas, not re-encoded
+        as Arrow. Write actors run on the driver's node, so backends that stage local files can commit
+        them from the driver.
+        """
+        import ray
+        from ray.data import ActorPoolStrategy
+        from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+        with sink_node.operator._worker_write() as writer:
+
+            def write_partition(block: pa.Table | pd.DataFrame) -> pd.DataFrame:
+                frame = block if isinstance(block, pd.DataFrame) else arrow_table_to_pandas(block)
+                if validate_batch is not None:
+                    validate_batch(frame)
+                receipt = writer._write_partition(frame)
+                receipt["input_rows"] = len(frame)
+                return pd.DataFrame({"receipt": [json.dumps(receipt)]})
+
+            class PartitionWriter:
+                def __call__(self, block: pa.Table | pd.DataFrame) -> pd.DataFrame:
+                    return write_partition(block)
+
+            # num_cpus=0: with 1-CPU writers Ray Data has no budget left for the read task,
+            # so execution never starts.
+            written = dataset.map_batches(
+                PartitionWriter,
+                compute=ActorPoolStrategy(size=_WORKER_WRITE_ACTORS),
+                num_cpus=0,
+                batch_format="pandas" if preserve_pandas_blocks else "pyarrow",
+                batch_size=writer._vdb.worker_write_rows,
+                zero_copy_batch=True,
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(), soft=False
+                ),
+            )
+            receipts = [json.loads(row["receipt"]) for row in written.iter_rows()]
+            submitted_records = writer._commit_partitions(receipts)
+        input_rows = sum(int(receipt["input_rows"]) for receipt in receipts)
+        return pd.DataFrame([{"input_rows": input_rows, "submitted_records": submitted_records}])
 
     @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest(
@@ -712,6 +773,28 @@ class RayDataExecutor(AbstractExecutor):
             data,
             segment="before_stream_ingest",
         )
+
+        if sink_operator._supports_worker_write():
+            preserve_pandas_blocks = _requires_stable_pandas_blocks(nodes[:sink_index])
+            if return_results:
+                # The write tasks and the returned rows read the same computed blocks.
+                dataset = dataset.materialize()
+            summary = self._worker_write_ingest(
+                dataset,
+                nodes[sink_index],
+                validate_batch=validate_batch,
+                preserve_pandas_blocks=preserve_pandas_blocks,
+            )
+            if not return_results:
+                return summary
+            if has_downstream_nodes:
+                downstream = self._build_dataset(
+                    dataset,
+                    segment="after_stream_ingest",
+                    input_preserves_pandas_output=preserve_pandas_blocks,
+                )
+                return ray_dataset_to_pandas(downstream)
+            return ray_dataset_to_pandas(dataset)
 
         terminal_frames: list[pd.DataFrame] = []
         input_rows = 0

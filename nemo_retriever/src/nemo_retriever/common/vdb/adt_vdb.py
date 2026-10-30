@@ -25,6 +25,7 @@ metadata-filtering section and its reference notebook.
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
 
@@ -101,9 +102,20 @@ class VDB(ABC):
 
     Set ``supports_stream_ingest`` to ``True`` when overriding
     :meth:`stream_ingest`; otherwise ingestion continues through :meth:`run`.
+    Set ``supports_stream_ingest_batches`` to ``True`` when also overriding
+    :meth:`stream_ingest_batches`, which receives the same canonical records
+    with their vectors kept in one Arrow column per batch.
+    Set ``supports_worker_write`` to ``True`` when overriding :meth:`worker_write`,
+    :meth:`write_partition_records` (and :meth:`write_partition` for batch backends),
+    and :meth:`commit_partitions`; Ray workers then write the data and the driver
+    commits once.
     """
 
     supports_stream_ingest: bool = False
+    supports_stream_ingest_batches: bool = False
+    supports_worker_write: bool = False
+    #: Rows per ``write_partition`` call in the worker-native sink.
+    worker_write_rows: int = 2048
 
     @abstractmethod
     def __init__(self, **kwargs):
@@ -373,6 +385,105 @@ class VDB(ABC):
             f"{type(self).__name__} does not implement stream_ingest(); "
             "streaming ingestion is not supported by this VDB backend."
         )
+
+    def stream_ingest_batches(self, batches: Iterable[Any]) -> None:
+        """Ingest a lazy stream of :class:`~nemo_retriever.common.vdb.records.CanonicalRecordBatch` values.
+
+        Same contract as :meth:`stream_ingest`, but each item carries a list of
+        canonical records without ``metadata["embedding"]`` plus one aligned
+        Arrow ``list<float>`` column holding their vectors. Backends opt in with
+        ``supports_stream_ingest_batches`` so dense vectors never become Python
+        lists between the embed stage and storage.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement batch streaming ingestion.
+        """
+        raise UnsupportedVDBOperation(
+            f"{type(self).__name__} does not implement stream_ingest_batches(); "
+            "batch streaming ingestion is not supported by this VDB backend."
+        )
+
+    def worker_write(self) -> AbstractContextManager["VDB"]:
+        """Return a context manager for one worker-native write.
+
+        It yields the picklable backend the Ray write actors call
+        :meth:`write_partition` or :meth:`write_partition_records` on; the driver
+        then calls its :meth:`commit_partitions` once with every receipt. Leaving
+        the context discards whatever the actors wrote that was not committed.
+
+        Returns
+        -------
+        AbstractContextManager[VDB]
+            Context manager yielding the writer copy for this write.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement worker-native writes.
+        """
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement worker_write().")
+
+    def write_partition(self, batches: Iterable[Any]) -> dict[str, Any]:
+        """Write one partition of canonical record batches from a Ray actor; return a JSON-safe receipt.
+
+        Called instead of :meth:`write_partition_records` when ``supports_stream_ingest_batches``
+        is set. Nothing written here may be visible before :meth:`commit_partitions`.
+
+        Parameters
+        ----------
+        batches : Iterable[CanonicalRecordBatch]
+            Canonical records with their vectors in one Arrow column per batch.
+
+        Returns
+        -------
+        dict[str, Any]
+            Receipt passed to :meth:`commit_partitions` on the driver.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement batch partition writes.
+        """
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement write_partition().")
+
+    def write_partition_records(self, records: Iterable[dict[str, Any]]) -> dict[str, Any]:
+        """Write one partition of canonical record dictionaries from a Ray actor; return a JSON-safe receipt.
+
+        Nothing written here may be visible before :meth:`commit_partitions`.
+
+        Parameters
+        ----------
+        records : Iterable[dict[str, Any]]
+            Canonical records, each with its vector in ``metadata["embedding"]``.
+
+        Returns
+        -------
+        dict[str, Any]
+            Receipt passed to :meth:`commit_partitions` on the driver.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement record partition writes.
+        """
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement write_partition_records().")
+
+    def commit_partitions(self, receipts: list[dict[str, Any]]) -> None:
+        """Make every receipt's rows visible in one step, on the driver.
+
+        Parameters
+        ----------
+        receipts : list[dict[str, Any]]
+            Every receipt the write actors returned for this write.
+
+        Raises
+        ------
+        UnsupportedVDBOperation
+            If the backend does not implement worker-native writes.
+        """
+        raise UnsupportedVDBOperation(f"{type(self).__name__} does not implement commit_partitions().")
 
     @abstractmethod
     def run(self, records):
