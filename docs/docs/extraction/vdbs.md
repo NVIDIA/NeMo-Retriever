@@ -287,13 +287,20 @@ NeMo Retriever Library integrates with vector databases used for RAG collections
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
-NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships one first-party backend:
+NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) and [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/operators/vdb.py) wrap concrete classes that implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface (`run` for ingest, `retrieval` for search). The library ships one first-party backend for ingest and retrieval:
 
 | Backend | Project | Implementation |
 |---------|---------|----------------|
 | **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/lancedb.py) — default `vdb_op` is `"lancedb"`. |
 
 `GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb).
+
+The library also includes two write-only backends that show the worker-native write path on other stores. Construct one and pass it as `vdb`. Neither backend supports retrieval or the collection API.
+
+| Backend | Implementation | Write behavior |
+|---------|----------------|----------------|
+| **DuckDB** | `nemo_retriever.common.vdb.duckdb.DuckDB(path, table_name)` | Ray write actors stage Parquet files, and the driver loads them into the table in one transaction. Requires the `duckdb` package. |
+| **Elasticsearch** | `nemo_retriever.common.vdb.elasticsearch.Elasticsearch(url, index_name)` | Ray write actors bulk-index into a new index, and the driver points the `index_name` alias at that index in one step. |
 
 To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/examples/building_vdb_operator.ipynb)).
 

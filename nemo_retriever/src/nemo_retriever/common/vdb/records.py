@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -19,7 +20,11 @@ import pyarrow.compute as pc
 from pydantic import ValidationError
 
 from nemo_retriever.common.schemas.collections import QueryHit
-from nemo_retriever.common.schemas.embedding import embedding_record_content, embedding_split_content
+from nemo_retriever.common.schemas.embedding import (
+    EMBEDDING_SPLIT_METADATA_KEY,
+    embedding_record_content,
+    embedding_split_content,
+)
 from nemo_retriever.common.stage_errors import ERROR_FIELD_KEYS, iter_stage_errors_from_value
 
 _CONTENT_TYPE_ALIASES: dict[str, str] = {
@@ -37,6 +42,8 @@ _CONTENT_PROVENANCE_METADATA_KEYS = (
     "segment_end_seconds",
     "frame_timestamp_seconds",
 )
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_content_type(value: Any) -> str | None:
@@ -881,3 +888,95 @@ def normalize_retrieval_results(
                 normalized_hits.append(_normalize_hit(hit_dict))
         normalized.append(normalized_hits)
     return normalized
+
+
+def stored_json(value: Any) -> str:
+    """
+    Convert Python objects (dict/list/etc.) to a compact JSON string.
+
+    Backends store `metadata` and `source` as strings, so nested structures are
+    serialized before ingestion.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+    except Exception:
+        return str(value)
+
+
+def element_text(element: dict[str, Any]) -> str | None:
+    """
+    Extract searchable text from an element based on document_type.
+
+    This prevents base64-encoded images from being stored in the text field.
+    """
+    doc_type = element.get("document_type")
+    metadata = element.get("metadata", {})
+
+    if doc_type == "text":
+        return metadata.get("content")
+    elif doc_type == "structured":
+        # Tables, charts, infographics
+        table_meta = metadata.get("table_metadata", {})
+        return table_meta.get("table_content")
+    elif doc_type == "image":
+        # Use caption/OCR text, not raw base64 image data
+        image_meta = metadata.get("image_metadata", {})
+        content_meta = metadata.get("content_metadata", {})
+        if content_meta.get("subtype") == "page_image":
+            return image_meta.get("text")
+        else:
+            return image_meta.get("caption")
+    elif doc_type == "audio":
+        audio_meta = metadata.get("audio_metadata", {})
+        return audio_meta.get("audio_transcript")
+    else:
+        # Fallback for unknown types
+        return metadata.get("content")
+
+
+def stored_row_fields(element: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    """Project the stored string columns of one canonical record (``text``, ``metadata``, ``source``, ``id``).
+
+    The vector is handled by the caller. Returns ``(None, reason)`` for a record with no text.
+    """
+
+    metadata = element.get("metadata", {})
+    doc_type = element.get("document_type")
+    content_meta = metadata.get("content_metadata", {})
+    split_content = embedding_split_content(metadata)
+    text = split_content if split_content is not None else element_text(element)
+    if split_content is not None:
+        content_meta = {**content_meta, EMBEDDING_SPLIT_METADATA_KEY: metadata[EMBEDDING_SPLIT_METADATA_KEY]}
+
+    if split_content is None and (not isinstance(text, str) or not text.strip()):
+        is_canonical_image = (
+            doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
+        )
+        if not is_canonical_image:
+            source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
+            page_number = content_meta.get("page_number") if isinstance(content_meta, dict) else None
+            logger.debug(
+                "No text found for entity: %s page: %s type: %s",
+                source_name,
+                page_number,
+                doc_type,
+            )
+            return None, "dropped_no_text"
+        text = ""
+
+    row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
+    if row_id is None and isinstance(metadata, dict):
+        row_id = metadata.get("id")
+    return (
+        {
+            "text": text,
+            "metadata": stored_json(content_meta),
+            "source": stored_json(metadata.get("source_metadata", {})),
+            "id": str(row_id) if row_id is not None else "",
+        },
+        None,
+    )

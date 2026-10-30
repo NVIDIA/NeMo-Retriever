@@ -50,6 +50,16 @@ rows visible together. `worker_write()` is the context manager that yields the
 picklable backend copy the actors use; leaving it discards anything written
 but not committed. `LanceDB` is the reference implementation.
 
+Two small write-only backends show the same contract on other stores. Pass an
+instance as `vdb=`; neither implements retrieval or the collection API.
+
+| Backend | Write actors | `commit_partitions` |
+|---|---|---|
+| `DuckDB(path, table_name)` | Write Parquet files to a per-write folder under `<path>.staging` | Loads every file in one transaction, then deletes the staging folder |
+| `Elasticsearch(url, index_name)` | Bulk-index into a new index with refresh off | Refreshes, checks the document count against the receipts, then points the `index_name` alias at the new index |
+
+`DuckDB` needs the `duckdb` package, which is in the `dev` extra.
+
 ---
 
 ## `IngestVdbOperator` (ingestion)
