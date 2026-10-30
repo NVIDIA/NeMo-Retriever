@@ -129,7 +129,7 @@ def _join_yolox_table_structure_and_ocr_output(
     df_table = df_assign[df_assign["is_table"]].reset_index(drop=True)
     if len(df_table):
         mat = build_markdown(df_table)
-        markdown_table = display_markdown(mat, use_header=True)
+        markdown_table = display_markdown(mat, use_header=False)
 
         all_boxes = np.stack(df_table.ocr_box.values)
         table_box = np.concatenate([all_boxes[:, [0, 1]].min(0), all_boxes[:, [2, 3]].max(0)])
@@ -163,7 +163,8 @@ def _join_yolox_table_structure_and_ocr_output(
 
         if len(df_row) > 1:
             df_row = df_row.reset_index(drop=True)
-            df_row["text"] = "\n".join(df_row["text"].values.tolist())
+            separator = " "
+            df_row["text"] = separator.join(df_row["text"].values.tolist())
 
         rows_list.append(df_row.head(1))
 
@@ -298,10 +299,24 @@ def _normalize_ocr_items(preds: Any) -> List[Dict[str, Any]]:
     """
     items: List[Dict[str, Any]] = []
 
+    if isinstance(preds, dict) and isinstance(preds.get("text_detections"), list):
+        preds = preds["text_detections"]
     if isinstance(preds, list):
         for item in preds:
             if not isinstance(item, dict):
                 continue
+            prediction = item.get("text_prediction")
+            bounding_box = item.get("bounding_box")
+            if isinstance(prediction, dict) and isinstance(bounding_box, dict):
+                points = bounding_box.get("points") or []
+                if points:
+                    item = {
+                        "left": min(float(p["x"]) for p in points),
+                        "right": max(float(p["x"]) for p in points),
+                        "upper": min(float(p["y"]) for p in points),
+                        "lower": max(float(p["y"]) for p in points),
+                        "text": prediction.get("text"),
+                    }
             if not all(k in item for k in ("left", "right", "upper", "lower")):
                 continue
             txt = str(item.get("text") or "").strip()
@@ -409,6 +424,8 @@ def join_table_structure_and_ocr_output(
     structure_dets: List[Dict[str, Any]],
     ocr_preds: Any,
     crop_hw: Tuple[int, int],
+    *,
+    ocr_crop_hw: Optional[Tuple[int, int]] = None,
 ) -> str:
     """Adapter: convert retriever table-structure detections + OCR items,
     then call the core joining function.
@@ -439,7 +456,10 @@ def join_table_structure_and_ocr_output(
     if cell_preds["cell"].shape[0] == 0:
         return ""
 
-    quad_boxes, texts = _ocr_items_to_pixel_quad_boxes(ocr_items, crop_hw)
+    quad_boxes, texts = _ocr_items_to_pixel_quad_boxes(ocr_items, ocr_crop_hw or crop_hw)
+    quad_boxes, texts, _ = reorder_boxes(
+        np.asarray(quad_boxes), texts, [1.0] * len(texts), mode="top_left", dbscan_eps=10
+    )
     return _join_yolox_table_structure_and_ocr_output(cell_preds, quad_boxes, texts)
 
 
