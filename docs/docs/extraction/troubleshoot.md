@@ -235,29 +235,30 @@ Helm process environment does not change NIM startup.
 Configure the embedding NIM container instead. Use the supported maximum
 from the error message. In this example, that value is `3`.
 
-**Helm:** The default chart deploys `nemotron-3-embed-1b:2.2.2`
-as `nimOperator.vlm_embed`. For that image, set `NIM_PIPELINE_MAX_BATCH_SIZE`
-on `nimOperator.vlm_embed.env`. That list replaces the chart default, so
-keep the default entries. The following example keeps those defaults, leaves
-the optional performance mode disabled, and adds the batch-size variable.
-Uncomment `NIM_PERFORMANCE_MODE` only if your NIM build supports it for this
-SKU:
+**Helm:** The current development chart deploys `nemotron-embed:latest`
+as `nimOperator.vlm_embed`, serving `nvidia/nemotron-3.5-embed-1b`.
+Set `NIM_PIPELINE_MAX_BATCH_SIZE` on `nimOperator.vlm_embed.env`.
+That list replaces the chart default, so keep the native runtime entries.
+The following example preserves throughput mode and adds the batch-size variable:
 
 ```yaml
 nimOperator:
   vlm_embed:
     env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
+      - name: NIM_SERVER_BIND_ADDR
+        value: "0.0.0.0:8000"
+      - name: NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER
+        value: ngc
+      - name: NIM_SERVER_SERVED_MODEL_NAME
+        value: "nvidia/nemotron-3.5-embed-1b"
       - name: OMP_NUM_THREADS
+        value: "1"
+      - name: NIM_PERFORMANCE_MODE
         value: "1"
       - name: NIM_ENGINE_COUNT
         value: "1"
-      # Optional: enable if your NIM build supports throughput mode for this SKU.
-      # - name: NIM_PERFORMANCE_MODE
-      #   value: "1"
+      - name: NIM_ENGINE_STREAM_COUNT
+        value: "1"
       - name: NIM_PIPELINE_MAX_BATCH_SIZE
         value: "3"
 ```
@@ -618,7 +619,9 @@ The affected NIM is unavailable during re-cache. Repeat the sequence for every N
 
 Changing `service.image.repository` or `service.image.tag` does not use `NIMCache` and is not subject to this rule.
 
-For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
+The migration from `nemotron-3-embed-1b:2.2.2` to native `nemotron-embed:latest` follows this same manual cache and PVC procedure. The resource name stays `nemotron-3-embed-1b`. Back up, rebuild, and re-ingest affected indexes before using the Nemotron 3.5 model. Refer to [Self-hosted embedding defaults](embedding.md#self-hosted-helm-and-development-compose-defaults).
+
+For default cache names, PVC cleanup, and the full upgrade sequence, refer to [Changing a NIM image repository or tag](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#changing-nim-image-repository-or-tag).
 
 ## NIMCache or NIMService still uses ngc-secret after a global Secret rename { #helm-nim-secret-names }
 
