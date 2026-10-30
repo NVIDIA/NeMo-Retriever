@@ -21,7 +21,7 @@ import pandas as pd
 from nemo_retriever._agentic.nemo_agent import SelectionAgent, SelectionAgentConfig
 from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
-from nemo_retriever._agentic.nemo_agent.results import AgentRunResult
+from nemo_retriever._agentic.nemo_agent.results import ERROR_BAD_FINISH_REASON, AgentRunResult
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 
@@ -39,6 +39,14 @@ def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
+
+
+def _with_extra_body(fn: Callable[..., Dict[str, Any]], extra: Dict[str, Any]) -> Callable[..., Dict[str, Any]]:
+    def call(**kwargs: Any) -> Dict[str, Any]:
+        kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), **extra}
+        return fn(**kwargs)
+
+    return call
 
 
 class SelectionAgentOperator(AbstractOperator, CPUOperator):
@@ -112,6 +120,18 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     chat_completion_fn : callable, optional
         OpenAI-compatible completion callable (e.g. the local in-process vLLM
         adapter). When set, forwarded to the ``"callable"`` LLM backend.
+    max_candidates : int, optional
+        Only the best ``max_candidates`` RRF-ranked candidates reach the
+        selection agent. ``None`` (default) passes every candidate.
+    extra_body : dict, optional
+        Provider fields merged into every selection-agent request body, e.g.
+        ``{"chat_template_kwargs": {"enable_thinking": False}}``. Only applies
+        to the ``"callable"`` backend.
+    length_retry_extra_body : dict, optional
+        When set, a selection run that ends because the model hit its output
+        limit (``finish_reason == "length"``) is retried once with these fields
+        merged over ``extra_body``, e.g. ``{"chat_template_kwargs":
+        {"enable_thinking": False}}``. ``None`` (default) falls back to RRF.
 
     Notes
     -----
@@ -140,8 +160,16 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         temperature: Optional[float] = None,
         backend: str = "callable",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+        max_candidates: Optional[int] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
+        length_retry_extra_body: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__()
+        if max_candidates is not None and int(max_candidates) < 1:
+            raise ValueError(f"max_candidates must be >= 1, got {max_candidates!r}.")
+        self._max_candidates = None if max_candidates is None else int(max_candidates)
+        self._extra_body = dict(extra_body or {})
+        self._length_retry_extra_body = None if length_retry_extra_body is None else dict(length_retry_extra_body)
         self._llm_model = llm_model
         self._top_k = top_k
         self._api_key = api_key
@@ -173,12 +201,14 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
         # Built lazily on first process(); never part of the picklable ctor state.
         self._sel: Optional[SelectionAgent] = None
+        self._retry_sel: Optional[SelectionAgent] = None
 
     # ------------------------------------------------------------------
     # private agent construction (lazy, memoized)
     # ------------------------------------------------------------------
 
-    def _build_llm(self) -> Any:
+    def _build_llm(self, extra_body: Optional[Dict[str, Any]] = None) -> Any:
+        extra_body = self._extra_body if extra_body is None else extra_body
         config = create_llm_config(
             self._backend,
             model=str(self._llm_model),
@@ -197,25 +227,35 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
 
             completion_fn = invoke_chat_completion_step
+        if completion_fn is not None and extra_body:
+            completion_fn = _with_extra_body(completion_fn, extra_body)
         kwargs = {"completion_fn": completion_fn} if completion_fn is not None else {}
         return create_llm(config, **kwargs)
 
+    def _new_agent(self, extra_body: Optional[Dict[str, Any]] = None) -> SelectionAgent:
+        return SelectionAgent(
+            config=SelectionAgentConfig(
+                target_top_k=int(self._top_k),
+                extended_relevance=True,
+                enable_think=False,
+                end_tool_with_msg=False,
+                shrink_attempts=2,
+                max_steps=int(self._max_steps),
+                on_error="never_raise",
+                system_prompt=self._system_prompt_override,
+            ),
+            llm=self._build_llm(extra_body),
+        )
+
     def _ensure_agent(self) -> SelectionAgent:
         if self._sel is None:
-            self._sel = SelectionAgent(
-                config=SelectionAgentConfig(
-                    target_top_k=int(self._top_k),
-                    extended_relevance=True,
-                    enable_think=False,
-                    end_tool_with_msg=False,
-                    shrink_attempts=2,
-                    max_steps=int(self._max_steps),
-                    on_error="never_raise",
-                    system_prompt=self._system_prompt_override,
-                ),
-                llm=self._build_llm(),
-            )
+            self._sel = self._new_agent()
         return self._sel
+
+    def _ensure_retry_agent(self) -> SelectionAgent:
+        if self._retry_sel is None:
+            self._retry_sel = self._new_agent({**self._extra_body, **(self._length_retry_extra_body or {})})
+        return self._retry_sel
 
     def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
         """Transfer the accumulated provider usage for one query to the caller.
@@ -237,9 +277,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         backend. A second call for the same ID returns an empty mapping unless
         additional LLM calls have recorded new usage.
         """
-        if self._sel is None:
-            return {}
-        return self._sel.llm.pop_query_usage(str(query_id))
+        usage: Dict[str, Any] = {}
+        if self._sel is not None:
+            usage.update(self._sel.llm.pop_query_usage(str(query_id)))
+        if self._retry_sel is not None:
+            for stage, stage_usage in self._retry_sel.llm.pop_query_usage(str(query_id)).items():
+                usage[f"{stage}_length_retry"] = stage_usage
+        return usage
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -279,9 +323,16 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 if self._text_truncation and int(self._text_truncation) > 0:
                     text = text[: int(self._text_truncation)]
                 documents.append({"id": doc_id, "text": text})
+                if self._max_candidates is not None and len(documents) >= self._max_candidates:
+                    break
             scores: Optional[Dict[str, float]] = None
             if "rrf_score" in ordered.columns:
-                scores = {str(row["doc_id"]): float(row["rrf_score"]) for _, row in ordered.iterrows()}
+                kept = {doc["id"] for doc in documents}
+                scores = {
+                    str(row["doc_id"]): float(row["rrf_score"])
+                    for _, row in ordered.iterrows()
+                    if str(row["doc_id"]) in kept
+                }
 
             logger.info(
                 "SelectionAgentOperator: query=%s candidates=%d query=%r",
@@ -377,6 +428,21 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 raw_log_dir=None,
             )
             persist_atif_trajectory(result.atif_trace)
+            if (
+                self._length_retry_extra_body is not None
+                and not result.succeeded
+                and result.error is not None
+                and result.error.category == ERROR_BAD_FINISH_REASON
+            ):
+                logger.info("SelectionAgentOperator: query=%s length_retry", query_id)
+                result = self._ensure_retry_agent().select_sync(
+                    query_text,
+                    documents,
+                    scores=scores,
+                    query_id=query_id,
+                    raw_log_dir=None,
+                )
+                persist_atif_trajectory(result.atif_trace)
             return result
         except Exception as exc:  # production: fall back to RRF rather than crash
             logger.warning("SelectionAgentOperator: selection failed for query %r: %s", query_id, exc, exc_info=True)
