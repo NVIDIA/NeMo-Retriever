@@ -39,6 +39,7 @@ def _configure_cuda_blocking_sync() -> None:
                 "cuDevicePrimaryCtxSetFlags_v2",
             )
         _cuda_blocking_sync_configured = True
+        logger.info("%s=1: blocking sync set on %d CUDA device(s)", _CUDA_BLOCKING_SYNC_ENV, count.value)
     except Exception as exc:
         logger.warning("%s=1 ignored: %s", _CUDA_BLOCKING_SYNC_ENV, exc)
 
