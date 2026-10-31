@@ -19,7 +19,19 @@ from nemotron_page_elements_v3.utils import postprocess_preds_page_element as po
 
 
 def resize_pad_chw_to_uint8(x: torch.Tensor, input_shape: Tuple[int, int]) -> torch.Tensor:
-    """Resize/pad one float32 CHW image (0-255 range) to ``input_shape`` and quantize to uint8, as the NIM does."""
+    """Resize and pad a float32 CHW image, then quantize it to uint8.
+
+    Args:
+        x: CHW image tensor with values in the 0-255 range.
+        input_shape: Target height and width.
+
+    Returns:
+        Resized and padded uint8 CHW image tensor.
+
+    Raises:
+        TypeError: If the resize helper does not return a tensor.
+        ValueError: If the result is not a three-dimensional CHW tensor.
+    """
     y = resize_pad_page_elements(x, input_shape)
     if not isinstance(y, torch.Tensor):
         raise TypeError(f"resize_pad returned non-tensor: {type(y)!r}")

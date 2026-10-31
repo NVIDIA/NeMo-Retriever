@@ -6,6 +6,7 @@ import base64
 import io
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -14,6 +15,8 @@ pe_model = pytest.importorskip("nemo_retriever.models.local.nemotron_page_elemen
 
 from nemo_retriever.common.modality.page_elements.shared import detect_page_elements_v3  # noqa: E402
 from nemo_retriever.common.modality.page_elements.split import (  # noqa: E402
+    ERR_COLUMN,
+    _load_err,
     out_columns,
     split_detect,
     split_postprocess,
@@ -81,3 +84,58 @@ def test_split_path_matches_detect_page_elements_v3() -> None:
     stages = [(p.get("error") or {}).get("stage") for p in got["page_elements_v3"]]
     assert stages == [None, "decode_image", None, "postprocess", "postprocess"]
     assert got["page_elements_v3_num_detections"][0] > 0
+
+
+def test_split_arrow_round_trip_preserves_valid_pages_with_decode_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_retriever.models import local as local_models
+    from nemo_retriever.models import warmup_registry
+    from nemo_retriever.operators.extract.page_elements.gpu_actor import PageElementDetectionActor
+
+    pages = pd.DataFrame(
+        {
+            "page_number": [1, 2],
+            "page_image": [
+                {"image_b64": _png_b64(40)},
+                {"image_b64": "not-an-image"},
+            ],
+        }
+    )
+    preprocessed = split_preprocess(pages)
+    preprocessed = pa.Table.from_pandas(preprocessed, preserve_index=False).to_pandas(types_mapper=pd.ArrowDtype)
+    model = _FakeModel()
+    monkeypatch.setattr(local_models, "NemotronPageElementsV3", lambda: model, raising=False)
+    monkeypatch.setattr(warmup_registry, "get_warmed_model", lambda _name: None)
+    actor = PageElementDetectionActor(split_mode=True, inference_batch_size=2)
+    detected = actor(preprocessed)
+    detected = pa.Table.from_pandas(detected, preserve_index=False).to_pandas(types_mapper=pd.ArrowDtype)
+    got = split_postprocess(detected)
+
+    stages = [(p.get("error") or {}).get("stage") for p in got["page_elements_v3"]]
+    assert stages == [None, "decode_image"]
+    assert got["page_elements_v3_num_detections"].tolist()[0] > 0
+    assert got["page_elements_v3_num_detections"].tolist()[1] == 0
+
+
+@pytest.mark.parametrize("value", [None, pd.NA, float("nan")])
+def test_load_err_treats_missing_scalars_as_empty(value) -> None:
+    assert _load_err(value) is None
+
+
+def test_split_postprocess_handles_arrow_null_intermediates() -> None:
+    pages = pd.DataFrame(
+        {
+            "_pe_boxes": [pd.NA, []],
+            "_pe_labels": [pd.NA, []],
+            "_pe_scores": [pd.NA, []],
+            "_pe_elapsed": [0.1, pd.NA],
+            ERR_COLUMN: [None, None],
+        }
+    )
+    pages = pa.Table.from_pandas(pages, preserve_index=False).to_pandas(types_mapper=pd.ArrowDtype)
+
+    got = split_postprocess(pages)
+    payloads = got["page_elements_v3"].tolist()
+
+    assert [payload.get("detections") for payload in payloads] == [[], []]
+    assert [payload.get("error") for payload in payloads] == [None, None]
+    assert got["page_elements_v3_num_detections"].tolist() == [0, 0]

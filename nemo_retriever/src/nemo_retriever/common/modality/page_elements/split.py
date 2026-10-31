@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +36,8 @@ from nemo_retriever.common.modality.page_elements.shared import (
     _postprocess_to_per_image_detections,
 )
 
+logger = logging.getLogger(__name__)
+
 PE_INPUT_SHAPE = (1024, 1024)
 PRE_COLUMNS = ("_pe_pre", "_pe_pre_shape", "_pe_orig_shape")
 GPU_COLUMNS = ("_pe_boxes", "_pe_labels", "_pe_scores", "_pe_elapsed")
@@ -46,8 +49,13 @@ def _dump_err(payload: Optional[Dict[str, Any]]) -> Optional[str]:
     return None if payload is None else json.dumps(payload)
 
 
+def _is_missing_scalar(value: Any) -> bool:
+    missing = pd.isna(value)
+    return isinstance(missing, (bool, np.bool_)) and bool(missing)
+
+
 def _load_err(value: Any) -> Optional[Dict[str, Any]]:
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if _is_missing_scalar(value):
         return None
     return json.loads(value) if isinstance(value, str) else dict(value)
 
@@ -61,7 +69,18 @@ def _hwc_to_chw_float(arr: np.ndarray) -> torch.Tensor:
 
 
 def split_preprocess(pages_df: pd.DataFrame) -> pd.DataFrame:
-    """Decode and resize/pad each page to uint8 CHW bytes; no model is constructed."""
+    """Decode page images and create the CPU-to-GPU split intermediates.
+
+    Args:
+        pages_df: Page rows containing ``page_image["image_b64"]``.
+
+    Returns:
+        A copy with ``_pe_pre``, ``_pe_pre_shape``, ``_pe_orig_shape``, and
+        ``_pe_err`` added to the original columns.
+
+    Raises:
+        None. Per-row decode and resize failures are recorded in ``_pe_err``.
+    """
     from nemo_retriever.models.local.nemotron_page_elements_v3 import resize_pad_chw_to_uint8
 
     pre: List[Optional[bytes]] = []
@@ -123,7 +142,22 @@ def _as_plain(x: Any) -> Any:
 
 
 def split_detect(pages_df: pd.DataFrame, *, model: Any, inference_batch_size: int = 8, **_: Any) -> pd.DataFrame:
-    """GPU stage: stack preprocessed uint8 pages, run the model and its raw postprocess."""
+    """Run local PE inference on preprocessed page batches.
+
+    Args:
+        pages_df: Rows carrying ``_pe_pre``, ``_pe_pre_shape``, ``_pe_orig_shape``,
+            and ``_pe_err``.
+        model: Local page-elements model.
+        inference_batch_size: Maximum number of pages per inference call.
+
+    Returns:
+        A copy without ``_pe_pre``, ``_pe_pre_shape``, or ``_pe_orig_shape``, with
+        ``_pe_boxes``, ``_pe_labels``, ``_pe_scores``, ``_pe_elapsed``, and
+        ``_pe_err`` added.
+
+    Raises:
+        ValueError: If ``inference_batch_size`` is not positive.
+    """
     if inference_batch_size <= 0:
         raise ValueError("inference_batch_size must be > 0")
     n_rows = len(pages_df.index)
@@ -135,7 +169,11 @@ def split_detect(pages_df: pd.DataFrame, *, model: Any, inference_batch_size: in
     labels_out: List[Any] = [None] * n_rows
     scores_out: List[Any] = [None] * n_rows
     elapsed_out: List[Optional[float]] = [None] * n_rows
-    valid = [i for i in range(n_rows) if errs[i] is None and pre[i] is not None]
+    valid = [
+        i
+        for i in range(n_rows)
+        if errs[i] is None and not any(_is_missing_scalar(value) for value in (pre[i], pre_shape[i], orig[i]))
+    ]
     for start in range(0, len(valid), int(inference_batch_size)):
         chunk = valid[start : start + int(inference_batch_size)]
         tensors = [
@@ -158,8 +196,8 @@ def split_detect(pages_df: pd.DataFrame, *, model: Any, inference_batch_size: in
                     raise RuntimeError(
                         f"Model returned {len(preds)} preds for batch size {len(chunk)}; falling back to per-image."
                     )
-        except Exception as ex:
-            print(f"Error invoking model: {ex}")
+        except Exception:
+            logger.exception("Error invoking page-elements model; retrying per image")
             preds = [model(batch[j : j + 1], orig_shapes[j]) for j in range(int(batch.shape[0]))]
         elapsed = time.perf_counter() - t0
         preds_list = [preds] if isinstance(preds, dict) else preds if isinstance(preds, list) else [preds]
@@ -194,7 +232,21 @@ def split_postprocess(
     counts_by_label_column: str = "page_elements_v3_counts_by_label",
     **_: Any,
 ) -> pd.DataFrame:
-    """CPU stage: per-image detections, v3 box fusion and final score filter; drops the ``_pe_*`` columns."""
+    """Build the final page-elements payloads and remove split intermediates.
+
+    Args:
+        pages_df: Rows carrying ``_pe_boxes``, ``_pe_labels``, ``_pe_scores``,
+            ``_pe_elapsed``, and ``_pe_err``.
+        output_column: Name for the page-elements payload column.
+        num_detections_column: Name for the detection-count column.
+        counts_by_label_column: Name for per-label counts.
+
+    Returns:
+        A copy without the ``_pe_*`` columns, with the requested output columns added.
+
+    Raises:
+        ValueError: If an ``_pe_err`` string contains invalid JSON.
+    """
     label_names = _labels_from_model(None)
     payloads: List[Dict[str, Any]] = []
     for err, b, lab, s, el in zip(
@@ -208,11 +260,11 @@ def split_postprocess(
         if err_payload is not None:
             payloads.append(err_payload)
             continue
-        if el is None or (isinstance(el, float) and np.isnan(el)):
+        if _is_missing_scalar(el):
             payloads.append({"detections": []})
             continue
         try:
-            if b is None or lab is None or s is None:
+            if any(_is_missing_scalar(value) for value in (b, lab, s)):
                 dets: List[Dict[str, Any]] = []
             else:
                 bt = torch.as_tensor(np.asarray(list(b), dtype=np.float32).reshape(-1, 4))
@@ -233,4 +285,16 @@ def split_postprocess(
 
 
 def out_columns() -> tuple[str, ...]:
+    """Return names of the intermediate columns used by the split stages.
+
+    Args:
+        None.
+
+    Returns:
+        The ``_pe_pre``, ``_pe_pre_shape``, ``_pe_orig_shape``, ``_pe_boxes``,
+        ``_pe_labels``, ``_pe_scores``, ``_pe_elapsed``, and ``_pe_err`` columns.
+
+    Raises:
+        None.
+    """
     return PRE_COLUMNS + GPU_COLUMNS + (ERR_COLUMN,)
