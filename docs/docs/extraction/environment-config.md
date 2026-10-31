@@ -19,11 +19,14 @@ On Windows PowerShell, set the variables in the session, for example `$env:NVIDI
 | Name                             | Example                        | Description                                                           |
 |----------------------------------|--------------------------------|-----------------------------------------------------------------------|
 | `HF_TOKEN`                       | -                                                         | A token for Hugging Face Hub downloads when your runtime needs one. The default chunking tokenizer is public; refer to [Token-based splitting](concepts.md#token-based-splitting) for container caching and offline behavior. |
+| `NRL_CUDA_BLOCKING_SYNC`         | `1`                            | Opts local GPU actors into blocking CUDA waits. The default is off. Use this option on CPU-constrained hosts where GPU workers otherwise consume CPU while waiting for GPU work. |
 | `NVIDIA_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized build.nvidia.com API key, used to interact with NVIDIA-hosted NIMs. Create through build.nvidia.com or through [NGC](https://org.ngc.nvidia.com/setup/api-keys). |
 | `NGC_API_KEY`                | —                                                          | The key that NIM microservices in the cluster use to access NGC resources. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4317` <br/>                       | The endpoint for the OpenTelemetry exporter, used for sending telemetry data. |
 | `OTEL_METRICS_EXPORTER` | `otlp` | The retriever service metrics exporter. Set to `none` to disable OpenTelemetry metric export while retaining other supported telemetry. |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `5000` | The metric export interval in milliseconds for Helm deployments. Set a larger value to reduce export frequency. |
+
+Set `NRL_CUDA_BLOCKING_SYNC=1` in each GPU worker process before its local GPU actor initializes. The option is disabled by default and does not affect remote-only actors.
 
 
 ## Retriever Service Log Level { #retriever-service-log-level }

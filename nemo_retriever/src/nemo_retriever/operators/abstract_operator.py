@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 import inspect
 from typing import Any, TYPE_CHECKING
 
+from nemo_retriever.operators.gpu_operator import GPUOperator, _configure_cuda_blocking_sync
+
 if TYPE_CHECKING:
     from nemo_retriever.graph.pipeline_graph import Graph, Node
 
@@ -16,6 +18,8 @@ class AbstractOperator(ABC):
     """Base class for all pipeline operators."""
 
     def __init__(self, **kwargs: Any) -> None:
+        if isinstance(self, GPUOperator):
+            _configure_cuda_blocking_sync()
         self._graph_init_kwargs = dict(kwargs)
         for key, value in kwargs.items():
             setattr(self, key, value)
