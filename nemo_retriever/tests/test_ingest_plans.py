@@ -558,6 +558,53 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def test_batch_preflight_reduces_default_page_elements_split_pools() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+    from nemo_retriever.operators.extract.page_elements.split_actors import (
+        PageElementPostprocessCPU,
+        PageElementPreprocessCPU,
+    )
+
+    resources = Resources(cpu_count=8, gpu_count=1)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    extract_params = _page_elements_split_params(BatchTuningParams(page_elements_cpu_split=True))
+    overrides = batch_tuning_to_node_overrides(extract_params, None, cluster_resources=cluster)
+    graph = build_graph(extraction_mode="pdf", extract_params=extract_params, stage_order=())
+    auto_nodes = default_concurrency_node_names(extract_params, None, None, None)
+    assert {PageElementPreprocessCPU.__name__, PageElementPostprocessCPU.__name__} <= auto_nodes
+    assert overrides[PageElementPreprocessCPU.__name__]["concurrency"] == 2
+    assert overrides[PageElementPostprocessCPU.__name__]["concurrency"] == 1
+
+    executor = RayDataExecutor(graph, node_overrides=overrides, auto_concurrency_nodes=auto_nodes)
+    executor._preflight_resources(executor._linearize(graph), available_cpus=8, available_gpus=1)
+
+    assert overrides[PageElementPreprocessCPU.__name__]["concurrency"] == 1
+    assert overrides[PageElementPostprocessCPU.__name__]["concurrency"] == 1
+
+    explicit_params = _page_elements_split_params(
+        BatchTuningParams(
+            page_elements_cpu_split=True,
+            page_elements_preprocess_workers=20,
+            page_elements_postprocess_workers=20,
+        )
+    )
+    explicit_overrides = batch_tuning_to_node_overrides(explicit_params, None, cluster_resources=cluster)
+    explicit_graph = build_graph(extraction_mode="pdf", extract_params=explicit_params, stage_order=())
+    explicit_auto_nodes = default_concurrency_node_names(explicit_params, None, None, None)
+    explicit_executor = RayDataExecutor(
+        explicit_graph,
+        node_overrides=explicit_overrides,
+        auto_concurrency_nodes=explicit_auto_nodes,
+    )
+    with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+        explicit_executor._preflight_resources(
+            explicit_executor._linearize(explicit_graph),
+            available_cpus=8,
+            available_gpus=1,
+        )
+
+
 def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=32, gpu_count=1),
@@ -1098,6 +1145,13 @@ def test_page_elements_cpu_split_requires_gpu_actor() -> None:
             embed_params=None,
             allow_no_gpu=True,
         )
+
+
+def test_page_elements_cpu_actor_rejects_split_mode() -> None:
+    from nemo_retriever.operators.extract.page_elements.cpu_actor import PageElementDetectionCPUActor
+
+    with pytest.raises(ValueError, match="page_elements_cpu_split requires a GPU page-elements actor"):
+        PageElementDetectionCPUActor(split_mode=True)
 
 
 @pytest.mark.parametrize(

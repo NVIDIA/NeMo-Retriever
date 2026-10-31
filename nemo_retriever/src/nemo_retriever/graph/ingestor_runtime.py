@@ -99,6 +99,23 @@ def default_concurrency_node_names(
         names.update(
             name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
         )
+        if getattr(extract_tuning, "page_elements_cpu_split", False) and not _positive(
+            getattr(extract_params, "page_elements_invoke_url", None)
+        ):
+            from nemo_retriever.operators.extract.page_elements.split_actors import (
+                PageElementPostprocessCPU,
+                PageElementPreprocessCPU,
+            )
+
+            split_worker_fields = {
+                PageElementPreprocessCPU.__name__: "page_elements_preprocess_workers",
+                PageElementPostprocessCPU.__name__: "page_elements_postprocess_workers",
+            }
+            names.update(
+                name
+                for name, field in split_worker_fields.items()
+                if not _positive(getattr(extract_tuning, field, None))
+            )
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
