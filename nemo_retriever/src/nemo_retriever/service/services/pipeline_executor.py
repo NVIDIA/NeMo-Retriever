@@ -33,6 +33,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from nemo_retriever.common.url_fetch import restore_url_source_value
+from nemo_retriever.operators.gpu_operator import _configure_cuda_blocking_sync
 
 if TYPE_CHECKING:
     from nemo_retriever.service.config import (
@@ -170,6 +171,7 @@ _service_warmup_state: dict[str, Any] = {
 
 def _pool_worker_initializer(warmup_spec_json: str) -> None:
     """Process-pool child initializer — loads HF models when warmup is enabled."""
+    _configure_cuda_blocking_sync()
     if not warmup_spec_json:
         return
     from nemo_retriever.models.warmup_registry import warm_local_models

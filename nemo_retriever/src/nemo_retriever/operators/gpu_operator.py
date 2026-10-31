@@ -26,7 +26,6 @@ def _configure_cuda_blocking_sync() -> None:
     global _cuda_blocking_sync_configured
     if os.environ.get(_CUDA_BLOCKING_SYNC_ENV) != "1" or _cuda_blocking_sync_configured:
         return
-    _cuda_blocking_sync_configured = True
     try:
         cuda = ctypes.CDLL("libcuda.so.1")
         _check(cuda.cuInit(0), "cuInit")
@@ -39,6 +38,7 @@ def _configure_cuda_blocking_sync() -> None:
                 cuda.cuDevicePrimaryCtxSetFlags_v2(device, _CU_CTX_SCHED_BLOCKING_SYNC),
                 "cuDevicePrimaryCtxSetFlags_v2",
             )
+        _cuda_blocking_sync_configured = True
     except Exception as exc:
         logger.warning("%s=1 ignored: %s", _CUDA_BLOCKING_SYNC_ENV, exc)
 

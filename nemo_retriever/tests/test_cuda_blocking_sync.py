@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 import ctypes
@@ -9,6 +13,8 @@ from nemo_retriever.operators import gpu_operator
 from nemo_retriever.operators import abstract_operator
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.models import warmup_registry
+from nemo_retriever.service.services import pipeline_executor
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +61,46 @@ def test_enabled_env_sets_flags_once_for_each_visible_device(monkeypatch: pytest
         ("flags", 10, 4),
         ("flags", 11, 4),
     ]
+    assert gpu_operator._cuda_blocking_sync_configured is True
+
+
+def test_failed_configuration_retries_and_sets_flags(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    init_calls = 0
+    flags_calls: list[tuple[int, int]] = []
+
+    class FakeCuda:
+        def cuInit(self, _flags: int) -> int:
+            nonlocal init_calls
+            init_calls += 1
+            return 7 if init_calls == 1 else 0
+
+        def cuDeviceGetCount(self, count_ptr: object) -> int:
+            ctypes.cast(count_ptr, ctypes.POINTER(ctypes.c_int)).contents.value = 1
+            return 0
+
+        def cuDeviceGet(self, device_ptr: object, ordinal: int) -> int:
+            ctypes.cast(device_ptr, ctypes.POINTER(ctypes.c_int)).contents.value = ordinal
+            return 0
+
+        def cuDevicePrimaryCtxSetFlags_v2(self, device: ctypes.c_int, flags: int) -> int:
+            flags_calls.append((device.value, flags))
+            return 0
+
+    monkeypatch.setenv("NRL_CUDA_BLOCKING_SYNC", "1")
+    monkeypatch.setattr(gpu_operator.ctypes, "CDLL", lambda _path: FakeCuda())
+
+    with caplog.at_level(logging.WARNING, logger=gpu_operator.__name__):
+        gpu_operator._configure_cuda_blocking_sync()
+    assert gpu_operator._cuda_blocking_sync_configured is False
+
+    gpu_operator._configure_cuda_blocking_sync()
+
+    assert "CUresult=7" in caplog.text
+    assert flags_calls == [(0, 4)]
+    assert gpu_operator._cuda_blocking_sync_configured is True
 
 
 def test_missing_libcuda_warns_and_continues(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -125,3 +171,13 @@ def test_abstract_operator_configures_gpu_subclasses_only(monkeypatch: pytest.Mo
     DummyCPUOperator()
 
     assert calls == ["configured"]
+
+
+def test_pool_worker_initializer_configures_cuda_before_model_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(pipeline_executor, "_configure_cuda_blocking_sync", lambda: calls.append("configure"))
+    monkeypatch.setattr(warmup_registry, "warm_local_models", lambda _spec: calls.append("warmup"))
+
+    pipeline_executor._pool_worker_initializer('{"embed": {}}')
+
+    assert calls == ["configure", "warmup"]
