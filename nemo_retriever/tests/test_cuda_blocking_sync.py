@@ -142,6 +142,20 @@ def test_nonzero_cuinit_warns_and_skips_set_flags(
     assert set_flags_calls == []
 
 
+def test_unexpected_cuda_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeCuda:
+        def cuInit(self, _flags: int) -> int:
+            raise TypeError("unexpected fake failure")
+
+    monkeypatch.setenv("NRL_CUDA_BLOCKING_SYNC", "1")
+    monkeypatch.setattr(gpu_operator.ctypes, "CDLL", lambda _path: FakeCuda())
+
+    with pytest.raises(TypeError, match="unexpected fake failure"):
+        gpu_operator._configure_cuda_blocking_sync()
+
+    assert gpu_operator._cuda_blocking_sync_configured is False
+
+
 def test_abstract_operator_configures_gpu_subclasses_only(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setenv("NRL_CUDA_BLOCKING_SYNC", "1")
