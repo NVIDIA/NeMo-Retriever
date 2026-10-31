@@ -27,6 +27,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
+        self._split_mode = bool(self.detect_kwargs.pop("split_mode", False))
         invoke_url = (
             str(self.detect_kwargs.get("page_elements_invoke_url") or "").strip()
             or str(self.detect_kwargs.get("invoke_url") or "").strip()
@@ -50,6 +51,10 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
 
     @nvtx.annotate("nrl.batch::page_elements.batch", color="blue")
     def process(self, data: Any, **kwargs: Any) -> Any:
+        if self._split_mode:
+            from nemo_retriever.common.modality.page_elements.split import split_detect
+
+            return split_detect(data, model=self._model, **self.detect_kwargs, **kwargs)
         return detect_page_elements_v3(
             data,
             model=self._model,
@@ -65,6 +70,14 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
         try:
             return self.run(pages_df, **override_kwargs)
         except Exception as exc:
+            if self._split_mode and isinstance(pages_df, pd.DataFrame):
+                from nemo_retriever.common.modality.page_elements.split import ERR_COLUMN, PRE_COLUMNS, _dump_err
+
+                out = pages_df.drop(columns=[c for c in PRE_COLUMNS if c in pages_df.columns])
+                for col in ("_pe_boxes", "_pe_labels", "_pe_scores", "_pe_elapsed"):
+                    out[col] = [None] * len(out.index)
+                out[ERR_COLUMN] = [_dump_err(_error_payload(stage="actor_call", exc=exc))] * len(out.index)
+                return out
             if isinstance(pages_df, pd.DataFrame):
                 out = pages_df.copy()
                 payload = _error_payload(stage="actor_call", exc=exc)

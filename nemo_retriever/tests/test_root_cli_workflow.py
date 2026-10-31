@@ -836,6 +836,11 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
             "1.5",
             "--page-elements-workers",
             "3",
+            "--page-elements-cpu-split",
+            "--page-elements-preprocess-workers",
+            "5",
+            "--page-elements-postprocess-workers",
+            "2",
             "--page-elements-batch-size",
             "8",
             "--page-elements-cpus-per-actor",
@@ -870,6 +875,9 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert extract_params.batch_tuning.pdf_extract_batch_size == 2
     assert extract_params.batch_tuning.pdf_extract_num_cpus == 1.5
     assert extract_params.batch_tuning.page_elements_workers == 3
+    assert extract_params.batch_tuning.page_elements_cpu_split is True
+    assert extract_params.batch_tuning.page_elements_preprocess_workers == 5
+    assert extract_params.batch_tuning.page_elements_postprocess_workers == 2
     assert extract_params.batch_tuning.page_elements_batch_size == 8
     assert extract_params.batch_tuning.page_elements_cpus_per_actor == 0.5
     assert extract_params.batch_tuning.ocr_workers == 5
@@ -1002,6 +1010,9 @@ def test_resolved_ingest_plan_runs_through_workflow(monkeypatch, tmp_path) -> No
             extract=ingest_plan.IngestExtractOptions(
                 table_output_format="markdown",
                 batch=ingest_plan.IngestExtractBatchOptions(
+                    page_elements_cpu_split=True,
+                    page_elements_preprocess_workers=6,
+                    page_elements_postprocess_workers=3,
                     page_elements_gpus_per_actor=0.2,
                     ocr_gpus_per_actor=0.3,
                     table_structure_workers=6,
@@ -1029,6 +1040,9 @@ def test_resolved_ingest_plan_runs_through_workflow(monkeypatch, tmp_path) -> No
     assert extract_params.use_table_structure is True
     assert extract_params.table_output_format == "markdown"
     assert extract_params.batch_tuning.gpu_page_elements == 0.2
+    assert extract_params.batch_tuning.page_elements_cpu_split is True
+    assert extract_params.batch_tuning.page_elements_preprocess_workers == 6
+    assert extract_params.batch_tuning.page_elements_postprocess_workers == 3
     assert extract_params.batch_tuning.gpu_ocr == 0.3
     assert extract_params.batch_tuning.table_structure_workers == 6
     assert extract_params.batch_tuning.table_structure_batch_size == 12
