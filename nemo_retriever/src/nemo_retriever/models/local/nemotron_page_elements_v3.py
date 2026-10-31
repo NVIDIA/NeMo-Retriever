@@ -18,6 +18,16 @@ from nemotron_page_elements_v3.model import resize_pad as resize_pad_page_elemen
 from nemotron_page_elements_v3.utils import postprocess_preds_page_element as postprocess_preds_page_element
 
 
+def resize_pad_chw_to_uint8(x: torch.Tensor, input_shape: Tuple[int, int]) -> torch.Tensor:
+    """Resize/pad one float32 CHW image (0-255 range) to ``input_shape`` and quantize to uint8, as the NIM does."""
+    y = resize_pad_page_elements(x, input_shape)
+    if not isinstance(y, torch.Tensor):
+        raise TypeError(f"resize_pad returned non-tensor: {type(y)!r}")
+    if y.ndim != 3:
+        raise ValueError(f"Expected CHW from resize_pad, got {tuple(y.shape)}")
+    return torch.clamp(y, 0, 255).to(torch.uint8)
+
+
 class NemotronPageElementsV3(HuggingFaceModel):
     """
     Nemotron Page Elements v3 model for detecting document page elements.
@@ -86,14 +96,7 @@ class NemotronPageElementsV3(HuggingFaceModel):
             return torch.stack(outs, dim=0)
 
         if x.ndim == 3:
-            y = resize_pad_page_elements(x, self.input_shape)
-            if not isinstance(y, torch.Tensor):
-                raise TypeError(f"resize_pad returned non-tensor: {type(y)!r}")
-            if y.ndim != 3:
-                raise ValueError(f"Expected CHW from resize_pad, got {tuple(y.shape)}")
-            # Match NIM preprocessing: quantize to uint8 after interpolation
-            y = torch.clamp(y, 0, 255).to(torch.uint8).float()
-            return y.unsqueeze(0)
+            return resize_pad_chw_to_uint8(x, self.input_shape).float().unsqueeze(0)
 
         raise ValueError(f"Expected CHW or BCHW tensor, got shape {tuple(x.shape)}")
 

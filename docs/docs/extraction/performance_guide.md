@@ -78,6 +78,18 @@ Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI inge
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
 
+### Split page-element CPU stages
+
+Use the opt-in CPU split when CPU preprocessing or postprocessing limits the number of page-element workers you can run per GPU. The split applies only to local page-element detection.
+
+| `BatchTuningParams` field | Behavior |
+| --- | --- |
+| `page_elements_cpu_split` | Enables CPU preprocessing and postprocessing around the local GPU page-element actor. Defaults to `False`. |
+| `page_elements_preprocess_workers` | Sets preprocessing concurrency. `None` defaults to twice the total GPU count, with a minimum of 1, or 2 when cluster resources are unavailable. |
+| `page_elements_postprocess_workers` | Sets postprocessing concurrency. `None` defaults to the total GPU count, with a minimum of 1, or 1 when cluster resources are unavailable. |
+
+Explicit worker counts take precedence over the defaults. In an 8-GPU test, 2 page-element workers per GPU with the split matched the throughput of 4 workers per GPU without it.
+
 ### Tune embedding preparation and remote requests
 
 Embedding preparation, actor batches, and HTTP requests have separate concurrency and batch-size controls. Pass the following settings through `.embed(...)` in the Python API.

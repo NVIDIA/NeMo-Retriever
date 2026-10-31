@@ -310,6 +310,35 @@ def batch_tuning_to_node_overrides(
         )
         if pe_bs and pe_repartition:
             overrides.setdefault(PageElementDetectionActor.__name__, {})["target_num_rows_per_block"] = pe_bs
+        page_elements_split_enabled = bool(getattr(extract_tuning, "page_elements_cpu_split", False))
+        if page_elements_split_enabled and not page_elements_invoke_url:
+            if effective_allow_no_gpu:
+                raise ValueError("page_elements_cpu_split requires a GPU page-elements actor")
+            split_bs = pe_bs or 24
+            gpus = cluster_resources.total_gpu_count() if cluster_resources is not None else 1
+            preprocess_workers = _resolve(
+                getattr(extract_tuning, "page_elements_preprocess_workers", None),
+                max(1, 2 * gpus),
+            )
+            postprocess_workers = _resolve(
+                getattr(extract_tuning, "page_elements_postprocess_workers", None),
+                max(1, gpus),
+            )
+            from nemo_retriever.operators.extract.page_elements.split_actors import (
+                PageElementPostprocessCPU,
+                PageElementPreprocessCPU,
+            )
+
+            overrides[PageElementPreprocessCPU.__name__] = {
+                "concurrency": preprocess_workers,
+                "batch_size": split_bs,
+                "num_cpus": 1.0,
+            }
+            overrides[PageElementPostprocessCPU.__name__] = {
+                "concurrency": postprocess_workers,
+                "batch_size": split_bs,
+                "num_cpus": 1.0,
+            }
         page_elements_concurrency = (
             _resolve(
                 getattr(extract_tuning, "page_elements_workers", None) if extract_tuning is not None else None,
@@ -918,7 +947,22 @@ def build_graph(
             )
             graph = graph >> PDFExtractionActor(**extract_kwargs)
             if page_elements_needed:
-                graph = graph >> PageElementDetectionActor(**detect_kwargs)
+                extract_tuning = _batch_tuning(extract_params)
+                page_elements_split_enabled = bool(getattr(extract_tuning, "page_elements_cpu_split", False))
+                if page_elements_split_enabled and not extract_params.page_elements_invoke_url:
+                    from nemo_retriever.operators.extract.page_elements.split_actors import (
+                        PageElementPostprocessCPU,
+                        PageElementPreprocessCPU,
+                    )
+
+                    graph = (
+                        graph
+                        >> PageElementPreprocessCPU()
+                        >> PageElementDetectionActor(**detect_kwargs, split_mode=True)
+                        >> PageElementPostprocessCPU()
+                    )
+                else:
+                    graph = graph >> PageElementDetectionActor(**detect_kwargs)
             if extract_params.use_table_structure and extract_params.extract_tables:
                 graph = graph >> TableStructureActor(**table_kwargs)
             if needs_ocr:

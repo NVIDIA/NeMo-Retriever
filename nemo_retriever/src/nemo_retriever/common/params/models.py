@@ -510,6 +510,9 @@ class BatchTuningParams(_ParamsModel):
     detect_batch_size: int = 24
     ocr_inference_batch_size: Optional[int] = None
     page_elements_workers: Optional[int] = None
+    page_elements_cpu_split: bool = False
+    page_elements_preprocess_workers: Optional[int] = None
+    page_elements_postprocess_workers: Optional[int] = None
     ocr_workers: Optional[int] = None
     detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
