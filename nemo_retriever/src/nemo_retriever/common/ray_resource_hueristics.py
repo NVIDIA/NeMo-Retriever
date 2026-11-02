@@ -58,6 +58,15 @@ TABLE_STRUCTURE_MAX_ACTORS = 6
 TABLE_STRUCTURE_GPUS_PER_ACTOR = 0.1
 TABLE_STRUCTURE_BATCH_SIZE = 16
 
+# Multi-GPU cell: on 2+ GPUs every GPU gets the same page-elements/OCR/embed
+# actors. Ray places fractional-GPU actors first-fit, pool by pool, so each
+# stage's share is sized to fit exactly its count in the room the earlier
+# stages leave (n * share <= room < (n + 1) * share). Shares sum to 1.0 per
+# GPU, so the pools need every GPU and Ray cannot pack them onto a few.
+GPU_CELL_LARGE_MIN_MIB = 72 * 1024  # GPUs with at least this much memory get the large cell.
+GPU_CELL_LARGE = ((4, 0.21), (2, 0.06), (1, 0.04))  # (actors, GPU share) for page-elements, OCR, embed.
+GPU_CELL_SMALL = ((1, 0.51), (1, 0.25), (1, 0.24))  # Smaller or unknown GPU memory, e.g. 48 GB cards.
+
 # PDF EXTRACTOR constants (PER-GPU) - reason being more GPU means more CPU needed to feed the models and keep up
 PDF_EXTRACT_BATCH_SIZE = 8  # Ray batch size AND PDF extraction batch size
 PDF_EXTRACT_CPUS_PER_TASK = 1.0  # pypdfium2 rendering is single-threaded, so a worker uses at most 1 core.
@@ -126,6 +135,16 @@ def _get_gpu_memory_info() -> NodeGpuInfo:
 
     nvmlShutdown()
     return NodeGpuInfo(gpus=gpu_info)
+
+
+def _min_gpu_memory_mib() -> int:
+    """Return the smallest local GPU's total memory in MiB, or 0 when it cannot be read."""
+    try:
+        gpus = _get_gpu_memory_info().gpus
+    except Exception as exc:  # pynvml missing, NVML runtime unavailable, etc.
+        logger.debug("GPU memory detection failed (%s); using the small GPU cell", exc)
+        return 0
+    return min((gpu.total_mib for gpu in gpus.values()), default=0)
 
 
 def get_gpu_memory_info_remote() -> object:
@@ -519,6 +538,8 @@ def resolve_requested_plan(
     allow_no_gpu: bool = False,
     caption_enabled: bool = False,
     override_caption_gpus_per_actor: Optional[float] = None,
+    per_gpu_cell: bool = False,
+    gpu_memory_mib: Optional[int] = None,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
     total_gpu_count = max(0, int(cluster_resources.total_gpu_count()))
@@ -624,6 +645,23 @@ def resolve_requested_plan(
     pdf_extract_batch_size = _resolve_int(override_pdf_extract_batch_size, PDF_EXTRACT_BATCH_SIZE, False)
     pdf_extract_cpus_per_task = _resolve_float(override_pdf_extract_cpus_per_task, PDF_EXTRACT_CPUS_PER_TASK, False)
     pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
+
+    if per_gpu_cell and available_gpu_count >= 2 and not caption_enabled:
+        memory_mib = _min_gpu_memory_mib() if gpu_memory_mib is None else gpu_memory_mib
+        cell = GPU_CELL_LARGE if memory_mib >= GPU_CELL_LARGE_MIN_MIB else GPU_CELL_SMALL
+        (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
+        if override_page_elements_initial_actors is None:
+            page_elements_initial_actors = pe_actors * available_gpu_count
+        if override_page_elements_gpus_per_actor is None:
+            page_elements_gpus_per_actor = pe_share
+        if override_ocr_initial_actors is None:
+            ocr_initial_actors = ocr_actors * available_gpu_count
+        if override_ocr_gpus_per_actor is None:
+            ocr_gpus_per_actor = ocr_share
+        if override_embed_initial_actors is None:
+            embed_initial_actors = embed_actors * available_gpu_count
+        if override_embed_gpus_per_actor is None:
+            embed_gpus_per_actor = embed_share
 
     # Caption GPU budget.  On a single GPU the caption actor (vLLM) must share
     # with OCR / page-elements / embed, so we halve its reservation and drop

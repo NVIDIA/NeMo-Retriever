@@ -150,11 +150,29 @@ def batch_tuning_to_node_overrides(
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
+    # The per-GPU cell assumes page elements, OCR and embedding are the only local GPU pools.
+    per_gpu_cell = (
+        extract_params is not None
+        and embed_params is not None
+        and getattr(extract_params, "method", None) not in ("nemotron_parse", "audio")
+        and not (
+            getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
+        )
+        and not any(
+            _positive(getattr(params, name, None))
+            for params, name in (
+                (extract_params, "page_elements_invoke_url"),
+                (extract_params, "ocr_invoke_url"),
+                (embed_params, "embed_invoke_url"),
+            )
+        )
+    )
     plan = (
         resolve_requested_plan(
             cluster_resources=cluster_resources,
             allow_no_gpu=effective_allow_no_gpu,
             caption_enabled=caption_params is not None,
+            per_gpu_cell=per_gpu_cell,
             override_caption_gpus_per_actor=caption_gpus_per_actor,
         )
         if cluster_resources is not None

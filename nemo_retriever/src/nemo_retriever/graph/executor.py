@@ -58,6 +58,7 @@ _TASK_STAGE_CPU_MARGIN_FRACTION = 0.10
 _TASK_STAGE_CPU_MARGIN_MAX = 8
 _TASK_STAGE_CPU_MARGIN_MIN_CPUS = 32
 _RAY_SYSTEM_CPU_RESERVATION = 1
+_CPU_POOL_FLOOR_PER_GPU = 2
 
 
 def resolve_batch_return_results(graph: Graph, return_results: bool | None) -> bool:
@@ -312,6 +313,13 @@ def _task_stage_cpu_reservation(task_stages: int, available_cpus: float) -> floa
     return float(task_stages + margin + _RAY_SYSTEM_CPU_RESERVATION)
 
 
+def _growth_tier(item: tuple, planned: int, available_gpus: int) -> int:
+    """Order actor growth: CPU-only pools up to a small per-GPU floor, then GPU pools, then the rest."""
+    if item[6] > 0:
+        return 1
+    return 0 if planned < _CPU_POOL_FLOOR_PER_GPU * available_gpus else 2
+
+
 def _preflight_executor_nodes(
     executor_nodes: list[tuple[RayDataExecutor, list[Node]]],
     available_cpus: int,
@@ -404,7 +412,10 @@ def _preflight_executor_nodes(
     while True:
         candidates = sorted(
             (item for item in auto if planned[(id(item[0]), item[1])] < item[3]),
-            key=lambda item: planned[(id(item[0]), item[1])] / item[3],
+            key=lambda item: (
+                _growth_tier(item, planned[(id(item[0]), item[1])], available_gpus),
+                planned[(id(item[0]), item[1])] / item[3],
+            ),
         )
         selected = next(
             (

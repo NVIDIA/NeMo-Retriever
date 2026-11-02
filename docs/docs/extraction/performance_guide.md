@@ -30,6 +30,15 @@ For example, the default PDF graph on a node with 32 CPUs keeps 3 + 4 + 1 = 8 CP
 
 Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
 
+On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when those three stages are the only local GPU stages: captioning, table structure, Nemotron Parse, and remote endpoints for these stages keep the previous defaults. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
+
+| Smallest GPU memory | Page elements | OCR | Embedding |
+|---|---|---|---|
+| 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
+| Less than 72 GiB, or unknown | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
+
+A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows CPU-only pools to 2 actors per GPU first, then grows the GPU pools, then shares the remaining CPUs. GPU shares only control placement; they do not limit GPU memory. Explicit `*_workers` and `gpu_*` values replace these defaults.
+
 Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
 
 Explicit `BatchTuningParams` worker counts and integer `node_overrides` concurrency values must fit the available Ray CPU and GPU budget, including required task reservations. For an explicit Ray actor-pool tuple, validation uses `minimum` for `(minimum, maximum)` or `initial` for `(minimum, maximum, initial)`. The library preserves the tuple's `maximum` so Ray can grow the pool as capacity becomes available.
