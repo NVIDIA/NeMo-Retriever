@@ -587,13 +587,13 @@ def _preflight_default_pdf_embed_plan(cpus: int, gpus: int) -> dict[str, tuple[i
     }
 
 
-@pytest.mark.parametrize("cpus, gpus", [(256, 8), (128, 8), (64, 2), (32, 1), (32, 4)])
+@pytest.mark.parametrize("cpus, gpus", [(256, 8), (128, 8), (64, 2), (32, 1), (32, 4), (16, 1)])
 def test_default_batch_plan_leaves_cpus_for_repartition_stages(cpus: int, gpus: int) -> None:
     plan = _preflight_default_pdf_embed_plan(cpus, gpus)
     booked = 1 + sum(concurrency * num_cpus for concurrency, num_cpus, _gpus in plan.values())
     # Repartitions run before PDF extraction, page elements, and embedding.
     repartition_stages = 3
-    reserve = repartition_stages + min(8, -(-cpus // 10)) + 1
+    reserve = repartition_stages + (min(8, -(-cpus // 10)) if cpus >= 32 else 0) + 1
 
     assert plan["PDFExtractionActor"][1] == 1.0
     assert booked <= cpus - reserve

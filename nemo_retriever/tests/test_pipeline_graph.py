@@ -1343,6 +1343,23 @@ class TestRayDataExecutor:
         # 32 CPUs - 1 source read - (1 repartition + 4 margin + 1 Ray system).
         assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 25
 
+    def test_preflight_skips_repartition_margin_below_32_cpus(self):
+        graph = Graph()
+        graph.add_root(CPUAdaptiveAddOperator())
+        executor = RayDataExecutor(
+            graph,
+            node_overrides={
+                "CPUAdaptiveAddOperator": {"concurrency": 64, "num_cpus": 1, "target_num_rows_per_block": 8}
+            },
+            auto_concurrency_nodes={"CPUAdaptiveAddOperator"},
+            source_cpu_reservation=1,
+        )
+
+        executor._preflight_resources(executor._linearize(graph), available_cpus=16, available_gpus=0)
+
+        # 16 CPUs - 1 source read - (1 repartition + 1 Ray system).
+        assert executor._node_overrides["CPUAdaptiveAddOperator"]["concurrency"] == 13
+
     def test_preflight_warns_when_fixed_pools_consume_repartition_reserve(self, caplog):
         graph = Graph()
         graph.add_root(CPUAdaptiveAddOperator())

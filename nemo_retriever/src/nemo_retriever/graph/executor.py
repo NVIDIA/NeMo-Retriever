@@ -51,10 +51,12 @@ _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 _RESOURCE_RELEASE_WAIT_SECONDS = 1.0
 _RESOURCE_RELEASE_POLL_SECONDS = 0.01
 # Ray Data task stages (repartitions) book 1 CPU per task and cannot run when
-# actors hold every CPU, so actor growth leaves one CPU per stage, a margin of
-# 10% of CPUs (at most 8), and 1 CPU for the driver and Ray system processes.
+# actors hold every CPU, so actor growth leaves one CPU per stage, 1 CPU for the
+# driver and Ray system processes, and on hosts with at least 32 CPUs a margin
+# of 10% of CPUs (at most 8).
 _TASK_STAGE_CPU_MARGIN_FRACTION = 0.10
 _TASK_STAGE_CPU_MARGIN_MAX = 8
+_TASK_STAGE_CPU_MARGIN_MIN_CPUS = 32
 _RAY_SYSTEM_CPU_RESERVATION = 1
 
 
@@ -304,7 +306,9 @@ def _task_stage_cpu_reservation(task_stages: int, available_cpus: float) -> floa
     """Return the CPUs that actor growth leaves free for Ray Data task stages."""
     if task_stages <= 0:
         return 0.0
-    margin = min(_TASK_STAGE_CPU_MARGIN_MAX, math.ceil(_TASK_STAGE_CPU_MARGIN_FRACTION * available_cpus))
+    margin = 0
+    if available_cpus >= _TASK_STAGE_CPU_MARGIN_MIN_CPUS:
+        margin = min(_TASK_STAGE_CPU_MARGIN_MAX, math.ceil(_TASK_STAGE_CPU_MARGIN_FRACTION * available_cpus))
     return float(task_stages + margin + _RAY_SYSTEM_CPU_RESERVATION)
 
 
@@ -386,9 +390,9 @@ def _preflight_executor_nodes(
             "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
         )
     used_cpu, used_gpu = fixed_cpu + min_cpu, fixed_gpu + min_gpu
-    if used_cpu > actor_cpu_budget:
+    if fixed and used_cpu > actor_cpu_budget:
         logger.warning(
-            "Ray batch resource preflight: fixed and minimum actor pools book %g CPUs, leaving %g of the "
+            "Ray batch resource preflight: explicit and minimum actor pools book %g CPUs, leaving %g of the "
             "%g CPUs reserved for %d Ray Data task stages (repartitions). Those stages can stall; "
             "reduce explicit *_workers or *_cpus_per_actor values.",
             used_cpu,

@@ -23,7 +23,7 @@ When ingestion combines multiple extraction datasets, preflight also reserves 1 
 Ray Data runs repartition steps as short tasks that each reserve 1 CPU. Repartition steps run before PDF extraction, page elements detection, table structure, and embedding when the matching batch size and repartition control are set. When a graph has repartition steps, preflight stops growing automatically sized actor pools before they reserve every CPU. It keeps the following CPUs free:
 
 - 1 CPU for each repartition step, and 2 for each stage that needs the whole dataset in one batch.
-- A margin of 10% of the available CPUs, rounded up, with a maximum of 8 CPUs.
+- On hosts with at least 32 available CPUs, a margin of 10% of the available CPUs, rounded up, with a maximum of 8 CPUs.
 - 1 CPU for the Ray driver and system processes.
 
 For example, the default PDF graph on a node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
