@@ -187,7 +187,7 @@ workstation with the interface installed. Search the timeline for `nrl.batch::`,
 | `nrl.batch::table_structure.batch` | One Table Structure actor processing call. |
 | `nrl.batch::ocr.startup` | One OCR actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
 | `nrl.batch::ocr.batch` | One OCR actor processing call. |
-| `nrl.batch::embedding.startup` | One embedding actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::embedding.startup` | One embedding actor constructor. A local embedding model loads here, including its vLLM engine, so this range includes the model load time. |
 | `nrl.batch::embedding.batch` | One embedding actor processing call. |
 | `nrl.batch::ray.materialize` | Materialization of a terminal Ray dataset into a pandas DataFrame. This range can include lazy upstream execution. |
 | `nrl.batch::pipeline.terminal_stream` | Consumption of the lazy upstream pipeline and streaming of its records to the vector database backend. This range is not pure vector database time. |
