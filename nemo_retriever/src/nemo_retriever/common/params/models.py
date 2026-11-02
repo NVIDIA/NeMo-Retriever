@@ -497,7 +497,7 @@ class BatchTuningParams(_ParamsModel):
     debug_run_id: str = "unknown"
     pdf_split_batch_size: int = 1
     pdf_extract_batch_size: int = 4
-    pdf_extract_num_cpus: float = 2
+    pdf_extract_num_cpus: float = 1
     pdf_extract_workers: Optional[int] = None
     page_elements_batch_size: int = 24
     page_elements_repartition: bool = Field(

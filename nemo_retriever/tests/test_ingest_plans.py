@@ -558,6 +558,56 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def _preflight_default_pdf_embed_plan(cpus: int, gpus: int) -> dict[str, tuple[int, float, float]]:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=cpus, gpu_count=gpus),
+        available_resources=Resources(cpu_count=cpus, gpu_count=gpus),
+    )
+    extract_params, embed_params = ExtractParams(), EmbedParams()
+    derived = batch_tuning_to_node_overrides(extract_params, embed_params, cluster_resources=cluster)
+    executor = RayDataExecutor(
+        build_graph(extract_params=extract_params, embed_params=embed_params, stage_order=()),
+        node_overrides=derived,
+        auto_concurrency_nodes=default_concurrency_node_names(extract_params, embed_params, None, None),
+        source_cpu_reservation=1,
+    )
+    nodes = executor._linearize(executor.graph)
+    executor._preflight_resources(nodes, cpus, gpus)
+    return {
+        node.name: (
+            derived[node.name].get("concurrency", 1),
+            derived[node.name].get("num_cpus", 1.0),
+            derived[node.name].get("num_gpus", 0.0),
+        )
+        for node in nodes
+        if node.name in derived
+    }
+
+
+@pytest.mark.parametrize("cpus, gpus", [(256, 8), (128, 8), (64, 2), (32, 1), (32, 4)])
+def test_default_batch_plan_leaves_cpus_for_repartition_stages(cpus: int, gpus: int) -> None:
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus)
+    booked = 1 + sum(concurrency * num_cpus for concurrency, num_cpus, _gpus in plan.values())
+    # Repartitions run before PDF extraction, page elements, and embedding.
+    repartition_stages = 3
+    reserve = repartition_stages + min(8, -(-cpus // 10)) + 1
+
+    assert plan["PDFExtractionActor"][1] == 1.0
+    assert booked <= cpus - reserve
+
+
+def test_default_batch_plan_keeps_single_gpu_pools() -> None:
+    plan = _preflight_default_pdf_embed_plan(32, 1)
+
+    assert plan["PDFExtractionActor"][0] >= 11
+    assert plan["PageElementDetectionActor"][0] >= 3
+    assert plan["OCRActor"][0] >= 2
+    assert plan["_BatchEmbedActor"][0] == 1
+
+
 def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=32, gpu_count=1),

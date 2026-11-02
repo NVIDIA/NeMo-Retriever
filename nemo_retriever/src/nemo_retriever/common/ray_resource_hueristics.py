@@ -60,9 +60,7 @@ TABLE_STRUCTURE_BATCH_SIZE = 16
 
 # PDF EXTRACTOR constants (PER-GPU) - reason being more GPU means more CPU needed to feed the models and keep up
 PDF_EXTRACT_BATCH_SIZE = 8  # Ray batch size AND PDF extraction batch size
-PDF_EXTRACT_CPUS_PER_TASK = (
-    2.0  # Hueristic baseline num CPUs per task. Used to determine which CPU to schedule the task on.
-)
+PDF_EXTRACT_CPUS_PER_TASK = 1.0  # pypdfium2 rendering is single-threaded, so a worker uses at most 1 core.
 PDF_EXTRACT_TASKS = 16  # Hueristic baseline num tasks. Used to determine how many CPU tasks to run in parallel.
 
 
