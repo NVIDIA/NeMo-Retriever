@@ -20,11 +20,11 @@ def _no_sleep(monkeypatch):
 
 
 def _occupy(port: int) -> socket.socket:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("", port))
-    s.listen()
-    return s
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("", port))
+    sock.listen()
+    return sock
 
 
 def test_retries_with_new_port_when_port_was_taken():
@@ -40,8 +40,8 @@ def test_retries_with_new_port_when_port_was_taken():
     try:
         assert vllm_mod._build_llm_with_port_retry(fake_llm, {}) == "llm"
     finally:
-        for s in held:
-            s.close()
+        for sock in held:
+            sock.close()
     assert len(ports) == 2 and ports[0] != ports[1]
     assert "VLLM_PORT" not in os.environ
 
@@ -56,6 +56,24 @@ def test_other_failures_are_not_retried():
     with pytest.raises(RuntimeError):
         vllm_mod._build_llm_with_port_retry(fake_llm, {})
     assert len(calls) == 1
+
+
+def test_non_runtime_errors_propagate_without_retry():
+    calls, held = [], []
+
+    def fake_llm(**_kwargs):
+        calls.append(1)
+        held.append(_occupy(int(os.environ["VLLM_PORT"])))
+        raise ValueError("bad engine args")
+
+    try:
+        with pytest.raises(ValueError):
+            vllm_mod._build_llm_with_port_retry(fake_llm, {})
+    finally:
+        for sock in held:
+            sock.close()
+    assert len(calls) == 1
+    assert "VLLM_PORT" not in os.environ
 
 
 def test_gives_up_after_bounded_attempts():
@@ -99,8 +117,8 @@ def test_cleanup_only_stops_engine_processes_from_the_failed_attempt():
         assert not failed[0].is_alive()
         assert healthy.is_alive()
     finally:
-        for s in held:
-            s.close()
+        for sock in held:
+            sock.close()
         for proc in [healthy, *failed]:
             proc.terminate()
             proc.join()

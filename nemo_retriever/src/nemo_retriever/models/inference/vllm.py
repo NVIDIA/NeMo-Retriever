@@ -237,17 +237,17 @@ def create_vllm_llm(
 
 
 def _pick_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", 0))
+        return sock.getsockname()[1]
 
 
 def _port_has_listener(port: int) -> bool:
     # SO_REUSEADDR ignores TIME_WAIT leftovers of our own failed attempt; only a live listener blocks the bind.
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind(("", port))
+            sock.bind(("", port))
         except OSError:
             return True
     return False
@@ -292,7 +292,7 @@ def _build_llm_with_port_retry(llm_cls: Any, kwargs: dict) -> Any:
         children_before = set(multiprocessing.active_children())
         try:
             return llm_cls(**kwargs)
-        except Exception as exc:
+        except (RuntimeError, OSError) as exc:
             if attempt == VLLM_BUILD_ATTEMPTS or not (_is_port_clash(exc) or _port_has_listener(port)):
                 raise
             _release_failed_engine(children_before)
@@ -304,6 +304,7 @@ def _build_llm_with_port_retry(llm_cls: Any, kwargs: dict) -> Any:
                 VLLM_BUILD_ATTEMPTS,
                 port,
                 delay,
+                exc_info=True,
             )
             time.sleep(delay)
         finally:
