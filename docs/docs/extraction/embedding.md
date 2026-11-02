@@ -123,12 +123,13 @@ formatted embedding-input limit. `EmbedParams.query_max_length` controls the
 separate query limit.
 
 For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`, text
-admission also enforces a safety limit of 65,536 characters per input.
-Token and character limits are independent: text can fit the token budget and
-still require splitting. The character count includes raw content and whitespace,
-before model prefixes or formatting. Each split child fits both limits and
-preserves its exact source text. Increasing `max_length` does not raise this
-character limit.
+admission also enforces a safety limit of 65,536 UTF-8 bytes per formatted input.
+The budget includes template escaping and the server-added prefix, even when
+your content already starts with that prefix.
+Token and byte limits are independent: text can fit the token budget and
+still require splitting. Unicode characters can occupy multiple UTF-8 bytes.
+Each split child fits both limits and preserves its exact source text.
+Increasing `max_length` does not raise this byte limit.
 
 With its default query graph, `Retriever` searches every split query chunk
 using the chunk's embedding and matching text for hybrid retrieval. It combines

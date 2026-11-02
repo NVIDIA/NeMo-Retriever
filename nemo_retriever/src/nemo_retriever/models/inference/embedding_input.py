@@ -37,7 +37,7 @@ from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 from nemo_retriever.models.inference.retrieval_template import load_retrieval_template
 
 
-_NEMOTRON_35_NIM_MAX_INPUT_CHARACTERS = 65536
+_NEMOTRON_35_NIM_MAX_INPUT_BYTES = 65536
 
 
 def _stable_json(value: Any) -> str:
@@ -140,7 +140,7 @@ class EmbeddingSplitPlan:
 
 @dataclass(frozen=True)
 class EmbeddingInputPolicy:
-    """Plan text inputs within formatted-token and optional raw-character limits."""
+    """Plan text inputs within formatted-token and optional UTF-8 byte limits."""
 
     tokenizer: ChunkTokenizer
     max_tokens: int
@@ -150,18 +150,20 @@ class EmbeddingInputPolicy:
     add_special_tokens: bool = True
     image: bool = False
     formatted_token_counter: Callable[[str], int] | None = None
-    max_characters: int | None = None
+    max_input_bytes: int | None = None
+    strip_existing_prefix: bool = True
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0:
             raise ValueError("Embedding input max_tokens must be positive")
-        if self.max_characters is not None and self.max_characters <= 0:
-            raise ValueError("Embedding input max_characters must be positive")
+        if self.max_input_bytes is not None and self.max_input_bytes <= 0:
+            raise ValueError("Embedding input max_input_bytes must be positive")
+
+    def _fits_input_bytes(self, text: str) -> bool:
+        return self.max_input_bytes is None or len(self._format(text).encode("utf-8")) <= self.max_input_bytes
 
     def _fits(self, text: str) -> bool:
-        return (self.max_characters is None or len(text) <= self.max_characters) and self._formatted_token_count(
-            text
-        ) <= self.max_tokens
+        return self._fits_input_bytes(text) and self._formatted_token_count(text) <= self.max_tokens
 
     def _formatted_token_count(self, text: str) -> int:
         formatted = self._format(text)
@@ -175,7 +177,13 @@ class EmbeddingInputPolicy:
                 render_retrieval_input,
             )
 
-            return render_retrieval_input(self.retrieval_template, self.prefix, text, image=self.image)
+            return render_retrieval_input(
+                self.retrieval_template,
+                self.prefix,
+                text,
+                image=self.image,
+                strip_existing_prefix=self.strip_existing_prefix,
+            )
         return format_embedding_input(text, self.prefix, prefix_if_missing=self.prefix_if_missing)
 
     def _formatted_token_counts(self, texts: list[str]) -> list[int]:
@@ -244,10 +252,7 @@ class EmbeddingInputPolicy:
             EmbeddingSplitPlan(
                 formatted_tokens=token_count,
                 children=(
-                    self._split(text)
-                    if token_count > self.max_tokens
-                    or (self.max_characters is not None and len(text) > self.max_characters)
-                    else ()
+                    self._split(text) if token_count > self.max_tokens or not self._fits_input_bytes(text) else ()
                 ),
             )
             for text, token_count in zip(inputs, counts)
@@ -388,7 +393,8 @@ def resolve_embedding_input_policy(
     cache_dir: str | None = None,
     prefix_if_missing: bool = False,
     checkpoint: EmbedModelSpec | None = None,
-    max_characters: int | None = None,
+    max_input_bytes: int | None = None,
+    strip_existing_prefix: bool = True,
 ) -> EmbeddingInputPolicy:
     """Resolve a model-pinned input policy shared by local and remote adapters."""
     if configured_max_tokens <= 0:
@@ -434,7 +440,8 @@ def resolve_embedding_input_policy(
             load_retrieval_template(spec.model_id, spec.revision, cache_dir) if spec.model_type == "mistral3" else None
         ),
         add_special_tokens=spec.model_type != "mistral3",
-        max_characters=max_characters,
+        max_input_bytes=max_input_bytes,
+        strip_existing_prefix=strip_existing_prefix,
     )
 
 
@@ -447,14 +454,17 @@ def configure_embedding_input_policy(kwargs: dict[str, Any]) -> EmbeddingInputPo
         else int(kwargs.get("max_length", 8192))
     )
     model_name = kwargs.get("embed_model_name") or kwargs.get("model_name")
-    max_characters = None
+    max_input_bytes = None
+    strip_existing_prefix = True
     if (kwargs.get("embedding_endpoint") or kwargs.get("embed_invoke_url") or "").strip():
         # Remote defaults must not load the private local N3.5 tokenizer.
         model_name = resolve_embed_model(model_name)
         if model_name == NEMOTRON_35_EMBED_MODEL:
-            # This NIM validates raw input characters independently of the
-            # tokenizer budget. Local models do not have this request limit.
-            max_characters = _NEMOTRON_35_NIM_MAX_INPUT_CHARACTERS
+            # This NIM validates UTF-8 bytes, including the model prefix,
+            # independently of tokens. It always prepends the prefix, even
+            # when the source text already contains it.
+            max_input_bytes = _NEMOTRON_35_NIM_MAX_INPUT_BYTES
+            strip_existing_prefix = False
     policy = resolve_embedding_input_policy(
         model_name,
         configured_max_tokens=configured_max_tokens,
@@ -463,7 +473,8 @@ def configure_embedding_input_policy(kwargs: dict[str, Any]) -> EmbeddingInputPo
         cache_dir=kwargs.get("hf_cache_dir"),
         prefix_if_missing=bool(kwargs.get("_embedding_prefix_if_missing", False)),
         checkpoint=kwargs.get("_embedding_checkpoint"),
-        max_characters=max_characters,
+        max_input_bytes=max_input_bytes,
+        strip_existing_prefix=strip_existing_prefix,
     )
     kwargs["embedding_input_policy"] = policy
     return policy
