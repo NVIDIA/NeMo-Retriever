@@ -273,7 +273,7 @@ def _release_failed_engine(children_before: set) -> None:
         if torch.cuda.is_initialized():
             torch.cuda.empty_cache()
     except ImportError:
-        pass
+        logger.debug("torch unavailable; skipping CUDA cache release", exc_info=True)
 
 
 def _build_llm_with_port_retry(llm_cls: Any, kwargs: dict) -> Any:
