@@ -150,12 +150,17 @@ def batch_tuning_to_node_overrides(
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
-    # The per-GPU cell assumes page elements, OCR and embedding are the only local GPU pools and
-    # that none of them is sized explicitly.
+    # The per-GPU cell assumes the graph has local page elements, OCR and embedding, that these are
+    # its only local GPU pools, and that none of them is sized explicitly.
     per_gpu_cell = (
         extract_params is not None
         and embed_params is not None
         and getattr(extract_params, "method", None) not in ("nemotron_parse", "audio")
+        and getattr(extract_params, "use_page_elements", False)
+        and any(
+            getattr(extract_params, name, False)
+            for name in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+        )
         and not (
             getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
         )

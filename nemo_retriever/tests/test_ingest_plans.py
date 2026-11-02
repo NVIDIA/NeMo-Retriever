@@ -1077,7 +1077,7 @@ def _first_fit_gpu_placement(plan: dict[str, tuple[int, float, float]], gpus: in
 def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
     monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, cell: tuple[int, int, int]
 ) -> None:
-    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda: memory_mib)
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
     plan = _preflight_default_pdf_embed_plan(cpus, gpus)
     expected = dict(zip(("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"), cell))
 
@@ -1086,7 +1086,7 @@ def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
 
 
 def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda: 95_830)
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 95_830)
     plan = _preflight_default_pdf_embed_plan(32, 1)
 
     assert plan["PageElementDetectionActor"][2] == 0.1
@@ -1101,13 +1101,14 @@ def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> No
         (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
         (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
         (None, EmbedParams()),
+        (ExtractParams(use_page_elements=False), EmbedParams()),
         (ExtractParams(batch_tuning={"page_elements_workers": 4}), EmbedParams()),
         (ExtractParams(batch_tuning={"gpu_ocr": 0.1}), EmbedParams()),
         (ExtractParams(), EmbedParams(batch_tuning={"embed_workers": 2})),
     ],
 )
 def test_per_gpu_cell_skips_graphs_with_other_gpu_pools(monkeypatch, extract_params, embed_params) -> None:
-    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda: 97_887)
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 97_887)
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=256, gpu_count=8),
         available_resources=Resources(cpu_count=256, gpu_count=8),

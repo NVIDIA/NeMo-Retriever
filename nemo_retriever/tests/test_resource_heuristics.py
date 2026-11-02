@@ -1,3 +1,4 @@
+import sys
 import types
 
 import pytest
@@ -156,12 +157,23 @@ def _make_cluster(total_cpu: int = 16, total_gpu: int = 2) -> rh.ClusterResource
     return rh.ClusterResources(total_resources=res, available_resources=res)
 
 
+@pytest.mark.parametrize("cluster_gpus, expected", [(2, 97_887), (4, 0)])
+def test_min_gpu_memory_ignores_hosts_that_do_not_hold_every_gpu(monkeypatch, cluster_gpus, expected) -> None:
+    gpu = rh.GpuInfo(
+        driver_version="1", gpu_name="gpu", gpu_uuid="u", gpu_brand="b", total_mib=97_887, used_mib=0, free_mib=97_887
+    )
+    monkeypatch.setitem(sys.modules, "pynvml", types.SimpleNamespace(NVMLError=RuntimeError))
+    monkeypatch.setattr(rh, "_get_gpu_memory_info", lambda: rh.NodeGpuInfo(gpus={0: gpu, 1: gpu}))
+
+    assert rh._min_gpu_memory_mib(cluster_gpus) == expected
+
+
 @pytest.mark.parametrize(
     "memory_mib, cell",
     [(97_887, rh.GPU_CELL_LARGE), (46_068, rh.GPU_CELL_SMALL), (None, rh.GPU_CELL_SMALL)],
 )
 def test_resolve_requested_plan_defaults_with_2_gpus(monkeypatch, memory_mib, cell) -> None:
-    monkeypatch.setattr(rh, "_min_gpu_memory_mib", lambda: 0)
+    monkeypatch.setattr(rh, "_min_gpu_memory_mib", lambda _count: 0)
     plan = rh.resolve_requested_plan(
         cluster_resources=_make_cluster(total_gpu=2), per_gpu_cell=True, gpu_memory_mib=memory_mib
     )

@@ -137,8 +137,11 @@ def _get_gpu_memory_info() -> NodeGpuInfo:
     return NodeGpuInfo(gpus=gpu_info)
 
 
-def _min_gpu_memory_mib() -> int:
-    """Return the smallest local GPU's total memory in MiB, or 0 when it cannot be read."""
+def _min_gpu_memory_mib(cluster_gpu_count: int) -> int:
+    """Return the smallest local GPU's total memory in MiB, or 0 when it cannot be read.
+
+    Returns 0 when Ray sees more GPUs than this host has, because GPUs on other nodes are not probed.
+    """
     try:
         from pynvml import NVMLError
     except ImportError:
@@ -148,6 +151,9 @@ def _min_gpu_memory_mib() -> int:
         gpus = _get_gpu_memory_info().gpus
     except NVMLError as exc:
         logger.debug("GPU memory detection failed (%s); using the small GPU cell", exc)
+        return 0
+    if len(gpus) < cluster_gpu_count:
+        logger.debug("Ray has GPUs on other nodes; using the small GPU cell")
         return 0
     return min((gpu.total_mib for gpu in gpus.values()), default=0)
 
@@ -652,7 +658,7 @@ def resolve_requested_plan(
     pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
 
     if per_gpu_cell and available_gpu_count >= 2 and not caption_enabled:
-        memory_mib = _min_gpu_memory_mib() if gpu_memory_mib is None else gpu_memory_mib
+        memory_mib = _min_gpu_memory_mib(available_gpu_count) if gpu_memory_mib is None else gpu_memory_mib
         cell = GPU_CELL_LARGE if memory_mib >= GPU_CELL_LARGE_MIN_MIB else GPU_CELL_SMALL
         (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
         if override_page_elements_initial_actors is None:
