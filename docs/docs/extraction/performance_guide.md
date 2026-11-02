@@ -26,7 +26,7 @@ Ray Data runs repartition steps as short tasks that each reserve 1 CPU. Repartit
 - On hosts with at least 32 available CPUs, a margin of 10% of the available CPUs, rounded up, with a maximum of 8 CPUs.
 - 1 CPU for the Ray driver and system processes.
 
-For example, the default PDF graph on a node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
+For example, the default PDF graph on a single-GPU node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
 
 Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
 
@@ -36,6 +36,8 @@ On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pool
 |---|---|---|---|
 | 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
 | Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
+
+When these default pools apply, the page elements and embedding stages also skip their repartition steps, so rows arrive in the blocks that the previous stage produced. Ray Data runs too few of these repartition tasks to feed the larger GPU pools. Set `page_elements_repartition` or `embed_repartition` to keep a step.
 
 A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows each CPU-only pool to 2 actors per GPU or one eighth of its target, whichever is smaller, then grows the GPU pools, then shares the remaining CPUs.
 
@@ -126,7 +128,9 @@ Benchmark these settings with representative documents. Monitor CPU capacity, en
     in current NVIDIA `main` or a released package.
 
 In batch mode, the following `BatchTuningParams` controls enable size-based Ray
-repartitioning before each stage. Each control defaults to `True`.
+repartitioning before each stage. Each control is on by default, except that `page_elements_repartition` and
+`embed_repartition` are off when the default per-GPU pools apply. Set a control to `True` or `False` to
+override its default.
 
 | Stage | Control | Row-batch setting |
 | --- | --- | --- |

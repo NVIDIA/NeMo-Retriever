@@ -352,6 +352,9 @@ class RequestedPlan(BaseModel):
     pdf_extract_cpus_per_task: float
     pdf_extract_tasks: int
 
+    # Whether the per-GPU cell sized the page elements, OCR and embedding pools
+    per_gpu_cell: bool = False
+
     def get_embed_initial_actors(self) -> int:
         return self.embed_initial_actors
 
@@ -658,7 +661,8 @@ def resolve_requested_plan(
     pdf_extract_cpus_per_task = _resolve_float(override_pdf_extract_cpus_per_task, PDF_EXTRACT_CPUS_PER_TASK, False)
     pdf_extract_tasks = _resolve_int_actors(override_pdf_extract_tasks, PDF_EXTRACT_TASKS, True)
 
-    if per_gpu_cell and available_gpu_count >= 2 and not caption_enabled:
+    per_gpu_cell = per_gpu_cell and available_gpu_count >= 2 and not caption_enabled
+    if per_gpu_cell:
         memory_mib = _min_gpu_memory_mib(available_gpu_count) if gpu_memory_mib is None else gpu_memory_mib
         cell = GPU_CELL_LARGE if memory_mib >= GPU_CELL_LARGE_MIN_MIB else GPU_CELL_SMALL
         (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
@@ -725,6 +729,7 @@ def resolve_requested_plan(
         pdf_extract_batch_size=pdf_extract_batch_size,
         pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
         pdf_extract_tasks=pdf_extract_tasks,
+        per_gpu_cell=per_gpu_cell,
     )
 
 
