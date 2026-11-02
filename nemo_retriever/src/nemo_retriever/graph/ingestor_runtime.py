@@ -388,6 +388,12 @@ def batch_tuning_to_node_overrides(
         pdf_bs = _positive(
             getattr(extract_tuning, "pdf_extract_batch_size", None) if extract_tuning is not None else None
         ) or (plan.pdf_extract_batch_size if plan else None)
+        pdf_rows_per_block = (
+            _positive(
+                getattr(extract_tuning, "pdf_extract_rows_per_block", None) if extract_tuning is not None else None
+            )
+            or pdf_bs
+        )
         pdf_extract_cpus = (
             _resolve(
                 getattr(extract_tuning, "pdf_extract_num_cpus", None) if extract_tuning is not None else None,
@@ -401,8 +407,8 @@ def batch_tuning_to_node_overrides(
         )
 
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
-        if pdf_bs:
-            overrides.setdefault(PDFExtractionActor.__name__, {})["target_num_rows_per_block"] = pdf_bs
+        if pdf_rows_per_block:
+            overrides.setdefault(PDFExtractionActor.__name__, {})["target_num_rows_per_block"] = pdf_rows_per_block
         _set(PDFExtractionActor.__name__, "concurrency", pdf_extract_tasks)
         _set(PDFExtractionActor.__name__, "num_cpus", pdf_extract_cpus if pdf_extract_cpus != 1.0 else None)
 

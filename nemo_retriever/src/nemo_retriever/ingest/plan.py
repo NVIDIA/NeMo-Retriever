@@ -116,6 +116,7 @@ class IngestExtractBatchOptions:
     nemotron_parse_gpus_per_actor: float | None = None
     page_elements_repartition: bool | None = None
     table_structure_repartition: bool | None = None
+    pdf_extract_rows_per_block: int | None = None
 
 
 @dataclass(frozen=True)
@@ -535,6 +536,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
             "pdf_split_batch_size": batch.pdf_split_batch_size,
             "pdf_extract_workers": batch.pdf_extract_workers,
             "pdf_extract_batch_size": batch.pdf_extract_batch_size,
+            "pdf_extract_rows_per_block": batch.pdf_extract_rows_per_block,
             # BatchTuningParams names this per-Ray-task reservation num_cpus.
             "pdf_extract_num_cpus": batch.pdf_extract_cpus_per_task,
             "page_elements_workers": batch.page_elements_workers,
