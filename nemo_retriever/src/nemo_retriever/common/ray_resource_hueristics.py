@@ -140,8 +140,13 @@ def _get_gpu_memory_info() -> NodeGpuInfo:
 def _min_gpu_memory_mib() -> int:
     """Return the smallest local GPU's total memory in MiB, or 0 when it cannot be read."""
     try:
+        from pynvml import NVMLError
+    except ImportError:
+        logger.debug("pynvml is not installed; using the small GPU cell")
+        return 0
+    try:
         gpus = _get_gpu_memory_info().gpus
-    except Exception as exc:  # pynvml missing, NVML runtime unavailable, etc.
+    except NVMLError as exc:
         logger.debug("GPU memory detection failed (%s); using the small GPU cell", exc)
         return 0
     return min((gpu.total_mib for gpu in gpus.values()), default=0)

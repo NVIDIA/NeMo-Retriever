@@ -1101,6 +1101,9 @@ def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> No
         (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
         (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
         (None, EmbedParams()),
+        (ExtractParams(batch_tuning={"page_elements_workers": 4}), EmbedParams()),
+        (ExtractParams(batch_tuning={"gpu_ocr": 0.1}), EmbedParams()),
+        (ExtractParams(), EmbedParams(batch_tuning={"embed_workers": 2})),
     ],
 )
 def test_per_gpu_cell_skips_graphs_with_other_gpu_pools(monkeypatch, extract_params, embed_params) -> None:

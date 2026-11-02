@@ -150,7 +150,8 @@ def batch_tuning_to_node_overrides(
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
-    # The per-GPU cell assumes page elements, OCR and embedding are the only local GPU pools.
+    # The per-GPU cell assumes page elements, OCR and embedding are the only local GPU pools and
+    # that none of them is sized explicitly.
     per_gpu_cell = (
         extract_params is not None
         and embed_params is not None
@@ -164,6 +165,22 @@ def batch_tuning_to_node_overrides(
                 (extract_params, "page_elements_invoke_url"),
                 (extract_params, "ocr_invoke_url"),
                 (embed_params, "embed_invoke_url"),
+            )
+        )
+        and not any(
+            _positive(getattr(_batch_tuning(params), name, None))
+            for params, name in (
+                (extract_params, "page_elements_workers"),
+                (extract_params, "ocr_workers"),
+                (embed_params, "embed_workers"),
+            )
+        )
+        and all(
+            getattr(_batch_tuning(params), name, None) is None
+            for params, name in (
+                (extract_params, "gpu_page_elements"),
+                (extract_params, "gpu_ocr"),
+                (embed_params, "gpu_embed"),
             )
         )
     )
