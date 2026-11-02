@@ -26,7 +26,7 @@ On Windows PowerShell, set the variables in the session, for example `$env:NVIDI
 | `OTEL_METRICS_EXPORTER` | `otlp` | The retriever service metrics exporter. Set to `none` to disable OpenTelemetry metric export while retaining other supported telemetry. |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `5000` | The metric export interval in milliseconds for Helm deployments. Set a larger value to reduce export frequency. |
 
-Set `NRL_CUDA_BLOCKING_SYNC=1` in each GPU worker process before its local GPU actor initializes. The option is disabled by default. It applies to GPU actors and to service worker processes; CPU-only Ray actors are not affected. On a host without a CUDA driver, each process that tries it logs a warning and continues.
+Set `NRL_CUDA_BLOCKING_SYNC=1` in each GPU worker process before its local GPU actor initializes. The option is disabled by default. It applies to GPU actors and to service worker processes; CPU-only Ray actors are not affected. On a host without a CUDA driver, each process that tries it logs a warning and continues. When the option is enabled, NRL also sets `VLLM_WORKER_MULTIPROC_METHOD=spawn` unless you set it, because a process that has initialized CUDA cannot start forked vLLM workers. The option reduces CPU use but can lower throughput slightly on hosts with spare CPU, so enable it only when CPU is the constraint.
 
 
 ## Retriever Service Log Level { #retriever-service-log-level }

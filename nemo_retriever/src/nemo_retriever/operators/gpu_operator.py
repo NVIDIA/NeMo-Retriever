@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _CUDA_BLOCKING_SYNC_ENV = "NRL_CUDA_BLOCKING_SYNC"
 _CU_CTX_SCHED_BLOCKING_SYNC = 0x4
+_VLLM_MULTIPROC_METHOD_ENV = "VLLM_WORKER_MULTIPROC_METHOD"
 _cuda_blocking_sync_configured = False
 
 
@@ -26,6 +27,8 @@ def _configure_cuda_blocking_sync() -> None:
     global _cuda_blocking_sync_configured
     if os.environ.get(_CUDA_BLOCKING_SYNC_ENV) != "1" or _cuda_blocking_sync_configured:
         return
+    # A process that called cuInit cannot fork CUDA children; make vLLM spawn instead.
+    os.environ.setdefault(_VLLM_MULTIPROC_METHOD_ENV, "spawn")
     try:
         cuda = ctypes.CDLL("libcuda.so.1")
         _check(cuda.cuInit(0), "cuInit")

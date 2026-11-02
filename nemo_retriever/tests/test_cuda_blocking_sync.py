@@ -20,6 +20,8 @@ from nemo_retriever.service.services import pipeline_executor
 @pytest.fixture(autouse=True)
 def reset_configured_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gpu_operator, "_cuda_blocking_sync_configured", False)
+    monkeypatch.setenv("VLLM_WORKER_MULTIPROC_METHOD", "unset-by-fixture")
+    monkeypatch.delenv("VLLM_WORKER_MULTIPROC_METHOD")
 
 
 def test_unset_env_does_not_load_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,6 +29,31 @@ def test_unset_env_does_not_load_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gpu_operator.ctypes, "CDLL", lambda *_args, **_kwargs: pytest.fail("unexpected CDLL call"))
 
     gpu_operator._configure_cuda_blocking_sync()
+
+    assert "VLLM_WORKER_MULTIPROC_METHOD" not in gpu_operator.os.environ
+
+
+def _missing_libcuda(*_args: object, **_kwargs: object) -> None:
+    raise OSError("no libcuda")
+
+
+def test_enabled_env_makes_vllm_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NRL_CUDA_BLOCKING_SYNC", "1")
+    monkeypatch.setattr(gpu_operator.ctypes, "CDLL", _missing_libcuda)
+
+    gpu_operator._configure_cuda_blocking_sync()
+
+    assert gpu_operator.os.environ["VLLM_WORKER_MULTIPROC_METHOD"] == "spawn"
+
+
+def test_enabled_env_keeps_explicit_vllm_method(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NRL_CUDA_BLOCKING_SYNC", "1")
+    monkeypatch.setenv("VLLM_WORKER_MULTIPROC_METHOD", "fork")
+    monkeypatch.setattr(gpu_operator.ctypes, "CDLL", _missing_libcuda)
+
+    gpu_operator._configure_cuda_blocking_sync()
+
+    assert gpu_operator.os.environ["VLLM_WORKER_MULTIPROC_METHOD"] == "fork"
 
 
 def test_enabled_env_sets_flags_once_for_each_visible_device(monkeypatch: pytest.MonkeyPatch) -> None:
