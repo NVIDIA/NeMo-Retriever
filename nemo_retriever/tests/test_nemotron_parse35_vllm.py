@@ -18,14 +18,16 @@ from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference import nemotron_parse35_vllm as plugin_module
 from nemo_retriever.models.local import nemotron_parse35 as adapter_module
-from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35
+from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35, ParsePageResult
 
 
 @pytest.fixture
 def vllm_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Replace vLLM and network I/O, without importing CUDA model classes."""
     engine = MagicMock()
-    engine.generate.return_value = [SimpleNamespace(outputs=[SimpleNamespace(text=" <class_Text>page ")])]
+    engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text=" <class_Text>page ", finish_reason="stop", token_ids=[1, 2])])
+    ]
     llm = MagicMock(return_value=engine)
     sampling = MagicMock()
     module = ModuleType("vllm")
@@ -61,6 +63,36 @@ def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(vllm_runtime: Simpl
     assert vllm_runtime.engine.generate.call_args.kwargs["tokenization_kwargs"] == {"add_special_tokens": False}
 
 
+def test_vllm_reports_length_limited_generation(vllm_runtime: SimpleNamespace) -> None:
+    vllm_runtime.engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text=" capped ", finish_reason="length", token_ids=[1, 2, 3])])
+    ]
+    parser = NemotronParse35()
+    assert parser.invoke_batch_results([Image.new("RGB", (16, 20))]) == [
+        ParsePageResult(text="capped", finish_reason="length", output_tokens=3)
+    ]
+    assert parser.invoke_batch_results([]) == []
+
+
+def test_vllm_generation_survives_disabled_progress_bars(
+    vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tqdm import tqdm
+
+    # Retriever's quiet CLI and benchmark harnesses set TQDM_DISABLE for Ray workers.
+    monkeypatch.setenv("TQDM_DISABLE", "1")
+
+    def generate(prompts: list[object], *args: object, use_tqdm: bool = True, **kwargs: object) -> list[object]:
+        if use_tqdm:
+            # vLLM's offline engine estimates speed from the bar after each request;
+            # a disabled bar reports zero elapsed time.
+            _ = 1 / tqdm(total=len(prompts)).format_dict["elapsed"]
+        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
+
+    vllm_runtime.engine.generate.side_effect = generate
+    assert NemotronParse35().invoke(Image.new("RGB", (16, 20))) == "page"
+
+
 def test_vllm_converts_pages_only_as_generated(vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     parser = NemotronParse35(backend="vllm")
     events = []
@@ -72,7 +104,7 @@ def test_vllm_converts_pages_only_as_generated(vllm_runtime: SimpleNamespace, mo
 
     def generate(*args: object, **kwargs: object) -> list[SimpleNamespace]:
         events.append("generate")
-        return [SimpleNamespace(outputs=[SimpleNamespace(text="page")])]
+        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
 
     monkeypatch.setattr(parser, "preprocess", preprocess)
     vllm_runtime.engine.generate.side_effect = generate
