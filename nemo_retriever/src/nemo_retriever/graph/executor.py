@@ -722,17 +722,14 @@ class RayDataExecutor(AbstractExecutor):
 
         with sink_node.operator._worker_write() as writer:
 
-            def write_partition(block: pa.Table | pd.DataFrame) -> pd.DataFrame:
-                frame = block if isinstance(block, pd.DataFrame) else arrow_table_to_pandas(block)
-                if validate_batch is not None:
-                    validate_batch(frame)
-                receipt = writer._write_partition(frame)
-                receipt["input_rows"] = len(frame)
-                return pd.DataFrame({"receipt": [json.dumps(receipt)]})
-
             class PartitionWriter:
                 def __call__(self, block: pa.Table | pd.DataFrame) -> pd.DataFrame:
-                    return write_partition(block)
+                    frame = block if isinstance(block, pd.DataFrame) else arrow_table_to_pandas(block)
+                    if validate_batch is not None:
+                        validate_batch(frame)
+                    receipt = writer._write_partition(frame)
+                    receipt["input_rows"] = len(frame)
+                    return pd.DataFrame({"receipt": [json.dumps(receipt)]})
 
             # num_cpus=0: with 1-CPU writers Ray Data has no budget left for the read task,
             # so execution never starts.
