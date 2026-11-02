@@ -501,7 +501,7 @@ class BatchTuningParams(_ParamsModel):
         default=None,
         gt=0,
         description=(
-            "Rows per Ray block before PDF extraction, so each extraction task covers this many pages. "
+            "Target rows per Ray block before PDF extraction, which sets the pages per extraction task. "
             "None uses pdf_extract_batch_size."
         ),
     )
