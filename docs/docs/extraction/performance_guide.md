@@ -37,7 +37,9 @@ On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pool
 | 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
 | Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
 
-A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows CPU-only pools to 2 actors per GPU first, then grows the GPU pools, then shares the remaining CPUs. GPU shares only control placement; they do not limit GPU memory.
+A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows each CPU-only pool to 2 actors per GPU or one eighth of its target, whichever is smaller, then grows the GPU pools, then shares the remaining CPUs.
+
+The CPU stage that reshapes content before embedding (`CollapseContentToPageRows` or `ExplodeContentToRows`) targets 2 actors per GPU on hosts with 2 or more GPUs and 1 actor otherwise. Each reshape actor runs on one core, so a single actor can limit a multi-GPU run. Preflight grows the reshape pool after the GPU pools, so hosts with few CPUs per GPU keep 1 reshape actor. GPU shares only control placement; they do not limit GPU memory.
 
 Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
 
@@ -110,7 +112,7 @@ Embedding preparation, actor batches, and HTTP requests have separate concurrenc
 | `embed_inference_batch_size` | Adds a limit on the number of image-bearing inputs in each remote embedding HTTP request. |
 | `nim_http_max_concurrent` | Caps concurrent remote embedding HTTP requests within each actor batch. |
 
-Set `embed_reshape_workers` when CPU content preparation limits throughput. This setting applies to the named `CollapseContentToPageRows` and `ExplodeContentToRows` graph stages when present.
+Set `embed_reshape_workers` when CPU content preparation limits throughput. This setting applies to the named `CollapseContentToPageRows` and `ExplodeContentToRows` graph stages when present. When you do not set it, preflight sizes these stages from the GPU count and the CPU budget.
 
 For remote image-bearing inputs, the request size is at most `min(inference_batch_size, embed_inference_batch_size)`. For example, `.embed(inference_batch_size=32, embed_inference_batch_size=8)` sends at most 8 image-bearing inputs per request. Select a multimodal model that your endpoint supports, as described in [multimodal embedding](embedding.md).
 

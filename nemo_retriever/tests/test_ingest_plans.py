@@ -1085,6 +1085,34 @@ def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
     assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
 
 
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, reshape, cell_actors",
+    [(256, 8, 97_887, 16, 32), (128, 8, 97_887, 7, 32), (32, 4, 46_068, 1, 4), (32, 1, 95_830, 1, 3)],
+)
+def test_default_embed_reshape_scales_with_gpus_inside_the_cpu_budget(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, reshape: int, cell_actors: int
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus)
+
+    assert plan["ExplodeContentToRows"][0] == reshape
+    assert plan["PageElementDetectionActor"][0] == cell_actors
+
+
+def test_explicit_embed_reshape_workers_are_not_auto_sized() -> None:
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=256, gpu_count=8),
+        available_resources=Resources(cpu_count=256, gpu_count=8),
+    )
+    embed_params = EmbedParams(batch_tuning=BatchTuningParams(embed_reshape_workers=3))
+    overrides = batch_tuning_to_node_overrides(ExtractParams(), embed_params, cluster_resources=cluster)
+
+    assert overrides["ExplodeContentToRows"]["concurrency"] == 3
+    assert "ExplodeContentToRows" not in default_concurrency_node_names(ExtractParams(), embed_params, None, None)
+
+
 def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 95_830)
     plan = _preflight_default_pdf_embed_plan(32, 1)

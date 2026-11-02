@@ -68,6 +68,7 @@ GPU_CELL_LARGE = ((4, 0.21), (2, 0.06), (1, 0.04))  # (actors, GPU share) for pa
 GPU_CELL_SMALL = ((1, 0.51), (1, 0.25), (1, 0.24))  # Smaller or unknown GPU memory, e.g. 48 GB cards.
 
 # PDF EXTRACTOR constants (PER-GPU) - reason being more GPU means more CPU needed to feed the models and keep up
+EMBED_RESHAPE_ACTORS_PER_GPU = 2  # One reshape actor is single-threaded and caps an 8-GPU run near 120 pages/s.
 PDF_EXTRACT_BATCH_SIZE = 8  # Ray batch size AND PDF extraction batch size
 PDF_EXTRACT_CPUS_PER_TASK = 1.0  # pypdfium2 rendering is single-threaded, so a worker uses at most 1 core.
 PDF_EXTRACT_TASKS = 16  # Hueristic baseline num tasks. Used to determine how many CPU tasks to run in parallel.
@@ -725,3 +726,8 @@ def resolve_requested_plan(
         pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
         pdf_extract_tasks=pdf_extract_tasks,
     )
+
+
+def embed_reshape_actors(available_gpu_count: int) -> int:
+    """Return the default reshape actors before embedding: two per GPU on multi-GPU hosts, otherwise one."""
+    return EMBED_RESHAPE_ACTORS_PER_GPU * available_gpu_count if available_gpu_count >= 2 else 1

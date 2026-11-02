@@ -41,6 +41,7 @@ from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActo
 from nemo_retriever.ingestor.plans import IngestExecutionPlan, dedup_params_enabled
 from nemo_retriever.common.ray_resource_hueristics import (
     ClusterResources,
+    embed_reshape_actors,
     resolve_requested_plan,
 )
 
@@ -102,6 +103,8 @@ def default_concurrency_node_names(
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
+    if embed_params is not None and not _positive(getattr(embed_tuning, "embed_reshape_workers", None)):
+        names.update({COLLAPSE_CONTENT_NODE, EXPLODE_CONTENT_NODE})
     store_tuning = _batch_tuning(store_params)
     if store_params is not None and not _positive(getattr(store_tuning, "store_workers", None)):
         names.add(StoreOperator.__name__)
@@ -272,8 +275,13 @@ def batch_tuning_to_node_overrides(
         )
         _set(_BatchEmbedActor.__name__, "concurrency", embed_concurrency or None)
         reshape_workers = getattr(embed_tuning, "embed_reshape_workers", None) if embed_tuning is not None else None
-        _set(COLLAPSE_CONTENT_NODE, "concurrency", reshape_workers)
-        _set(EXPLODE_CONTENT_NODE, "concurrency", reshape_workers)
+        reshape_fallback = (
+            embed_reshape_actors(int(cluster_resources.available_gpu_count()))
+            if cluster_resources is not None
+            else None
+        )
+        _set(COLLAPSE_CONTENT_NODE, "concurrency", reshape_workers, reshape_fallback)
+        _set(EXPLODE_CONTENT_NODE, "concurrency", reshape_workers, reshape_fallback)
         embed_cpus = (
             _resolve(
                 getattr(embed_tuning, "embed_cpus_per_actor", None) if embed_tuning is not None else None,
