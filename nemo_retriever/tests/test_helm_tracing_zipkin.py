@@ -342,13 +342,17 @@ def test_default_injects_managed_service_and_nim_otel_env() -> None:
 
         _assert_unique_env_names(env)
         assert values["NIM_ENABLE_OTEL"] == "true"
-        assert values["NIM_OTEL_SERVICE_NAME"] == name
+        assert values["NIM_OTEL_SERVICE_NAME"] == ("nemotron-embed" if name == "nemotron-3-embed-1b" else name)
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
         assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
-        assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
-        assert values["TRITON_OTEL_RATE"] == "1"
+        if name == "nemotron-3-embed-1b":
+            assert "TRITON_OTEL_URL" not in values
+            assert "TRITON_OTEL_RATE" not in values
+        else:
+            assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
+            assert values["TRITON_OTEL_RATE"] == "1"
 
 
 def test_tracing_pods_include_image_pull_secrets() -> None:
@@ -729,13 +733,17 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
 
         _assert_unique_env_names(env)
         assert values["NIM_ENABLE_OTEL"] == "true"
-        assert values["NIM_OTEL_SERVICE_NAME"] == name
+        assert values["NIM_OTEL_SERVICE_NAME"] == ("nemotron-embed" if name == "nemotron-3-embed-1b" else name)
         assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_METRICS_EXPORTER"] == "otlp"
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
         assert values["OTEL_METRIC_EXPORT_INTERVAL"] == "5000"
-        assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
-        assert values["TRITON_OTEL_RATE"] == "1"
+        if name == "nemotron-3-embed-1b":
+            assert "TRITON_OTEL_URL" not in values
+            assert "TRITON_OTEL_RATE" not in values
+        else:
+            assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
+            assert values["TRITON_OTEL_RATE"] == "1"
 
 
 def test_service_otel_disable_omits_managed_env() -> None:
@@ -924,3 +932,17 @@ def test_per_nim_otel_opt_out_and_override() -> None:
     assert values["NIM_OTEL_METRICS_EXPORTER"] == "none"
     assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://custom-otel:4318"
     assert values["TRITON_OTEL_URL"] == "http://custom-otel:4318/v1/traces"
+
+
+def test_embedding_preserves_explicit_triton_telemetry_overrides() -> None:
+    docs = _helm_template(
+        [
+            "nimOperator.vlm_embed.otel.env.TRITON_OTEL_URL=http://explicit-triton/v1/traces",
+            "nimOperator.vlm_embed.otel.env.TRITON_OTEL_RATE=2",
+        ]
+    )
+    env = _nim_env(_find(docs, "NIMService", "nemotron-3-embed-1b"))
+    _assert_unique_env_names(env)
+    values = _env_values(env)
+    assert values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
+    assert values["TRITON_OTEL_RATE"] == "2"

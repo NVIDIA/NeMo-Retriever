@@ -27,28 +27,47 @@ The 1B checkpoints produce 2,048-dimensional vectors. This adapter supports only
 
 Before changing an existing index's model or precision, validate retrieval quality on representative data. Follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain its recorded model or rebuild and re-ingest with the new default.
 
-## Remote and Helm defaults
+## Hosted embedding defaults
 
-Hosted embedding and Helm retain the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.
+Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.
 
 When graph execution selects the CPU embedding actor without an explicit endpoint, it calls `https://integrate.api.nvidia.com/v1/embeddings`. This hosted fallback retains the Nemotron 3 default and records that model on the index. Set `NVIDIA_API_KEY` or `NGC_API_KEY` before ingest.
 
-Helm deploys `nvcr.io/nim/nvidia/nemotron-3-embed-1b:2.2.2`. The NIM selects a supported NVFP4 or BF16 engine automatically. For NIM product details, refer to the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html).
+## Self-hosted Helm and development Compose defaults
 
-## Development Compose defaults
+The current development Helm chart and Compose `nims-core` profile use
+`nvcr.io/nim/nvidia/nemotron-embed:latest`. This Helm change is unreleased.
+Helm uses `pullPolicy: Always` for the floating image tag.
 
-The development service Compose `nims-core` profile uses
-`nvcr.io/nim/nvidia/nemotron-embed:latest`. The native runtime automatically
+> **Compatible service image required.** Helm still defaults to the published
+> `nrl-service:26.8.2` image, which lacks the Nemotron 3.5 alias and revision pin.
+> Its embedding input policy rejects `nvidia/nemotron-3.5-embed-1b` before
+> passage or query inference. Build a service image from current source and set
+> `service.image.repository` and `service.image.tag`. For in-pod local models,
+> also use a compatible `service-gpu` build through `service.gpuImage`.
+> Refer to the [service image build instructions](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image).
+> Validate ingestion and query embedding with that image. A compatible published
+> service release has not yet been validated for this development default.
+
+The native runtime automatically
 selects NVFP4 on supported GPUs and the BF16 checkpoint with FP16 execution
-on other supported GPUs. The matching `nims-core.env` preset uses
-`nvidia/nemotron-3.5-embed-1b` for ingestion and query embedding.
+on other supported GPUs. Helm `serviceConfig.vectordb.embedModel` and the
+Compose `nims-core.env` preset use `nvidia/nemotron-3.5-embed-1b` for ingestion
+and query embedding.
 This served alias does not select the checkpoint or precision.
 For client-side input validation and splitting, the library resolves the alias
 to the revision-pinned `nvidia/Nemotron-3.5-Embed-1B-BF16` tokenizer and input
 policy. HTTP embedding requests retain the served alias, including when the
 NIM selects NVFP4.
-The default modality remains `text`.
-For startup commands and cache configuration, refer to the
+The default modality remains `text`. Both deployments enable throughput mode,
+one GPU, and one engine stream per GPU, while retaining image batch and sequence
+limits.
+
+Helm requires NIM Operator 3.1.2 or newer. The operator owns the model path and
+mounts one PVC writable at `/model` and `/opt/cache`. Compose keeps separate
+persistent volumes at those paths. For Helm migration and runtime details, refer
+to [Native embedding NIM](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#native-embedding-nim).
+For development startup commands and cache configuration, refer to the
 [development Compose README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/dev/compose/README.md#self-hosted-nim-profiles).
 
 Before migrating an existing Nemotron 3 index, back up its data and rebuild
@@ -206,7 +225,7 @@ ingestor = (
 results = ingestor.ingest()
 ```
 
-For a remote endpoint, explicitly select a multimodal model that the endpoint supports. The hosted and Helm Nemotron 3 defaults are text-only.
+For a remote endpoint, explicitly select a multimodal model that the endpoint supports. The hosted Nemotron 3 default is text-only.
 
 For CPU preparation concurrency and remote image request batch sizes, refer to [Tune embedding preparation and remote requests](performance_guide.md#tune-embedding-preparation-and-remote-requests).
 
