@@ -137,6 +137,28 @@ docker compose \
 
 The `nim-caption` profile defaults to `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:2.0.4-variant`. Set `NIM_CAPTION_IMAGE` or `NIM_CAPTION_TAG` only when you need a different registry or image tag.
 
+The `nim-reranker` profile defaults to
+`nvcr.io/nim/nvidia/nemotron-rerank:2.4.0`.
+The default served model is `nvidia/Nemotron-3.5-Rerank-8B-BF16`, replacing
+the previous 1B model. Review GPU requirements in the
+[Reranking NIM 2.4 support matrix](https://docs.nvidia.com/nim/nemo-retriever/reranking/2.4/support-matrix.html)
+before upgrading.
+Set `NIM_RERANK_IMAGE` and `NIM_RERANK_TAG` to select another image.
+The profile starts the reranking API without enabling reranking in the
+retriever service configuration.
+The native ranking API requires image passages as `data:image/...;base64,...`
+URIs. NRL formats raw base64 image passages as data URIs when calling a
+remote ranking NIM and preserves existing image data URIs.
+
+The NIM downloads model artifacts through NGC using `NGC_API_KEY`.
+Model artifacts persist under `/model/rerank`, and the engine cache uses a
+separate volume at `/opt/cache` instead of the legacy `/opt/nim/.cache` mount.
+`NIM_RERANK_MODEL_PATH` changes both the model mount root and artifact path.
+`NIM_RERANK_CACHE_PATH` changes both the engine cache mount and
+`NIM_ENGINE_PRECOMPILE_CACHE_DIR`.
+Set `NIM_RERANK_MODEL_VOLUME` and `NIM_RERANK_CACHE_VOLUME` to select the
+persistent volumes.
+
 The `nim-parse` profile defaults to `nvcr.io/nim/nvidia/nemotron-parse:latest`.
 Set `NIM_PARSE_IMAGE` and `NIM_PARSE_TAG` to select another registry path or tag.
 The Parse profile starts the NIM without selecting it for ingestion.

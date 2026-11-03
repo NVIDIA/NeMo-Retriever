@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Compose contracts for the native extraction and embedding NIMs."""
+"""Compose contracts for the native extraction, embedding, and reranking NIMs."""
 
 from __future__ import annotations
 
@@ -97,6 +97,41 @@ def test_embedding_nim_uses_native_runtime_and_matching_client_model() -> None:
     assert 'embed_model: "${NIM_EMBED_MODEL:-nvidia/nemotron-3-embed-1b}"' in config
     command = compose["services"]["vectordb"]["command"]
     assert command[command.index("--embed-model") + 1] == "${NIM_EMBED_MODEL:-nvidia/nemotron-3-embed-1b}"
+
+
+def test_reranker_nim_uses_native_runtime_and_persistent_model_cache() -> None:
+    compose = _compose()
+    service = compose["services"]["nim-reranker"]
+    environment = service["environment"]
+    assert service["image"] == ("${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/nemotron-rerank}:${NIM_RERANK_TAG:-2.4.0}")
+    assert service["profiles"] == ["nim-reranker"]
+    assert environment["NIM_SERVER_BIND_ADDR"] == "0.0.0.0:8000"
+    assert environment["NIM_OTEL_SERVICE_NAME"] == "nemotron-rerank"
+    assert environment["NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER"] == "ngc"
+    assert environment["NIM_ENGINE_MODEL_PATH"] == "${NIM_RERANK_MODEL_PATH:-/model}/rerank"
+    assert environment["NIM_ENGINE_PRECOMPILE_CACHE_DIR"] == "${NIM_RERANK_CACHE_PATH:-/opt/cache}"
+    assert environment["NIM_ENGINE_COUNT"] == "1"
+    assert "NIM_HTTP_API_PORT" not in environment
+    assert not any(name.startswith("NIM_TRITON_") for name in environment)
+    # Leave model and precision selection to the release image, not driver GPUs.
+    assert "NIM_ENGINE_MODEL_NAME" not in environment
+    assert "NIM_ENGINE_PRECISION" not in environment
+    assert service["volumes"] == [
+        "nim_reranker_cache:${NIM_RERANK_CACHE_PATH:-/opt/cache}",
+        "nim_reranker_model:${NIM_RERANK_MODEL_PATH:-/model}",
+    ]
+    assert compose["volumes"]["nim_reranker_model"] == {
+        "name": "${NIM_RERANK_MODEL_VOLUME:-nemo-retriever-nim-reranker-model}"
+    }
+    assert service["healthcheck"]["test"] == [
+        "CMD",
+        "curl",
+        "--fail",
+        "--silent",
+        "http://localhost:8000/v1/health/ready",
+    ]
+    for setting in ("interval", "timeout", "retries", "start_period"):
+        assert service["healthcheck"][setting] == compose["x-nim-service"]["healthcheck"][setting]
 
 
 def test_caption_nim_uses_the_helm_aligned_omni_image_tag() -> None:

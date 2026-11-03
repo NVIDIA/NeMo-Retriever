@@ -191,10 +191,25 @@ services:
   nim-reranker:
     <<: *nim-service
     profiles: [nim-reranker]
-    image: ${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2}:${NIM_RERANK_TAG:-1.11.0}
+    image: ${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/nemotron-rerank}:${NIM_RERANK_TAG:-2.4.0}
     ports: ["${NIM_RERANK_HOST_PORT:-8005}:8000"]
-    environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: llama-nemotron-rerank-vl-1b-v2, NIM_TRITON_LOG_VERBOSE: "1"}
-    volumes: ["nim_reranker_cache:${NIM_RERANK_CACHE_PATH:-/opt/nim/.cache}"]
+    environment:
+      <<: *nim-environment
+      NIM_SERVER_BIND_ADDR: "0.0.0.0:8000"
+      NIM_OTEL_SERVICE_NAME: nemotron-rerank
+      NIM_ENGINE_MODEL_DOWNLOAD_PROVIDER: ngc
+      NIM_ENGINE_MODEL_PATH: ${NIM_RERANK_MODEL_PATH:-/model}/rerank
+      NIM_ENGINE_PRECOMPILE_CACHE_DIR: ${NIM_RERANK_CACHE_PATH:-/opt/cache}
+      NIM_ENGINE_COUNT: "1"
+    volumes:
+      - "nim_reranker_cache:${NIM_RERANK_CACHE_PATH:-/opt/cache}"
+      - "nim_reranker_model:${NIM_RERANK_MODEL_PATH:-/model}"
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://localhost:8000/v1/health/ready]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
     deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_RERANK_GPU_ID:-4}"]}]}}}
 
   nim-nemotron-parse:
@@ -386,6 +401,7 @@ volumes:
   nim_embedding_cache: {name: "${NIM_EMBED_CACHE_VOLUME:-nemo-retriever-nim-embedding-cache}"}
   nim_embedding_model: {name: "${NIM_EMBED_MODEL_VOLUME:-nemo-retriever-nim-embedding-model}"}
   nim_reranker_cache: {name: "${NIM_RERANK_CACHE_VOLUME:-nemo-retriever-nim-reranker-cache}"}
+  nim_reranker_model: {name: "${NIM_RERANK_MODEL_VOLUME:-nemo-retriever-nim-reranker-model}"}
   nim_parse_cache: {name: "${NIM_PARSE_CACHE_VOLUME:-nemo-retriever-nim-parse-cache}"}
   nim_caption_cache: {name: "${NIM_CAPTION_CACHE_VOLUME:-nemo-retriever-nim-caption-cache}"}
   nim_answer_cache: {name: "${NIM_ANSWER_CACHE_VOLUME:-nemo-retriever-nim-answer-cache}"}
