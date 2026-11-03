@@ -158,8 +158,8 @@ def _ray_visible_gpus(gpus: dict[int, GpuInfo]) -> list[GpuInfo] | None:
 def _min_gpu_memory_mib(cluster_gpu_count: int) -> int:
     """Return the smallest free memory in MiB among the local GPUs Ray uses, or 0 when it cannot be read.
 
-    Free memory is at most total memory, so the large cell needs both. Returns 0 when Ray sees more GPUs
-    than this host exposes, because GPUs on other nodes are not probed.
+    Free memory is at most total memory, so the large cell needs both. Returns 0 unless Ray's GPU count
+    equals the number of GPUs this host exposes to Ray, because GPUs on other nodes are not probed.
     """
     try:
         from pynvml import NVMLError
@@ -174,8 +174,10 @@ def _min_gpu_memory_mib(cluster_gpu_count: int) -> int:
     if gpus is None:
         logger.info("CUDA_VISIBLE_DEVICES does not name GPU indices or UUIDs; using the small per-GPU cell")
         return 0
-    if len(gpus) < cluster_gpu_count:
-        logger.info("Ray has GPUs that this host does not expose; using the small per-GPU cell")
+    if len(gpus) != cluster_gpu_count:
+        logger.info(
+            "Ray has %d GPUs but this host exposes %d; using the small per-GPU cell", cluster_gpu_count, len(gpus)
+        )
         return 0
     return min((gpu.free_mib for gpu in gpus), default=0)
 

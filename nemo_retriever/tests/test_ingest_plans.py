@@ -1252,7 +1252,32 @@ def test_gpu_cell_memory_uses_free_memory_of_ray_visible_gpus(
     else:
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
 
-    assert heuristics._min_gpu_memory_mib(1) == expected
+    ray_gpus = len(free_mib) if visible is None else len(visible.split(","))
+    assert heuristics._min_gpu_memory_mib(ray_gpus) == expected
+
+
+@pytest.mark.parametrize("ray_gpus", [2, 4])
+def test_gpu_cell_memory_needs_ray_gpus_to_match_local_gpus(monkeypatch: pytest.MonkeyPatch, ray_gpus: int) -> None:
+    pytest.importorskip("pynvml")
+    from nemo_retriever.common import ray_resource_hueristics as heuristics
+
+    gpus = {
+        index: heuristics.GpuInfo(
+            driver_version="",
+            gpu_name="",
+            gpu_uuid=f"GPU-{index}",
+            gpu_brand="",
+            total_mib=97_887,
+            used_mib=887,
+            free_mib=97_000,
+        )
+        for index in range(8)
+    }
+    monkeypatch.setattr(heuristics, "_get_gpu_memory_info", lambda: heuristics.NodeGpuInfo(gpus=gpus))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+
+    assert heuristics._min_gpu_memory_mib(8) == 97_000
+    assert heuristics._min_gpu_memory_mib(ray_gpus) == 0
 
 
 def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
