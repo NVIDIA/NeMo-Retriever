@@ -17,7 +17,7 @@ import pytest
 lancedb = pytest.importorskip("lancedb", minversion="0.34.0")
 lance = pytest.importorskip("lance")
 
-from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError
+from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError, VdbWriteNotFinalized
 from nemo_retriever.common.vdb.lancedb import LanceDB, _table_token
 from nemo_retriever.common.vdb.records import VdbUploadError
 from nemo_retriever.graph.executor import arrow_table_to_pandas
@@ -106,6 +106,22 @@ def test_worker_write_overwrites_and_refuses_to_append(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="append with stream_ingest"):
         _worker_write(_backend(uri, overwrite=False), frames)
     assert _rows(uri).num_rows == 5
+
+
+def test_worker_overwrite_refuses_a_table_with_an_unfinished_durable_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uri = tmp_path / "db"
+    _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    durable = IngestVdbOperator(vdb=_backend(uri, overwrite=False, stream_operation_id="job-1"))
+    monkeypatch.setattr(LanceDB, "_finalize_stream_write", lambda self, **kwargs: (_ for _ in ()).throw(OSError("x")))
+    with pytest.raises(DataCommittedFinalizationError):
+        durable._stream_ingest(iter(_frames([_row(1)], batch_size=1)))
+    monkeypatch.undo()
+
+    with pytest.raises(VdbWriteNotFinalized):
+        _worker_write(_backend(uri), _frames([_row(2)], batch_size=1))
+    assert lance.dataset(str(uri / "chunks.lance")).count_rows() == 2
 
 
 def test_worker_write_without_partitions_creates_no_table(tmp_path: Path) -> None:

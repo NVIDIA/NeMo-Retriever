@@ -2185,6 +2185,9 @@ class LanceDB(VDB):
                 if not _is_missing_lancedb_table_error(exc):
                     raise
                 existing_table = None
+            if existing_table is not None:
+                # As the stream path: do not replace a table whose durable write is not finalized.
+                _assert_lancedb_table_ready(existing_table)
             if existing_table is not None and not self.overwrite:
                 raise ValueError(
                     f"worker_write creates or overwrites LanceDB table {self.table_name!r}; append with stream_ingest"
