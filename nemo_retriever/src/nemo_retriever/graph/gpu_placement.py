@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 _LEDGER_NAME = "nrl_gpu_placement_ledger"
 _POLL_S = 10.0
 _CHECK_TIMEOUT_S = 900.0
+_RPC_TIMEOUT_S = 5.0
 
 
 class _PlacementLedger:
@@ -99,7 +100,7 @@ class GpuPlacementCheck:
     def stop(self) -> None:
         """Report the placement seen so far, even when the ingest ends before the next poll."""
         self._stop.set()
-        self._thread.join(timeout=90)
+        self._thread.join(timeout=_RPC_TIMEOUT_S + 1)
 
     def _run(self) -> None:
         import ray
@@ -108,7 +109,7 @@ class GpuPlacementCheck:
         try:
             while True:
                 stopped = self._stop.wait(_POLL_S)
-                rows = ray.get(self._ledger.rows.remote(), timeout=60)
+                rows = ray.get(self._ledger.rows.remote(), timeout=_RPC_TIMEOUT_S)
                 expected = dict(self._expected)
                 started = Counter(stage for stage, _gpu in rows)
                 if (
