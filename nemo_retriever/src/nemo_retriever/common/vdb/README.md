@@ -48,7 +48,9 @@ set, `ingest(return_results=False)` runs `write_partition(batches)` (or
 receipt. The driver then calls `commit_partitions(receipts)` once to make all
 rows visible together. `worker_write()` is the context manager that yields the
 picklable backend copy the actors use; leaving it discards anything written
-but not committed. `LanceDB` is the reference implementation.
+but not committed. `LanceDB` is the reference implementation; it sets the flag
+for one-shot writes (a new table, or `overwrite=True`, without
+`stream_operation_id`) and appends through `stream_ingest`.
 
 ---
 

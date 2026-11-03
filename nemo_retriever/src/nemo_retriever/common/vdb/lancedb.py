@@ -180,39 +180,6 @@ def _optimize_lancedb_table(table: Any) -> None:
     table.checkout_latest()
 
 
-def _lance_field_ids(fields: Iterable[Any], prefix: str = "") -> Iterator[tuple[str, int]]:
-    for field in fields:
-        name = f"{prefix}{field.name()}"
-        yield name, field.id()
-        yield from _lance_field_ids(field.children(), f"{name}.")
-
-
-def _append_field_ids(written: pa.Schema, table: Any) -> dict[int, int]:
-    """Map the field IDs of fragments written alone with ``written`` to the IDs ``table`` uses for those fields.
-
-    ``write_fragments`` on a staging path numbers fields in ``written`` order, while an append keeps the
-    table's IDs, which differ after a reorder or a dropped and re-added column.
-    """
-
-    from lance.schema import LanceSchema
-
-    table_ids = dict(_lance_field_ids(table.to_lance().lance_schema.fields()))
-    return {
-        field_id: table_ids[name] for name, field_id in _lance_field_ids(LanceSchema.from_pyarrow(written).fields())
-    }
-
-
-def _fragment_metadata(encoded: str, field_ids: dict[int, int] | None) -> Any:
-    from lance.fragment import FragmentMetadata
-
-    if field_ids is None:
-        return FragmentMetadata.from_json(encoded)
-    fragment = json.loads(encoded)
-    for data_file in fragment["files"]:
-        data_file["fields"] = [field_ids[field_id] for field_id in data_file["fields"]]
-    return FragmentMetadata.from_json(json.dumps(fragment))
-
-
 def _table_mutation_lock(uri: str, table_name: str) -> AbstractContextManager[Any]:
     """Return the process-shared mutation lock for a local LanceDB table."""
 
@@ -1015,7 +982,6 @@ class LanceDB(VDB):
         self.worker_write_rows = int(worker_write_rows)
         if self.worker_write_rows < 1:
             raise ValueError(f"worker_write_rows must be a positive integer, got {worker_write_rows!r}")
-        self.supports_worker_write = self.supports_stream_ingest
         self._staging_uri: str | None = None
         self._service_table_schema = service_table_schema
         self._service_index_mode = str(service_index_mode) if service_index_mode is not None else None
@@ -2039,23 +2005,22 @@ class LanceDB(VDB):
         for name, lock_type in _PROCESS_LOCAL_LOCKS.items():
             setattr(self, name, lock_type())
 
-    def _worker_copy(self) -> "LanceDB":
-        """Copy of this backend for Ray write tasks.
+    @property
+    def supports_worker_write(self) -> bool:
+        """Worker-native writes cover one-shot ingest: a new table, or ``overwrite=True``, without
+        ``stream_operation_id``. Appends and durable operations use :meth:`stream_ingest`."""
 
-        An append with ``vector_dim=None`` takes the existing table's width, as the stream path does,
-        so a task does not infer its width from its own first vector.
-        """
-
-        worker = copy.copy(self)
-        if worker.vector_dim is None and not worker.overwrite and not worker.sparse:
-            try:
-                table = lancedb.connect(uri=self.uri).open_table(self.table_name)
-            except ValueError as exc:
-                if not _is_missing_lancedb_table_error(exc):
-                    raise
-            else:
-                worker.vector_dim = _schema_vector_dim(_table_schema(table))
-        return worker
+        if not self.supports_stream_ingest or self.stream_operation_id is not None:
+            return False
+        if self.overwrite:
+            return True
+        try:
+            lancedb.connect(uri=self.uri).open_table(self.table_name)
+        except ValueError as exc:
+            if not _is_missing_lancedb_table_error(exc):
+                raise
+            return True
+        return False
 
     @contextmanager
     def worker_write(self) -> Iterator["LanceDB"]:
@@ -2080,7 +2045,7 @@ class LanceDB(VDB):
         staging = Path(self._lance_table_uri()).parent / ".nemo-retriever-staging" / _table_token(self.table_name)
         with self._stream_lock, _table_mutation_lock(self.uri, self.table_name):
             shutil.rmtree(staging, ignore_errors=True)
-            worker = self._worker_copy()
+            worker = copy.copy(self)
             worker._staging_uri = str(staging)
             # Ray workers can run in another working directory, so they get absolute paths.
             worker.uri = str(Path(self._lance_table_uri()).parent)
@@ -2099,56 +2064,11 @@ class LanceDB(VDB):
                 os.replace(staged / data_file.path, table_data / data_file.path)
                 moved.append(table_data / data_file.path)
 
-    def _discard_uncommitted_files(self, moved: list[Path], *, base_version: int | None) -> bool:
-        """After a failed commit, delete moved files only if the table is still at ``base_version``.
-
-        A newer version means the commit may have landed, possibly followed by other commits whose
-        retained versions still reference the files, so they stay. So do they when the table cannot be read.
-        Returns whether the files were deleted, that is, whether the commit provably did not land.
-        """
-
-        import lance
-
-        try:
-            version: int | None = int(lance.dataset(self._lance_table_uri()).version)
-        except ValueError as exc:
-            if "was not found" not in str(exc):
-                logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
-                return False
-            version = None
-        except Exception:  # noqa: BLE001 - unknown commit outcome: keep the files.
-            logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
-            return False
-        if version != base_version:
-            logger.warning("Keeping %d moved LanceDB files: the table moved to version %s", len(moved), version)
-            return False
-        for path in moved:
-            path.unlink(missing_ok=True)
-        return True
-
     def _lance_table_uri(self) -> str:
         path = _filesystem_lancedb_path(self.uri)
         if path is None:
             raise ValueError(f"worker_write requires a local LanceDB uri, got {self.uri!r}")
         return str((path.expanduser() / f"{self.table_name}.lance").absolute())
-
-    def _worker_write_storage_version(self) -> str:
-        """Lance data-file version for worker-written fragments.
-
-        Appends reuse the table's version; new/overwritten tables use the version the LanceDB
-        writer (``create_table``/``add``) produces, so fragment-written tables scan like
-        stream-written ones. That version changes between LanceDB releases, so it is probed.
-        """
-
-        import lance
-
-        if not self.overwrite:
-            try:
-                return str(lance.dataset(self._lance_table_uri()).data_storage_version)
-            except ValueError as exc:
-                if not _is_missing_lancedb_table_error(exc):
-                    raise
-        return _lancedb_default_storage_version()
 
     def write_partition(self, batches: Iterable[CanonicalRecordBatch]) -> dict[str, Any]:
         """Worker side of the worker-native sink: project one partition and write Lance fragments.
@@ -2197,8 +2117,6 @@ class LanceDB(VDB):
             "rows_written": 0,
             "client_records": 0,
             "vector_dim": 0,
-            "stored_hash_sum": "0",
-            "stored_hash_xor": "0",
         }
         if not source.open(stats):
             receipt["client_records"] = stats.client_records
@@ -2211,7 +2129,7 @@ class LanceDB(VDB):
                     schema=schema,
                     max_batch_bytes=self.stream_batch_bytes,
                     stats=stats,
-                    include_digest=self.stream_operation_id is not None,
+                    include_digest=False,
                 ),
                 _LANCE_ROWS_PER_PAGE,
             ),
@@ -2220,45 +2138,38 @@ class LanceDB(VDB):
             reader,
             self._staging_uri,
             schema=schema,
-            data_storage_version=self._worker_write_storage_version(),
+            data_storage_version=_lancedb_default_storage_version(),
         )
         receipt.update(
             fragments=[json.dumps(fragment.to_json()) for fragment in fragments],
             rows_written=stats.rows_written,
             client_records=stats.client_records,
             vector_dim=int(stats.vector_dim or 0),
-            # Order-independent row identity (decimal strings: the sums exceed 64 bits).
-            stored_hash_sum=str(stats.stored_hash_sum),
-            stored_hash_xor=str(stats.stored_hash_xor),
         )
         return receipt
 
     def commit_partitions(self, receipts: Iterable[dict[str, Any]]) -> None:
         """Driver side of the worker-native sink: one Lance commit, then the stream path's finalize.
 
-        Call it on the backend that :meth:`worker_write` yields, inside that block. With
-        ``stream_operation_id`` the commit records the same durable Lance tags as the stream path, with
-        the digest combined from the partitions' row hashes, so a retry that finds the operation
-        committed leaves its own fragments in staging instead of appending them again.
+        Call it on the backend that :meth:`worker_write` yields, inside that block. The commit creates the
+        table, or replaces it when ``overwrite`` is set.
 
         Args:
             receipts: The receipts :meth:`write_partition` or :meth:`write_partition_records` returned.
 
         Raises:
-            ValueError: If partitions disagree on the vector width, or an append does not match the
-                table's schema or embedding model.
-            VdbOperationConflict: If ``stream_operation_id`` was committed with different rows.
+            ValueError: If partitions disagree on the vector width, or the table exists and ``overwrite``
+                is not set.
             DataCommittedFinalizationError: If the data was committed but finalization failed.
         """
 
-        operation_id = self.stream_operation_id
+        from lance.fragment import FragmentMetadata
+
         stats = _StreamStats(vector_dim=self.vector_dim)
         encoded_fragments: list[str] = []
         for receipt in receipts:
             stats.client_records += int(receipt["client_records"])
             stats.rows_written += int(receipt["rows_written"])
-            stats.stored_hash_sum += int(receipt["stored_hash_sum"])
-            stats.stored_hash_xor ^= int(receipt["stored_hash_xor"])
             dim = int(receipt["vector_dim"])
             if dim:
                 if stats.vector_dim is None:
@@ -2268,104 +2179,34 @@ class LanceDB(VDB):
             encoded_fragments.extend(receipt["fragments"])
 
         with self._write_lock:
-            db = lancedb.connect(uri=self.uri)
             try:
-                existing_table = db.open_table(self.table_name)
+                existing_table = lancedb.connect(uri=self.uri).open_table(self.table_name)
             except ValueError as exc:
                 if not _is_missing_lancedb_table_error(exc):
                     raise
                 existing_table = None
-            base_version: int | None = None
-            base_rows = 0
-            if existing_table is not None:
-                existing_table.checkout_latest()
-                base_version = int(existing_table.version)
-                if operation_id is None:
-                    _assert_lancedb_table_ready(existing_table)
-                if not self.overwrite:
-                    base_rows = int(existing_table.count_rows())
-                    if stats.vector_dim is None and not self.sparse:
-                        stats.vector_dim = _schema_vector_dim(_table_schema(existing_table))
+            if existing_table is not None and not self.overwrite:
+                raise ValueError(
+                    f"worker_write creates or overwrites LanceDB table {self.table_name!r}; append with stream_ingest"
+                )
             if stats.client_records == 0:
                 # Same as the stream path: nothing to write, and no table is created.
-                if operation_id is not None:
-                    _reject_empty_operation_bypass(existing_table, operation_id=operation_id)
                 if existing_table is not None:
                     self._remember_table(self.table_name, existing_table)
                 return
 
-            base_schema = self._stream_schema(stats.vector_dim)
-            mode = "overwrite" if self.overwrite else "append"
-            schema, request_fingerprint, recovered_create = base_schema, None, False
-            if operation_id is not None:
-                schema, request_fingerprint, recovered_create = self._durable_stream_schema(
-                    existing_table=existing_table, base_schema=base_schema, operation_id=operation_id, mode=mode
-                )
-            appending = existing_table is not None and not self.overwrite
-            expected_schema = base_schema
-            if appending:
-                _validate_append_schema(existing_table, schema, table_name=self.table_name, uri=self.uri)
-                _validate_append_embedding_model(
-                    existing_table,
-                    self.embedding_model_name,
-                    self.embedding_model_revision,
-                    table_name=self.table_name,
-                    uri=self.uri,
-                )
-                expected_schema = _table_schema(existing_table)
-
-            markers: SinkOperationMarkers | None = None
-            if operation_id is not None:
-                # The receipts already carry the rows and digest, so recovery has no batches to drain.
-                markers = self._prepare_durable_stream_recovery(
-                    existing_table=existing_table,
-                    operation_id=operation_id,
-                    request_fingerprint=request_fingerprint,
-                    mode=mode,
-                    recovered_create=recovered_create,
-                    arrow_batches=iter(()),
-                    base_schema=base_schema,
-                    stats=stats,
-                )
-                # An earlier attempt with this operation ID committed the same rows: commit nothing.
-                if markers is None:
-                    return
-                if markers.state != "data":
-                    base_version = markers.base_version
-
-            if markers is not None and markers.state == "data":
-                data_version = int(markers.recorded_version)
-            elif appending and stats.rows_written == 0:
-                # As the stream path: an append whose rows were all dropped keeps the table version.
-                existing_table.checkout_latest()
-                data_version = int(existing_table.version)
-                if markers is not None:
-                    markers.mark_data(existing_table, version=data_version, rows=0, digest=stats.digest)
-            else:
-                field_ids = _append_field_ids(base_schema, existing_table) if appending else None
-                data_version = self._commit_worker_fragments(
-                    [_fragment_metadata(encoded, field_ids) for encoded in encoded_fragments],
-                    schema=schema,
-                    appending=appending,
-                    base_version=base_version,
-                    existing_table=existing_table,
-                    markers=markers,
-                    stats=stats,
-                )
-
-            if self.overwrite or existing_table is None or recovered_create:
-                expected_rows = stats.rows_written
-            else:
-                append_base = (
-                    base_rows if markers is None else _rows_at_version(self.uri, self.table_name, markers.base_version)
-                )
-                expected_rows = append_base + stats.rows_written
+            schema = self._stream_schema(stats.vector_dim)
+            data_version = self._commit_worker_fragments(
+                [FragmentMetadata.from_json(encoded) for encoded in encoded_fragments],
+                schema=schema,
+                base_version=None if existing_table is None else int(existing_table.version),
+            )
             try:
                 self._finalize_stream_write(
-                    markers=markers,
+                    markers=None,
                     data_version=data_version,
-                    expected_schema=expected_schema,
-                    expected_rows=expected_rows,
+                    expected_schema=schema,
+                    expected_rows=stats.rows_written,
                     stats=stats,
                 )
             except Exception as exc:  # noqa: BLE001 - the data is committed; callers must not replay it.
@@ -2375,72 +2216,24 @@ class LanceDB(VDB):
                     self.table_name,
                     exc_info=True,
                 )
-                raise DataCommittedFinalizationError(
-                    self.table_name, data_version, retry_operation_id=operation_id
-                ) from exc
+                raise DataCommittedFinalizationError(self.table_name, data_version) from exc
 
-    def _commit_worker_fragments(
-        self,
-        fragments: list[Any],
-        *,
-        schema: pa.Schema,
-        appending: bool,
-        base_version: int | None,
-        existing_table: Any | None,
-        markers: SinkOperationMarkers | None,
-        stats: _StreamStats,
-    ) -> int:
-        """Commit the worker fragments as one Lance version and record the durable data marker."""
+    def _commit_worker_fragments(self, fragments: list[Any], *, schema: pa.Schema, base_version: int | None) -> int:
+        """Move the fragments' files into the table and commit them as one Lance version; delete them if that fails."""
 
         import lance
 
-        operation: Any = (
-            lance.LanceOperation.Append(fragments) if appending else lance.LanceOperation.Overwrite(schema, fragments)
-        )
         moved: list[Path] = []
-        committing = False
         try:
             self._move_staged_files(fragments, moved)
-            committing = True
-            dataset = lance.LanceDataset.commit(self._lance_table_uri(), operation, read_version=base_version)
-        except Exception as exc:
-            discarded = self._discard_uncommitted_files(moved, base_version=base_version)
-            # The pending marker stays when the table moved, so an append retry fails closed.
-            if markers is not None:
-                markers.abort_if_unchanged(existing_table)
-            if committing and appending and not discarded:
-                operation_label = f" operation_id {markers.operation_id!r}" if markers is not None else ""
-                raise CommitOutcomeUnknown(
-                    f"LanceDB append{operation_label} may have committed: the table is no longer at version "
-                    f"{base_version}. Do not replay these records; reconcile the table before another write."
-                ) from exc
+            dataset = lance.LanceDataset.commit(
+                self._lance_table_uri(), lance.LanceOperation.Overwrite(schema, fragments), read_version=base_version
+            )
+        except Exception:
+            for path in moved:
+                path.unlink(missing_ok=True)
             raise
-        data_version = int(dataset.version)
-        if markers is not None:
-            try:
-                markers.mark_data(
-                    lancedb.connect(uri=self.uri).open_table(self.table_name),
-                    version=data_version,
-                    rows=stats.rows_written,
-                    digest=stats.digest,
-                )
-            except (OSError, RuntimeError, ValueError) as exc:
-                raise DataCommittedFinalizationError(
-                    self.table_name,
-                    data_version,
-                    retry_operation_id=markers.operation_id if not appending else None,
-                    recovery_action=(
-                        None
-                        if not appending
-                        else (
-                            "The durable data marker was not recorded. Do not replay this append. "
-                            f"Inspect committed version {data_version}, complete the configured index maintenance, "
-                            f"then delete pending Lance tag {markers.pending_tag!r} only after confirming "
-                            "that the version contains the intended rows."
-                        )
-                    ),
-                ) from exc
-        return data_version
+        return int(dataset.version)
 
     def _write_stream(self, source: _StreamSource, *, operation_id: str | None) -> None:
         """Consume one canonical stream through one coordinated LanceDB mutation."""

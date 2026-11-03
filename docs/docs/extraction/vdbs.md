@@ -355,19 +355,20 @@ the exception instructs you to resume with the original explicit
 `stream_operation_id`. If the original attempt did not set an ID, do not replay
 records after a known commit and finalization failure.
 
-The streaming and worker-native paths use `stream_batch_bytes`,
-`stream_optimize`, and `stream_operation_id`. `worker_write_rows` controls
-the worker-native path. Legacy `run()` calls reject non-default streaming
-settings instead of ignoring them.
+The streaming and worker-native paths use `stream_batch_bytes` and
+`stream_optimize`. `stream_operation_id` applies to the streaming path, and
+`worker_write_rows` controls the worker-native path. Legacy `run()` calls
+reject non-default streaming settings instead of ignoring them.
 
-When you call `ingest(return_results=False)` on a local
-LanceDB table, the Ray workers write the table. Ray write actors project each
+When you call `ingest(return_results=False)` to create a local LanceDB table,
+or to replace one with `overwrite=True`, without `stream_operation_id`, the
+Ray workers write the table. Appends to an existing table and writes with
+`stream_operation_id` use the streaming path. Ray write actors project each
 block and write it as Lance fragments with the same page layout as the streaming
 writer. The driver receives only fragment receipts, commits one table version, and
 then runs the same index build and validation as the streaming path. Hybrid tables
-get their full-text index in that step. When `vector_dim` is `None`, an append
-uses the width of the existing table. For a new table, each write actor infers the
-width, and the commit fails when the actors disagree.
+get their full-text index in that step. When `vector_dim` is `None`, each write
+actor infers the width, and the commit fails when the actors disagree.
 Write actors run on the Ray node of the driver and write their fragments to a
 staging directory beside the table. The driver commit moves them into the table.
 A write that fails, is rejected (for example because searchable rows have no
@@ -375,16 +376,11 @@ embeddings), or is interrupted before the commit leaves no files in the table: i
 directory is deleted, and the next write to the table deletes one left by a
 killed process. As on the streaming path, writes to one table run one at a time.
 
-With `stream_operation_id`, the commit records the same durable markers as the
-streaming path. The digest combines row hashes from every write actor, so it does
-not depend on how Ray partitions the rows. A retry that finds the operation
-already committed discards its own fragments instead of appending them again.
-
 Sparse (full-text only) tables and sidecar metadata use the same worker writes.
 The sidecar file is read once on the driver, and its lookup is sent to the
 write actors.
 
-`ingest(return_results=True)` also writes from the workers. Ray computes the
+`ingest(return_results=True)` uses the same worker writes. Ray computes the
 pipeline output once, the workers write it, and the driver then returns the same
 rows.
 
