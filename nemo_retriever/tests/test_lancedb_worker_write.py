@@ -19,7 +19,7 @@ lancedb = pytest.importorskip("lancedb", minversion="0.34.0")
 lance = pytest.importorskip("lance")
 
 from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError
-from nemo_retriever.common.vdb._lancedb_stream_state import VdbOperationConflict
+from nemo_retriever.common.vdb._lancedb_stream_state import CommitOutcomeUnknown, VdbOperationConflict
 from nemo_retriever.common.vdb.lancedb import LanceDB, _table_token
 from nemo_retriever.common.vdb.records import VdbUploadError
 from nemo_retriever.graph.executor import arrow_table_to_pandas
@@ -677,3 +677,26 @@ def test_commit_error_after_another_client_overwrote_keeps_its_files(
         _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
 
     assert lance.dataset(table_uri, version=versions[0]).to_table().num_rows == 2
+
+
+def test_append_commit_error_after_the_commit_reports_an_unknown_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uri = tmp_path / "db"
+    _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    _fail_commit(monkeypatch, after_commit=True)
+
+    with pytest.raises(CommitOutcomeUnknown, match="Do not replay these records"):
+        _worker_write(_backend(uri, overwrite=False), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _rows(uri)["id"].to_pylist() == ["row-0", "row-1", "row-2"]
+
+
+def test_worker_append_to_an_unreadable_table_raises(tmp_path: Path) -> None:
+    uri = tmp_path / "db"
+    _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    for manifest in (uri / "chunks.lance" / "_versions").iterdir():
+        manifest.write_bytes(b"garbage")
+
+    with pytest.raises(ValueError, match="sufficient data"):
+        _worker_write(_backend(uri, overwrite=False), _frames([_row(1)], batch_size=1))
