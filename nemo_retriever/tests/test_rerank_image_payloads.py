@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 import pytest
+import requests
 
 from nemo_retriever.models import NEMOTRON_35_RERANK_MODEL
 from nemo_retriever.operators.rerank import (
@@ -68,7 +69,7 @@ def test_image_payload_does_not_hide_programming_errors() -> None:
 def test_remote_rerank_hits_formats_stored_images(tmp_path: Path) -> None:
     image_path = tmp_path / "page.png"
     image_path.write_bytes(base64.b64decode(_encoded_image("PNG")))
-    response = MagicMock()
+    response = MagicMock(spec=requests.Response)
     response.json.return_value = {"rankings": [{"index": 0, "logit": 0.9}]}
     with patch("requests.post", return_value=response) as post:
         hits = rerank_hits(
