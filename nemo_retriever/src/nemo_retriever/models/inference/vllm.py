@@ -15,8 +15,14 @@ Uses bfloat16 and FLASH_ATTN backend by default for best throughput.
 
 from __future__ import annotations
 
+import errno
+import gc
 import logging
+import multiprocessing
 import os
+import random
+import socket
+import time
 from typing import Any, List, Optional
 
 from nemo_retriever.common.schemas.embedding import format_embedding_input
@@ -26,6 +32,8 @@ logger = logging.getLogger(__name__)
 VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
 VLLM_DEEP_GEMM_WARMUP_DEFAULT = "skip"
+VLLM_BUILD_ATTEMPTS = 3
+ENGINE_EXIT_TIMEOUT_S = 30
 
 # Multi-GPU collectives that rely on NVLink multicast (NCCL NVLS and torch
 # symmetric-memory all-reduce) abort with "NCCL error: unhandled cuda error"
@@ -226,7 +234,87 @@ def create_vllm_llm(
     if limit_mm_per_prompt is not None:
         kwargs["limit_mm_per_prompt"] = limit_mm_per_prompt
 
-    return LLM(**kwargs)
+    return _build_llm_with_port_retry(LLM, kwargs)
+
+
+def _pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("", 0))
+        return sock.getsockname()[1]
+
+
+def _port_has_listener(port: int) -> bool:
+    # SO_REUSEADDR ignores TIME_WAIT leftovers of our own failed attempt; only a live listener blocks the bind.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("", port))
+        except OSError:
+            return True
+    return False
+
+
+def _is_port_clash(exc: BaseException) -> bool:
+    while exc is not None:
+        if type(exc).__name__ == "DistNetworkError" or getattr(exc, "errno", None) == errno.EADDRINUSE:
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def _release_failed_engine(children_before: set) -> None:
+    for proc in multiprocessing.active_children():
+        if proc not in children_before and proc.name.startswith("EngineCore"):
+            proc.terminate()
+            proc.join(timeout=ENGINE_EXIT_TIMEOUT_S)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(timeout=ENGINE_EXIT_TIMEOUT_S)
+            if proc.is_alive():
+                raise RuntimeError(f"failed vLLM engine process {proc.pid} did not exit; not retrying the build")
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_initialized():
+            torch.cuda.empty_cache()
+    except ImportError:
+        logger.debug("torch unavailable; skipping CUDA cache release", exc_info=True)
+
+
+def _build_llm_with_port_retry(llm_cls: Any, kwargs: dict) -> Any:
+    """Build ``llm_cls(**kwargs)``, retrying when another engine took its distributed-init port.
+
+    vLLM's engine process picks a free port with bind(0)+close and binds it again later for
+    torch.distributed, so two engines starting at once can pick the same port and one fails
+    with EADDRINUSE. The child's exception only surfaces as a generic startup error, so the port
+    is chosen here (via ``VLLM_PORT``) and checked after a failure. A user-set ``VLLM_PORT`` is left alone.
+    """
+    if "VLLM_PORT" in os.environ:
+        return llm_cls(**kwargs)
+    for attempt in range(1, VLLM_BUILD_ATTEMPTS + 1):
+        port = _pick_free_port()
+        os.environ["VLLM_PORT"] = str(port)
+        children_before = set(multiprocessing.active_children())
+        try:
+            return llm_cls(**kwargs)
+        except (RuntimeError, OSError) as exc:
+            if attempt == VLLM_BUILD_ATTEMPTS or not (_is_port_clash(exc) or _port_has_listener(port)):
+                raise
+            _release_failed_engine(children_before)
+            delay = random.uniform(1.0, 3.0) * attempt
+            logger.warning(
+                "vLLM engine build attempt %d/%d failed: port %d was taken by another process (EADDRINUSE); "
+                "retrying with a new port in %.1f s",
+                attempt,
+                VLLM_BUILD_ATTEMPTS,
+                port,
+                delay,
+                exc_info=True,
+            )
+            time.sleep(delay)
+        finally:
+            os.environ.pop("VLLM_PORT", None)
 
 
 def _pooling_params_for_normalize(normalize: Optional[bool]) -> Any:

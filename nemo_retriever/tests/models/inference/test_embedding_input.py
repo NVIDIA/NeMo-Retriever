@@ -54,6 +54,10 @@ class _RecordingEmbedder:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.call_batch_sizes: list[int] = []
+        self.loaded = False
+
+    def _ensure_loaded(self) -> None:
+        self.loaded = True
 
     def embed(self, texts: Sequence[str], *, batch_size: int):
         self.calls.append(list(texts))
@@ -698,6 +702,7 @@ def test_local_actor_reuses_checkpoint_when_local_metadata_changes(monkeypatch, 
     monkeypatch.setattr("nemo_retriever.models.warmup_registry.get_warmed_model", lambda *args, **kwargs: None)
     monkeypatch.setattr(embedding_input, "load_chunk_tokenizer", tokenizer)
     actor = _BatchEmbedActor(params=EmbedParams(model_name=str(tmp_path), local_ingest_embed_backend="hf"))
+    assert create.return_value.loaded
     tokenizer.assert_not_called()
 
     _write_local_text_policy_metadata(tmp_path, prompts={"document": "changed: "}, max_input_tokens=1)
