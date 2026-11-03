@@ -33,6 +33,7 @@ VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
 VLLM_DEEP_GEMM_WARMUP_DEFAULT = "skip"
 VLLM_BUILD_ATTEMPTS = 3
+ENGINE_EXIT_TIMEOUT_S = 30
 
 # Multi-GPU collectives that rely on NVLink multicast (NCCL NVLS and torch
 # symmetric-memory all-reduce) abort with "NCCL error: unhandled cuda error"
@@ -265,7 +266,12 @@ def _release_failed_engine(children_before: set) -> None:
     for proc in multiprocessing.active_children():
         if proc not in children_before and proc.name.startswith("EngineCore"):
             proc.terminate()
-            proc.join(timeout=30)
+            proc.join(timeout=ENGINE_EXIT_TIMEOUT_S)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(timeout=ENGINE_EXIT_TIMEOUT_S)
+            if proc.is_alive():
+                raise RuntimeError(f"failed vLLM engine process {proc.pid} did not exit; not retrying the build")
     gc.collect()
     try:
         import torch

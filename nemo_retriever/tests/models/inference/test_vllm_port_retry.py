@@ -2,8 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
 import multiprocessing
 import os
+import signal
 import socket
 import time
 from types import SimpleNamespace
@@ -25,6 +27,28 @@ def _occupy(port: int) -> socket.socket:
     sock.bind(("", port))
     sock.listen()
     return sock
+
+
+def _ignore_sigterm_and_sleep(ready) -> None:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    ready.set()
+    time.sleep(60)
+
+
+def _fail_once_with_engine(target, failed, held, ready=None):
+    def fake_llm(**_kwargs):
+        if not failed:
+            args = () if ready is None else (ready,)
+            proc = multiprocessing.Process(target=target, args=args, name="EngineCore_failed", daemon=True)
+            proc.start()
+            if ready is not None:
+                assert ready.wait(timeout=10)
+            failed.append(proc)
+            held.append(_occupy(int(os.environ["VLLM_PORT"])))
+            raise RuntimeError("Engine core initialization failed. See root cause above.")
+        return "llm"
+
+    return fake_llm
 
 
 def test_retries_with_new_port_when_port_was_taken():
@@ -102,15 +126,7 @@ def test_cleanup_only_stops_engine_processes_from_the_failed_attempt():
     healthy = multiprocessing.Process(target=time.sleep, args=(60,), name="EngineCore_healthy", daemon=True)
     healthy.start()
     failed, held = [], []
-
-    def fake_llm(**_kwargs):
-        if not failed:
-            proc = multiprocessing.Process(target=time.sleep, args=(60,), name="EngineCore_failed", daemon=True)
-            proc.start()
-            failed.append(proc)
-            held.append(_occupy(int(os.environ["VLLM_PORT"])))
-            raise RuntimeError("Engine core initialization failed. See root cause above.")
-        return "llm"
+    fake_llm = _fail_once_with_engine(functools.partial(time.sleep, 60), failed, held)
 
     try:
         assert vllm_mod._build_llm_with_port_retry(fake_llm, {}) == "llm"
@@ -121,4 +137,42 @@ def test_cleanup_only_stops_engine_processes_from_the_failed_attempt():
             sock.close()
         for proc in [healthy, *failed]:
             proc.terminate()
+            proc.join()
+
+
+def test_cleanup_kills_engine_that_ignores_terminate(monkeypatch):
+    monkeypatch.setattr(vllm_mod, "ENGINE_EXIT_TIMEOUT_S", 2)
+    healthy = multiprocessing.Process(target=time.sleep, args=(60,), name="EngineCore_healthy", daemon=True)
+    healthy.start()
+    failed, held = [], []
+    fake_llm = _fail_once_with_engine(_ignore_sigterm_and_sleep, failed, held, multiprocessing.Event())
+
+    try:
+        assert vllm_mod._build_llm_with_port_retry(fake_llm, {}) == "llm"
+        assert not failed[0].is_alive()
+        assert healthy.is_alive()
+    finally:
+        for sock in held:
+            sock.close()
+        for proc in [healthy, *failed]:
+            proc.kill()
+            proc.join()
+
+
+def test_retry_stops_when_failed_engine_cannot_be_reaped(monkeypatch):
+    monkeypatch.setattr(vllm_mod, "ENGINE_EXIT_TIMEOUT_S", 1)
+    monkeypatch.setattr(multiprocessing.Process, "kill", lambda _self: None)
+    failed, held = [], []
+    fake_llm = _fail_once_with_engine(_ignore_sigterm_and_sleep, failed, held, multiprocessing.Event())
+
+    try:
+        with pytest.raises(RuntimeError, match="did not exit"):
+            vllm_mod._build_llm_with_port_retry(fake_llm, {})
+        assert len(failed) == 1
+    finally:
+        monkeypatch.undo()
+        for sock in held:
+            sock.close()
+        for proc in failed:
+            proc.kill()
             proc.join()
