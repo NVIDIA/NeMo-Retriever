@@ -1988,7 +1988,8 @@ class LanceDB(VDB):
         The write tasks put their fragments in a staging directory beside the table, and
         :meth:`commit_partitions` moves them into the table just before its one commit. Leaving the block
         deletes the staging directory, so a write that fails, is rejected, or is interrupted before the
-        commit leaves no files in the table. The next write to the table deletes a staging directory left
+        commit leaves no files in the table; a failed commit leaves the files it moved, unreferenced. The next
+        write to the table deletes a staging directory left
         by a killed process. As with :meth:`stream_ingest`, writes to one table run one at a time.
 
         Yields:
