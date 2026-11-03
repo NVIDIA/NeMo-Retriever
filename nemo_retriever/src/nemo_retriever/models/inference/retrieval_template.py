@@ -75,7 +75,9 @@ def _compile(template: str):
     return environment.from_string(template)
 
 
-def render_retrieval_input(template: str, prefix: str, text: str, *, image: bool = False) -> str:
+def render_retrieval_input(
+    template: str, prefix: str, text: str, *, image: bool = False, strip_existing_prefix: bool = True
+) -> str:
     """Apply the checkpoint template once to a prefix and raw content.
 
     Parameters
@@ -85,7 +87,8 @@ def render_retrieval_input(template: str, prefix: str, text: str, *, image: bool
         It receives ``messages`` and ``add_generation_prompt=False``.
     prefix : str
         Checkpoint query or document prefix, passed as the system message.
-        One exact leading occurrence is removed from text if already present.
+        One exact leading occurrence is removed from text when
+        strip_existing_prefix is True.
     text : str
         Raw user content, converted to a string before rendering. Embedded
         token-like text never selects image modality.
@@ -93,6 +96,9 @@ def render_retrieval_input(template: str, prefix: str, text: str, *, image: bool
         If True, represent user content as an image placeholder followed by a
         text block; otherwise pass a plain text user message. This function
         does not decode or attach image bytes.
+    strip_existing_prefix : bool
+        Remove one existing prefix from local input by default. Set False when
+        admitting remote requests whose server always prepends its prefix.
 
     Returns
     -------
@@ -106,7 +112,7 @@ def render_retrieval_input(template: str, prefix: str, text: str, *, image: bool
         If the template cannot be compiled or raises an error during rendering.
     """
     content = str(text)
-    if prefix and content.startswith(prefix):
+    if strip_existing_prefix and prefix and content.startswith(prefix):
         content = content[len(prefix) :]
     user_content = [{"type": "image"}, {"type": "text", "text": content}] if image else content
     messages = [{"role": "system", "content": prefix}, {"role": "user", "content": user_content}]
