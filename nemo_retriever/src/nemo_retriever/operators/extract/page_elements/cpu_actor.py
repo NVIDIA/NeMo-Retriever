@@ -26,6 +26,8 @@ class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):
 
     @nvtx.annotate("nrl.batch::page_elements.startup", color="blue")
     def __init__(self, **detect_kwargs: Any) -> None:
+        if detect_kwargs.get("split_mode"):
+            raise ValueError("page_elements_cpu_split requires a GPU page-elements actor")
         super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = (

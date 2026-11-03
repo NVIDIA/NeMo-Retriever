@@ -510,6 +510,20 @@ class BatchTuningParams(_ParamsModel):
     detect_batch_size: int = 24
     ocr_inference_batch_size: Optional[int] = None
     page_elements_workers: Optional[int] = None
+    page_elements_cpu_split: bool = Field(
+        default=False,
+        description="Run page-elements image preprocessing and postprocessing in separate CPU stages.",
+    )
+    page_elements_preprocess_workers: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Number of CPU workers for page-element preprocessing. None uses executor defaults.",
+    )
+    page_elements_postprocess_workers: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Number of CPU workers for page-element postprocessing. None uses executor defaults.",
+    )
     ocr_workers: Optional[int] = None
     detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1

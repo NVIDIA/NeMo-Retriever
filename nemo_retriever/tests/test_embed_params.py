@@ -144,6 +144,17 @@ def test_embed_reshape_workers_accepts_executor_default_or_positive_count(worker
     assert nested.batch_tuning.embed_reshape_workers == workers
 
 
+@pytest.mark.parametrize("field_name", ["page_elements_preprocess_workers", "page_elements_postprocess_workers"])
+@pytest.mark.parametrize("workers", [0, -1])
+@pytest.mark.parametrize("from_dict", [False, True])
+def test_page_elements_split_workers_reject_nonpositive_counts(field_name, workers, from_dict):
+    with pytest.raises(ValidationError, match=field_name):
+        if from_dict:
+            EmbedParams.model_validate({"batch_tuning": {field_name: workers}})
+        else:
+            BatchTuningParams(**{field_name: workers})
+
+
 def test_build_embed_option_kwargs_propagates_repartition_opt_out():
     kwargs = build_embed_option_kwargs(
         "https://embed.example.com/v1/embeddings",

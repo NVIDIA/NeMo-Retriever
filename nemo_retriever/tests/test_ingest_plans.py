@@ -558,6 +558,53 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def test_batch_preflight_reduces_default_page_elements_split_pools() -> None:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+    from nemo_retriever.operators.extract.page_elements.split_actors import (
+        PageElementPostprocessCPU,
+        PageElementPreprocessCPU,
+    )
+
+    resources = Resources(cpu_count=8, gpu_count=1)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    extract_params = _page_elements_split_params(BatchTuningParams(page_elements_cpu_split=True))
+    overrides = batch_tuning_to_node_overrides(extract_params, None, cluster_resources=cluster)
+    graph = build_graph(extraction_mode="pdf", extract_params=extract_params, stage_order=())
+    auto_nodes = default_concurrency_node_names(extract_params, None, None, None)
+    assert {PageElementPreprocessCPU.__name__, PageElementPostprocessCPU.__name__} <= auto_nodes
+    assert overrides[PageElementPreprocessCPU.__name__]["concurrency"] == 2
+    assert overrides[PageElementPostprocessCPU.__name__]["concurrency"] == 1
+
+    executor = RayDataExecutor(graph, node_overrides=overrides, auto_concurrency_nodes=auto_nodes)
+    executor._preflight_resources(executor._linearize(graph), available_cpus=8, available_gpus=1)
+
+    assert overrides[PageElementPreprocessCPU.__name__]["concurrency"] == 1
+    assert overrides[PageElementPostprocessCPU.__name__]["concurrency"] == 1
+
+    explicit_params = _page_elements_split_params(
+        BatchTuningParams(
+            page_elements_cpu_split=True,
+            page_elements_preprocess_workers=20,
+            page_elements_postprocess_workers=20,
+        )
+    )
+    explicit_overrides = batch_tuning_to_node_overrides(explicit_params, None, cluster_resources=cluster)
+    explicit_graph = build_graph(extraction_mode="pdf", extract_params=explicit_params, stage_order=())
+    explicit_auto_nodes = default_concurrency_node_names(explicit_params, None, None, None)
+    explicit_executor = RayDataExecutor(
+        explicit_graph,
+        node_overrides=explicit_overrides,
+        auto_concurrency_nodes=explicit_auto_nodes,
+    )
+    with pytest.raises(ValueError, match="Infeasible Ray CPU/GPU plan"):
+        explicit_executor._preflight_resources(
+            explicit_executor._linearize(explicit_graph),
+            available_cpus=8,
+            available_gpus=1,
+        )
+
+
 def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=32, gpu_count=1),
@@ -998,3 +1045,138 @@ def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
     )
 
     assert _root_names(graph)[:2] == ["MediaChunkActor", "ASRActor"]
+
+
+def _page_elements_split_params(batch_tuning: BatchTuningParams, **kwargs) -> ExtractParams:
+    return ExtractParams(
+        method="ocr",
+        extract_text=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+        use_page_elements=True,
+        use_table_structure=False,
+        batch_tuning=batch_tuning,
+        **kwargs,
+    )
+
+
+def test_page_elements_cpu_split_disabled_preserves_graph_and_overrides() -> None:
+    baseline_params = _page_elements_split_params(BatchTuningParams())
+    disabled_params = _page_elements_split_params(
+        BatchTuningParams(
+            page_elements_cpu_split=False,
+            page_elements_preprocess_workers=11,
+            page_elements_postprocess_workers=6,
+        )
+    )
+    baseline_graph = build_graph(extraction_mode="pdf", extract_params=baseline_params, stage_order=())
+    disabled_graph = build_graph(extraction_mode="pdf", extract_params=disabled_params, stage_order=())
+    resources = Resources(cpu_count=224, gpu_count=8)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+
+    assert [node.name for node in _linear_nodes(disabled_graph)] == [
+        node.name for node in _linear_nodes(baseline_graph)
+    ]
+    assert batch_tuning_to_node_overrides(
+        extract_params=disabled_params,
+        embed_params=None,
+        cluster_resources=cluster,
+    ) == batch_tuning_to_node_overrides(
+        extract_params=baseline_params,
+        embed_params=None,
+        cluster_resources=cluster,
+    )
+
+
+def test_page_elements_cpu_split_adds_local_stages_and_gpu_scaled_defaults() -> None:
+    extract_params = _page_elements_split_params(BatchTuningParams(page_elements_cpu_split=True))
+    graph = build_graph(extraction_mode="pdf", extract_params=extract_params, stage_order=())
+    names = [node.name for node in _linear_nodes(graph)]
+    resources = Resources(cpu_count=224, gpu_count=8)
+    cluster = ClusterResources(total_resources=resources, available_resources=resources)
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=extract_params,
+        embed_params=None,
+        cluster_resources=cluster,
+    )
+
+    pdf_index = names.index("PDFExtractionActor")
+    assert names[pdf_index : pdf_index + 5] == [
+        "PDFExtractionActor",
+        "PageElementPreprocessCPU",
+        "PageElementDetectionActor",
+        "PageElementPostprocessCPU",
+        "OCRActor",
+    ]
+    assert overrides["PageElementPreprocessCPU"] == {
+        "concurrency": 16,
+        "batch_size": extract_params.batch_tuning.page_elements_batch_size,
+        "num_cpus": 1.0,
+    }
+    assert overrides["PageElementPostprocessCPU"] == {
+        "concurrency": 8,
+        "batch_size": extract_params.batch_tuning.page_elements_batch_size,
+        "num_cpus": 1.0,
+    }
+
+
+def test_page_elements_cpu_split_uses_explicit_worker_counts() -> None:
+    extract_params = _page_elements_split_params(
+        BatchTuningParams(
+            page_elements_cpu_split=True,
+            page_elements_preprocess_workers=5,
+            page_elements_postprocess_workers=3,
+        )
+    )
+
+    overrides = batch_tuning_to_node_overrides(extract_params=extract_params, embed_params=None)
+
+    assert overrides["PageElementPreprocessCPU"]["concurrency"] == 5
+    assert overrides["PageElementPostprocessCPU"]["concurrency"] == 3
+
+
+def test_page_elements_cpu_split_requires_gpu_actor() -> None:
+    extract_params = _page_elements_split_params(BatchTuningParams(page_elements_cpu_split=True))
+
+    with pytest.raises(ValueError, match="page_elements_cpu_split requires a GPU page-elements actor"):
+        batch_tuning_to_node_overrides(
+            extract_params=extract_params,
+            embed_params=None,
+            allow_no_gpu=True,
+        )
+
+
+def test_page_elements_cpu_actor_rejects_split_mode() -> None:
+    from nemo_retriever.operators.extract.page_elements.cpu_actor import PageElementDetectionCPUActor
+
+    with pytest.raises(ValueError, match="page_elements_cpu_split requires a GPU page-elements actor"):
+        PageElementDetectionCPUActor(split_mode=True)
+
+
+@pytest.mark.parametrize(
+    "endpoint_kwargs",
+    [
+        pytest.param({"page_elements_invoke_url": "http://page.example/v1"}, id="page-elements-url"),
+    ],
+)
+def test_page_elements_cpu_split_skips_remote_graph_and_overrides(endpoint_kwargs: dict[str, str]) -> None:
+    split_params = _page_elements_split_params(
+        BatchTuningParams(page_elements_cpu_split=True),
+        **endpoint_kwargs,
+    )
+    baseline_params = _page_elements_split_params(
+        BatchTuningParams(page_elements_cpu_split=False),
+        **endpoint_kwargs,
+    )
+    split_graph = build_graph(extraction_mode="pdf", extract_params=split_params, stage_order=())
+    baseline_graph = build_graph(extraction_mode="pdf", extract_params=baseline_params, stage_order=())
+    split_names = [node.name for node in _linear_nodes(split_graph)]
+    baseline_names = [node.name for node in _linear_nodes(baseline_graph)]
+    overrides = batch_tuning_to_node_overrides(extract_params=split_params, embed_params=None)
+
+    assert split_names == baseline_names
+    assert "PageElementPreprocessCPU" not in split_names
+    assert "PageElementPostprocessCPU" not in split_names
+    assert "PageElementPreprocessCPU" not in overrides
+    assert "PageElementPostprocessCPU" not in overrides

@@ -367,6 +367,29 @@ PageElementsWorkersOption = Annotated[
         "--page-elements-workers", min=1, help="Batch mode only. Number of Ray actors for page-element detection."
     ),
 ]
+PageElementsCpuSplitOption = Annotated[
+    bool | None,
+    typer.Option(
+        "--page-elements-cpu-split/--no-page-elements-cpu-split",
+        help="Batch mode only. Split local page-element preprocessing and postprocessing into CPU stages.",
+    ),
+]
+PageElementsPreprocessWorkersOption = Annotated[
+    int | None,
+    typer.Option(
+        "--page-elements-preprocess-workers",
+        min=1,
+        help="Batch mode only. Number of CPU workers for page-element preprocessing.",
+    ),
+]
+PageElementsPostprocessWorkersOption = Annotated[
+    int | None,
+    typer.Option(
+        "--page-elements-postprocess-workers",
+        min=1,
+        help="Batch mode only. Number of CPU workers for page-element postprocessing.",
+    ),
+]
 PageElementsBatchSizeOption = Annotated[
     int | None,
     typer.Option(
