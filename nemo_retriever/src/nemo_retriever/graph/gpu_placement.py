@@ -109,7 +109,12 @@ class GpuPlacementCheck:
         try:
             while True:
                 stopped = self._stop.wait(_POLL_S)
-                rows = ray.get(self._ledger.rows.remote(), timeout=_RPC_TIMEOUT_S)
+                try:
+                    rows = ray.get(self._ledger.rows.remote(), timeout=_RPC_TIMEOUT_S)
+                except ray.exceptions.GetTimeoutError:
+                    if stopped or time.monotonic() >= deadline:
+                        return
+                    continue
                 expected = dict(self._expected)
                 started = Counter(stage for stage, _gpu in rows)
                 if (
