@@ -295,7 +295,7 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 
 `GraphIngestor.vdb_upload()` selects LanceDB when `vdb_op` is omitted. Refer to [Upload to LanceDB](#upload-to-lancedb).
 
-The library also includes two write-only backends that show the worker-native write path on other stores. Construct one and pass it as `vdb`. Neither backend supports retrieval or the collection API.
+The library also includes two write-only backends that show the worker-native write path on other stores. Construct one and pass it to `IngestVdbOperator(vdb=...)`. `GraphIngestor.vdb_upload()` selects backends by `vdb_op` name, which supports only `"lancedb"`, so it cannot use these backends. Neither backend supports retrieval or the collection API.
 
 | Backend | Implementation | Write behavior |
 |---------|----------------|----------------|
