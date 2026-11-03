@@ -1630,16 +1630,9 @@ class GraphIngestor(ingestor):
         return validate
 
     def _raise_for_stage_errors(self, result: Any) -> None:
-        if self._error_policy == "collect":
-            return
-        diagnostics = self._remote_stage_diagnostics()
-        if not diagnostics:
-            return
-        records = self._stage_error_records(
-            result, columns=set(diagnostics.keys()), string_error_columns=(self._embed_error_column(),)
-        )
-        if records:
-            raise GraphIngestionError(records, stage_diagnostics=diagnostics)
+        validate = self._stage_error_validator()
+        if validate is not None:
+            validate(result)
 
     @staticmethod
     def _resolve_execute_flag(params: Any, kwargs: dict[str, Any], name: str, *, default: bool) -> bool:

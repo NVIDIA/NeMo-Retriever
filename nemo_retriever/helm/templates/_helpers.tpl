@@ -528,6 +528,7 @@ Tracing helpers
 {{- $root := .context -}}
 {{- $key := .key -}}
 {{- $name := .name -}}
+{{- $triton := ne .triton false -}}
 {{- $nim := index $root.Values.nimOperator $key -}}
 {{- $chartOtel := $root.Values.nimOperator.otel | default dict -}}
 {{- $nimOtel := $nim.otel | default dict -}}
@@ -577,9 +578,11 @@ Tracing helpers
   "NIM_OTEL_METRICS_EXPORTER" "otlp"
   "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" $endpoint
   "OTEL_METRIC_EXPORT_INTERVAL" "5000"
-  "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath)
-  "TRITON_OTEL_RATE" "1"
 -}}
+{{- if $triton -}}
+{{- $_ := set $defaults "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath) -}}
+{{- $_ := set $defaults "TRITON_OTEL_RATE" "1" -}}
+{{- end -}}
 {{- $explicitTritonUrl := or (hasKey $existingEnvNames "TRITON_OTEL_URL") (hasKey $chartNimOtelEnv "TRITON_OTEL_URL") (hasKey $nimOtelEnv "TRITON_OTEL_URL") -}}
 {{- $existingEndpointWithoutLiteral := and (hasKey $existingEnvNames "NIM_OTEL_EXPORTER_OTLP_ENDPOINT") (not (hasKey $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT")) -}}
 {{- $otelEnv := mergeOverwrite (deepCopy $defaults) (deepCopy $chartNimOtelEnv) (deepCopy $nimOtelEnv) -}}
@@ -587,7 +590,7 @@ Tracing helpers
 {{- if hasKey $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" -}}
 {{- $finalEndpoint = get $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" -}}
 {{- end -}}
-{{- if not $explicitTritonUrl -}}
+{{- if and $triton (not $explicitTritonUrl) -}}
 {{- if $existingEndpointWithoutLiteral -}}
 {{- $_ := unset $otelEnv "TRITON_OTEL_URL" -}}
 {{- else -}}

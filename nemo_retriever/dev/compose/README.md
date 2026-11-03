@@ -67,7 +67,9 @@ hosted endpoints if a local NIM becomes unavailable.
 
 The page-elements, table-structure, OCR, and embedding NIM services set
 `NIM_PERFORMANCE_MODE=1` to select throughput defaults and
-`NIM_ENGINE_COUNT=1` in the Compose file.
+`NIM_ENGINE_COUNT=1` in the Compose file. The embedding service also sets
+`NIM_ENGINE_STREAM_COUNT=1` for one engine stream per GPU. Image batch and
+sequence limits can override the throughput-mode runtime fallbacks.
 
 Start the four core extraction/retrieval NIM services with their checked-in internal
 endpoint wiring:

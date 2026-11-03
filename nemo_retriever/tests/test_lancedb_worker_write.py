@@ -595,3 +595,63 @@ def test_worker_write_expands_a_home_relative_uri(tmp_path: Path, monkeypatch: p
 
     assert _rows(home / "db").num_rows == 3
     assert not list(cwd.rglob("*"))
+
+
+def _fail_commit(monkeypatch: pytest.MonkeyPatch, *, after_commit: bool) -> None:
+    import lance
+
+    commit = lance.LanceDataset.commit
+
+    def failing_commit(*args: Any, **kwargs: Any) -> Any:
+        if after_commit:
+            commit(*args, **kwargs)
+        raise OSError("injected commit failure")
+
+    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(failing_commit))
+
+
+@pytest.mark.parametrize("overwrite", [True, False], ids=["create", "append"])
+def test_failed_commit_removes_the_files_it_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, overwrite: bool
+) -> None:
+    uri = tmp_path / "db"
+    if not overwrite:
+        _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    committed = _data_files(uri)
+    _fail_commit(monkeypatch, after_commit=False)
+
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri, overwrite=overwrite), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _data_files(uri) == committed
+    assert _staged_files(uri) == []
+
+
+def test_failed_partial_move_removes_the_files_it_moved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    uri = tmp_path / "db"
+    replace, calls = os.replace, []
+
+    def failing_replace(source: Any, destination: Any) -> None:
+        calls.append(source)
+        if len(calls) == 2:
+            raise OSError("injected move failure")
+        replace(source, destination)
+
+    monkeypatch.setattr("nemo_retriever.common.vdb.lancedb.os.replace", failing_replace)
+    with pytest.raises(OSError, match="injected move failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _data_files(uri) == []
+    assert _staged_files(uri) == []
+
+
+def test_commit_error_after_the_commit_keeps_its_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    uri = tmp_path / "db"
+    _fail_commit(monkeypatch, after_commit=True)
+
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _rows(uri).num_rows == 2

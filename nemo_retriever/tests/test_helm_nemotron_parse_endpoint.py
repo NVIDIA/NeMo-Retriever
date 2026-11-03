@@ -20,7 +20,7 @@ CHART_DIR = REPO_ROOT / "nemo_retriever" / "helm"
 VALUES_PATH = CHART_DIR / "values.yaml"
 CONFIGMAP_PATH = CHART_DIR / "templates" / "configmap.yaml"
 PARSE_SERVICE = "nemotron-parse"
-PARSE_PATH = "/v1/chat/completions"
+PARSE_PATH = "/v1/parse"
 
 
 def _helm_template(
@@ -54,6 +54,16 @@ def test_values_expose_parse_endpoint_and_model_overrides() -> None:
     endpoints = values["serviceConfig"]["nimEndpoints"]
     assert endpoints["nemotronParseInvokeUrl"] == ""
     assert endpoints["nemotronParseModel"] == ""
+
+
+def test_parse_nim_defaults_to_native_parse35_image() -> None:
+    values = yaml.safe_load(VALUES_PATH.read_text())
+    parse = values["nimOperator"]["nemotron_parse"]
+    assert parse["enabled"] is False
+    assert parse["image"]["repository"] == "nvcr.io/nim/nvidia/nemotron-parse"
+    assert parse["image"]["tag"] == "latest"
+    environment = {item["name"]: item["value"] for item in parse["env"]}
+    assert environment["NIM_ENGINE_MODEL_PATH"] == "/model-store/parse"
 
 
 def test_configmap_resolves_and_renders_parse_fields() -> None:
