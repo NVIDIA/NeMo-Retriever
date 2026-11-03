@@ -655,3 +655,25 @@ def test_commit_error_after_the_commit_keeps_its_files(tmp_path: Path, monkeypat
         _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
 
     assert _rows(uri).num_rows == 2
+
+
+def test_commit_error_after_another_client_overwrote_keeps_its_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lance
+
+    uri = tmp_path / "db"
+    table_uri = str(uri / "chunks.lance")
+    commit, versions = lance.LanceDataset.commit, []
+
+    def commit_then_overwrite(*args: Any, **kwargs: Any) -> Any:
+        landed = commit(*args, **kwargs)
+        versions.append(int(landed.version))
+        lance.write_dataset(landed.to_table().slice(0, 1), table_uri, mode="overwrite")
+        raise OSError("injected commit failure")
+
+    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(commit_then_overwrite))
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert lance.dataset(table_uri, version=versions[0]).to_table().num_rows == 2
