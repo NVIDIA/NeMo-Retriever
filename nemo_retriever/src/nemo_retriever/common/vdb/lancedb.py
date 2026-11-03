@@ -2009,29 +2009,30 @@ class LanceDB(VDB):
                 os.replace(staged / data_file.path, table_data / data_file.path)
                 moved.append(table_data / data_file.path)
 
-    def _discard_uncommitted_files(self, moved: list[Path]) -> None:
-        """After a failed commit, delete moved files unless the table's latest version references them.
+    def _discard_uncommitted_files(self, moved: list[Path], *, base_version: int | None) -> None:
+        """After a failed commit, delete moved files only if the table is still at ``base_version``.
 
-        When the table cannot be read, whether the commit landed is unknown, so the files stay.
+        A newer version means the commit may have landed, possibly followed by other commits whose
+        retained versions still reference the files, so they stay. So do they when the table cannot be read.
         """
 
         import lance
 
         try:
-            dataset = lance.dataset(self._lance_table_uri())
+            version: int | None = int(lance.dataset(self._lance_table_uri()).version)
         except ValueError as exc:
             if "was not found" not in str(exc):
                 logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
                 return
-            referenced: set[str] = set()
+            version = None
         except Exception:  # noqa: BLE001 - unknown commit outcome: keep the files.
             logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
             return
-        else:
-            referenced = {file.path for fragment in dataset.get_fragments() for file in fragment.metadata.files}
+        if version != base_version:
+            logger.warning("Keeping %d moved LanceDB files: the table moved to version %s", len(moved), version)
+            return
         for path in moved:
-            if path.name not in referenced:
-                path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
 
     def _lance_table_uri(self) -> str:
         path = _filesystem_lancedb_path(self.uri)
@@ -2308,7 +2309,7 @@ class LanceDB(VDB):
             self._move_staged_files(fragments, moved)
             dataset = lance.LanceDataset.commit(self._lance_table_uri(), operation, read_version=base_version)
         except Exception:
-            self._discard_uncommitted_files(moved)
+            self._discard_uncommitted_files(moved, base_version=base_version)
             # The pending marker stays when the table moved, so an append retry fails closed.
             if markers is not None:
                 markers.abort_if_unchanged(existing_table)
