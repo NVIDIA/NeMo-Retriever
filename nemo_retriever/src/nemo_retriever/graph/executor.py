@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.graph.gpu_placement import GpuPlacementCheck, with_placement_report
 from nemo_retriever.common.ray_resource_hueristics import ClusterResources
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
@@ -50,6 +51,16 @@ _DatasetSegment = Literal["all", "before_stream_ingest", "after_stream_ingest"]
 # not capacity held by another active workload.
 _RESOURCE_RELEASE_WAIT_SECONDS = 1.0
 _RESOURCE_RELEASE_POLL_SECONDS = 0.01
+# Ray Data task stages (repartitions) book 1 CPU per task and cannot run when
+# actors hold every CPU, so actor growth leaves one CPU per stage, 1 CPU for the
+# driver and Ray system processes, and on hosts with at least 32 CPUs a margin
+# of 10% of CPUs (at most 8).
+_TASK_STAGE_CPU_MARGIN_FRACTION = 0.10
+_TASK_STAGE_CPU_MARGIN_MAX = 8
+_TASK_STAGE_CPU_MARGIN_MIN_CPUS = 32
+_RAY_SYSTEM_CPU_RESERVATION = 1
+_CPU_POOL_FLOOR_PER_GPU = 2
+_CPU_POOL_FLOOR_TARGET_DIVISOR = 8
 
 
 def resolve_batch_return_results(graph: Graph, return_results: bool | None) -> bool:
@@ -286,6 +297,36 @@ def _refresh_cluster_resources() -> ClusterResources:
     return gather_cluster_resources(ray)
 
 
+def _task_stage_count(node: Node, override: dict[str, Any]) -> int:
+    """Return how many Ray Data task stages ``_build_dataset`` adds in front of ``node``."""
+    if getattr(node.operator_class, "REQUIRES_GLOBAL_BATCH", False):
+        return 2
+    target_num_rows_per_block = override.get("target_num_rows_per_block")
+    return 1 if target_num_rows_per_block is not None and int(target_num_rows_per_block) > 0 else 0
+
+
+def _task_stage_cpu_reservation(task_stages: int, available_cpus: float) -> float:
+    """Return the CPUs that actor growth leaves free for Ray Data task stages."""
+    if task_stages <= 0:
+        return 0.0
+    margin = 0
+    if available_cpus >= _TASK_STAGE_CPU_MARGIN_MIN_CPUS:
+        margin = min(_TASK_STAGE_CPU_MARGIN_MAX, math.ceil(_TASK_STAGE_CPU_MARGIN_FRACTION * available_cpus))
+    return float(task_stages + margin + _RAY_SYSTEM_CPU_RESERVATION)
+
+
+def _growth_tier(item: tuple, planned: int, available_gpus: int) -> int:
+    """Order actor growth: CPU-only pools up to a small floor, then GPU pools, then the rest.
+
+    The floor is the smaller of a per-GPU count and an eighth of the pool's target, so small pools such as
+    the embed reshape do not take CPUs that GPU pools need on hosts with few CPUs per GPU.
+    """
+    if item[6] > 0:
+        return 1
+    floor = min(_CPU_POOL_FLOOR_PER_GPU * available_gpus, item[3] // _CPU_POOL_FLOOR_TARGET_DIVISOR)
+    return 0 if planned < floor else 2
+
+
 def _preflight_executor_nodes(
     executor_nodes: list[tuple[RayDataExecutor, list[Node]]],
     available_cpus: int,
@@ -296,11 +337,13 @@ def _preflight_executor_nodes(
 ) -> ClusterResources | None:
     """Admit resolved pools together, adjusting only automatically sized concurrency."""
     entries = []
+    task_stages = 0
     if reserved_cpus < 0:
         raise ValueError("reserved_cpus must be non-negative")
     for executor, nodes in executor_nodes:
         for node in nodes:
             override = executor._node_overrides.get(node.name, {})
+            task_stages += _task_stage_count(node, override)
             concurrency = override.get("concurrency", 1)
             entries.append(
                 (
@@ -350,7 +393,8 @@ def _preflight_executor_nodes(
                 reserved_cpus=reserved_cpus,
             )
             return effective_resources
-    actor_cpu_budget = available_cpus - task_cpu_reservation
+    task_stage_cpus = _task_stage_cpu_reservation(task_stages, available_cpus)
+    actor_cpu_budget = available_cpus - task_cpu_reservation - task_stage_cpus
     if requested_cpu > available_cpus or requested_gpu > available_gpus:
         raise ValueError(
             "Infeasible Ray CPU/GPU plan: requested at least "
@@ -361,11 +405,24 @@ def _preflight_executor_nodes(
             "Reduce explicit *_workers or node_overrides concurrency, or wait for cluster capacity."
         )
     used_cpu, used_gpu = fixed_cpu + min_cpu, fixed_gpu + min_gpu
+    if fixed and used_cpu > actor_cpu_budget:
+        logger.warning(
+            "Ray batch resource preflight: explicit and minimum actor pools book %g CPUs, leaving %g of the "
+            "%g CPUs reserved for %d Ray Data task stages (repartitions). Those stages can stall; "
+            "reduce explicit *_workers or *_cpus_per_actor values.",
+            used_cpu,
+            max(0.0, available_cpus - task_cpu_reservation - used_cpu),
+            task_stage_cpus,
+            task_stages,
+        )
     planned = {(id(item[0]), item[1]): item[4] for item in auto}
     while True:
         candidates = sorted(
             (item for item in auto if planned[(id(item[0]), item[1])] < item[3]),
-            key=lambda item: planned[(id(item[0]), item[1])] / item[3],
+            key=lambda item: (
+                _growth_tier(item, planned[(id(item[0]), item[1])], available_gpus),
+                planned[(id(item[0]), item[1])] / item[3],
+            ),
         )
         selected = next(
             (
@@ -387,11 +444,13 @@ def _preflight_executor_nodes(
     executors = [executor for executor, _nodes in executor_nodes]
     logger.info(
         "Ray batch resource preflight admitted actor_cpus=%g/%g source_read_cpus=%g "
-        "other_task_cpus=%g actor_gpus=%g/%g pools=%s",
+        "other_task_cpus=%g task_stage_cpus=%g (%d stages) actor_gpus=%g/%g pools=%s",
         used_cpu,
         actor_cpu_budget,
         source_cpu_reservation,
         reserved_cpus,
+        task_stage_cpus,
+        task_stages,
         used_gpu,
         available_gpus,
         [
@@ -691,8 +750,24 @@ class RayDataExecutor(AbstractExecutor):
             raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
         return self._ingest(data, return_results=resolve_batch_return_results(self.graph, return_results))
 
-    @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest(
+        self,
+        data: Any,
+        *,
+        return_results: bool,
+        validate_batch: Callable[[pd.DataFrame], None] | None = None,
+    ) -> Any:
+        self._check_gpu_placement = True
+        try:
+            return self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+        finally:
+            self._check_gpu_placement = False
+            check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
+            if check is not None:
+                check.stop()
+
+    @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
+    def _ingest_graph(
         self,
         data: Any,
         *,
@@ -949,6 +1024,20 @@ class RayDataExecutor(AbstractExecutor):
                     "operator_class": node.operator_class,
                     "operator_kwargs": node.operator_kwargs,
                 }
+
+            concurrency = overrides.get("concurrency")
+            if (
+                getattr(self, "_check_gpu_placement", False)
+                and 0 < num_gpus < 1
+                and available_gpus >= 2
+                and isinstance(concurrency, int)
+            ):
+                if getattr(self, "_gpu_placement_check", None) is None:
+                    self._gpu_placement_check = GpuPlacementCheck.start(int(available_gpus))
+                if self._gpu_placement_check is not None:
+                    self._gpu_placement_check.expect(node.name, concurrency)
+                    constructor_kwargs = {"operator_class": map_operator_class, "operator_kwargs": constructor_kwargs}
+                    map_operator_class = with_placement_report(map_operator_class, node.name)
 
             ds = ds.map_batches(
                 map_operator_class,
