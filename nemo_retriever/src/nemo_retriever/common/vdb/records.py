@@ -539,7 +539,7 @@ class CanonicalRecordBatch:
 
     ``records[i]`` has no ``metadata["embedding"]``; its vector is ``vectors[i]``,
     a non-null, non-empty ``list<float>`` value. Backends that set
-    ``supports_stream_ingest_batches`` receive these instead of record dictionaries,
+    ``worker_write_batches`` receive these in ``write_partition`` instead of record dictionaries,
     so a vector is never expanded into Python floats on the way to storage.
     """
 

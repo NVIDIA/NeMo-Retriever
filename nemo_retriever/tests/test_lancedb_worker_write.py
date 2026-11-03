@@ -76,7 +76,6 @@ def test_worker_write_matches_columnar_stream(tmp_path: Path) -> None:
     frames = _frames(rows, batch_size=2)
 
     stream_backend = _backend(tmp_path / "stream")
-    assert stream_backend.supports_stream_ingest_batches
     stream_submitted = IngestVdbOperator(vdb=stream_backend)._stream_ingest(iter(frames))
 
     worker_backend = _backend(tmp_path / "worker")
@@ -182,22 +181,15 @@ def _wide_frames(count: int, *, dim: int, batch_size: int) -> list[pd.DataFrame]
     return [arrow_table_to_pandas(table.slice(start, batch_size)) for start in range(0, count, batch_size)]
 
 
-def test_optimize_keeps_vector_page_size(tmp_path: Path) -> None:
-    from nemo_retriever.common.vdb.lancedb import _LANCE_ROWS_PER_PAGE, _optimize_lancedb_table
+def test_worker_write_keeps_vector_pages_at_most_1024_rows(tmp_path: Path) -> None:
+    from nemo_retriever.common.vdb.lancedb import _LANCE_ROWS_PER_PAGE
 
     dim, count = 2048, 3 * _LANCE_ROWS_PER_PAGE
     uri = tmp_path / "db"
     frames = _wide_frames(count, dim=dim, batch_size=count // 2)
     assert _worker_write(_backend(uri, vector_dim=dim), frames) == count
-    before = _vector_pages(uri)
-    assert len(before) == 2 and _max_rows_per_page(before) <= _LANCE_ROWS_PER_PAGE, before
-
-    table = lancedb.connect(str(uri)).open_table("chunks")
-    _optimize_lancedb_table(table)
-    after = _vector_pages(uri)
-    assert len(after) == 1 and sum(rows for rows, _ in after) == count, after
-    assert _max_rows_per_page(after) <= _LANCE_ROWS_PER_PAGE, after
-    assert _rows(uri).num_rows == count
+    layout = _vector_pages(uri)
+    assert len(layout) == 2 and _max_rows_per_page(layout) <= _LANCE_ROWS_PER_PAGE, layout
 
 
 def _unsearchable_row(row_id: int) -> dict[str, Any]:
@@ -402,7 +394,7 @@ def test_worker_write_applies_sidecar_metadata_like_the_stream(tmp_path: Path) -
 def test_worker_write_sparse_table_matches_the_stream(tmp_path: Path) -> None:
     frames = _frames([_row(0), _row(1, text=""), *(_row(index) for index in range(2, 6))], batch_size=2)
     stream_backend = _backend(tmp_path / "stream", sparse=True, vector_dim=None)
-    assert not stream_backend.supports_stream_ingest_batches
+    assert not stream_backend.worker_write_batches
     stream_submitted = IngestVdbOperator(vdb=stream_backend)._stream_ingest(iter(frames))
 
     worker_backend = _backend(tmp_path / "worker", sparse=True, vector_dim=None)
@@ -493,49 +485,3 @@ def test_worker_write_expands_a_home_relative_uri(tmp_path: Path, monkeypatch: p
 
     assert _rows(home / "db").num_rows == 3
     assert not list(cwd.rglob("*"))
-
-
-def _fail_commit(monkeypatch: pytest.MonkeyPatch) -> None:
-    import lance
-
-    def failing_commit(*args: Any, **kwargs: Any) -> Any:
-        raise OSError("injected commit failure")
-
-    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(failing_commit))
-
-
-@pytest.mark.parametrize("existing", [False, True], ids=["create", "overwrite"])
-def test_failed_commit_removes_the_files_it_moved(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
-) -> None:
-    uri = tmp_path / "db"
-    if existing:
-        _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
-    committed = _data_files(uri)
-    _fail_commit(monkeypatch)
-
-    with pytest.raises(OSError, match="injected commit failure"):
-        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert _data_files(uri) == committed
-    assert _staged_files(uri) == []
-
-
-def test_failed_partial_move_removes_the_files_it_moved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-
-    uri = tmp_path / "db"
-    replace, calls = os.replace, []
-
-    def failing_replace(source: Any, destination: Any) -> None:
-        calls.append(source)
-        if len(calls) == 2:
-            raise OSError("injected move failure")
-        replace(source, destination)
-
-    monkeypatch.setattr("nemo_retriever.common.vdb.lancedb.os.replace", failing_replace)
-    with pytest.raises(OSError, match="injected move failure"):
-        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert _data_files(uri) == []
-    assert _staged_files(uri) == []
