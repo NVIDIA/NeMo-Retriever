@@ -117,6 +117,16 @@ def _positive(value: Any) -> Any:
     return value if value not in (None, 0, 0.0, "", False) else None
 
 
+def _pdf_ocr_needed(extract_params: Any) -> bool:
+    """Return whether the PDF graph for ``extract_params`` gets an OCR stage."""
+    return bool(
+        getattr(extract_params, "method", None) in ("pdfium_hybrid", "ocr")
+        and getattr(extract_params, "extract_text", False)
+    ) or any(
+        getattr(extract_params, name, False) for name in ("extract_tables", "extract_charts", "extract_infographics")
+    )
+
+
 def _nim_remote_http_kwargs(extract_params: Any) -> dict[str, int]:
     """Forward ExtractParams.remote_retry into stage kwargs for higher HTTP parallelism."""
     rr = getattr(extract_params, "remote_retry", None)
@@ -162,10 +172,7 @@ def batch_tuning_to_node_overrides(
         and video_frame_params is None
         and getattr(extract_params, "method", None) not in ("nemotron_parse", "audio")
         and getattr(extract_params, "use_page_elements", False)
-        and any(
-            getattr(extract_params, name, False)
-            for name in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
-        )
+        and _pdf_ocr_needed(extract_params)
         and not (
             getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
         )
@@ -175,6 +182,7 @@ def batch_tuning_to_node_overrides(
                 (extract_params, "page_elements_invoke_url"),
                 (extract_params, "ocr_invoke_url"),
                 (embed_params, "embed_invoke_url"),
+                (embed_params, "embedding_endpoint"),
             )
         )
         and not any(
@@ -962,10 +970,7 @@ def build_graph(
             ocr_kwargs.update(_rr)
             table_kwargs.update(_rr)
 
-            needs_ocr = any(
-                bool(ocr_kwargs.get(key))
-                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
-            )
+            needs_ocr = _pdf_ocr_needed(extract_params)
             page_elements_needed = extract_params.use_page_elements and (
                 (extract_params.use_table_structure and extract_params.extract_tables) or needs_ocr
             )

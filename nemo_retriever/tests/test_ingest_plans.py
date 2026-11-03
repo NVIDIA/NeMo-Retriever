@@ -1185,6 +1185,11 @@ def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> No
         (ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
         (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
         (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
+        (ExtractParams(), EmbedParams(embedding_endpoint="http://embed:8000/v1/embeddings")),
+        (
+            ExtractParams(method="pdfium", extract_tables=False, extract_charts=False, extract_infographics=False),
+            EmbedParams(),
+        ),
         (None, EmbedParams()),
         (ExtractParams(use_page_elements=False), EmbedParams()),
         (ExtractParams(batch_tuning={"page_elements_workers": 4}), EmbedParams()),
