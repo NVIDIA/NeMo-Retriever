@@ -757,9 +757,11 @@ class RayDataExecutor(AbstractExecutor):
         return_results: bool,
         validate_batch: Callable[[pd.DataFrame], None] | None = None,
     ) -> Any:
+        self._check_gpu_placement = True
         try:
             return self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
         finally:
+            self._check_gpu_placement = False
             check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
             if check is not None:
                 check.stop()
@@ -1024,7 +1026,12 @@ class RayDataExecutor(AbstractExecutor):
                 }
 
             concurrency = overrides.get("concurrency")
-            if 0 < num_gpus < 1 and available_gpus >= 2 and isinstance(concurrency, int):
+            if (
+                getattr(self, "_check_gpu_placement", False)
+                and 0 < num_gpus < 1
+                and available_gpus >= 2
+                and isinstance(concurrency, int)
+            ):
                 if getattr(self, "_gpu_placement_check", None) is None:
                     self._gpu_placement_check = GpuPlacementCheck.start(int(available_gpus))
                 if self._gpu_placement_check is not None:

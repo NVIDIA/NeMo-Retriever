@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Report where fractional-GPU actors landed and warn when the spread across GPUs is uneven."""
 
 from __future__ import annotations
@@ -93,18 +97,25 @@ class GpuPlacementCheck:
         self._expected[stage] = count
 
     def stop(self) -> None:
+        """Report the placement seen so far, even when the ingest ends before the next poll."""
         self._stop.set()
+        self._thread.join(timeout=90)
 
     def _run(self) -> None:
         import ray
 
         deadline = time.monotonic() + _CHECK_TIMEOUT_S
         try:
-            while not self._stop.wait(_POLL_S):
+            while True:
+                stopped = self._stop.wait(_POLL_S)
                 rows = ray.get(self._ledger.rows.remote(), timeout=60)
                 expected = dict(self._expected)
                 started = Counter(stage for stage, _gpu in rows)
-                if all(started[stage] >= count for stage, count in expected.items()) or time.monotonic() >= deadline:
+                if (
+                    stopped
+                    or time.monotonic() >= deadline
+                    or all(started[stage] >= count for stage, count in expected.items())
+                ):
                     problems = placement_problems(rows, expected, self._gpus)
                     if problems:
                         logger.warning(
