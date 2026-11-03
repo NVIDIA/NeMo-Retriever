@@ -1201,3 +1201,63 @@ def test_per_gpu_cell_skips_graphs_with_other_gpu_pools(monkeypatch, extract_par
     derived = batch_tuning_to_node_overrides(extract_params, embed_params, cluster_resources=cluster)
 
     assert all(override.get("num_gpus") not in (0.21, 0.06, 0.04) for override in derived.values())
+
+
+@pytest.mark.parametrize("extraction_mode", ["text", "html", "auto"])
+def test_per_gpu_cell_needs_the_pdf_graph(monkeypatch: pytest.MonkeyPatch, extraction_mode: str) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 97_887)
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=256, gpu_count=8),
+        available_resources=Resources(cpu_count=256, gpu_count=8),
+    )
+    derived = batch_tuning_to_node_overrides(
+        ExtractParams(), EmbedParams(), cluster_resources=cluster, extraction_mode=extraction_mode
+    )
+
+    assert all(override.get("num_gpus") not in (0.21, 0.06, 0.04) for override in derived.values())
+    assert derived["PageElementDetectionActor"]["target_num_rows_per_block"] == 24
+    assert derived["_BatchEmbedActor"]["target_num_rows_per_block"] == 32
+
+
+@pytest.mark.parametrize(
+    "visible, free_mib, expected",
+    [(None, (97_000, 97_000), 97_000), ("1", (20_000, 97_000), 97_000), (None, (20_000, 97_000), 20_000)],
+)
+def test_gpu_cell_memory_uses_free_memory_of_ray_visible_gpus(
+    monkeypatch: pytest.MonkeyPatch, visible: str | None, free_mib: tuple[int, int], expected: int
+) -> None:
+    pytest.importorskip("pynvml")
+    from nemo_retriever.common import ray_resource_hueristics as heuristics
+
+    gpus = {
+        index: heuristics.GpuInfo(
+            driver_version="",
+            gpu_name="",
+            gpu_uuid=f"GPU-{index}",
+            gpu_brand="",
+            total_mib=97_887,
+            used_mib=97_887 - free,
+            free_mib=free,
+        )
+        for index, free in enumerate(free_mib)
+    }
+    monkeypatch.setattr(heuristics, "_get_gpu_memory_info", lambda: heuristics.NodeGpuInfo(gpus=gpus))
+    if visible is None:
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    else:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+
+    assert heuristics._min_gpu_memory_mib(1) == expected
+
+
+def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
+    from nemo_retriever.graph.gpu_placement import placement_problems
+
+    balanced = [("OCRActor", "0"), ("OCRActor", "1")]
+    stacked = [("OCRActor", "0"), ("OCRActor", "0")]
+
+    assert placement_problems(balanced, {"OCRActor": 2}, 2) == []
+    assert placement_problems(stacked, {"OCRActor": 2}, 2) == [
+        "OCRActor actors per GPU {'0': 2}, expected 1 on each of 2 GPUs"
+    ]
+    assert placement_problems(balanced[:1], {"OCRActor": 2}, 2) == ["OCRActor has 1 of 2 actors pending"]

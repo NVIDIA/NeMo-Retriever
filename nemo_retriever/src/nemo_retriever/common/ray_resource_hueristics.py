@@ -138,25 +138,46 @@ def _get_gpu_memory_info() -> NodeGpuInfo:
     return NodeGpuInfo(gpus=gpu_info)
 
 
-def _min_gpu_memory_mib(cluster_gpu_count: int) -> int:
-    """Return the smallest local GPU's total memory in MiB, or 0 when it cannot be read.
+def _ray_visible_gpus(gpus: dict[int, GpuInfo]) -> list[GpuInfo] | None:
+    """Return the GPUs named by ``CUDA_VISIBLE_DEVICES`` (indices or UUIDs), all GPUs if unset, or None if unknown."""
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is None:
+        return list(gpus.values())
+    by_uuid = {gpu.gpu_uuid: gpu for gpu in gpus.values()}
+    selected = []
+    for token in (token.strip() for token in visible.split(",")):
+        if token.isdigit() and int(token) in gpus:
+            selected.append(gpus[int(token)])
+        elif token in by_uuid:
+            selected.append(by_uuid[token])
+        elif token:
+            return None
+    return selected
 
-    Returns 0 when Ray sees more GPUs than this host has, because GPUs on other nodes are not probed.
+
+def _min_gpu_memory_mib(cluster_gpu_count: int) -> int:
+    """Return the smallest free memory in MiB among the local GPUs Ray uses, or 0 when it cannot be read.
+
+    Free memory is at most total memory, so the large cell needs both. Returns 0 when Ray sees more GPUs
+    than this host exposes, because GPUs on other nodes are not probed.
     """
     try:
         from pynvml import NVMLError
     except ImportError:
-        logger.debug("pynvml is not installed; using the small GPU cell")
+        logger.info("pynvml is not installed; using the small per-GPU cell")
         return 0
     try:
-        gpus = _get_gpu_memory_info().gpus
+        gpus = _ray_visible_gpus(_get_gpu_memory_info().gpus)
     except NVMLError as exc:
-        logger.debug("GPU memory detection failed (%s); using the small GPU cell", exc)
+        logger.info("GPU memory detection failed (%s); using the small per-GPU cell", exc)
+        return 0
+    if gpus is None:
+        logger.info("CUDA_VISIBLE_DEVICES does not name GPU indices or UUIDs; using the small per-GPU cell")
         return 0
     if len(gpus) < cluster_gpu_count:
-        logger.debug("Ray has GPUs on other nodes; using the small GPU cell")
+        logger.info("Ray has GPUs that this host does not expose; using the small per-GPU cell")
         return 0
-    return min((gpu.total_mib for gpu in gpus.values()), default=0)
+    return min((gpu.free_mib for gpu in gpus), default=0)
 
 
 def get_gpu_memory_info_remote() -> object:
@@ -665,6 +686,13 @@ def resolve_requested_plan(
     if per_gpu_cell:
         memory_mib = _min_gpu_memory_mib(available_gpu_count) if gpu_memory_mib is None else gpu_memory_mib
         cell = GPU_CELL_LARGE if memory_mib >= GPU_CELL_LARGE_MIN_MIB else GPU_CELL_SMALL
+        logger.info(
+            "Using the %s per-GPU cell on %d GPUs: smallest free GPU memory %d MiB, large cell needs %d MiB",
+            "large" if cell is GPU_CELL_LARGE else "small",
+            available_gpu_count,
+            memory_mib,
+            GPU_CELL_LARGE_MIN_MIB,
+        )
         (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
         if override_page_elements_initial_actors is None:
             page_elements_initial_actors = pe_actors * available_gpu_count

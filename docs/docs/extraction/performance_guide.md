@@ -37,6 +37,8 @@ On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pool
 | 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
 | Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
 
+These pools apply only to the PDF graph. Text, HTML, image, audio, video, and automatic-detection graphs keep the previous defaults. GPU memory means the smallest free memory among the GPUs that Ray uses, as named by `CUDA_VISIBLE_DEVICES`. The library logs the chosen set and the reason at INFO. After the GPU actors start, it logs a WARNING if any of these pools has pending actors or an uneven number of actors on each GPU.
+
 When these default pools apply, the page elements and embedding stages also skip their repartition steps, so rows arrive in the blocks that the previous stage produced. Ray Data runs too few of these repartition tasks to feed the larger GPU pools. Set `page_elements_repartition` or `embed_repartition` to keep a step.
 
 A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows each CPU-only pool to 2 actors per GPU or one eighth of its target, whichever is smaller, then grows the GPU pools, then shares the remaining CPUs.

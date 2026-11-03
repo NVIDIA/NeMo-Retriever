@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
+from nemo_retriever.graph.gpu_placement import GpuPlacementCheck, with_placement_report
 from nemo_retriever.common.ray_resource_hueristics import ClusterResources
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
@@ -749,8 +750,22 @@ class RayDataExecutor(AbstractExecutor):
             raise TypeError(f"RayDataExecutor.ingest() does not accept setting(s): {unsupported}")
         return self._ingest(data, return_results=resolve_batch_return_results(self.graph, return_results))
 
-    @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest(
+        self,
+        data: Any,
+        *,
+        return_results: bool,
+        validate_batch: Callable[[pd.DataFrame], None] | None = None,
+    ) -> Any:
+        try:
+            return self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+        finally:
+            check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
+            if check is not None:
+                check.stop()
+
+    @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
+    def _ingest_graph(
         self,
         data: Any,
         *,
@@ -1007,6 +1022,15 @@ class RayDataExecutor(AbstractExecutor):
                     "operator_class": node.operator_class,
                     "operator_kwargs": node.operator_kwargs,
                 }
+
+            concurrency = overrides.get("concurrency")
+            if 0 < num_gpus < 1 and available_gpus >= 2 and isinstance(concurrency, int):
+                if getattr(self, "_gpu_placement_check", None) is None:
+                    self._gpu_placement_check = GpuPlacementCheck.start(int(available_gpus))
+                if self._gpu_placement_check is not None:
+                    self._gpu_placement_check.expect(node.name, concurrency)
+                    constructor_kwargs = {"operator_class": map_operator_class, "operator_kwargs": constructor_kwargs}
+                    map_operator_class = with_placement_report(map_operator_class, node.name)
 
             ds = ds.map_batches(
                 map_operator_class,
