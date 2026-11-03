@@ -560,11 +560,6 @@ class BatchTuningParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class GpuAllocationParams(_ParamsModel):
-    gpu_devices: list[str] = Field(default_factory=list)
-    startup_timeout: float = 600.0
-
-
 class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
@@ -809,39 +804,6 @@ class StoreParams(_ParamsModel):
         if not urlparse(self.storage_uri).scheme:
             self.storage_uri = str(UPath(self.storage_uri).resolve())
         return self
-
-
-class PageElementsParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "page_elements_v3"
-    num_detections_column: str = "page_elements_v3_num_detections"
-    counts_by_label_column: str = "page_elements_v3_counts_by_label"
-
-
-class OcrParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    extract_tables: bool = False
-    extract_charts: bool = False
-    extract_infographics: bool = False
-
-
-class TableParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "table_structure_v1"
-    num_detections_column: str = "table_structure_v1_num_detections"
-    counts_by_label_column: str = "table_structure_v1_counts_by_label"
-
-
-class ChartParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
 
 
 class LLMInferenceParams(_ParamsModel):
