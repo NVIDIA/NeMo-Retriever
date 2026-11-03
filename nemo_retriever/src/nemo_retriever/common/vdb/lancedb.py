@@ -748,6 +748,10 @@ def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
 class _StreamSource:
     """One canonical input stream, opened once, then packed into bounded Arrow batches."""
 
+    #: The exception the input raised while LanceDB was pulling batches, if any.
+    #: LanceDB's reader re-raises it as a generic error; the writer restores it.
+    input_failure: BaseException | None = None
+
     def open(self, stats: _StreamStats) -> bool:
         """Consume input until the first storable item; return whether the stream needs a write.
 
@@ -758,14 +762,30 @@ class _StreamSource:
     def arrow_batches(
         self, *, schema: pa.Schema, max_batch_bytes: int, stats: _StreamStats, include_digest: bool
     ) -> Iterator[pa.RecordBatch]:
-        return self._arrow_batches(
-            schema=schema, max_batch_bytes=max_batch_bytes, stats=stats, include_digest=include_digest
+        return self._recording_failures(
+            self._arrow_batches(
+                schema=schema, max_batch_bytes=max_batch_bytes, stats=stats, include_digest=include_digest
+            )
         )
 
     def _arrow_batches(
         self, *, schema: pa.Schema, max_batch_bytes: int, stats: _StreamStats, include_digest: bool
     ) -> Iterator[pa.RecordBatch]:
         raise NotImplementedError
+
+    def _recording_failures(self, batches: Iterator[pa.RecordBatch]) -> Iterator[pa.RecordBatch]:
+        """Remember the input-side exception: LanceDB's reader rewraps it before it reaches the caller."""
+        try:
+            yield from batches
+        except Exception as exc:
+            self.input_failure = exc
+            # Type only: conversion errors can quote row content, and the
+            # exception itself is re-raised to the caller with full context.
+            logger.error(
+                "VDB stream input failed (%s) while LanceDB was consuming batches; nothing was committed.",
+                type(exc).__name__,
+            )
+            raise
 
 
 class _RecordStreamSource(_StreamSource):
