@@ -122,6 +122,15 @@ losslessly, not truncated.
 formatted embedding-input limit. `EmbedParams.query_max_length` controls the
 separate query limit.
 
+For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`, text
+admission also enforces a safety limit of 65,536 UTF-8 bytes per formatted input.
+The budget includes template escaping and the server-added prefix, even when
+your content already starts with that prefix.
+Token and byte limits are independent: text can fit the token budget and
+still require splitting. Unicode characters can occupy multiple UTF-8 bytes.
+Each split child fits both limits and preserves its exact source text.
+Increasing `max_length` does not raise this byte limit.
+
 With its default query graph, `Retriever` searches every split query chunk
 using the chunk's embedding and matching text for hybrid retrieval. It combines
 the chunk rankings for each original query with equal-weight reciprocal rank
@@ -177,7 +186,7 @@ the JSON `metadata` field. After decoding that field, use
 A collection row's top-level `chunk_id` remains a storage key derived from the
 document, version, and row index; it is not the embedding child ID.
 
-Local and remote text embedding use the same prepared rows. When this client-side
+Local and remote text embedding both use prepared rows. When this client-side
 policy is active for a remote endpoint, text requests use `truncate="NONE"` so
 the endpoint cannot silently replace the client decision. Image-bearing inputs
 retain `truncate="END"`. For mixed `text_image` batches, the library sends

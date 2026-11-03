@@ -41,6 +41,7 @@ from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActo
 from nemo_retriever.ingestor.plans import IngestExecutionPlan, dedup_params_enabled
 from nemo_retriever.common.ray_resource_hueristics import (
     ClusterResources,
+    embed_reshape_actors,
     resolve_requested_plan,
 )
 
@@ -102,6 +103,8 @@ def default_concurrency_node_names(
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
+    if embed_params is not None and not _positive(getattr(embed_tuning, "embed_reshape_workers", None)):
+        names.update({COLLAPSE_CONTENT_NODE, EXPLODE_CONTENT_NODE})
     store_tuning = _batch_tuning(store_params)
     if store_params is not None and not _positive(getattr(store_tuning, "store_workers", None)):
         names.add(StoreOperator.__name__)
@@ -112,6 +115,16 @@ def default_concurrency_node_names(
 
 def _positive(value: Any) -> Any:
     return value if value not in (None, 0, 0.0, "", False) else None
+
+
+def _pdf_ocr_needed(extract_params: Any) -> bool:
+    """Return whether the PDF graph for ``extract_params`` gets an OCR stage."""
+    return bool(
+        getattr(extract_params, "method", None) in ("pdfium_hybrid", "ocr")
+        and getattr(extract_params, "extract_text", False)
+    ) or any(
+        getattr(extract_params, name, False) for name in ("extract_tables", "extract_charts", "extract_infographics")
+    )
 
 
 def _nim_remote_http_kwargs(extract_params: Any) -> dict[str, int]:
@@ -150,11 +163,51 @@ def batch_tuning_to_node_overrides(
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
+    # The per-GPU cell assumes the PDF graph with local page elements, OCR and embedding, that these are
+    # its only local GPU pools, and that none of them is sized explicitly.
+    per_gpu_cell = (
+        extract_params is not None
+        and embed_params is not None
+        and extraction_mode not in {"text", "html", "audio", "image", "auto"}
+        and video_frame_params is None
+        and getattr(extract_params, "method", None) not in ("nemotron_parse", "audio")
+        and getattr(extract_params, "use_page_elements", False)
+        and _pdf_ocr_needed(extract_params)
+        and not (
+            getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
+        )
+        and not any(
+            _positive(getattr(params, name, None))
+            for params, name in (
+                (extract_params, "page_elements_invoke_url"),
+                (extract_params, "ocr_invoke_url"),
+                (embed_params, "embed_invoke_url"),
+                (embed_params, "embedding_endpoint"),
+            )
+        )
+        and not any(
+            _positive(getattr(_batch_tuning(params), name, None))
+            for params, name in (
+                (extract_params, "page_elements_workers"),
+                (extract_params, "ocr_workers"),
+                (embed_params, "embed_workers"),
+            )
+        )
+        and all(
+            getattr(_batch_tuning(params), name, None) is None
+            for params, name in (
+                (extract_params, "gpu_page_elements"),
+                (extract_params, "gpu_ocr"),
+                (embed_params, "gpu_embed"),
+            )
+        )
+    )
     plan = (
         resolve_requested_plan(
             cluster_resources=cluster_resources,
             allow_no_gpu=effective_allow_no_gpu,
             caption_enabled=caption_params is not None,
+            per_gpu_cell=per_gpu_cell,
             override_caption_gpus_per_actor=caption_gpus_per_actor,
         )
         if cluster_resources is not None
@@ -162,6 +215,13 @@ def batch_tuning_to_node_overrides(
     )
 
     overrides: dict[str, dict[str, Any]] = {}
+    # The per-GPU cell keeps rows in their upstream blocks before page elements and embedding: those
+    # repartition tasks get too little Ray Data budget to feed the larger GPU pools.
+    repartition_default = not (plan is not None and plan.per_gpu_cell)
+
+    def _repartition(tuning: Any, name: str) -> bool:
+        value = getattr(tuning, name, None) if tuning is not None else None
+        return repartition_default if value is None else bool(value)
 
     def _resolve(explicit: Any, fallback: Any = None) -> Any:
         v = _positive(explicit)
@@ -205,8 +265,7 @@ def batch_tuning_to_node_overrides(
         explicit_bs = getattr(embed_tuning, "embed_batch_size", None) if embed_tuning is not None else None
         embed_bs = _positive(explicit_bs) or (plan.embed_batch_size if plan else None)
         _set(_BatchEmbedActor.__name__, "batch_size", embed_bs)
-        embed_repartition = getattr(embed_tuning, "embed_repartition", True) if embed_tuning is not None else True
-        if embed_bs and embed_repartition:
+        if embed_bs and _repartition(embed_tuning, "embed_repartition"):
             overrides.setdefault(_BatchEmbedActor.__name__, {})["target_num_rows_per_block"] = embed_bs
         explicit_embed_workers = getattr(embed_tuning, "embed_workers", None) if embed_tuning is not None else None
         embed_workers_fallback = plan.embed_initial_actors if plan else None
@@ -232,8 +291,13 @@ def batch_tuning_to_node_overrides(
         )
         _set(_BatchEmbedActor.__name__, "concurrency", embed_concurrency or None)
         reshape_workers = getattr(embed_tuning, "embed_reshape_workers", None) if embed_tuning is not None else None
-        _set(COLLAPSE_CONTENT_NODE, "concurrency", reshape_workers)
-        _set(EXPLODE_CONTENT_NODE, "concurrency", reshape_workers)
+        reshape_fallback = (
+            embed_reshape_actors(int(cluster_resources.available_gpu_count()))
+            if cluster_resources is not None
+            else None
+        )
+        _set(COLLAPSE_CONTENT_NODE, "concurrency", reshape_workers, reshape_fallback)
+        _set(EXPLODE_CONTENT_NODE, "concurrency", reshape_workers, reshape_fallback)
         embed_cpus = (
             _resolve(
                 getattr(embed_tuning, "embed_cpus_per_actor", None) if embed_tuning is not None else None,
@@ -305,10 +369,7 @@ def batch_tuning_to_node_overrides(
             getattr(extract_tuning, "page_elements_batch_size", None) if extract_tuning is not None else None
         ) or (plan.page_elements_batch_size if plan else None)
         _set(PageElementDetectionActor.__name__, "batch_size", pe_bs)
-        pe_repartition = (
-            getattr(extract_tuning, "page_elements_repartition", True) if extract_tuning is not None else True
-        )
-        if pe_bs and pe_repartition:
+        if pe_bs and _repartition(extract_tuning, "page_elements_repartition"):
             overrides.setdefault(PageElementDetectionActor.__name__, {})["target_num_rows_per_block"] = pe_bs
         page_elements_concurrency = (
             _resolve(
@@ -915,10 +976,7 @@ def build_graph(
             ocr_kwargs.update(_rr)
             table_kwargs.update(_rr)
 
-            needs_ocr = any(
-                bool(ocr_kwargs.get(key))
-                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
-            )
+            needs_ocr = _pdf_ocr_needed(extract_params)
             page_elements_needed = extract_params.use_page_elements and (
                 (extract_params.use_table_structure and extract_params.extract_tables) or needs_ocr
             )

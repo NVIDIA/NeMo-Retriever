@@ -1,3 +1,4 @@
+import sys
 import types
 
 import pytest
@@ -156,21 +157,42 @@ def _make_cluster(total_cpu: int = 16, total_gpu: int = 2) -> rh.ClusterResource
     return rh.ClusterResources(total_resources=res, available_resources=res)
 
 
-def test_resolve_requested_plan_defaults_with_2_gpus() -> None:
-    plan = rh.resolve_requested_plan(cluster_resources=_make_cluster(total_gpu=2))
+@pytest.mark.parametrize("cluster_gpus, expected", [(2, 97_887), (4, 0)])
+def test_min_gpu_memory_ignores_hosts_that_do_not_hold_every_gpu(monkeypatch, cluster_gpus, expected) -> None:
+    gpu = rh.GpuInfo(
+        driver_version="1", gpu_name="gpu", gpu_uuid="u", gpu_brand="b", total_mib=97_887, used_mib=0, free_mib=97_887
+    )
+    monkeypatch.setitem(sys.modules, "pynvml", types.SimpleNamespace(NVMLError=RuntimeError))
+    monkeypatch.setattr(rh, "_get_gpu_memory_info", lambda: rh.NodeGpuInfo(gpus={0: gpu, 1: gpu}))
 
-    assert plan.embed_initial_actors == rh.EMBED_INITIAL_ACTORS * 2
+    assert rh._min_gpu_memory_mib(cluster_gpus) == expected
+
+
+@pytest.mark.parametrize(
+    "memory_mib, cell",
+    [(97_887, rh.GPU_CELL_LARGE), (46_068, rh.GPU_CELL_SMALL), (None, rh.GPU_CELL_SMALL)],
+)
+def test_resolve_requested_plan_defaults_with_2_gpus(monkeypatch, memory_mib, cell) -> None:
+    monkeypatch.setattr(rh, "_min_gpu_memory_mib", lambda _count: 0)
+    plan = rh.resolve_requested_plan(
+        cluster_resources=_make_cluster(total_gpu=2), per_gpu_cell=True, gpu_memory_mib=memory_mib
+    )
+    (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
+
+    assert plan.embed_initial_actors == embed_actors * 2
     assert plan.embed_min_actors == rh.EMBED_MIN_ACTORS * 2
     assert plan.embed_max_actors == rh.EMBED_MAX_ACTORS * 2
-    assert plan.embed_gpus_per_actor == rh.EMBED_GPUS_PER_ACTOR
+    assert plan.embed_gpus_per_actor == embed_share
     assert plan.embed_batch_size == rh.EMBED_BATCH_SIZE
 
-    assert plan.ocr_initial_actors == rh.OCR_INITIAL_ACTORS * 2
+    assert plan.ocr_initial_actors == ocr_actors * 2
     assert plan.ocr_max_actors == rh.OCR_MAX_ACTORS * 2
-    assert plan.ocr_gpus_per_actor == rh.OCR_GPUS_PER_ACTOR
+    assert plan.ocr_gpus_per_actor == ocr_share
 
-    assert plan.page_elements_initial_actors == rh.PAGE_ELEMENTS_INITIAL_ACTORS * 2
+    assert plan.page_elements_initial_actors == pe_actors * 2
     assert plan.page_elements_max_actors == rh.PAGE_ELEMENTS_MAX_ACTORS * 2
+    assert plan.page_elements_gpus_per_actor == pe_share
+    assert pe_actors * pe_share + ocr_actors * ocr_share + embed_actors * embed_share == pytest.approx(1.0)
 
     assert plan.pdf_extract_batch_size == rh.PDF_EXTRACT_BATCH_SIZE
     assert plan.pdf_extract_cpus_per_task == rh.PDF_EXTRACT_CPUS_PER_TASK

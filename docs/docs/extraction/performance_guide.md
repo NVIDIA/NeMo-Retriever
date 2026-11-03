@@ -20,6 +20,31 @@ For filesystem inputs, the library reserves CPU capacity for each Ray Data `Read
 
 When ingestion combines multiple extraction datasets, preflight also reserves 1 CPU for schema-normalization work. This keeps actor pools from occupying all CPU capacity before the datasets have compatible schemas.
 
+Ray Data runs repartition steps as short tasks that each reserve 1 CPU. Repartition steps run before PDF extraction, page elements detection, table structure, and embedding when the matching batch size and repartition control are set. When a graph has repartition steps, preflight stops growing automatically sized actor pools before they reserve every CPU. It keeps the following CPUs free:
+
+- 1 CPU for each repartition step, and 2 for each stage that needs the whole dataset in one batch.
+- On hosts with at least 32 available CPUs, a margin of 10% of the available CPUs, rounded up, with a maximum of 8 CPUs.
+- 1 CPU for the Ray driver and system processes.
+
+For example, the default PDF graph on a single-GPU node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
+
+Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
+
+On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when the graph runs all three stages locally and has no other local GPU stage. Graphs with page elements off, captioning, table structure, Nemotron Parse, audio, or a remote endpoint for one of these stages keep the previous defaults. Any explicit `page_elements_workers`, `ocr_workers`, `embed_workers`, `gpu_page_elements`, `gpu_ocr`, or `gpu_embed` value also keeps the previous defaults for the other two stages. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
+
+| Smallest GPU memory | Page elements | OCR | Embedding |
+|---|---|---|---|
+| 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
+| Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
+
+These pools apply only to the PDF graph. Text, HTML, image, audio, video, and automatic-detection graphs keep the previous defaults. GPU memory means the smallest free memory among the GPUs that Ray uses, as named by `CUDA_VISIBLE_DEVICES`. The library logs the chosen set and the reason at INFO. After the GPU actors start, it logs a WARNING if any of these pools has pending actors or an uneven number of actors on each GPU.
+
+When these default pools apply, the page elements and embedding stages also skip their repartition steps, so rows arrive in the blocks that the previous stage produced. Ray Data runs too few of these repartition tasks to feed the larger GPU pools. Set `page_elements_repartition` or `embed_repartition` to keep a step.
+
+A single GPU keeps 3 page elements and 3 OCR actors at 0.1 GPU each and 1 embedding actor at 0.2 GPU. Preflight grows each CPU-only pool to 2 actors per GPU or one eighth of its target, whichever is smaller, then grows the GPU pools, then shares the remaining CPUs.
+
+The CPU stage that reshapes content before embedding (`CollapseContentToPageRows` or `ExplodeContentToRows`) targets 2 actors per GPU on hosts with 2 or more GPUs and 1 actor otherwise. Each reshape actor runs on one core, so a single actor can limit a multi-GPU run. Preflight grows the reshape pool after the GPU pools, so hosts with few CPUs per GPU keep 1 reshape actor. GPU shares only control placement; they do not limit GPU memory.
+
 Known text inputs use a direct `TxtSplitActor` graph that targets up to 8 actors, limited by the available CPUs. Shared preflight can reduce this default when the same batch job requires other actor pools or task reservations.
 
 Explicit `BatchTuningParams` worker counts and integer `node_overrides` concurrency values must fit the available Ray CPU and GPU budget, including required task reservations. For an explicit Ray actor-pool tuple, validation uses `minimum` for `(minimum, maximum)` or `initial` for `(minimum, maximum, initial)`. The library preserves the tuple's `maximum` so Ray can grow the pool as capacity becomes available.
@@ -91,7 +116,7 @@ Embedding preparation, actor batches, and HTTP requests have separate concurrenc
 | `embed_inference_batch_size` | Adds a limit on the number of image-bearing inputs in each remote embedding HTTP request. |
 | `nim_http_max_concurrent` | Caps concurrent remote embedding HTTP requests within each actor batch. |
 
-Set `embed_reshape_workers` when CPU content preparation limits throughput. This setting applies to the named `CollapseContentToPageRows` and `ExplodeContentToRows` graph stages when present.
+Set `embed_reshape_workers` when CPU content preparation limits throughput. This setting applies to the named `CollapseContentToPageRows` and `ExplodeContentToRows` graph stages when present. When you do not set it, preflight sizes these stages from the GPU count and the CPU budget.
 
 For remote image-bearing inputs, the request size is at most `min(inference_batch_size, embed_inference_batch_size)`. For example, `.embed(inference_batch_size=32, embed_inference_batch_size=8)` sends at most 8 image-bearing inputs per request. Select a multimodal model that your endpoint supports, as described in [multimodal embedding](embedding.md).
 
@@ -105,7 +130,9 @@ Benchmark these settings with representative documents. Monitor CPU capacity, en
     in current NVIDIA `main` or a released package.
 
 In batch mode, the following `BatchTuningParams` controls enable size-based Ray
-repartitioning before each stage. Each control defaults to `True`.
+repartitioning before each stage. Each control is on by default, except that `page_elements_repartition` and
+`embed_repartition` are off when the default per-GPU pools apply. Set a control to `True` or `False` to
+override its default.
 
 | Stage | Control | Row-batch setting |
 | --- | --- | --- |
@@ -147,7 +174,8 @@ chunks = (
 For typed ingest plans, set the extraction controls in
 `IngestExtractBatchOptions` and the embedding control in
 `IngestEmbedBatchOptions`. These optional fields default to `None`, which
-preserves the `True` defaults when the shared ingest plan resolves them.
+resolves to the defaults described above: on, except that page elements and
+embedding skip their repartition steps when the default per-GPU pools apply.
 
 Compare throughput, memory use, errors, and extracted outputs against a
 representative baseline after changing these controls.

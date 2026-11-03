@@ -559,6 +559,57 @@ def test_batch_preflight_reduces_default_pools_on_constrained_cluster() -> None:
     assert actor_cpu + 2 + executor._source_cpu_reservation <= 16
 
 
+def _preflight_default_overrides(
+    cpus: int, gpus: int, extract_params: ExtractParams | None = None, embed_params: EmbedParams | None = None
+) -> dict[str, dict]:
+    from nemo_retriever.graph.executor import RayDataExecutor
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=cpus, gpu_count=gpus),
+        available_resources=Resources(cpu_count=cpus, gpu_count=gpus),
+    )
+    extract_params, embed_params = extract_params or ExtractParams(), embed_params or EmbedParams()
+    derived = batch_tuning_to_node_overrides(extract_params, embed_params, cluster_resources=cluster)
+    executor = RayDataExecutor(
+        build_graph(extract_params=extract_params, embed_params=embed_params, stage_order=()),
+        node_overrides=derived,
+        auto_concurrency_nodes=default_concurrency_node_names(extract_params, embed_params, None, None),
+        source_cpu_reservation=1,
+    )
+    nodes = executor._linearize(executor.graph)
+    executor._preflight_resources(nodes, cpus, gpus)
+    return {node.name: derived[node.name] for node in nodes if node.name in derived}
+
+
+def _preflight_default_pdf_embed_plan(cpus: int, gpus: int) -> dict[str, tuple[int, float, float]]:
+    return {
+        name: (override.get("concurrency", 1), override.get("num_cpus", 1.0), override.get("num_gpus", 0.0))
+        for name, override in _preflight_default_overrides(cpus, gpus).items()
+    }
+
+
+@pytest.mark.parametrize("cpus, gpus", [(256, 8), (128, 8), (64, 2), (32, 1), (32, 4), (16, 1)])
+def test_default_batch_plan_leaves_cpus_for_repartition_stages(cpus: int, gpus: int) -> None:
+    overrides = _preflight_default_overrides(cpus, gpus)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus)
+    booked = 1 + sum(concurrency * num_cpus for concurrency, num_cpus, _gpus in plan.values())
+    repartition_stages = sum(1 for override in overrides.values() if override.get("target_num_rows_per_block"))
+    reserve = repartition_stages + (min(8, -(-cpus // 10)) if cpus >= 32 else 0) + 1
+
+    assert plan["PDFExtractionActor"][1] == 1.0
+    assert booked <= cpus - reserve
+
+
+def test_default_batch_plan_keeps_single_gpu_pools() -> None:
+    plan = _preflight_default_pdf_embed_plan(32, 1)
+
+    assert plan["PDFExtractionActor"][0] >= 11
+    assert plan["PageElementDetectionActor"][0] >= 3
+    assert plan["OCRActor"][0] >= 2
+    assert plan["_BatchEmbedActor"][0] == 1
+
+
 def test_batch_tuning_adds_parallel_text_extraction_as_an_automatic_pool() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=32, gpu_count=1),
@@ -1025,3 +1076,245 @@ def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
     )
 
     assert _root_names(graph)[:2] == ["MediaChunkActor", "ASRActor"]
+
+
+def _first_fit_gpu_placement(plan: dict[str, tuple[int, float, float]], gpus: int) -> list[dict[str, int]]:
+    """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another."""
+    room = [10_000] * gpus  # Ray tracks GPU fractions in 1/10000 units.
+    placement: list[dict[str, int]] = [{} for _ in range(gpus)]
+    for name in ("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"):
+        concurrency, _cpus, share = plan[name]
+        need = round(share * 10_000)
+        for _actor in range(concurrency):
+            gpu = next(index for index in range(gpus) if room[index] >= need)
+            room[gpu] -= need
+            placement[gpu][name] = placement[gpu].get(name, 0) + 1
+    return placement
+
+
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, cell",
+    [
+        (256, 8, 97_887, (4, 2, 1)),
+        (128, 8, 97_887, (4, 2, 1)),
+        (64, 2, 97_887, (4, 2, 1)),
+        (64, 4, 46_068, (1, 1, 1)),
+        (64, 2, 0, (1, 1, 1)),
+    ],
+)
+def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, cell: tuple[int, int, int]
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus)
+    expected = dict(zip(("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"), cell))
+
+    assert sum(plan[name][0] * plan[name][2] for name in expected) == pytest.approx(gpus)
+    assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
+
+
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, reshape, cell_actors",
+    [(256, 8, 97_887, 16, 32), (128, 8, 97_887, 7, 32), (32, 4, 46_068, 2, 4), (32, 1, 95_830, 1, 3)],
+)
+def test_default_embed_reshape_scales_with_gpus_inside_the_cpu_budget(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, reshape: int, cell_actors: int
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus)
+
+    assert plan["ExplodeContentToRows"][0] == reshape
+    assert plan["PageElementDetectionActor"][0] == cell_actors
+
+
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, cell",
+    [
+        (256, 8, 97_887, {"pdf": 128, "pe": (32, 0.21), "ocr": (16, 0.06), "reshape": 16, "embed": (8, 0.04)}),
+        (32, 4, 46_068, {"pdf": 9, "pe": (4, 0.51), "ocr": (4, 0.25), "reshape": 2, "embed": (4, 0.24)}),
+    ],
+)
+def test_default_cell_plan_skips_page_elements_and_embed_repartition(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, cell: dict
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+
+    overrides = _preflight_default_overrides(cpus, gpus)
+
+    assert overrides["PDFExtractionActor"] == {
+        "batch_size": 4,
+        "target_num_rows_per_block": 4,
+        "concurrency": cell["pdf"],
+    }
+    assert overrides["PageElementDetectionActor"] == {
+        "batch_size": 24,
+        "concurrency": cell["pe"][0],
+        "num_gpus": cell["pe"][1],
+    }
+    assert overrides["OCRActor"] == {"batch_size": 32, "concurrency": cell["ocr"][0], "num_gpus": cell["ocr"][1]}
+    assert overrides["ExplodeContentToRows"] == {"concurrency": cell["reshape"]}
+    assert overrides["_BatchEmbedActor"] == {
+        "batch_size": 32,
+        "concurrency": cell["embed"][0],
+        "num_gpus": cell["embed"][1],
+    }
+
+
+@pytest.mark.parametrize(
+    "gpus, extract_params, embed_params",
+    [
+        (
+            8,
+            ExtractParams(batch_tuning=BatchTuningParams(page_elements_repartition=True)),
+            EmbedParams(batch_tuning=BatchTuningParams(embed_repartition=True)),
+        ),
+        (8, ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (1, ExtractParams(), EmbedParams()),
+    ],
+)
+def test_page_elements_and_embed_repartition_stay_on_outside_the_default_cell(
+    monkeypatch: pytest.MonkeyPatch, gpus: int, extract_params: ExtractParams, embed_params: EmbedParams
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 97_887)
+
+    overrides = _preflight_default_overrides(32 * gpus, gpus, extract_params, embed_params)
+
+    assert overrides["PageElementDetectionActor"]["target_num_rows_per_block"] == 24
+    assert overrides["_BatchEmbedActor"]["target_num_rows_per_block"] == 32
+
+
+def test_explicit_embed_reshape_workers_are_not_auto_sized() -> None:
+    from nemo_retriever.graph.ingestor_runtime import default_concurrency_node_names
+
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=256, gpu_count=8),
+        available_resources=Resources(cpu_count=256, gpu_count=8),
+    )
+    embed_params = EmbedParams(batch_tuning=BatchTuningParams(embed_reshape_workers=3))
+    overrides = batch_tuning_to_node_overrides(ExtractParams(), embed_params, cluster_resources=cluster)
+
+    assert overrides["ExplodeContentToRows"]["concurrency"] == 3
+    assert "ExplodeContentToRows" not in default_concurrency_node_names(ExtractParams(), embed_params, None, None)
+
+
+def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 95_830)
+    plan = _preflight_default_pdf_embed_plan(32, 1)
+
+    assert plan["PageElementDetectionActor"][2] == 0.1
+    assert plan["OCRActor"][2] == 0.1
+    assert plan["_BatchEmbedActor"][2] == 0.2
+
+
+@pytest.mark.parametrize(
+    "extract_params, embed_params",
+    [
+        (ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
+        (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
+        (ExtractParams(), EmbedParams(embedding_endpoint="http://embed:8000/v1/embeddings")),
+        (
+            ExtractParams(method="pdfium", extract_tables=False, extract_charts=False, extract_infographics=False),
+            EmbedParams(),
+        ),
+        (None, EmbedParams()),
+        (ExtractParams(use_page_elements=False), EmbedParams()),
+        (ExtractParams(batch_tuning={"page_elements_workers": 4}), EmbedParams()),
+        (ExtractParams(batch_tuning={"gpu_ocr": 0.1}), EmbedParams()),
+        (ExtractParams(), EmbedParams(batch_tuning={"embed_workers": 2})),
+    ],
+)
+def test_per_gpu_cell_skips_graphs_with_other_gpu_pools(monkeypatch, extract_params, embed_params) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 97_887)
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=256, gpu_count=8),
+        available_resources=Resources(cpu_count=256, gpu_count=8),
+    )
+    derived = batch_tuning_to_node_overrides(extract_params, embed_params, cluster_resources=cluster)
+
+    assert all(override.get("num_gpus") not in (0.21, 0.06, 0.04) for override in derived.values())
+
+
+@pytest.mark.parametrize("extraction_mode", ["text", "html", "auto"])
+def test_per_gpu_cell_needs_the_pdf_graph(monkeypatch: pytest.MonkeyPatch, extraction_mode: str) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: 97_887)
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=256, gpu_count=8),
+        available_resources=Resources(cpu_count=256, gpu_count=8),
+    )
+    derived = batch_tuning_to_node_overrides(
+        ExtractParams(), EmbedParams(), cluster_resources=cluster, extraction_mode=extraction_mode
+    )
+
+    assert all(override.get("num_gpus") not in (0.21, 0.06, 0.04) for override in derived.values())
+    assert derived["PageElementDetectionActor"]["target_num_rows_per_block"] == 24
+    assert derived["_BatchEmbedActor"]["target_num_rows_per_block"] == 32
+
+
+@pytest.mark.parametrize(
+    "visible, free_mib, expected",
+    [(None, (97_000, 97_000), 97_000), ("1", (20_000, 97_000), 97_000), (None, (20_000, 97_000), 20_000)],
+)
+def test_gpu_cell_memory_uses_free_memory_of_ray_visible_gpus(
+    monkeypatch: pytest.MonkeyPatch, visible: str | None, free_mib: tuple[int, int], expected: int
+) -> None:
+    pytest.importorskip("pynvml")
+    from nemo_retriever.common import ray_resource_hueristics as heuristics
+
+    gpus = {
+        index: heuristics.GpuInfo(
+            driver_version="",
+            gpu_name="",
+            gpu_uuid=f"GPU-{index}",
+            gpu_brand="",
+            total_mib=97_887,
+            used_mib=97_887 - free,
+            free_mib=free,
+        )
+        for index, free in enumerate(free_mib)
+    }
+    monkeypatch.setattr(heuristics, "_get_gpu_memory_info", lambda: heuristics.NodeGpuInfo(gpus=gpus))
+    if visible is None:
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    else:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+
+    ray_gpus = len(free_mib) if visible is None else len(visible.split(","))
+    assert heuristics._min_gpu_memory_mib(ray_gpus) == expected
+
+
+@pytest.mark.parametrize("ray_gpus", [2, 4])
+def test_gpu_cell_memory_needs_ray_gpus_to_match_local_gpus(monkeypatch: pytest.MonkeyPatch, ray_gpus: int) -> None:
+    pytest.importorskip("pynvml")
+    from nemo_retriever.common import ray_resource_hueristics as heuristics
+
+    gpus = {
+        index: heuristics.GpuInfo(
+            driver_version="",
+            gpu_name="",
+            gpu_uuid=f"GPU-{index}",
+            gpu_brand="",
+            total_mib=97_887,
+            used_mib=887,
+            free_mib=97_000,
+        )
+        for index in range(8)
+    }
+    monkeypatch.setattr(heuristics, "_get_gpu_memory_info", lambda: heuristics.NodeGpuInfo(gpus=gpus))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+
+    assert heuristics._min_gpu_memory_mib(8) == 97_000
+    assert heuristics._min_gpu_memory_mib(ray_gpus) == 0
+
+
+def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
+    from nemo_retriever.graph.gpu_placement import placement_problems
+
+    balanced = [("OCRActor", "0"), ("OCRActor", "1")]
+    stacked = [("OCRActor", "0"), ("OCRActor", "0")]
+
+    assert placement_problems(balanced, {"OCRActor": 2}, 2) == []
+    assert placement_problems(stacked, {"OCRActor": 2}, 2) == [
+        "OCRActor actors per GPU {'0': 2}, expected 1 on each of 2 GPUs"
+    ]
+    assert placement_problems(balanced[:1], {"OCRActor": 2}, 2) == ["OCRActor has 1 of 2 actors pending"]
