@@ -155,6 +155,15 @@ For typed ingest requests, set the same value on
 request's `embed` options. This setting does not require extraction-time text
 chunking.
 
+For service-mode SDK calls (`create_ingestor(run_mode="service")`), pass the
+same `EmbedParams` object to `.embed()`, or use
+`.embed(max_input_characters=65_536)`. For typed service requests, set
+`nemo_retriever.ingest.service.ServiceIngestEmbedOptions.max_input_characters`
+in the request's `embed` options. The service admits this parameter as a
+client override; the worker applies the limit before embedding. Use compatible
+client, gateway, and worker versions that implement this parameter. Updating
+only the client does not add character-limit admission to an older server.
+
 With `embed_granularity="page"`, admission runs after page content is combined.
 An oversized page produces multiple child rows and vectors that each satisfy
 both limits. The children retain the original document and page metadata and

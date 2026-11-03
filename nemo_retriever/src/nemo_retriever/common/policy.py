@@ -109,6 +109,7 @@ _DEFAULT_ALLOWED_EMBED_KEYS: frozenset[str] = frozenset(
         "output_column",
         "embed_inference_batch_size",
         "query_max_length",
+        "max_input_characters",
         "dimensions",
     }
 )

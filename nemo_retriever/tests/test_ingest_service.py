@@ -13,6 +13,7 @@ from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 from nemo_retriever.ingest.service import (
     ServiceIngestCaptionOptions,
     ServiceIngestDedupOptions,
+    ServiceIngestEmbedOptions,
     ServiceIngestPlanRequest,
     ServiceIngestRequest,
     ServiceIngestSourceOptions,
@@ -22,6 +23,47 @@ from nemo_retriever.ingest.service import (
 )
 from nemo_retriever.service.config import PipelineOverridesConfig
 from nemo_retriever.service.service_ingestor import ServiceIngestor, ServiceIngestResult
+
+
+@pytest.mark.parametrize("typed_request", [False, True])
+@pytest.mark.parametrize("limit", [65536, None])
+def test_service_character_limit_reaches_worker_admission(tmp_path, typed_request, limit):
+    from nemo_retriever.models.inference.shared import build_embed_kwargs
+    from nemo_retriever.service.services.pipeline_executor import _resolve_embed_params
+
+    document = tmp_path / "doc.pdf"
+    document.write_bytes(b"%PDF-1.4")
+    if typed_request:
+        request = resolve_service_ingest_request(
+            ServiceIngestPlanRequest(
+                source=ServiceIngestSourceOptions(documents=[str(document)]),
+                embed=ServiceIngestEmbedOptions(embed_granularity="page", max_input_characters=limit),
+            )
+        )
+    else:
+        request = ServiceIngestRequest(
+            documents=[str(document)],
+            input_type="pdf",
+            embed_params=EmbedParams(embed_granularity="page", max_input_characters=limit),
+        )
+
+    payload = build_service_ingestor(request)._pipeline_payload()
+    spec = PipelineSpec.model_validate(payload)
+    validated = validate_pipeline_spec(spec, PipelineOverridesConfig().to_policy())
+    assert validated is not None
+    if limit is None:
+        assert "max_input_characters" not in validated.embed_params
+    else:
+        assert validated.embed_params["max_input_characters"] == limit
+    endpoint = "http://embedding.test/v1/embeddings"
+    params = _resolve_embed_params(
+        {"embed_invoke_url": endpoint, "model_name": "test/model"},
+        validated.embed_params,
+    )
+    assert params.max_input_characters == limit
+    assert params.embed_granularity == "page"
+    assert params.embed_invoke_url == endpoint
+    assert build_embed_kwargs(params).get("max_input_characters") == limit
 
 
 def test_build_service_ingestor_wires_extract_embed_and_chunking(tmp_path: Path) -> None:

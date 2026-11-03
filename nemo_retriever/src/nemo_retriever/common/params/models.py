@@ -687,7 +687,13 @@ class EmbedParams(_ParamsModel):
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
     query_max_length: int = 128
-    max_input_characters: int | None = None
+    max_input_characters: int | None = Field(
+        default=None,
+        description=(
+            "Maximum Unicode characters in formatted text inputs, including the prefix or retrieval template. "
+            "None adds no character limit."
+        ),
+    )
     dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).

@@ -74,6 +74,13 @@ def test_typed_character_budget_reaches_actor_kwargs():
     assert EmbedParams().max_input_characters is None
 
 
+def test_character_budget_schema_explains_its_units_formatting_and_default():
+    field = EmbedParams.model_json_schema()["properties"]["max_input_characters"]
+    assert field["default"] is None
+    for term in ("Unicode", "formatted text", "prefix", "retrieval template", "None"):
+        assert term in field["description"]
+
+
 def test_build_embed_option_kwargs_propagates_inference_batch_size():
     kwargs = build_embed_option_kwargs(
         "https://embed.example.com/v1/embeddings",

@@ -96,6 +96,7 @@ class ServiceIngestEmbedOptions:
     text_elements_modality: str | None = None
     structured_elements_modality: str | None = None
     embed_granularity: str | None = None
+    max_input_characters: int | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +207,7 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
             "text_elements_modality": request.embed.text_elements_modality,
             "structured_elements_modality": request.embed.structured_elements_modality,
             "embed_granularity": request.embed.embed_granularity,
+            "max_input_characters": request.embed.max_input_characters,
         }.items()
         if value is not None
     }
