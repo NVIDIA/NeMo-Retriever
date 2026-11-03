@@ -687,6 +687,7 @@ class EmbedParams(_ParamsModel):
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
     query_max_length: int = 128
+    max_input_characters: int | None = None
     dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
@@ -695,6 +696,13 @@ class EmbedParams(_ParamsModel):
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    @field_validator("max_input_characters", mode="before")
+    @classmethod
+    def _validate_max_input_characters(cls, value: int | None) -> int | None:
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError("max_input_characters must be a positive integer or None")
+        return value
 
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod

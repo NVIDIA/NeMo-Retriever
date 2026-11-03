@@ -147,10 +147,21 @@ class EmbeddingInputPolicy:
     add_special_tokens: bool = True
     image: bool = False
     formatted_token_counter: Callable[[str], int] | None = None
+    max_input_characters: int | None = None
 
     def __post_init__(self) -> None:
         if self.max_tokens <= 0:
             raise ValueError("Embedding input max_tokens must be positive")
+        if self.max_input_characters is not None and (
+            type(self.max_input_characters) is not int or self.max_input_characters <= 0
+        ):
+            raise ValueError("Embedding input max_input_characters must be a positive integer or None")
+
+    def _fits(self, text: str, *, token_count: int | None = None) -> bool:
+        return (
+            (self._formatted_token_count(text) if token_count is None else token_count) <= self.max_tokens
+            and (self.max_input_characters is None or len(self._format(text)) <= self.max_input_characters)
+        )
 
     def _formatted_token_count(self, text: str) -> int:
         formatted = self._format(text)
@@ -186,14 +197,15 @@ class EmbeddingInputPolicy:
         while low <= high:
             candidate = (low + high) // 2
             text = self.tokenizer.decode(token_ids[start:candidate], skip_special_tokens=False)
-            if text and self._formatted_token_count(text) <= self.max_tokens:
+            if text and self._fits(text):
                 best = candidate
                 low = candidate + 1
             else:
                 high = candidate - 1
         if best == start:
             raise ValueError(
-                "Embedding input cannot fit one content token after applying the model prefix and special tokens"
+                "Embedding input cannot fit one content token within the configured limits "
+                "after applying the model prefix and special tokens"
             )
         return best
 
@@ -209,7 +221,7 @@ class EmbeddingInputPolicy:
                 chunk = self.tokenizer.decode(token_ids[start:end], skip_special_tokens=False)
                 if (
                     self.tokenizer.encode(chunk, add_special_tokens=False) == token_ids[start:end]
-                    and self._formatted_token_count(chunk) <= self.max_tokens
+                    and self._fits(chunk)
                 ):
                     break
                 end -= 1
@@ -234,7 +246,7 @@ class EmbeddingInputPolicy:
         return tuple(
             EmbeddingSplitPlan(
                 formatted_tokens=token_count,
-                children=self._split(text) if token_count > self.max_tokens else (),
+                children=self._split(text) if not self._fits(text, token_count=token_count) else (),
             )
             for text, token_count in zip(inputs, counts)
         )
@@ -374,6 +386,7 @@ def resolve_embedding_input_policy(
     cache_dir: str | None = None,
     prefix_if_missing: bool = False,
     checkpoint: EmbedModelSpec | None = None,
+    max_input_characters: int | None = None,
 ) -> EmbeddingInputPolicy:
     """Resolve a model-pinned input policy shared by local and remote adapters."""
     if configured_max_tokens <= 0:
@@ -419,6 +432,7 @@ def resolve_embedding_input_policy(
             load_retrieval_template(spec.model_id, spec.revision, cache_dir) if spec.model_type == "mistral3" else None
         ),
         add_special_tokens=spec.model_type != "mistral3",
+        max_input_characters=max_input_characters,
     )
 
 
@@ -442,6 +456,7 @@ def configure_embedding_input_policy(kwargs: dict[str, Any]) -> EmbeddingInputPo
         cache_dir=kwargs.get("hf_cache_dir"),
         prefix_if_missing=bool(kwargs.get("_embedding_prefix_if_missing", False)),
         checkpoint=kwargs.get("_embedding_checkpoint"),
+        max_input_characters=kwargs.get("max_input_characters"),
     )
     kwargs["embedding_input_policy"] = policy
     return policy

@@ -95,6 +95,7 @@ def build_embed_option_kwargs(
     embed_inference_batch_size: int | None = None,
     embed_reshape_workers: int | None = None,
     embed_repartition: bool | None = None,
+    max_input_characters: int | None = None,
 ) -> Dict[str, Any]:
     """Build ``EmbedParams`` kwargs from CLI/request option values."""
     embed_kwargs: Dict[str, Any] = {}
@@ -122,6 +123,8 @@ def build_embed_option_kwargs(
         embed_kwargs["embed_granularity"] = embed_granularity
     if embed_inference_batch_size is not None:
         embed_kwargs["embed_inference_batch_size"] = embed_inference_batch_size
+    if max_input_characters is not None:
+        embed_kwargs["max_input_characters"] = max_input_characters
     embed_tuning = _build_embed_batch_tuning(
         embed_workers=embed_workers,
         embed_reshape_workers=embed_reshape_workers,

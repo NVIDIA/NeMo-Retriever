@@ -41,6 +41,97 @@ class _LengthEmbedder:
         return [[float(len(text))] for text in texts]
 
 
+@pytest.mark.parametrize("value", [0, -1, True, 1.5, "65536"])
+def test_character_limit_requires_a_positive_integer(value):
+    with pytest.raises(ValueError, match="max_input_characters"):
+        EmbeddingInputPolicy(_CharacterTokenizer(), 128, "p:", max_input_characters=value)
+
+
+@pytest.mark.parametrize("max_tokens,max_characters", [(128, 16), (12, 128), (12, 16)])
+def test_splitting_enforces_both_limits_with_prefix_and_unicode(max_tokens, max_characters):
+    policy = EmbeddingInputPolicy(
+        _CharacterTokenizer(), max_tokens, "passage: ", max_input_characters=max_characters,
+    )
+    text = "café世界 🙂 and more text"
+    plan = policy.plan([text])[0]
+    assert plan.requires_split
+    assert "".join(child.content for child in plan.children) == text
+    for child in plan.children:
+        formatted = policy._format(child.content)
+        assert len(formatted) <= max_characters
+        assert policy._formatted_token_count(child.content) <= max_tokens
+        assert not policy.plan([child.content])[0].requires_split
+
+
+def test_character_limit_includes_template_and_accepts_exact_boundary():
+    policy = EmbeddingInputPolicy(
+        _CharacterTokenizer(), 128, "p:",
+        retrieval_template="{{ messages[0].content ~ messages[1].content }}!",
+        max_input_characters=6,
+    )
+    assert len(policy._format("abc")) == 6
+    assert not policy.plan(["abc"])[0].requires_split
+    plan = policy.plan(["abcd"])[0]
+    assert plan.requires_split
+    assert "".join(child.content for child in plan.children) == "abcd"
+    assert all(len(policy._format(child.content)) <= 6 for child in plan.children)
+
+
+def test_character_budget_too_small_for_prefix_fails_explicitly():
+    policy = EmbeddingInputPolicy(_CharacterTokenizer(), 128, "passage: ", max_input_characters=8)
+    with pytest.raises(ValueError, match="cannot fit one content token"):
+        policy.plan(["abc"])
+
+
+def test_remote_page_splits_character_overflow_below_token_limit_without_text_loss():
+    # Text can fit the model token budget while exceeding a remote API's string limit.
+    text = "word " * 14702 + "word"
+    assert len(text) == 73514
+    policy = EmbeddingInputPolicy(
+        _WhitespaceTokenizer(), 32768, "passage: ", max_input_characters=65536,
+    )
+    assert policy._formatted_token_count(text) < policy.max_tokens
+    payloads = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        assert payload["truncate"] == "NONE"
+        if any(len(prompt) > 65536 for prompt in payload["input"]):
+            return httpx.Response(400, json={"message": "input exceeds maximum of 65536 characters"})
+        return httpx.Response(200, json={"data": [
+            {"index": i, "embedding": [float(len(prompt))]}
+            for i, prompt in enumerate(payload["input"])
+        ]})
+
+    source = pd.DataFrame({
+        "text": [text], "path": ["document.pdf"], "page_number": [7],
+        "metadata": [{"source_id": "document.pdf", "page_number": 7}],
+    })
+    client_factory = httpx.Client
+    with patch("httpx.Client", side_effect=lambda **kwargs: client_factory(transport=httpx.MockTransport(handler))):
+        unbounded = embed_text_main_text_embed(
+            source, embedding_endpoint="http://embedding.test/v1", model_name="test/model",
+            embedding_input_policy=EmbeddingInputPolicy(_WhitespaceTokenizer(), 32768, "passage: "),
+        )
+        assert unbounded["embedding_error"].notna().all()
+        result = embed_text_main_text_embed(
+            source, embedding_endpoint="http://embedding.test/v1", model_name="test/model",
+            embedding_input_policy=policy,
+        )
+    assert payloads
+    assert len(payloads[0]["input"][0]) == 73514
+    assert all(len(prompt) <= 65536 for payload in payloads[1:] for prompt in payload["input"])
+    assert len(result) == 2
+    assert "".join(result["text"]) == text
+    assert result["embedding"].notna().all()
+    assert result["embedding_error"].isna().all()
+    assert result["page_number"].tolist() == [7, 7]
+    assert result["path"].tolist() == ["document.pdf", "document.pdf"]
+    assert all(meta["page_number"] == 7 and "embedding_split" in meta for meta in result["metadata"])
+    assert source.iloc[0]["metadata"] == {"source_id": "document.pdf", "page_number": 7}
+
+
 class _AlwaysFailsEmbedder:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []

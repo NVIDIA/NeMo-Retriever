@@ -58,6 +58,22 @@ def test_image_modalities_constant():
     assert isinstance(IMAGE_MODALITIES, frozenset)
 
 
+@pytest.mark.parametrize("value", [0, -1, True, "65536", 1.5])
+def test_character_budget_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="max_input_characters"):
+        EmbedParams(max_input_characters=value)
+
+
+def test_typed_character_budget_reaches_actor_kwargs():
+    from nemo_retriever.models.inference.shared import build_embed_kwargs
+
+    options = IngestEmbedOptions(max_input_characters=65536)
+    kwargs = build_embed_option_kwargs(None, None, max_input_characters=options.max_input_characters)
+    params = EmbedParams(**kwargs)
+    assert build_embed_kwargs(params)["max_input_characters"] == 65536
+    assert EmbedParams().max_input_characters is None
+
+
 def test_build_embed_option_kwargs_propagates_inference_batch_size():
     kwargs = build_embed_option_kwargs(
         "https://embed.example.com/v1/embeddings",

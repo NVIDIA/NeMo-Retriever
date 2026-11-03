@@ -122,6 +122,46 @@ losslessly, not truncated.
 formatted embedding-input limit. `EmbedParams.query_max_length` controls the
 separate query limit.
 
+Some embedding endpoints also enforce a character limit independently of the
+token limit. Set `EmbedParams.max_input_characters` to a positive integer that
+matches your endpoint's limit. The default is `None`, which adds no character
+limit. For text inputs, the library checks the complete formatted text, including
+its prefix or retrieval template, against both limits before inference.
+The character limit counts Unicode characters, not encoded bytes.
+
+The following example configures a 65,536-character limit for text embeddings
+prepared from PDF pages:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import EmbedParams
+
+ingestor = (
+    create_ingestor(run_mode="inprocess")
+    .files("./data/*.pdf")
+    .extract()
+    .embed(
+        EmbedParams(
+            embed_granularity="page",
+            max_input_characters=65_536,
+        )
+    )
+)
+results = ingestor.ingest()
+```
+
+For typed ingest requests, set the same value on
+`nemo_retriever.ingest.plan.IngestEmbedOptions.max_input_characters` in the
+request's `embed` options. This setting does not require extraction-time text
+chunking.
+
+With `embed_granularity="page"`, admission runs after page content is combined.
+An oversized page produces multiple child rows and vectors that each satisfy
+both limits. The children retain the original document and page metadata and
+receive the `metadata["embedding_split"]` provenance described below. Their
+text reconstructs the original page text without truncation. Page identity is
+preserved, but a page can have more than one stored vector.
+
 With its default query graph, `Retriever` searches every split query chunk
 using the chunk's embedding and matching text for hybrid retrieval. It combines
 the chunk rankings for each original query with equal-weight reciprocal rank
