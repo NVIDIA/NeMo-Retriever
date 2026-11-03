@@ -172,7 +172,8 @@ chunks = (
 For typed ingest plans, set the extraction controls in
 `IngestExtractBatchOptions` and the embedding control in
 `IngestEmbedBatchOptions`. These optional fields default to `None`, which
-preserves the `True` defaults when the shared ingest plan resolves them.
+resolves to the defaults described above: on, except that page elements and
+embedding skip their repartition steps when the default per-GPU pools apply.
 Compare throughput, memory use, errors, and extracted outputs against a
 representative baseline after changing these controls.
 
