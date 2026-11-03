@@ -39,7 +39,8 @@ def report_gpu_placement(stage: str) -> None:
         ledger = ray.get_actor(_LEDGER_NAME)
     except ValueError:
         return
-    ledger.record.remote(stage, ",".join(str(gpu) for gpu in ray.get_gpu_ids()))
+    node = ray.get_runtime_context().get_node_id()[:8]
+    ledger.record.remote(stage, f"{node}:" + ",".join(str(gpu) for gpu in ray.get_gpu_ids()))
 
 
 class _ReportingOperator:
@@ -85,6 +86,10 @@ class GpuPlacementCheck:
 
     @classmethod
     def start(cls, gpus: int) -> GpuPlacementCheck | None:
+        """Create the ledger and start polling it for a cluster with ``gpus`` GPUs.
+
+        Returns None, and the stages are not checked, when another ingest's check already owns the ledger.
+        """
         import ray
 
         try:
@@ -95,6 +100,7 @@ class GpuPlacementCheck:
         return cls(ledger, gpus)
 
     def expect(self, stage: str, count: int) -> None:
+        """Register ``count`` actors for ``stage``; a later call for the same stage replaces the count."""
         self._expected[stage] = count
 
     def stop(self) -> None:
