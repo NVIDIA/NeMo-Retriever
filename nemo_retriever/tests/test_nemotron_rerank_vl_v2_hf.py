@@ -284,11 +284,11 @@ class TestRerankViaEndpointVL:
                 "q",
                 ["doc1", "doc2"],
                 endpoint="http://localhost:8000",
-                images_b64=["b64_img", None],
+                images_b64=["data:image/png;base64,b64_img", None],
             )
 
         payload = mock_post.call_args[1]["json"]
-        assert payload["passages"][0] == {"text": "doc1", "image": "b64_img"}
+        assert payload["passages"][0] == {"text": "doc1", "image": "data:image/png;base64,b64_img"}
         assert payload["passages"][1] == {"text": "doc2"}
 
     def test_endpoint_no_images_text_only_payload(self):

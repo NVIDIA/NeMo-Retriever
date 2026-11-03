@@ -130,6 +130,27 @@ def _set_score(scores: List[float], index: Any, score: Any) -> None:
         scores[i] = parsed_score
 
 
+def _rerank_image_data_uri(image_b64: str) -> str:
+    """Preserve image data URIs or wrap raw base64 with its detected MIME type."""
+    if image_b64.startswith("data:image/"):
+        return image_b64
+    import base64
+    import binascii
+    import io
+
+    from PIL import Image
+
+    try:
+        image_bytes = base64.b64decode(image_b64)
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            mime_type = image.get_format_mimetype()
+        if mime_type is None or not mime_type.startswith("image/"):
+            raise ValueError("Image has no supported MIME type.")
+    except (binascii.Error, ValueError, OSError, Image.DecompressionBombError) as exc:
+        raise ValueError(f"Invalid reranking image: {exc}") from exc
+    return f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+
+
 def _nim_ranking_payload(
     query: str,
     documents: List[str],
@@ -140,7 +161,7 @@ def _nim_ranking_payload(
     for i, d in enumerate(documents):
         entry: Dict[str, Any] = {"text": d}
         if images_b64 and i < len(images_b64) and images_b64[i]:
-            entry["image"] = images_b64[i]
+            entry["image"] = _rerank_image_data_uri(images_b64[i])
         passages.append(entry)
     return {
         "model": model_name,
@@ -229,6 +250,9 @@ def _rerank_via_endpoint(
         ``"nvidia/llama-nemotron-rerank-vl-1b-v2"``).
     api_key:
         Bearer token for the remote endpoint (if required).
+    images_b64:
+        Optional images aligned with documents. Raw base64 images are wrapped
+        as MIME-typed data URIs for NIM; existing image data URIs are preserved.
 
     Returns
     -------
