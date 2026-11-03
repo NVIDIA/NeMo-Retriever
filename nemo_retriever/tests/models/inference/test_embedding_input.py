@@ -50,7 +50,10 @@ def test_character_limit_requires_a_positive_integer(value):
 @pytest.mark.parametrize("max_tokens,max_characters", [(128, 16), (12, 128), (12, 16)])
 def test_splitting_enforces_both_limits_with_prefix_and_unicode(max_tokens, max_characters):
     policy = EmbeddingInputPolicy(
-        _CharacterTokenizer(), max_tokens, "passage: ", max_input_characters=max_characters,
+        _CharacterTokenizer(),
+        max_tokens,
+        "passage: ",
+        max_input_characters=max_characters,
     )
     text = "café世界 🙂 and more text"
     plan = policy.plan([text])[0]
@@ -65,7 +68,9 @@ def test_splitting_enforces_both_limits_with_prefix_and_unicode(max_tokens, max_
 
 def test_character_limit_includes_template_and_accepts_exact_boundary():
     policy = EmbeddingInputPolicy(
-        _CharacterTokenizer(), 128, "p:",
+        _CharacterTokenizer(),
+        128,
+        "p:",
         retrieval_template="{{ messages[0].content ~ messages[1].content }}!",
         max_input_characters=6,
     )
@@ -88,7 +93,10 @@ def test_remote_page_splits_character_overflow_below_token_limit_without_text_lo
     text = "word " * 14702 + "word"
     assert len(text) == 73514
     policy = EmbeddingInputPolicy(
-        _WhitespaceTokenizer(), 32768, "passage: ", max_input_characters=65536,
+        _WhitespaceTokenizer(),
+        32768,
+        "passage: ",
+        max_input_characters=65536,
     )
     assert policy._formatted_token_count(text) < policy.max_tokens
     payloads = []
@@ -99,24 +107,34 @@ def test_remote_page_splits_character_overflow_below_token_limit_without_text_lo
         assert payload["truncate"] == "NONE"
         if any(len(prompt) > 65536 for prompt in payload["input"]):
             return httpx.Response(400, json={"message": "input exceeds maximum of 65536 characters"})
-        return httpx.Response(200, json={"data": [
-            {"index": i, "embedding": [float(len(prompt))]}
-            for i, prompt in enumerate(payload["input"])
-        ]})
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"index": i, "embedding": [float(len(prompt))]} for i, prompt in enumerate(payload["input"])]
+            },
+        )
 
-    source = pd.DataFrame({
-        "text": [text], "path": ["document.pdf"], "page_number": [7],
-        "metadata": [{"source_id": "document.pdf", "page_number": 7}],
-    })
+    source = pd.DataFrame(
+        {
+            "text": [text],
+            "path": ["document.pdf"],
+            "page_number": [7],
+            "metadata": [{"source_id": "document.pdf", "page_number": 7}],
+        }
+    )
     client_factory = httpx.Client
     with patch("httpx.Client", side_effect=lambda **kwargs: client_factory(transport=httpx.MockTransport(handler))):
         unbounded = embed_text_main_text_embed(
-            source, embedding_endpoint="http://embedding.test/v1", model_name="test/model",
+            source,
+            embedding_endpoint="http://embedding.test/v1",
+            model_name="test/model",
             embedding_input_policy=EmbeddingInputPolicy(_WhitespaceTokenizer(), 32768, "passage: "),
         )
         assert unbounded["embedding_error"].notna().all()
         result = embed_text_main_text_embed(
-            source, embedding_endpoint="http://embedding.test/v1", model_name="test/model",
+            source,
+            embedding_endpoint="http://embedding.test/v1",
+            model_name="test/model",
             embedding_input_policy=policy,
         )
     assert payloads

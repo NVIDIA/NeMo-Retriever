@@ -158,9 +158,8 @@ class EmbeddingInputPolicy:
             raise ValueError("Embedding input max_input_characters must be a positive integer or None")
 
     def _fits(self, text: str, *, token_count: int | None = None) -> bool:
-        return (
-            (self._formatted_token_count(text) if token_count is None else token_count) <= self.max_tokens
-            and (self.max_input_characters is None or len(self._format(text)) <= self.max_input_characters)
+        return (self._formatted_token_count(text) if token_count is None else token_count) <= self.max_tokens and (
+            self.max_input_characters is None or len(self._format(text)) <= self.max_input_characters
         )
 
     def _formatted_token_count(self, text: str) -> int:
@@ -219,10 +218,7 @@ class EmbeddingInputPolicy:
             # an exact, fitting boundary rather than rejecting splittable text.
             while end > start:
                 chunk = self.tokenizer.decode(token_ids[start:end], skip_special_tokens=False)
-                if (
-                    self.tokenizer.encode(chunk, add_special_tokens=False) == token_ids[start:end]
-                    and self._fits(chunk)
-                ):
+                if self.tokenizer.encode(chunk, add_special_tokens=False) == token_ids[start:end] and self._fits(chunk):
                     break
                 end -= 1
             else:
