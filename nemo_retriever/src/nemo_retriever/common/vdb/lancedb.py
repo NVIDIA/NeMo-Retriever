@@ -40,7 +40,6 @@ from nemo_retriever.common.schemas.collections import (
 )
 from nemo_retriever.common.schemas.embedding import EMBEDDING_SPLIT_METADATA_KEY, embedding_split_content
 from nemo_retriever.common.vdb._lancedb_stream import (
-    OversizedVdbRowError,
     _apply_bad_vector_policy,
     _apply_deferred_bad_vector_policy,
     _assert_lancedb_table_ready,
@@ -90,7 +89,7 @@ from nemo_retriever.common.vdb.lancedb_schema import (
     lancedb_schema,
     normalize_content_type,
 )
-from nemo_retriever.common.vdb.records import CanonicalRecordBatch, VdbUploadError
+from nemo_retriever.common.vdb.records import CanonicalRecordBatch
 
 logger = logging.getLogger(__name__)
 
@@ -1754,7 +1753,7 @@ class LanceDB(VDB):
         def recording_input_failures() -> Iterator[pa.RecordBatch]:
             try:
                 yield from batches
-            except (VdbUploadError, OversizedVdbRowError) as exc:
+            except ValueError as exc:  # VdbUploadError, OversizedVdbRowError and bad-vector errors
                 input_failures.append(exc)
                 raise
 

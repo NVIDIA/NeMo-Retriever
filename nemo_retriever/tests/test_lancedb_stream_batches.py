@@ -388,3 +388,15 @@ def test_input_error_after_the_first_batch_keeps_its_type(tmp_path: Path) -> Non
         operator._stream_ingest(iter(_frames(rows, batch_size=50)))
     with pytest.raises(ValueError):
         _table(tmp_path)
+
+
+def test_bad_vector_after_the_first_batch_keeps_its_type(tmp_path: Path) -> None:
+    rows = [_row(index, text="x" * 2000) for index in range(400)]
+    rows.append(_row(400, embedding=_vector(400, dim=DIM + 1)))
+    operator = IngestVdbOperator(
+        vdb=_backend(tmp_path, overwrite=False, on_bad_vectors="error", stream_batch_bytes=64 * 1024)
+    )
+
+    with pytest.raises(ValueError) as caught:
+        operator._stream_ingest(iter(_frames(rows, batch_size=50)))
+    assert not isinstance(caught.value, RuntimeError)
