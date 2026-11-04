@@ -169,10 +169,25 @@ class IngestVdbOperator(AbstractOperator):
         if not self._supports_stream_ingest():
             raise UnsupportedVDBOperation(f"{type(self._vdb).__name__} does not implement stream_ingest()")
 
-        if getattr(self._vdb, "supports_stream_ingest_batches", False):
-            return self._stream_ingest_batches(batches)
+        records: Iterable[dict[str, Any]] = _iter_client_vdb_records(
+            _iter_batch_rows(batches),
+            embedding_column=self._embedding_column,
+        )
+        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
+            undecorated_records = records
 
-        record_stream = self._canonical_records(batches)
+            def with_sidecar() -> Iterator[dict[str, Any]]:
+                for record in undecorated_records:
+                    yield _apply_sidecar_metadata_to_client_record(
+                        record,
+                        lookup=self._sidecar_lookup,
+                        meta_fields=self._sidecar_spec["meta_fields"],
+                        join_key=self._sidecar_spec["meta_join_key"],
+                    )
+
+            records = with_sidecar()
+
+        record_stream = records
         exhausted = False
         submitted_records = 0
 
@@ -187,27 +202,6 @@ class IngestVdbOperator(AbstractOperator):
         if not exhausted:
             raise RuntimeError(
                 f"{type(self._vdb).__name__}.stream_ingest() returned before consuming the record stream"
-            )
-        return submitted_records
-
-    def _stream_ingest_batches(self, batches: Iterable[pd.DataFrame]) -> int:
-        """Stream canonical record batches, keeping each batch's vectors in one Arrow column."""
-
-        record_batches = self._canonical_batches(batches)
-        exhausted = False
-        submitted_records = 0
-
-        def required_batches() -> Iterator[CanonicalRecordBatch]:
-            nonlocal exhausted, submitted_records
-            for batch in record_batches:
-                submitted_records += len(batch.records)
-                yield batch
-            exhausted = True
-
-        self._vdb.stream_ingest_batches(required_batches())
-        if not exhausted:
-            raise RuntimeError(
-                f"{type(self._vdb).__name__}.stream_ingest_batches() returned before consuming the record stream"
             )
         return submitted_records
 
@@ -238,7 +232,7 @@ class IngestVdbOperator(AbstractOperator):
         """Ray-worker side of the worker-native sink: write the canonical projection of one block."""
 
         tally = ConversionTally(embedding_column=self._embedding_column)
-        if self._vdb.supports_stream_ingest_batches:
+        if self._vdb.worker_write_batches:
             receipt = self._vdb.write_partition(self._canonical_batches([frame], tally=tally))
         else:
             receipt = self._vdb.write_partition_records(self._canonical_records([frame], tally=tally))

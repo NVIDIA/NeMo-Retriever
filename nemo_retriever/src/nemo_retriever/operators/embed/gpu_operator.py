@@ -58,6 +58,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
             return
 
         self._model = local_spec.create()
+        self._model._ensure_loaded()
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

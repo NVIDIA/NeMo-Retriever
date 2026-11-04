@@ -44,6 +44,7 @@ def test_extract_batch_options_preserve_existing_positional_arguments() -> None:
     assert batch.nemotron_parse_gpus_per_actor == 1.0
     assert batch.page_elements_repartition is None
     assert batch.table_structure_repartition is None
+    assert batch.pdf_extract_rows_per_block is None
 
 
 def _linear_nodes(graph):
@@ -818,6 +819,32 @@ def test_batch_tuning_to_node_overrides_repartitions_pdf_pages_for_extraction() 
     assert overrides["PDFExtractionActor"]["batch_size"] == 4
     assert overrides["PDFExtractionActor"]["target_num_rows_per_block"] == 4
     assert overrides["PDFExtractionActor"]["num_cpus"] == 2.0
+
+
+def test_batch_tuning_to_node_overrides_sets_pdf_extract_rows_per_block() -> None:
+    extract_params = ExtractParams(
+        batch_tuning=BatchTuningParams(pdf_extract_batch_size=4, pdf_extract_rows_per_block=16),
+    )
+
+    overrides = batch_tuning_to_node_overrides(extract_params=extract_params, embed_params=None)
+
+    assert overrides["PDFExtractionActor"]["batch_size"] == 4
+    assert overrides["PDFExtractionActor"]["target_num_rows_per_block"] == 16
+
+
+def test_ingest_plan_forwards_pdf_extract_rows_per_block() -> None:
+    from nemo_retriever.ingest.plan import _build_extract_batch_tuning
+
+    tuning = _build_extract_batch_tuning(IngestExtractBatchOptions(pdf_extract_rows_per_block=16))
+
+    assert tuning is not None
+    assert tuning.pdf_extract_rows_per_block == 16
+    assert tuning.pdf_extract_batch_size == 4
+
+
+def test_pdf_extract_rows_per_block_rejects_non_positive() -> None:
+    with pytest.raises(ValueError):
+        BatchTuningParams(pdf_extract_rows_per_block=0)
 
 
 def test_batch_tuning_to_node_overrides_adds_default_store_tuning() -> None:

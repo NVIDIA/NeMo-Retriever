@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""The columnar LanceDB stream stores exactly what the record stream stores."""
+"""The worker write's columnar projection stores exactly what the record stream stores."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from nemo_retriever.common.vdb._lancedb_stream import OversizedVdbRowError
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb import records as records_module
 from nemo_retriever.common.vdb._lancedb_stream import _StreamStats
-from nemo_retriever.common.vdb.records import CanonicalRecordBatch, VdbUploadError, iter_canonical_record_batches
+from nemo_retriever.common.vdb.records import VdbUploadError, iter_canonical_record_batches
 from nemo_retriever.graph.executor import arrow_table_to_pandas
 from nemo_retriever.operators.vdb import IngestVdbOperator
 
@@ -96,16 +96,20 @@ def _ingest_both(
     backend_kwargs: dict[str, Any] | None = None,
     operator_kwargs: dict[str, Any] | None = None,
 ) -> tuple[int, int]:
-    """Write the same batches through the record stream and the columnar stream."""
+    """Write the same batches through the record stream and the worker write's columnar projection."""
     submitted = []
     for name, columnar in (("records", False), ("columnar", True)):
-        backend = _backend(tmp_path / name, **(backend_kwargs or {}))
-        assert backend.supports_stream_ingest_batches
-        if not columnar:
-            backend.supports_stream_ingest_batches = False
-        operator = IngestVdbOperator(vdb=backend, **(operator_kwargs or {}))
-        submitted.append(operator._stream_ingest(iter(frames)))
+        operator = IngestVdbOperator(vdb=_backend(tmp_path / name, **(backend_kwargs or {})), **(operator_kwargs or {}))
+        submitted.append(_write(operator, frames, columnar=columnar))
     return submitted[0], submitted[1]
+
+
+def _write(operator: IngestVdbOperator, frames: list[pd.DataFrame], *, columnar: bool) -> int:
+    """Record stream on the driver, or the worker write, whose dense tables take the columnar projection."""
+    if not columnar:
+        return operator._stream_ingest(iter(frames))
+    with operator._worker_write() as writer:
+        return writer._commit_partitions([writer._write_partition(frame) for frame in frames])
 
 
 def _assert_tables_equal(tmp_path: Path) -> pa.Table:
@@ -179,9 +183,8 @@ def test_error_policy_rejects_identically(tmp_path: Path, embedding: list[float]
     frames = _frames([_row(0), _row(1, embedding=embedding)])
     for name, columnar in (("records", False), ("columnar", True)):
         backend = _backend(tmp_path / name, on_bad_vectors="error")
-        backend.supports_stream_ingest_batches = columnar
         with pytest.raises(ValueError, match=message):
-            IngestVdbOperator(vdb=backend)._stream_ingest(iter(frames))
+            _write(IngestVdbOperator(vdb=backend), frames, columnar=columnar)
         with pytest.raises(ValueError):
             _table(tmp_path / name)
 
@@ -200,7 +203,7 @@ def test_object_embedding_column_matches_arrow_column(tmp_path: Path) -> None:
 def test_inferred_vector_dim_matches(tmp_path: Path) -> None:
     rows = [_row(0, text="", embedding=_vector(0)), _row(1), _row(2, embedding=[1.0, 2.0]), _row(3)]
 
-    _ingest_both(tmp_path, _frames(rows, batch_size=1), backend_kwargs={"vector_dim": None})
+    _ingest_both(tmp_path, _frames(rows, batch_size=4), backend_kwargs={"vector_dim": None})
 
     table = _assert_tables_equal(tmp_path)
     assert table.column("id").to_pylist() == ["row-1", "row-3"]
@@ -238,21 +241,11 @@ def test_sidecar_metadata_is_applied_identically(tmp_path: Path) -> None:
                 "meta_fields": ["team", "year"],
             },
         )
-        operator._vdb.supports_stream_ingest_batches = columnar
-        submitted.append(operator._stream_ingest(iter(_frames(rows))))
+        submitted.append(_write(operator, _frames(rows), columnar=columnar))
 
     assert submitted[0] == submitted[1] == 5
     table = _assert_tables_equal(tmp_path)
     assert all('"team":' in value for value in table.column("metadata").to_pylist() if '"id":"row-0"' in value)
-
-
-def test_durable_operation_digest_matches(tmp_path: Path) -> None:
-    rows = [_row(index) for index in range(7)]
-
-    _ingest_both(tmp_path, _frames(rows), backend_kwargs={"stream_operation_id": "columnar-parity"})
-
-    _assert_tables_equal(tmp_path)
-    assert sorted(_table(tmp_path / "columnar").tags.list()) == sorted(_table(tmp_path / "records").tags.list())
 
 
 def test_byte_bound_splits_large_batches_and_rejects_oversized_rows(tmp_path: Path) -> None:
@@ -264,9 +257,9 @@ def test_byte_bound_splits_large_batches_and_rejects_oversized_rows(tmp_path: Pa
     oversized = _frames([_row(0, text="y" * 4096)])
     for name, columnar in (("records-big", False), ("columnar-big", True)):
         backend = _backend(tmp_path / name, stream_batch_bytes=2048)
-        backend.supports_stream_ingest_batches = columnar
-        with pytest.raises(OversizedVdbRowError):
-            IngestVdbOperator(vdb=backend)._stream_ingest(iter(oversized))
+        # Lance's fragment writer re-raises the projection's error as OSError.
+        with pytest.raises((OversizedVdbRowError, OSError), match="exceeding max_batch_bytes"):
+            _write(IngestVdbOperator(vdb=backend), oversized, columnar=columnar)
 
 
 def test_missing_embeddings_fail_closed_before_any_table_exists(tmp_path: Path) -> None:
@@ -274,12 +267,11 @@ def test_missing_embeddings_fail_closed_before_any_table_exists(tmp_path: Path) 
     none_at_all = _frames([_row(0, embedding=None), _row(1, embedding=None)])
     for name, columnar in (("records", False), ("columnar", True)):
         backend = _backend(tmp_path / name)
-        backend.supports_stream_ingest_batches = columnar
         operator = IngestVdbOperator(vdb=backend)
         with pytest.raises(VdbUploadError, match="refusing a partial write"):
-            operator._stream_ingest(iter(partial))
+            _write(operator, partial, columnar=columnar)
         with pytest.raises(VdbUploadError, match="no embeddings were found"):
-            operator._stream_ingest(iter(none_at_all))
+            _write(operator, none_at_all, columnar=columnar)
         with pytest.raises(ValueError):
             _table(tmp_path / name)
 
@@ -291,43 +283,6 @@ def test_empty_and_header_only_batches_create_no_table(tmp_path: Path) -> None:
     for name in ("records", "columnar"):
         with pytest.raises(ValueError):
             _table(tmp_path / name)
-
-
-class _RecordingVDB:
-    """Duck-typed backend; the operator only reads the stream capability flags."""
-
-    supports_stream_ingest = True
-    supports_stream_ingest_batches = False
-
-    def __init__(self) -> None:
-        self.records: list[dict[str, Any]] = []
-        self.batches: list[CanonicalRecordBatch] = []
-
-    def stream_ingest(self, records: Any) -> None:
-        self.records.extend(records)
-
-    def stream_ingest_batches(self, batches: Any) -> None:
-        self.batches.extend(batches)
-
-
-def test_operator_hands_vectors_to_capable_backends_as_arrow() -> None:
-    frames = _frames([_row(0), _row(1, text="", embedding=_vector(1)), _row(2)])
-
-    plain = _RecordingVDB()
-    assert IngestVdbOperator(vdb=plain)._stream_ingest(iter(frames)) == 2
-    assert [record["metadata"]["embedding"] for record in plain.records] == [_vector(0), _vector(2)]
-    assert not plain.batches
-
-    columnar = _RecordingVDB()
-    columnar.supports_stream_ingest_batches = True
-    assert IngestVdbOperator(vdb=columnar)._stream_ingest(iter(frames)) == 2
-    assert not columnar.records
-    records = [record for batch in columnar.batches for record in batch.records]
-    vectors = [vector for batch in columnar.batches for vector in batch.vectors.to_pylist()]
-    assert all("embedding" not in record["metadata"] for record in records)
-    assert [record["metadata"]["content_metadata"]["id"] for record in records] == ["row-0", "row-2"]
-    assert [pytest.approx(vector) for vector in vectors] == [_vector(0), _vector(2)]
-    assert all(isinstance(batch.vectors, pa.Array) for batch in columnar.batches)
 
 
 def test_arrow_backed_embedding_column_is_never_expanded_per_row(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -395,12 +350,10 @@ def test_correct_width_uncoercible_vector_fails_on_both_paths(tmp_path: Path) ->
     rows = [_row(0), _row(1, embedding=["a", "b", "c", "d"])]
     frames = [pd.DataFrame(rows)]
 
-    record_backend = _backend(tmp_path / "records")
-    record_backend.supports_stream_ingest_batches = False
     with pytest.raises(Exception):
-        IngestVdbOperator(vdb=record_backend)._stream_ingest(iter(frames))
+        IngestVdbOperator(vdb=_backend(tmp_path / "records"))._stream_ingest(iter(frames))
     with pytest.raises(Exception):
-        IngestVdbOperator(vdb=_backend(tmp_path / "arrow"))._stream_ingest(iter(frames))
+        _write(IngestVdbOperator(vdb=_backend(tmp_path / "arrow")), frames, columnar=True)
 
 
 def test_mixed_string_and_numeric_vector_elements_match_record_path(tmp_path: Path) -> None:

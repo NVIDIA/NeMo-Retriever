@@ -176,8 +176,48 @@ For typed ingest plans, set the extraction controls in
 `IngestEmbedBatchOptions`. These optional fields default to `None`, which
 resolves to the defaults described above: on, except that page elements and
 embedding skip their repartition steps when the default per-GPU pools apply.
+
 Compare throughput, memory use, errors, and extracted outputs against a
 representative baseline after changing these controls.
+
+### Set the PDF extraction block size
+
+In batch mode, the library repartitions pages before PDF extraction, targeting
+`pdf_extract_batch_size` rows per Ray block. Each extraction task processes one
+block. The target is best effort, so some blocks can hold fewer rows. To set the
+block-size target separately from the batch size, use
+`pdf_extract_rows_per_block` in `BatchTuningParams`. The default is `None`,
+which keeps the target equal to `pdf_extract_batch_size`.
+
+Larger blocks create fewer extraction tasks for the same pages. On long batch
+jobs with many small tasks, fewer tasks can keep downstream stages busier. A
+slow page costs more when it shares a larger block, because the other pages in
+that task wait for it.
+
+The following example keeps 4 pages per extraction batch and targets 16 pages
+per extraction task. Replace `/path/to/your/document.pdf` with a PDF file that
+you supply.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(["/path/to/your/document.pdf"])
+    .extract(
+        batch_tuning=BatchTuningParams(
+            pdf_extract_batch_size=4,
+            pdf_extract_rows_per_block=16,
+        )
+    )
+    .embed()
+    .ingest()
+)
+```
+
+For typed ingest plans, set `pdf_extract_rows_per_block` in
+`IngestExtractBatchOptions`.
 
 ## Profile batch ingestion with Nsight Systems
 
@@ -215,7 +255,7 @@ workstation with the interface installed. Search the timeline for `nrl.batch::`,
 | `nrl.batch::table_structure.batch` | One Table Structure actor processing call. |
 | `nrl.batch::ocr.startup` | One OCR actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
 | `nrl.batch::ocr.batch` | One OCR actor processing call. |
-| `nrl.batch::embedding.startup` | One embedding actor constructor. A backend that loads lazily can perform more startup work in the first batch. |
+| `nrl.batch::embedding.startup` | One embedding actor constructor. A local embedding model loads here, including its vLLM engine, so this range includes the model load time. |
 | `nrl.batch::embedding.batch` | One embedding actor processing call. |
 | `nrl.batch::ray.materialize` | Materialization of a terminal Ray dataset into a pandas DataFrame. This range can include lazy upstream execution. |
 | `nrl.batch::pipeline.terminal_stream` | Consumption of the lazy upstream pipeline and streaming of its records to the vector database backend. This range is not pure vector database time. |

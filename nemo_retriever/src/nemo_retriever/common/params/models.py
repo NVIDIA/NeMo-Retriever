@@ -497,6 +497,14 @@ class BatchTuningParams(_ParamsModel):
     debug_run_id: str = "unknown"
     pdf_split_batch_size: int = 1
     pdf_extract_batch_size: int = 4
+    pdf_extract_rows_per_block: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Target rows per Ray block before PDF extraction, which sets the pages per extraction task. "
+            "None uses pdf_extract_batch_size."
+        ),
+    )
     pdf_extract_num_cpus: float = 1
     pdf_extract_workers: Optional[int] = None
     page_elements_batch_size: int = 24

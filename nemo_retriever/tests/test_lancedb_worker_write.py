@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -18,8 +17,7 @@ import pytest
 lancedb = pytest.importorskip("lancedb", minversion="0.34.0")
 lance = pytest.importorskip("lance")
 
-from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError
-from nemo_retriever.common.vdb._lancedb_stream_state import VdbOperationConflict
+from nemo_retriever.common.vdb._lancedb_stream import DataCommittedFinalizationError, VdbWriteNotFinalized
 from nemo_retriever.common.vdb.lancedb import LanceDB, _table_token
 from nemo_retriever.common.vdb.records import VdbUploadError
 from nemo_retriever.graph.executor import arrow_table_to_pandas
@@ -78,7 +76,6 @@ def test_worker_write_matches_columnar_stream(tmp_path: Path) -> None:
     frames = _frames(rows, batch_size=2)
 
     stream_backend = _backend(tmp_path / "stream")
-    assert stream_backend.supports_stream_ingest_batches
     stream_submitted = IngestVdbOperator(vdb=stream_backend)._stream_ingest(iter(frames))
 
     worker_backend = _backend(tmp_path / "worker")
@@ -97,7 +94,7 @@ def test_worker_write_matches_columnar_stream(tmp_path: Path) -> None:
     assert worker_dataset.data_storage_version == stream_dataset.data_storage_version
 
 
-def test_worker_write_overwrite_then_append(tmp_path: Path) -> None:
+def test_worker_write_overwrites_and_refuses_to_append(tmp_path: Path) -> None:
     frames = _frames([_row(index) for index in range(5)], batch_size=3)
     uri = tmp_path / "db"
 
@@ -105,8 +102,25 @@ def test_worker_write_overwrite_then_append(tmp_path: Path) -> None:
     assert _worker_write(_backend(uri), frames) == 5
     assert _rows(uri).num_rows == 5
 
-    assert _worker_write(_backend(uri, overwrite=False), frames) == 5
-    assert _rows(uri).num_rows == 10
+    with pytest.raises(ValueError, match="append with stream_ingest"):
+        _worker_write(_backend(uri, overwrite=False), frames)
+    assert _rows(uri).num_rows == 5
+
+
+def test_worker_overwrite_refuses_a_table_with_an_unfinished_durable_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uri = tmp_path / "db"
+    _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    durable = IngestVdbOperator(vdb=_backend(uri, overwrite=False, stream_operation_id="job-1"))
+    monkeypatch.setattr(LanceDB, "_finalize_stream_write", lambda self, **kwargs: (_ for _ in ()).throw(OSError("x")))
+    with pytest.raises(DataCommittedFinalizationError):
+        durable._stream_ingest(iter(_frames([_row(1)], batch_size=1)))
+    monkeypatch.undo()
+
+    with pytest.raises(VdbWriteNotFinalized):
+        _worker_write(_backend(uri), _frames([_row(2)], batch_size=1))
+    assert lance.dataset(str(uri / "chunks.lance")).count_rows() == 2
 
 
 def test_worker_write_without_partitions_creates_no_table(tmp_path: Path) -> None:
@@ -115,10 +129,16 @@ def test_worker_write_without_partitions_creates_no_table(tmp_path: Path) -> Non
     assert "chunks" not in lancedb.connect(str(tmp_path / "db")).list_tables().tables
 
 
-def test_worker_write_is_the_default_for_local_tables(tmp_path: Path) -> None:
-    assert _backend(tmp_path / "db").supports_worker_write
-    assert _backend(tmp_path / "db", sparse=True).supports_worker_write
-    assert _backend(tmp_path / "db", stream_operation_id="job-1").supports_worker_write
+def test_worker_write_covers_one_shot_ingest_only(tmp_path: Path) -> None:
+    uri = tmp_path / "db"
+    assert _backend(uri).supports_worker_write
+    assert _backend(uri, sparse=True).supports_worker_write
+    assert _backend(uri, overwrite=False).supports_worker_write
+    assert not _backend(uri, stream_operation_id="job-1").supports_worker_write
+
+    _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    assert _backend(uri).supports_worker_write
+    assert not _backend(uri, overwrite=False).supports_worker_write
 
 
 def _vector_pages(uri: Path) -> list[tuple[int, int]]:
@@ -161,22 +181,15 @@ def _wide_frames(count: int, *, dim: int, batch_size: int) -> list[pd.DataFrame]
     return [arrow_table_to_pandas(table.slice(start, batch_size)) for start in range(0, count, batch_size)]
 
 
-def test_optimize_keeps_vector_page_size(tmp_path: Path) -> None:
-    from nemo_retriever.common.vdb.lancedb import _LANCE_ROWS_PER_PAGE, _optimize_lancedb_table
+def test_worker_write_keeps_vector_pages_at_most_1024_rows(tmp_path: Path) -> None:
+    from nemo_retriever.common.vdb.lancedb import _LANCE_ROWS_PER_PAGE
 
     dim, count = 2048, 3 * _LANCE_ROWS_PER_PAGE
     uri = tmp_path / "db"
     frames = _wide_frames(count, dim=dim, batch_size=count // 2)
     assert _worker_write(_backend(uri, vector_dim=dim), frames) == count
-    before = _vector_pages(uri)
-    assert len(before) == 2 and _max_rows_per_page(before) <= _LANCE_ROWS_PER_PAGE, before
-
-    table = lancedb.connect(str(uri)).open_table("chunks")
-    _optimize_lancedb_table(table)
-    after = _vector_pages(uri)
-    assert len(after) == 1 and sum(rows for rows, _ in after) == count, after
-    assert _max_rows_per_page(after) <= _LANCE_ROWS_PER_PAGE, after
-    assert _rows(uri).num_rows == count
+    layout = _vector_pages(uri)
+    assert len(layout) == 2 and _max_rows_per_page(layout) <= _LANCE_ROWS_PER_PAGE, layout
 
 
 def _unsearchable_row(row_id: int) -> dict[str, Any]:
@@ -256,19 +269,6 @@ def test_rejected_upload_removes_its_fragment_files(tmp_path: Path) -> None:
         _worker_write(_backend(uri), _frames([_row(1), _row(2), missing], batch_size=2))
     assert _data_files(uri) == []
     assert _staged_files(uri) == []
-
-
-def test_rejected_append_keeps_committed_files_and_removes_its_own(tmp_path: Path) -> None:
-    uri = tmp_path / "db"
-    first = _backend(uri, embedding_model_name="model-a")
-    _worker_write(first, _frames([_row(index) for index in range(4)], batch_size=2))
-    committed = _data_files(uri)
-    append = _backend(uri, overwrite=False, embedding_model_name="another-model")
-    with pytest.raises(ValueError, match="model"):
-        _worker_write(append, _frames([_row(index) for index in range(4, 8)], batch_size=2))
-    assert _data_files(uri) == committed
-    assert _staged_files(uri) == []
-    assert _rows(uri).num_rows == 4
 
 
 def test_next_write_removes_files_staged_by_a_killed_process(tmp_path: Path) -> None:
@@ -360,39 +360,6 @@ def test_failed_write_task_leaves_no_fragment_files(tmp_path: Path, monkeypatch:
     assert _staged_files(uri) == []
 
 
-def test_worker_write_operation_id_retry_does_not_append_again(tmp_path: Path) -> None:
-    uri = tmp_path / "db"
-    rows = [_row(index) for index in range(6)]
-    assert _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-1"), _frames(rows, batch_size=2)) == 6
-    committed = _data_files(uri)
-    # Different partitioning, same rows: the digest is order- and partition-independent.
-    _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-1"), _frames(rows[::-1], batch_size=4))
-    assert _rows(uri).num_rows == 6
-    assert _data_files(uri) == committed
-
-
-def test_worker_write_operation_id_rejects_different_rows(tmp_path: Path) -> None:
-    uri = tmp_path / "db"
-    _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-1"), _frames([_row(1)], batch_size=1))
-    committed = _data_files(uri)
-    with pytest.raises(VdbOperationConflict):
-        _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-1"), _frames([_row(2)], batch_size=1))
-    assert _data_files(uri) == committed
-
-
-def test_worker_write_operation_id_resumes_after_finalization_failure(tmp_path: Path, monkeypatch) -> None:
-    uri = tmp_path / "db"
-    _worker_write(_backend(uri, overwrite=False), _frames([_row(100)], batch_size=1))
-    frames = _frames([_row(index) for index in range(4)], batch_size=2)
-    original = LanceDB._finalize_stream_write
-    monkeypatch.setattr(LanceDB, "_finalize_stream_write", lambda self, **kwargs: (_ for _ in ()).throw(OSError("x")))
-    with pytest.raises(DataCommittedFinalizationError):
-        _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-2"), frames)
-    monkeypatch.setattr(LanceDB, "_finalize_stream_write", original)
-    _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-2"), frames)
-    assert _rows(uri).num_rows == 5
-
-
 def test_worker_write_applies_sidecar_metadata_like_the_stream(tmp_path: Path) -> None:
     sidecar = tmp_path / "sidecar.csv"
     pd.DataFrame({"source": ["/tmp/doc-0.pdf", "/tmp/doc-1.pdf"], "team": ["alpha", "beta"]}).to_csv(
@@ -427,7 +394,7 @@ def test_worker_write_applies_sidecar_metadata_like_the_stream(tmp_path: Path) -
 def test_worker_write_sparse_table_matches_the_stream(tmp_path: Path) -> None:
     frames = _frames([_row(0), _row(1, text=""), *(_row(index) for index in range(2, 6))], batch_size=2)
     stream_backend = _backend(tmp_path / "stream", sparse=True, vector_dim=None)
-    assert not stream_backend.supports_stream_ingest_batches
+    assert not stream_backend.worker_write_batches
     stream_submitted = IngestVdbOperator(vdb=stream_backend)._stream_ingest(iter(frames))
 
     worker_backend = _backend(tmp_path / "worker", sparse=True, vector_dim=None)
@@ -470,17 +437,6 @@ def test_return_results_writes_from_workers_and_returns_the_rows(monkeypatch: py
     assert result["read"].tolist() == ["materialized"]
 
 
-def test_worker_write_operation_id_empty_retry_cannot_skip_finalization(tmp_path: Path, monkeypatch) -> None:
-    uri = tmp_path / "db"
-    _worker_write(_backend(uri, overwrite=False), _frames([_row(100)], batch_size=1))
-    monkeypatch.setattr(LanceDB, "_finalize_stream_write", lambda self, **kwargs: (_ for _ in ()).throw(OSError("x")))
-    with pytest.raises(DataCommittedFinalizationError):
-        _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-3"), _frames([_row(0)], batch_size=1))
-    monkeypatch.undo()
-    with pytest.raises(VdbOperationConflict):
-        _worker_write(_backend(uri, overwrite=False, stream_operation_id="job-3"), [])
-
-
 def test_worker_write_ships_a_supplied_backend_to_the_tasks(tmp_path: Path) -> None:
     cloudpickle = pytest.importorskip("cloudpickle")
     operator = IngestVdbOperator(vdb=_backend(tmp_path / "db"))
@@ -491,40 +447,6 @@ def test_worker_write_ships_a_supplied_backend_to_the_tasks(tmp_path: Path) -> N
     assert _rows(tmp_path / "db").num_rows == 5
 
 
-def test_worker_append_without_vector_dim_takes_the_table_width(tmp_path: Path) -> None:
-    short = {**_row(0), "embedding": [0.5, 0.5, 0.5]}
-    frames = _frames([short, _row(1), _row(2)], batch_size=3)
-    for name in ("stream", "worker"):
-        _worker_write(_backend(tmp_path / name), _frames([_row(100)], batch_size=1))
-
-    stream = IngestVdbOperator(vdb=_backend(tmp_path / "stream", overwrite=False, vector_dim=None))
-    stream_submitted = stream._stream_ingest(iter(frames))
-    operator = IngestVdbOperator(vdb=_backend(tmp_path / "worker", overwrite=False, vector_dim=None))
-    assert _operator_write(operator, frames) == stream_submitted
-
-    assert _rows(tmp_path / "worker").equals(_rows(tmp_path / "stream"))
-
-
-def test_worker_append_with_every_row_dropped_keeps_the_table_version(tmp_path: Path) -> None:
-    bad = {**_row(5), "embedding": [float("nan")] * DIM}
-    frames = _frames([bad], batch_size=1)
-    versions = {}
-    for name in ("stream", "worker"):
-        _worker_write(_backend(tmp_path / name), _frames([_row(100)], batch_size=1))
-        backend = _backend(tmp_path / name, overwrite=False, on_bad_vectors="drop", validate_vector_length=False)
-        before = lancedb.connect(str(tmp_path / name)).open_table("chunks").version
-        files_before = _data_files(tmp_path / name)
-        if name == "stream":
-            IngestVdbOperator(vdb=backend)._stream_ingest(iter(frames))
-        else:
-            _worker_write(backend, frames)
-        versions[name] = lancedb.connect(str(tmp_path / name)).open_table("chunks").version - before
-        assert _data_files(tmp_path / name) == files_before
-
-    assert versions == {"stream": 0, "worker": 0}
-    assert _rows(tmp_path / "worker").equals(_rows(tmp_path / "stream"))
-
-
 def test_worker_write_only_backend_is_the_terminal_sink() -> None:
     from nemo_retriever.graph.executor import RayDataExecutor
     from nemo_retriever.graph.pipeline_graph import Node
@@ -533,38 +455,6 @@ def test_worker_write_only_backend_is_the_terminal_sink() -> None:
     node = Node(IngestVdbOperator(vdb=backend))
 
     assert RayDataExecutor._stream_ingest_index([node], require_terminal=True) == 0
-
-
-def _reorder_columns(dataset: Any) -> None:
-    table = dataset.to_table()
-    lance.write_dataset(table.select(list(reversed(table.column_names))), dataset.uri, mode="overwrite")
-
-
-def _drop_and_re_add_text(dataset: Any) -> None:
-    texts = dataset.to_table(columns=["id", "text"])
-    dataset.drop_columns(["text"])
-    dataset.add_columns(pa.field("text", pa.string()))
-    dataset.merge_insert("id").when_matched_update_all().execute(texts)
-
-
-@pytest.mark.parametrize("evolve", [_reorder_columns, _drop_and_re_add_text], ids=["reordered", "re-added"])
-def test_worker_append_writes_each_value_to_its_own_column(tmp_path: Path, evolve) -> None:
-    uri = tmp_path / "db"
-    _worker_write(_backend(uri), _frames([_row(index) for index in range(3)], batch_size=3))
-    evolve(lance.dataset(str(uri / "chunks.lance")))
-
-    assert (
-        _worker_write(_backend(uri, overwrite=False), _frames([_row(index) for index in range(3, 6)], batch_size=2))
-        == 3
-    )
-
-    rows = {row["id"]: row for row in _rows(uri).to_pylist()}
-    assert len(rows) == 6
-    for index in range(6):
-        row = rows[f"row-{index}"]
-        assert row["text"] == f"chunk {index}"
-        assert json.loads(row["source"])["source_id"] == f"/tmp/doc-{index % 3}.pdf"
-        assert row["vector"] == pytest.approx(_row(index)["embedding"])
 
 
 def test_worker_write_tasks_in_another_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -595,85 +485,3 @@ def test_worker_write_expands_a_home_relative_uri(tmp_path: Path, monkeypatch: p
 
     assert _rows(home / "db").num_rows == 3
     assert not list(cwd.rglob("*"))
-
-
-def _fail_commit(monkeypatch: pytest.MonkeyPatch, *, after_commit: bool) -> None:
-    import lance
-
-    commit = lance.LanceDataset.commit
-
-    def failing_commit(*args: Any, **kwargs: Any) -> Any:
-        if after_commit:
-            commit(*args, **kwargs)
-        raise OSError("injected commit failure")
-
-    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(failing_commit))
-
-
-@pytest.mark.parametrize("overwrite", [True, False], ids=["create", "append"])
-def test_failed_commit_removes_the_files_it_moved(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, overwrite: bool
-) -> None:
-    uri = tmp_path / "db"
-    if not overwrite:
-        _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
-    committed = _data_files(uri)
-    _fail_commit(monkeypatch, after_commit=False)
-
-    with pytest.raises(OSError, match="injected commit failure"):
-        _worker_write(_backend(uri, overwrite=overwrite), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert _data_files(uri) == committed
-    assert _staged_files(uri) == []
-
-
-def test_failed_partial_move_removes_the_files_it_moved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-
-    uri = tmp_path / "db"
-    replace, calls = os.replace, []
-
-    def failing_replace(source: Any, destination: Any) -> None:
-        calls.append(source)
-        if len(calls) == 2:
-            raise OSError("injected move failure")
-        replace(source, destination)
-
-    monkeypatch.setattr("nemo_retriever.common.vdb.lancedb.os.replace", failing_replace)
-    with pytest.raises(OSError, match="injected move failure"):
-        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert _data_files(uri) == []
-    assert _staged_files(uri) == []
-
-
-def test_commit_error_after_the_commit_keeps_its_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    uri = tmp_path / "db"
-    _fail_commit(monkeypatch, after_commit=True)
-
-    with pytest.raises(OSError, match="injected commit failure"):
-        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert _rows(uri).num_rows == 2
-
-
-def test_commit_error_after_another_client_overwrote_keeps_its_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import lance
-
-    uri = tmp_path / "db"
-    table_uri = str(uri / "chunks.lance")
-    commit, versions = lance.LanceDataset.commit, []
-
-    def commit_then_overwrite(*args: Any, **kwargs: Any) -> Any:
-        landed = commit(*args, **kwargs)
-        versions.append(int(landed.version))
-        lance.write_dataset(landed.to_table().slice(0, 1), table_uri, mode="overwrite")
-        raise OSError("injected commit failure")
-
-    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(commit_then_overwrite))
-    with pytest.raises(OSError, match="injected commit failure"):
-        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
-
-    assert lance.dataset(table_uri, version=versions[0]).to_table().num_rows == 2
