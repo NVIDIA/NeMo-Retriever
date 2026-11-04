@@ -287,6 +287,40 @@ def test_unknown_local_actor_model_is_not_silently_replaced() -> None:
         actor._ensure_model()
 
 
+def test_actor_failures_are_reported_for_every_row(capsys: pytest.CaptureFixture[str]) -> None:
+    actor = NemotronParseGPUActor(nemotron_parse_model="unsupported")
+    result = actor(pd.DataFrame([{"page_image": None}, {"page_image": None}]))
+    assert [item["error"]["type"] for item in result["nemotron_parse_v1_2"]] == ["ValueError", "ValueError"]
+    assert "Warning: Nemotron Parse batch failed: ValueError: Unsupported local" in capsys.readouterr().out
+
+
+def test_local_page_results_record_completion(runtime: SimpleNamespace, capsys: pytest.CaptureFixture[str]) -> None:
+    import base64
+    import io
+
+    from nemo_retriever.models.local.nemotron_parse35 import ParsePageResult
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 20)).save(buffer, format="PNG")
+    image = {"image_b64": base64.b64encode(buffer.getvalue()).decode()}
+    model = MagicMock(spec=["invoke_batch_results"])
+    model.invoke_batch_results.return_value = [
+        ParsePageResult(text=TAGGED_OUTPUT, finish_reason="stop", output_tokens=12),
+        ParsePageResult(text=TAGGED_OUTPUT + "<x_0.1><y_0.3>Unfinished", finish_reason="length", output_tokens=9000),
+    ]
+    frame = pd.DataFrame(
+        [
+            {"path": "a.pdf", "page_number": 1, "page_image": image},
+            {"path": "a.pdf", "page_number": 2, "page_image": image},
+        ]
+    )
+    result = nemotron_parse_pages(frame, model=model, extract_text=True)
+    assert result["text"].tolist() == ["Body text", "Body text"]
+    assert [item["completion"]["status"] for item in result["nemotron_parse_v1_2"]] == ["complete", "incomplete"]
+    assert result.iloc[1]["nemotron_parse_v1_2"]["completion"]["output_tokens"] == 9000
+    assert "Warning: Nemotron Parse page incomplete: path=a.pdf page=2 finish_reason=length" in capsys.readouterr().out
+
+
 def test_native_output_uses_existing_pipeline_routing(runtime: SimpleNamespace) -> None:
     import base64
     import io
