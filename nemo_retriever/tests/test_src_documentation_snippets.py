@@ -52,7 +52,7 @@ def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
 _MD_BLOCKS = _iter_markdown_python_blocks()
 _PUBLIC_RETRIEVER_DOCS = (
     "README.md",
-    "docs/docs/extraction/vdbs.md",
+    "docs/docs/extraction/collections/vdbs.md",
     "examples/building_vdb_operator.ipynb",
     "examples/nemo_retriever_retriever_query_metadata_filter.ipynb",
     "nemo_retriever/README.md",
@@ -61,6 +61,9 @@ _PUBLIC_RETRIEVER_DOCS = (
     "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
     "nemo_retriever/src/nemo_retriever/common/vdb/README.md",
 )
+_PUBLIC_DOC_LEGACY_PATHS = {
+    "docs/docs/extraction/collections/vdbs.md": "docs/docs/extraction/vdbs.md",
+}
 _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
     {
         "vdb",
@@ -78,6 +81,9 @@ def _public_doc_path(root: Path, rel_path: str) -> Path | None:
     path = root / rel_path
     if path.exists():
         return path
+    legacy_path = _PUBLIC_DOC_LEGACY_PATHS.get(rel_path)
+    if legacy_path is not None and (root / legacy_path).exists():
+        return root / legacy_path
     repo_only_doc = rel_path == "README.md" or rel_path.startswith(("docs/", "examples/"))
     package_only_image = not (root / "README.md").exists() and not (root / "docs").exists()
     if repo_only_doc and package_only_image:
