@@ -365,8 +365,9 @@ staging directory beside the table. The driver commit moves them into the table.
 A write that fails, is rejected (for example because searchable rows have no
 embeddings), or is interrupted before the commit leaves no files in the table: its staging
 directory is deleted, and the next write to the table deletes one left by a
-killed process. If the commit itself fails, the files it moved stay in the table
-unreferenced; rerun the ingest. As on the streaming path, writes to one table
+killed process. If the commit itself fails, the files it moved are deleted, unless
+the table version changed, because the commit may then have landed. In that case
+the files stay, and any that no version references are unused. As on the streaming path, writes to one table
 run one at a time.
 
 Sparse (full-text only) tables and sidecar metadata use the same worker writes.

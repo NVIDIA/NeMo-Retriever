@@ -485,3 +485,85 @@ def test_worker_write_expands_a_home_relative_uri(tmp_path: Path, monkeypatch: p
 
     assert _rows(home / "db").num_rows == 3
     assert not list(cwd.rglob("*"))
+
+
+def _fail_commit(monkeypatch: pytest.MonkeyPatch, *, after_commit: bool) -> None:
+    import lance
+
+    commit = lance.LanceDataset.commit
+
+    def failing_commit(*args: Any, **kwargs: Any) -> Any:
+        if after_commit:
+            commit(*args, **kwargs)
+        raise OSError("injected commit failure")
+
+    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(failing_commit))
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["create", "overwrite"])
+def test_failed_commit_removes_the_files_it_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bool
+) -> None:
+    uri = tmp_path / "db"
+    if existing:
+        _worker_write(_backend(uri), _frames([_row(0)], batch_size=1))
+    committed = _data_files(uri)
+    _fail_commit(monkeypatch, after_commit=False)
+
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri, overwrite=True), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _data_files(uri) == committed
+    assert _staged_files(uri) == []
+
+
+def test_failed_partial_move_removes_the_files_it_moved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    uri = tmp_path / "db"
+    replace, calls = os.replace, []
+
+    def failing_replace(source: Any, destination: Any) -> None:
+        calls.append(source)
+        if len(calls) == 2:
+            raise OSError("injected move failure")
+        replace(source, destination)
+
+    monkeypatch.setattr("nemo_retriever.common.vdb.lancedb.os.replace", failing_replace)
+    with pytest.raises(OSError, match="injected move failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _data_files(uri) == []
+    assert _staged_files(uri) == []
+
+
+def test_commit_error_after_the_commit_keeps_its_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    uri = tmp_path / "db"
+    _fail_commit(monkeypatch, after_commit=True)
+
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert _rows(uri).num_rows == 2
+
+
+def test_commit_error_after_another_client_overwrote_keeps_its_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lance
+
+    uri = tmp_path / "db"
+    table_uri = str(uri / "chunks.lance")
+    commit, versions = lance.LanceDataset.commit, []
+
+    def commit_then_overwrite(*args: Any, **kwargs: Any) -> Any:
+        landed = commit(*args, **kwargs)
+        versions.append(int(landed.version))
+        lance.write_dataset(landed.to_table().slice(0, 1), table_uri, mode="overwrite")
+        raise OSError("injected commit failure")
+
+    monkeypatch.setattr(lance.LanceDataset, "commit", staticmethod(commit_then_overwrite))
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
+
+    assert lance.dataset(table_uri, version=versions[0]).to_table().num_rows == 2
