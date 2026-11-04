@@ -420,6 +420,7 @@ def pdf_extraction(
                                 }
                             else:
                                 detected_images.extend(_base64_image_to_record(img) for img in nested_images)
+                    page_rgb = None
 
                     page_record: Dict[str, Any] = {
                         "path": pdf_path,
