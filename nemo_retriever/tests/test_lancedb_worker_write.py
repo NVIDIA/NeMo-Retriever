@@ -567,3 +567,15 @@ def test_commit_error_after_another_client_overwrote_keeps_its_files(
         _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))
 
     assert lance.dataset(table_uri, version=versions[0]).to_table().num_rows == 2
+
+
+def test_failed_cleanup_keeps_the_commit_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    uri = tmp_path / "db"
+    _fail_commit(monkeypatch, after_commit=False)
+
+    def failing_unlink(self: Path, missing_ok: bool = False) -> None:
+        raise PermissionError("injected unlink failure")
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+    with pytest.raises(OSError, match="injected commit failure"):
+        _worker_write(_backend(uri), _frames([_row(1), _row(2)], batch_size=1))

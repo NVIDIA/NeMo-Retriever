@@ -40,6 +40,7 @@ from nemo_retriever.common.schemas.collections import (
 )
 from nemo_retriever.common.schemas.embedding import EMBEDDING_SPLIT_METADATA_KEY, embedding_split_content
 from nemo_retriever.common.vdb._lancedb_stream import (
+    OversizedVdbRowError,
     _apply_bad_vector_policy,
     _apply_deferred_bad_vector_policy,
     _assert_lancedb_table_ready,
@@ -89,7 +90,7 @@ from nemo_retriever.common.vdb.lancedb_schema import (
     lancedb_schema,
     normalize_content_type,
 )
-from nemo_retriever.common.vdb.records import CanonicalRecordBatch
+from nemo_retriever.common.vdb.records import CanonicalRecordBatch, VdbUploadError
 
 logger = logging.getLogger(__name__)
 
@@ -1753,7 +1754,7 @@ class LanceDB(VDB):
         def recording_input_failures() -> Iterator[pa.RecordBatch]:
             try:
                 yield from batches
-            except Exception as exc:
+            except (VdbUploadError, OversizedVdbRowError) as exc:
                 input_failures.append(exc)
                 raise
 
@@ -2245,14 +2246,17 @@ class LanceDB(VDB):
                 logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
                 return
             version = None
-        except Exception:  # noqa: BLE001 - unknown commit outcome: keep the files.
+        except (OSError, RuntimeError):
             logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
             return
         if version != base_version:
             logger.warning("Keeping %d moved LanceDB files: the table moved to version %s", len(moved), version)
             return
         for path in moved:
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not delete moved LanceDB file %s", path, exc_info=True)
 
     def _write_stream_records(self, records: Iterable[dict[str, Any]], *, operation_id: str | None) -> None:
         """Consume canonical NRL records through one coordinated LanceDB mutation."""
