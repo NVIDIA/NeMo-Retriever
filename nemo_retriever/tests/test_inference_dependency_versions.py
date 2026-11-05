@@ -26,10 +26,12 @@ def test_local_runtime_requirements_and_uv_overrides_agree() -> None:
         for requirement in map(Requirement, project["tool"]["uv"]["override-dependencies"])
     }
     assert local["vllm"].specifier == overrides["vllm"].specifier
+    assert local["vllm"].marker == overrides["vllm"].marker
     assert "nvidia-cutlass-dsl" not in overrides
-    assert local["vllm"].specifier.contains("0.26.0")
-    assert local["transformers"].specifier.contains("5.20.2")
-    assert overrides["transformers"].specifier.contains("5.20.2")
+    assert local["vllm"].specifier.contains("0.32.0")
+    assert not local["transformers"].specifier.contains("5.20.0")
+    assert not overrides["transformers"].specifier.contains("5.20.0")
+    assert local["transformers"].specifier.contains("5.19.0")
     assert local["transformers"].specifier.contains("5.17.0")
     assert overrides["transformers"].specifier.contains("5.17.0")
     assert not local["transformers"].specifier.contains("6.0.0")
@@ -42,7 +44,7 @@ def test_flashinfer_does_not_install_mismatched_cubin_wheel() -> None:
         requirement.name: requirement
         for requirement in map(Requirement, project["project"]["optional-dependencies"]["local"])
     }
-    assert local["flashinfer-python"].specifier.contains("0.6.14")
+    assert local["flashinfer-python"].specifier.contains("0.7.0.post1")
     assert "flashinfer-cubin" not in local
     lock = tomllib.loads((PROJECT_ROOT / "uv.lock").read_text())
     assert "flashinfer-cubin" not in {package["name"] for package in lock["package"]}
@@ -53,8 +55,8 @@ def test_lock_uses_quack_compatible_with_vllm_required_cutlass() -> None:
     lock = tomllib.loads((PROJECT_ROOT / "uv.lock").read_text())
     cutlass = [package for package in lock["package"] if package["name"] == "nvidia-cutlass-dsl"]
     quack = [package for package in lock["package"] if package["name"] == "quack-kernels"]
-    assert cutlass and all(package["version"] == "4.6.0" for package in cutlass)
-    assert quack and all(package["version"] == "0.6.1" for package in quack)
+    assert cutlass and all(package["version"] == "4.8.0" for package in cutlass)
+    assert quack and all(package["version"] == "0.6.5" for package in quack)
 
 
 def test_locked_cuda_stack_satisfies_vendor_requirements() -> None:

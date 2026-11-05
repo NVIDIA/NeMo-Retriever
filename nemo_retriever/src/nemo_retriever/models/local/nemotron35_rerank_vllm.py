@@ -8,7 +8,9 @@ from collections.abc import Iterable
 
 import torch
 from vllm.model_executor.models.transformers import TransformersMultiModalForSequenceClassification
-from vllm.model_executor.models.transformers.base import AttentionType, EncoderOnlyAttention, get_pp_indices
+from vllm.distributed.utils import get_pp_indices
+from vllm.model_executor.layers.attention import EncoderOnlyAttention
+from vllm.v1.attention.backend import AttentionType
 
 from nemo_retriever.models.inference.nemotron35_vllm import create_bidirectional_attention
 
@@ -17,6 +19,23 @@ class NRLNemotron35RerankModel(TransformersMultiModalForSequenceClassification):
     """Use mean pooling and the checkpoint's trained head without a sigmoid."""
 
     default_seq_pooling_type: str = "MEAN"
+
+    def _get_attn_cls(self) -> type[EncoderOnlyAttention]:
+        """Select bidirectional attention using the vLLM 0.32 construction hook.
+
+        Raises:
+            ValueError: If checkpoint attention or pooling configuration is invalid.
+        """
+        text = self.text_config
+        if (
+            self.config.model_type != "mistral3"
+            or text.model_type != "ministral3"
+            or getattr(text, "is_causal", None) is not False
+        ):
+            raise ValueError("The N3.5 vLLM adapter requires a bidirectional Mistral3 retrieval checkpoint.")
+        if getattr(text, "pooling", None) != "avg":
+            raise ValueError("The N3.5 reranker requires mean pooling.")
+        return EncoderOnlyAttention
 
     def create_attention_instances(self) -> dict[int, EncoderOnlyAttention]:
         """Construct encoder-only attention for this bidirectional text tower.

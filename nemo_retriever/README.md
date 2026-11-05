@@ -42,6 +42,13 @@ In your terminal, run the following commands from any location.
 
 **Local GPU (Linux)**
 
+> **Candidate source upgrade.** This branch targets vLLM 0.32.0, Torch 2.13.0,
+> and Torchvision 0.28.0. Its `[local]` extra requires a `nemotron-ocr` 2.1
+> prerelease built against that Torch stack. Use compatible OCR wheels for
+> candidate validation. PyPI-only source installation and a portable `uv.lock`
+> update remain pending publication of those wheels. The PyPI commands below
+> install published releases; they do not install this candidate source tree.
+
 Install with the `[local]` extra, which includes Nemotron model packages, transformers, and GPU tooling:
 
 ```bash
@@ -86,13 +93,16 @@ For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriev
 
 > **Note:** `uv python install 3.12` installs a uv-managed Python that includes development headers (`Python.h`). These headers are required by vLLM, which compiles CUDA kernels at runtime using torch inductor. If you skip this step and use a system Python without headers, vLLM actor initialization will fail with `InductorError: fatal error: Python.h: No such file or directory`.
 
-2. Override Torch and Torchvision with CUDA 13 builds (local GPU only)
+2. Verify CUDA builds for Torch and Torchvision (local GPU only)
 
-The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
+The candidate source upgrade requires Torch 2.13.0 and Torchvision 0.28.0.
+If you need to replace CPU wheels, reinstall matching CUDA 13.0 builds with
+the following commands. For a published release, use the versions required
+by that release instead.
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.13.0 torchvision==0.28.0 -i https://download.pytorch.org/whl/cu130
 ```
 
 Skip this step if you are using remote NIM inference only.
