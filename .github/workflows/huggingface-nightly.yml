@@ -57,6 +57,11 @@ on:
 permissions:
   contents: read
 
+# Serialize publications so concurrent runs cannot allocate two versions for one identity.
+concurrency:
+  group: hf-package-publication
+  cancel-in-progress: false
+
 jobs:
   # One dev suffix for the whole workflow so matrix legs (e.g. OCR x86 + aarch64) share
   # the same version. UTC YYYYMMDDHHmmss (14 digits) is unique per second and stays
@@ -65,7 +70,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       nightly_date_suffix: ${{ steps.suffix.outputs.nightly_date_suffix }}
+      ocr_source_revision: ${{ steps.source.outputs.source_revision }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - id: suffix
         shell: bash
         env:
@@ -102,6 +112,25 @@ jobs:
             fi
           fi
           echo "nightly_date_suffix=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve OCR source and report superseded nightlies
+        id: source
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.package == 'all' || inputs.package == 'nemotron-ocr-v2' }}
+        env:
+          OCR_SOURCE_REVISION: ${{ inputs.ocr_source_revision }}
+        run: |
+          python -m pip install "packaging>=24"
+          python ci/scripts/hf_publication.py resolve-source \
+            --repo-url https://huggingface.co/nvidia/nemotron-ocr-v2 \
+            --source-revision "${OCR_SOURCE_REVISION}" --github-output "$GITHUB_OUTPUT"
+          python ci/scripts/hf_publication.py retention-report --output ocr-retention-report.json
+
+      - name: Upload retention report
+        if: ${{ steps.source.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-retention-report
+          path: ocr-retention-report.json
 
   build:
     needs: nightly_coordinate
@@ -149,9 +178,25 @@ jobs:
           echo "upload_to=${upload_to}" >> "$GITHUB_OUTPUT"
           echo "skip_existing=${skip_existing}" >> "$GITHUB_OUTPUT"
 
-      - name: Build (and maybe upload)
+      - name: Plan package publication
+        id: publication
         env:
-          NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
+          UPLOAD_TO: ${{ steps.target.outputs.upload_to }}
+        run: |
+          python -m pip install "packaging>=24"
+          force_args=()
+          if [[ "${UPLOAD_TO}" == "none" ]]; then force_args=(--force-build); fi
+          python ci/scripts/hf_publication.py plan \
+            --project "${{ matrix.repo.id }}" --repo-url "${{ matrix.repo.url }}" \
+            --base-version "${{ matrix.repo.nightly_base_version }}" \
+            --nightly-suffix "${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}" \
+            --python-tag py3 --arch any --require-sdist \
+            "${force_args[@]}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Build (and maybe upload)
+        if: ${{ steps.publication.outputs.should_build == 'true' }}
+        env:
+          NIGHTLY_DATE_SUFFIX: ${{ steps.publication.outputs.nightly_suffix }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         shell: bash
         run: |
@@ -173,6 +218,8 @@ jobs:
           python ci/scripts/nightly_build_publish.py \
             --repo-id "${{ matrix.repo.id }}" \
             --repo-url "${{ matrix.repo.url }}" \
+            --source-revision "${{ steps.publication.outputs.source_revision }}" \
+            --wheel-build-id "${{ steps.publication.outputs.build_id }}" \
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "${{ matrix.repo.project_subdir }}" \
@@ -313,16 +360,41 @@ jobs:
           echo "torchvision_version=${torchvision_version}" >> "$GITHUB_OUTPUT"
           echo "nightly_base_version=${nightly_base_version}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and validate ${{ matrix.ocr.id }} for Python ${{ matrix.python.version }}
+      - name: Plan OCR publication
+        id: publication
         env:
-          NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
+          UPLOAD_TO: ${{ steps.target.outputs.upload_to }}
+          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+        shell: bash
+        run: |
+          python -m pip install "packaging>=24"
+          plan_args=()
+          if [[ "${UPLOAD_TO}" == "none" ]]; then plan_args+=(--force-build); fi
+          if [[ "${{ matrix.platform.arch }}" == "x86_64" && "${{ matrix.python.version }}" == "3.12" ]]; then
+            plan_args+=(--require-sdist)
+          fi
+          python ci/scripts/hf_publication.py plan \
+            --project nemotron-ocr --repo-url "${{ matrix.ocr.url }}" \
+            --source-revision "${{ needs.nightly_coordinate.outputs.ocr_source_revision }}" \
+            --base-version "${{ steps.ocr_stack.outputs.nightly_base_version }}" \
+            --profile "${{ steps.ocr_stack.outputs.torch_version }}/${{ steps.ocr_stack.outputs.torchvision_version }}" \
+            --release-version "${INPUT_RELEASE_VERSION}" \
+            --nightly-suffix "${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}" \
+            --python-tag "${{ matrix.python.tag }}" --arch "${{ matrix.platform.arch }}" \
+            "${plan_args[@]}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Build and validate ${{ matrix.ocr.id }} for Python ${{ matrix.python.version }}
+        if: ${{ steps.publication.outputs.should_build == 'true' }}
+        env:
+          NIGHTLY_DATE_SUFFIX: ${{ steps.publication.outputs.nightly_suffix }}
           CUDA_HOME: /usr/local/cuda
           BUILD_CPP_EXTENSION: "1"
           BUILD_CPP_FORCE: "1"
           OCR_TORCH_VERSION: ${{ steps.ocr_stack.outputs.torch_version }}
           OCR_TORCHVISION_VERSION: ${{ steps.ocr_stack.outputs.torchvision_version }}
           OCR_NIGHTLY_BASE_VERSION: ${{ steps.ocr_stack.outputs.nightly_base_version }}
-          OCR_SOURCE_REVISION: ${{ inputs.ocr_source_revision }}
+          OCR_SOURCE_REVISION: ${{ needs.nightly_coordinate.outputs.ocr_source_revision }}
+          NRL_BUILD_ID: ${{ steps.publication.outputs.build_id }}
           INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
           INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
           TORCH_CUDA_ARCH_LIST: "8.0;8.6;8.9;9.0;10.0;12.0+PTX"
@@ -366,6 +438,7 @@ jobs:
           python ci/scripts/nightly_build_publish.py \
             --repo-id "${{ matrix.ocr.id }}" \
             --repo-url "${{ matrix.ocr.url }}" \
+            --wheel-build-id "${NRL_BUILD_ID}" \
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
@@ -530,6 +603,7 @@ jobs:
                   ["git", "-C", ".work/${{ matrix.ocr.id }}", "rev-parse", "HEAD"], text=True
               ).strip(),
               "orchestrator_revision": os.environ["GITHUB_SHA"],
+              "build_identity": os.environ.get("NRL_BUILD_ID"),
               "python": sys.version,
               "architecture": "${{ matrix.platform.arch }}",
               "cuda_image": "${{ matrix.platform.cuda_image }}",
@@ -542,7 +616,7 @@ jobs:
           PY
 
       - name: Publish validated OCR distributions
-        if: ${{ steps.target.outputs.upload_to == 'pypi' }}
+        if: ${{ steps.target.outputs.upload_to == 'pypi' && steps.publication.outputs.should_build == 'true' }}
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}

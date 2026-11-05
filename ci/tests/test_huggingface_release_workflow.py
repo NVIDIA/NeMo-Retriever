@@ -474,7 +474,7 @@ def test_workflow_rejects_unpinned_candidate_builds_before_matrix_jobs(
 ) -> None:
     workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
     coordinate = workflow.split("  nightly_coordinate:", 1)[1].split("\n  build:", 1)[0]
-    script = textwrap.dedent(coordinate.split("        run: |\n", 1)[1])
+    script = textwrap.dedent(coordinate.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
     script = script.replace("${{ github.event_name }}", "workflow_dispatch")
     result = subprocess.run(
         ["bash", "-c", script],
@@ -522,7 +522,7 @@ def test_workflow_validates_ocr_before_enabling_publication() -> None:
     assert ocr.index('print("Verified nemotron_ocr_cpp extension ABI:", py_tag)') < ocr.index(
         "name: Publish validated OCR distributions"
     )
-    assert "if: ${{ steps.target.outputs.upload_to == 'pypi' }}" in ocr
+    assert "if: ${{ steps.target.outputs.upload_to == 'pypi' && steps.publication.outputs.should_build == 'true' }}" in ocr
     assert "${upload_flag}" not in ocr
     assert "--source-revision" in ocr
     assert "build-info.json" in ocr
