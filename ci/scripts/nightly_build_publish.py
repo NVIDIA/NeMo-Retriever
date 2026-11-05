@@ -10,6 +10,7 @@ Behavior:
   so a platform/Python matrix can emit the identical sdist exactly once).
 - Optional ``--set-requires-python`` relaxes ``[project].requires-python`` so wheels
   built on a Python matrix stay pip-installable on every targeted interpreter.
+- Optional ``--source-revision`` checks out an exact source commit before patching.
 - Optional ``--auditwheel-repair`` rewrites ``linux_*`` wheels to ``manylinux_*`` for PyPI.
 - Optionally uploads to (Test)PyPI via twine.
 
@@ -713,11 +714,24 @@ def _ensure_clean_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _clone_repo(repo_url: str, dest: Path) -> None:
+def _source_revision(value: str) -> str:
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", value):
+        raise argparse.ArgumentTypeError("source revision must be a full 40-character Git commit SHA")
+    return value.lower()
+
+
+def _clone_repo(repo_url: str, dest: Path, *, revision: str | None = None) -> str:
     env = os.environ.copy()
     # Do not download large LFS objects.
     env["GIT_LFS_SKIP_SMUDGE"] = "1"
     _run(["git", "clone", "--depth", "1", repo_url, str(dest)], env=env)
+    if revision is not None:
+        _run(["git", "fetch", "--depth", "1", "origin", revision], cwd=dest, env=env)
+        _run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=dest, env=env)
+    resolved = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=dest, env=env, text=True).strip()
+    if revision is not None and resolved.lower() != revision.lower():
+        raise RuntimeError(f"Requested source commit {revision}, but checked out {resolved}")
+    return resolved
 
 
 def _looks_like_python_project(project_dir: Path) -> bool:
@@ -983,6 +997,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo-id", required=True, help="Short identifier for logs/paths")
     ap.add_argument("--repo-url", required=True, help="HF git repo URL, e.g. https://huggingface.co/nvidia/xxx")
+    ap.add_argument(
+        "--source-revision",
+        type=_source_revision,
+        default=None,
+        help="Build this exact 40-character source Git commit SHA instead of the default branch HEAD.",
+    )
     ap.add_argument("--work-dir", default=".work", help="Workspace temp dir")
     ap.add_argument("--dist-dir", default="dist-out", help="Where to collect artifacts")
     ap.add_argument(
@@ -1118,7 +1138,8 @@ def main() -> int:
         shutil.rmtree(repo_dir)
 
     print(f"=== Cloning {args.repo_url} -> {repo_dir} ===")
-    _clone_repo(args.repo_url, repo_dir)
+    resolved_revision = _clone_repo(args.repo_url, repo_dir, revision=args.source_revision)
+    print(f"=== Source commit: {resolved_revision} ===", flush=True)
 
     version_mode = "release" if args.release_version is not None else "nightly"
     print(f"=== Attempting {version_mode} version patch ===")

@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
+import textwrap
 import zipfile
 from pathlib import Path
 from types import ModuleType
@@ -400,3 +403,126 @@ def test_huggingface_ocr_wheels_require_base_and_v2_pipeline_modules() -> None:
 
     assert '--require-wheel-member "nemotron_ocr/inference/pipeline.py"' in workflow
     assert '--require-wheel-member "nemotron_ocr/inference/pipeline_v2.py"' in workflow
+
+
+@pytest.mark.parametrize("revision", ["main", "abc123", "-" + "a" * 39, "g" * 40, ""])
+def test_source_revision_requires_an_immutable_commit(revision: str) -> None:
+    import argparse
+
+    builder = _load_nightly_build_publish_module()
+    with pytest.raises(argparse.ArgumentTypeError, match="40-character"):
+        builder._source_revision(revision)
+
+
+@pytest.mark.parametrize("pinned", [False, True])
+def test_builder_checks_out_requested_commit_instead_of_newer_default_branch(tmp_path: Path, pinned: bool) -> None:
+    repo = tmp_path / "source"
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    commits = []
+    for value in ["qualified source", "newer default branch"]:
+        (repo / "source.txt").write_text(value)
+        subprocess.run(["git", "add", "source.txt"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-m", value],
+            cwd=repo, check=True, capture_output=True,
+        )
+        commits.append(subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip())
+    builder = _load_nightly_build_publish_module()
+    dest = tmp_path / "checkout"
+    resolved = builder._clone_repo(str(repo), dest, revision=commits[0] if pinned else None)
+    assert resolved == commits[0 if pinned else 1]
+    assert (dest / "source.txt").read_text() == ("qualified source" if pinned else "newer default branch")
+
+
+def _workflow_step_script(name: str) -> str:
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
+    block = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - ", 1)[0]
+    return textwrap.dedent(block.split("        run: |\n", 1)[1])
+
+
+@pytest.mark.parametrize(
+    "profile,torch_version,vision_version,base_version",
+    [("", "2.11.0", "0.26.0", "2.0.2"), ("torch211", "2.11.0", "0.26.0", "2.0.2"),
+     ("torch213", "2.13.0", "0.28.0", "2.1.0")],
+)
+def test_workflow_selects_distinct_ocr_runtime_and_prerelease_families(
+    tmp_path: Path, profile: str, torch_version: str, vision_version: str, base_version: str
+) -> None:
+    output = tmp_path / "outputs"
+    subprocess.run(
+        ["bash", "-c", _workflow_step_script("Select OCR build stack")],
+        env={**os.environ, "INPUT_OCR_BUILD_STACK": profile,
+             "DEFAULT_NIGHTLY_BASE_VERSION": "2.0.2", "GITHUB_OUTPUT": str(output)},
+        check=True,
+    )
+    assert dict(line.split("=", 1) for line in output.read_text().splitlines()) == {
+        "torch_version": torch_version, "torchvision_version": vision_version, "nightly_base_version": base_version,
+    }
+
+
+@pytest.mark.parametrize(
+    "profile,package,revision,valid",
+    [("torch213", "nemotron-ocr-v2", "a" * 40, True),
+     ("torch213", "nemotron-ocr-v2", "", False),
+     ("torch213", "all", "a" * 40, False),
+     ("torch211", "nemotron-ocr-v2", "main", False),
+     ("torch211", "all", "", True)],
+)
+def test_workflow_rejects_unpinned_candidate_builds_before_matrix_jobs(
+    tmp_path: Path, profile: str, package: str, revision: str, valid: bool
+) -> None:
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
+    coordinate = workflow.split("  nightly_coordinate:", 1)[1].split("\n  build:", 1)[0]
+    script = textwrap.dedent(coordinate.split("        run: |\n", 1)[1])
+    script = script.replace("${{ github.event_name }}", "workflow_dispatch")
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={**os.environ, "INPUT_PACKAGE": package, "INPUT_RELEASE_TYPE": "nightly",
+             "INPUT_RELEASE_VERSION": "", "INPUT_OCR_BUILD_STACK": profile,
+             "INPUT_OCR_SOURCE_REVISION": revision, "GITHUB_OUTPUT": str(tmp_path / "outputs")},
+        capture_output=True, text=True,
+    )
+    assert (result.returncode == 0) is valid, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("check_fails", [False, True])
+def test_publisher_uploads_only_distributions_and_stops_if_checks_fail(tmp_path: Path, check_fails: bool) -> None:
+    python = tmp_path / ".venv-build/bin/python"
+    python.parent.mkdir(parents=True)
+    python.write_text(
+        '#!/bin/bash\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n'
+        'if [[ "$*" == "-m twine check"* && "$CHECK_FAILS" == "1" ]]; then exit 1; fi\n'
+    )
+    python.chmod(0o755)
+    dist = tmp_path / "dist-out/nemotron-ocr-v2"
+    dist.mkdir(parents=True)
+    for name in ["ocr.whl", "ocr.tar.gz", "build-info.json"]:
+        (dist / name).touch()
+    script = _workflow_step_script("Publish validated OCR distributions")
+    script = script.replace("${{ matrix.ocr.id }}", "nemotron-ocr-v2")
+    log = tmp_path / "commands.log"
+    result = subprocess.run(
+        ["bash", "-c", script], cwd=tmp_path,
+        env={**os.environ, "COMMAND_LOG": str(log), "SKIP_EXISTING": "true",
+             "CHECK_FAILS": "1" if check_fails else "0"},
+    )
+    commands = log.read_text()
+    assert "build-info.json" not in commands
+    assert ("twine upload" in commands) is not check_fails
+    assert (result.returncode != 0) is check_fails
+    if not check_fails:
+        assert "--skip-existing" in commands
+        assert "ocr.whl" in commands and "ocr.tar.gz" in commands
+
+
+def test_workflow_validates_ocr_before_enabling_publication() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
+    ocr = workflow.split("  build_ocr_cuda:", 1)[1]
+    assert ocr.index('print("Verified nemotron_ocr_cpp extension ABI:", py_tag)') < ocr.index(
+        "name: Publish validated OCR distributions"
+    )
+    assert "if: ${{ steps.target.outputs.upload_to == 'pypi' }}" in ocr
+    assert "${upload_flag}" not in ocr
+    assert "--source-revision" in ocr
+    assert "build-info.json" in ocr
