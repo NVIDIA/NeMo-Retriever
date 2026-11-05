@@ -423,9 +423,23 @@ def test_builder_checks_out_requested_commit_instead_of_newer_default_branch(tmp
         (repo / "source.txt").write_text(value)
         subprocess.run(["git", "add", "source.txt"], cwd=repo, check=True)
         subprocess.run(
-            ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
-             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-m", value],
-            cwd=repo, check=True, capture_output=True,
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "-m",
+                value,
+            ],
+            cwd=repo,
+            check=True,
+            capture_output=True,
         )
         commits.append(subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip())
     builder = _load_nightly_build_publish_module()
@@ -443,8 +457,11 @@ def _workflow_step_script(name: str) -> str:
 
 @pytest.mark.parametrize(
     "profile,torch_version,vision_version,base_version",
-    [("", "2.11.0", "0.26.0", "2.0.2"), ("torch211", "2.11.0", "0.26.0", "2.0.2"),
-     ("torch213", "2.13.0", "0.28.0", "2.1.0")],
+    [
+        ("", "2.11.0", "0.26.0", "2.0.2"),
+        ("torch211", "2.11.0", "0.26.0", "2.0.2"),
+        ("torch213", "2.13.0", "0.28.0", "2.1.0"),
+    ],
 )
 def test_workflow_selects_distinct_ocr_runtime_and_prerelease_families(
     tmp_path: Path, profile: str, torch_version: str, vision_version: str, base_version: str
@@ -452,22 +469,30 @@ def test_workflow_selects_distinct_ocr_runtime_and_prerelease_families(
     output = tmp_path / "outputs"
     subprocess.run(
         ["bash", "-c", _workflow_step_script("Select OCR build stack")],
-        env={**os.environ, "INPUT_OCR_BUILD_STACK": profile,
-             "DEFAULT_NIGHTLY_BASE_VERSION": "2.0.2", "GITHUB_OUTPUT": str(output)},
+        env={
+            **os.environ,
+            "INPUT_OCR_BUILD_STACK": profile,
+            "DEFAULT_NIGHTLY_BASE_VERSION": "2.0.2",
+            "GITHUB_OUTPUT": str(output),
+        },
         check=True,
     )
     assert dict(line.split("=", 1) for line in output.read_text().splitlines()) == {
-        "torch_version": torch_version, "torchvision_version": vision_version, "nightly_base_version": base_version,
+        "torch_version": torch_version,
+        "torchvision_version": vision_version,
+        "nightly_base_version": base_version,
     }
 
 
 @pytest.mark.parametrize(
     "profile,package,revision,valid",
-    [("torch213", "nemotron-ocr-v2", "a" * 40, True),
-     ("torch213", "nemotron-ocr-v2", "", False),
-     ("torch213", "all", "a" * 40, False),
-     ("torch211", "nemotron-ocr-v2", "main", False),
-     ("torch211", "all", "", True)],
+    [
+        ("torch213", "nemotron-ocr-v2", "a" * 40, True),
+        ("torch213", "nemotron-ocr-v2", "", False),
+        ("torch213", "all", "a" * 40, False),
+        ("torch211", "nemotron-ocr-v2", "main", False),
+        ("torch211", "all", "", True),
+    ],
 )
 def test_workflow_rejects_unpinned_candidate_builds_before_matrix_jobs(
     tmp_path: Path, profile: str, package: str, revision: str, valid: bool
@@ -478,10 +503,17 @@ def test_workflow_rejects_unpinned_candidate_builds_before_matrix_jobs(
     script = script.replace("${{ github.event_name }}", "workflow_dispatch")
     result = subprocess.run(
         ["bash", "-c", script],
-        env={**os.environ, "INPUT_PACKAGE": package, "INPUT_RELEASE_TYPE": "nightly",
-             "INPUT_RELEASE_VERSION": "", "INPUT_OCR_BUILD_STACK": profile,
-             "INPUT_OCR_SOURCE_REVISION": revision, "GITHUB_OUTPUT": str(tmp_path / "outputs")},
-        capture_output=True, text=True,
+        env={
+            **os.environ,
+            "INPUT_PACKAGE": package,
+            "INPUT_RELEASE_TYPE": "nightly",
+            "INPUT_RELEASE_VERSION": "",
+            "INPUT_OCR_BUILD_STACK": profile,
+            "INPUT_OCR_SOURCE_REVISION": revision,
+            "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+        },
+        capture_output=True,
+        text=True,
     )
     assert (result.returncode == 0) is valid, result.stdout + result.stderr
 
@@ -503,9 +535,14 @@ def test_publisher_uploads_only_distributions_and_stops_if_checks_fail(tmp_path:
     script = script.replace("${{ matrix.ocr.id }}", "nemotron-ocr-v2")
     log = tmp_path / "commands.log"
     result = subprocess.run(
-        ["bash", "-c", script], cwd=tmp_path,
-        env={**os.environ, "COMMAND_LOG": str(log), "SKIP_EXISTING": "true",
-             "CHECK_FAILS": "1" if check_fails else "0"},
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "COMMAND_LOG": str(log),
+            "SKIP_EXISTING": "true",
+            "CHECK_FAILS": "1" if check_fails else "0",
+        },
     )
     commands = log.read_text()
     assert "build-info.json" not in commands
@@ -522,7 +559,9 @@ def test_workflow_validates_ocr_before_enabling_publication() -> None:
     assert ocr.index('print("Verified nemotron_ocr_cpp extension ABI:", py_tag)') < ocr.index(
         "name: Publish validated OCR distributions"
     )
-    assert "if: ${{ steps.target.outputs.upload_to == 'pypi' && steps.publication.outputs.should_build == 'true' }}" in ocr
+    assert (
+        "if: ${{ steps.target.outputs.upload_to == 'pypi' && steps.publication.outputs.should_build == 'true' }}" in ocr
+    )
     assert "${upload_flag}" not in ocr
     assert "--source-revision" in ocr
     assert "build-info.json" in ocr
@@ -537,8 +576,14 @@ def test_ocr_toolcache_host_matches_cuda_container_distro() -> None:
     assert 'python -c "import ssl; print(ssl.OPENSSL_VERSION)"' in ocr
 
 
-@pytest.mark.parametrize("field,value,valid", [("License", "Apache-2.0", True),
-    ("License-Expression", "Apache-2.0", True), ("License-Expression", "Proprietary", False)])
+@pytest.mark.parametrize(
+    "field,value,valid",
+    [
+        ("License", "Apache-2.0", True),
+        ("License-Expression", "Apache-2.0", True),
+        ("License-Expression", "Proprietary", False),
+    ],
+)
 def test_actual_ocr_artifact_validator_accepts_legacy_and_pep639_licenses(
     tmp_path: Path, field: str, value: str, valid: bool
 ) -> None:
@@ -553,21 +598,51 @@ def test_actual_ocr_artifact_validator_accepts_legacy_and_pep639_licenses(
     dist.mkdir(parents=True)
     tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
     wheel = dist / f"nemotron_ocr-2.1.0.dev123-{tag}-{tag}-manylinux_2_34_x86_64.whl"
-    metadata = (f"Metadata-Version: 2.4\nName: nemotron-ocr\nVersion: 2.1.0.dev123\n{field}: {value}\n"
+    metadata = (
+        f"Metadata-Version: 2.4\nName: nemotron-ocr\nVersion: 2.1.0.dev123\n{field}: {value}\n"
         "Classifier: License :: OSI Approved :: Apache Software License\n"
-        "Requires-Dist: torch~=2.13.0\nRequires-Dist: torchvision~=0.28.0\n")
+        "Requires-Dist: torch~=2.13.0\nRequires-Dist: torchvision~=0.28.0\n"
+    )
     with zipfile.ZipFile(wheel, "w") as z:
         z.writestr("nemotron_ocr-2.1.0.dev123.dist-info/METADATA", metadata)
         z.writestr("nemotron_ocr/inference/pipeline.py", "")
         z.writestr(f"nemotron_ocr_cpp/_nemotron_ocr_cpp.cpython-{tag[2:]}-x86_64-linux-gnu.so", "")
     repo = tmp_path / ".work/nemotron-ocr-v2"
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
-    subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
-                    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
-                    "commit", "--allow-empty", "-m", "source"], cwd=repo, check=True, capture_output=True)
-    result = subprocess.run([sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True,
-        env={**os.environ, "EXPECTED_OCR_VERSION": "2.1.0.dev", "OCR_RELEASE_TYPE": "nightly",
-             "OCR_TORCH_VERSION": "2.13.0", "OCR_TORCHVISION_VERSION": "0.28.0", "GITHUB_SHA": "test"})
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "source",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "EXPECTED_OCR_VERSION": "2.1.0.dev",
+            "OCR_RELEASE_TYPE": "nightly",
+            "OCR_TORCH_VERSION": "2.13.0",
+            "OCR_TORCHVISION_VERSION": "0.28.0",
+            "GITHUB_SHA": "test",
+        },
+    )
     assert (result.returncode == 0) is valid, result.stdout + result.stderr
     assert (dist / "build-info.json").exists() is valid
 
@@ -582,7 +657,8 @@ def test_hatch_builds_wheel_and_sdist_with_explicit_metadata_version(tmp_path: P
     package = project / "fixture_package"
     package.mkdir(parents=True)
     (package / "__init__.py").touch()
-    (project / "pyproject.toml").write_text('''[build-system]
+    (project / "pyproject.toml").write_text(
+        """[build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 [project]
@@ -591,22 +667,30 @@ version = "1.0.0"
 license = "Apache-2.0"
 [tool.hatch.build.targets.wheel]
 packages = ["fixture_package"]
-''')
+"""
+    )
     builder = _load_nightly_build_publish_module()
     assert builder._patch_hatch_core_metadata_version(project, "2.4")
     assert not builder._patch_hatch_core_metadata_version(project, "2.4")
-    subprocess.run([sys.executable, "-m", "build", "--no-isolation", "--wheel", "--sdist"],
-                   cwd=project, check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, "-m", "build", "--no-isolation", "--wheel", "--sdist"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     with zipfile.ZipFile(next((project / "dist").glob("*.whl"))) as z:
-        message = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith('/METADATA'))).decode())
-        assert message['Metadata-Version'] == '2.4'
-        assert message['License-Expression'] == 'Apache-2.0'
+        message = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith("/METADATA"))).decode())
+        assert message["Metadata-Version"] == "2.4"
+        assert message["License-Expression"] == "Apache-2.0"
     with tarfile.open(next((project / "dist").glob("*.tar.gz"))) as t:
-        message = Parser().parsestr(t.extractfile(next(n for n in t.getmembers() if n.name.endswith('/PKG-INFO'))).read().decode())
-        assert message['Metadata-Version'] == '2.4'
+        message = Parser().parsestr(
+            t.extractfile(next(n for n in t.getmembers() if n.name.endswith("/PKG-INFO"))).read().decode()
+        )
+        assert message["Metadata-Version"] == "2.4"
 
 
 def test_ocr_workflow_pins_metadata_format_and_logs_upload_rejections() -> None:
-    workflow = (REPO_ROOT / '.github/workflows/huggingface-nightly.yml').read_text()
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
     assert '--hatch-core-metadata-version "2.4"' in workflow
-    assert 'twine upload --non-interactive --verbose' in workflow
+    assert "twine upload --non-interactive --verbose" in workflow
