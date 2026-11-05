@@ -205,7 +205,9 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - runner: ubuntu-latest
+          # setup-python uses the host toolcache inside the container. Keep the
+          # host distro aligned so Python's SSL libraries can load there.
+          - runner: ubuntu-24.04
             cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
             arch: x86_64
           - runner: ubuntu-24.04-arm
@@ -359,6 +361,7 @@ jobs:
           fi
 
           python --version
+          python -c "import ssl; print(ssl.OPENSSL_VERSION)"
           python -m pip install "packaging>=24"
           python ci/scripts/nightly_build_publish.py \
             --repo-id "${{ matrix.ocr.id }}" \

@@ -526,3 +526,12 @@ def test_workflow_validates_ocr_before_enabling_publication() -> None:
     assert "${upload_flag}" not in ocr
     assert "--source-revision" in ocr
     assert "build-info.json" in ocr
+
+
+def test_ocr_toolcache_host_matches_cuda_container_distro() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
+    ocr = workflow.split("  build_ocr_cuda:", 1)[1]
+    assert "runner: ubuntu-24.04\n" in ocr
+    assert "runner: ubuntu-24.04-arm\n" in ocr
+    assert "runner: ubuntu-latest" not in ocr
+    assert 'python -c "import ssl; print(ssl.OPENSSL_VERSION)"' in ocr
