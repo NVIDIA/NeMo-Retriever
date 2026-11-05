@@ -357,9 +357,6 @@ class IngestExecuteParams(_ParamsModel):
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
-    page_chunk_size: int = 32
-    runtime_metrics_dir: Optional[str] = None
-    runtime_metrics_prefix: Optional[str] = None
 
 
 class PdfSplitParams(_ParamsModel):
@@ -494,7 +491,6 @@ class LanceDbParams(_ParamsModel):
 
 
 class BatchTuningParams(_ParamsModel):
-    debug_run_id: str = "unknown"
     pdf_split_batch_size: int = 1
     pdf_extract_batch_size: int = 4
     pdf_extract_rows_per_block: Optional[int] = Field(
@@ -516,11 +512,9 @@ class BatchTuningParams(_ParamsModel):
             "and derives it otherwise."
         ),
     )
-    detect_batch_size: int = 24
     ocr_inference_batch_size: Optional[int] = None
     page_elements_workers: Optional[int] = None
     ocr_workers: Optional[int] = None
-    detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
     table_structure_workers: Optional[int] = None
@@ -560,11 +554,6 @@ class BatchTuningParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class GpuAllocationParams(_ParamsModel):
-    gpu_devices: list[str] = Field(default_factory=list)
-    startup_timeout: float = 600.0
-
-
 class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
@@ -599,7 +588,6 @@ class ExtractParams(_ParamsModel):
     jpeg_quality: int = 100
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
-    ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
     ocr_lang: Optional[Literal["multi", "english"]] = None
 
@@ -609,7 +597,6 @@ class ExtractParams(_ParamsModel):
     request_timeout_s: float = 60.0
     page_elements_invoke_url: Optional[str] = None
     page_elements_api_key: Optional[str] = None
-    page_elements_request_timeout_s: Optional[float] = None
     ocr_invoke_url: Optional[str] = None
     ocr_api_key: Optional[str] = None
     ocr_request_timeout_s: Optional[float] = None
@@ -809,39 +796,6 @@ class StoreParams(_ParamsModel):
         if not urlparse(self.storage_uri).scheme:
             self.storage_uri = str(UPath(self.storage_uri).resolve())
         return self
-
-
-class PageElementsParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "page_elements_v3"
-    num_detections_column: str = "page_elements_v3_num_detections"
-    counts_by_label_column: str = "page_elements_v3_counts_by_label"
-
-
-class OcrParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    extract_tables: bool = False
-    extract_charts: bool = False
-    extract_infographics: bool = False
-
-
-class TableParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "table_structure_v1"
-    num_detections_column: str = "table_structure_v1_num_detections"
-    counts_by_label_column: str = "table_structure_v1_counts_by_label"
-
-
-class ChartParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
 
 
 class LLMInferenceParams(_ParamsModel):

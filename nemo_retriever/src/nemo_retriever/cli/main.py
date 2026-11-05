@@ -30,7 +30,6 @@ app.add_typer(query_app, name="query")
 _LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
     ("eval", "nemo_retriever.tools.evaluation.cli", "app", True),
     ("benchmark", "nemo_retriever.tools.benchmark", "app", True),
-    ("recall", "nemo_retriever.tools.recall", "app", True),
     ("skill-eval", "nemo_retriever.tools.skill_eval", "app", True),
 ]
 

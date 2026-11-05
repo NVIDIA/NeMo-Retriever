@@ -98,7 +98,7 @@ def test_root_help_lists_only_product_workflows() -> None:
 
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline", "harness"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline", "harness", "recall"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
@@ -107,7 +107,7 @@ def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     assert f"No such command '{removed_command}'" in result.output
 
 
-@pytest.mark.parametrize("command", ("recall", "skill-eval"))
+@pytest.mark.parametrize("command", ("skill-eval",))
 def test_evaluation_commands_remain_callable(command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [command, "--help"])
 
