@@ -77,7 +77,7 @@ def _cuda_supports_native_nvfp4() -> bool:
         return False
 
 
-def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_native_nvfp4: bool = True) -> str:
+def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
     """Resolve an embedding model to a backend-compatible checkpoint.
 
     Args:
@@ -85,20 +85,16 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_nat
             value uses the default embedding model.
         backend: Normalized local inference backend, such as ``"vllm"`` or
             ``"hf"``.
-        allow_native_nvfp4: Whether automatic selection can use the visible
-            CUDA devices as evidence of native NVFP4 support. Single-node batch
-            execution uses the same visible devices as in-process inference.
-            Explicit checkpoint precision identifiers are not changed.
 
     Returns:
         The resolved Hugging Face checkpoint identifier. An omitted model or
         the Nemotron 3.5 logical alias uses Nemotron 3.5: NVFP4 for vLLM when
-        permitted and every visible CUDA device supports it, and BF16 otherwise.
+        every visible CUDA device supports it, and BF16 otherwise.
         Explicit Nemotron 3 logical names retain their legacy selection.
         Explicit precision checkpoint IDs remain unchanged.
     """
     if not model_name or model_name == NEMOTRON_35_EMBED_MODEL:
-        if backend == "vllm" and allow_native_nvfp4 and _cuda_supports_native_nvfp4():
+        if backend == "vllm" and _cuda_supports_native_nvfp4():
             return NEMOTRON_35_EMBED_NVFP4_MODEL
         return DEFAULT_LOCAL_EMBED_MODEL
     # Logical identity aliases are useful for compatibility checks, but must
@@ -108,7 +104,7 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_nat
     resolved = resolve_embed_model(model_name)
     if resolved != NEMOTRON_3_EMBED_MODEL:
         return resolved
-    if backend == "vllm" and allow_native_nvfp4 and _cuda_supports_native_nvfp4():
+    if backend == "vllm" and _cuda_supports_native_nvfp4():
         return NEMOTRON_3_EMBED_NVFP4_MODEL
     return NEMOTRON_3_EMBED_BF16_MODEL
 
