@@ -63,7 +63,7 @@ def test_locked_cuda_stack_satisfies_vendor_requirements() -> None:
     """Detect overrides that make a project lock installable but break plain pip resolution."""
     lock = tomllib.loads((PROJECT_ROOT / "uv.lock").read_text())
     runtime_names = {"torch", "torchvision", "nvidia-cutlass-dsl", "quack-kernels", "flashinfer-python"}
-    for vendor in ("vllm", "quack-kernels"):
+    for vendor in ("vllm", "quack-kernels", "nemotron-ocr"):
         try:
             vendor_requirements = requires(vendor) or []
         except PackageNotFoundError:
@@ -77,3 +77,14 @@ def test_locked_cuda_stack_satisfies_vendor_requirements() -> None:
             assert all(
                 requirement.specifier.contains(version) for version in locked_versions
             ), f"Locked {requirement.name}={locked_versions} conflicts with {vendor}'s {requirement}"
+
+
+def test_lock_uses_portable_artifact_sources() -> None:
+    """A published OCR release must replace local qualification wheel paths."""
+    lock = tomllib.loads((PROJECT_ROOT / "uv.lock").read_text())
+    for package in lock["package"]:
+        source = package["source"]
+        if "registry" in source:
+            assert source["registry"].startswith("https://"), package["name"]
+        for artifact in package.get("wheels", []):
+            assert "path" not in artifact, package["name"]

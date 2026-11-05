@@ -120,7 +120,7 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
     stable_ocr_requirement = _requirement(local_deps, "nemotron-ocr")
     assert not stable_ocr_requirement.specifier.contains("2.0.0")
     assert stable_ocr_requirement.specifier.contains("2.5.0")
-    assert stable_ocr_requirement.specifier.contains("2.1.0.dev1", prereleases=True)
+    assert stable_ocr_requirement.specifier.contains("2.1.0.dev20261105201031", prereleases=True)
     assert not stable_ocr_requirement.specifier.contains("3.0.0")
     assert not stable_ocr_requirement.specifier.contains("1.0.1")
     assert str(stable_ocr_requirement.marker) == (
@@ -140,7 +140,7 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
     assert not nightly_table_requirement.specifier.contains("1.0.1", prereleases=True)
 
     nightly_ocr_requirement = _requirement(dev_nemotron_deps, "nemotron-ocr")
-    assert nightly_ocr_requirement.specifier.contains("2.1.0.dev1", prereleases=True)
+    assert nightly_ocr_requirement.specifier.contains("2.1.0.dev20261105201031", prereleases=True)
     assert not nightly_ocr_requirement.specifier.contains("2.0.2.dev1", prereleases=True)
     assert not nightly_ocr_requirement.specifier.contains("2.0.0", prereleases=True)
     assert not nightly_ocr_requirement.specifier.contains("2.0.1", prereleases=True)

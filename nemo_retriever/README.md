@@ -43,11 +43,12 @@ In your terminal, run the following commands from any location.
 **Local GPU (Linux)**
 
 > **Candidate source upgrade.** This branch targets vLLM 0.32.0, Torch 2.13.0,
-> and Torchvision 0.28.0. Its `[local]` extra requires a `nemotron-ocr` 2.1
-> prerelease built against that Torch stack. Use compatible OCR wheels for
-> candidate validation. PyPI-only source installation and a portable `uv.lock`
-> update remain pending publication of those wheels. The PyPI commands below
-> install published releases; they do not install this candidate source tree.
+> and Torchvision 0.28.0. Its `[local]` extra requires
+> `nemotron-ocr>=2.1.0.dev20261105201031,<3`, including the published Torch 2.13
+> prerelease wheels. The checked-in `uv.lock` resolves these dependencies from
+> public package indexes. The PyPI commands below install published NeMo
+> Retriever Library releases; use this source tree and its lockfile to validate
+> the candidate upgrade.
 
 Install with the `[local]` extra, which includes Nemotron model packages, transformers, and GPU tooling:
 
@@ -57,8 +58,9 @@ source retriever/bin/activate
 uv pip install "nemo-retriever[local]"
 ```
 
-The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease or nightly Nemotron packages from PyPI within the same supported
+Published NeMo Retriever Library releases resolve stable Nemotron extraction
+packages with the `[local]` extra by default. To try prerelease or nightly
+Nemotron packages from PyPI within the same supported
 major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
 version you are installing.
 
