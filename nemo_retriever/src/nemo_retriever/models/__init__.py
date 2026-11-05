@@ -86,8 +86,8 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_nat
         backend: Normalized local inference backend, such as ``"vllm"`` or
             ``"hf"``.
         allow_native_nvfp4: Whether automatic selection can use the visible
-            CUDA devices as evidence of native NVFP4 support. Set False when
-            inference runs on other machines whose GPU architectures are unknown.
+            CUDA devices as evidence of native NVFP4 support. Single-node batch
+            execution uses the same visible devices as in-process inference.
             Explicit checkpoint precision identifiers are not changed.
 
     Returns:
