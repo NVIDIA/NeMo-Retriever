@@ -48,6 +48,74 @@ def test_build_graph_pdf_branch_appends_text_chunk_actor_when_pdf_split_set():
     assert names.index("TextChunkActor") < names.index("_BatchEmbedActor")
 
 
+@pytest.mark.parametrize("method", ["pdfium_hybrid", "ocr"])
+def test_pdf_page_embedding_collapses_after_configured_text_split(method):
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(method=method),
+        embed_params=EmbedParams(
+            model_name="nvidia/llama-nemotron-embed-1b-v2",
+            embed_invoke_url="http://embed.example/v1",
+            embed_granularity="page",
+        ),
+        split_config=resolve_split_params({"pdf": {"max_tokens": 1}}),
+    )
+    names = _node_names(graph)
+    assert names.index("TextChunkActor") < names.index("CollapseContentToPageRows")
+    assert names.index("CollapseContentToPageRows") < names.index("_BatchEmbedActor")
+
+
+@pytest.mark.parametrize("with_table", [False, True])
+def test_pdf_split_page_embeddings_keep_chunk_text_without_restoring_whole_page(monkeypatch, with_table):
+    import pandas as pd
+
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+    from nemo_retriever.common.modality.page_postprocessing import finalize_page_regions
+    from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor
+
+    class Tokenizer:
+        def encode(self, text, add_special_tokens=False):
+            return text.split()
+
+        def decode(self, ids, skip_special_tokens=True):
+            return " ".join(ids)
+
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: Tokenizer()
+    )
+    table = [{"text": "TABLE", "caption": "table caption", "bbox_xyxy_norm": [0, 0.4, 1, 0.5]}] if with_table else []
+    pages = finalize_page_regions(
+        pd.DataFrame(
+            [
+                {
+                    "text": "first last",
+                    "page_number": 1,
+                    "metadata": {},
+                    "ocr_text_regions": [
+                        {"text": "first", "bbox_xyxy_norm": [0, 0.1, 1, 0.2]},
+                        {"text": "last", "bbox_xyxy_norm": [0, 0.8, 1, 0.9]},
+                    ],
+                    "table": table,
+                },
+                {"text": "unsplit", "page_number": 2, "metadata": {}, "table": []},
+            ]
+        )
+    )
+    split_config = resolve_split_params({"pdf": {"max_tokens": 1}})
+    chunks = TextChunkCPUActor(split_config["pdf"])(pages)
+    assert chunks.text.tolist() == ["first", "last", "unsplit"]
+
+    embedded = collapse_content_to_page_rows(chunks)
+    first = "first\n\nTABLE\n\ntable caption" if with_table else "first"
+    assert embedded.text.tolist() == [first, "last", "unsplit"]
+    assert embedded.page_number.tolist() == [1, 1, 2]
+    assert embedded.iloc[0].metadata["chunk_count"] == 2
+    assert embedded.iloc[1].metadata["chunk_index"] == 1
+    assert embedded.iloc[1].table == []
+    assert embedded.iloc[2].ordered_page_text == "unsplit"
+    assert pages.iloc[0].ordered_page_text == ("first\nTABLE\nlast" if with_table else "first\nlast")
+
+
 def test_multi_type_extract_operator_uses_text_split_from_split_config():
     cfg = resolve_split_params({"text": {"max_tokens": 64}})
     op = MultiTypeExtractCPUActor(extraction_mode="auto", split_config=cfg)

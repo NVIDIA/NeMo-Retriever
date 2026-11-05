@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -25,10 +26,34 @@ def _is_content_collection(value: Any) -> bool:
 
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
     """Combine page text with OCR content text for embedding."""
+    ordered_regions = row.get("ordered_regions")
+    use_ordered_regions = (
+        text_column == "text"
+        and isinstance(row.get("ordered_page_text"), str)
+        and _is_content_collection(ordered_regions)
+    )
     parts = []
-    base = row.get(text_column)
-    if isinstance(base, str) and base.strip():
-        parts.append(base.strip())
+    # Match consumed regions by type, text, and geometry, not text substrings.
+    represented = Counter()
+    if use_ordered_regions:
+        selected_text = []
+        for region in ordered_regions:
+            if not isinstance(region, dict):
+                continue
+            label = region.get("label_name")
+            text = region.get("text")
+            if label not in ("text", "title", "header_footer") and label not in content_columns:
+                continue
+            if isinstance(text, str) and text.strip():
+                selected_text.append(text)
+                key = (label, text, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
+                represented[key] += 1
+        if selected_text:
+            parts.append("\n".join(selected_text))
+    else:
+        base = row.get(text_column)
+        if isinstance(base, str) and base.strip():
+            parts.append(base.strip())
     for col in content_columns:
         content_list = row.get(col)
         if _is_content_collection(content_list):
@@ -36,7 +61,15 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
                 if isinstance(item, dict):
                     text = item.get("text", "")
                     if isinstance(text, str) and text.strip():
-                        parts.append(text.strip())
+                        key = (
+                            (col, text, tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
+                            if use_ordered_regions
+                            else None
+                        )
+                        if key is not None and represented[key]:
+                            represented[key] -= 1
+                        else:
+                            parts.append(text.strip())
                     caption = item.get("caption", "")
                     if isinstance(caption, str) and caption.strip():
                         parts.append(caption.strip())

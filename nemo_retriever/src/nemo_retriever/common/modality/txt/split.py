@@ -112,9 +112,12 @@ def split_df(
     This is a **post-extraction** transform: it takes rows that already have a
     ``text`` column produced by extraction and
     splits long texts into multiple rows using :func:`split_text_by_tokens`.
-    All other columns (``path``, ``page_number``, ``metadata``, …) are
-    preserved on every output row.  Each chunk row's ``metadata`` dict is
-    updated with ``chunk_index`` and ``chunk_count``.
+    Source columns such as ``path`` and ``page_number`` are preserved on
+    every output row. Each chunk row's ``metadata`` dict is updated with
+    ``chunk_index`` and ``chunk_count``. When a row produces multiple chunks,
+    its whole-page ``ordered_page_text`` and ``ordered_regions`` are removed
+    so downstream transforms use chunk-local text. Structured content is
+    retained only on the first chunk.
 
     Rows whose ``text`` is empty or missing are passed through unchanged.
 
@@ -159,6 +162,8 @@ def split_df(
         for i, chunk in enumerate(chunks):
             new_row = {k: copy.deepcopy(v) if isinstance(v, (dict, list)) else v for k, v in row_dict.items()}
             new_row["text"] = chunk
+            new_row.pop("ordered_page_text", None)
+            new_row.pop("ordered_regions", None)
             if "content" in new_row:
                 new_row["content"] = chunk
             meta = new_row.get("metadata")

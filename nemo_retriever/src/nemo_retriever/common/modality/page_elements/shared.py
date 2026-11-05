@@ -530,6 +530,7 @@ def detect_page_elements_v3(
                 row_shapes.append(None)
             else:
                 t, orig_shape = _decode_b64_image_to_np_array(b64)
+                t = t[:, :, ::-1].copy()
                 row_tensors.append(t)
                 row_shapes.append(orig_shape)
             row_payloads.append({"detections": []})
@@ -586,6 +587,7 @@ def detect_page_elements_v3(
                     label_names=label_names,
                     thresholds_per_class=thresholds_per_class,
                 )
+                dets = _apply_final_score_filter(dets)
                 row_payloads[row_i] = {
                     "detections": dets,
                     "timing": {"seconds": float(elapsed)},
@@ -618,7 +620,9 @@ def detect_page_elements_v3(
             orig_shapes.append(sh)
             try:
                 # `preprocess` may accept/return torch.Tensor or np.ndarray.
-                pre = model.preprocess(t)  # type: ignore[arg-type]
+                from nemo_retriever.common.modality.page_postprocessing import prepare_detector_input
+
+                pre = torch.from_numpy(prepare_detector_input(t, tuple(model.input_shape)))
 
                 # Normalize to a single-image CHW-like item (torch or numpy); we'll convert to torch at stack time.
                 if isinstance(pre, torch.Tensor):
