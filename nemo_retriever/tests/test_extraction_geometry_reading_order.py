@@ -186,7 +186,11 @@ def test_native_exports_and_embedding_text_use_one_ordered_page():
         page_number=1,
         text="legacy",
         table=[{"text": "TABLE", "bbox_xyxy_norm": [0, 0.3, 1, 0.4]}],
-        ordered_regions=[{"label_name": "table", "text": "TABLE", "bbox_xyxy_norm": [0, 0.3, 1, 0.4]}],
+        ordered_regions=[
+            {"label_name": "text", "text": "top", "bbox_xyxy_norm": [0, 0, 1, 0.1]},
+            {"label_name": "table", "text": "TABLE", "bbox_xyxy_norm": [0, 0.3, 1, 0.4]},
+            {"label_name": "text", "text": "bottom", "bbox_xyxy_norm": [0, 0.9, 1, 1]},
+        ],
         ordered_page_text="top\nTABLE\nbottom",
     )
     markdown = to_markdown_by_page([record])[1]
@@ -221,8 +225,10 @@ def test_ordered_page_embeddings_keep_later_captions_and_additional_content(as_a
         text="legacy",
         ordered_page_text="top\nTABLE\nINFO\nbottom",
         ordered_regions=[
+            {"label_name": "text", "bbox_xyxy_norm": [0, 0, 1, 0.1], "text": "top"},
             {"label_name": "table", "bbox_xyxy_norm": table_bbox, "text": "TABLE"},
             {"label_name": "infographic", "bbox_xyxy_norm": info_bbox, "text": "INFO"},
+            {"label_name": "text", "bbox_xyxy_norm": [0, 0.9, 1, 1], "text": "bottom"},
         ],
         table=[{"bbox_xyxy_norm": table_bbox, "text": "TABLE", "caption": "table description"}],
         infographic=[{"bbox_xyxy_norm": info_bbox, "text": "INFO", "caption": "infographic description"}],
@@ -255,6 +261,57 @@ def test_ordered_page_does_not_drop_equal_text_from_another_region():
         ],
     )
     assert _combine_text_with_content(record, "text", ["table"]) == "same text\n\nsame text"
+
+
+@pytest.mark.parametrize("as_array", [False, True])
+@pytest.mark.parametrize("content_columns", [(), ("table",), ("chart",), ("infographic",), ("table", "infographic")])
+def test_ordered_page_embedding_respects_requested_content_columns(as_array, content_columns):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    record = {
+        "text": "native",
+        **{
+            label: [{"text": label.upper(), "caption": f"{label} caption", "bbox_xyxy_norm": [0, top, 1, top + 0.1]}]
+            for label, top in [("table", 0.2), ("chart", 0.4), ("infographic", 0.6)]
+        },
+    }
+    ordered = page_postprocessing.finalize_page_regions(pd.DataFrame([record]))
+    if as_array:
+        for col in ("ordered_regions", "table", "chart", "infographic"):
+            ordered[col] = ordered[col].map(lambda items: np.array(items, dtype=object))
+    result = collapse_content_to_page_rows(ordered, content_columns=content_columns)
+    expected = "\n".join(["native"] + [col.upper() for col in content_columns])
+    expected += "".join(f"\n\n{col} caption" for col in content_columns)
+    assert result.iloc[0].text == expected
+    assert ordered.iloc[0].ordered_page_text == "native\nTABLE\nCHART\nINFOGRAPHIC"
+
+
+@pytest.mark.parametrize("content_columns", [(), ("table",)])
+def test_ordered_page_embedding_honors_custom_text_column(content_columns):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    ordered = page_postprocessing.finalize_page_regions(
+        pd.DataFrame(
+            [
+                {
+                    "text": "native",
+                    "selected_text": "custom text",
+                    "table": [{"text": "TABLE", "bbox_xyxy_norm": [0, 0.2, 1, 0.3]}],
+                    "chart": [{"text": "CHART", "bbox_xyxy_norm": [0, 0.4, 1, 0.5]}],
+                }
+            ]
+        )
+    )
+    result = collapse_content_to_page_rows(ordered, text_column="selected_text", content_columns=content_columns)
+    assert result.iloc[0].selected_text == ("custom text\n\nTABLE" if content_columns else "custom text")
+    assert result.iloc[0].text == "native"
+
+
+def test_ordered_page_embedding_without_regions_falls_back_to_selected_columns():
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    frame = pd.DataFrame([{"text": "native", "ordered_page_text": "native\nUNREQUESTED"}])
+    assert collapse_content_to_page_rows(frame, content_columns=()).iloc[0].text == "native"
 
 
 @pytest.mark.parametrize("shape", [(40, 100, 3), (100, 40, 3), (40, 40, 3)])
