@@ -202,7 +202,12 @@ def test_batch_cli_plan_and_graph_share_checkpoint(tmp_path, monkeypatch, native
         tmp_path, plan.embed_params, resources=cluster, vdb_kwargs=plan.vdb_params.vdb_kwargs
     )
     metadata = sink_kwargs["vdb_kwargs"]
-    assert plan.embed_params.embed_model_name == actor_params.embed_model_name == metadata["embedding_model_name"] == expected
+    assert (
+        plan.embed_params.embed_model_name
+        == actor_params.embed_model_name
+        == metadata["embedding_model_name"]
+        == expected
+    )
     assert (
         plan.embed_params.embed_model_revision
         == actor_params.embed_model_revision
