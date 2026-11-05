@@ -50,6 +50,8 @@ Confirm that every matrix leg used the intended source commit and build stack.
 
 Workflow checks validate package contents, metadata, and Python extension ABI
 tags before upload.
+The workflow explicitly uses core metadata 2.4 for wheels and source distributions
+to keep the release format stable across build-backend updates.
 Run GPU inference checks on the produced wheels with the intended runtime.
 Cover detector, recognizer, and relational output, batching, OCR accuracy, and
 performance on the supported hardware you need to qualify.

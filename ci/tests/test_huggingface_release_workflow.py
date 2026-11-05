@@ -570,3 +570,43 @@ def test_actual_ocr_artifact_validator_accepts_legacy_and_pep639_licenses(
              "OCR_TORCH_VERSION": "2.13.0", "OCR_TORCHVISION_VERSION": "0.28.0", "GITHUB_SHA": "test"})
     assert (result.returncode == 0) is valid, result.stdout + result.stderr
     assert (dist / "build-info.json").exists() is valid
+
+
+def test_hatch_builds_wheel_and_sdist_with_explicit_metadata_version(tmp_path: Path) -> None:
+    import tarfile
+    from email.parser import Parser
+
+    pytest.importorskip("hatchling")
+    pytest.importorskip("build")
+    project = tmp_path / "project"
+    package = project / "fixture_package"
+    package.mkdir(parents=True)
+    (package / "__init__.py").touch()
+    (project / "pyproject.toml").write_text('''[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[project]
+name = "metadata-fixture"
+version = "1.0.0"
+license = "Apache-2.0"
+[tool.hatch.build.targets.wheel]
+packages = ["fixture_package"]
+''')
+    builder = _load_nightly_build_publish_module()
+    assert builder._patch_hatch_core_metadata_version(project, "2.4")
+    assert not builder._patch_hatch_core_metadata_version(project, "2.4")
+    subprocess.run([sys.executable, "-m", "build", "--no-isolation", "--wheel", "--sdist"],
+                   cwd=project, check=True, capture_output=True, text=True)
+    with zipfile.ZipFile(next((project / "dist").glob("*.whl"))) as z:
+        message = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith('/METADATA'))).decode())
+        assert message['Metadata-Version'] == '2.4'
+        assert message['License-Expression'] == 'Apache-2.0'
+    with tarfile.open(next((project / "dist").glob("*.tar.gz"))) as t:
+        message = Parser().parsestr(t.extractfile(next(n for n in t.getmembers() if n.name.endswith('/PKG-INFO'))).read().decode())
+        assert message['Metadata-Version'] == '2.4'
+
+
+def test_ocr_workflow_pins_metadata_format_and_logs_upload_rejections() -> None:
+    workflow = (REPO_ROOT / '.github/workflows/huggingface-nightly.yml').read_text()
+    assert '--hatch-core-metadata-version "2.4"' in workflow
+    assert 'twine upload --non-interactive --verbose' in workflow

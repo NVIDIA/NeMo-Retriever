@@ -738,6 +738,33 @@ def _looks_like_python_project(project_dir: Path) -> bool:
     return (project_dir / "pyproject.toml").exists() or (project_dir / "setup.cfg").exists()
 
 
+def _patch_hatch_core_metadata_version(project_dir: Path, version: str) -> bool:
+    path = project_dir / "pyproject.toml"
+    original = _read_text(path)
+    config = tomllib.loads(original)
+    if config.get("build-system", {}).get("build-backend") != "hatchling.build":
+        raise ValueError("--hatch-core-metadata-version requires the hatchling.build backend")
+    text = original
+    for target in ("wheel", "sdist"):
+        pattern = rf"(?ms)^(\[tool\.hatch\.build\.targets\.{target}\][^\n]*\n)(.*?)(?=^\[|\Z)"
+        match = re.search(pattern, text)
+        entry = f'core-metadata-version = "{version}"\n'
+        if match:
+            body = match.group(2)
+            if re.search(r"(?m)^core-metadata-version\s*=", body):
+                body = re.sub(r"(?m)^core-metadata-version\s*=.*$", entry.rstrip(), body)
+            else:
+                body = entry + body
+            text = text[:match.start()] + match.group(1) + body + text[match.end():]
+        else:
+            text = text.rstrip() + f"\n\n[tool.hatch.build.targets.{target}]\n" + entry
+    if text == original:
+        return False
+    tomllib.loads(text)
+    _write_text(path, text)
+    return True
+
+
 def _auto_project_subdir(repo_dir: Path, repo_id: str) -> str:
     """
     Best-effort detection for repos that keep the Python project in a nested
@@ -1106,6 +1133,11 @@ def main() -> int:
         help="Patch hatch_build.py so hatchling emits a platform-specific wheel (not py3-none-any)",
     )
     ap.add_argument(
+        "--hatch-core-metadata-version",
+        default=None,
+        help="Set Hatch's wheel and sdist core metadata version explicitly (e.g. '2.4').",
+    )
+    ap.add_argument(
         "--auditwheel-repair",
         action="store_true",
         help="Run auditwheel repair on built wheels (manylinux tag; needed for PyPI)",
@@ -1200,6 +1232,9 @@ def main() -> int:
     if args.hatch_force_platform_wheel:
         if not _patch_hatch_build_force_platform_wheel(project_dir):
             print("hatch-force-platform-wheel: no applicable hatch_build.py patch applied")
+
+    if args.hatch_core_metadata_version is not None:
+        _patch_hatch_core_metadata_version(project_dir, args.hatch_core_metadata_version)
 
     print("=== Building sdist + wheel ===")
     out_dir = dist_root / args.repo_id

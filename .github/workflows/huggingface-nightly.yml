@@ -374,6 +374,7 @@ jobs:
             --set-requires-python ">=3.11,<3.14" \
             ${sdist_arg} \
             --hatch-force-platform-wheel \
+            --hatch-core-metadata-version "2.4" \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
             --auditwheel-exclude libtorch_cuda.so \
@@ -458,6 +459,8 @@ jobs:
                   metadata_names = [n for n in names if n.endswith(".dist-info/METADATA")]
                   metadata = "\n".join(zf.read(n).decode("utf-8") for n in metadata_names)
               metadata_message = Parser().parsestr(metadata)
+              if metadata_message.get("Metadata-Version") != "2.4":
+                  raise SystemExit("OCR distributions must use core metadata 2.4")
               if f"Name: {expected_project}" not in metadata:
                   raise SystemExit(f"Built wheel metadata does not declare project {expected_project!r}")
               metadata_version = metadata_message.get("Version")
@@ -555,7 +558,7 @@ jobs:
           fi
           .venv-build/bin/python -m pip install twine
           .venv-build/bin/python -m twine check "${distributions[@]}"
-          .venv-build/bin/python -m twine upload --non-interactive \
+          .venv-build/bin/python -m twine upload --non-interactive --verbose \
             --repository-url https://upload.pypi.org/legacy/ \
             "${skip_args[@]}" "${distributions[@]}"
 
