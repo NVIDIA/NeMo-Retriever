@@ -30,7 +30,6 @@ import tomllib
 import zipfile
 from pathlib import Path
 
-
 _PATCHABLE_TEXT_SUFFIXES = {
     ".cfg",
     ".ini",
@@ -755,7 +754,7 @@ def _patch_hatch_core_metadata_version(project_dir: Path, version: str) -> bool:
                 body = re.sub(r"(?m)^core-metadata-version\s*=.*$", entry.rstrip(), body)
             else:
                 body = entry + body
-            text = text[:match.start()] + match.group(1) + body + text[match.end():]
+            text = text[: match.start()] + match.group(1) + body + text[match.end() :]
         else:
             text = text.rstrip() + f"\n\n[tool.hatch.build.targets.{target}]\n" + entry
     if text == original:
@@ -961,6 +960,19 @@ def _auditwheel_repair_dist_dir(dist_dir: Path, *, exclude_libs: list[str] | Non
     shutil.rmtree(repair_out)
 
 
+def _tag_publication_identity(dist_dir: Path, identity: str) -> None:
+    """Keep the source/settings identity in PyPI's durable wheel filenames."""
+    if not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise ValueError("Wheel build identity must be a SHA-256 hex digest")
+    wheels = sorted(dist_dir.glob("*.whl"))
+    if not wheels:
+        raise RuntimeError("No wheels found to tag with the publication identity")
+    py = _ensure_venv(Path(os.environ.get("ORCH_VENV_DIR", ".venv-build")), system_site_packages=False)
+    env = _ensure_tmpdir(os.environ.copy())
+    _pip_install(py, ["wheel>=0.45,<1"], cwd=dist_dir, env=env)
+    _run([str(py), "-m", "wheel", "tags", "--build", f"1{identity}", "--remove", *map(str, wheels)], env=env)
+
+
 def _validate_required_wheel_members(dist_dir: Path, required_members: list[str]) -> None:
     """Require exact archive members in every wheel before publication."""
     if not required_members:
@@ -1024,6 +1036,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo-id", required=True, help="Short identifier for logs/paths")
     ap.add_argument("--repo-url", required=True, help="HF git repo URL, e.g. https://huggingface.co/nvidia/xxx")
+    ap.add_argument("--wheel-build-id", help="SHA-256 source/settings identity to record as the wheel build tag")
     ap.add_argument(
         "--source-revision",
         type=_source_revision,
@@ -1254,6 +1267,9 @@ def main() -> int:
     if args.auditwheel_repair:
         print("=== auditwheel repair ===")
         _auditwheel_repair_dist_dir(out_dir, exclude_libs=args.auditwheel_exclude)
+
+    if args.wheel_build_id:
+        _tag_publication_identity(out_dir, args.wheel_build_id)
 
     _validate_required_wheel_members(out_dir, args.require_wheel_member)
 

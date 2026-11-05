@@ -62,10 +62,13 @@ wheel or GPU architecture.
 
 Run the same workflow with the qualified source revision and build profile,
 setting `upload_to=pypi`.
-The nightly version includes a timestamp, so this run builds a new version.
+The workflow publishes only missing artifacts for the resolved build identity,
+as described below.
+For a new identity, the nightly version includes the current timestamp.
 Compare its `build-info.json` with the qualification artifacts before adopting
 the published package.
-Publication uses the repository's existing `PYPI_API_TOKEN` secret.
+Publication uses the repository's existing `PYPI_API_TOKEN` secret in GitHub
+Actions.
 
 For a stable release, select `release_type=stable` and supply a fresh
 `release_version` while retaining the qualified stack and source revision.
@@ -79,3 +82,61 @@ Repeat the GPU smoke test with that version before updating consumers.
 Publishing this package does not update NRL runtime dependency pins or its
 lockfile; coordinate those changes with validation of the complete inference
 stack.
+
+## Publication identity and retries
+
+The publication planner identifies a build by its resolved Hugging Face source
+commit and its NRL publishing settings.
+Those settings include the selected package, nightly base version, build
+profile, stable version when supplied, and the contents of these files.
+
+- `.github/workflows/huggingface-nightly.yml`.
+- `ci/scripts/nightly_build_publish.py`.
+- `ci/scripts/hf_publication.py`.
+
+The wheel filename records the identity as build tag `1<sha256>`.
+The planner reads published wheel tags from PyPI instead of relying on an
+expiring GitHub Actions cache.
+Unrelated NRL commits do not change the identity when these files and settings
+remain unchanged.
+
+Scheduled and manual runs with `upload_to=pypi` skip each wheel already
+published for the same identity.
+If a publication is incomplete, a later run reuses its version and builds the
+missing Python or architecture wheels and source distribution.
+A complete retry does not create another timestamped nightly.
+Yanked artifacts also count as published, so a retry does not republish them
+under a fresh version.
+Runs with `upload_to=none` always build qualification artifacts, including when
+the identity is already published.
+
+The workflow serializes publication runs and resolves one Hugging Face commit
+for the complete OCR matrix.
+Every OCR matrix leg builds that exact commit.
+
+## Review obsolete nightlies
+
+Generate a read-only report from the repository root with the following command.
+
+```bash
+python ci/scripts/hf_publication.py retention-report \
+  --project nemotron-ocr \
+  --output ocr-retention-report.json
+```
+
+The report selects development releases whose every file was uploaded before
+the first file of the latest non-yanked stable version.
+It includes the candidate versions, file counts, reclaimable bytes, and PyPI
+release management links.
+The OCR workflow also uploads this report as the `ocr-retention-report`
+GitHub Actions artifact.
+The report uses public PyPI metadata and does not need the upload token.
+
+Review the candidate releases and any exact version pins before deleting them.
+The report does not delete releases or modify PyPI.
+A project owner must use the PyPI release management pages and complete the
+browser authentication and password confirmation required for deletion.
+The upload API token cannot perform these deletions.
+Yanking a release does not free storage.
+Refer to [PyPI storage limits](https://docs.pypi.org/project-management/storage-limits/)
+for the deletion process and its effect on pinned installations.
