@@ -535,3 +535,38 @@ def test_ocr_toolcache_host_matches_cuda_container_distro() -> None:
     assert "runner: ubuntu-24.04-arm\n" in ocr
     assert "runner: ubuntu-latest" not in ocr
     assert 'python -c "import ssl; print(ssl.OPENSSL_VERSION)"' in ocr
+
+
+@pytest.mark.parametrize("field,value,valid", [("License", "Apache-2.0", True),
+    ("License-Expression", "Apache-2.0", True), ("License-Expression", "Proprietary", False)])
+def test_actual_ocr_artifact_validator_accepts_legacy_and_pep639_licenses(
+    tmp_path: Path, field: str, value: str, valid: bool
+) -> None:
+    workflow = (REPO_ROOT / ".github/workflows/huggingface-nightly.yml").read_text()
+    ocr = workflow.split("  build_ocr_cuda:", 1)[1]
+    script = textwrap.dedent(ocr.split("          python - <<'PY'\n", 1)[1].split("\n          PY", 1)[0])
+    script = script.replace("${{ matrix.ocr.id }}", "nemotron-ocr-v2")
+    script = script.replace("${{ matrix.ocr.url }}", "https://huggingface.co/nvidia/nemotron-ocr-v2")
+    script = script.replace("${{ matrix.platform.arch }}", "x86_64")
+    script = script.replace("${{ matrix.platform.cuda_image }}", "nvidia/cuda:13.0.0-devel-ubuntu24.04")
+    dist = tmp_path / "dist-out/nemotron-ocr-v2"
+    dist.mkdir(parents=True)
+    tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    wheel = dist / f"nemotron_ocr-2.1.0.dev123-{tag}-{tag}-manylinux_2_34_x86_64.whl"
+    metadata = (f"Metadata-Version: 2.4\nName: nemotron-ocr\nVersion: 2.1.0.dev123\n{field}: {value}\n"
+        "Classifier: License :: OSI Approved :: Apache Software License\n"
+        "Requires-Dist: torch~=2.13.0\nRequires-Dist: torchvision~=0.28.0\n")
+    with zipfile.ZipFile(wheel, "w") as z:
+        z.writestr("nemotron_ocr-2.1.0.dev123.dist-info/METADATA", metadata)
+        z.writestr("nemotron_ocr/inference/pipeline.py", "")
+        z.writestr(f"nemotron_ocr_cpp/_nemotron_ocr_cpp.cpython-{tag[2:]}-x86_64-linux-gnu.so", "")
+    repo = tmp_path / ".work/nemotron-ocr-v2"
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                    "commit", "--allow-empty", "-m", "source"], cwd=repo, check=True, capture_output=True)
+    result = subprocess.run([sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, "EXPECTED_OCR_VERSION": "2.1.0.dev", "OCR_RELEASE_TYPE": "nightly",
+             "OCR_TORCH_VERSION": "2.13.0", "OCR_TORCHVISION_VERSION": "0.28.0", "GITHUB_SHA": "test"})
+    assert (result.returncode == 0) is valid, result.stdout + result.stderr
+    assert (dist / "build-info.json").exists() is valid

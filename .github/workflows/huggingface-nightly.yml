@@ -461,7 +461,7 @@ jobs:
               if f"Name: {expected_project}" not in metadata:
                   raise SystemExit(f"Built wheel metadata does not declare project {expected_project!r}")
               metadata_version = metadata_message.get("Version")
-              metadata_license = metadata_message.get("License")
+              metadata_license = metadata_message.get("License-Expression") or metadata_message.get("License")
               if metadata_license != expected_license:
                   raise SystemExit(
                       "Built wheel metadata does not declare expected license "
