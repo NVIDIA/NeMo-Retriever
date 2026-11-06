@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal, Sequence
 
 import torch
@@ -13,11 +14,11 @@ from PIL import Image
 
 from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.hf_model_registry import NEMOTRON_PARSE35_DFLASH2_REVISION, get_hf_revision
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
 from nemo_retriever.models.model import BaseModel, ModelRunMode
 
-_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>"
 
 
 class NemotronParse35(BaseModel):
@@ -25,8 +26,9 @@ class NemotronParse35(BaseModel):
 
     Weights and custom code are loaded lazily from an immutable registry revision.
     Pages are converted and generated sequentially to bound additional image
-    and GPU memory independently of batch size. The vLLM backend registers the
-    official plugin from the same pinned snapshot in each engine process.
+    and GPU memory independently of batch size. Local vLLM uses native DFlash2
+    by default, loading its drafter from the same pinned snapshot as the target.
+    Explicitly disabling DFlash2 retains the legacy plugin backend.
     """
 
     def __init__(
@@ -36,6 +38,9 @@ class NemotronParse35(BaseModel):
         task_prompt: str = _DEFAULT_TASK_PROMPT,
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
+        sampling_params: dict[str, Any] | None = None,
+        use_dflash: bool = True,
+        num_speculative_tokens: Literal[8, 16, 32] = 32,
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
 
@@ -43,14 +48,23 @@ class NemotronParse35(BaseModel):
             device: PyTorch inference device, normally the worker's ``cuda`` device.
                 Select ``cpu`` with ``backend="transformers"`` when CUDA is unavailable.
             hf_cache_dir: Optional Hugging Face snapshot cache directory.
-            task_prompt: Native control tokens. Picture text is disabled unless enabled explicitly.
+            task_prompt: Native control tokens. Picture text is enabled by default.
             max_tokens: Positive maximum number of generated tokens per page.
             backend: In-process vLLM (the default) or explicit native Transformers.
                 vLLM requires CUDA device zero
                 in the worker's visible GPU set; Transformers also supports CPU.
 
+            sampling_params: Optional vLLM overrides for ``temperature``, ``top_k``,
+                ``top_p``, ``repetition_penalty``, and ``seed``. Defaults retain
+                greedy decoding. Available only with backend="vllm".
+            use_dflash: Enable native DFlash2 in the local vLLM engine (default).
+                Requires a vLLM build with native Parse and DFlash2 support.
+                False selects the legacy pinned plugin. Transformers ignores it.
+            num_speculative_tokens: Draft length, one of 8, 16, or 32 (default).
+                Applies only to native DFlash2, not remote services or Transformers.
+
         Raises:
-            ValueError: If max_tokens is not positive, the backend is unsupported,
+            ValueError: If sampling overrides are unsupported, max_tokens is not positive, the backend is unsupported,
                 or the device is invalid for the selected backend.
             RuntimeError: If PyTorch cannot interpret the device.
         """
@@ -62,6 +76,16 @@ class NemotronParse35(BaseModel):
         self._device = torch.device(device)
         if backend == "vllm" and (self._device.type != "cuda" or self._device.index not in (None, 0)):
             raise ValueError('Parse 3.5 vLLM requires device="cuda" or "cuda:0" in the worker GPU set.')
+        allowed_sampling = {"temperature", "top_k", "top_p", "repetition_penalty", "seed"}
+        if sampling_params and (backend != "vllm" or set(sampling_params) - allowed_sampling):
+            raise ValueError(
+                "sampling_params requires vllm and accepts temperature, top_k, top_p, repetition_penalty, seed."
+            )
+        if num_speculative_tokens not in (8, 16, 32):
+            raise ValueError("Parse DFlash2 num_speculative_tokens must be 8, 16, or 32.")
+        self._use_dflash = backend == "vllm" and use_dflash
+        self._num_speculative_tokens = num_speculative_tokens
+        self._sampling_params = dict(sampling_params or {})
         self._backend = backend
         self._hf_cache_dir = hf_cache_dir
         self._task_prompt = task_prompt
@@ -84,17 +108,24 @@ class NemotronParse35(BaseModel):
                     f"Nemotron 3.5 Parse requested unavailable CUDA device {self._device}. "
                     'Select a visible CUDA device or explicitly select device="cpu".'
                 )
+        if self._use_dflash:
+            self._validate_native_dflash_runtime()
         from huggingface_hub import snapshot_download
 
         cache_dir = configure_global_hf_cache_base(self._hf_cache_dir)
         snapshot = snapshot_download(
             NEMOTRON_PARSE35_MODEL,
-            revision=get_hf_revision(NEMOTRON_PARSE35_MODEL),
+            revision=(
+                NEMOTRON_PARSE35_DFLASH2_REVISION if self._use_dflash else get_hf_revision(NEMOTRON_PARSE35_MODEL)
+            ),
             cache_dir=cache_dir,
-            allow_patterns=["*.json", "*.py", "*.safetensors", "*.jinja", "*.model", "*.txt"],
+            allow_patterns=["*.json", "*.py", "*.safetensors", "*.jinja", "*.model", "*.txt", "dflash2/*"],
         )
         if self._backend == "vllm":
-            self._load_vllm(snapshot)
+            if self._use_dflash:
+                self._load_native_dflash(snapshot)
+            else:
+                self._load_vllm(snapshot)
             return
         from transformers import AutoModel, AutoProcessor, GenerationConfig
 
@@ -114,6 +145,85 @@ class NemotronParse35(BaseModel):
             raise
         self._processor = processor
         self._generation_config = generation_config
+
+    def _validate_native_dflash_runtime(self) -> None:
+        try:
+            from vllm import ModelRegistry
+
+            supported = set(ModelRegistry.get_supported_archs())
+        except (ImportError, AttributeError) as exc:
+            raise RuntimeError(
+                "Local Parse DFlash2 requires vLLM with native RadioMBartPrefixForCausalLM and "
+                "DFlash2DraftModel support. Use a compatible native vLLM environment; the NRL local "
+                "extra pins legacy vLLM 0.26. Alternatively set ParseParams(use_dflash=False)."
+            ) from exc
+        if not {"RadioMBartPrefixForCausalLM", "DFlash2DraftModel"}.issubset(supported):
+            raise RuntimeError(
+                "This vLLM build lacks native Parse/DFlash2 support. Use a vLLM build that registers "
+                "RadioMBartPrefixForCausalLM and DFlash2DraftModel, or set ParseParams(use_dflash=False) "
+                "for the legacy vLLM 0.26 plugin."
+            )
+
+    def _load_native_dflash(self, snapshot: str) -> None:
+        import json
+        import os
+
+        from nemo_retriever.models.inference.nemotron_parse35_vllm import PARSE35_SNAPSHOT_ENV
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+        from vllm import LLM, SamplingParams
+
+        draft = Path(snapshot) / "dflash2"
+        if not (draft / "config.json").is_file() or not (draft / "model.safetensors").is_file():
+            raise RuntimeError(
+                "Parse DFlash2 drafter assets are missing. Cache the complete pinned Parse snapshot, "
+                "including dflash2/config.json and dflash2/model.safetensors, before offline inference."
+            )
+        config = json.loads((draft / "config.json").read_text())
+        if "DFlash2DraftModel" not in config.get("architectures", []):
+            raise RuntimeError("The pinned Parse dflash2 directory must contain a DFlash2DraftModel checkpoint.")
+        apply_vllm_startup_defaults()
+        previous = {
+            name: os.environ.get(name)
+            for name in (
+                "VLLM_WORKER_MULTIPROC_METHOD",
+                PARSE35_SNAPSHOT_ENV,
+                "NP_VLLM_MTP",
+            )
+        }
+        try:
+            os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+            os.environ.pop(PARSE35_SNAPSHOT_ENV, None)
+            os.environ.pop("NP_VLLM_MTP", None)
+            self._generation_config = SamplingParams(
+                **{"temperature": 0, "top_k": 1, "repetition_penalty": 1.1, **self._sampling_params},
+                max_tokens=self._max_tokens,
+                skip_special_tokens=False,
+            )
+            self._model = LLM(
+                model=snapshot,
+                trust_remote_code=True,
+                dtype="bfloat16",
+                distributed_executor_backend="uni",
+                max_model_len=16384,
+                max_num_seqs=1,
+                max_num_batched_tokens=16384,
+                limit_mm_per_prompt={"image": 1},
+                enable_prefix_caching=False,
+                attention_config={"flash_attn_version": 3},
+                gpu_memory_utilization=0.8,
+                speculative_config={
+                    "method": "dflash",
+                    "model": str(draft),
+                    "num_speculative_tokens": self._num_speculative_tokens,
+                },
+                compilation_config={"mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"},
+            )
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     def _load_vllm(self, snapshot: str) -> None:
         import os
@@ -137,9 +247,12 @@ class NemotronParse35(BaseModel):
             from vllm import LLM, SamplingParams
 
             self._generation_config = SamplingParams(
-                temperature=0,
-                top_k=1,
-                repetition_penalty=1.1,
+                **{
+                    "temperature": 0,
+                    "top_k": 1,
+                    "repetition_penalty": 1.1,
+                    **self._sampling_params,
+                },
                 max_tokens=self._max_tokens,
                 skip_special_tokens=False,
             )
@@ -230,7 +343,12 @@ class NemotronParse35(BaseModel):
             if self._backend == "vllm":
                 prompt = task_prompt if task_prompt is not None else self._task_prompt
                 generated = self._model.generate(
-                    [{"prompt": "<pad>\n" + prompt, "multi_modal_data": {"image": page}}],
+                    [
+                        {
+                            "prompt": ("<pad>" if self._use_dflash else "<pad>\n") + prompt,
+                            "multi_modal_data": {"image": page},
+                        }
+                    ],
                     self._generation_config,
                     tokenization_kwargs={"add_special_tokens": False},
                 )
