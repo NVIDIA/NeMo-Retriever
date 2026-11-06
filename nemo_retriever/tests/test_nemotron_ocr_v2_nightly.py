@@ -295,8 +295,12 @@ def test_ocr_nightly_builds_and_verifies_vllm_compatible_torch_stack() -> None:
 
     workflow = workflow_path.read_text(encoding="utf-8")
 
-    assert 'OCR_TORCH_VERSION: "2.11.0"' in workflow
-    assert 'OCR_TORCHVISION_VERSION: "0.26.0"' in workflow
+    assert 'torch_version="2.11.0"' in workflow
+    assert 'torchvision_version="0.26.0"' in workflow
+    assert 'torch_version="2.13.0"' in workflow
+    assert 'torchvision_version="0.28.0"' in workflow
+    assert "OCR_TORCH_VERSION: ${{ steps.ocr_stack.outputs.torch_version }}" in workflow
+    assert "OCR_TORCHVISION_VERSION: ${{ steps.ocr_stack.outputs.torchvision_version }}" in workflow
     assert '--venv-pip-install "torch==${OCR_TORCH_VERSION}"' in workflow
     assert '--venv-pip-install "torchvision==${OCR_TORCHVISION_VERSION}"' in workflow
     assert "expected_runtime_dependencies" in workflow
