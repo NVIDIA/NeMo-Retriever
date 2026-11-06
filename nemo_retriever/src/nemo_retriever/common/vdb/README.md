@@ -44,6 +44,16 @@ but not committed. `LanceDB` is the reference implementation; it sets the flag
 for one-shot writes (a new table, or `overwrite=True`, without
 `stream_operation_id`) and appends through `stream_ingest`.
 
+Two small write-only backends show the same contract on other stores. Pass an
+instance as `vdb=`; neither implements retrieval or the collection API.
+
+| Backend | Write actors | `commit_partitions` |
+|---|---|---|
+| `DuckDB(path, table_name)` | Write Parquet files to a per-write folder under `<path>.staging` | Loads every file in one transaction, then deletes the staging folder |
+| `Elasticsearch(url, index_name)` | Bulk-index into a new index with refresh off | Refreshes, checks the document count against the receipts, then points the `index_name` alias at the new index |
+
+`DuckDB` needs the `duckdb` package, which is in the `dev` extra.
+
 ---
 
 ## `IngestVdbOperator` (ingestion)
