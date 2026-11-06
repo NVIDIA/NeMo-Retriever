@@ -24,8 +24,53 @@ def _is_content_collection(value: Any) -> bool:
     return isinstance(value, list) or (isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object)
 
 
+def _combine_parse35_blocks(row: Any, text_column: str, content_columns: Sequence[str]) -> Optional[str]:
+    """Interleave selected Parse blocks only while their page text remains unchanged."""
+    order = row.get("_nemotron_parse_block_order")
+    if (
+        text_column != "text"
+        or not isinstance(order, dict)
+        or not isinstance(order.get("blocks"), list)
+        or not isinstance(row.get(text_column), str)
+        or row.get(text_column) != order.get("source_text")
+    ):
+        return None
+    parts: List[str] = []
+    represented = set()
+
+    def append_item(item: Any) -> None:
+        if isinstance(item, dict):
+            for field in ("text", "caption"):
+                value = item.get(field)
+                if isinstance(value, str) and value.strip():
+                    parts.append(value.strip())
+
+    for block in order["blocks"]:
+        column = block.get("column")
+        if column == "text":
+            append_item(block)
+        elif column in content_columns:
+            items = row.get(column)
+            index = block.get("index")
+            if _is_content_collection(items) and isinstance(index, int) and 0 <= index < len(items):
+                if (column, index) not in represented:
+                    append_item(items[index])
+                    represented.add((column, index))
+    for column in content_columns:
+        items = row.get(column)
+        if _is_content_collection(items):
+            for index, item in enumerate(items):
+                if (column, index) not in represented:
+                    append_item(item)
+                    represented.add((column, index))
+    return "\n\n".join(parts)
+
+
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
     """Combine page text with OCR content text for embedding."""
+    ordered = _combine_parse35_blocks(row, text_column, content_columns)
+    if ordered is not None:
+        return ordered
     ordered_regions = row.get("ordered_regions")
     use_ordered_regions = (
         text_column == "text"

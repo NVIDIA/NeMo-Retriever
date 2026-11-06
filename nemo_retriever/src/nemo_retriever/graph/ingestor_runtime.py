@@ -29,6 +29,7 @@ from nemo_retriever.operators.extract.video.text_dedup import VideoFrameTextDedu
 from nemo_retriever.operators.extract.video.split import VideoSplitActor
 from nemo_retriever.operators.extract.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+from nemo_retriever.operators.extract.parse.chart_routing import ChartRoutingActor
 from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
@@ -100,6 +101,10 @@ def default_concurrency_node_names(
         names.update(
             name for name, field in worker_fields.items() if not _positive(getattr(extract_tuning, field, None))
         )
+        if getattr(extract_params, "chart_routing", False) and not _positive(
+            getattr(extract_tuning, "nemotron_parse_workers", None)
+        ):
+            names.add(ChartRoutingActor.__name__)
     embed_tuning = _batch_tuning(embed_params)
     if embed_params is not None and not _positive(getattr(embed_tuning, "embed_workers", None)):
         names.add(_BatchEmbedActor.__name__)
@@ -427,21 +432,22 @@ def batch_tuning_to_node_overrides(
                 plan.table_structure_gpus_per_actor if plan else None,
             )
 
+        parse_actor = ChartRoutingActor if getattr(extract_params, "chart_routing", False) else NemotronParseActor
         np_bs = _positive(
             getattr(extract_tuning, "nemotron_parse_batch_size", None) if extract_tuning is not None else None
         ) or (plan.nemotron_parse_batch_size if plan else None)
-        _set(NemotronParseActor.__name__, "batch_size", np_bs)
+        _set(parse_actor.__name__, "batch_size", np_bs)
         _set(
-            NemotronParseActor.__name__,
+            parse_actor.__name__,
             "concurrency",
             getattr(extract_tuning, "nemotron_parse_workers", None) if extract_tuning is not None else None,
             plan.nemotron_parse_initial_actors if plan else None,
         )
         if effective_allow_no_gpu:
-            _force_cpu_only(NemotronParseActor.__name__)
+            _force_cpu_only(parse_actor.__name__)
         else:
             _set_gpu(
-                NemotronParseActor.__name__,
+                parse_actor.__name__,
                 getattr(extract_tuning, "gpu_nemotron_parse", None) if extract_tuning is not None else None,
                 plan.nemotron_parse_gpus_per_actor if plan else None,
             )
@@ -897,7 +903,8 @@ def build_graph(
 
         tuning = _batch_tuning(extract_params)
         parse_mode = extract_params.method == "nemotron_parse" or (
-            tuning is not None
+            not extract_params.chart_routing
+            and tuning is not None
             and (_positive(getattr(tuning, "nemotron_parse_workers", None)) is not None)
             and (_positive(getattr(tuning, "gpu_nemotron_parse", None)) is not None)
             and (_positive(getattr(tuning, "nemotron_parse_batch_size", None)) is not None)
@@ -924,7 +931,10 @@ def build_graph(
                 parse_kwargs["api_key"] = extract_params.api_key
             if extract_params.nemotron_parse_model:
                 parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
+            if extract_params.nemotron_parse_table_format is not None:
+                parse_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
             parse_kwargs.update(_nim_remote_http_kwargs(extract_params))
+            parse_kwargs.update(extract_params._parse_actor_overrides())
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}
@@ -993,6 +1003,16 @@ def build_graph(
                     ocr_archetype.__name__,
                 )
                 graph = graph >> ocr_archetype(**ocr_kwargs)
+            if extract_params.chart_routing:
+                routing_kwargs = {
+                    "nemotron_parse_invoke_url": extract_params.nemotron_parse_invoke_url,
+                    "api_key": extract_params.api_key,
+                    "request_timeout_s": extract_params.request_timeout_s,
+                    **_nim_remote_http_kwargs(extract_params),
+                }
+                routing_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
+                routing_kwargs.update(extract_params._parse_actor_overrides())
+                graph = graph >> ChartRoutingActor(**routing_kwargs)
 
         graph = _maybe_append_chunk_actor(graph, split_config, "pdf")
 
