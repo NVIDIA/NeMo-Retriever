@@ -12,6 +12,7 @@ from vllm.model_executor.models.transformers.base import (
     get_pp_indices,
 )
 
+from nemo_retriever.common import nvtx_layers
 from nemo_retriever.models.inference.nemotron35_vllm import (
     create_bidirectional_attention,
 )
@@ -114,7 +115,8 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
             return super().embed_multimodal(**kwargs)
         sizes = [int(n) for n in torch.as_tensor(num_image_patches).flatten().tolist()]
         if len(sizes) <= 1:
-            return super().embed_multimodal(**kwargs)
+            with nvtx_layers.span("vLLM", "vision.encode_image"):
+                return super().embed_multimodal(**kwargs)
         offsets = [0]
         for size in sizes:
             offsets.append(offsets[-1] + size)
@@ -131,6 +133,7 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
 
         outputs = []
         for index in range(len(sizes)):
-            embeddings = super().embed_multimodal(**{key: item(value, index) for key, value in kwargs.items()})
+            with nvtx_layers.span("vLLM", "vision.encode_image"):
+                embeddings = super().embed_multimodal(**{key: item(value, index) for key, value in kwargs.items()})
             outputs.extend(embeddings if isinstance(embeddings, (list, tuple)) else [embeddings])
         return outputs

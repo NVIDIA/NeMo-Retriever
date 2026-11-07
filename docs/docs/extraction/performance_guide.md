@@ -301,6 +301,41 @@ The summary adds durations from all matching ranges. With concurrent actors,
 the summed duration can exceed wall-clock time, so use the timeline to reason
 about overlap and the critical path.
 
+### Split GPU stage time by owner
+
+To find which code owns the time inside a GPU actor, set `NRL_NVTX` in the
+environment of the ingest process and its Ray workers. The library then adds
+ranges in the following NVTX domains.
+
+| Domain | Ranges | Level |
+| --- | --- | --- |
+| `NRL` | NeMo Retriever Library code, such as embedding request building, Page Elements, and OCR preprocessing and postprocessing. | `1` |
+| `vLLM` | The vLLM front end and EngineCore, such as request rendering, scheduling, and model execution. | `1` |
+| `torch` | Model forwards. With `full`, also host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. | `1`, `full` |
+| `Ray` | Ray Data task steps, batch formatting, and object serialization. | `full` |
+
+`NRL_NVTX=1` adds stage ranges. `NRL_NVTX=full` also wraps high-frequency
+calls, such as tensor host syncs and Ray serialization. In an 8-GPU text ingest
+benchmark without `nsys` attached, each level changed wall time by less than
+1%. The profiler adds its own overhead, so do not compare profiled throughput
+with unprofiled runs. When `NRL_NVTX` is unset, the library does not wrap any
+third-party code.
+
+The ranges nest, so attribute each instant to the innermost open range.
+
+Profile with the same `nsys profile` command shown earlier, and then summarize
+the ranges as follows:
+
+```bash
+NRL_NVTX=1 nsys profile \
+  --trace=nvtx,cuda,osrt \
+  --sample=none \
+  --wait=all \
+  --output=nrl-owner-profile \
+  -- retriever ingest batch /path/to/your/pdfs
+nsys stats --report nvtx_sum nrl-owner-profile.nsys-rep
+```
+
 ## Tune remote OCR request batching
 
 Remote OCR batches cropped regions across the page rows supplied to one OCR actor call. This behavior applies to in-process, batch, and service ingestion with a remote OCR NIM. It preserves page and region output order.

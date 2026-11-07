@@ -25,6 +25,7 @@ import socket
 import time
 from typing import Any, List, Optional
 
+from nemo_retriever.common import nvtx_layers
 from nemo_retriever.common.schemas.embedding import format_embedding_input
 
 logger = logging.getLogger(__name__)
@@ -300,7 +301,10 @@ class AsyncEmbedEngine:
         async def gather() -> list:
             return await asyncio.gather(*(one(p, f"nrl-embed-{os.getpid()}-{next(self._ids)}") for p in prompts))
 
-        return [EmbeddingRequestOutput.from_base(output) for output in self._run(gather())]
+        with nvtx_layers.span("vLLM", "AsyncLLM.wait"):
+            outputs = self._run(gather())
+        with nvtx_layers.span("NRL", "outputs_from_base"):
+            return [EmbeddingRequestOutput.from_base(output) for output in outputs]
 
     def shutdown(self, timeout: Optional[float] = None) -> None:
         """Stop the engine core, then the private event loop."""
