@@ -181,12 +181,14 @@ def create_vllm_llm(
     limit_mm_per_prompt: Optional[dict] = None,
     download_dir: Optional[str] = None,
     model_impl: Optional[str] = None,
+    async_engine: bool = False,
 ) -> Any:
     """
     Create and return a vLLM LLM instance for embedding (pooling runner).
     Caller can reuse it across many embed batches to avoid repeated model load and CUDA graph capture.
 
     Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
+    ``async_engine=True`` returns an :class:`AsyncEmbedEngine` with the same ``embed`` call.
 
     """
     apply_vllm_startup_defaults(tensor_parallel_size=tensor_parallel_size)
@@ -234,7 +236,76 @@ def create_vllm_llm(
     if limit_mm_per_prompt is not None:
         kwargs["limit_mm_per_prompt"] = limit_mm_per_prompt
 
-    return _build_llm_with_port_retry(LLM, kwargs)
+    return _build_llm_with_port_retry(AsyncEmbedEngine if async_engine else LLM, kwargs)
+
+
+class AsyncEmbedEngine:
+    """``LLM.embed`` over a vLLM ``AsyncLLM`` that submits every prompt as its own request.
+
+    The engine runs on a private event loop, so several threads can call ``embed``
+    at once and the scheduler batches all of their in-flight requests together.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        import asyncio
+        import itertools
+        import threading
+
+        from vllm.engine.arg_utils import AsyncEngineArgs
+        from vllm.usage.usage_lib import UsageContext
+        from vllm.v1.engine.async_llm import AsyncLLM
+
+        kwargs.setdefault("disable_log_stats", True)
+        self._loop = asyncio.new_event_loop()
+        threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-async-vllm").start()
+
+        async def build() -> Any:
+            return AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs), usage_context=UsageContext.LLM_CLASS)
+
+        try:
+            self.engine = self._run(build())
+        except BaseException:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            raise
+        self._ids = itertools.count()
+
+    def _run(self, coroutine: Any) -> Any:
+        import asyncio
+
+        return asyncio.run_coroutine_threadsafe(coroutine, self._loop).result()
+
+    def embed(
+        self, prompts: List[Any], *, pooling_params: Any = None, tokenization_kwargs: Optional[dict] = None
+    ) -> list:
+        """Embed ``prompts`` like ``LLM.embed`` and return outputs in prompt order."""
+        import asyncio
+
+        from vllm import PoolingParams
+        from vllm.outputs import EmbeddingRequestOutput
+        from vllm.renderers.inputs.preprocess import parse_model_prompt
+
+        engine = self.engine
+        tok_params = engine.renderer.default_cmpl_tok_params.with_kwargs(**(tokenization_kwargs or {}))
+
+        async def one(prompt: Any, request_id: str) -> Any:
+            (engine_input,) = engine.renderer.render_cmpl([parse_model_prompt(engine.model_config, prompt)], tok_params)
+            params = (pooling_params or PoolingParams()).clone()
+            if params.task is None:
+                params.task = "embed"
+            output = None
+            async for output in engine.encode(engine_input, params, request_id):
+                pass
+            return output
+
+        async def gather() -> list:
+            return await asyncio.gather(*(one(p, f"nrl-embed-{os.getpid()}-{next(self._ids)}") for p in prompts))
+
+        return [EmbeddingRequestOutput.from_base(output) for output in self._run(gather())]
+
+    def shutdown(self, timeout: Optional[float] = None) -> None:
+        """Stop the engine core, then the private event loop."""
+        self.engine.shutdown(timeout=timeout)
+        self._loop.call_soon_threadsafe(self._loop.stop)
 
 
 def _pick_free_port() -> int:
@@ -432,4 +503,5 @@ __all__ = [
     "create_vllm_llm",
     "embed_with_vllm_llm",
     "embed_multimodal_with_vllm_llm",
+    "AsyncEmbedEngine",
 ]

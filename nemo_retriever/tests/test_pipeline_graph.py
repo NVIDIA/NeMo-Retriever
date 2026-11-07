@@ -1849,6 +1849,59 @@ class TestRayDataExecutor:
         assert input_dataset.context.batch_to_block_arrow_format
         assert input_dataset.context.enable_tensor_extension_casting
 
+    @pytest.mark.parametrize(
+        ("concurrency", "pool"),
+        [(3, {"size": 3}), ((1, 4, 2), {"min_size": 1, "max_size": 4, "initial_size": 2})],
+    )
+    def test_build_dataset_runs_udf_threads_on_a_true_multithreaded_pool(self, monkeypatch, concurrency, pool):
+        import sys
+        from types import SimpleNamespace
+
+        captured: list[dict[str, Any]] = []
+
+        class _FakeDataContext:
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                return self
+
+        class _ThreadedUDF(UDFOperator):
+            UDF_THREADS = 2
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset, DataContext=_FakeDataContext, ActorPoolStrategy=lambda **kwargs: kwargs
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = Graph() >> _ThreadedUDF(lambda frame: frame)
+        (node,) = graph.roots
+        executor = RayDataExecutor(graph, node_overrides={node.name: {"concurrency": concurrency}})
+        executor._resources_preflight_complete = True
+        executor.build_dataset(_FakeDataset())
+
+        (call,) = captured
+        assert "concurrency" not in call
+        assert call["compute"] == {**pool, "enable_true_multi_threading": True}
+        assert call["max_concurrency"] == 2
+
     def test_node_overrides_stored(self):
 
         g = Graph()
