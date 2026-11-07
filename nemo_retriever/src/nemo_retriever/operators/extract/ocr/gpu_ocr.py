@@ -24,7 +24,7 @@ class OCRActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::ocr.startup", color="blue")
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
-        nvtx_layers.install()
+        nvtx_layers.install("ocr")
         import warnings
 
         if Image is not None:

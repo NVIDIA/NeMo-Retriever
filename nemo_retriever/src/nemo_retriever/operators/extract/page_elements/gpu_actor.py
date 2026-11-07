@@ -27,7 +27,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::page_elements.startup", color="blue")
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
-        nvtx_layers.install()
+        nvtx_layers.install("page_elements")
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = (
             str(self.detect_kwargs.get("page_elements_invoke_url") or "").strip()

@@ -35,7 +35,7 @@ def register_nemotron35_vllm() -> None:
     )
     from nemo_retriever.common import nvtx_layers
 
-    nvtx_layers.install()
+    nvtx_layers.install("vllm")
 
 
 def create_bidirectional_attention(

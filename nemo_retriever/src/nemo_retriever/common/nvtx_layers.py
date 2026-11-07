@@ -4,17 +4,14 @@
 
 """Opt-in NVTX ranges that split profiled wall time by owner.
 
-Set ``NRL_NVTX=1`` to emit ranges in four NVTX domains:
+``NRL_NVTX=1`` emits stage ranges in the ``NRL``, ``vLLM``, and ``torch`` (model forward)
+domains. ``NRL_NVTX=full`` also wraps high-frequency calls: ``torch`` host syncs that block on
+the GPU and, in Ray workers, ``Ray`` task steps, batch formatting, and serialization.
 
-* ``NRL``: code in this repository.
-* ``vLLM``: the vLLM front end and EngineCore.
-* ``Ray``: Ray Data task steps, batch formatting, and object serialization.
-* ``torch``: model forwards and host syncs that block on the GPU.
-
-NRL call sites use :func:`span`. :func:`install` wraps the third-party targets
-listed below; it runs in GPU actors and, through vLLM model registration, in the
-EngineCore process. When the variable is unset, :func:`span` returns a shared
-no-op context and :func:`install` returns immediately.
+NRL call sites use :func:`span`. :func:`install` wraps the third-party targets of the named
+groups; GPU actors and vLLM model registration (which also runs in EngineCore) call it. When
+the variable is unset, :func:`span` returns a shared no-op context and :func:`install` returns
+immediately.
 """
 
 from __future__ import annotations
@@ -30,91 +27,117 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-ENABLED = os.environ.get("NRL_NVTX", "") == "1"
+_LEVEL = os.environ.get("NRL_NVTX", "")
+ENABLED = _LEVEL in ("1", "full")
+FULL = _LEVEL == "full"
 COLORS = {"NRL": 0x76B900, "vLLM": 0x2F6FDF, "Ray": 0xF28C00, "torch": 0xEE4C2C}
 
 _NULL = contextlib.nullcontext()
 _SPANS: dict[tuple[str, str], "_Span"] = {}
-_INSTALLED = False
+_INSTALLED: set[str] = set()
 
 # (module, attribute path, layer, range name). Generators are ranged per step; coroutines and async
 # generators use start/end ranges because their awaits interleave on one thread.
-_RAY_TARGETS = (
-    ("ray.data._internal.execution.operators.actor_pool_map_operator", "_MapWorker.submit", "Ray", "task_step"),
-    ("ray.data._internal.block_batching.util", "_format_batch", "Ray", "format_batch"),
-    ("ray.data.block", "BlockAccessor.batch_to_block", "Ray", "batch_to_block"),
-    ("ray._private.serialization", "SerializationContext.deserialize_objects", "Ray", "deserialize"),
-    ("ray._private.serialization", "SerializationContext.serialize", "Ray", "serialize"),
-)
-_MODEL_TARGETS = (
-    ("torch.cuda", "synchronize", "torch", "host_sync:cuda.synchronize"),
-    ("torch.cuda", "Event.synchronize", "torch", "host_sync:event.synchronize"),
-    ("torch.cuda", "Stream.synchronize", "torch", "host_sync:stream.synchronize"),
-    (
-        "nemo_retriever.models.local.nemotron_page_elements_v3",
-        "NemotronPageElementsV3.preprocess",
-        "NRL",
-        "pe.preprocess",
+# group -> (module, attribute path, layer, range name). Each call site installs only the groups
+# its process uses, so actors do not import unrelated packages. Generators are ranged per step;
+# coroutines and async generators use start/end ranges because their awaits interleave on one thread.
+_TARGETS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "page_elements": (
+        (
+            "nemo_retriever.models.local.nemotron_page_elements_v3",
+            "NemotronPageElementsV3.preprocess",
+            "NRL",
+            "pe.preprocess",
+        ),
+        (
+            "nemo_retriever.models.local.nemotron_page_elements_v3",
+            "NemotronPageElementsV3.invoke",
+            "torch",
+            "forward:page_elements",
+        ),
+        (
+            "nemo_retriever.models.local.nemotron_page_elements_v3",
+            "NemotronPageElementsV3.postprocess",
+            "NRL",
+            "pe.postprocess",
+        ),
     ),
-    (
-        "nemo_retriever.models.local.nemotron_page_elements_v3",
-        "NemotronPageElementsV3.invoke",
-        "torch",
-        "forward:page_elements",
+    "ocr": (
+        ("nemo_retriever.models.local.nemotron_ocr_v2", "NemotronOCRV2.invoke", "NRL", "ocr.invoke"),
+        ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._preprocess_batch", "NRL", "pkg.ocr.preprocess"),
+        ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._run_detector_batched", "torch", "forward:ocr.detector"),
+        (
+            "nemotron_ocr.inference.pipeline_v2",
+            "NemotronOCRV2._run_recognizer_chunked",
+            "torch",
+            "forward:ocr.recognizer",
+        ),
+        (
+            "nemotron_ocr.inference.pipeline_v2",
+            "NemotronOCRV2._run_relational_and_build_output",
+            "torch",
+            "forward:ocr.relational",
+        ),
+        ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._postprocess_batch", "NRL", "pkg.ocr.postprocess"),
     ),
-    (
-        "nemo_retriever.models.local.nemotron_page_elements_v3",
-        "NemotronPageElementsV3.postprocess",
-        "NRL",
-        "pe.postprocess",
+    "vllm": (
+        ("vllm.v1.engine.async_llm", "AsyncLLM.add_request", "vLLM", "AsyncLLM.add_request"),
+        ("vllm.v1.engine.async_llm", "AsyncLLM.encode", "vLLM", "AsyncLLM.encode"),
+        ("vllm.renderers.base", "BaseRenderer.render_cmpl", "vLLM", "render_cmpl"),
+        ("vllm.renderers.base", "BaseRenderer._tokenize_prompt", "vLLM", "tokenize"),
+        ("vllm.renderers.base", "BaseRenderer._process_multimodal", "vLLM", "process_multimodal"),
+        ("vllm.multimodal.processing.processor", "BaseMultiModalProcessor.apply", "vLLM", "mm_processor.apply"),
+        ("vllm.multimodal.processing.processor", "BaseMultiModalProcessor._call_hf_processor", "vLLM", "hf_processor"),
+        ("vllm.multimodal.hasher", "MultiModalHasher.hash_kwargs", "vLLM", "mm_hash"),
+        ("vllm.v1.engine.input_processor", "InputProcessor.process_inputs", "vLLM", "process_inputs"),
+        ("vllm.v1.engine.output_processor", "OutputProcessor.process_outputs", "vLLM", "process_outputs"),
+        ("vllm.v1.engine.core", "EngineCore.preprocess_add_request", "vLLM", "core.preprocess_add_request"),
+        ("vllm.v1.engine.core", "EngineCore.add_request", "vLLM", "core.add_request"),
+        ("vllm.v1.engine.core", "EngineCore.step", "vLLM", "core.step"),
+        ("vllm.v1.engine.core", "EngineCore.step_with_batch_queue", "vLLM", "core.step"),
+        ("vllm.v1.engine.core", "EngineCoreProc._process_input_queue", "vLLM", "core.wait_input"),
+        ("vllm.v1.core.sched.scheduler", "Scheduler.schedule", "vLLM", "core.schedule"),
+        ("vllm.v1.core.sched.scheduler", "Scheduler.update_from_output", "vLLM", "core.update_from_output"),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner.execute_model", "vLLM", "runner.execute_model"),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._update_states", "vLLM", "runner.update_states"),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._prepare_inputs", "vLLM", "runner.prepare_inputs"),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._execute_mm_encoder", "vLLM", "runner.mm_encoder"),
+        (
+            "vllm.v1.worker.gpu_model_runner",
+            "GPUModelRunner._gather_mm_embeddings",
+            "vLLM",
+            "runner.gather_mm_embeddings",
+        ),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._model_forward", "vLLM", "runner.model_forward"),
+        ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._pool", "vLLM", "runner.pooler"),
+        (
+            "vllm.v1.worker.gpu_model_runner",
+            "AsyncGPUPoolingModelRunnerOutput.get_output",
+            "vLLM",
+            "runner.output_copy_sync",
+        ),
     ),
-    ("nemo_retriever.models.local.nemotron_ocr_v2", "NemotronOCRV2.invoke", "NRL", "ocr.invoke"),
-    ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._preprocess_batch", "NRL", "pkg.ocr.preprocess"),
-    ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._run_detector_batched", "torch", "forward:ocr.detector"),
-    ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._run_recognizer_chunked", "torch", "forward:ocr.recognizer"),
-    (
-        "nemotron_ocr.inference.pipeline_v2",
-        "NemotronOCRV2._run_relational_and_build_output",
-        "torch",
-        "forward:ocr.relational",
+}
+# NRL_NVTX=full adds high-frequency host-sync and serialization ranges; they cost steady-state time.
+_FULL_TARGETS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "torch": (
+        ("torch.cuda", "synchronize", "torch", "host_sync:cuda.synchronize"),
+        ("torch.cuda", "Event.synchronize", "torch", "host_sync:event.synchronize"),
+        ("torch.cuda", "Stream.synchronize", "torch", "host_sync:stream.synchronize"),
     ),
-    ("nemotron_ocr.inference.pipeline_v2", "NemotronOCRV2._postprocess_batch", "NRL", "pkg.ocr.postprocess"),
-)
-_VLLM_TARGETS = (
-    ("vllm.v1.engine.async_llm", "AsyncLLM.add_request", "vLLM", "AsyncLLM.add_request"),
-    ("vllm.v1.engine.async_llm", "AsyncLLM.encode", "vLLM", "AsyncLLM.encode"),
-    ("vllm.renderers.base", "BaseRenderer.render_cmpl", "vLLM", "render_cmpl"),
-    ("vllm.renderers.base", "BaseRenderer._tokenize_prompt", "vLLM", "tokenize"),
-    ("vllm.renderers.base", "BaseRenderer._process_multimodal", "vLLM", "process_multimodal"),
-    ("vllm.multimodal.processing.processor", "BaseMultiModalProcessor.apply", "vLLM", "mm_processor.apply"),
-    ("vllm.multimodal.processing.processor", "BaseMultiModalProcessor._call_hf_processor", "vLLM", "hf_processor"),
-    ("vllm.multimodal.hasher", "MultiModalHasher.hash_kwargs", "vLLM", "mm_hash"),
-    ("vllm.v1.engine.input_processor", "InputProcessor.process_inputs", "vLLM", "process_inputs"),
-    ("vllm.v1.engine.output_processor", "OutputProcessor.process_outputs", "vLLM", "process_outputs"),
-    ("vllm.v1.serial_utils", "MsgpackEncoder.encode", "vLLM", "msgpack_encode"),
-    ("vllm.v1.serial_utils", "MsgpackEncoder.encode_into", "vLLM", "msgpack_encode"),
-    ("vllm.v1.serial_utils", "MsgpackDecoder.decode", "vLLM", "msgpack_decode"),
-    ("vllm.v1.engine.core", "EngineCore.preprocess_add_request", "vLLM", "core.preprocess_add_request"),
-    ("vllm.v1.engine.core", "EngineCore.add_request", "vLLM", "core.add_request"),
-    ("vllm.v1.engine.core", "EngineCore.step", "vLLM", "core.step"),
-    ("vllm.v1.engine.core", "EngineCore.step_with_batch_queue", "vLLM", "core.step"),
-    ("vllm.v1.engine.core", "EngineCoreProc._process_input_queue", "vLLM", "core.wait_input"),
-    ("vllm.v1.core.sched.scheduler", "Scheduler.schedule", "vLLM", "core.schedule"),
-    ("vllm.v1.core.sched.scheduler", "Scheduler.update_from_output", "vLLM", "core.update_from_output"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner.execute_model", "vLLM", "runner.execute_model"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._update_states", "vLLM", "runner.update_states"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._prepare_inputs", "vLLM", "runner.prepare_inputs"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._execute_mm_encoder", "vLLM", "runner.mm_encoder"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._gather_mm_embeddings", "vLLM", "runner.gather_mm_embeddings"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._model_forward", "vLLM", "runner.model_forward"),
-    ("vllm.v1.worker.gpu_model_runner", "GPUModelRunner._pool", "vLLM", "runner.pooler"),
-    (
-        "vllm.v1.worker.gpu_model_runner",
-        "AsyncGPUPoolingModelRunnerOutput.get_output",
-        "vLLM",
-        "runner.output_copy_sync",
+    "ray": (
+        ("ray.data._internal.execution.operators.actor_pool_map_operator", "_MapWorker.submit", "Ray", "task_step"),
+        ("ray.data._internal.block_batching.util", "_format_batch", "Ray", "format_batch"),
+        ("ray.data.block", "BlockAccessor.batch_to_block", "Ray", "batch_to_block"),
+        ("ray._private.serialization", "SerializationContext.deserialize_objects", "Ray", "deserialize"),
+        ("ray._private.serialization", "SerializationContext.serialize", "Ray", "serialize"),
     ),
-)
+    "vllm": (
+        ("vllm.v1.serial_utils", "MsgpackEncoder.encode", "vLLM", "msgpack_encode"),
+        ("vllm.v1.serial_utils", "MsgpackEncoder.encode_into", "vLLM", "msgpack_encode"),
+        ("vllm.v1.serial_utils", "MsgpackDecoder.decode", "vLLM", "msgpack_decode"),
+    ),
+}
 
 
 class _Span:
@@ -148,7 +171,7 @@ def _span(layer: str, name: str) -> _Span:
 
 
 def span(layer: str, name: str) -> Any:
-    """Return a context manager that emits ``name`` in ``layer`` when ``NRL_NVTX=1``, else a no-op."""
+    """Return a context manager that emits ``name`` in ``layer`` when ``NRL_NVTX`` is set, else a no-op."""
     if not ENABLED:
         return _NULL
     return _span(layer, name)
@@ -237,22 +260,30 @@ def _install_tensor_syncs() -> None:
     wrap("to", lambda args, kwargs: str(kwargs.get("device", args[0] if args else "")).startswith("cpu"))
 
 
-def install() -> None:
-    """Wrap the targets listed above once per process; a no-op unless ``NRL_NVTX=1``."""
-    global _INSTALLED
-    if not ENABLED or _INSTALLED:
+def install(*groups: str) -> None:
+    """Wrap the targets of ``groups`` once per process; a no-op unless ``NRL_NVTX`` is ``1`` or ``full``.
+
+    ``NRL_NVTX=full`` also wraps CUDA host syncs and, in Ray workers, Ray serialization.
+    """
+    if not ENABLED:
         return
-    _INSTALLED = True
-    targets = _MODEL_TARGETS + _VLLM_TARGETS + (_RAY_TARGETS if "ray" in sys.modules else ())
+    if FULL:
+        groups += ("torch",) + (("ray",) if "ray" in sys.modules else ())
     missing = []
-    for module, path, layer, name in targets:
-        try:
-            _patch(module, path, layer, name)
-        except (ImportError, AttributeError) as exc:
-            missing.append(f"{module}:{path} ({type(exc).__name__})")
-    try:
-        _install_tensor_syncs()
-    except ImportError as exc:
-        missing.append(f"torch.Tensor host syncs ({type(exc).__name__})")
+    for group in dict.fromkeys(groups):
+        if group in _INSTALLED:
+            continue
+        _INSTALLED.add(group)
+        targets = _TARGETS.get(group, ()) + (_FULL_TARGETS.get(group, ()) if FULL else ())
+        for module, path, layer, name in targets:
+            try:
+                _patch(module, path, layer, name)
+            except (ImportError, AttributeError) as exc:
+                missing.append(f"{module}:{path} ({type(exc).__name__})")
+        if group == "torch":
+            try:
+                _install_tensor_syncs()
+            except ImportError as exc:
+                missing.append(f"torch.Tensor host syncs ({type(exc).__name__})")
     if missing:
         logger.warning("NRL_NVTX: %d targets not instrumented: %s", len(missing), "; ".join(missing))

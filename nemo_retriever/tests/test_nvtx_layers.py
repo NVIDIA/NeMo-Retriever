@@ -37,18 +37,19 @@ def enabled(monkeypatch):
     events = []
     monkeypatch.setitem(sys.modules, "nvtx", SimpleNamespace(get_domain=lambda layer: _Domain(events)))
     monkeypatch.setattr(nvtx_layers, "ENABLED", True)
+    monkeypatch.setattr(nvtx_layers, "FULL", False)
     monkeypatch.setattr(nvtx_layers, "_SPANS", {})
-    monkeypatch.setattr(nvtx_layers, "_INSTALLED", False)
+    monkeypatch.setattr(nvtx_layers, "_INSTALLED", set())
     return events
 
 
 def test_disabled_span_and_install_do_nothing(monkeypatch):
     monkeypatch.setattr(nvtx_layers, "ENABLED", False)
-    monkeypatch.setattr(nvtx_layers, "_INSTALLED", False)
+    monkeypatch.setattr(nvtx_layers, "_INSTALLED", set())
     monkeypatch.setattr(nvtx_layers, "_patch", lambda *args: pytest.fail("patched while disabled"))
     assert nvtx_layers.span("NRL", "x") is nvtx_layers.span("vLLM", "y")
-    nvtx_layers.install()
-    assert nvtx_layers._INSTALLED is False
+    nvtx_layers.install("vllm")
+    assert nvtx_layers._INSTALLED == set()
 
 
 def test_span_closes_range_when_body_raises(enabled):
@@ -87,15 +88,39 @@ def test_install_patches_targets_once_and_skips_missing(enabled, monkeypatch):
 
     module.Target = Target
     monkeypatch.setitem(sys.modules, "nrl_fake_target", module)
-    monkeypatch.setattr(nvtx_layers, "_MODEL_TARGETS", (("nrl_fake_target", "Target.run", "NRL", "run"),))
-    monkeypatch.setattr(nvtx_layers, "_VLLM_TARGETS", (("nrl_missing_target", "X.y", "vLLM", "y"),))
-    monkeypatch.setattr(nvtx_layers, "_RAY_TARGETS", ())
-    monkeypatch.setattr(nvtx_layers, "_install_tensor_syncs", lambda: None)
+    monkeypatch.setattr(
+        nvtx_layers,
+        "_TARGETS",
+        {
+            "fake": (("nrl_fake_target", "Target.run", "NRL", "run"),),
+            "vllm": (("nrl_missing_target", "X.y", "vLLM", "y"),),
+        },
+    )
+    monkeypatch.setattr(nvtx_layers, "_FULL_TARGETS", {})
 
-    nvtx_layers.install()
+    nvtx_layers.install("fake", "vllm")
     wrapped = Target.run
-    nvtx_layers.install()
+    nvtx_layers.install("fake")
 
     assert Target.run is wrapped and wrapped.__nrl_nvtx__
     assert Target().run() == "ran"
     assert enabled == [("push", "run"), ("pop", None)]
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_full_level_adds_sync_and_serialization_targets(enabled, monkeypatch, full):
+    patched, syncs = [], []
+    monkeypatch.setattr(nvtx_layers, "FULL", full)
+    monkeypatch.setattr(nvtx_layers, "_patch", lambda module, *args: patched.append(module))
+    monkeypatch.setattr(nvtx_layers, "_install_tensor_syncs", lambda: syncs.append(True))
+    monkeypatch.setattr(nvtx_layers, "_TARGETS", {"ocr": (("ocr_mod", "A.b", "NRL", "b"),)})
+    monkeypatch.setattr(
+        nvtx_layers,
+        "_FULL_TARGETS",
+        {"torch": (("torch_mod", "c", "torch", "c"),), "ocr": (("ocr_full_mod", "A.d", "NRL", "d"),)},
+    )
+
+    nvtx_layers.install("ocr")
+
+    assert patched == (["ocr_mod", "ocr_full_mod", "torch_mod"] if full else ["ocr_mod"])
+    assert syncs == ([True] if full else [])

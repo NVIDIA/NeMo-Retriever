@@ -303,21 +303,24 @@ about overlap and the critical path.
 
 ### Split GPU stage time by owner
 
-To find which code owns the time inside a GPU actor, set `NRL_NVTX=1` in the
+To find which code owns the time inside a GPU actor, set `NRL_NVTX` in the
 environment of the ingest process and its Ray workers. The library then adds
-ranges in the following four NVTX domains.
+ranges in the following NVTX domains.
 
-| Domain | Ranges |
-| --- | --- |
-| `NRL` | NeMo Retriever Library code, such as Page Elements and OCR preprocessing and postprocessing. |
-| `vLLM` | The vLLM front end and EngineCore, such as request rendering, scheduling, and model execution. |
-| `Ray` | Ray Data task steps, batch formatting, and object serialization. |
-| `torch` | Model forwards and host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. |
+| Domain | Ranges | Level |
+| --- | --- | --- |
+| `NRL` | NeMo Retriever Library code, such as embedding request building, Page Elements, and OCR preprocessing and postprocessing. | `1` |
+| `vLLM` | The vLLM front end and EngineCore, such as request rendering, scheduling, and model execution. | `1` |
+| `torch` | Model forwards. With `full`, also host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. | `1`, `full` |
+| `Ray` | Ray Data task steps, batch formatting, and object serialization. | `full` |
 
-The ranges nest, so attribute each instant to the innermost open range. When
-`NRL_NVTX` is unset, the library does not wrap any third-party code. When it is
-set, the extra ranges add host overhead, so use it for profiling runs only and
-do not compare its throughput with unprofiled runs.
+`NRL_NVTX=1` adds stage ranges only and is meant for timing runs. `NRL_NVTX=full`
+also wraps high-frequency calls, such as tensor host syncs and Ray
+serialization, so it slows ingestion. Use `full` to locate host syncs, and do
+not compare its throughput with unprofiled runs. When `NRL_NVTX` is unset, the
+library does not wrap any third-party code.
+
+The ranges nest, so attribute each instant to the innermost open range.
 
 Profile with the same `nsys profile` command shown earlier, and then summarize
 the ranges as follows:
