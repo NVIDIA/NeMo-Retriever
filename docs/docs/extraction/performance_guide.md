@@ -301,6 +301,37 @@ The summary adds durations from all matching ranges. With concurrent actors,
 the summed duration can exceed wall-clock time, so use the timeline to reason
 about overlap and the critical path.
 
+### Split GPU stage time by owner
+
+To find which code owns the time inside a GPU actor, set `NRL_NVTX=1` in the
+environment of the ingest process and its Ray workers. The library then adds
+ranges in the following four NVTX domains.
+
+| Domain | Ranges |
+| --- | --- |
+| `NRL` | NeMo Retriever Library code, such as Page Elements and OCR preprocessing and postprocessing. |
+| `vLLM` | The vLLM front end and EngineCore, such as request rendering, scheduling, and model execution. |
+| `Ray` | Ray Data task steps, batch formatting, and object serialization. |
+| `torch` | Model forwards and host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. |
+
+The ranges nest, so attribute each instant to the innermost open range. When
+`NRL_NVTX` is unset, the library does not wrap any third-party code. When it is
+set, the extra ranges add host overhead, so use it for profiling runs only and
+do not compare its throughput with unprofiled runs.
+
+Profile with the same `nsys profile` command shown earlier, and then summarize
+the ranges as follows:
+
+```bash
+NRL_NVTX=1 nsys profile \
+  --trace=nvtx,cuda,osrt \
+  --sample=none \
+  --wait=all \
+  --output=nrl-owner-profile \
+  -- retriever ingest batch /path/to/your/pdfs
+nsys stats --report nvtx_sum nrl-owner-profile.nsys-rep
+```
+
 ## Tune remote OCR request batching
 
 Remote OCR batches cropped regions across the page rows supplied to one OCR actor call. This behavior applies to in-process, batch, and service ingestion with a remote OCR NIM. It preserves page and region output order.

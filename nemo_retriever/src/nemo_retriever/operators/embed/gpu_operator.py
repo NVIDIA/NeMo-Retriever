@@ -12,6 +12,7 @@ from typing import Any
 
 import nvtx
 
+from nemo_retriever.common import nvtx_layers
 from nemo_retriever.common.params import EmbedParams
 from nemo_retriever.models.inference.embedding_input import ensure_embedding_input_policy_for_batch
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
@@ -30,6 +31,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::embedding.startup", color="blue")
     def __init__(self, params: EmbedParams) -> None:
         super().__init__()
+        nvtx_layers.install()
         import warnings
 
         warnings.filterwarnings(

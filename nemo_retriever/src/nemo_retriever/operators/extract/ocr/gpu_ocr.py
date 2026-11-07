@@ -9,6 +9,7 @@ from typing import Any
 import nvtx
 import pandas as pd
 
+from nemo_retriever.common import nvtx_layers
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
@@ -23,6 +24,7 @@ class OCRActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::ocr.startup", color="blue")
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)
+        nvtx_layers.install()
         import warnings
 
         if Image is not None:
