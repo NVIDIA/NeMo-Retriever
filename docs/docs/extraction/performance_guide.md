@@ -314,11 +314,12 @@ ranges in the following NVTX domains.
 | `torch` | Model forwards. With `full`, also host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. | `1`, `full` |
 | `Ray` | Ray Data task steps, batch formatting, and object serialization. | `full` |
 
-`NRL_NVTX=1` adds stage ranges only and is meant for timing runs. `NRL_NVTX=full`
-also wraps high-frequency calls, such as tensor host syncs and Ray
-serialization, so it slows ingestion. Use `full` to locate host syncs, and do
-not compare its throughput with unprofiled runs. When `NRL_NVTX` is unset, the
-library does not wrap any third-party code.
+`NRL_NVTX=1` adds stage ranges. `NRL_NVTX=full` also wraps high-frequency
+calls, such as tensor host syncs and Ray serialization. In an 8-GPU text ingest
+benchmark without `nsys` attached, each level changed wall time by less than
+1%. The profiler adds its own overhead, so do not compare profiled throughput
+with unprofiled runs. When `NRL_NVTX` is unset, the library does not wrap any
+third-party code.
 
 The ranges nest, so attribute each instant to the innermost open range.
 
