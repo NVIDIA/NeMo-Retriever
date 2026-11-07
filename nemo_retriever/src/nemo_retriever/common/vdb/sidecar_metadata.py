@@ -76,8 +76,10 @@ def load_meta_dataframe(meta_dataframe: str | os.PathLike[str] | pd.DataFrame) -
     suf = path.suffix.lower()
     if suf == ".csv":
         return pd.read_csv(path)
-    if suf in {".json", ".ndjson"}:
+    if suf == ".json":
         return pd.read_json(path)
+    if suf == ".ndjson":
+        return pd.read_json(path, lines=True)
     if suf in {".parquet", ".pq"}:
         return pd.read_parquet(path)
     raise ValueError(f"Unsupported metadata file type: {path} (use .csv, .json, or .parquet)")
