@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from typing import Sequence
 from unittest.mock import Mock, patch
 
@@ -782,6 +783,7 @@ def test_local_image_only_actor_never_resolves_text_admission(monkeypatch) -> No
     actor = object.__new__(gpu_operator._BatchEmbedActor)
     actor._kwargs = {"embed_modality": "image"}
     actor._model = object()
+    actor._serial = threading.Lock()
     actor.process(pd.DataFrame({"_embed_modality": ["image"], "_image_b64": ["image-data"]}))
 
     resolver.assert_not_called()
