@@ -1119,6 +1119,19 @@ class RayDataExecutor(AbstractExecutor):
                     constructor_kwargs = {"operator_class": map_operator_class, "operator_kwargs": constructor_kwargs}
                     map_operator_class = with_placement_report(map_operator_class, node.name)
 
+            udf_threads = int(getattr(node.operator_class, "UDF_THREADS", 1))
+            if udf_threads > 1 and "compute" not in overrides:
+                from ray.data import ActorPoolStrategy
+
+                pool_concurrency = overrides.pop("concurrency")
+                if isinstance(pool_concurrency, tuple):
+                    minimum, maximum, initial = _concurrency_bounds(pool_concurrency)
+                    pool = {"min_size": minimum, "max_size": maximum, "initial_size": initial}
+                else:
+                    pool = {"size": int(pool_concurrency)}
+                overrides["compute"] = ActorPoolStrategy(**pool, enable_true_multi_threading=True)
+                overrides["max_concurrency"] = udf_threads
+
             ds = ds.map_batches(
                 map_operator_class,
                 batch_size=batch_size,

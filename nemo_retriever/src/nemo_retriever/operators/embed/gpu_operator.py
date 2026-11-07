@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import threading
+from contextlib import nullcontext
 from typing import Any
 
 import nvtx
@@ -22,6 +24,9 @@ from nemo_retriever.operators.gpu_operator import GPUOperator
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
     """Graph embedding actor that loads a local embedder or calls a remote endpoint."""
 
+    # Two Ray UDF threads let one batch prepare while the other waits on the engine.
+    UDF_THREADS = 2
+
     @nvtx.annotate("nrl.batch::embedding.startup", color="blue")
     def __init__(self, params: EmbedParams) -> None:
         super().__init__()
@@ -34,6 +39,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
         )
 
         self._params = params
+        self._serial = threading.Lock()
         self._kwargs = build_embed_kwargs(params)
 
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
@@ -65,8 +71,10 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
 
     @nvtx.annotate("nrl.batch::embedding.batch", color="blue")
     def process(self, data: Any, **kwargs: Any) -> Any:
-        ensure_embedding_input_policy_for_batch(self._kwargs, data)
-        return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
+        concurrent = getattr(self._model, "supports_concurrent_calls", False)
+        with nullcontext() if concurrent else self._serial:
+            ensure_embedding_input_policy_for_batch(self._kwargs, data)
+            return embed_text_main_text_embed(data, model=self._model, **self._kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

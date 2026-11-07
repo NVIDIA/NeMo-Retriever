@@ -385,3 +385,41 @@ class TestBatchEmbedCPUActor:
         actor = _BatchEmbedCPUActor(params=self._make_params())
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
+
+
+@pytest.mark.parametrize("concurrent", [False, True])
+def test_gpu_embed_actor_overlaps_udf_threads_only_for_concurrent_models(monkeypatch, concurrent):
+    import threading
+
+    from nemo_retriever.operators.embed import gpu_operator
+
+    active, peak, both_entered = [0], [0], threading.Barrier(2, timeout=0.5)
+    lock = threading.Lock()
+
+    def embed(data, *, model, **_kwargs):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        try:
+            both_entered.wait()
+        except threading.BrokenBarrierError:
+            pass
+        with lock:
+            active[0] -= 1
+        return data
+
+    monkeypatch.setattr(gpu_operator, "embed_text_main_text_embed", embed)
+    monkeypatch.setattr(gpu_operator, "ensure_embedding_input_policy_for_batch", lambda kwargs, data: None)
+    actor = gpu_operator._BatchEmbedActor.__new__(gpu_operator._BatchEmbedActor)
+    actor._serial = threading.Lock()
+    actor._kwargs = {}
+    actor._model = type("Model", (), {"supports_concurrent_calls": concurrent})()
+
+    threads = [threading.Thread(target=actor.process, args=(pd.DataFrame(),)) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert gpu_operator._BatchEmbedActor.UDF_THREADS == 2
+    assert peak[0] == (2 if concurrent else 1)
