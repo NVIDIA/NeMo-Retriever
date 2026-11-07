@@ -126,7 +126,7 @@ class Nemotron35Embedder:
                     add_special_tokens=False,
                     return_tensors="pt",
                 )
-            else:
+            elif self.backend == "hf":
                 batch = self._processor(
                     text=current,
                     images=images[i : i + step],
@@ -154,6 +154,15 @@ class Nemotron35Embedder:
                     _pooling_params_for_normalize,
                 )
 
+                if images is not None:
+                    # vLLM preprocesses the pixels; admission only needs the expanded lengths.
+                    expected_lengths = self._image_prompt_lengths(current, images[i : i + step])
+                    if max(expected_lengths) > limit:
+                        raise ValueError(
+                            f"Text+image embedding exceeds max_length={limit} after image expansion; "
+                            "shorten the text or increase the configured limit within the checkpoint maximum."
+                        )
+
                 # Raw tokens prevent a second template pass or duplicate BOS/EOS.
                 requests = []
                 for j in range(len(current)):
@@ -178,7 +187,6 @@ class Nemotron35Embedder:
                     requests, pooling_params=_pooling_params_for_normalize(False), **inference_kwargs
                 )
                 if images is not None:
-                    expected_lengths = batch["attention_mask"].sum(1).tolist()
                     actual_lengths = [len(response.prompt_token_ids) for response in responses]
                     if actual_lengths != expected_lengths:
                         raise ValueError(
@@ -190,6 +198,43 @@ class Nemotron35Embedder:
                 raise ValueError("Checkpoint returned invalid dense embedding vectors.")
             outputs.append(torch.nn.functional.normalize(vectors, dim=-1) if self.normalize else vectors)
         return torch.cat(outputs)
+
+    def _image_prompt_lengths(self, prompts: Sequence[str], images: Sequence[Any]) -> list[int]:
+        """Count processor-expanded prompt tokens from image sizes, without preprocessing pixels.
+
+        Parameters
+        ----------
+        prompts : Sequence[str]
+            Rendered retrieval prompts, each with one image placeholder.
+        images : Sequence[Any]
+            PIL images paired with prompts; only ``size`` is read unless an
+            image is smaller than one merged patch.
+
+        Returns
+        -------
+        list[int]
+            Expanded token count per prompt, equal to the processor attention-mask sum.
+
+        Raises
+        ------
+        RuntimeError
+            If the processor or tokenizer fails.
+        """
+        processor = self._processor
+        lengths = []
+        for prompt, image in zip(prompts, images):
+            width, height = image.size
+            if min(width, height) < processor.patch_size * processor.spatial_merge_size:
+                # Sub-patch images keep the processor's exact resize and error behavior.
+                batch = processor(
+                    text=[prompt], images=[image], truncation=False, add_special_tokens=False, return_tensors="pt"
+                )
+                lengths.append(int(batch["attention_mask"].sum()))
+                continue
+            image_tokens = int(processor._get_num_multimodal_tokens(image_sizes=[(height, width)]).num_image_tokens[0])
+            ids = processor.tokenizer(prompt, add_special_tokens=False, truncation=False)["input_ids"]
+            lengths.append(len(ids) + ids.count(processor.image_token_id) * (image_tokens - 1))
+        return lengths
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document text with the checkpoint's document template.
@@ -279,14 +324,7 @@ class Nemotron35Embedder:
         try:
 
             def expanded_count(prompt):
-                batch = self._processor(
-                    text=[prompt],
-                    images=[image],
-                    truncation=False,
-                    add_special_tokens=False,
-                    return_tensors="pt",
-                )
-                return int(batch["attention_mask"].sum())
+                return self._image_prompt_lengths([prompt], [image])[0]
 
             policy = EmbeddingInputPolicy(
                 tokenizer=self._processor.tokenizer,

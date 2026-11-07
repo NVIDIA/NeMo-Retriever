@@ -32,6 +32,20 @@ TEMPLATE = (
 )
 
 
+def size_processor(image_tokens=4):
+    """Fake Pixtral processor: prompt tokens are bytes and [IMG] expands to image_tokens."""
+
+    def tokenize(prompt, **kwargs):
+        ids = [99 if part == "[IMG]" else 1 for part in prompt.split(" ")]
+        return {"input_ids": ids}
+
+    processor = MagicMock(return_value={"attention_mask": torch.ones(1, 10, dtype=torch.long)})
+    processor.patch_size, processor.spatial_merge_size, processor.image_token_id = 16, 2, 99
+    processor.tokenizer = tokenize
+    processor._get_num_multimodal_tokens = lambda image_sizes: SimpleNamespace(num_image_tokens=[image_tokens])
+    return processor
+
+
 def config(quantized=False):
     return dict(
         model_type="mistral3",
@@ -246,13 +260,23 @@ def test_vllm_receives_rendered_tokens_and_normalizes_once(monkeypatch):
 
 
 def test_multimodal_expansion_overflow_fails_before_inference():
-    embedder = Nemotron35Embedder("model", None, "query: ", "passage: ", backend="vllm", max_length=2)
+    embedder = Nemotron35Embedder("model", None, "query: ", "passage: ", backend="vllm", max_length=4)
     embedder._template = TEMPLATE
-    embedder._processor = MagicMock(return_value={"attention_mask": torch.ones(1, 3, dtype=torch.long)})
+    embedder._processor = size_processor()
     embedder._model = MagicMock()
     with pytest.raises(ValueError, match="after image expansion"):
-        embedder._encode(["text"], images=[object()])
+        embedder._encode(["text"], images=[SimpleNamespace(size=(64, 64))])
     embedder._model.embed.assert_not_called()
+    embedder._processor.assert_not_called()
+
+
+def test_image_prompt_lengths_count_from_size_and_fall_back_for_sub_patch_images():
+    embedder = Nemotron35Embedder("model", None, "query:", "passage:")
+    embedder._processor = size_processor(image_tokens=6)
+    prompt = "passage: [IMG] text"
+    assert embedder._image_prompt_lengths([prompt], [SimpleNamespace(size=(64, 48))]) == [3 + 6 - 1]
+    embedder._processor.assert_not_called()
+    assert embedder._image_prompt_lengths([prompt], [SimpleNamespace(size=(64, 16))]) == [10]
     assert embedder._processor.call_args.kwargs["truncation"] is False
 
 
@@ -444,17 +468,17 @@ def test_hf_load_disables_causality_on_text_attention_only(monkeypatch, missing_
 def test_image_without_remaining_text_budget_fails_before_embedding(monkeypatch):
     from nemo_retriever.models.inference import image as image_utils
 
-    image = MagicMock()
+    image = MagicMock(size=(64, 64))
     monkeypatch.setattr(image_utils, "decode_base64_image", lambda value: image)
     embedder = Nemotron35Embedder("model", None, "query:", "passage:", max_length=10)
     embedder._model = MagicMock()
     embedder._template = TEMPLATE
-    embedder._processor = MagicMock(return_value={"attention_mask": torch.ones(1, 10)})
+    embedder._processor = size_processor(image_tokens=10)
     with pytest.raises(ValueError, match="no text budget"):
         embedder.plan_text_image("content", "image")
     image.close.assert_called_once()
     embedder._model.embed.assert_not_called()
-    assert embedder._processor.call_args.kwargs["truncation"] is False
+    embedder._processor.assert_not_called()
 
 
 def test_runtime_runs_multimodal_admission_without_text_policy(monkeypatch):
@@ -500,14 +524,17 @@ def test_remote_default_admission_retains_n3_tokenizer(monkeypatch, endpoint_key
 def test_vllm_multimodal_disables_implicit_truncation_and_special_tokens(monkeypatch):
     embedder = Nemotron35Embedder("model", None, "query:", "passage:", backend="vllm", max_length=20)
     embedder._template = TEMPLATE
-    embedder._processor = MagicMock(return_value={"attention_mask": torch.ones(1, 10)})
+    embedder._processor = size_processor()
     embedder._model = MagicMock()
+    expected = embedder._image_prompt_lengths(
+        [render_retrieval_input(TEMPLATE, "passage:", "text", image=True)], [SimpleNamespace(size=(64, 64))]
+    )
     embedder._model.embed.return_value = [
-        SimpleNamespace(prompt_token_ids=[1] * 10, outputs=SimpleNamespace(embedding=[1.0] * 2048))
+        SimpleNamespace(prompt_token_ids=[1] * expected[0], outputs=SimpleNamespace(embedding=[1.0] * 2048))
     ]
     monkeypatch.setattr("nemo_retriever.models.inference.vllm._pooling_params_for_normalize", lambda normalize: None)
-    embedder._encode(["text"], images=[object()])
-    assert embedder._processor.call_args.kwargs["truncation"] is False
+    embedder._encode(["text"], images=[SimpleNamespace(size=(64, 64))])
+    embedder._processor.assert_not_called()
     assert embedder._model.embed.call_args.kwargs["tokenization_kwargs"] == {
         "add_special_tokens": False,
         "truncation": False,
@@ -519,11 +546,45 @@ def test_vllm_multimodal_disables_implicit_truncation_and_special_tokens(monkeyp
 def test_vllm_multimodal_rejects_silent_processor_truncation(monkeypatch):
     embedder = Nemotron35Embedder("model", None, "query:", "passage:", backend="vllm", max_length=20)
     embedder._template = TEMPLATE
-    embedder._processor = MagicMock(return_value={"attention_mask": torch.ones(1, 10, dtype=torch.long)})
+    embedder._processor = size_processor()
     embedder._model = MagicMock()
     embedder._model.embed.return_value = [
         SimpleNamespace(prompt_token_ids=[1] * 5, outputs=SimpleNamespace(embedding=[1.0] * 2048))
     ]
     monkeypatch.setattr("nemo_retriever.models.inference.vllm._pooling_params_for_normalize", lambda normalize: None)
-    with pytest.raises(ValueError, match=r"expected=\[10\], actual=\[5\]"):
-        embedder._encode(["text"], images=[object()])
+    with pytest.raises(ValueError, match=r"actual=\[5\]"):
+        embedder._encode(["text"], images=[SimpleNamespace(size=(64, 64))])
+
+
+def test_vllm_vision_tower_runs_one_image_per_call_with_flash_eligible_mask(monkeypatch):
+    pytest.importorskip("vllm")
+    from transformers.models.pixtral import modeling_pixtral
+    from vllm.model_executor.models.transformers import TransformersMultiModalEmbeddingModel
+
+    from nemo_retriever.models.local.nemotron35_vllm import NRLNemotron35EmbeddingModel
+
+    calls = []
+
+    def parent(self, **kwargs):
+        calls.append(kwargs)
+        return [kwargs["pixel_values"] * 10]
+
+    monkeypatch.setattr(TransformersMultiModalEmbeddingModel, "embed_multimodal", parent)
+    monkeypatch.setattr(
+        modeling_pixtral, "generate_block_attention_mask", modeling_pixtral.generate_block_attention_mask
+    )
+    model = object.__new__(NRLNemotron35EmbeddingModel)
+    pixels = torch.arange(5.0).reshape(5, 1)
+    outputs = model.embed_multimodal(
+        pixel_values=pixels, num_image_patches=torch.tensor([2, 3]), image_sizes=torch.tensor([[1, 2], [3, 4]])
+    )
+    assert [call["num_image_patches"].tolist() for call in calls] == [[2], [3]]
+    assert [call["image_sizes"].tolist() for call in calls] == [[[1, 2]], [[3, 4]]]
+    assert torch.equal(torch.cat(outputs), pixels * 10)
+    model.embed_multimodal(pixel_values=pixels[:2], num_image_patches=torch.tensor([2]))
+    assert len(calls) == 3
+
+    patches = torch.zeros(1, 5, 4)
+    assert modeling_pixtral.generate_block_attention_mask([5], patches) is None
+    mask = modeling_pixtral.generate_block_attention_mask([2, 3], patches)
+    assert mask.shape == (1, 1, 5, 5) and mask[0, 0, 0, 4] < 0 and mask[0, 0, 4, 4] == 0
