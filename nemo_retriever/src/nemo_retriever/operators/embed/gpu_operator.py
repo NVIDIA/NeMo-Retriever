@@ -24,8 +24,8 @@ from nemo_retriever.operators.gpu_operator import GPUOperator
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
     """Graph embedding actor that loads a local embedder or calls a remote endpoint."""
 
-    # Two Ray UDF threads let one batch prepare while the other waits on the engine.
-    UDF_THREADS = 2
+    # Ray UDF threads per actor, so batches prepare on the CPU while others wait on the engine.
+    UDF_THREADS = 4
 
     @nvtx.annotate("nrl.batch::embedding.startup", color="blue")
     def __init__(self, params: EmbedParams) -> None:
