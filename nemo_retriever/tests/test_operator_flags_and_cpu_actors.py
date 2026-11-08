@@ -421,5 +421,5 @@ def test_gpu_embed_actor_overlaps_udf_threads_only_for_concurrent_models(monkeyp
     for thread in threads:
         thread.join()
 
-    assert gpu_operator._BatchEmbedActor.UDF_THREADS == 2
+    assert gpu_operator._BatchEmbedActor.UDF_THREADS == 4
     assert peak[0] == (2 if concurrent else 1)
