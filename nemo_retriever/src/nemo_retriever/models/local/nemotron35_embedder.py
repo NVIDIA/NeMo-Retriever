@@ -21,6 +21,24 @@ from nemo_retriever.models.inference.retrieval_template import (
 )
 
 
+def _pixtral_image_tokens(processor: Any, height: int, width: int) -> int:
+    """Return Pixtral's expanded image-token count for one image size.
+
+    Same formula as ``PixtralProcessor._get_num_multimodal_tokens``, which
+    allocates a float64 array of the full image size just to read its shape.
+    """
+    import numpy as np
+    from transformers.models.pixtral.image_processing_pixtral import get_resize_output_image_size
+
+    longest_edge = processor.image_processor.size["longest_edge"]
+    patch = processor.patch_size * processor.spatial_merge_size
+    shape_only = np.broadcast_to(np.zeros(1, dtype=np.uint8), (height, width, 3))
+    resized_height, resized_width = get_resize_output_image_size(
+        shape_only, size=(longest_edge, longest_edge), patch_size=(patch, patch)
+    )
+    return (resized_width // patch + 1) * (resized_height // patch)
+
+
 @dataclass
 class Nemotron35Embedder:
     model_id: str
@@ -247,9 +265,7 @@ class Nemotron35Embedder:
                     )
                     lengths.append(int(batch["attention_mask"].sum()))
                     continue
-                image_tokens = int(
-                    processor._get_num_multimodal_tokens(image_sizes=[(height, width)]).num_image_tokens[0]
-                )
+                image_tokens = _pixtral_image_tokens(processor, height, width)
                 ids = processor.tokenizer(prompt, add_special_tokens=False, truncation=False)["input_ids"]
                 lengths.append(len(ids) + ids.count(processor.image_token_id) * (image_tokens - 1))
         return lengths

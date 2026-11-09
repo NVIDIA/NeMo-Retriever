@@ -1130,7 +1130,7 @@ class RayDataExecutor(AbstractExecutor):
                 else:
                     pool = {"size": int(pool_concurrency)}
                 overrides["compute"] = ActorPoolStrategy(**pool, enable_true_multi_threading=True)
-                overrides["max_concurrency"] = udf_threads
+                overrides.setdefault("max_concurrency", udf_threads)
 
             ds = ds.map_batches(
                 map_operator_class,

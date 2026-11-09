@@ -32,8 +32,8 @@ TEMPLATE = (
 )
 
 
-def size_processor(image_tokens=4):
-    """Fake Pixtral processor: prompt tokens are bytes and [IMG] expands to image_tokens."""
+def size_processor():
+    """Fake Pixtral processor: prompt tokens are words and [IMG] expands by image size."""
 
     def tokenize(prompt, **kwargs):
         ids = [99 if part == "[IMG]" else 1 for part in prompt.split(" ")]
@@ -42,7 +42,8 @@ def size_processor(image_tokens=4):
     processor = MagicMock(return_value={"attention_mask": torch.ones(1, 10, dtype=torch.long)})
     processor.patch_size, processor.spatial_merge_size, processor.image_token_id = 16, 2, 99
     processor.tokenizer = tokenize
-    processor._get_num_multimodal_tokens = lambda image_sizes: SimpleNamespace(num_image_tokens=[image_tokens])
+    processor.image_processor.size = {"longest_edge": 1024}
+    processor._get_num_multimodal_tokens = MagicMock(side_effect=MemoryError)
     return processor
 
 
@@ -272,7 +273,7 @@ def test_multimodal_expansion_overflow_fails_before_inference():
 
 def test_image_prompt_lengths_count_from_size_and_fall_back_for_sub_patch_images():
     embedder = Nemotron35Embedder("model", None, "query:", "passage:")
-    embedder._processor = size_processor(image_tokens=6)
+    embedder._processor = size_processor()
     prompt = "passage: [IMG] text"
     assert embedder._image_prompt_lengths([prompt], [SimpleNamespace(size=(64, 48))]) == [3 + 6 - 1]
     embedder._processor.assert_not_called()
@@ -468,12 +469,12 @@ def test_hf_load_disables_causality_on_text_attention_only(monkeypatch, missing_
 def test_image_without_remaining_text_budget_fails_before_embedding(monkeypatch):
     from nemo_retriever.models.inference import image as image_utils
 
-    image = MagicMock(size=(64, 64))
+    image = MagicMock(size=(64, 128))
     monkeypatch.setattr(image_utils, "decode_base64_image", lambda value: image)
     embedder = Nemotron35Embedder("model", None, "query:", "passage:", max_length=10)
     embedder._model = MagicMock()
     embedder._template = TEMPLATE
-    embedder._processor = size_processor(image_tokens=10)
+    embedder._processor = size_processor()
     with pytest.raises(ValueError, match="no text budget"):
         embedder.plan_text_image("content", "image")
     image.close.assert_called_once()
@@ -588,3 +589,24 @@ def test_vllm_vision_tower_runs_one_image_per_call_with_flash_eligible_mask(monk
     assert modeling_pixtral.generate_block_attention_mask([5], patches) is None
     mask = modeling_pixtral.generate_block_attention_mask([2, 3], patches)
     assert mask.shape == (1, 1, 5, 5) and mask[0, 0, 0, 4] < 0 and mask[0, 0, 4, 4] == 0
+
+
+@pytest.mark.parametrize(("height", "width"), [(48, 64), (792, 612), (1500, 2000), (1250, 1000), (31, 4000)])
+def test_image_tokens_match_pixtral_processor_without_full_size_arrays(height, width):
+    from transformers.models.pixtral.processing_pixtral import PixtralProcessor
+
+    from nemo_retriever.models.local.nemotron35_embedder import _pixtral_image_tokens
+
+    processor = SimpleNamespace(
+        patch_size=16, spatial_merge_size=2, image_processor=SimpleNamespace(size={"longest_edge": 1024})
+    )
+    expected = PixtralProcessor._get_num_multimodal_tokens(processor, image_sizes=[(height, width)]).num_image_tokens[0]
+    assert _pixtral_image_tokens(processor, height, width) == expected
+
+
+def test_large_page_token_count_does_not_allocate_the_page():
+    embedder = Nemotron35Embedder("model", None, "query:", "passage:")
+    embedder._processor = size_processor()
+    lengths = embedder._image_prompt_lengths(["passage: [IMG] text"], [SimpleNamespace(size=(8000, 10000))])
+    assert lengths == [3 + 864 - 1]
+    embedder._processor._get_num_multimodal_tokens.assert_not_called()
