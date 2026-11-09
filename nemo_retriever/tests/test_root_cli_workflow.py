@@ -1741,7 +1741,9 @@ def test_root_ingest_rejects_removed_profiles(tmp_path) -> None:
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"])
+    result = RUNNER.invoke(
+        cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"], env={"COLUMNS": "200"}
+    )
 
     assert result.exit_code == 2
     assert "is not one of 'auto', 'fast-text'" in result.output
