@@ -20,8 +20,8 @@ def test_core_dependencies_support_transformers_tokenizers_floor():
     dependencies = pyproject["project"]["dependencies"]
     tokenizers = next(Requirement(dependency) for dependency in dependencies if dependency.startswith("tokenizers"))
 
-    assert tokenizers.specifier.contains("0.23.1")
-    assert not tokenizers.specifier.contains("0.23.0")
+    assert tokenizers.specifier.contains("0.23.2")
+    assert not tokenizers.specifier.contains("0.23.1")
 
 
 def test_applies_vllm_startup_defaults_before_constructing_llm(monkeypatch):
