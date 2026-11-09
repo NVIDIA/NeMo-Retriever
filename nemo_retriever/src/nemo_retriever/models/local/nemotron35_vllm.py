@@ -5,6 +5,7 @@
 """Scoped bidirectional multimodal pooling model for the pinned vLLM runtime."""
 
 import torch
+from vllm.model_executor.models.interfaces import MultiModalEmbeddings
 from vllm.model_executor.models.transformers import TransformersMultiModalEmbeddingModel
 from vllm.model_executor.models.transformers.base import (
     AttentionType,
@@ -88,7 +89,7 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
             pp_indices=get_pp_indices,
         )
 
-    def embed_multimodal(self, **kwargs):
+    def embed_multimodal(self, **kwargs: object) -> MultiModalEmbeddings:
         """Run the vision tower once per image and return embeddings in input order.
 
         Parameters
@@ -99,7 +100,7 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
 
         Returns
         -------
-        Any
+        MultiModalEmbeddings
             Per-image embeddings from the parent implementation, concatenated in input order.
 
         Raises
@@ -119,7 +120,7 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
         for size in sizes:
             offsets.append(offsets[-1] + size)
 
-        def item(value, index):
+        def item(value: object, index: int) -> object:
             if isinstance(value, torch.Tensor) and value.ndim > 0:
                 if value.shape[0] == len(sizes):
                     return value[index : index + 1]
@@ -129,7 +130,7 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
                 return type(value)([value[index]])
             return value
 
-        outputs = []
+        outputs: list[torch.Tensor] = []
         for index in range(len(sizes)):
             embeddings = super().embed_multimodal(**{key: item(value, index) for key, value in kwargs.items()})
             outputs.extend(embeddings if isinstance(embeddings, (list, tuple)) else [embeddings])
