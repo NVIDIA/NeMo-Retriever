@@ -72,6 +72,54 @@ def dedup_params_enabled(params: DedupParams | None) -> bool:
     return params is not None and (params.content_hash or params.bbox_iou)
 
 
+def resolve_effective_extract_params(
+    extract_params: ExtractParams | None,
+    *,
+    caption_params: CaptionParams | None,
+    dedup_params: DedupParams | None,
+    store_params: Any | None,
+) -> ExtractParams | None:
+    """Turn off PDFium image crops when no configured stage reads them.
+
+    ``extract_images`` re-renders each PDF page at 72 dpi, crops the merged
+    boxes of raster images, vector shapes, and form XObjects, and stores the
+    base64 crops in the ``images`` column. Only dedup, caption, and store read
+    that column. The page render used by page elements, OCR, and image
+    embedding is ``page_image`` (``extract_page_as_image``) and is unaffected.
+
+    Parameters
+    ----------
+    extract_params
+        Configured extraction parameters, or ``None``.
+    caption_params
+        Caption parameters when captioning is configured.
+    dedup_params
+        Configured deduplication parameters. Caption-triggered dedup is covered
+        by ``caption_params``.
+    store_params
+        Image store parameters when the store stage is configured.
+
+    Returns
+    -------
+    ExtractParams | None
+        ``extract_params`` unchanged when ``extract_images`` was set explicitly
+        or a stage reads ``images``; otherwise a copy with ``extract_images``
+        disabled.
+    """
+
+    if (
+        extract_params is None
+        or "extract_images" in extract_params.model_fields_set
+        or not extract_params.extract_images
+        or extract_params.extract_nested_images
+        or caption_params is not None
+        or store_params is not None
+        or dedup_params_enabled(dedup_params)
+    ):
+        return extract_params
+    return extract_params.model_copy(update={"extract_images": False})
+
+
 @dataclass(frozen=True)
 class PlannedStage:
     """A normalized transform stage ready for executor-specific translation."""

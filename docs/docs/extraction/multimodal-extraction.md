@@ -49,6 +49,8 @@ for the configuration and checkpoint-code requirements.
 
 For the PDFium path, `extract_images=True` extracts rendered page regions that resemble images. A region can represent a composite figure, including an entire PDF Form XObject. The output does not necessarily correspond one-to-one with the raster IMAGE XObjects stored in the PDF.
 
+When you do not set `extract_images`, NeMo Retriever Library turns it off for an ingest without a caption, dedup, or store stage, because no other stage reads the extracted regions. The log reports `extract_images auto-disabled`. Set `extract_images=True` to keep the regions in the `images` column of the results. This does not affect the full page render from `extract_page_as_image`, which page element detection, OCR, and image embedding use.
+
 Set `extract_nested_images=True` when you also need the individual raster IMAGE objects nested in Form XObjects. This option applies only to PDFium extraction and requires `extract_images=True`. Configuration validation rejects `extract_nested_images=True` when `extract_images=False`.
 
 ```python
