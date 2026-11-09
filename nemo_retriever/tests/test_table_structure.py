@@ -162,6 +162,7 @@ class TestTableStructureOCRPageElements:
 
         df = _make_page_df(has_table=False)
         mock_ts_model = MagicMock()
+        mock_ts_model.input_shape = (1024, 1024)
 
         result = table_structure_ocr_page_elements(
             df,
@@ -191,6 +192,7 @@ class TestTableStructureOCRPageElements:
             ]
         )
         mock_ts_model = MagicMock()
+        mock_ts_model.input_shape = (1024, 1024)
 
         result = table_structure_ocr_page_elements(
             df,
@@ -207,6 +209,7 @@ class TestTableStructureOCRPageElements:
 
         # Mock table-structure model
         mock_ts_model = MagicMock()
+        mock_ts_model.input_shape = (1024, 1024)
         mock_ts_model._model = MagicMock()
         mock_ts_model._model.labels = ["cell", "row", "column"]
 
@@ -254,6 +257,7 @@ class TestTableStructureOCRPageElements:
 
         # Mock table-structure model: returns only rows and columns, no cells.
         mock_ts_model = MagicMock()
+        mock_ts_model.input_shape = (1024, 1024)
         mock_ts_model._model = MagicMock()
         mock_ts_model._model.labels = ["cell", "row", "column"]
 
@@ -282,9 +286,10 @@ class TestTableStructureOCRPageElements:
         df = _make_page_df(width=200, height=100)
 
         mock_ts_model = MagicMock()
+        mock_ts_model.input_shape = (1024, 1024)
         mock_ts_model._model = MagicMock()
         mock_ts_model._model.labels = ["cell", "row", "column"]
-        mock_ts_model.preprocess.side_effect = RuntimeError("model exploded")
+        mock_ts_model.invoke.side_effect = RuntimeError("model exploded")
 
         result = table_structure_ocr_page_elements(
             df,
@@ -397,10 +402,10 @@ class TestOCRJoinsTableStructure:
 
     def _ocr_preds_abcd(self) -> list[dict]:
         return [
-            {"left": 0.05, "right": 0.45, "upper": 0.05, "lower": 0.45, "text": "A"},
-            {"left": 0.55, "right": 0.95, "upper": 0.05, "lower": 0.45, "text": "B"},
-            {"left": 0.05, "right": 0.45, "upper": 0.55, "lower": 0.95, "text": "C"},
-            {"left": 0.55, "right": 0.95, "upper": 0.55, "lower": 0.95, "text": "D"},
+            {"left": 0.05, "right": 0.45, "upper": 0.025, "lower": 0.225, "text": "A"},
+            {"left": 0.55, "right": 0.95, "upper": 0.025, "lower": 0.225, "text": "B"},
+            {"left": 0.05, "right": 0.45, "upper": 0.275, "lower": 0.475, "text": "C"},
+            {"left": 0.55, "right": 0.95, "upper": 0.275, "lower": 0.475, "text": "D"},
         ]
 
     def test_local_path_joins_structure_and_ocr(self) -> None:
@@ -434,8 +439,8 @@ class TestOCRJoinsTableStructure:
         text = entries[0]["text"]
         for cell in ("A", "B", "C", "D"):
             assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
-        # Structure-aware markdown includes a header separator; pseudo-markdown does not.
-        assert "---" in text, f"expected structure-aware markdown, got: {text!r}"
+        # Preserve rows without assigning a synthetic header to the first row.
+        assert text == "| A | B |\n| C | D |"
 
     def test_local_path_falls_back_when_no_structure_match(self) -> None:
         """No matching structure region -> OCR pseudo-markdown fallback; no raise."""
@@ -500,8 +505,8 @@ class TestOCRJoinsTableStructure:
         text = entries[0]["text"]
         for cell in ("A", "B", "C", "D"):
             assert cell in text, f"missing cell '{cell}' in joined markdown: {text!r}"
-        # Structure-aware markdown includes a header separator; pseudo-markdown does not.
-        assert "---" in text, f"expected structure-aware markdown, got: {text!r}"
+        # Preserve rows without assigning a synthetic header to the first row.
+        assert text == "| A | B |\n| C | D |"
 
 
 # ---------------------------------------------------------------------------

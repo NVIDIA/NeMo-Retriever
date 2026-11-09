@@ -435,6 +435,8 @@ Graph loading imports operator classes and invokes their constructors. Load grap
 
 Version 2 graph files preserve shared-node DAG identity and reject cycles. Constructor state must consist of supported JSON-native values, typed Pydantic models, paths, sets and tuples, or importable type/callable references. Runtime data such as DataFrames and opaque client objects is not persistable.
 
+Graph files store every field of each parameter model, including default values, and loading validates them against the current model. When a release removes a parameter field or model, `load_graph()` raises `GraphSerializationError` for a file that still contains it. Rebuild the graph from its source code or configuration with the current release, and save it again with `save_graph()`. The [release notes](releasenotes.md#unreleased-upgrade-notes) list removed fields.
+
 API keys are never written into graph JSON. Use an explicit environment reference in persisted configuration:
 
 ```python

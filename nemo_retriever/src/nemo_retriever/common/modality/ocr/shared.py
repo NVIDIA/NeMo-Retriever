@@ -221,6 +221,52 @@ def _np_rgb_to_b64_png(crop_array: np.ndarray) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _prepare_ocr_crop(crop_array: np.ndarray, padding: Optional[str] = None):
+    """Keep structure coordinates on the original crop and pad only OCR input."""
+    height, width = crop_array.shape[:2]
+    original_hw = (height, width)
+    if padding in (None, "none"):
+        return crop_array, original_hw, original_hw
+    if padding != "bottom_right":
+        raise ValueError("OCR crop padding must be 'none' or 'bottom_right'.")
+    side = max(height, width)
+    padded = np.full((side, side, 3), 255, dtype=np.uint8)
+    padded[:height, :width] = crop_array
+    return padded, original_hw, (side, side)
+
+
+def _pad_remote_ocr_crop(crop_b64: str) -> str:
+    """Pad an encoded RGB crop with Pillow, avoiding a NumPy conversion."""
+    with Image.open(io.BytesIO(base64.b64decode(crop_b64))) as image:
+        width, height = image.size
+        if width == height:
+            return crop_b64
+        side = max(width, height)
+        padded = Image.new("RGB", (side, side), (255, 255, 255))
+        padded.paste(image, (0, 0))
+        buffer = io.BytesIO()
+        padded.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _ordered_blocks_to_text(preds: Any, crop_hw: Tuple[int, int], *, separator: str = "\n") -> str:
+    """Apply research do_ocr's pixel-space DBSCAN row ordering."""
+    from nemo_retriever.common.modality.table_and_chart import (
+        _ocr_items_to_pixel_quad_boxes,
+        _normalize_ocr_items,
+        reorder_boxes,
+    )
+
+    items = _normalize_ocr_items(preds)
+    if not items:
+        return _blocks_to_text(_parse_ocr_result(preds))
+    boxes, texts = _ocr_items_to_pixel_quad_boxes(items, crop_hw)
+    if not texts:
+        return ""
+    _, texts, _ = reorder_boxes(np.asarray(boxes), texts, [1.0] * len(texts), mode="top_left", dbscan_eps=10)
+    return separator.join(texts)
+
+
 def _extract_remote_ocr_item(response_item: Any) -> Any:
     if isinstance(response_item, dict):
         # NIM text_detections format: return full list (not v[0])
@@ -647,6 +693,7 @@ class _OCRRowResult:
     chart_items: List[Dict[str, Any]] = field(default_factory=list)
     infographic_items: List[Dict[str, Any]] = field(default_factory=list)
     text_blocks: List[Dict[str, Any]] = field(default_factory=list)
+    text_regions: List[Dict[str, Any]] = field(default_factory=list)
     error: Any = None
 
 
@@ -778,13 +825,21 @@ def _append_ocr_prediction(
             ts_match = _find_ts_detections_for_bbox(row, bbox)
             if ts_match is not None:
                 ts_dets, ts_hw = ts_match
-                text = join_table_structure_and_ocr_output(ts_dets, preds, ts_hw or crop_hw)
+                text = join_table_structure_and_ocr_output(
+                    ts_dets,
+                    preds,
+                    ts_hw or crop_hw,
+                    ocr_crop_hw=crop_hw,
+                )
         if not text:
             text = _blocks_to_pseudo_markdown(blocks, crop_hw=crop_hw)
         if not text:
             text = _blocks_to_text(blocks)
+        if not blocks:
+            text = "EMPTY TABLE"
     else:
-        text = _blocks_to_text(blocks)
+        separator = " " if label_name in {"title", "header_footer"} else "\n"
+        text = _ordered_blocks_to_text(preds, crop_hw, separator=separator)
 
     entry = {"bbox_xyxy_norm": bbox, "text": text}
     if label_name == "table":
@@ -795,6 +850,7 @@ def _append_ocr_prediction(
         row_result.infographic_items.append(entry)
     elif label_name in _TEXT_LABELS:
         row_result.text_blocks.extend(blocks)
+        row_result.text_regions.append({**entry, "label_name": label_name})
 
 
 def _remote_crop_shape(crop_b64: str) -> Tuple[int, int]:
@@ -854,7 +910,7 @@ def _run_remote_ocr(
                 continue
             try:
                 preds = _extract_remote_ocr_item(response_item)
-                crop_hw = _remote_crop_shape(job.crop_b64) if job.label_name == "table" else (0, 0)
+                crop_hw = _remote_crop_shape(job.crop_b64)
                 _append_ocr_prediction(
                     row_results[job.row_index],
                     row=job.row,
@@ -913,6 +969,7 @@ def _run_remote_ocr(
                 as_b64=True,
             )
             for label_name, bbox, crop_b64 in crops:
+                crop_b64 = _pad_remote_ocr_crop(crop_b64)
                 if row_results[prepared.row_index].error is not None:
                     break
                 pending.append(_RemoteOCRCropJob(prepared.row_index, prepared.row, label_name, bbox, crop_b64))
@@ -939,6 +996,7 @@ def _collect_local_crop_jobs(
                 prepared.wanted_labels,
             )
             for label_name, bbox, crop_array in crops:
+                crop_array, _, _ = _prepare_ocr_crop(crop_array, "bottom_right")
                 merge_level = "word" if label_name == "table" else "paragraph"
                 jobs_by_merge_level[merge_level].append(
                     _OCRCropJob(
@@ -1025,7 +1083,13 @@ def _build_ocr_page_elements_output(
     all_ocr_meta: List[Dict[str, Any]] = []
 
     for result in row_results:
-        all_text.append(_blocks_to_text(result.text_blocks) if extract_text and result.text_blocks else None)
+        if result.text_regions:
+            regions = sorted(
+                result.text_regions, key=lambda item: (item["bbox_xyxy_norm"][1], item["bbox_xyxy_norm"][0])
+            )
+            all_text.append("\n".join(item["text"] for item in regions))
+        else:
+            all_text.append(_blocks_to_text(result.text_blocks) if extract_text and result.text_blocks else None)
 
         counts_by_label: Dict[str, int] = {}
         if result.table_items:
@@ -1062,6 +1126,7 @@ def _build_ocr_page_elements_output(
     out["ocr"] = all_ocr_meta
     out["ocr_v1_num_detections"] = [metadata["num_detections"] for metadata in all_ocr_meta]
     out["ocr_v1_counts_by_label"] = [metadata["counts_by_label"] for metadata in all_ocr_meta]
+    out["ocr_text_regions"] = [result.text_regions for result in row_results]
     return out
 
 
@@ -1171,7 +1236,7 @@ def ocr_page_elements(
             use_table_structure=use_table_structure,
         )
 
-    return _build_ocr_page_elements_output(
+    out = _build_ocr_page_elements_output(
         batch_df,
         row_results,
         extract_text=extract_text,
@@ -1180,6 +1245,10 @@ def ocr_page_elements(
         extract_infographics=extract_infographics,
         elapsed_s=time.perf_counter() - t0_total,
     )
+    from nemo_retriever.common.modality.page_postprocessing import finalize_page_regions
+
+    out = finalize_page_regions(out)
+    return out
 
 
 # ---------------------------------------------------------------------------

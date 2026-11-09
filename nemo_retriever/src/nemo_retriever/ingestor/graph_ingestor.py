@@ -56,7 +56,12 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
-from nemo_retriever.ingestor.plans import dedup_params_enabled, resolve_effective_dedup_params
+from nemo_retriever.ingestor.plans import (
+    dedup_params_enabled,
+    image_extraction_consumers,
+    resolve_effective_dedup_params,
+    resolve_effective_extract_params,
+)
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.common.inline_text import (
     inline_text_source_id,
@@ -546,6 +551,7 @@ class GraphIngestor(ingestor):
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str | None = None
         self._extract_params: Any = None
+        self._image_extraction_auto_logged = False
         self._text_params: Any = None
         self._html_params: Any = None
         self._audio_chunk_params: Any = None
@@ -1170,7 +1176,7 @@ class GraphIngestor(ingestor):
             driver_local_paths=set(self._url_documents()),
             inline_rows=self._inline_text_rows(),
             split_config=self._split_config,
-            extract_params=self._extract_params,
+            extract_params=self._effective_extract_params(),
             text_params=self._text_params,
             html_params=self._html_params,
             audio_chunk_params=self._audio_chunk_params,
@@ -1306,10 +1312,24 @@ class GraphIngestor(ingestor):
             )
         return branches
 
+    def _effective_extract_params(self) -> Any:
+        stage_params = {
+            "caption_params": self._caption_params,
+            "dedup_params": self._dedup_params,
+            "store_params": self._store_params,
+        }
+        resolved = resolve_effective_extract_params(self._extract_params, **stage_params)
+        if resolved is not self._extract_params and not self._image_extraction_auto_logged:
+            consumers = image_extraction_consumers(self._extract_params, **stage_params)
+            reason = f"consumers: {', '.join(consumers)}" if consumers else "no caption/store/dedup consumer"
+            logger.info("extract_images=auto -> %s (%s)", resolved.extract_images, reason)
+            self._image_extraction_auto_logged = True
+        return resolved
+
     def _resolve_branch_extraction_inputs(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
         return resolve_branch_extraction_inputs(
             branch,
-            extract_params=self._extract_params,
+            extract_params=self._effective_extract_params(),
             text_params=self._text_params,
             html_params=self._html_params,
             audio_chunk_params=self._audio_chunk_params,
@@ -1334,7 +1354,7 @@ class GraphIngestor(ingestor):
                     html_params = html_params or HtmlChunkParams()
             return ResolvedExtractionInputs(
                 extraction_mode=extraction_mode,
-                extract_params=self._extract_params,
+                extract_params=self._effective_extract_params(),
                 text_params=text_params,
                 html_params=html_params,
                 audio_chunk_params=self._audio_chunk_params,
@@ -1355,7 +1375,7 @@ class GraphIngestor(ingestor):
         # branches instead of using this MultiType fallback.
         return ResolvedExtractionInputs(
             extraction_mode="auto",
-            extract_params=self._extract_params or ExtractParams(),
+            extract_params=self._effective_extract_params() or ExtractParams(),
             text_params=self._text_params or TextChunkParams(),
             html_params=self._html_params or HtmlChunkParams(),
             audio_chunk_params=self._audio_chunk_params,

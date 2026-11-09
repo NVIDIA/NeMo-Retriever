@@ -71,7 +71,7 @@ def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
         "jpeg_quality": int(params.jpeg_quality),
         "render_mode": params.render_mode,
         "extract_text": params.extract_text,
-        "extract_images": params.extract_images,
+        "extract_images": params.extract_images is not False,
         "extract_nested_images": params.extract_nested_images,
         "extract_tables": params.extract_tables,
         "extract_charts": params.extract_charts,
@@ -265,7 +265,6 @@ def pdf_extraction(
     image_format: str = "jpeg",
     jpeg_quality: int = 100,
     text_extraction_method: str = "pdfium_hybrid",
-    text_depth: str = "page",
     render_mode: RenderMode = "fit_to_model",
     **kwargs: Any,
 ) -> Any:
@@ -376,11 +375,7 @@ def pdf_extraction(
 
                     # Text extraction
                     if extract_text and not ocr_extraction_needed_for_text:
-                        # TODO: Tiddy up logic here for document depth option
-                        if text_depth == "page":
-                            text = page_text
-                        else:
-                            text = page_text
+                        text = page_text
 
                     has_text = bool(text.strip()) if extract_text else False
 

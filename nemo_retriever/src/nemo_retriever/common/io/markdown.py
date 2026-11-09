@@ -139,6 +139,9 @@ def _looks_like_record(record: Mapping[str, Any]) -> bool:
 
 def _collect_page_record(by_page: dict[int, _PageContent], record: Mapping[str, Any]) -> None:
     page_number = _page_number_for_record(record)
+    if isinstance(record.get("ordered_page_text"), str):
+        _append_text(by_page[page_number], record["ordered_page_text"])
+        return
     _append_text(
         by_page[page_number], _first_text(record.get("text"), record.get("content"), _metadata_content(record))
     )

@@ -72,6 +72,67 @@ def dedup_params_enabled(params: DedupParams | None) -> bool:
     return params is not None and (params.content_hash or params.bbox_iou)
 
 
+def image_extraction_consumers(
+    extract_params: ExtractParams,
+    *,
+    caption_params: CaptionParams | None,
+    dedup_params: DedupParams | None,
+    store_params: Any | None,
+) -> tuple[str, ...]:
+    """Return the configured stages that read PDFium image crops from the ``images`` column."""
+
+    consumers = {
+        "nested_images": extract_params.extract_nested_images,
+        "caption": caption_params is not None,
+        "dedup": dedup_params_enabled(dedup_params),
+        "store": store_params is not None,
+    }
+    return tuple(name for name, enabled in consumers.items() if enabled)
+
+
+def resolve_effective_extract_params(
+    extract_params: ExtractParams | None,
+    *,
+    caption_params: CaptionParams | None,
+    dedup_params: DedupParams | None,
+    store_params: Any | None,
+) -> ExtractParams | None:
+    """Resolve ``extract_images=None`` (auto) to whether any configured stage reads image crops.
+
+    ``extract_images`` re-renders each PDF page at 72 dpi, crops the merged
+    boxes of raster images, vector shapes, and form XObjects, and stores the
+    base64 crops in the ``images`` column. Only nested-image extraction, dedup,
+    caption, and store read that column. The page render used by page
+    elements, OCR, and image embedding is ``page_image``
+    (``extract_page_as_image``) and is unaffected.
+
+    Parameters
+    ----------
+    extract_params
+        Configured extraction parameters, or ``None``.
+    caption_params
+        Caption parameters when captioning is configured.
+    dedup_params
+        Configured deduplication parameters. Caption-triggered dedup is covered
+        by ``caption_params``.
+    store_params
+        Image store parameters when the store stage is configured.
+
+    Returns
+    -------
+    ExtractParams | None
+        ``extract_params`` unchanged when ``extract_images`` is ``True`` or
+        ``False``; otherwise a copy with ``extract_images`` resolved.
+    """
+
+    if extract_params is None or extract_params.extract_images is not None:
+        return extract_params
+    consumers = image_extraction_consumers(
+        extract_params, caption_params=caption_params, dedup_params=dedup_params, store_params=store_params
+    )
+    return extract_params.model_copy(update={"extract_images": bool(consumers)})
+
+
 @dataclass(frozen=True)
 class PlannedStage:
     """A normalized transform stage ready for executor-specific translation."""

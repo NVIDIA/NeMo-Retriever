@@ -3,14 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Recall evaluation utilities and CLI.
+Recall evaluation utilities.
 """
 
-from nemo_retriever.tools.recall.__main__ import app
 from nemo_retriever.tools.recall.core import RecallConfig, evaluate_recall
 
 __all__ = [
-    "app",
     "RecallConfig",
     "evaluate_recall",
 ]
