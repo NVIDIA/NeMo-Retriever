@@ -379,14 +379,15 @@ def pdf_extraction(
 
                     has_text = bool(text.strip()) if extract_text else False
 
-                    want_any_raster = bool(
-                        extract_images
+                    # Page elements and OCR read page_image on every page when they run,
+                    # including native-text pages under pdfium_hybrid.
+                    page_elements_or_ocr_runs = (
+                        (extract_text and text_extraction_method in ("pdfium_hybrid", "ocr"))
                         or extract_tables
                         or extract_charts
                         or extract_infographics
-                        or extract_page_as_image
-                        or ocr_extraction_needed_for_text
                     )
+                    want_any_raster = bool(extract_images or extract_page_as_image or page_elements_or_ocr_runs)
                     render_info: Optional[Dict[str, Any]] = None
                     if want_any_raster:
                         page_rgb = _render_page_rgb(page, dpi=dpi, render_mode=render_mode)
