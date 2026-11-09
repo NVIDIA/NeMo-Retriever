@@ -183,13 +183,50 @@ def create_vllm_llm(
     model_impl: Optional[str] = None,
     async_engine: bool = False,
 ) -> Any:
-    """
-    Create and return a vLLM LLM instance for embedding (pooling runner).
-    Caller can reuse it across many embed batches to avoid repeated model load and CUDA graph capture.
+    """Create a vLLM embedding engine (pooling runner) to reuse across embed batches.
 
-    Uses bfloat16 and FLASH_ATTN backend (fixed for this module).
-    ``async_engine=True`` returns an :class:`AsyncEmbedEngine` with the same ``embed`` call.
+    Reusing the engine avoids repeated model load and CUDA graph capture. Uses
+    bfloat16 and the FLASH_ATTN backend (fixed for this module).
 
+    Parameters
+    ----------
+    model
+        Hugging Face model id or local path.
+    revision
+        Model revision to load.
+    dimensions
+        Matryoshka output dimension, if the model supports it.
+    tensor_parallel_size
+        Number of GPUs to shard the model across.
+    trust_remote_code
+        Whether to run model code shipped with the checkpoint.
+    max_model_len
+        Maximum sequence length; the checkpoint value when ``None``.
+    gpu_memory_utilization
+        Fraction of GPU memory vLLM may reserve.
+    enforce_eager
+        Disable CUDA graphs.
+    hf_overrides
+        Overrides applied to the Hugging Face config.
+    limit_mm_per_prompt
+        Maximum multimodal items per prompt, by modality.
+    download_dir
+        Directory for downloaded weights.
+    model_impl
+        vLLM model implementation to use (for example ``"transformers"``).
+    async_engine
+        Return an :class:`AsyncEmbedEngine`, which has the same ``embed`` call
+        and accepts calls from several threads at once.
+
+    Returns
+    -------
+    Any
+        A ``vllm.LLM``, or an :class:`AsyncEmbedEngine` when ``async_engine`` is true.
+
+    Raises
+    ------
+    RuntimeError
+        If vLLM is not installed or the engine fails to start.
     """
     apply_vllm_startup_defaults(tensor_parallel_size=tensor_parallel_size)
     try:
@@ -247,6 +284,20 @@ class AsyncEmbedEngine:
     """
 
     def __init__(self, **kwargs: Any) -> None:
+        """Start a private event loop and build an ``AsyncLLM`` on it.
+
+        Parameters
+        ----------
+        **kwargs
+            ``vllm.AsyncEngineArgs`` fields, as passed to ``vllm.LLM``.
+            ``disable_log_stats`` defaults to true.
+
+        Raises
+        ------
+        Exception
+            Whatever vLLM raises when the engine fails to start; the event loop
+            is stopped first. Check the vLLM log above it for the cause.
+        """
         import asyncio
         import itertools
         import threading
@@ -275,9 +326,36 @@ class AsyncEmbedEngine:
         return asyncio.run_coroutine_threadsafe(coroutine, self._loop).result()
 
     def embed(
-        self, prompts: List[Any], *, pooling_params: Any = None, tokenization_kwargs: Optional[dict] = None
-    ) -> list:
-        """Embed ``prompts`` like ``LLM.embed`` and return outputs in prompt order."""
+        self,
+        prompts: List[Any],
+        *,
+        pooling_params: Any = None,
+        tokenization_kwargs: Optional[dict[str, Any]] = None,
+    ) -> list[Any]:
+        """Embed ``prompts`` like ``LLM.embed`` and return outputs in prompt order.
+
+        Safe to call from several threads at once; each prompt is its own engine request.
+
+        Parameters
+        ----------
+        prompts
+            Prompts in any form ``LLM.embed`` accepts (strings or prompt dicts).
+        pooling_params
+            ``vllm.PoolingParams`` to copy for each prompt; ``task`` defaults to ``"embed"``.
+        tokenization_kwargs
+            Extra tokenization options, as for ``LLM.embed``.
+
+        Returns
+        -------
+        list[Any]
+            One ``vllm.outputs.EmbeddingRequestOutput`` per prompt, in prompt order.
+
+        Raises
+        ------
+        Exception
+            The first error a prompt raises in the engine. The other prompts of
+            this call are cancelled before it propagates.
+        """
         import asyncio
 
         from vllm import PoolingParams
@@ -297,13 +375,29 @@ class AsyncEmbedEngine:
                 pass
             return output
 
-        async def gather() -> list:
-            return await asyncio.gather(*(one(p, f"nrl-embed-{os.getpid()}-{next(self._ids)}") for p in prompts))
+        async def run_all() -> list[Any]:
+            try:
+                async with asyncio.TaskGroup() as group:
+                    tasks = [group.create_task(one(p, f"nrl-embed-{os.getpid()}-{next(self._ids)}")) for p in prompts]
+            except BaseExceptionGroup as errors:
+                raise errors.exceptions[0] from errors
+            return [task.result() for task in tasks]
 
-        return [EmbeddingRequestOutput.from_base(output) for output in self._run(gather())]
+        return [EmbeddingRequestOutput.from_base(output) for output in self._run(run_all())]
 
     def shutdown(self, timeout: Optional[float] = None) -> None:
-        """Stop the engine core, then the private event loop."""
+        """Stop the engine core, then the private event loop.
+
+        Parameters
+        ----------
+        timeout
+            Seconds to wait for the engine core to exit; vLLM's default when ``None``.
+
+        Raises
+        ------
+        Exception
+            Whatever ``AsyncLLM.shutdown`` raises; the event loop is then left running.
+        """
         self.engine.shutdown(timeout=timeout)
         self._loop.call_soon_threadsafe(self._loop.stop)
 

@@ -747,3 +747,42 @@ def test_async_embed_engine_submits_each_prompt_and_keeps_prompt_order(monkeypat
     assert sorted(item[0] for item in submitted) == [0, 1, 2]
     assert {item[1] for item in submitted} == {"embed"}
     assert len({item[2] for item in submitted}) == 3
+
+
+def test_async_embed_engine_cancels_other_prompts_when_one_fails(monkeypatch) -> None:
+    import asyncio
+    import itertools
+    import threading
+
+    pytest.importorskip("vllm")
+    import vllm.renderers.inputs.preprocess as preprocess
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    cancelled = []
+
+    async def encode(prompt, _params, _request_id):
+        if prompt == "bad":
+            await asyncio.sleep(0.01)
+            raise ValueError("bad prompt")
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.append(prompt)
+            raise
+        yield None
+
+    renderer = SimpleNamespace(
+        default_cmpl_tok_params=SimpleNamespace(with_kwargs=lambda **_: None),
+        render_cmpl=lambda prompts, _params: prompts,
+    )
+    engine = vllm_inference.AsyncEmbedEngine.__new__(vllm_inference.AsyncEmbedEngine)
+    engine.engine = SimpleNamespace(renderer=renderer, model_config=None, encode=encode)
+    engine._ids = itertools.count()
+    engine._loop = asyncio.new_event_loop()
+    threading.Thread(target=engine._loop.run_forever, daemon=True).start()
+    try:
+        with pytest.raises(ValueError, match="bad prompt"):
+            engine.embed(["a", "bad", "b"])
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+    assert sorted(cancelled) == ["a", "b"]
