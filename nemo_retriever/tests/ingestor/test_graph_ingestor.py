@@ -20,25 +20,28 @@ def _extract_images(ingestor):
     return ingestor._resolve_effective_extraction_inputs().extract_params.extract_images
 
 
-def test_default_ingest_skips_unread_image_crops(pdf_ingestor, caplog):
+def test_auto_without_consumers_resolves_false_and_logs_once(pdf_ingestor, caplog):
     pdf_ingestor.extract()
     with caplog.at_level(logging.INFO, logger="nemo_retriever.ingestor.graph_ingestor"):
         assert _extract_images(pdf_ingestor) is False
         assert _extract_images(pdf_ingestor) is False
-    assert sum("extract_images auto-disabled" in r.getMessage() for r in caplog.records) == 1
-    assert pdf_ingestor._extract_params.extract_images is True
+    messages = [r.getMessage() for r in caplog.records if "extract_images=auto" in r.getMessage()]
+    assert messages == ["extract_images=auto -> False (no caption/store/dedup consumer)"]
+    assert pdf_ingestor._extract_params.extract_images is None
 
 
-def test_extract_kwargs_keep_extract_images_unset(pdf_ingestor):
+def test_extract_kwargs_keep_auto(pdf_ingestor):
     pdf_ingestor.extract(ExtractParams(), dpi=300)
-    assert "extract_images" not in pdf_ingestor._extract_params.model_fields_set
+    assert pdf_ingestor._extract_params.extract_images is None
     assert _extract_images(pdf_ingestor) is False
 
 
 @pytest.mark.parametrize("stage", ["caption", "dedup", "store"])
-def test_image_consumer_stages_keep_image_crops(pdf_ingestor, stage):
+def test_image_consumer_stages_resolve_auto_to_true(pdf_ingestor, stage, caplog):
     getattr(pdf_ingestor.extract(), stage)()
-    assert _extract_images(pdf_ingestor) is True
+    with caplog.at_level(logging.INFO, logger="nemo_retriever.ingestor.graph_ingestor"):
+        assert _extract_images(pdf_ingestor) is True
+    assert f"extract_images=auto -> True (consumers: {stage})" in caplog.text
 
 
 @pytest.mark.parametrize("value", [True, False])

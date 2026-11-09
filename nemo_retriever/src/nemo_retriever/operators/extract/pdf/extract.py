@@ -71,7 +71,7 @@ def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
         "jpeg_quality": int(params.jpeg_quality),
         "render_mode": params.render_mode,
         "extract_text": params.extract_text,
-        "extract_images": params.extract_images,
+        "extract_images": params.extract_images is not False,
         "extract_nested_images": params.extract_nested_images,
         "extract_tables": params.extract_tables,
         "extract_charts": params.extract_charts,

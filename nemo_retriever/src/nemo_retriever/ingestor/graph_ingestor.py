@@ -58,6 +58,7 @@ from nemo_retriever.ingestor.manifest import (
 )
 from nemo_retriever.ingestor.plans import (
     dedup_params_enabled,
+    image_extraction_consumers,
     resolve_effective_dedup_params,
     resolve_effective_extract_params,
 )
@@ -445,7 +446,7 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
     if not kwargs:
         return params
     if hasattr(params, "model_copy"):
-        values = params.model_dump(exclude_unset=True)
+        values = params.model_dump()
         uses_no_api_key = getattr(params, "_uses_no_api_key", None)
         api_key_env_reference = getattr(params, "_api_key_env_reference", None)
         for field_name in type(params).model_fields:
@@ -550,7 +551,7 @@ class GraphIngestor(ingestor):
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str | None = None
         self._extract_params: Any = None
-        self._image_extraction_skip_logged = False
+        self._image_extraction_auto_logged = False
         self._text_params: Any = None
         self._html_params: Any = None
         self._audio_chunk_params: Any = None
@@ -1312,18 +1313,17 @@ class GraphIngestor(ingestor):
         return branches
 
     def _effective_extract_params(self) -> Any:
-        resolved = resolve_effective_extract_params(
-            self._extract_params,
-            caption_params=self._caption_params,
-            dedup_params=self._dedup_params,
-            store_params=self._store_params,
-        )
-        if resolved is not self._extract_params and not self._image_extraction_skip_logged:
-            logger.info(
-                "extract_images auto-disabled: no stage consumes extracted images; "
-                "set extract_images=True to keep them"
-            )
-            self._image_extraction_skip_logged = True
+        stage_params = {
+            "caption_params": self._caption_params,
+            "dedup_params": self._dedup_params,
+            "store_params": self._store_params,
+        }
+        resolved = resolve_effective_extract_params(self._extract_params, **stage_params)
+        if resolved is not self._extract_params and not self._image_extraction_auto_logged:
+            consumers = image_extraction_consumers(self._extract_params, **stage_params)
+            reason = f"consumers: {', '.join(consumers)}" if consumers else "no caption/store/dedup consumer"
+            logger.info("extract_images=auto -> %s (%s)", resolved.extract_images, reason)
+            self._image_extraction_auto_logged = True
         return resolved
 
     def _resolve_branch_extraction_inputs(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
