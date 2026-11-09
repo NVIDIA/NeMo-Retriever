@@ -50,7 +50,19 @@ In your terminal, run the following commands from any location.
 > Retriever Library releases; use this source tree and its lockfile to validate
 > the candidate upgrade.
 
-Install with the `[local]` extra, which includes Nemotron model packages, transformers, and GPU tooling:
+To validate this source checkout, run the following commands from the repository root:
+
+```bash
+uv sync --project nemo_retriever --locked --extra local --no-default-groups
+source nemo_retriever/.venv/bin/activate
+```
+
+The lockfile selects matching CUDA builds of Torch and Torchvision, plus the
+OCR native extension built for Torch 2.13. Upgrading Torch alone does not
+rebuild that extension.
+
+For a published release, install the `[local]` extra, which includes Nemotron
+model packages, Transformers, and GPU tooling:
 
 ```bash
 uv venv retriever --python 3.12
@@ -124,7 +136,10 @@ The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and i
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
 
-The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
+The examples below use default local GPU inference (no `invoke_url` specified)
+and require the `[local]` extra with matching CUDA 13 builds from the setup
+steps above. For remote NIM inference without a local GPU, refer to
+[Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
 ### Ingest a test pdf
 ```python
