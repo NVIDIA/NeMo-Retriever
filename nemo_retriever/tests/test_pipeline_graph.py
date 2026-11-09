@@ -1850,10 +1850,16 @@ class TestRayDataExecutor:
         assert input_dataset.context.enable_tensor_extension_casting
 
     @pytest.mark.parametrize(
-        ("concurrency", "pool"),
-        [(3, {"size": 3}), ((1, 4, 2), {"min_size": 1, "max_size": 4, "initial_size": 2})],
+        ("concurrency", "pool", "extra", "threads"),
+        [
+            (3, {"size": 3}, {}, 2),
+            ((1, 4, 2), {"min_size": 1, "max_size": 4, "initial_size": 2}, {}, 2),
+            (3, {"size": 3}, {"max_concurrency": 1}, 1),
+        ],
     )
-    def test_build_dataset_runs_udf_threads_on_a_true_multithreaded_pool(self, monkeypatch, concurrency, pool):
+    def test_build_dataset_runs_udf_threads_on_a_true_multithreaded_pool(
+        self, monkeypatch, concurrency, pool, extra, threads
+    ):
         import sys
         from types import SimpleNamespace
 
@@ -1893,14 +1899,14 @@ class TestRayDataExecutor:
 
         graph = Graph() >> _ThreadedUDF(lambda frame: frame)
         (node,) = graph.roots
-        executor = RayDataExecutor(graph, node_overrides={node.name: {"concurrency": concurrency}})
+        executor = RayDataExecutor(graph, node_overrides={node.name: {"concurrency": concurrency, **extra}})
         executor._resources_preflight_complete = True
         executor.build_dataset(_FakeDataset())
 
         (call,) = captured
         assert "concurrency" not in call
         assert call["compute"] == {**pool, "enable_true_multi_threading": True}
-        assert call["max_concurrency"] == 2
+        assert call["max_concurrency"] == threads
 
     def test_node_overrides_stored(self):
 
