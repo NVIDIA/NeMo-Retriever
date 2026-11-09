@@ -1737,11 +1737,13 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert kwargs["av_fuse_params"].enabled is False
 
 
-def test_root_ingest_rejects_removed_profiles(tmp_path) -> None:
+def test_root_ingest_rejects_removed_profiles(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"], env={"COLUMNS": "200"})
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"])
 
     assert result.exit_code == 2
     assert "is not one of 'auto', 'fast-text'" in result.output
