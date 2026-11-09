@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Self, Sequence, Tuple, Union
 
@@ -1313,21 +1313,24 @@ class GraphIngestor(ingestor):
         return branches
 
     def _effective_extract_params(self) -> Any:
+        return self._resolve_auto_extract_images(self._extract_params)
+
+    def _resolve_auto_extract_images(self, extract_params: Any) -> Any:
         stage_params = {
             "caption_params": self._caption_params,
             "dedup_params": self._dedup_params,
             "store_params": self._store_params,
         }
-        resolved = resolve_effective_extract_params(self._extract_params, **stage_params)
-        if resolved is not self._extract_params and not self._image_extraction_auto_logged:
-            consumers = image_extraction_consumers(self._extract_params, **stage_params)
+        resolved = resolve_effective_extract_params(extract_params, **stage_params)
+        if resolved is not extract_params and not self._image_extraction_auto_logged:
+            consumers = image_extraction_consumers(extract_params, **stage_params)
             reason = f"consumers: {', '.join(consumers)}" if consumers else "no caption/store/dedup consumer"
             logger.info("extract_images=auto -> %s (%s)", resolved.extract_images, reason)
             self._image_extraction_auto_logged = True
         return resolved
 
     def _resolve_branch_extraction_inputs(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
-        return resolve_branch_extraction_inputs(
+        resolved = resolve_branch_extraction_inputs(
             branch,
             extract_params=self._effective_extract_params(),
             text_params=self._text_params,
@@ -1338,6 +1341,7 @@ class GraphIngestor(ingestor):
             video_text_dedup_params=self._video_text_dedup_params,
             av_fuse_params=self._av_fuse_params,
         )
+        return replace(resolved, extract_params=self._resolve_auto_extract_images(resolved.extract_params))
 
     def _resolve_effective_extraction_inputs(self) -> ResolvedExtractionInputs:
         extraction_mode = self._extraction_mode
@@ -1375,7 +1379,7 @@ class GraphIngestor(ingestor):
         # branches instead of using this MultiType fallback.
         return ResolvedExtractionInputs(
             extraction_mode="auto",
-            extract_params=self._effective_extract_params() or ExtractParams(),
+            extract_params=self._resolve_auto_extract_images(self._extract_params or ExtractParams()),
             text_params=self._text_params or TextChunkParams(),
             html_params=self._html_params or HtmlChunkParams(),
             audio_chunk_params=self._audio_chunk_params,

@@ -30,6 +30,11 @@ def test_auto_without_consumers_resolves_false_and_logs_once(pdf_ingestor, caplo
     assert pdf_ingestor._extract_params.extract_images is None
 
 
+def test_auto_resolves_without_an_extract_call(pdf_ingestor):
+    assert pdf_ingestor._extract_params is None
+    assert _extract_images(pdf_ingestor) is False
+
+
 def test_extract_kwargs_keep_auto(pdf_ingestor):
     pdf_ingestor.extract(ExtractParams(), dpi=300)
     assert pdf_ingestor._extract_params.extract_images is None
