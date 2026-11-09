@@ -79,7 +79,25 @@ def image_extraction_consumers(
     dedup_params: DedupParams | None,
     store_params: Any | None,
 ) -> tuple[str, ...]:
-    """Return the configured stages that read PDFium image crops from the ``images`` column."""
+    """Return the configured stages that read PDFium image crops from the ``images`` column.
+
+    Parameters
+    ----------
+    extract_params
+        Configured extraction parameters; ``extract_nested_images`` counts as a consumer.
+    caption_params
+        Caption parameters when captioning is configured.
+    dedup_params
+        Configured deduplication parameters.
+    store_params
+        Image store parameters when the store stage is configured.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Consumer names among ``nested_images``, ``caption``, ``dedup`` and
+        ``store``; empty when nothing reads the crops.
+    """
 
     consumers = {
         "nested_images": extract_params.extract_nested_images,
