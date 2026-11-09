@@ -77,7 +77,14 @@ class Nemotron35Embedder:
 
     @property
     def supports_concurrent_calls(self) -> bool:
-        """Return True when the async vLLM engine lets several threads embed at once."""
+        """Whether several threads may call ``embed`` at once.
+
+        Returns
+        -------
+        bool
+            True for the ``vllm`` backend, whose async engine batches concurrent
+            calls; False for ``hf``, which callers must serialize.
+        """
         return self.backend == "vllm"
 
     def _ensure_loaded(self):
