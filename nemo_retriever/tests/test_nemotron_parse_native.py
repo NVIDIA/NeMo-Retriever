@@ -149,14 +149,17 @@ def test_native_output_capped_before_first_element_finishes_is_incomplete(caplog
     assert "Warning: Nemotron Parse page incomplete: path=/docs/report.pdf page=7" in caplog.text
 
 
-def test_native_markdown_capped_output_is_kept_as_page_text():
+@pytest.mark.parametrize(
+    "content", ["Plain markdown cut off mid-sent", "Use <x_0.1> for coordinates, then <x_0.2><y_0.3"]
+)
+def test_native_markdown_capped_output_is_kept_as_page_text(content):
     client = Mock()
     client.invoke_parse_pages.return_value = [
-        {"content": "Plain markdown cut off mid-sent", "finish_reason": "length", "usage": {"output_tokens": 9000}}
+        {"content": content, "finish_reason": "length", "usage": {"output_tokens": 9000}}
     ]
     batch = pd.DataFrame([{"path": "a.pdf", "page_number": 1, "page_image": {"image_b64": "aW1hZ2U="}}])
     result = nemotron_parse_pages(batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True)
-    assert result.iloc[0]["text"] == "Plain markdown cut off mid-sent"
+    assert result.iloc[0]["text"] == content
     assert result.iloc[0]["nemotron_parse_v1_2"]["completion"]["status"] == "incomplete"
 
 

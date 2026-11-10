@@ -48,8 +48,9 @@ from nemo_retriever.common.params.utils import (
 
 logger = logging.getLogger(__name__)
 
-# Start of a tagged element: normalized bounding-box coordinates open every element.
-_RE_TAGGED_ELEMENT_START = re.compile(r"<x_\d")
+# A tagged stream opens with the first element's bounding-box coordinates; stray
+# coordinate-like text inside Markdown does not start a tagged stream.
+_RE_TAGGED_STREAM_START = re.compile(r"<x_\d+(?:\.\d+)?><y_\d+(?:\.\d+)?>")
 
 try:
     from PIL import Image
@@ -543,7 +544,7 @@ def nemotron_parse_pages(
                     f"finish_reason={completion['finish_reason']} output_tokens={completion['output_tokens']}"
                 )
             if native_parse and not extract_classes_bboxes(raw_text)[0]:
-                if completion["status"] == "incomplete" and _RE_TAGGED_ELEMENT_START.search(raw_text):
+                if completion["status"] == "incomplete" and _RE_TAGGED_STREAM_START.match(raw_text):
                     # Capped before the first tagged element finished: there is
                     # nothing usable to route, and the raw tags are not page text.
                     continue
