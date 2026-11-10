@@ -38,7 +38,7 @@ def resolve_graph(
     resources: ClusterResources | Resources,
 ) -> Graph:
     from nemo_retriever.ingest.index_mode import _embedding_model_kwargs
-    from nemo_retriever.models import resolve_local_embed_model
+    from nemo_retriever.models import ray_cluster_supports_native_nvfp4, resolve_local_embed_model
     from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
     from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
     from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor as BatchEmbedGPUActor
@@ -64,9 +64,10 @@ def resolve_graph(
                 model_name = resolve_local_embed_model(
                     params.embed_model_name or params.model_name,
                     backend=params.local_ingest_embed_backend,
-                    # Ray's counts do not prove the architecture of eligible
-                    # workers. Use a worker-safe BF16 default, never driver CUDA.
-                    allow_native_nvfp4=not isinstance(resources, ClusterResources),
+                    # Batch selection uses worker architectures, never driver CUDA.
+                    native_nvfp4=(
+                        ray_cluster_supports_native_nvfp4() if isinstance(resources, ClusterResources) else None
+                    ),
                 )
                 revision = resolve_embed_model_revision(model_name, params.embed_model_revision)
                 # Resolve once before actor creation. Both the worker and sink
