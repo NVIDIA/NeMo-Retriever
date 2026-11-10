@@ -143,9 +143,10 @@ as scanned. It also runs page-element detection and OCR for text-only
 configurations, and it OCRs image inputs. To use native PDF text only, set
 `method="pdfium"`.
 
-The `audio` value remains available for the legacy params-driven audio path. For
-new audio pipelines, use [`GraphIngestor.extract_audio()`](#graph-ingestor)
-instead.
+The `method` value selects only the page text source. Table, chart, and
+infographic extraction use their own `extract_tables`, `extract_charts`, and
+`extract_infographics` settings. For audio inputs, use
+[`GraphIngestor.extract_audio()`](#graph-ingestor).
 
 Any other value raises a Pydantic `ValidationError` before pipeline setup. The
 error lists the supported values, so spelling and configuration errors do not
