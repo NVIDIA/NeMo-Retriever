@@ -170,7 +170,7 @@ def batch_tuning_to_node_overrides(
         and embed_params is not None
         and extraction_mode not in {"text", "html", "audio", "image", "auto"}
         and video_frame_params is None
-        and getattr(extract_params, "method", None) not in ("nemotron_parse", "audio")
+        and getattr(extract_params, "method", None) != "nemotron_parse"
         and getattr(extract_params, "use_page_elements", False)
         and _pdf_ocr_needed(extract_params)
         and not (
@@ -261,7 +261,9 @@ def batch_tuning_to_node_overrides(
             local_caption_concurrency = 1 if available_gpus <= 1 else max(1, available_gpus - 1)
 
     if embed_params is not None:
-        embed_invoke_url = _positive(getattr(embed_params, "embed_invoke_url", None))
+        embed_invoke_url = _positive(getattr(embed_params, "embed_invoke_url", None)) or _positive(
+            getattr(embed_params, "embedding_endpoint", None)
+        )
         explicit_bs = getattr(embed_tuning, "embed_batch_size", None) if embed_tuning is not None else None
         embed_bs = _positive(explicit_bs) or (plan.embed_batch_size if plan else None)
         _set(_BatchEmbedActor.__name__, "batch_size", embed_bs)
@@ -587,26 +589,18 @@ def _should_build_audio_graph(
     ``RuntimeError: MediaChunkActor requires media dependencies; missing:
     ffmpeg, ffprobe`` for PDF ingestion.
 
-    Returning ``True`` therefore requires an explicit audio signal:
-
-    * ``extraction_mode == "audio"`` — the caller (or the upstream
-      auto-detector in :meth:`GraphIngestor._resolve_effective_extraction_inputs`)
-      classified the inputs as audio.
-    * ``extract_params.method == "audio"`` — the legacy params-driven
-      opt-in used by tests and a few direct callers.
+    Returning ``True`` therefore requires ``extraction_mode == "audio"``:
+    the caller (or the upstream auto-detector in
+    :meth:`GraphIngestor._resolve_effective_extraction_inputs`) classified
+    the inputs as audio.
 
     The mere presence of ``asr_params`` is **not** a sufficient signal:
     in service mode ``asr_params`` is auto-derived from the cluster's
     ``audio_grpc_endpoint`` and would otherwise force every PDF upload
     through the audio-only graph.
     """
-    if (extraction_mode or "").strip().lower() == "audio":
-        return True
-    method = str(getattr(extract_params, "method", "") or "").strip().lower()
-    if method == "audio":
-        return True
-    _ = asr_params  # kept for backwards-compatible kw signature
-    return False
+    _ = (extract_params, asr_params)  # kept for backwards-compatible kw signature
+    return (extraction_mode or "").strip().lower() == "audio"
 
 
 def _maybe_append_chunk_actor(graph: Graph, split_config: dict[str, Any], key: str) -> Graph:
@@ -931,8 +925,8 @@ def build_graph(
             detect_kwargs: dict[str, Any] = {}
             if extract_params.page_elements_invoke_url:
                 detect_kwargs["page_elements_invoke_url"] = extract_params.page_elements_invoke_url
-            if extract_params.api_key:
-                detect_kwargs["api_key"] = extract_params.api_key
+            if extract_params.page_elements_api_key or extract_params.api_key:
+                detect_kwargs["api_key"] = extract_params.page_elements_api_key or extract_params.api_key
             if extract_params.inference_batch_size:
                 detect_kwargs["inference_batch_size"] = int(extract_params.inference_batch_size)
 

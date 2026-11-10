@@ -458,8 +458,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         detect_kwargs: dict[str, Any] = {}
         if extract_params.page_elements_invoke_url:
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-        if extract_params.api_key:
-            detect_kwargs["api_key"] = extract_params.api_key
+        if extract_params.page_elements_api_key or extract_params.api_key:
+            detect_kwargs["api_key"] = extract_params.page_elements_api_key or extract_params.api_key
         inference_batch_size = getattr(extract_params, "inference_batch_size", None) or getattr(
             tuning, "page_elements_batch_size", None
         )

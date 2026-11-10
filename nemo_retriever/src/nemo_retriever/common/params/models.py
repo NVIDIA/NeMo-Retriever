@@ -579,11 +579,12 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options
-    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
+    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse"] = Field(
         default="pdfium_hybrid",
         description=(
-            "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
-            "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
+            "Page text source for PDFs. 'pdfium' uses the native text layer, 'pdfium_hybrid' uses native text "
+            "and OCRs pages without it, 'ocr' OCRs every page, and 'nemotron_parse' parses pages with "
+            "Nemotron Parse. Table, chart, and infographic extraction is controlled separately."
         ),
     )
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
@@ -746,6 +747,17 @@ class EmbedParams(_ParamsModel):
         if modality not in VALID_EMBED_MODALITIES:
             raise ValueError(f"Modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
         return modality
+
+    @model_validator(mode="after")
+    def _reject_conflicting_endpoint_aliases(self) -> "EmbedParams":
+        invoke_url = str(self.embed_invoke_url or "").strip()
+        endpoint = str(self.embedding_endpoint or "").strip()
+        if invoke_url and endpoint and invoke_url != endpoint:
+            raise ValueError(
+                "embed_invoke_url and embedding_endpoint are aliases for the remote embedding URL but were set to "
+                f"different values ({invoke_url!r} and {endpoint!r}). Set only one."
+            )
+        return self
 
     @model_validator(mode="after")
     def _warn_page_granularity_overrides(self) -> "EmbedParams":

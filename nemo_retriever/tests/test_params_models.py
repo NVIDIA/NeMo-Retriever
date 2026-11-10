@@ -18,7 +18,7 @@ class TestVideoFrameParams:
 
 
 class TestExtractParams:
-    @pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"])
+    @pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse"])
     def test_supported_extraction_methods_are_valid(self, method: str) -> None:
         assert ExtractParams(method=method).method == method
 
@@ -27,8 +27,9 @@ class TestExtractParams:
             ExtractParams(method="unsupported")
 
         error = str(exc_info.value)
-        for method in ("pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"):
+        for method in ("pdfium", "pdfium_hybrid", "ocr", "nemotron_parse"):
             assert method in error
+        assert "audio" not in error
 
     def test_nested_image_extraction_requires_image_extraction(self) -> None:
         with pytest.raises(ValidationError, match="extract_nested_images=True requires extract_images=True"):
@@ -36,11 +37,12 @@ class TestExtractParams:
 
         assert ExtractParams(extract_images=True, extract_nested_images=True).extract_nested_images is True
 
-    def test_extraction_method_schema_describes_supported_and_legacy_values(self) -> None:
+    def test_extraction_method_schema_describes_page_text_source(self) -> None:
         schema = ExtractParams.model_json_schema()["properties"]["method"]
 
-        assert "PDF extraction supports" in schema["description"]
-        assert "legacy params-driven audio path" in schema["description"]
+        assert "Page text source" in schema["description"]
+        assert "controlled separately" in schema["description"]
+        assert "audio" not in schema["description"]
 
     @pytest.mark.parametrize("tokens", ["auto", None, 1, 16, 32])
     def test_local_parse_dflash_length(self, tokens):
@@ -214,7 +216,7 @@ class TestResolveApiKeys:
         assert params.ocr_api_key == "nvapi-test"
 
 
-@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "audio"])
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr"])
 def test_automatic_parse_decoder_does_not_change_other_methods(method):
     params = ExtractParams(method=method)
     assert params.nemotron_parse_dflash_tokens == "auto"
