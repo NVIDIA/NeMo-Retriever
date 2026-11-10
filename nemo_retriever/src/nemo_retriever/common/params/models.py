@@ -557,7 +557,14 @@ class BatchTuningParams(_ParamsModel):
 class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
-    extract_images: bool = True
+    extract_images: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Crop PDFium image regions into the images column. None selects them automatically: GraphIngestor "
+            "enables them only when nested images, captioning, dedup, or the image store reads them, and other "
+            "PDF extraction callers treat None as True."
+        ),
+    )
     extract_nested_images: bool = Field(
         default=False,
         description=(
@@ -627,7 +634,7 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
-        if self.extract_nested_images and not self.extract_images:
+        if self.extract_nested_images and self.extract_images is False:
             raise ValueError(
                 "extract_nested_images=True requires extract_images=True because nested images extend image output."
             )

@@ -26,6 +26,7 @@ from nemo_retriever.graph.ingestor_runtime import (
     default_concurrency_node_names,
     _image_embedding_requires_page_image,
 )
+from nemo_retriever.ingestor.plans import resolve_effective_extract_params
 from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
@@ -296,6 +297,15 @@ class ExtractionBranchExecutor:
             video_frame_params=self.video_frame_params,
             video_text_dedup_params=self.video_text_dedup_params,
             av_fuse_params=self.av_fuse_params,
+        )
+        resolved = replace(
+            resolved,
+            extract_params=resolve_effective_extract_params(
+                resolved.extract_params,
+                caption_params=self.caption_params,
+                dedup_params=self.dedup_params,
+                store_params=self.store_params,
+            ),
         )
         if (
             branch.family == "pdf"
