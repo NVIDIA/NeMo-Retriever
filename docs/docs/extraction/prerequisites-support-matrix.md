@@ -38,11 +38,12 @@ set `FLASHINFER_CUBIN_DIR` before starting Python to use another directory.
 This setting relocates artifacts only. By default, runtime compilation
 caches remain under `~/.cache/flashinfer`.
 
-Use a fresh environment when upgrading. A retained `flashinfer-cubin==0.6.13`
-wheel prevents `flashinfer-python==0.6.14` from importing, even when
-`FLASHINFER_CUBIN_DIR` is set. If you reuse an environment, remove the old wheel
-with `python -m pip uninstall flashinfer-cubin`. Install a cubin wheel only
-when its version exactly matches FlashInfer; do not disable the version check.
+Use a fresh environment when upgrading. A retained `flashinfer-cubin` wheel
+that does not match `flashinfer-python` can prevent FlashInfer from importing
+or loading precompiled kernels, even when `FLASHINFER_CUBIN_DIR` is set.
+If you reuse an environment, remove an incompatible old wheel with
+`python -m pip uninstall flashinfer-cubin`. Install a cubin wheel only when its
+version exactly matches FlashInfer; do not disable the version check.
 
 Before an offline deployment, prefetch artifacts in the installed local GPU
 environment while network access is available.

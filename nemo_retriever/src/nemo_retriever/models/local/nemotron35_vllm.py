@@ -5,16 +5,12 @@
 """Scoped bidirectional multimodal pooling model for the pinned vLLM runtime."""
 
 import torch
+from vllm.model_executor.layers.attention import EncoderOnlyAttention
 from vllm.model_executor.models.interfaces import MultiModalEmbeddings
 from vllm.model_executor.models.transformers import TransformersMultiModalEmbeddingModel
-from vllm.model_executor.models.transformers.base import (
-    AttentionType,
-    EncoderOnlyAttention,
-    get_pp_indices,
-)
 
 from nemo_retriever.models.inference.nemotron35_vllm import (
-    create_bidirectional_attention,
+    validate_bidirectional_config,
 )
 
 
@@ -57,37 +53,24 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
         Raises
         ------
         AttributeError
-            If called before text configuration or attention instances are initialized.
+            If called before the text configuration is initialized.
         """
-        attention_classes = sorted({type(layer).__name__ for layer in self.attention_instances.values()})
+        attention_classes = sorted(
+            {type(layer).__name__ for layer in self.modules() if isinstance(layer, EncoderOnlyAttention)}
+        )
         return f"text_is_causal={self.text_config.is_causal}, attention={','.join(attention_classes)}"
 
-    def create_attention_instances(self) -> dict[int, EncoderOnlyAttention]:
-        """Create shard-local encoder-only attention from checkpoint configuration.
+    def _get_attn_cls(self) -> type[EncoderOnlyAttention]:
+        """Select bidirectional text attention for the current vLLM construction hook.
 
-        Parameters
-        ----------
-        None
-            Uses this model's initialized backend, cache, and parallel settings.
+        Returns:
+            Encoder-only attention, with layer construction owned by vLLM.
 
-        Returns
-        -------
-        dict[int, Any]
-            Global text-layer indices mapped to EncoderOnlyAttention instances.
-
-        Raises
-        ------
-        ValueError
-            If the checkpoint does not request bidirectional Mistral3/Ministral3 attention.
-        RuntimeError
-            If backend attention construction fails.
+        Raises:
+            ValueError: If the checkpoint is not a bidirectional Mistral3 retrieval model.
         """
-        return create_bidirectional_attention(
-            self,
-            attention_cls=EncoderOnlyAttention,
-            attention_type=AttentionType.ENCODER_ONLY,
-            pp_indices=get_pp_indices,
-        )
+        validate_bidirectional_config(self.config, self.text_config)
+        return EncoderOnlyAttention
 
     def embed_multimodal(self, **kwargs: object) -> MultiModalEmbeddings:
         """Run the vision tower once per image and return embeddings in input order.

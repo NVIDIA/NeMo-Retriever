@@ -7,10 +7,10 @@
 from collections.abc import Iterable
 
 import torch
+from vllm.model_executor.layers.attention import EncoderOnlyAttention
 from vllm.model_executor.models.transformers import TransformersMultiModalForSequenceClassification
-from vllm.model_executor.models.transformers.base import AttentionType, EncoderOnlyAttention, get_pp_indices
 
-from nemo_retriever.models.inference.nemotron35_vllm import create_bidirectional_attention
+from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
 
 class NRLNemotron35RerankModel(TransformersMultiModalForSequenceClassification):
@@ -18,24 +18,16 @@ class NRLNemotron35RerankModel(TransformersMultiModalForSequenceClassification):
 
     default_seq_pooling_type: str = "MEAN"
 
-    def create_attention_instances(self) -> dict[int, EncoderOnlyAttention]:
-        """Construct encoder-only attention for this bidirectional text tower.
-
-        Returns:
-            Attention layers indexed by global text-layer number.
+    def _get_attn_cls(self) -> type[EncoderOnlyAttention]:
+        """Select bidirectional attention using the vLLM 0.32 construction hook.
 
         Raises:
-            ValueError: If the architecture, pooling, or causal flags are invalid.
-            RuntimeError: If the vLLM attention backend cannot initialize.
+            ValueError: If checkpoint attention or pooling configuration is invalid.
         """
+        validate_bidirectional_config(self.config, self.text_config)
         if getattr(self.text_config, "pooling", None) != "avg":
             raise ValueError("The N3.5 reranker requires mean pooling.")
-        return create_bidirectional_attention(
-            self,
-            attention_cls=EncoderOnlyAttention,
-            attention_type=AttentionType.ENCODER_ONLY,
-            pp_indices=get_pp_indices,
-        )
+        return EncoderOnlyAttention
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load all weights and map the trained scoring head to vLLM's head.
