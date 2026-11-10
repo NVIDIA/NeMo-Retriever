@@ -153,15 +153,21 @@ def test_extract_nested_form_images_enforces_predecode_budgets(monkeypatch, limi
     ],
 )
 def test_visible_page_bbox_rejects_off_page_and_degenerate_boxes(position) -> None:
+    pdfium = pytest.importorskip("pypdfium2")
     from nemo_retriever.common.api.util.pdf.pdfium import _visible_page_bbox
 
-    assert _visible_page_bbox(position, 100.0, 100.0) is None
+    page = pdfium.PdfDocument.new().new_page(100.0, 100.0)
+
+    assert _visible_page_bbox(page, position) is None
 
 
 def test_visible_page_bbox_clips_partial_intersection() -> None:
+    pdfium = pytest.importorskip("pypdfium2")
     from nemo_retriever.common.api.util.pdf.pdfium import _visible_page_bbox
 
-    assert _visible_page_bbox((-10.0, 20.0, 30.0, 120.0), 100.0, 100.0) == [0, 0, 30, 80]
+    page = pdfium.PdfDocument.new().new_page(100.0, 100.0)
+
+    assert _visible_page_bbox(page, (-10.0, 20.0, 30.0, 120.0)) == [0, 0, 30, 80]
 
 
 @pytest.mark.parametrize(
