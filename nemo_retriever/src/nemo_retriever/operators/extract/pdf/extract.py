@@ -71,7 +71,7 @@ def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
         "jpeg_quality": int(params.jpeg_quality),
         "render_mode": params.render_mode,
         "extract_text": params.extract_text,
-        "extract_images": params.extract_images,
+        "extract_images": params.extract_images is not False,
         "extract_nested_images": params.extract_nested_images,
         "extract_tables": params.extract_tables,
         "extract_charts": params.extract_charts,
@@ -373,14 +373,15 @@ def pdf_extraction(
 
                     has_text = bool(text.strip()) if extract_text else False
 
-                    want_any_raster = bool(
-                        extract_images
+                    # Page elements and OCR read page_image on every page when they run,
+                    # including native-text pages under pdfium_hybrid.
+                    page_elements_or_ocr_runs = (
+                        (extract_text and text_extraction_method in ("pdfium_hybrid", "ocr"))
                         or extract_tables
                         or extract_charts
                         or extract_infographics
-                        or extract_page_as_image
-                        or ocr_extraction_needed_for_text
                     )
+                    want_any_raster = bool(extract_images or extract_page_as_image or page_elements_or_ocr_runs)
                     render_info: Optional[Dict[str, Any]] = None
                     if want_any_raster:
                         render_info = _render_page_to_base64(

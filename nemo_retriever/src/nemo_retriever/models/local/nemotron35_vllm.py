@@ -4,14 +4,34 @@
 
 """Scoped bidirectional multimodal pooling model for the pinned vLLM runtime."""
 
+import torch
 from vllm.distributed.utils import get_pp_indices
 from vllm.model_executor.layers.attention import EncoderOnlyAttention
+from vllm.model_executor.models.interfaces import MultiModalEmbeddings
 from vllm.model_executor.models.transformers import TransformersMultiModalEmbeddingModel
 from vllm.v1.attention.backend import AttentionType
 
 from nemo_retriever.models.inference.nemotron35_vllm import (
     create_bidirectional_attention,
 )
+
+
+def _install_single_image_flash_mask() -> None:
+    """Let Pixtral run one-image vision calls without a block mask so SDPA can select flash attention."""
+    from transformers.models.pixtral import modeling_pixtral
+
+    generate_block_attention_mask = modeling_pixtral.generate_block_attention_mask
+    if getattr(generate_block_attention_mask, "nrl_single_image", False):
+        return
+
+    def generate(patch_embeds_list, tensor):
+        # One image is one all-visible block, so the dense mask adds nothing.
+        if len(patch_embeds_list) == 1 and tensor.shape[0] == 1:
+            return None
+        return generate_block_attention_mask(patch_embeds_list, tensor)
+
+    generate.nrl_single_image = True
+    modeling_pixtral.generate_block_attention_mask = generate
 
 
 class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
@@ -88,3 +108,50 @@ class NRLNemotron35EmbeddingModel(TransformersMultiModalEmbeddingModel):
             attention_type=AttentionType.ENCODER_ONLY,
             pp_indices=get_pp_indices,
         )
+
+    def embed_multimodal(self, **kwargs: object) -> MultiModalEmbeddings:
+        """Run the vision tower once per image and return embeddings in input order.
+
+        Parameters
+        ----------
+        **kwargs
+            vLLM multimodal inputs; ``pixel_values`` or ``image_patches`` and
+            ``num_image_patches`` describe a batch of images.
+
+        Returns
+        -------
+        MultiModalEmbeddings
+            Per-image embeddings from the parent implementation, concatenated in input order.
+
+        Raises
+        ------
+        RuntimeError
+            If the vision tower or projector fails.
+        """
+        _install_single_image_flash_mask()
+        pixel_values = kwargs.get("pixel_values", kwargs.get("image_patches"))
+        num_image_patches = kwargs.get("num_image_patches")
+        if kwargs.get("image_embeds") is not None or pixel_values is None or num_image_patches is None:
+            return super().embed_multimodal(**kwargs)
+        sizes = [int(n) for n in torch.as_tensor(num_image_patches).flatten().tolist()]
+        if len(sizes) <= 1:
+            return super().embed_multimodal(**kwargs)
+        offsets = [0]
+        for size in sizes:
+            offsets.append(offsets[-1] + size)
+
+        def item(value: object, index: int) -> object:
+            if isinstance(value, torch.Tensor) and value.ndim > 0:
+                if value.shape[0] == len(sizes):
+                    return value[index : index + 1]
+                if value.shape[0] == offsets[-1]:
+                    return value[offsets[index] : offsets[index + 1]]
+            elif isinstance(value, (list, tuple)) and len(value) == len(sizes):
+                return type(value)([value[index]])
+            return value
+
+        outputs: list[torch.Tensor] = []
+        for index in range(len(sizes)):
+            embeddings = super().embed_multimodal(**{key: item(value, index) for key, value in kwargs.items()})
+            outputs.extend(embeddings if isinstance(embeddings, (list, tuple)) else [embeddings])
+        return outputs

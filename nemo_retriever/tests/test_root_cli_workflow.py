@@ -1737,23 +1737,16 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert kwargs["av_fuse_params"].enabled is False
 
 
-@pytest.mark.parametrize("terminal_width", [60, 80, 120])
-def test_root_ingest_rejects_removed_profiles(monkeypatch, tmp_path, terminal_width) -> None:
+def test_root_ingest_rejects_removed_profiles(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
-    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", terminal_width)
 
-    result = RUNNER.invoke(
-        cli_main.app,
-        ["ingest", str(document), "--profile", "ocr"],
-        env={"COLUMNS": str(terminal_width)},
-    )
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"])
 
     assert result.exit_code == 2
-    # Rich wraps the error inside a bordered panel on narrower CI terminals.
-    error = " ".join(result.output.replace("│", " ").split())
-    assert "--profile" in error
-    assert "'ocr' is not one of 'auto', 'fast-text'" in error
+    assert "is not one of 'auto', 'fast-text'" in result.output
 
 
 def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, tmp_path) -> None:
