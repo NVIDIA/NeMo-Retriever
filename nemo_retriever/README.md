@@ -44,9 +44,9 @@ In your terminal, run the following commands from any location.
 
 > **Candidate source upgrade.** This branch targets vLLM 0.32.0, Torch 2.13.0,
 > and Torchvision 0.28.0. Its `[local]` extra requires
-> `nemotron-ocr>=2.1.0.dev20261105201031,<3`, including the published Torch 2.13
-> prerelease wheels. The checked-in `uv.lock` resolves these dependencies from
-> public package indexes. The PyPI commands below install published NeMo
+> `nemotron-ocr>=2.0.3,<3`, including the published stable Torch 2.13 wheels.
+> The checked-in `uv.lock` resolves dependencies from public package indexes.
+> The PyPI commands below install published NeMo
 > Retriever Library releases; use this source tree and its lockfile to validate
 > the candidate upgrade.
 

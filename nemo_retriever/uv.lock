@@ -2565,7 +2565,7 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'service'", specifier = ">=1.102.0rc2,<2" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "nemotron-parse", "service"], marker = "extra == 'all'" },
-    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.1.0.dev20261105201031,<3" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.3,<3" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=3.0.1,<4" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=1.0.0,<2" },
     { name = "nltk", specifier = ">=3.10.3" },
@@ -2624,14 +2624,14 @@ provides-extras = ["service", "local", "multimedia", "nemotron-parse", "benchmar
 dev = [
     { name = "nemo-retriever", extras = ["all"] },
     { name = "nemo-retriever", extras = ["dev"] },
-    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')", specifier = ">=2.1.0.dev20261105201031,<3" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')", specifier = ">=2.0.3,<3" },
     { name = "nemotron-page-elements-v3", specifier = ">=3.0.1.dev0,!=3.0.1,!=3.0.2,<4" },
     { name = "nemotron-table-structure-v1", specifier = ">=1.0.1.dev0,!=1.0.1,<2" },
 ]
 
 [[package]]
 name = "nemotron-ocr"
-version = "2.1.0.dev20261105201031"
+version = "2.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2641,10 +2641,10 @@ dependencies = [
     { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "torchvision", version = "0.28.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/19/09ec33a72f5a639c88d86f34c7a2de52b58f875be309752636c990f8f07d/nemotron_ocr-2.1.0.dev20261105201031.tar.gz", hash = "sha256:d81e4d1e17dd11a5449b83058aeb893bd94422e42956e249ec99778cc5afec63", size = 159969, upload-time = "2026-11-05T20:21:41.464Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/b6/e7aca09913e7b20954d2c675dfd9ad4371093fc07a2655186b29d5bbe4ae/nemotron_ocr-2.0.3.tar.gz", hash = "sha256:bb76bd8b7ac6d6039cf45314cb96ef53b89b0ed02c25e1e87b910ca2f1ffc990", size = 159832, upload-time = "2026-11-10T19:19:44.073Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/f6/b3c1428da747bcdc0bef31eee84ebcddb001dd988722d64efc22fb62a993/nemotron_ocr-2.1.0.dev20261105201031-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:2562289df8433f053a597d52db493b8740b10245412b0a6eed75693e18ff41ce", size = 37760857, upload-time = "2026-11-05T20:21:01.206Z" },
-    { url = "https://files.pythonhosted.org/packages/00/0c/424a65aa56a665db7bfef9e96f97e1a6d40e0818dc2619a94ef4b8261f7c/nemotron_ocr-2.1.0.dev20261105201031-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:fba499bca74f53accbea0928d68b8bc5b4e0907b690a6d4381ba265f83b0489f", size = 38083283, upload-time = "2026-11-05T20:21:39.218Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/3f/7cb0b426df6d0efd64691cf5d4b1afab5bc1311d0bf4626bdce8f905d9d5/nemotron_ocr-2.0.3-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:d42f9d768af7ab14881c2e6ef8fe7f594d0eb5a55b57308b7a2af2e25d7280b5", size = 37760511, upload-time = "2026-11-10T19:18:52.646Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/2d/20aff51e90467d8dabaab070f4721e2e62d1f22a924046ca9c3b96093d8d/nemotron_ocr-2.0.3-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:eaee3c1d52b20b7b72eade5b2f697a6e0f0b39b128f82a5b269a3046555ad987", size = 38082936, upload-time = "2026-11-10T19:19:41.688Z" },
 ]
 
 [[package]]
