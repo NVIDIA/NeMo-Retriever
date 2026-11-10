@@ -293,7 +293,7 @@ def convert_pdfium_position(pos, page_width, page_height):
     return [int(x0), int(y0), int(x1), int(y1)]
 
 
-def page_rect_to_display(page: pdfium.PdfPage, rect: Tuple[float, float, float, float]) -> List[int]:
+def _page_rect_to_display(page: pdfium.PdfPage, rect: Tuple[float, float, float, float]) -> List[int]:
     """Map a PDF user-space rectangle onto the page as it is displayed and rendered.
 
     PDFium applies the page's ``/Rotate`` and crop box when it renders, but object
@@ -393,7 +393,7 @@ def _iter_nested_images(
 
 def _visible_page_bbox(page: pdfium.PdfPage, position: tuple[float, float, float, float]) -> list[int] | None:
     """Return the visible part of a user-space box in the displayed page, or ``None`` if none is visible."""
-    bbox = page_rect_to_display(page, position)
+    bbox = _page_rect_to_display(page, position)
     if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
         return None
     return bbox
@@ -516,7 +516,7 @@ def extract_merged_images_from_pdfium_page(page, merge=True, **kwargs):
         filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,),
         max_depth=1,
     ):
-        image_bbox = page_rect_to_display(page, obj.get_pos())
+        image_bbox = _page_rect_to_display(page, obj.get_pos())
         image_bboxes.append(image_bbox)
 
     # If no merging is requested or no bounding boxes exist, return the list as is
@@ -548,7 +548,7 @@ def extract_merged_shapes_from_pdfium_page(page, merge=True, **kwargs):
         filter=(pdfium_c.FPDF_PAGEOBJ_PATH,),
         max_depth=1,
     ):
-        path_bbox = page_rect_to_display(page, obj.get_pos())
+        path_bbox = _page_rect_to_display(page, obj.get_pos())
         path_bboxes.append(path_bbox)
 
     # If merging is disabled or no bounding boxes were found, return them as-is
@@ -586,7 +586,7 @@ def extract_forms_from_pdfium_page(page, **kwargs):
         filter=(pdfium_c.FPDF_PAGEOBJ_FORM,),
         max_depth=1,
     ):
-        form_bbox = page_rect_to_display(page, obj.get_pos())
+        form_bbox = _page_rect_to_display(page, obj.get_pos())
         form_bboxes.append(form_bbox)
 
     merged_bboxes = []
@@ -614,7 +614,7 @@ def extract_image_like_objects_from_pdfium_page(
 ) -> List[Base64Image]:
     """Crop the image, shape and form objects on a PDF page.
 
-    Boxes are in points in the displayed page (see ``page_rect_to_display``), the
+    Boxes are in points in the displayed page (see ``_page_rect_to_display``), the
     same frame as a ``page.render()`` raster at any scale. Each crop is cut from that
     raster and resized to its size in points.
 
