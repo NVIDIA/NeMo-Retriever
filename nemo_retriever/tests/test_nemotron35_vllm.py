@@ -43,15 +43,11 @@ def test_current_hook_selects_encoder_attention_for_multimodal_checkpoint():
     assert NRLNemotron35EmbeddingModel._get_attn_cls(model) is EncoderOnlyAttention
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_attention_diagnostics_handle_both_storage_layouts(legacy):
+def test_attention_diagnostics_describe_registered_modules():
     model = NRLNemotron35EmbeddingModel.__new__(NRLNemotron35EmbeddingModel)
     torch.nn.Module.__init__(model)
     model.text_config = SimpleNamespace(is_causal=False)
     attention = EncoderOnlyAttention.__new__(EncoderOnlyAttention)
     torch.nn.Module.__init__(attention)
-    if legacy:
-        model.attention_instances = {0: attention}
-    else:
-        model.add_module("text_attention", attention)
+    model.add_module("text_attention", attention)
     assert model.extra_repr() == "text_is_causal=False, attention=EncoderOnlyAttention"

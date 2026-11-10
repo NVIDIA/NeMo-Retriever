@@ -7,12 +7,10 @@
 from collections.abc import Iterable
 
 import torch
-from vllm.model_executor.models.transformers import TransformersMultiModalForSequenceClassification
-from vllm.distributed.utils import get_pp_indices
 from vllm.model_executor.layers.attention import EncoderOnlyAttention
-from vllm.v1.attention.backend import AttentionType
+from vllm.model_executor.models.transformers import TransformersMultiModalForSequenceClassification
 
-from nemo_retriever.models.inference.nemotron35_vllm import create_bidirectional_attention
+from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
 
 class NRLNemotron35RerankModel(TransformersMultiModalForSequenceClassification):
@@ -26,35 +24,10 @@ class NRLNemotron35RerankModel(TransformersMultiModalForSequenceClassification):
         Raises:
             ValueError: If checkpoint attention or pooling configuration is invalid.
         """
-        text = self.text_config
-        if (
-            self.config.model_type != "mistral3"
-            or text.model_type != "ministral3"
-            or getattr(text, "is_causal", None) is not False
-        ):
-            raise ValueError("The N3.5 vLLM adapter requires a bidirectional Mistral3 retrieval checkpoint.")
-        if getattr(text, "pooling", None) != "avg":
-            raise ValueError("The N3.5 reranker requires mean pooling.")
-        return EncoderOnlyAttention
-
-    def create_attention_instances(self) -> dict[int, EncoderOnlyAttention]:
-        """Construct encoder-only attention for this bidirectional text tower.
-
-        Returns:
-            Attention layers indexed by global text-layer number.
-
-        Raises:
-            ValueError: If the architecture, pooling, or causal flags are invalid.
-            RuntimeError: If the vLLM attention backend cannot initialize.
-        """
+        validate_bidirectional_config(self.config, self.text_config)
         if getattr(self.text_config, "pooling", None) != "avg":
             raise ValueError("The N3.5 reranker requires mean pooling.")
-        return create_bidirectional_attention(
-            self,
-            attention_cls=EncoderOnlyAttention,
-            attention_type=AttentionType.ENCODER_ONLY,
-            pp_indices=get_pp_indices,
-        )
+        return EncoderOnlyAttention
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load all weights and map the trained scoring head to vLLM's head.

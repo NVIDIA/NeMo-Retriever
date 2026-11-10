@@ -50,6 +50,11 @@ In your terminal, run the following commands from any location.
 > Retriever Library releases; use this source tree and its lockfile to validate
 > the candidate upgrade.
 
+On Linux, the candidate lockfile also upgrades FastMCP to 4.1.6 and MCP to
+2.3.0 for vLLM 0.32 compatibility. This affects base and service installs
+from the lockfile, including installs without the `[local]` extra. Supported
+Windows and macOS installs retain FastMCP 3.4.0 and MCP 1.28.1.
+
 To validate this source checkout, run the following commands from the repository root:
 
 ```bash
