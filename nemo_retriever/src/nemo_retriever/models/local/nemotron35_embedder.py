@@ -60,6 +60,7 @@ class Nemotron35Embedder:
     _template: str | None = field(default=None, init=False, repr=False)
     # Mixed truncation settings mutate the shared fast tokenizer; serialize its callers.
     _tokenizer_lock: Any = field(default_factory=threading.RLock, init=False, repr=False)
+    _load_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate configuration; raise ValueError for unsupported backend, limits, or dimensions."""
@@ -88,8 +89,11 @@ class Nemotron35Embedder:
         return self.backend == "vllm"
 
     def _ensure_loaded(self):
-        if self._model is not None:
-            return
+        with self._load_lock:
+            if self._model is None:
+                self._load()
+
+    def _load(self):
         from transformers import AutoModel, AutoProcessor
 
         options = dict(revision=self.revision, cache_dir=self.hf_cache_dir)
