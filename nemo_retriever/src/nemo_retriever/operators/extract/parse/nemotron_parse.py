@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import base64
 import io
 import json
+import logging
 import re
 import time
 import traceback
@@ -44,6 +45,11 @@ from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE35_MODEL,
     validate_nemotron_parse_endpoint_list,
 )
+
+logger = logging.getLogger(__name__)
+
+# Start of a tagged element: normalized bounding-box coordinates open every element.
+_RE_TAGGED_ELEMENT_START = re.compile(r"<x_\d")
 
 try:
     from PIL import Image
@@ -383,7 +389,7 @@ def nemotron_parse_pages(
                 batch_images.append(_decode_page_image(page_image_b64))
             batch_indices.append(idx)
         except Exception as e:
-            print(f"Warning: Nemotron Parse page failed: {_page_label(row)} {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse page failed: {_page_label(row)} {type(e).__name__}: {e}")
             all_meta[idx] = {
                 "timing": None,
                 "error": {
@@ -513,7 +519,7 @@ def nemotron_parse_pages(
                 )
                 hint.__cause__ = e
                 e = hint
-            print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             err = {
                 "stage": "nemotron_parse_pages",
                 "type": e.__class__.__name__,
@@ -532,11 +538,15 @@ def nemotron_parse_pages(
             completion = _completion(*outcomes[pos])
             all_meta[idx]["completion"] = completion
             if completion["status"] == "incomplete":
-                print(
+                logger.warning(
                     f"Warning: Nemotron Parse page incomplete: {_page_label(rows[idx])} "
                     f"finish_reason={completion['finish_reason']} output_tokens={completion['output_tokens']}"
                 )
             if native_parse and not extract_classes_bboxes(raw_text)[0]:
+                if completion["status"] == "incomplete" and _RE_TAGGED_ELEMENT_START.search(raw_text):
+                    # Capped before the first tagged element finished: there is
+                    # nothing usable to route, and the raw tags are not page text.
+                    continue
                 # Only complete bounding-box/class sequences select the tagged
                 # router. Literal or incomplete tags remain page Markdown.
                 if not extract_text:
@@ -555,7 +565,7 @@ def nemotron_parse_pages(
             if fp_text is not None:
                 all_text[idx] = fp_text
         except BaseException as e:
-            print(f"Warning: Nemotron Parse page failed: {_page_label(rows[idx])} {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse page failed: {_page_label(rows[idx])} {type(e).__name__}: {e}")
             all_meta[idx] = {
                 "timing": None,
                 "error": {
@@ -680,7 +690,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         try:
             return self.run(batch_df, **override_kwargs)
         except BaseException as e:
-            print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
                 payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)
@@ -772,7 +782,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         try:
             return self.run(batch_df, **override_kwargs)
         except BaseException as e:
-            print(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
                 payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)

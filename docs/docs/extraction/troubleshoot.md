@@ -336,13 +336,13 @@ Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_inv
 
 ## Nemotron Parse reports an incomplete page { #nemotron-parse-incomplete-page }
 
-When a Nemotron 3.5 Parse page reaches its output token limit, PDF extraction with `method="nemotron_parse"` logs a warning similar to the following:
+When a Nemotron 3.5 Parse page reaches its output token limit, PDF extraction with `method="nemotron_parse"` logs a warning, through the Python `logging` module under `nemo_retriever.operators.extract.parse.nemotron_parse`, similar to the following:
 
 ```text
 Warning: Nemotron Parse page incomplete: path=/data/report.pdf page=3 finish_reason=length output_tokens=9000
 ```
 
-The native Parse NIM and the default local vLLM model generate at most 9,000 tokens per page. Very dense pages, or output that repeats until the limit, can stop before the page is finished. The library keeps the elements that the model completed and drops the unfinished final element.
+The native Parse NIM and the default local vLLM model generate at most 9,000 tokens per page. Very dense pages, or output that repeats until the limit, can stop before the page is finished. The library keeps the elements that the model completed and drops the unfinished final element. If the limit is reached before the first element finishes, the page has no extracted elements and is still reported as incomplete.
 
 To find incomplete pages in extraction results, read the `completion` field in each row's `nemotron_parse_v1_2` metadata. Its `status` is `complete`, `incomplete`, or `failed`, with the model's `finish_reason` and `output_tokens` when available. Pages that fail log `Warning: Nemotron Parse page failed:` or `Warning: Nemotron Parse batch failed:` and record an `error`.
 

@@ -287,14 +287,14 @@ def test_unknown_local_actor_model_is_not_silently_replaced() -> None:
         actor._ensure_model()
 
 
-def test_actor_failures_are_reported_for_every_row(capsys: pytest.CaptureFixture[str]) -> None:
+def test_actor_failures_are_reported_for_every_row(caplog: pytest.LogCaptureFixture) -> None:
     actor = NemotronParseGPUActor(nemotron_parse_model="unsupported")
     result = actor(pd.DataFrame([{"page_image": None}, {"page_image": None}]))
     assert [item["error"]["type"] for item in result["nemotron_parse_v1_2"]] == ["ValueError", "ValueError"]
-    assert "Warning: Nemotron Parse batch failed: ValueError: Unsupported local" in capsys.readouterr().out
+    assert "Warning: Nemotron Parse batch failed: ValueError: Unsupported local" in caplog.text
 
 
-def test_local_page_results_record_completion(runtime: SimpleNamespace, capsys: pytest.CaptureFixture[str]) -> None:
+def test_local_page_results_record_completion(runtime: SimpleNamespace, caplog: pytest.LogCaptureFixture) -> None:
     import base64
     import io
 
@@ -318,7 +318,7 @@ def test_local_page_results_record_completion(runtime: SimpleNamespace, capsys: 
     assert result["text"].tolist() == ["Body text", "Body text"]
     assert [item["completion"]["status"] for item in result["nemotron_parse_v1_2"]] == ["complete", "incomplete"]
     assert result.iloc[1]["nemotron_parse_v1_2"]["completion"]["output_tokens"] == 9000
-    assert "Warning: Nemotron Parse page incomplete: path=a.pdf page=2 finish_reason=length" in capsys.readouterr().out
+    assert "Warning: Nemotron Parse page incomplete: path=a.pdf page=2 finish_reason=length" in caplog.text
 
 
 def test_native_output_uses_existing_pipeline_routing(runtime: SimpleNamespace) -> None:
