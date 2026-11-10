@@ -68,6 +68,20 @@ def test_crops_match_native_render(size, rotation):
         assert np.abs(got - crop.astype(int)).mean() <= CROP_TOLERANCE
 
 
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_crops_without_page_image_render_at_scale_one(rotation):
+    page = pdfium.PdfDocument(_make_pdf(612, 792, rotation))[0]
+    native = _pdfium.pdfium_pages_to_numpy([page], render_dpi=72, rotation=rotation)[0][0]
+    bboxes = _pdfium.extract_merged_images_from_pdfium_page(page)
+    expected = [crop for bbox in bboxes if (crop := _pdfium.crop_image(native, bbox)) is not None]
+
+    crops = _pdfium.extract_image_like_objects_from_pdfium_page(page)
+
+    assert len(crops) == len(expected)
+    for c, crop in zip(crops, expected):
+        assert np.array_equal(_decode(c.image), crop.astype(int))
+
+
 @pytest.mark.parametrize("rotation", [0, 180])
 @pytest.mark.parametrize("size", PAGE_SIZES)
 def test_upright_pages_yield_a_crop(size, rotation):
