@@ -301,6 +301,7 @@ class AsyncEmbedEngine:
         import asyncio
         import itertools
         import threading
+        import weakref
 
         from vllm.engine.arg_utils import AsyncEngineArgs
         from vllm.usage.usage_lib import UsageContext
@@ -308,7 +309,9 @@ class AsyncEmbedEngine:
 
         kwargs.setdefault("disable_log_stats", True)
         self._loop = asyncio.new_event_loop()
-        threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-async-vllm").start()
+        thread = threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-async-vllm")
+        thread.start()
+        self._close_loop = weakref.finalize(self, _close_event_loop, self._loop, thread)
 
         async def build() -> Any:
             return AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs), usage_context=UsageContext.LLM_CLASS)
@@ -316,7 +319,7 @@ class AsyncEmbedEngine:
         try:
             self.engine = self._run(build())
         except BaseException:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._close_loop()
             raise
         self._ids = itertools.count()
 
@@ -386,7 +389,7 @@ class AsyncEmbedEngine:
         return [EmbeddingRequestOutput.from_base(output) for output in self._run(run_all())]
 
     def shutdown(self, timeout: Optional[float] = None) -> None:
-        """Stop the engine core, then the private event loop.
+        """Stop the engine core, then stop and close the private event loop.
 
         Parameters
         ----------
@@ -399,7 +402,16 @@ class AsyncEmbedEngine:
             Whatever ``AsyncLLM.shutdown`` raises; the event loop is then left running.
         """
         self.engine.shutdown(timeout=timeout)
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._close_loop()
+
+
+def _close_event_loop(loop: Any, thread: Any) -> None:
+    import threading
+
+    loop.call_soon_threadsafe(loop.stop)
+    if thread is not threading.current_thread():
+        thread.join()
+        loop.close()
 
 
 def _pick_free_port() -> int:

@@ -786,3 +786,28 @@ def test_async_embed_engine_cancels_other_prompts_when_one_fails(monkeypatch) ->
     finally:
         engine._loop.call_soon_threadsafe(engine._loop.stop)
     assert sorted(cancelled) == ["a", "b"]
+
+
+@pytest.mark.parametrize("explicit_shutdown", [True, False])
+def test_async_embed_engine_closes_its_event_loop(monkeypatch, explicit_shutdown) -> None:
+    import gc
+    import threading
+
+    pytest.importorskip("vllm")
+    from vllm.v1.engine.async_llm import AsyncLLM
+
+    monkeypatch.setattr(AsyncLLM, "from_engine_args", lambda *args, **kwargs: MagicMock())
+    before = set(threading.enumerate())
+    engine = vllm_inference.AsyncEmbedEngine(model="model")
+    (thread,) = set(threading.enumerate()) - before
+    loop = engine._loop
+
+    if explicit_shutdown:
+        engine.shutdown()
+    else:
+        del engine
+        gc.collect()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert loop.is_closed()

@@ -610,3 +610,39 @@ def test_large_page_token_count_does_not_allocate_the_page():
     lengths = embedder._image_prompt_lengths(["passage: [IMG] text"], [SimpleNamespace(size=(8000, 10000))])
     assert lengths == [3 + 864 - 1]
     embedder._processor._get_num_multimodal_tokens.assert_not_called()
+
+
+def test_concurrent_first_calls_load_the_vllm_engine_once(monkeypatch):
+    import importlib
+    import threading
+    import time
+
+    import transformers
+    from nemo_retriever.models.inference import nemotron35_vllm, vllm
+
+    embedder_module = importlib.import_module(Nemotron35Embedder.__module__)
+    loads = []
+
+    def create_engine(*args, **kwargs):
+        loads.append(kwargs)
+        time.sleep(0.2)
+        return MagicMock()
+
+    monkeypatch.setattr(embedder_module, "load_retrieval_template", lambda *args: TEMPLATE)
+    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", MagicMock())
+    monkeypatch.setattr(nemotron35_vllm, "register_nemotron35_vllm", lambda: None)
+    monkeypatch.setattr(vllm, "create_vllm_llm", create_engine)
+    embedder = Nemotron35Embedder("model", None, "query:", "passage:", backend="vllm")
+    barrier = threading.Barrier(2)
+
+    def first_call():
+        barrier.wait()
+        embedder._ensure_loaded()
+
+    threads = [threading.Thread(target=first_call) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(loads) == 1
