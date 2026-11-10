@@ -794,8 +794,10 @@ def test_async_embed_engine_closes_its_event_loop(monkeypatch, explicit_shutdown
     import threading
 
     pytest.importorskip("vllm")
+    import vllm.engine.arg_utils as arg_utils
     from vllm.v1.engine.async_llm import AsyncLLM
 
+    monkeypatch.setattr(arg_utils, "AsyncEngineArgs", lambda **kwargs: kwargs)
     monkeypatch.setattr(AsyncLLM, "from_engine_args", lambda *args, **kwargs: MagicMock())
     before = set(threading.enumerate())
     engine = vllm_inference.AsyncEmbedEngine(model="model")
