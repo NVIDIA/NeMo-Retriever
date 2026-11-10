@@ -32,16 +32,20 @@ from nemo_retriever.operators.vdb import IngestVdbOperator
         ([[9], [9]], None, False),
         ([[10], [9]], None, False),
         ([], None, False),
+        ([[]], None, False),
         ([[10]], "nvml", False),
         ([[10]], "ray_get", False),
     ],
 )
-def test_ray_cluster_supports_native_nvfp4(monkeypatch, majors, error, expected):
+def test_ray_cluster_supports_native_nvfp4(monkeypatch, caplog, majors, error, expected):
     import ray
     import pynvml
 
     ray_cluster_supports_native_nvfp4.cache_clear()
+    caplog.set_level("INFO", logger="nemo_retriever.models")
     nodes = [{"NodeID": f"{i:056x}", "Alive": True, "Resources": {"GPU": 1}} for i in range(len(majors))]
+    if len(nodes) > 1:
+        nodes[1]["NodeManagerAddress"] = "192.0.2.2"
     nodes += [
         {"NodeID": "dead", "Alive": False, "Resources": {"GPU": 1}},
         {"NodeID": "cpu", "Alive": True, "Resources": {"CPU": 8}},
@@ -73,6 +77,8 @@ def test_ray_cluster_supports_native_nvfp4(monkeypatch, majors, error, expected)
     )
     assert ray_cluster_supports_native_nvfp4() is expected
     assert "dead" not in probed and "cpu" not in probed
+    if majors == [[10], [9]]:
+        assert "Batch embed precision BF16: node 192.0.2.2 has CC 9.0" in caplog.text
 
 
 def resolved_stages(tmp_path, params, *, gpu_count=1, vdb_kwargs=None, resources=None):

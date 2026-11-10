@@ -91,28 +91,44 @@ def ray_cluster_supports_native_nvfp4() -> bool:
         from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
         @ray.remote(num_gpus=0, num_cpus=0)
-        def probe() -> bool:
+        def probe() -> list[tuple[int, int]]:
             import pynvml
 
             pynvml.nvmlInit()
             try:
-                count = pynvml.nvmlDeviceGetCount()
-                return count > 0 and all(
-                    pynvml.nvmlDeviceGetCudaComputeCapability(pynvml.nvmlDeviceGetHandleByIndex(index))[0] >= 10
-                    for index in range(count)
-                )
+                return [
+                    pynvml.nvmlDeviceGetCudaComputeCapability(pynvml.nvmlDeviceGetHandleByIndex(index))
+                    for index in range(pynvml.nvmlDeviceGetCount())
+                ]
             finally:
                 pynvml.nvmlShutdown()
 
+        nodes = [node for node in ray.nodes() if node["Alive"] and node.get("Resources", {}).get("GPU", 0) > 0]
         refs = [
             probe.options(scheduling_strategy=NodeAffinitySchedulingStrategy(node["NodeID"], soft=False)).remote()
-            for node in ray.nodes()
-            if node["Alive"] and node.get("Resources", {}).get("GPU", 0) > 0
+            for node in nodes
         ]
-        supported = bool(refs) and all(ray.get(refs, timeout=60))
-    except Exception:
+        capabilities = ray.get(refs, timeout=60) if refs else []
+        supported = bool(nodes)
+        reason = "no alive GPU nodes"
+        if nodes:
+            versions = sorted({f"{major}.{minor}" for devices in capabilities for major, minor in devices})
+            reason = f"all {len(nodes)} GPU nodes CC >= 10 ({', '.join(versions)})"
+        for node, devices in zip(nodes, capabilities):
+            address = node.get("NodeManagerAddress") or node["NodeID"][:8]
+            if not devices:
+                supported, reason = False, f"node {address} has no GPUs"
+                break
+            for major, minor in devices:
+                if major < 10:
+                    supported, reason = False, f"node {address} has CC {major}.{minor}"
+                    break
+            if not supported:
+                break
+    except Exception as exc:
         supported = False
-    logger.info("Ray cluster native NVFP4 support: %s", supported)
+        reason = f"probe failed: {exc}"
+    logger.info("Batch embed precision %s: %s", "NVFP4" if supported else "BF16", reason)
     return supported
 
 
