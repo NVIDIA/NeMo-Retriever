@@ -305,66 +305,32 @@ def test_admission_does_not_add_special_tokens_twice():
     tokenizer.encode.assert_called_once_with("query: text", add_special_tokens=False)
 
 
-@pytest.mark.parametrize("causal", [True, None])
-def test_bidirectional_attention_rejects_other_profiles(causal):
-    from nemo_retriever.models.inference.nemotron35_vllm import (
-        create_bidirectional_attention,
-    )
+@pytest.mark.parametrize(
+    "model_type,text_type,causal",
+    [
+        ("mistral3", "ministral3", True),
+        ("mistral3", "ministral3", None),
+        ("other", "ministral3", False),
+        ("mistral3", "other", False),
+    ],
+)
+def test_bidirectional_config_rejects_unsupported_profiles(model_type, text_type, causal):
+    from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
-    model = SimpleNamespace(
-        config=SimpleNamespace(model_type="mistral3"),
-        text_config=SimpleNamespace(model_type="ministral3", is_causal=causal),
-    )
     with pytest.raises(ValueError, match="bidirectional"):
-        create_bidirectional_attention(
-            model,
-            attention_cls=MagicMock(),
-            attention_type="encoder",
-            pp_indices=MagicMock(),
+        validate_bidirectional_config(
+            SimpleNamespace(model_type=model_type),
+            SimpleNamespace(model_type=text_type, is_causal=causal),
         )
 
 
-def test_bidirectional_attention_preserves_shards_sliding_window_and_quantization():
-    from nemo_retriever.models.inference.nemotron35_vllm import (
-        create_bidirectional_attention,
-    )
+def test_bidirectional_config_accepts_retrieval_checkpoint():
+    from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
-    model = SimpleNamespace(
-        config=SimpleNamespace(model_type="mistral3"),
-        text_config=SimpleNamespace(
-            model_type="ministral3",
-            is_causal=False,
-            num_hidden_layers=4,
-            layer_types=[
-                "full_attention",
-                "full_attention",
-                "sliding_attention",
-                "full_attention",
-            ],
-            sliding_window=128,
-        ),
-        model_config=SimpleNamespace(
-            get_num_attention_heads=lambda parallel: 4,
-            get_head_size=lambda: 64,
-            get_num_kv_heads=lambda parallel: 2,
-        ),
-        parallel_config=object(),
-        cache_config=object(),
-        quant_config=object(),
-        pp_group=SimpleNamespace(rank_in_group=1, world_size=2),
+    validate_bidirectional_config(
+        SimpleNamespace(model_type="mistral3"),
+        SimpleNamespace(model_type="ministral3", is_causal=False),
     )
-    attention = MagicMock(side_effect=lambda **kwargs: kwargs)
-    result = create_bidirectional_attention(
-        model,
-        attention_cls=attention,
-        attention_type="encoder_only",
-        pp_indices=lambda layers, rank, size: (2, 4),
-    )
-    assert set(result) == {2, 3}
-    assert result[2]["attn_type"] == "encoder_only"
-    assert result[2]["per_layer_sliding_window"] == 128
-    assert result[3]["per_layer_sliding_window"] is None
-    assert result[2]["quant_config"] is model.quant_config
 
 
 def test_multimodal_admission_splits_losslessly_and_preserves_full_image():

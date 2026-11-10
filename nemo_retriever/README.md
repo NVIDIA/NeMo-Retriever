@@ -42,7 +42,32 @@ In your terminal, run the following commands from any location.
 
 **Local GPU (Linux)**
 
-Install with the `[local]` extra, which includes Nemotron model packages, transformers, and GPU tooling:
+> **Candidate source upgrade.** This branch targets vLLM 0.32.0, Torch 2.13.0,
+> and Torchvision 0.28.0. Its `[local]` extra requires
+> `nemotron-ocr>=2.0.3,<3`, including the published stable Torch 2.13 wheels.
+> The checked-in `uv.lock` resolves dependencies from public package indexes.
+> The PyPI commands below install published NeMo
+> Retriever Library releases; use this source tree and its lockfile to validate
+> the candidate upgrade.
+
+On Linux, the candidate lockfile also upgrades FastMCP to 4.1.6 and MCP to
+2.3.0 for vLLM 0.32 compatibility. This affects base and service installs
+from the lockfile, including installs without the `[local]` extra. Supported
+Windows and macOS installs retain FastMCP 3.4.0 and MCP 1.28.1.
+
+To validate this source checkout, run the following commands from the repository root:
+
+```bash
+uv sync --project nemo_retriever --locked --extra local --no-default-groups
+source nemo_retriever/.venv/bin/activate
+```
+
+The lockfile selects matching CUDA builds of Torch and Torchvision, plus the
+OCR native extension built for Torch 2.13. Upgrading Torch alone does not
+rebuild that extension.
+
+For a published release, install the `[local]` extra, which includes Nemotron
+model packages, Transformers, and GPU tooling:
 
 ```bash
 uv venv retriever --python 3.12
@@ -50,8 +75,9 @@ source retriever/bin/activate
 uv pip install "nemo-retriever[local]"
 ```
 
-The `[local]` extra resolves stable Nemotron extraction packages by default. To
-try prerelease or nightly Nemotron packages from PyPI within the same supported
+Published NeMo Retriever Library releases resolve stable Nemotron extraction
+packages with the `[local]` extra by default. To try prerelease or nightly
+Nemotron packages from PyPI within the same supported
 major-version windows, opt in with `--pre` and pin `nemo-retriever` to the
 version you are installing.
 
@@ -86,13 +112,16 @@ For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriev
 
 > **Note:** `uv python install 3.12` installs a uv-managed Python that includes development headers (`Python.h`). These headers are required by vLLM, which compiles CUDA kernels at runtime using torch inductor. If you skip this step and use a system Python without headers, vLLM actor initialization will fail with `InductorError: fatal error: Python.h: No such file or directory`.
 
-2. Override Torch and Torchvision with CUDA 13 builds (local GPU only)
+2. Verify CUDA builds for Torch and Torchvision (local GPU only)
 
-The `[local]` extra pulls PyTorch from PyPI, which defaults to a CPU build on Linux. Reinstall from the CUDA 13.0 wheel index to match the CUDA runtime required by the Nemotron model packages:
+The candidate source upgrade requires Torch 2.13.0 and Torchvision 0.28.0.
+If you need to replace CPU wheels, reinstall matching CUDA 13.0 builds with
+the following commands. For a published release, use the versions required
+by that release instead.
 
 ```bash
 uv pip uninstall torch torchvision
-uv pip install torch==2.11.0 torchvision==0.26.0 -i https://download.pytorch.org/whl/cu130
+uv pip install torch==2.13.0 torchvision==0.28.0 -i https://download.pytorch.org/whl/cu130
 ```
 
 Skip this step if you are using remote NIM inference only.
@@ -112,7 +141,10 @@ The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and i
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
 
-The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
+The examples below use default local GPU inference (no `invoke_url` specified)
+and require the `[local]` extra with matching CUDA 13 builds from the setup
+steps above. For remote NIM inference without a local GPU, refer to
+[Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
 ### Ingest a test pdf
 ```python
