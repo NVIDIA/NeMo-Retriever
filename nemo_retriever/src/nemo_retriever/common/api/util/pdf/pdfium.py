@@ -9,7 +9,6 @@ from typing import Optional
 from typing import Tuple
 
 import numpy as np
-from PIL import Image
 
 try:
     import cv2
@@ -263,113 +262,48 @@ def pdfium_pages_to_numpy(
     return images, padding_offsets
 
 
-def convert_pdfium_position(pos, page_width, page_height):
-    """
-    Convert a PDFium bounding box (which typically has an origin at the bottom-left)
-    to a more standard bounding-box format with y=0 at the top.
+def _page_rect_to_display(
+    rect: Tuple[float, float, float, float],
+    page_box: Tuple[float, float, float, float],
+    rotation: int,
+) -> List[int]:
+    """Map a PDF user-space rectangle onto the page as PDFium displays and renders it.
 
-    Note:
-        This method assumes the PDF coordinate system follows the common convention
-        where the origin is at the bottom-left. However, per the PDF specification,
-        the coordinate system can theoretically be defined between any opposite corners,
-        and its origin may not necessarily be (0,0). This implementation may not handle
-        all edge cases where the coordinate system is arbitrarily transformed.
-
-        Further processing may be necessary downstream, particularly in filtering or
-        deduplication stages, to account for variations in coordinate transformations
-        and ensure consistent bounding-box comparisons.
-
-        See https://github.com/pypdfium2-team/pypdfium2/discussions/284.
-    """
-    left, bottom, right, top = pos
-    x0, x1 = left, right
-    y0, y1 = page_height - top, page_height - bottom
-
-    x0 = max(0, x0)
-    y0 = max(0, y0)
-    x1 = min(page_width, x1)
-    y1 = min(page_height, y1)
-
-    return [int(x0), int(y0), int(x1), int(y1)]
-
-
-def _page_rect_to_display(page: pdfium.PdfPage, rect: Tuple[float, float, float, float]) -> List[int]:
-    """Map a PDF user-space rectangle onto the page as it is displayed and rendered.
-
-    PDFium applies the page's ``/Rotate`` and crop box when it renders, but object
-    positions from ``get_pos()`` stay in unrotated user space with a bottom-left
-    origin. This maps a rectangle into the rendered frame: points, top-left origin,
-    rotation applied. ``page.get_width()`` and ``page.get_height()`` are the frame's size.
+    Object positions from ``get_pos()`` are in unrotated user space with a bottom-left
+    origin. PDFium renders the page box (``page.get_bbox()``: the crop box clipped to
+    the media box, inherited from the page tree) turned clockwise by ``/Rotate``
+    (``page.get_rotation()``). This returns the rectangle in that frame: points,
+    top-left origin, clipped to the page.
 
     Parameters
     ----------
-    page : pdfium.PdfPage
-        Page the rectangle belongs to.
     rect : tuple of float
         ``(left, bottom, right, top)`` in PDF user space, as returned by ``get_pos()``.
+    page_box : tuple of float
+        ``(left, bottom, right, top)`` of the rendered page, from ``page.get_bbox()``.
+    rotation : int
+        Page rotation in degrees, from ``page.get_rotation()``.
 
     Returns
     -------
     list of int
-        ``[x0, y0, x1, y1]`` in the displayed page, clipped to the page.
+        ``[x0, y0, x1, y1]`` in the displayed page.
     """
     left, bottom, right, top = rect
-    crop_left, crop_bottom, crop_right, crop_top = page.get_cropbox()
-    width, height = crop_right - crop_left, crop_top - crop_bottom
+    box_left, box_bottom, box_right, box_top = page_box
+    width, height = box_right - box_left, box_top - box_bottom
     # Unrotated page, top-left origin.
-    x0, x1 = left - crop_left, right - crop_left
-    y0, y1 = crop_top - top, crop_top - bottom
-    # PDF rotation is clockwise.
-    rotation = page.get_rotation()
+    x0, x1 = left - box_left, right - box_left
+    y0, y1 = box_top - top, box_top - bottom
     if rotation == 90:
         x0, y0, x1, y1 = height - y1, x0, height - y0, x1
+        width, height = height, width
     elif rotation == 180:
         x0, y0, x1, y1 = width - x1, height - y1, width - x0, height - y0
     elif rotation == 270:
         x0, y0, x1, y1 = y0, width - x1, y1, width - x0
-
-    page_width, page_height = page.get_width(), page.get_height()
-    return [int(max(0, x0)), int(max(0, y0)), int(min(page_width, x1)), int(min(page_height, y1))]
-
-
-def extract_simple_images_from_pdfium_page(page, max_depth):
-    page_width = page.get_width()
-    page_height = page.get_height()
-
-    try:
-        image_objects = page.get_objects(
-            filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,),
-            max_depth=max_depth,
-        )
-    except Exception as e:
-        logger.exception(f"Unhandled error extracting image: {e}")
-        return []
-
-    extracted_images = []
-    for obj in image_objects:
-        try:
-            # Attempt to retrieve the image bitmap
-            image_numpy: np.ndarray = pdfium_try_get_bitmap_as_numpy(obj)  # noqa
-            image_base64: str = numpy_to_base64(image_numpy, format=YOLOX_PAGE_IMAGE_FORMAT)
-            image_bbox = obj.get_pos()
-            image_size = obj.get_size()
-            if image_size[0] < 10 and image_size[1] < 10:
-                continue
-
-            image_data = Base64Image(
-                image=image_base64,
-                bbox=image_bbox,
-                width=image_size[0],
-                height=image_size[1],
-                max_width=page_width,
-                max_height=page_height,
-            )
-            extracted_images.append(image_data)
-        except Exception as e:
-            logger.exception(f"Unhandled error extracting image: {e}")
-            pass  # Pdfium failed to extract the image associated with this object - corrupt or missing.
-
-    return extracted_images
+        width, height = height, width
+    return [int(max(0, x0)), int(max(0, y0)), int(min(width, x1)), int(min(height, y1))]
 
 
 def _iter_nested_images(
@@ -391,9 +325,11 @@ def _iter_nested_images(
             yield from _iter_nested_images(page, obj, child_to_page, depth=depth + 1, max_depth=max_depth)
 
 
-def _visible_page_bbox(page: pdfium.PdfPage, position: tuple[float, float, float, float]) -> list[int] | None:
+def _visible_page_bbox(
+    position: tuple[float, float, float, float], page_box: tuple[float, float, float, float], rotation: int
+) -> list[int] | None:
     """Return the visible part of a user-space box in the displayed page, or ``None`` if none is visible."""
-    bbox = _page_rect_to_display(page, position)
+    bbox = _page_rect_to_display(position, page_box, rotation)
     if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
         return None
     return bbox
@@ -444,6 +380,7 @@ def extract_nested_simple_images_from_pdfium_page(
 
     page_width = page.get_width()
     page_height = page.get_height()
+    page_box, rotation = page.get_bbox(), page.get_rotation()
     extracted_images: list[Base64Image] = []
     occurrence_count = 0
     decoded_pixels = 0
@@ -457,7 +394,7 @@ def extract_nested_simple_images_from_pdfium_page(
                 raise RuntimeError(f"Nested PDF image count exceeds the per-page limit of {max_images:,}")
 
             page_position = parent_matrix.on_rect(*obj.get_pos())
-            image_bbox = _visible_page_bbox(page, page_position)
+            image_bbox = _visible_page_bbox(page_position, page_box, rotation)
             if image_bbox is None:
                 continue
 
@@ -499,10 +436,6 @@ def extract_nested_simple_images_from_pdfium_page(
     return extracted_images
 
 
-def extract_top_level_simple_images_from_pdfium_page(page):
-    return extract_simple_images_from_pdfium_page(page, max_depth=1)
-
-
 def extract_merged_images_from_pdfium_page(page, merge=True, **kwargs):
     """
     Extract bounding boxes of image objects from a PDFium page, with optional merging
@@ -511,13 +444,13 @@ def extract_merged_images_from_pdfium_page(page, merge=True, **kwargs):
     threshold = kwargs.get("images_threshold", 10.0)
     max_num_boxes = kwargs.get("images_max_num_boxes", 1_024)
 
+    page_box, rotation = page.get_bbox(), page.get_rotation()
     image_bboxes = []
     for obj in page.get_objects(
         filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,),
         max_depth=1,
     ):
-        image_bbox = _page_rect_to_display(page, obj.get_pos())
-        image_bboxes.append(image_bbox)
+        image_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
 
     # If no merging is requested or no bounding boxes exist, return the list as is
     if (not merge) or (not image_bboxes):
@@ -543,13 +476,13 @@ def extract_merged_shapes_from_pdfium_page(page, merge=True, **kwargs):
     page_height = page.get_height()
     page_area = page_width * page_height
 
+    page_box, rotation = page.get_bbox(), page.get_rotation()
     path_bboxes = []
     for obj in page.get_objects(
         filter=(pdfium_c.FPDF_PAGEOBJ_PATH,),
         max_depth=1,
     ):
-        path_bbox = _page_rect_to_display(page, obj.get_pos())
-        path_bboxes.append(path_bbox)
+        path_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
 
     # If merging is disabled or no bounding boxes were found, return them as-is
     if (not merge) or (not path_bboxes):
@@ -581,13 +514,13 @@ def extract_forms_from_pdfium_page(page, **kwargs):
     page_height = page.get_height()
     page_area = page_width * page_height
 
+    page_box, rotation = page.get_bbox(), page.get_rotation()
     form_bboxes = []
     for obj in page.get_objects(
         filter=(pdfium_c.FPDF_PAGEOBJ_FORM,),
         max_depth=1,
     ):
-        form_bbox = _page_rect_to_display(page, obj.get_pos())
-        form_bboxes.append(form_bbox)
+        form_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
 
     merged_bboxes = []
     form_groups = group_bounding_boxes(form_bboxes, threshold=threshold, max_num_boxes=max_num_boxes)
@@ -606,43 +539,15 @@ def extract_forms_from_pdfium_page(page, **kwargs):
     return results
 
 
-def extract_image_like_objects_from_pdfium_page(
-    page: pdfium.PdfPage,
-    page_image: Optional[np.ndarray] = None,
-    merge: bool = True,
-    **kwargs: Any,
-) -> List[Base64Image]:
-    """Crop the image, shape and form objects on a PDF page.
-
-    Boxes are in points in the displayed page (see ``_page_rect_to_display``), the
-    same frame as a ``page.render()`` raster at any scale. Each crop is cut from that
-    raster and resized to its size in points.
-
-    Parameters
-    ----------
-    page : pdfium.PdfPage
-        Page whose image, shape and form objects are cropped.
-    page_image : numpy.ndarray, optional
-        RGB ``uint8`` array of shape ``(height, width, 3)`` from ``page.render()`` at
-        any scale. When omitted, the page is rendered at scale 1.
-    merge : bool, default True
-        Merge nearby image and shape boxes into one crop.
-    **kwargs : Any
-        Grouping options passed to the box helpers, such as ``images_threshold``,
-        ``shapes_max_num_boxes`` and ``forms_threshold``.
-
-    Returns
-    -------
-    list of Base64Image
-        One entry per crop of at least 10x10 points, with its box in points and the
-        displayed page size. Returns an empty list if the page objects can't be read.
-    """
+def extract_image_like_objects_from_pdfium_page(page, merge=True, **kwargs):
     page_width = page.get_width()
     page_height = page.get_height()
 
     try:
-        if page_image is None:
-            page_image = pdfium_pages_to_numpy([page], render_dpi=72)[0][0]
+        original_images, _ = pdfium_pages_to_numpy(
+            [page],  # A batch with a single image.
+            render_dpi=72,  # dpi = 72 is equivalent to scale = 1, so crop boxes are in points.
+        )
         image_bboxes = extract_merged_images_from_pdfium_page(page, merge=merge, **kwargs)
         shape_bboxes = extract_merged_shapes_from_pdfium_page(page, merge=merge, **kwargs)
         form_bboxes = extract_forms_from_pdfium_page(page, **kwargs)
@@ -650,26 +555,18 @@ def extract_image_like_objects_from_pdfium_page(
         logger.exception(f"Unhandled error extracting image: {e}")
         return []
 
-    scale_x = page_image.shape[1] / page_width
-    scale_y = page_image.shape[0] / page_height
     extracted_images = []
     for bbox in image_bboxes + shape_bboxes + form_bboxes:
         try:
-            width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            if width < 10 or height < 10:  # Small images are filtered out.
+            cropped_image = crop_image(original_images[0], bbox, min_width=10, min_height=10)
+            if cropped_image is None:  # Small images are filtered out.
                 continue
-            pixel_bbox = (bbox[0] * scale_x, bbox[1] * scale_y, bbox[2] * scale_x, bbox[3] * scale_y)
-            cropped_image = crop_image(page_image, pixel_bbox)
-            if cropped_image is None:
-                continue
-            if cropped_image.shape[:2] != (height, width):
-                cropped_image = np.asarray(Image.fromarray(cropped_image).resize((width, height), Image.BILINEAR))
             image_base64 = numpy_to_base64(cropped_image)
             image_data = Base64Image(
                 image=image_base64,
                 bbox=bbox,
-                width=width,
-                height=height,
+                width=bbox[2] - bbox[0],
+                height=bbox[3] - bbox[1],
                 max_width=page_width,
                 max_height=page_height,
             )

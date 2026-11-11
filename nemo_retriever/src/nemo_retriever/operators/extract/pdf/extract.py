@@ -125,12 +125,28 @@ def _compute_fit_to_model_scale(
     return min(base_scale, fit_scale)
 
 
-def _render_page_rgb(page: Any, *, dpi: int, render_mode: RenderMode) -> "np.ndarray":
-    """Render a page to an RGB array at the scale chosen by *render_mode*.
+def _render_page_to_base64(
+    page: Any,
+    *,
+    dpi: int = 200,
+    image_format: str = "jpeg",
+    jpeg_quality: int = 100,
+    render_mode: RenderMode = "fit_to_model",
+) -> Dict[str, Any]:
+    """Render a page and encode as JPEG or PNG.
 
-    ``"full_dpi"`` renders at *dpi*. ``"fit_to_model"`` renders at the fit-to-1024
-    scale (~93 DPI for US Letter) so the raster is already close to the model's
-    input size, avoiding a large bilinear down-scale in ``resize_pad``.
+    Parameters
+    ----------
+    render_mode:
+        ``"full_dpi"`` – render at *dpi* (default 300 → 2550×3300 for US Letter).
+        ``"fit_to_model"`` – render at the `nemo_retriever.api` fit-to-1024 scale (~93 DPI
+        for US Letter) so the raster is already close to the model's input size,
+        avoiding a large bilinear down-scale in ``resize_pad``.
+
+    Returns dict with:
+    - image_b64: str
+    - encoding: str ("jpeg" or "png")
+    - orig_shape_hw: tuple[int,int] (H,W) of the rendered raster
     """
     if render_mode == "fit_to_model":
         render_scale = _compute_fit_to_model_scale(page, _MODEL_INPUT_SIZE, max_dpi=dpi)
@@ -140,22 +156,13 @@ def _render_page_rgb(page: Any, *, dpi: int, render_mode: RenderMode) -> "np.nda
 
     arr = convert_bitmap_to_corrected_numpy(bitmap)
 
+    orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])
+
     # Strip alpha channel (RGBA→RGB) for JPEG compatibility.
     if arr.ndim == 3 and arr.shape[2] == 4:
         arr = arr[:, :, :3]
-    return arr
 
-
-def _encode_page_image(arr: "np.ndarray", *, image_format: str, jpeg_quality: int) -> Dict[str, Any]:
-    """Encode a rendered page as JPEG or PNG.
-
-    Returns dict with:
-    - image_b64: str
-    - encoding: str ("jpeg" or "png")
-    - orig_shape_hw: tuple[int,int] (H,W) of the rendered raster
-    """
-    orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])
-
+    # Encode.
     from io import BytesIO
     from PIL import Image as _PILImage
 
@@ -189,19 +196,6 @@ def _encode_page_image(arr: "np.ndarray", *, image_format: str, jpeg_quality: in
         "encoding": fmt,
         "orig_shape_hw": (orig_h, orig_w),
     }
-
-
-def _render_page_to_base64(
-    page: Any,
-    *,
-    dpi: int = 200,
-    image_format: str = "jpeg",
-    jpeg_quality: int = 100,
-    render_mode: RenderMode = "fit_to_model",
-) -> Dict[str, Any]:
-    """Render a page and encode it as JPEG or PNG (see ``_encode_page_image``)."""
-    arr = _render_page_rgb(page, dpi=dpi, render_mode=render_mode)
-    return _encode_page_image(arr, image_format=image_format, jpeg_quality=jpeg_quality)
 
 
 def _error_record(
@@ -390,15 +384,20 @@ def pdf_extraction(
                     want_any_raster = bool(extract_images or extract_page_as_image or page_elements_or_ocr_runs)
                     render_info: Optional[Dict[str, Any]] = None
                     if want_any_raster:
-                        page_rgb = _render_page_rgb(page, dpi=dpi, render_mode=render_mode)
-                        render_info = _encode_page_image(page_rgb, image_format=image_format, jpeg_quality=jpeg_quality)
+                        render_info = _render_page_to_base64(
+                            page,
+                            dpi=dpi,
+                            image_format=image_format,
+                            jpeg_quality=jpeg_quality,
+                            render_mode=render_mode,
+                        )
 
                     # Extract cropped images from pdfium page objects.
                     detected_images: List[Dict[str, Any]] = []
                     nested_image_error: Optional[Dict[str, Any]] = None
                     if extract_images:
                         try:
-                            base64_images = extract_image_like_objects_from_pdfium_page(page, page_rgb)
+                            base64_images = extract_image_like_objects_from_pdfium_page(page)
                             detected_images.extend(_base64_image_to_record(img) for img in base64_images)
                         except Exception:
                             pass  # Image extraction failure should not crash the pipeline.
@@ -416,7 +415,6 @@ def pdf_extraction(
                                 }
                             else:
                                 detected_images.extend(_base64_image_to_record(img) for img in nested_images)
-                    page_rgb = None
 
                     page_record: Dict[str, Any] = {
                         "path": pdf_path,
