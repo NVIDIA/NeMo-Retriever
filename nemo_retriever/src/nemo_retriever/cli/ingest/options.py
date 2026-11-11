@@ -341,7 +341,11 @@ TextChunkOption = Annotated[
 ]
 TextChunkMaxTokensOption = Annotated[
     int | None,
-    typer.Option("--text-chunk-max-tokens", min=1, help="Maximum tokens per text chunk. Implies --text-chunk."),
+    typer.Option(
+        "--text-chunk-max-tokens",
+        min=1,
+        help="Maximum tokens per text chunk. Must exceed the chunk overlap (150 by default). Implies --text-chunk.",
+    ),
 ]
 TextChunkOverlapTokensOption = Annotated[
     int | None,

@@ -300,6 +300,8 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
             "--text-chunk",
             "--text-chunk-max-tokens",
             "64",
+            "--text-chunk-overlap-tokens",
+            "8",
         ],
     )
 
@@ -315,6 +317,7 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["extract_params"].extract_images is True
     assert captured["extract_params"].extract_nested_images is True
     assert captured["split_config"]["pdf"]["max_tokens"] == 64
+    assert captured["split_config"]["pdf"]["overlap_tokens"] == 8
     assert captured["dedup_params"].iou_threshold == 0.6
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
@@ -760,6 +763,20 @@ def test_root_ingest_text_chunk_uses_dedicated_text_params(
     assert isinstance(chunk_params, param_type)
     assert chunk_params.max_tokens == 512
     assert chunk_params.overlap_tokens == 64
+
+
+def test_root_ingest_rejects_text_chunk_max_tokens_below_default_overlap(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "notes.txt"
+    document.write_text("chunk me", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--text-chunk-max-tokens", "100"])
+
+    assert result.exit_code == 1
+    assert "overlap_tokens (150) must be less than max_tokens (100)" in result.output
+    fake_ingestor.extract.assert_not_called()
 
 
 def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:

@@ -458,7 +458,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--caption-model-name` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16` | Local vLLM caption model. The default has approximately 62 GiB of BF16 weights. On a dedicated 80 GB GPU, its local profile reserves `0.95` of GPU memory for vLLM model and KV-cache use. Nano models retain the `0.5` profile default and remain available as explicit overrides. For remote endpoints, pass the endpoint API model ID. |
 | `--caption-gpu-memory-utilization` | model profile | Fraction of a local caption GPU that vLLM can reserve. The Omni BF16 profile defaults to `0.95`; other local caption profiles default to `0.5`. Use this option only with `--caption` and local vLLM captioning. |
 | `--dedup/--no-dedup` | automatic with captioning | Captioning a non-image document automatically enables content-hash and bounding-box image deduplication with an intersection over union threshold of `0.45`. Use `--dedup` to enable the default behavior explicitly, or use `--no-dedup` to disable both mechanisms and preserve all extracted image crops. Image-only inputs are exempt from automatic deduplication. |
-| `--text-chunk` | off | Enable token chunking during extraction. |
+| `--text-chunk` | off | Enable token chunking during extraction. Defaults to 1024 tokens with a 150-token overlap. `--text-chunk-max-tokens` must be greater than the overlap; set `--text-chunk-overlap-tokens` when you lower the maximum to 150 or less. |
 | `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
 | `--dry-run` | off | Print the resolved ingest plan without creating an ingestor. |
 | `--quiet/--no-quiet` | quiet | Suppress verbose progress output by default. |
