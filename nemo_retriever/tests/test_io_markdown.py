@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.common.io import build_page_index, to_markdown, to_markdown_by_page
+from nemo_retriever.common.io import build_page_index, to_markdown, to_markdown_by_page, write_dataframe
 
 
 class _LazyRows:
@@ -136,6 +136,35 @@ def test_to_markdown_reads_saved_records_wrapper(tmp_path: Path) -> None:
 
     assert "Saved result text" in markdown
     assert "### Table 1" in markdown
+
+
+@pytest.mark.parametrize("suffix", [".json", ".parquet"])
+def test_to_markdown_renders_structured_columns_from_saved_results(tmp_path: Path, suffix: str) -> None:
+    path = tmp_path / f"results{suffix}"
+    write_dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "path": "/tmp/report.pdf",
+                    "page_number": 1,
+                    "text": "Executive summary",
+                    "table": [{"text": "| Animal | Count |\n| --- | --- |\n| Cat | 2 |"}],
+                    "chart": [{"text": "Quarterly growth remained positive."}],
+                    "infographic": [{"text": "Icon legend and callouts."}],
+                }
+            ]
+        ),
+        path,
+    )
+
+    for results in (path, pd.read_parquet(path) if suffix == ".parquet" else pd.read_json(path)):
+        markdown = to_markdown(results)
+
+        assert "Executive summary" in markdown
+        assert "### Table 1" in markdown
+        assert "| Cat | 2 |" in markdown
+        assert "### Chart 1" in markdown
+        assert "### Infographic 1" in markdown
 
 
 def test_to_markdown_empty_results_returns_none() -> None:
