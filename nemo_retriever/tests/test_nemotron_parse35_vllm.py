@@ -272,10 +272,10 @@ def native_runtime(vllm_runtime, monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("draft_length", [8, 16, 32])
-def test_native_dflash_is_local_default_and_uses_pinned_drafter(native_runtime, draft_length):
+def test_native_dflash_opt_in_uses_pinned_drafter(native_runtime, draft_length):
     from nemo_retriever.models.hf_model_registry import NEMOTRON_PARSE35_DFLASH2_REVISION
 
-    parser = NemotronParse35(num_speculative_tokens=draft_length)
+    parser = NemotronParse35(use_dflash=True, num_speculative_tokens=draft_length)
     assert parser.invoke_batch([]) == []
     native_runtime.download.assert_not_called()
     assert parser(Image.new("RGB", (16, 20))) == "<class_Text>page"
@@ -295,7 +295,7 @@ def test_native_dflash_is_local_default_and_uses_pinned_drafter(native_runtime, 
 def test_native_runtime_without_dflash_fails_before_download(native_runtime):
     native_runtime.registry.get_supported_archs.return_value = {"RadioMBartPrefixForCausalLM"}
     with pytest.raises(RuntimeError, match="lacks native Parse/DFlash2.*use_dflash=False"):
-        NemotronParse35()(Image.new("RGB", (16, 16)))
+        NemotronParse35(use_dflash=True)(Image.new("RGB", (16, 16)))
     native_runtime.download.assert_not_called()
     native_runtime.llm.assert_not_called()
 
@@ -304,7 +304,7 @@ def test_native_runtime_without_dflash_fails_before_download(native_runtime):
 def test_native_missing_drafter_is_actionable(native_runtime, asset):
     (Path(native_runtime.download.return_value) / "dflash2" / asset).unlink()
     with pytest.raises(RuntimeError, match="drafter assets are missing"):
-        NemotronParse35()(Image.new("RGB", (16, 16)))
+        NemotronParse35(use_dflash=True)(Image.new("RGB", (16, 16)))
     native_runtime.llm.assert_not_called()
 
 
@@ -327,7 +327,7 @@ def test_native_startup_isolates_legacy_plugin_and_restores_environment(native_r
         return native_runtime.engine
 
     native_runtime.llm.side_effect = load
-    parser = NemotronParse35()
+    parser = NemotronParse35(use_dflash=True)
     if failure:
         with pytest.raises(RuntimeError, match="native startup failed"):
             parser(Image.new("RGB", (16, 16)))
@@ -340,7 +340,7 @@ def test_native_startup_isolates_legacy_plugin_and_restores_environment(native_r
 
 def test_native_sampling_overrides_are_independent_of_draft_length(native_runtime):
     sampling = dict(temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0, seed=0)
-    NemotronParse35(max_tokens=8744, sampling_params=sampling)(Image.new("RGB", (16, 16)))
+    NemotronParse35(use_dflash=True, max_tokens=8744, sampling_params=sampling)(Image.new("RGB", (16, 16)))
     assert native_runtime.sampling.call_args.kwargs == {
         **sampling,
         "max_tokens": 8744,

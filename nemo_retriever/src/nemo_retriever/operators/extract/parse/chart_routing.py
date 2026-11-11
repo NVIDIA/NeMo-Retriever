@@ -40,7 +40,7 @@ class _ChartRoutingBase(AbstractOperator):
             nemotron_parse_invoke_url=nemotron_parse_invoke_url,
             nemotron_parse_table_format=options.table_format or "simple_html",
             parse_sampling_params=options._sampling_overrides(),
-            use_dflash=True if use_dflash is None else use_dflash,
+            use_dflash=False if use_dflash is None else use_dflash,
             num_speculative_tokens=32 if num_speculative_tokens is None else num_speculative_tokens,
             api_key=api_key,
             request_timeout_s=request_timeout_s,

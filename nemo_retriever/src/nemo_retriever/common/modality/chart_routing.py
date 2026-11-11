@@ -65,7 +65,8 @@ def route_chart_regions(
         api_key: Optional remote service credential.
         request_timeout_s: Timeout for each remote request, in seconds.
         remote_retry: Remote concurrency and retry limits.
-        nim_client: Optional reusable remote client; an owned client is closed here.
+        nim_client: Optional reusable remote client. Clients created by this function
+            are closed before it returns.
         table_format: Table block rendering: HTML, simple_html (default), markdown,
             or latex. Other block classes are unchanged.
         sampling_params: Optional generation overrides merged with crop defaults:
@@ -75,14 +76,14 @@ def route_chart_regions(
     Returns:
         A copy with chart texts replaced at their original list positions and a
         ``chart_routing`` column containing per-crop raw outputs and errors.
-        Non-chart content, row order, and original boxes are preserved. Existing
-        ``ordered_regions`` and ``ordered_page_text`` caches are updated in place. New chart
-        entries are appended only when a detection has no existing OCR entry.
+        Non-chart content, row order, and original boxes are preserved. The returned
+        ``ordered_regions`` and ``ordered_page_text`` fields contain the updated chart text.
+        New chart entries are appended only when a detection has no existing OCR entry.
         All Parse blocks remain in model order; only Table blocks use the selected rendering format.
         Successful empty output clears the old chart text. Inference or formatting
-        failures preserve that crop's OCR text and record an actionable error.
+        failures preserve that crop's OCR text and record the error in ``chart_routing``.
         Crops use RGB page pixels, clipped integer boxes, and no added margin.
-        Invalid or sub-two-pixel crops are skipped, as in the OCR crop helper.
+        Invalid crops and crops smaller than two pixels in either dimension are skipped.
 
     Raises:
         TypeError: If batch_df is not a pandas DataFrame.

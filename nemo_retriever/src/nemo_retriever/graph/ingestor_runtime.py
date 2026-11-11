@@ -35,6 +35,7 @@ from nemo_retriever.operators.extract.table.table_detection import TableStructur
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
+from nemo_retriever.common.params.utils import build_parse_actor_kwargs
 from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.ingest.index_mode import resolve_vdb_upload_kwargs
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor, TxtSplitActor
@@ -917,24 +918,7 @@ def build_graph(
             extract_kwargs["extract_page_as_image"] = True
             graph = graph >> PDFExtractionActor(**extract_kwargs)
 
-            parse_kwargs: dict[str, Any] = {
-                "extract_text": extract_params.extract_text,
-                "extract_tables": extract_params.extract_tables,
-                "extract_charts": extract_params.extract_charts,
-                "extract_infographics": extract_params.extract_infographics,
-            }
-            if extract_params.nemotron_parse_invoke_url:
-                parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
-            elif extract_params.invoke_url:
-                parse_kwargs["invoke_url"] = extract_params.invoke_url
-            if extract_params.api_key:
-                parse_kwargs["api_key"] = extract_params.api_key
-            if extract_params.nemotron_parse_model:
-                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
-            if extract_params.nemotron_parse_table_format is not None:
-                parse_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
-            parse_kwargs.update(_nim_remote_http_kwargs(extract_params))
-            parse_kwargs.update(extract_params._parse_actor_overrides())
+            parse_kwargs = build_parse_actor_kwargs(extract_params)
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
             detect_kwargs: dict[str, Any] = {}
@@ -1004,14 +988,7 @@ def build_graph(
                 )
                 graph = graph >> ocr_archetype(**ocr_kwargs)
             if extract_params.chart_routing:
-                routing_kwargs = {
-                    "nemotron_parse_invoke_url": extract_params.nemotron_parse_invoke_url,
-                    "api_key": extract_params.api_key,
-                    "request_timeout_s": extract_params.request_timeout_s,
-                    **_nim_remote_http_kwargs(extract_params),
-                }
-                routing_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
-                routing_kwargs.update(extract_params._parse_actor_overrides())
+                routing_kwargs = build_parse_actor_kwargs(extract_params, chart_routing=True)
                 graph = graph >> ChartRoutingActor(**routing_kwargs)
 
         graph = _maybe_append_chunk_actor(graph, split_config, "pdf")

@@ -26,9 +26,9 @@ class NemotronParse35(BaseModel):
 
     Weights and custom code are loaded lazily from an immutable registry revision.
     Pages are converted and generated sequentially to bound additional image
-    and GPU memory independently of batch size. Local vLLM uses native DFlash2
-    by default, loading its drafter from the same pinned snapshot as the target.
-    Explicitly disabling DFlash2 retains the legacy plugin backend.
+    and GPU memory independently of batch size. Local vLLM uses the legacy
+    pinned plugin by default. Explicitly enabling DFlash2 loads its drafter
+    from the same pinned snapshot as the target in a compatible native runtime.
     """
 
     def __init__(
@@ -39,7 +39,7 @@ class NemotronParse35(BaseModel):
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
         sampling_params: dict[str, Any] | None = None,
-        use_dflash: bool = True,
+        use_dflash: bool = False,
         num_speculative_tokens: Literal[8, 16, 32] = 32,
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
@@ -57,7 +57,7 @@ class NemotronParse35(BaseModel):
             sampling_params: Optional vLLM overrides for ``temperature``, ``top_k``,
                 ``top_p``, ``repetition_penalty``, and ``seed``. Defaults retain
                 greedy decoding. Available only with backend="vllm".
-            use_dflash: Enable native DFlash2 in the local vLLM engine (default).
+            use_dflash: Enable native DFlash2 in the local vLLM engine (default: False).
                 Requires a vLLM build with native Parse and DFlash2 support.
                 False selects the legacy pinned plugin. Transformers ignores it.
             num_speculative_tokens: Draft length, one of 8, 16, or 32 (default).

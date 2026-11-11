@@ -293,6 +293,33 @@ def test_page_embedding_preserves_interleaved_blocks(interleaved: SimpleNamespac
     assert result.iloc[0]["text"] == "First\n\nLast"
 
 
+@pytest.mark.parametrize("serialization", ["arrow", "parquet"])
+@pytest.mark.parametrize("table_format", ["HTML", "simple_html"])
+def test_serialized_parse_preserves_model_order(
+    interleaved: SimpleNamespace, table_format: str, serialization: str
+) -> None:
+    import pyarrow as pa
+
+    from nemo_retriever.common.io.markdown import to_markdown
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    result = _ordered_result(interleaved, table_format)
+    table = result.iloc[0]["table"][0]["text"]
+    expected = "\n\n".join(["First", table, "Last", CHART, "Label"])
+    if serialization == "arrow":
+        restored = pa.Table.from_pandas(result).to_pandas()
+    else:
+        buffer = io.BytesIO()
+        result.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        restored = pd.read_parquet(buffer)
+
+    assert collapse_content_to_page_rows(restored).iloc[0]["text"] == expected
+    assert restored.iloc[0]["ordered_page_text"] == expected
+    assert expected in to_markdown(restored)
+    assert collapse_content_to_page_rows(restored, content_columns=()).iloc[0]["text"] == "First\n\nLast"
+
+
 @pytest.mark.parametrize(
     "columns,expected",
     [((), ["First", "Last"]), (("table",), ["First", TABLE, "Last"]), (("infographic",), ["First", "Last", "Label"])],

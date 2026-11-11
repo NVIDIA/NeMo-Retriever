@@ -24,59 +24,25 @@ def _is_content_collection(value: Any) -> bool:
     return isinstance(value, list) or (isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object)
 
 
-def _combine_parse35_blocks(row: Any, text_column: str, content_columns: Sequence[str]) -> Optional[str]:
-    """Interleave selected Parse blocks only while their page text remains unchanged."""
-    order = row.get("_nemotron_parse_block_order")
-    if (
-        text_column != "text"
-        or not isinstance(order, dict)
-        or not isinstance(order.get("blocks"), list)
-        or not isinstance(row.get(text_column), str)
-        or row.get(text_column) != order.get("source_text")
-    ):
-        return None
-    parts: List[str] = []
-    represented = set()
-
-    def append_item(item: Any) -> None:
-        if isinstance(item, dict):
-            for field in ("text", "caption"):
-                value = item.get(field)
-                if isinstance(value, str) and value.strip():
-                    parts.append(value.strip())
-
-    for block in order["blocks"]:
-        column = block.get("column")
-        if column == "text":
-            append_item(block)
-        elif column in content_columns:
-            items = row.get(column)
-            index = block.get("index")
-            if _is_content_collection(items) and isinstance(index, int) and 0 <= index < len(items):
-                if (column, index) not in represented:
-                    append_item(items[index])
-                    represented.add((column, index))
-    for column in content_columns:
-        items = row.get(column)
-        if _is_content_collection(items):
-            for index, item in enumerate(items):
-                if (column, index) not in represented:
-                    append_item(item)
-                    represented.add((column, index))
-    return "\n\n".join(parts)
-
-
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
     """Combine page text with OCR content text for embedding."""
-    ordered = _combine_parse35_blocks(row, text_column, content_columns)
-    if ordered is not None:
-        return ordered
     ordered_regions = row.get("ordered_regions")
     use_ordered_regions = (
         text_column == "text"
         and isinstance(row.get("ordered_page_text"), str)
         and _is_content_collection(ordered_regions)
     )
+    separator = row.get("ordered_page_text_separator")
+    paragraph_regions = use_ordered_regions and isinstance(separator, str) and separator == "\n\n"
+    region_items = {}
+    if paragraph_regions:
+        for column in content_columns:
+            items = row.get(column)
+            if _is_content_collection(items):
+                for item in items:
+                    if isinstance(item, dict) and isinstance(item.get("text"), str):
+                        key = (column, item["text"], tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
+                        region_items.setdefault(key, []).append(item)
     parts = []
     # Match consumed regions by type, text, and geometry, not text substrings.
     represented = Counter()
@@ -90,11 +56,17 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
             if label not in ("text", "title", "header_footer") and label not in content_columns:
                 continue
             if isinstance(text, str) and text.strip():
-                selected_text.append(text)
+                selected_text.append(text.strip() if paragraph_regions else text)
                 key = (label, text, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
+                if paragraph_regions:
+                    matches = region_items.get(key, [])
+                    if represented[key] < len(matches):
+                        caption = matches[represented[key]].get("caption")
+                        if isinstance(caption, str) and caption.strip():
+                            selected_text.append(caption.strip())
                 represented[key] += 1
         if selected_text:
-            parts.append("\n".join(selected_text))
+            parts.append(("\n\n" if paragraph_regions else "\n").join(selected_text))
     else:
         base = row.get(text_column)
         if isinstance(base, str) and base.strip():
@@ -104,6 +76,7 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
         if _is_content_collection(content_list):
             for item in content_list:
                 if isinstance(item, dict):
+                    text_represented = False
                     text = item.get("text", "")
                     if isinstance(text, str) and text.strip():
                         key = (
@@ -113,10 +86,11 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
                         )
                         if key is not None and represented[key]:
                             represented[key] -= 1
+                            text_represented = True
                         else:
                             parts.append(text.strip())
                     caption = item.get("caption", "")
-                    if isinstance(caption, str) and caption.strip():
+                    if isinstance(caption, str) and caption.strip() and not (paragraph_regions and text_represented):
                         parts.append(caption.strip())
     return "\n\n".join(parts) if parts else ""
 

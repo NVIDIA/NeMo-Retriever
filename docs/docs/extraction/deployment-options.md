@@ -11,6 +11,31 @@ Use the sections below to pick documentation and deployment options that match y
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. [Use the Python API](nemo-retriever-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli) — install and run the [`nemo_retriever`](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever) package in your environment
 
+### Local Parse runtime requirements { #local-parse-runtime-requirements }
+
+Install `nemo-retriever[local,nemotron-parse]` for local GPU Parse inference.
+The `local` extra pins vLLM `0.26.0`. Parse 3.5 uses its pinned plugin
+by default. Enable DFlash2 explicitly with `ParseParams(use_dflash=True)`.
+
+To enable native DFlash2, prepare a separate environment with a vLLM build
+that supports both `RadioMBartPrefixForCausalLM` and `DFlash2DraftModel`.
+Install NeMo Retriever Library and its Parse dependencies in that environment
+without replacing the compatible vLLM build with the `local` extra's pinned
+version. Then pass `ParseParams(use_dflash=True)` in the extraction configuration.
+NeMo Retriever Library checks these capabilities before downloading native
+DFlash2 assets and raises an error when they are unavailable. It does not
+install or upgrade vLLM automatically.
+
+The native path loads Parse 3.5 and its DFlash2 drafter inside the NeMo
+Retriever Library process. You do not need to launch a separate vLLM server.
+Refer to [Configure Parse 3.5](nemo-retriever-api-reference.md#configure-parse-35)
+for table formats, generation settings, and the optional draft length.
+
+For remote inference, configure `ParseParams(model="nvidia/Nemotron-3.5-Parse",
+invoke_url="http://localhost:8000/v1/chat/completions")` against an already
+running compatible server. Configure DFlash2 on that server separately; local
+`use_dflash` and `num_speculative_tokens` options cannot configure it.
+
 ### I want a standalone Docker service container
 
 Build and run the NeMo Retriever service image with the [Docker service image guide](https://github.com/NVIDIA/NeMo-Retriever/blob/26.08.1/nemo_retriever/docker.md). Use this for local service-container validation; use Helm for multi-service Kubernetes deployments.

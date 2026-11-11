@@ -133,7 +133,7 @@ def _route_parsed_elements(
     extract_infographics: bool,
     parse35: bool = False,
     table_format: Optional[str] = None,
-    block_order: Optional[List[Dict[str, Any]]] = None,
+    ordered_regions: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Split raw Nemotron Parse output by element class into pipeline channels.
 
@@ -168,21 +168,21 @@ def _route_parsed_elements(
         entry = {"bbox_xyxy_norm": bbox_list, "text": processed}
         if channel == "table" and extract_tables:
             table_items.append(entry)
-            if block_order is not None:
-                block_order.append({"column": "table", "index": len(table_items) - 1})
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "table"})
         elif channel == "chart" and extract_charts:
             chart_items.append(entry)
-            if block_order is not None:
-                block_order.append({"column": "chart", "index": len(chart_items) - 1})
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "chart"})
         elif channel == "infographic" and extract_infographics:
             infographic_items.append(entry)
-            if block_order is not None:
-                block_order.append({"column": "infographic", "index": len(infographic_items) - 1})
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "infographic"})
         else:
             # Text, Title, Header_footer, Formula, etc. → page text
             text_parts.append(processed)
-            if block_order is not None:
-                block_order.append({"column": "text", "text": processed})
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "text"})
 
     page_text = "\n\n".join(text_parts) if text_parts else None
     return table_items, chart_items, infographic_items, page_text
@@ -410,7 +410,7 @@ def nemotron_parse_pages(
     all_chart: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_infographic: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_text: List[Optional[str]] = [None] * n_rows
-    all_block_order: List[Optional[Dict[str, Any]]] = [None] * n_rows
+    all_ordered_regions: List[Optional[List[Dict[str, Any]]]] = [None] * n_rows
     all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(n_rows)]
 
     t0_total = time.perf_counter()
@@ -575,12 +575,12 @@ def nemotron_parse_pages(
                     raise ValueError("Untagged native Parse content requires extract_text=True.")
                 all_text[idx] = raw_text
                 continue
-            block_order: List[Dict[str, Any]] = []
+            ordered_regions: List[Dict[str, Any]] = []
             route_kwargs = (
                 {
                     "parse35": parse35,
                     "table_format": nemotron_parse_table_format,
-                    "block_order": block_order if parse35 and extract_text else None,
+                    "ordered_regions": ordered_regions if parse35 else None,
                 }
                 if not uses_tool_call_routing
                 else {}
@@ -597,8 +597,10 @@ def nemotron_parse_pages(
             all_infographic[idx] = fp_infographics
             if fp_text is not None:
                 all_text[idx] = fp_text
-            if parse35 and extract_text:
-                all_block_order[idx] = {"source_text": fp_text or "", "blocks": block_order}
+            if parse35:
+                all_ordered_regions[idx] = [
+                    region for region in ordered_regions if extract_text or region["label_name"] != "text"
+                ]
         except BaseException as e:
             all_meta[idx] = {
                 "timing": None,
@@ -621,8 +623,17 @@ def nemotron_parse_pages(
                 out.iat[i, out.columns.get_loc("text")] = parse_text
     elif extract_text:
         out["text"] = [t if t is not None else "" for t in all_text]
-    if parse35 and extract_text:
-        out["_nemotron_parse_block_order"] = all_block_order
+    if parse35:
+        out["ordered_regions"] = all_ordered_regions
+        out["ordered_page_text_separator"] = "\n\n"
+        out["ordered_page_text"] = [
+            (
+                "\n\n".join(region["text"].strip() for region in regions if region["text"].strip())
+                if regions is not None
+                else None
+            )
+            for regions in all_ordered_regions
+        ]
     out["table"] = all_table
     out["chart"] = all_chart
     out["infographic"] = all_infographic

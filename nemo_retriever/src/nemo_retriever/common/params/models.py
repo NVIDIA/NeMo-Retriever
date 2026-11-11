@@ -581,8 +581,8 @@ class ParseParams(_ParamsModel):
         top_p: Nucleus probability in (0, 1].
         seed: Optional nonnegative random seed.
         max_tokens: Positive limit on generated output tokens per page or crop.
-        use_dflash: Local Parse 3.5 uses native DFlash2 by default. False selects
-            the legacy vLLM plugin. Requires a compatible installed vLLM runtime.
+        use_dflash: Enable native DFlash2 explicitly in a compatible local vLLM
+            runtime. Unset or False retains the legacy pinned plugin.
         num_speculative_tokens: Local DFlash2 draft length: 8, 16, or 32 (default).
             These engine options cannot configure a remote server.
 
@@ -746,7 +746,7 @@ class ExtractParams(_ParamsModel):
                 model = self.nemotron_parse_model or NEMOTRON_PARSE35_MODEL
                 if model.lower() != NEMOTRON_PARSE35_MODEL.lower():
                     raise ValueError("Parse DFlash2 engine options require local Parse 3.5.")
-                if self.parse.use_dflash is False and self.parse.num_speculative_tokens is not None:
+                if self.parse.use_dflash is not True and self.parse.num_speculative_tokens is not None:
                     raise ValueError("num_speculative_tokens requires use_dflash=True; omit it for the legacy plugin.")
             if self.parse._sampling_overrides():
                 endpoints = validate_nemotron_parse_endpoint_list(

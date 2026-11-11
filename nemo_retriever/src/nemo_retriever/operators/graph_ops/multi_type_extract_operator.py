@@ -38,6 +38,7 @@ from nemo_retriever.common.params import TextChunkParams
 from nemo_retriever.common.params import VideoFrameParams
 from nemo_retriever.common.params import VideoFrameTextDedupParams
 from nemo_retriever.common.params import resolve_split_params
+from nemo_retriever.common.params.utils import build_parse_actor_kwargs
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.operators.extract.parse.chart_routing import ChartRoutingActor
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
@@ -303,26 +304,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _run_parse_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
-        parse_kwargs: dict[str, Any] = {
-            "extract_text": extract_params.extract_text,
-            "extract_tables": extract_params.extract_tables,
-            "extract_charts": extract_params.extract_charts,
-            "extract_infographics": extract_params.extract_infographics,
-        }
-        if extract_params.nemotron_parse_invoke_url:
-            parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
-        elif extract_params.invoke_url:
-            parse_kwargs["invoke_url"] = extract_params.invoke_url
-        if extract_params.nemotron_parse_model:
-            parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
-        if extract_params.nemotron_parse_table_format is not None:
-            parse_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
-        if extract_params.api_key:
-            parse_kwargs["api_key"] = extract_params.api_key
-        parse_kwargs["request_timeout_s"] = extract_params.request_timeout_s
-        for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
-            parse_kwargs[key] = int(getattr(extract_params.remote_retry, key))
-        parse_kwargs.update(extract_params._parse_actor_overrides())
+        parse_kwargs = build_parse_actor_kwargs(extract_params)
         return self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
 
     def _run_pdf_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
@@ -535,16 +517,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             ocr_archetype = resolve_ocr_archetype(extract_params)
             batch_df = self._instantiate_resolved(ocr_archetype, **ocr_kwargs).run(batch_df)
         if extract_params.chart_routing:
-            routing_kwargs = {
-                "nemotron_parse_invoke_url": extract_params.nemotron_parse_invoke_url,
-                "api_key": extract_params.api_key,
-                "request_timeout_s": extract_params.request_timeout_s,
-            }
-            if remote_retry is not None:
-                for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
-                    routing_kwargs[key] = int(getattr(remote_retry, key))
-            routing_kwargs["nemotron_parse_table_format"] = extract_params.nemotron_parse_table_format
-            routing_kwargs.update(extract_params._parse_actor_overrides())
+            routing_kwargs = build_parse_actor_kwargs(extract_params, chart_routing=True)
             batch_df = self._instantiate_resolved(ChartRoutingActor, **routing_kwargs).run(batch_df)
 
         return batch_df
