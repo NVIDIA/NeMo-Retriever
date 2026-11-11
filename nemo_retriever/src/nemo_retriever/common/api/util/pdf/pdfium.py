@@ -335,6 +335,19 @@ def _visible_page_bbox(
     return bbox
 
 
+def _on_page_object_bboxes(page, object_type: int) -> list[list[int]]:
+    """Return displayed-page boxes of the page's top-level ``object_type`` objects, skipping off-page ones.
+
+    Zero-width or zero-height boxes (e.g. table rules) are kept; only boxes left inverted by clipping are dropped.
+    """
+    page_box, rotation = page.get_bbox(), page.get_rotation()
+    bboxes = (
+        _page_rect_to_display(obj.get_pos(), page_box, rotation)
+        for obj in page.get_objects(filter=(object_type,), max_depth=1)
+    )
+    return [bbox for bbox in bboxes if bbox[0] <= bbox[2] and bbox[1] <= bbox[3]]
+
+
 def extract_nested_simple_images_from_pdfium_page(
     page: pdfium.PdfPage,
     *,
@@ -444,13 +457,7 @@ def extract_merged_images_from_pdfium_page(page, merge=True, **kwargs):
     threshold = kwargs.get("images_threshold", 10.0)
     max_num_boxes = kwargs.get("images_max_num_boxes", 1_024)
 
-    page_box, rotation = page.get_bbox(), page.get_rotation()
-    image_bboxes = []
-    for obj in page.get_objects(
-        filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,),
-        max_depth=1,
-    ):
-        image_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
+    image_bboxes = _on_page_object_bboxes(page, pdfium_c.FPDF_PAGEOBJ_IMAGE)
 
     # If no merging is requested or no bounding boxes exist, return the list as is
     if (not merge) or (not image_bboxes):
@@ -476,13 +483,7 @@ def extract_merged_shapes_from_pdfium_page(page, merge=True, **kwargs):
     page_height = page.get_height()
     page_area = page_width * page_height
 
-    page_box, rotation = page.get_bbox(), page.get_rotation()
-    path_bboxes = []
-    for obj in page.get_objects(
-        filter=(pdfium_c.FPDF_PAGEOBJ_PATH,),
-        max_depth=1,
-    ):
-        path_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
+    path_bboxes = _on_page_object_bboxes(page, pdfium_c.FPDF_PAGEOBJ_PATH)
 
     # If merging is disabled or no bounding boxes were found, return them as-is
     if (not merge) or (not path_bboxes):
@@ -514,13 +515,7 @@ def extract_forms_from_pdfium_page(page, **kwargs):
     page_height = page.get_height()
     page_area = page_width * page_height
 
-    page_box, rotation = page.get_bbox(), page.get_rotation()
-    form_bboxes = []
-    for obj in page.get_objects(
-        filter=(pdfium_c.FPDF_PAGEOBJ_FORM,),
-        max_depth=1,
-    ):
-        form_bboxes.append(_page_rect_to_display(obj.get_pos(), page_box, rotation))
+    form_bboxes = _on_page_object_bboxes(page, pdfium_c.FPDF_PAGEOBJ_FORM)
 
     merged_bboxes = []
     form_groups = group_bounding_boxes(form_bboxes, threshold=threshold, max_num_boxes=max_num_boxes)

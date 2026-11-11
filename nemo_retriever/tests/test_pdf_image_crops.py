@@ -31,11 +31,13 @@ PAGE_BOXES = {
 ROTATIONS = [0, 90, 180, 270]
 
 
-def _make_pdf(page_box: str, rotation: int, in_form: bool = False) -> bytes:
-    """One page drawing a 16x16 four-colour image at ``IMAGE_RECT``, directly or inside a Form XObject."""
+def _make_pdf(page_box: str, rotation: int, in_form: bool = False, rects=(IMAGE_RECT,), extra_content=b"") -> bytes:
+    """One page drawing a 16x16 four-colour image at each of ``rects``, directly or inside a Form XObject."""
     pages_attrs, page_attrs = PAGE_BOXES[page_box]
-    left, bottom, right, top = IMAGE_RECT
-    draw_image = b"q %g 0 0 %g %g %g cm /Im1 Do Q" % (right - left, top - bottom, left, bottom)
+    draw_image = b" ".join(
+        b"q %g 0 0 %g %g %g cm /Im1 Do Q" % (right - left, top - bottom, left, bottom)
+        for left, bottom, right, top in rects
+    )
     quadrants = np.array([[[255, 0, 0], [0, 255, 0]], [[0, 0, 255], [255, 255, 0]]], np.uint8)
     pixels = quadrants.repeat(8, axis=0).repeat(8, axis=1).tobytes()
     image = b"<< /Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceRGB /BitsPerComponent 8"
@@ -44,7 +46,7 @@ def _make_pdf(page_box: str, rotation: int, in_form: bool = False) -> bytes:
     if in_form:
         page_content, page_resources = b"/Fm1 Do", b"<< /XObject << /Fm1 5 0 R >> >>"
     else:
-        page_content, page_resources = draw_image, image_resources
+        page_content, page_resources = draw_image + b" " + extra_content, image_resources
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 %s >>" % pages_attrs,
@@ -70,11 +72,11 @@ def _page(*args, **kwargs):
     return pdfium.PdfDocument(_make_pdf(*args, **kwargs))[0]
 
 
-def _expected_bbox(page) -> list:
-    """``IMAGE_RECT`` mapped by PDFium's own page-to-device transform at scale 1."""
+def _expected_bbox(page, rect=IMAGE_RECT) -> list:
+    """``rect`` mapped by PDFium's own page-to-device transform at scale 1."""
     width, height = page.get_width(), page.get_height()
     corners = []
-    for x, y in ((IMAGE_RECT[0], IMAGE_RECT[1]), (IMAGE_RECT[2], IMAGE_RECT[3])):
+    for x, y in ((rect[0], rect[1]), (rect[2], rect[3])):
         device_x, device_y = ctypes.c_int(), ctypes.c_int()
         # 10 device pixels per point, so rounding stays well under the 1 pt tolerance.
         pdfium_c.FPDF_PageToDevice(page, 0, 0, round(width * 10), round(height * 10), 0, x, y, device_x, device_y)
@@ -120,3 +122,20 @@ def test_crop_is_upright_as_displayed(rotation):
     expected = np.rot90(upright, k=-(rotation // 90))  # PDF rotation is clockwise.
     assert rotated.shape == expected.shape
     assert np.abs(rotated - expected).mean() <= 8
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_off_page_image_does_not_stretch_the_visible_crop(rotation):
+    visible, off_page = (100.0, 5.0, 200.0, 95.0), (50.0, -200.0, 300.0, -5.0)
+    page = _page("mediabox", rotation, rects=(visible, off_page))
+
+    (crop,) = _pdfium.extract_image_like_objects_from_pdfium_page(page)
+
+    assert np.allclose(crop.bbox, _expected_bbox(page, visible), atol=1)
+
+
+def test_thin_table_rules_stay_in_their_shape_group():
+    rules = b" ".join(b"72 %g 468 0.4 re f" % y for y in (300.2, 308.2, 316.2, 324.2))
+    page = _page("mediabox", 0, rects=(), extra_content=rules)
+
+    assert _pdfium.extract_merged_shapes_from_pdfium_page(page) == [[72, 467, 540, 491]]
