@@ -283,10 +283,18 @@ def test_explicit_none_preserves_mtp_without_dflash_drafter(vllm_runtime):
     assert vllm_runtime.download.call_args.kwargs["ignore_patterns"] == ["dflash2/*"]
 
 
-def test_dflash_missing_checkpoint_fails_before_engine_start(vllm_runtime):
-    (Path(vllm_runtime.download.return_value) / "dflash2" / "model.safetensors").unlink()
-    with pytest.raises(RuntimeError, match="missing its DFlash2 checkpoint"):
+@pytest.mark.parametrize("missing_asset", ["config.json", "model.safetensors"])
+def test_dflash_missing_checkpoint_fails_before_engine_start(vllm_runtime, missing_asset):
+    draft = Path(vllm_runtime.download.return_value) / "dflash2"
+    (draft / missing_asset).unlink()
+    with pytest.raises(RuntimeError, match="missing its DFlash2 checkpoint") as error:
         NemotronParse35(dflash_tokens=32).invoke(Image.new("RGB", (16, 16)))
+    message = str(error.value)
+    assert str(draft) in message and missing_asset in message
+    assert "Refresh the pinned" in message
+    assert get_hf_revision(NEMOTRON_PARSE35_MODEL) in message
+    assert "dflash_tokens=None" in message and "nemotron_parse_dflash_tokens=None" in message
+    assert "MTP fallback" in message
     vllm_runtime.llm.assert_not_called()
 
 

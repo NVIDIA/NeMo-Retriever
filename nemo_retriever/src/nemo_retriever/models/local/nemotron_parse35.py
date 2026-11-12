@@ -153,8 +153,15 @@ class NemotronParse35(BaseModel):
             speculative_kwargs: dict[str, Any] = {}
             if self._dflash_tokens is not None:
                 draft = Path(snapshot) / "dflash2"
-                if not (draft / "config.json").is_file() or not (draft / "model.safetensors").is_file():
-                    raise RuntimeError("The pinned Parse 3.5 snapshot is missing its DFlash2 checkpoint.")
+                missing = [name for name in ("config.json", "model.safetensors") if not (draft / name).is_file()]
+                if missing:
+                    raise RuntimeError(
+                        f"The pinned Parse 3.5 snapshot is missing its DFlash2 checkpoint at {draft} "
+                        f"(missing: {', '.join(missing)}). Refresh the pinned {NEMOTRON_PARSE35_MODEL} snapshot "
+                        f"at revision {get_hf_revision(NEMOTRON_PARSE35_MODEL)} in your configured Hugging Face "
+                        "cache, or select dflash_tokens=None (nemotron_parse_dflash_tokens=None for ingestion) "
+                        "to use the MTP fallback."
+                    )
                 speculative_kwargs = {
                     "hf_overrides": {"architectures": ["NRLNemotronParse35DFlashModel"]},
                     "speculative_config": {

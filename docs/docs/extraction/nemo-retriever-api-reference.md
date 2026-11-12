@@ -278,6 +278,12 @@ Direct `NemotronParse35()` callers use the same `"auto"` default. Set
 to select the MTP fallback. The Transformers backend rejects an explicit
 integer draft length.
 
+If startup reports a missing DFlash2 checkpoint, check the reported
+`<snapshot>/dflash2` directory for `config.json` and `model.safetensors`.
+Refresh the pinned Hugging Face snapshot to restore missing files. To select
+the MTP fallback instead, pass `dflash_tokens=None` to `NemotronParse35`, or
+`nemotron_parse_dflash_tokens=None` to `ExtractParams` for ingestion.
+
 The first DFlash2 startup can compile additional CUDA kernels. Report that
 startup cost separately when measuring steady-state throughput.
 
