@@ -33,6 +33,7 @@ import re
 from typing import Any, Optional
 
 from nemo_retriever.models.llm.clients.litellm import LiteLLMClient
+from nemo_retriever.models.llm.text_utils import strip_think_tags
 from nemo_retriever.models.llm.types import JudgeResult
 from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
@@ -180,9 +181,9 @@ def _render_prompt(prefix: str, query: str, user_answer: str, reference_answer: 
 
 def _parse_rating(raw: str) -> Optional[int]:
     """Extract the integer ``rating`` from a judge response, or ``None``."""
-    text = raw.strip()
-    # Reasoning models (e.g. Nemotron) may emit a <think>...</think> block first.
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Reasoning models (e.g. Nemotron) may emit a <think>...</think> block first, left unclosed when
+    # max_tokens runs out mid-reasoning. Drop it either way so the fallbacks below never read its digits.
+    text = strip_think_tags(raw)
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE).strip()
 
