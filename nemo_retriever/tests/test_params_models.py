@@ -42,10 +42,33 @@ class TestExtractParams:
         assert "PDF extraction supports" in schema["description"]
         assert "legacy params-driven audio path" in schema["description"]
 
+    @pytest.mark.parametrize("tokens", ["auto", None, 1, 16, 32])
+    def test_local_parse_dflash_length(self, tokens):
+        params = ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=tokens, invoke_url=" ")
+        assert params.nemotron_parse_dflash_tokens == tokens
+
+    @pytest.mark.parametrize("tokens", [0, -1, 33, True, 1.5, "32"])
+    def test_invalid_parse_dflash_length(self, tokens):
+        with pytest.raises(ValidationError):
+            ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=tokens)
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"nemotron_parse_model": "nvidia/NVIDIA-Nemotron-Parse-v1.2"},
+            {"invoke_url": "http://parse.example/v1/chat/completions"},
+            {"nemotron_parse_invoke_url": "http://parse.example/v1/chat/completions"},
+        ],
+    )
+    def test_dflash_rejects_remote_and_legacy_parse(self, overrides):
+        with pytest.raises(ValidationError, match="requires local Nemotron Parse 3.5"):
+            ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=32, **overrides)
+
     def test_parse_specific_configuration_requires_parse_method(self) -> None:
         for field, value in (
             ("nemotron_parse_invoke_url", "http://parse:8000/v1/chat/completions"),
             ("nemotron_parse_model", "nvidia/nemotron-parse"),
+            ("nemotron_parse_dflash_tokens", 32),
         ):
             with pytest.raises(ValidationError, match="method='nemotron_parse'"):
                 ExtractParams(**{field: value})
@@ -150,3 +173,16 @@ class TestResolveApiKeys:
         assert params.api_key == "nvapi-test"
         assert params.page_elements_api_key == "nvapi-test"
         assert params.ocr_api_key == "nvapi-test"
+
+
+@pytest.mark.parametrize("method", ["pdfium", "pdfium_hybrid", "ocr", "audio"])
+def test_automatic_parse_decoder_does_not_change_other_methods(method):
+    params = ExtractParams(method=method)
+    assert params.nemotron_parse_dflash_tokens == "auto"
+
+
+def test_parse_decoder_schema_exposes_auto_default_and_bounded_draft_length():
+    schema = ExtractParams.model_json_schema()["properties"]["nemotron_parse_dflash_tokens"]
+    assert schema["default"] == "auto"
+    integer = next(item for item in schema["anyOf"] if item.get("type") == "integer")
+    assert integer["minimum"] == 1 and integer["maximum"] == 32

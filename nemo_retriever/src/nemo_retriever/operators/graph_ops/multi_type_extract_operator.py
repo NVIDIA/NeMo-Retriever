@@ -323,6 +323,7 @@ class _MultiTypeExtractBase(AbstractOperator):
                 parse_kwargs["invoke_url"] = extract_params.invoke_url
             if extract_params.nemotron_parse_model:
                 parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
+            parse_kwargs["nemotron_parse_dflash_tokens"] = extract_params.nemotron_parse_dflash_tokens
             if extract_params.api_key:
                 parse_kwargs["api_key"] = extract_params.api_key
             batch_df = self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)

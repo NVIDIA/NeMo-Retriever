@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import urlsplit
 
 import base64
@@ -43,6 +43,7 @@ from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE_LOCAL_MODELS,
     NEMOTRON_PARSE35_MODEL,
     validate_nemotron_parse_endpoint_list,
+    resolve_nemotron_parse_dflash_tokens,
 )
 
 try:
@@ -555,6 +556,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -567,6 +569,11 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
+        self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=self._invoke_url,
+        )
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -598,7 +605,11 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             if model_id == NEMOTRON_PARSE35_MODEL:
                 from nemo_retriever.models.local import NemotronParse35
 
-                self._model = NemotronParse35(task_prompt=self._task_prompt, backend="vllm")
+                self._model = NemotronParse35(
+                    task_prompt=self._task_prompt,
+                    backend="vllm",
+                    dflash_tokens=self._nemotron_parse_dflash_tokens,
+                )
             else:
                 from nemo_retriever.models.local import NemotronParseV12
 
@@ -758,6 +769,7 @@ class NemotronParseActor(ArchetypeOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -767,6 +779,11 @@ class NemotronParseActor(ArchetypeOperator):
         remote_max_429_retries: int = 5,
         **kwargs: Any,
     ) -> None:
+        resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=nemotron_parse_invoke_url or invoke_url,
+        )
         super().__init__(
             extract_text=extract_text,
             extract_tables=extract_tables,
@@ -781,5 +798,6 @@ class NemotronParseActor(ArchetypeOperator):
             remote_max_pool_workers=remote_max_pool_workers,
             remote_max_retries=remote_max_retries,
             remote_max_429_retries=remote_max_429_retries,
+            nemotron_parse_dflash_tokens=nemotron_parse_dflash_tokens,
             **kwargs,
         )

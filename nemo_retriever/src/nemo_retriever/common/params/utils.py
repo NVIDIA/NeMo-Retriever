@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Literal
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
@@ -17,6 +17,30 @@ NEMOTRON_PARSE35_MODEL = "nvidia/Nemotron-3.5-Parse"
 NEMOTRON_PARSE_V12_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = NEMOTRON_PARSE35_MODEL
 NEMOTRON_PARSE_LOCAL_MODELS = (NEMOTRON_PARSE35_MODEL, NEMOTRON_PARSE_V12_MODEL)
+
+
+def resolve_nemotron_parse_dflash_tokens(
+    tokens: int | Literal["auto"] | None,
+    *,
+    model_id: str | None = None,
+    invoke_url: str | None = None,
+    backend: str = "vllm",
+) -> int | None:
+    """Select DFlash2-32 automatically for local Parse 3.5 vLLM, preserving explicit opt-outs."""
+    local_parse35 = not str(invoke_url or "").strip() and model_id in (None, NEMOTRON_PARSE35_MODEL)
+    if tokens == "auto":
+        return 32 if local_parse35 and backend == "vllm" else None
+    if tokens is None:
+        return None
+    if type(tokens) is not int or not 1 <= tokens <= 32:
+        raise ValueError("DFlash2 draft length must be 'auto', an integer from 1 to 32, or None to disable DFlash2.")
+    if not local_parse35:
+        raise ValueError(
+            "DFlash2 requires local Nemotron Parse 3.5; remote endpoints and legacy Parse are unsupported."
+        )
+    if backend != "vllm":
+        raise ValueError("DFlash2 requires the Parse 3.5 vLLM backend.")
+    return tokens
 
 
 def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
