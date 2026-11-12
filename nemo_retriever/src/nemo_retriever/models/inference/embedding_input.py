@@ -28,7 +28,13 @@ from nemo_retriever.common.schemas.embedding import (
     requires_text_admission,
     select_embedding_text,
 )
-from nemo_retriever.models import NEMOTRON_35_EMBED_MODEL, resolve_embed_model, resolve_local_embed_model
+from nemo_retriever.models import (
+    NEMOTRON_35_EMBED_BF16_MODEL,
+    NEMOTRON_35_EMBED_MODEL,
+    NEMOTRON_35_EMBED_NVFP4_MODEL,
+    resolve_embed_model,
+    resolve_local_embed_model,
+)
 from nemo_retriever.models.embed_model_spec import (
     EmbedModelSpec,
     resolve_embed_model_spec,
@@ -38,6 +44,9 @@ from nemo_retriever.models.inference.retrieval_template import load_retrieval_te
 
 
 _NEMOTRON_35_NIM_MAX_INPUT_BYTES = 65536
+_NEMOTRON_35_EMBED_MODELS = frozenset(
+    {NEMOTRON_35_EMBED_MODEL, NEMOTRON_35_EMBED_BF16_MODEL, NEMOTRON_35_EMBED_NVFP4_MODEL}
+)
 
 
 def _stable_json(value: Any) -> str:
@@ -459,7 +468,7 @@ def configure_embedding_input_policy(kwargs: dict[str, Any]) -> EmbeddingInputPo
     if (kwargs.get("embedding_endpoint") or kwargs.get("embed_invoke_url") or "").strip():
         # Remote defaults must not load the private local N3.5 tokenizer.
         model_name = resolve_embed_model(model_name)
-        if model_name == NEMOTRON_35_EMBED_MODEL:
+        if model_name in _NEMOTRON_35_EMBED_MODELS:
             # This NIM validates UTF-8 bytes, including the model prefix,
             # independently of tokens. It always prepends the prefix, even
             # when the source text already contains it.
