@@ -28,12 +28,13 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
 !!! note
-    `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse. This path does not produce chart modality rows; for chart detection, refer to [Charts and infographics](#charts-and-infographics).
+    `method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse.
 
 For local GPU extraction, install `nemo-retriever[local,nemotron-parse]`.
 With `method="nemotron_parse"`, the local default is
-`nvidia/Nemotron-3.5-Parse` through in-process vLLM with BF16 weights. Explicitly
-select `nvidia/NVIDIA-Nemotron-Parse-v1.2` to retain the legacy v1.2 vLLM path.
+`nvidia/Nemotron-3.5-Parse` through in-process vLLM with BF16 weights. Local
+Parse v1.2 inference is no longer supported. To continue using a remote v1.2
+NIM, configure its chat-completions endpoint and the matching model ID.
 For a Transformers fallback, direct adapter callers can select
 `NemotronParse35(backend="transformers")`.
 Refer to [Select a supported extraction method](nemo-retriever-api-reference.md#select-a-supported-extraction-method)
@@ -117,16 +118,11 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-!!! important "Chart modality requires the default layout path"
-    [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
+!!! important "Remote Parse v1.2 does not predict chart classes"
+    Remote [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) endpoints remain supported, but the model's semantic classes do not include `Chart` or `Infographic`.
+    Chart-heavy regions can be labeled `Picture`. The pipeline routes `Picture` elements to the infographic channel when `extract_infographics=True`.
 
-    When you set `method="nemotron_parse"`:
-
-    - The pipeline does not produce `chart` or `infographic` modality rows, even when `extract_charts=True` or `extract_infographics=True`.
-    - Chart- and infographic-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
-    - Chart-heavy and infographic-heavy pages are typically emitted as `Picture` or other non-chart modalities.
-
-    For chart and infographic detection and modality-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `method="nemotron_parse"`.
+    For explicit chart detection and chart-filtered retrieval, use Parse 3.5 or the PDFium layout path with page-elements detection and OCR.
 
 Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](#image-captioning).
 

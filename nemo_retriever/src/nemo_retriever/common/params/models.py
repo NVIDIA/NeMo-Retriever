@@ -669,8 +669,8 @@ class ExtractParams(_ParamsModel):
             ):
                 raise ValueError(
                     f"Local Nemotron Parse supports only {', '.join(NEMOTRON_PARSE_LOCAL_MODELS)} in this release; "
-                    f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
-                    "to use a compatible remote model."
+                    f"received `{self.nemotron_parse_model}`. Select the supported local model, or configure "
+                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
                 )
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
