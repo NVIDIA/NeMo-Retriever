@@ -15,7 +15,7 @@ import torch
 ImageInput = Image.Image | str | Path | np.ndarray | torch.Tensor
 
 
-def normalize_parse_image(input_data: ImageInput, *, legacy_float_scaling: bool = False) -> Image.Image:
+def normalize_parse_image(input_data: ImageInput) -> Image.Image:
     """Return an independently owned RGB page without resizing or mutating input.
 
     Args:
@@ -24,10 +24,8 @@ def normalize_parse_image(input_data: ImageInput, *, legacy_float_scaling: bool 
             and an optional leading batch dimension of size one. HWC takes
             precedence when both first and last dimensions look like channels.
             BF16 tensors are converted to float32 before NumPy conversion.
-        legacy_float_scaling: Preserve Parse v1.2's heuristic: multiply floating
-            pixels by 255 when their maximum is at most 1.5, then clip. Otherwise
-            scale only floating pixels entirely in [0, 1]. Integer pixels are
-            never scaled. All pixels are clipped to [0, 255] and cast to uint8.
+            Floating pixels entirely in [0, 1] are scaled by 255. Integer pixels
+            are never scaled. All pixels are clipped to [0, 255] and cast to uint8.
 
     Returns:
         RGB PIL image with alpha discarded and the original spatial dimensions.
@@ -60,8 +58,7 @@ def normalize_parse_image(input_data: ImageInput, *, legacy_float_scaling: bool 
     if pixels.shape[-1] not in (1, 3, 4) or not np.isfinite(pixels).all():
         raise ValueError("Expected finite pixels with 1, 3, or 4 channels.")
     if np.issubdtype(pixels.dtype, np.floating):
-        scale_float = pixels.max() <= 1.5 if legacy_float_scaling else pixels.min() >= 0 and pixels.max() <= 1
-        if scale_float:
+        if pixels.min() >= 0 and pixels.max() <= 1:
             pixels = pixels * 255
     pixels = np.clip(pixels, 0, 255).astype(np.uint8)
     if pixels.shape[-1] == 1:

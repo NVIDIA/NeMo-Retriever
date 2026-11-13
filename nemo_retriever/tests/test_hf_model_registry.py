@@ -15,9 +15,7 @@ def test_extraction_hf_repos_have_pinned_revisions():
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v1"] == "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-ocr-v2"] == "0e83e83f17943524b90afa6c0fd82ac2bc1a40ca"
     assert registry.HF_MODEL_REVISIONS["nvidia/nemotron-page-elements-v3"] == "df62dbb631502575ac4d43b44d700b1674ab1d56"
-    assert (
-        registry.HF_MODEL_REVISIONS["nvidia/NVIDIA-Nemotron-Parse-v1.2"] == "2bd0189bffd6cdded6280d9f22a4077b25a504e3"
-    )
+    assert registry.HF_MODEL_REVISIONS["nvidia/Nemotron-3.5-Parse"] == "72ad4d71dd827135ee581502363e14748008900a"
     assert (
         registry.HF_MODEL_REVISIONS["nvidia/nemotron-table-structure-v1"] == "9350162faa1110320af62699105780b0c87b73ad"
     )

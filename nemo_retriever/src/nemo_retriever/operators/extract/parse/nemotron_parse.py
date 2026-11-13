@@ -41,7 +41,6 @@ from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
     NEMOTRON_PARSE_LOCAL_MODELS,
-    NEMOTRON_PARSE35_MODEL,
     validate_nemotron_parse_endpoint_list,
     resolve_nemotron_parse_dflash_tokens,
 )
@@ -601,19 +600,18 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         if self._model is None and not self._invoke_url:
             model_id = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
             if model_id not in NEMOTRON_PARSE_LOCAL_MODELS:
-                raise ValueError(f"Unsupported local Nemotron Parse model: {model_id}")
-            if model_id == NEMOTRON_PARSE35_MODEL:
-                from nemo_retriever.models.local import NemotronParse35
-
-                self._model = NemotronParse35(
-                    task_prompt=self._task_prompt,
-                    backend="vllm",
-                    dflash_tokens=self._nemotron_parse_dflash_tokens,
+                raise ValueError(
+                    f"Unsupported local Nemotron Parse model: {model_id}. "
+                    f"Use `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` locally, or configure "
+                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
                 )
-            else:
-                from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse35
 
-                self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            self._model = NemotronParse35(
+                task_prompt=self._task_prompt,
+                backend="vllm",
+                dflash_tokens=self._nemotron_parse_dflash_tokens,
+            )
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
