@@ -391,7 +391,9 @@ def nemotron_parse_pages(
                 batch_images.append(_decode_page_image(page_image_b64))
             batch_indices.append(idx)
         except Exception as e:
-            logger.warning(f"Warning: Nemotron Parse page failed: {_page_label(row)} {type(e).__name__}: {e}")
+            logger.warning(
+                f"Warning: Nemotron Parse page failed: {_page_label(row)} {type(e).__name__}: {e}", exc_info=e
+            )
             all_meta[idx] = {
                 "timing": None,
                 "error": {
@@ -521,7 +523,7 @@ def nemotron_parse_pages(
                 )
                 hint.__cause__ = e
                 e = hint
-            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}", exc_info=e)
             err = {
                 "stage": "nemotron_parse_pages",
                 "type": e.__class__.__name__,
@@ -567,7 +569,9 @@ def nemotron_parse_pages(
             if fp_text is not None:
                 all_text[idx] = fp_text
         except BaseException as e:
-            logger.warning(f"Warning: Nemotron Parse page failed: {_page_label(rows[idx])} {type(e).__name__}: {e}")
+            logger.warning(
+                f"Warning: Nemotron Parse page failed: {_page_label(rows[idx])} {type(e).__name__}: {e}", exc_info=e
+            )
             all_meta[idx] = {
                 "timing": None,
                 "error": {
@@ -702,7 +706,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         try:
             return self.run(batch_df, **override_kwargs)
         except BaseException as e:
-            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}", exc_info=e)
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
                 payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)
@@ -801,7 +805,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         try:
             return self.run(batch_df, **override_kwargs)
         except BaseException as e:
-            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}")
+            logger.warning(f"Warning: Nemotron Parse batch failed: {type(e).__name__}: {e}", exc_info=e)
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
                 payload = _error_payload(stage="nemotron_parse_actor_call", exc=e)

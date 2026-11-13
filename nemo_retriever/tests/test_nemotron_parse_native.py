@@ -172,6 +172,7 @@ def test_failed_native_batch_marks_every_page_failed(caplog):
         assert metadata["error"]["type"] == "TimeoutError"
         assert metadata["completion"]["status"] == "failed"
     assert "Warning: Nemotron Parse batch failed: TimeoutError: NIM unavailable" in caplog.text
+    assert caplog.records[-1].exc_info is not None
 
 
 def test_native_client_does_not_retry_bad_requests(monkeypatch):

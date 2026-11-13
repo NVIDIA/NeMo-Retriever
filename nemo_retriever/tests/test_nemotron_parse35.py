@@ -293,6 +293,7 @@ def test_actor_failures_are_reported_for_every_row(caplog: pytest.LogCaptureFixt
     result = actor(pd.DataFrame([{"page_image": None}, {"page_image": None}]))
     assert [item["error"]["type"] for item in result["nemotron_parse_v1_2"]] == ["ValueError", "ValueError"]
     assert "Warning: Nemotron Parse batch failed: ValueError: Unsupported local" in caplog.text
+    assert caplog.records[-1].exc_info is not None  # The traceback reaches application logs.
 
 
 def test_local_page_results_record_completion(runtime: SimpleNamespace, caplog: pytest.LogCaptureFixture) -> None:
