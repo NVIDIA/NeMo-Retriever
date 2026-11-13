@@ -90,6 +90,7 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
         "jpeg_quality",
         "render_mode",
         "inference_batch_size",
+        "nemotron_parse_dflash_tokens",
         "ocr_version",
         "output_column",
         "num_detections_column",

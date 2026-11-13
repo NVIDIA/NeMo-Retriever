@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from typing import Any, ClassVar, Literal, Optional, Tuple
+from typing import Annotated, Any, ClassVar, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -27,6 +27,7 @@ from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_
 from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE_LOCAL_MODELS,
     validate_nemotron_parse_endpoint_list,
+    resolve_nemotron_parse_dflash_tokens,
 )
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -610,6 +611,13 @@ class ExtractParams(_ParamsModel):
     table_structure_invoke_url: Optional[str] = None
     nemotron_parse_invoke_url: Optional[str] = None
     nemotron_parse_model: Optional[str] = None
+    nemotron_parse_dflash_tokens: Annotated[int, Field(strict=True, ge=1, le=32)] | Literal["auto"] | None = Field(
+        default="auto",
+        description=(
+            "DFlash2 draft length for local Parse 3.5 vLLM. 'auto' selects 32 tokens only for that backend/model; "
+            "None preserves the vendor MTP default. Other extraction paths keep their existing behavior."
+        ),
+    )
 
     # Output columns
     output_column: str = "page_elements_v3"
@@ -639,13 +647,20 @@ class ExtractParams(_ParamsModel):
                 "extract_nested_images=True requires extract_images=True because nested images extend image output."
             )
         if self.method != "nemotron_parse" and (
-            self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
+            self.nemotron_parse_invoke_url is not None
+            or self.nemotron_parse_model is not None
+            or self.nemotron_parse_dflash_tokens not in (None, "auto")
         ):
             raise ValueError(
-                "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
+                "`nemotron_parse_invoke_url`, `nemotron_parse_model`, and `nemotron_parse_dflash_tokens` require "
                 "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
             )
         if self.method == "nemotron_parse":
+            resolve_nemotron_parse_dflash_tokens(
+                self.nemotron_parse_dflash_tokens,
+                model_id=self.nemotron_parse_model,
+                invoke_url=self.nemotron_parse_invoke_url or self.invoke_url,
+            )
             parse_endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
             if (
                 not parse_endpoints
