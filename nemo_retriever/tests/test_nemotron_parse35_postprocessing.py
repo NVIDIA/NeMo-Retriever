@@ -368,12 +368,18 @@ def test_real_split_does_not_restore_whole_page(interleaved: SimpleNamespace, mo
 
 @pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
 @pytest.mark.parametrize("edit", ["text", "remove_table", "replace_table"])
-def test_ordered_blocks_use_live_edits(interleaved: SimpleNamespace, serialization: str, edit: str) -> None:
+@pytest.mark.parametrize("collapse_first", [False, True])
+def test_ordered_blocks_use_live_edits(
+    interleaved: SimpleNamespace, serialization: str, edit: str, collapse_first: bool
+) -> None:
     import pyarrow as pa
 
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+    from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
 
     result = _ordered_result(interleaved)
+    if collapse_first:
+        result = collapse_content_to_page_rows(result)
     if edit == "text":
         result.at[0, "text"] = "Corrected text"
         expected = ["Corrected text", TABLE, CHART, "Label"]
@@ -395,5 +401,45 @@ def test_ordered_blocks_use_live_edits(interleaved: SimpleNamespace, serializati
         buffer.seek(0)
         result = pd.read_parquet(buffer)
 
-    assert collapse_content_to_page_rows(result).iloc[0]["text"] == "\n\n".join(expected)
+    expected_text = "\n\n".join(expected)
+    assert collapse_content_to_page_rows(result).iloc[0]["text"] == expected_text
+    assert to_markdown_by_page(result) == {-1: "## Page Unknown\n\n" + expected_text}
+    assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected_text
     assert collapse_content_to_page_rows(result, content_columns=()).iloc[0]["text"] == text_only
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("table_format", ["HTML", "simple_html"])
+@pytest.mark.parametrize("columns", [("table", "chart", "infographic"), (), ("table",), ("infographic",)])
+def test_collapsed_page_markdown_does_not_repeat_content(
+    interleaved: SimpleNamespace, serialization: str, table_format: str, columns: tuple
+) -> None:
+    import pyarrow as pa
+
+    from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    extracted = _ordered_result(interleaved, table_format)
+    blocks = ["First"]
+    if "table" in columns:
+        blocks.append(extracted.iloc[0]["table"][0]["text"])
+    blocks.append("Last")
+    if "chart" in columns:
+        blocks.append(CHART)
+    if "infographic" in columns:
+        blocks.append("Label")
+    expected = "\n\n".join(blocks)
+    result = collapse_content_to_page_rows(extracted, content_columns=columns)
+    if serialization == "arrow":
+        result = pa.Table.from_pandas(result).to_pandas()
+    elif serialization == "parquet":
+        buffer = io.BytesIO()
+        result.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        result = pd.read_parquet(buffer)
+
+    assert result.iloc[0]["text"] == expected
+    assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
+    assert to_markdown_by_page(result) == {-1: "## Page Unknown\n\n" + expected}
+    assert collapse_content_to_page_rows(result, content_columns=columns).iloc[0]["text"] == expected
+    assert collapse_content_to_page_rows(result, content_columns=()).iloc[0]["text"] == "First\n\nLast"

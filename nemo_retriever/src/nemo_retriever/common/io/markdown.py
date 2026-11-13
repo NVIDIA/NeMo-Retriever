@@ -139,8 +139,23 @@ def _looks_like_record(record: Mapping[str, Any]) -> bool:
 
 def _collect_page_record(by_page: dict[int, _PageContent], record: Mapping[str, Any]) -> None:
     page_number = _page_number_for_record(record)
-    if isinstance(record.get("ordered_page_text"), str):
-        _append_text(by_page[page_number], record["ordered_page_text"])
+    collapsed = isinstance(record.get("_collapsed_page_text"), dict)
+    if isinstance(record.get("ordered_page_text"), str) or collapsed:
+        from nemo_retriever.common.modality.content_transforms import _combine_text_with_content, _is_content_collection
+
+        text = record.get("ordered_page_text")
+        if _is_content_collection(record.get("ordered_regions")) or collapsed:
+            current = dict(record)
+            for singular, plural in (("table", "tables"), ("chart", "charts"), ("infographic", "infographics")):
+                if not _is_content_collection(current.get(singular)) and _is_content_collection(current.get(plural)):
+                    current[singular] = current[plural]
+            columns = ("table", "chart", "infographic")
+            if collapsed:
+                selection = record["_collapsed_page_text"].get("content_columns")
+                if _is_content_collection(selection):
+                    columns = tuple(selection)
+            text = _combine_text_with_content(current, content_columns=columns)
+        _append_text(by_page[page_number], text)
         return
     _append_text(
         by_page[page_number], _first_text(record.get("text"), record.get("content"), _metadata_content(record))

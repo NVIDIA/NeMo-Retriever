@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 
@@ -65,6 +66,50 @@ def test_to_markdown_renders_one_document_selected_by_path() -> None:
     assert "First chunk" in markdown
     assert "Second chunk" in markdown
     assert "Other document" not in markdown
+
+
+def test_to_markdown_collapsed_page_uses_current_content() -> None:
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    extracted = pd.DataFrame([{"page_number": 1, "text": "Page text", "table": [{"text": "TABLE"}]}])
+    collapsed = collapse_content_to_page_rows(extracted)
+    assert to_markdown(collapsed) == "# Extracted Content\n\n## Page 1\n\nPage text\n\nTABLE"
+    collapsed.at[0, "table"] = [{"text": "Corrected table"}]
+    assert to_markdown(collapsed) == "# Extracted Content\n\n## Page 1\n\nPage text\n\nCorrected table"
+    collapsed.at[0, "table"] = []
+    assert to_markdown(collapsed) == "# Extracted Content\n\n## Page 1\n\nPage text"
+
+
+@pytest.mark.parametrize("column", ["table", "chart", "infographic"])
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("singular", ["missing", "null", "empty"])
+def test_ordered_markdown_supports_plural_content_columns(column: str, serialization: str, singular: str) -> None:
+    import pyarrow as pa
+
+    box = [0, 0.2, 1, 0.3]
+    record = {
+        "page_number": 1,
+        "text": "Before\n\nAfter",
+        column + "s": [{"text": "CONTENT", "bbox_xyxy_norm": box}],
+        "ordered_page_text": "Before\n\nCONTENT\n\nAfter",
+        "ordered_page_text_separator": "\n\n",
+        "ordered_regions": [
+            {"label_name": "text", "text": "Before"},
+            {"label_name": column, "text": "CONTENT", "bbox_xyxy_norm": box},
+            {"label_name": "text", "text": "After"},
+        ],
+    }
+    if singular != "missing":
+        record[column] = [] if singular == "empty" else None
+    result = pd.DataFrame([record])
+    if serialization == "arrow":
+        result = pa.Table.from_pandas(result).to_pandas()
+    elif serialization == "parquet":
+        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+
+    expected = "Before\n\nAfter" if singular == "empty" else "Before\n\nCONTENT\n\nAfter"
+    assert to_markdown(result) == "# Extracted Content\n\n## Page 1\n\n" + expected
+    assert to_markdown_by_page(result) == {1: "## Page 1\n\n" + expected}
 
 
 def test_to_markdown_by_page_sorts_pages_and_groups_unknown() -> None:

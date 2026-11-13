@@ -23,9 +23,26 @@ def _is_content_collection(value: Any) -> bool:
     return isinstance(value, list) or (isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object)
 
 
-def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
+def _page_source_text(row: Any, text_column: str = "text") -> Any:
+    """Recover pre-collapse text while the combined text has not been edited."""
+    text = row.get(text_column)
+    collapsed = row.get("_collapsed_page_text")
+    if (
+        isinstance(collapsed, dict)
+        and collapsed.get("text_column") == text_column
+        and isinstance(text, str)
+        and text == collapsed.get("combined_text")
+    ):
+        return collapsed.get("source_text")
+    return text
+
+
+def _combine_text_with_content(
+    row: Any, text_column: str = "text", content_columns: Sequence[str] = ("table", "chart", "infographic")
+) -> str:
     """Combine current page content in region order while its source text is valid."""
     regions = row.get("ordered_regions")
+    live_text = _page_source_text(row, text_column)
     separator = row.get("ordered_page_text_separator")
     paragraphs = isinstance(separator, str) and separator == "\n\n"
     ordered = (
@@ -40,7 +57,6 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
             and isinstance(region.get("text"), str)
             and region["text"]
         )
-        live_text = row.get(text_column)
         ordered = isinstance(live_text, str) and live_text == source_text
 
     items_by_box = {}
@@ -86,7 +102,7 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
         if selected:
             parts.append(("\n\n" if paragraphs else "\n").join(selected))
     else:
-        base = row.get(text_column)
+        base = live_text
         if isinstance(base, str) and base.strip():
             parts.append(base.strip())
     for column in content_columns:
@@ -105,6 +121,17 @@ def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequ
     return "\n\n".join(parts)
 
 
+def _normalize_bbox(value: Any) -> Any:
+    """Return bbox coordinates in a stable non-tensor container."""
+    if hasattr(value, "to_numpy") and callable(value.to_numpy):
+        value = value.to_numpy()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, tuple):
+        return list(value)
+    return value
+
+
 def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Copy row dicts without sharing nested mutable values across exploded rows."""
     import copy
@@ -118,17 +145,6 @@ def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
         else:
             out[key] = value
     return out
-
-
-def _normalize_bbox(value: Any) -> Any:
-    """Return bbox coordinates in a stable non-tensor container."""
-    if hasattr(value, "to_numpy") and callable(value.to_numpy):
-        value = value.to_numpy()
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    if isinstance(value, tuple):
-        return list(value)
-    return value
 
 
 def _normalize_bbox_column(frame: pd.DataFrame) -> pd.DataFrame:
@@ -262,7 +278,14 @@ def collapse_content_to_page_rows(
     new_rows: List[Dict[str, Any]] = []
     for _, row in batch_df.iterrows():
         row_dict = _deep_copy_row(row.to_dict())
+        source_text = _page_source_text(row_dict, text_column)
         row_dict[text_column] = _combine_text_with_content(row_dict, text_column, content_columns)
+        row_dict["_collapsed_page_text"] = {
+            "text_column": text_column,
+            "source_text": source_text if isinstance(source_text, str) else None,
+            "combined_text": row_dict[text_column],
+            "content_columns": list(content_columns),
+        }
         page_image = row_dict.get("page_image") if has_page_image else None
         if modality in IMAGE_MODALITIES:
             row_dict["_image_b64"] = inline_image_b64(page_image) if isinstance(page_image, dict) else None

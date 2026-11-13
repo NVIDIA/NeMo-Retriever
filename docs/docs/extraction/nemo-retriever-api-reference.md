@@ -269,8 +269,10 @@ formatting does not reorder blocks or change Chart rendering. Extraction flags
 select the retained modalities; content-column selection and text splitting
 continue to apply when building page text. Full-page Parse retains blank-line
 paragraph separators and captions in their model positions. Page-text
-combination uses current text and modality entries, including edits, removals,
-and replacements made after extraction.
+combination and Markdown export use current text and modality entries,
+including edits, removals, and replacements made after extraction. Markdown
+export supports collapsed page rows without repeating structured content and
+preserves their `content_columns` selection, including an empty selection.
 
 ### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
 
