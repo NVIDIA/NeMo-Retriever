@@ -23,26 +23,31 @@ def _is_content_collection(value: Any) -> bool:
     return isinstance(value, list) or (isinstance(value, np.ndarray) and value.ndim == 1 and value.dtype == object)
 
 
-def _page_source_text(row: Any, text_column: str = "text") -> Any:
-    """Recover pre-collapse text while the combined text has not been edited."""
+def _page_text_state(row: Any, text_column: str = "text") -> tuple[Any, bool]:
+    """Return source text or an edited assembled page, with its assembled-state flag."""
     text = row.get(text_column)
     collapsed = row.get("_collapsed_page_text")
-    if (
-        isinstance(collapsed, dict)
-        and collapsed.get("text_column") == text_column
-        and isinstance(text, str)
-        and text == collapsed.get("combined_text")
-    ):
-        return collapsed.get("source_text")
-    return text
+    if isinstance(collapsed, dict) and collapsed.get("text_column") == text_column and text_column in row:
+        if isinstance(text, str):
+            if text != collapsed.get("combined_text") or collapsed.get("assembled_text_edited"):
+                return text, True
+            return collapsed.get("source_text"), False
+        if pd.api.types.is_scalar(text) and pd.isna(text):
+            return "", True
+    return text, False
 
 
 def _combine_text_with_content(
-    row: Any, text_column: str = "text", content_columns: Sequence[str] = ("table", "chart", "infographic")
+    row: Any,
+    text_column: str = "text",
+    content_columns: Sequence[str] = ("table", "chart", "infographic"),
+    _content_spans: list[dict[str, Any]] | None = None,
 ) -> str:
     """Combine current page content in region order while its source text is valid."""
     regions = row.get("ordered_regions")
-    live_text = _page_source_text(row, text_column)
+    live_text, assembled_text_edited = _page_text_state(row, text_column)
+    if assembled_text_edited:
+        return _reconcile_assembled_text(row, live_text, content_columns, _content_spans)
     separator = row.get("ordered_page_text_separator")
     paragraphs = isinstance(separator, str) and separator == "\n\n"
     ordered = (
@@ -70,11 +75,20 @@ def _combine_text_with_content(
     parts = []
     consumed = set()
 
-    def append_item(item: Any, target: list[str]) -> None:
+    trace = []
+
+    def append_piece(
+        target: list[str], value: str, column: str | None = None, index: int = 0, field: str = "text"
+    ) -> None:
+        target.append(value)
+        if _content_spans is not None:
+            trace.append((value, column, index, field))
+
+    def append_item(item: Any, target: list[str], column: str, index: int) -> None:
         for field in ("text", "caption"):
             value = item.get(field)
             if isinstance(value, str) and value.strip():
-                target.append(value.strip())
+                append_piece(target, value.strip(), column, index, field)
 
     if ordered:
         selected = []
@@ -85,7 +99,7 @@ def _combine_text_with_content(
             if label in ("text", "title", "header_footer"):
                 text = region.get("text")
                 if isinstance(text, str) and text.strip():
-                    selected.append(text.strip() if paragraphs else text)
+                    append_piece(selected, text.strip() if paragraphs else text)
             elif label in content_columns:
                 key = (label, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
                 matches = items_by_box.get(key, [])
@@ -94,17 +108,17 @@ def _combine_text_with_content(
                     index, item = match
                     consumed.add((label, index))
                     if paragraphs:
-                        append_item(item, selected)
+                        append_item(item, selected, label, index)
                     else:
                         text = item.get("text")
                         if isinstance(text, str) and text.strip():
-                            selected.append(text)
+                            append_piece(selected, text, label, index)
         if selected:
             parts.append(("\n\n" if paragraphs else "\n").join(selected))
     else:
         base = live_text
         if isinstance(base, str) and base.strip():
-            parts.append(base.strip())
+            append_piece(parts, base.strip())
     for column in content_columns:
         items = row.get(column)
         if _is_content_collection(items):
@@ -112,13 +126,264 @@ def _combine_text_with_content(
                 if not isinstance(item, dict):
                     continue
                 if (column, index) not in consumed:
-                    append_item(item, parts)
+                    append_item(item, parts, column, index)
                     consumed.add((column, index))
                 elif not paragraphs:
                     caption = item.get("caption")
                     if isinstance(caption, str) and caption.strip():
-                        parts.append(caption.strip())
-    return "\n\n".join(parts)
+                        append_piece(parts, caption.strip(), column, index, "caption")
+    combined = "\n\n".join(parts)
+    if _content_spans is not None:
+        cursor = 0
+        for value, column, index, field in trace:
+            start = combined.index(value, cursor)
+            cursor = start + len(value)
+            if column is not None:
+                items = row.get(column)
+                box = _normalize_bbox(items[index].get("bbox_xyxy_norm")) or []
+                occurrence = sum(
+                    (_normalize_bbox(item.get("bbox_xyxy_norm")) or []) == box
+                    for item in items[:index]
+                    if isinstance(item, dict)
+                )
+                _content_spans.append(
+                    {
+                        "column": column,
+                        "bbox": box,
+                        "occurrence": occurrence,
+                        "field": field,
+                        "source_value": value.strip(),
+                        "start": start,
+                        "end": cursor,
+                    }
+                )
+    return combined
+
+
+def _page_edit_opcodes(original: str, edited: str) -> list[tuple[str, int, int, int, int]]:
+    """Compare the changed middle and report edit positions in full-page coordinates."""
+    from difflib import SequenceMatcher
+
+    if original == edited:
+        return [("equal", 0, len(original), 0, len(edited))]
+    prefix = 0
+    limit = min(len(original), len(edited))
+    while prefix < limit and original[prefix] == edited[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < limit - prefix and original[-suffix - 1] == edited[-suffix - 1]:
+        suffix += 1
+    original_end, edited_end = len(original) - suffix, len(edited) - suffix
+    opcodes = [("equal", 0, prefix, 0, prefix)] if prefix else []
+    matcher = SequenceMatcher(None, original[prefix:original_end], edited[prefix:edited_end], autojunk=False)
+    opcodes.extend(
+        (tag, left + prefix, right + prefix, edited_left + prefix, edited_right + prefix)
+        for tag, left, right, edited_left, edited_right in matcher.get_opcodes()
+    )
+    if suffix:
+        opcodes.append(("equal", original_end, len(original), edited_end, len(edited)))
+    return opcodes
+
+
+def _map_content_span(span: dict[str, Any], opcodes: list) -> tuple[int, int] | None:
+    """Map a rendered region through edits that do not cross its boundaries."""
+    start, end = int(span["start"]), int(span["end"])
+    if start < 0:
+        return None
+    ranges = []
+    for tag, left, right, edited_left, edited_right in opcodes:
+        if tag == "equal":
+            lo, hi = max(start, left), min(end, right)
+            if lo < hi:
+                ranges.append((edited_left + lo - left, edited_left + hi - left))
+        elif left < end and right > start:
+            if left < start or right > end:
+                return None
+            ranges.append((edited_left, edited_right))
+        elif tag == "insert" and start < left < end:
+            ranges.append((edited_left, edited_right))
+    if not ranges:
+        return None
+    lo, hi = min(pair[0] for pair in ranges), max(pair[1] for pair in ranges)
+    return (lo, hi) if lo < hi else None
+
+
+def _unmapped_region_survives(span: dict[str, Any], original: str, text: str, opcodes: list) -> bool:
+    """Detect surviving region content that cannot be attributed to unchanged surrounding text."""
+    start, end = int(span["start"]), int(span["end"])
+    if start < 0:
+        return False
+    value = original[start:end].strip()
+    if not value:
+        return False
+    position = text.find(value)
+    while position >= 0:
+        unchanged_elsewhere = False
+        for tag, left, right, edited_left, edited_right in opcodes:
+            if tag == "equal" and edited_left <= position and position + len(value) <= edited_right:
+                source_start = left + position - edited_left
+                if source_start + len(value) <= start or source_start >= end:
+                    unchanged_elsewhere = True
+                    break
+        if not unchanged_elsewhere:
+            return True
+        position = text.find(value, position + 1)
+    return False
+
+
+def _restore_collapsed_spans(row: Any) -> list[dict[str, Any]]:
+    """Recover legacy region positions only when rendering reproduces the cached page."""
+    collapsed = row["_collapsed_page_text"]
+    if "source_text" in collapsed and isinstance(collapsed.get("combined_text"), str):
+        text_column = collapsed["text_column"]
+        columns = collapsed.get("content_columns")
+        columns = tuple(columns) if _is_content_collection(columns) else _CONTENT_COLUMNS
+        candidate = dict(row)
+        candidate.pop("_collapsed_page_text")
+        candidate[text_column] = collapsed["source_text"]
+        spans = []
+        if _combine_text_with_content(candidate, text_column, columns, spans) == collapsed["combined_text"]:
+            return spans
+        regions = row.get("ordered_regions")
+        if _is_content_collection(regions):
+            for column in columns:
+                candidate[column] = [
+                    dict(region)
+                    for region in regions
+                    if isinstance(region, dict) and region.get("label_name") == column
+                ]
+            spans = []
+            if _combine_text_with_content(candidate, text_column, columns, spans) == collapsed["combined_text"]:
+                return spans
+    raise ValueError(
+        "Cannot reconcile edited legacy collapsed text without recoverable original region metadata. "
+        "Use the original extraction results and collapse them again."
+    )
+
+
+def _reconcile_assembled_text(
+    row: Any, text: str, content_columns: Sequence[str], content_spans: list[dict[str, Any]] | None
+) -> str:
+    """Apply live region changes at tracked positions while retaining page-text edits."""
+    collapsed = row["_collapsed_page_text"]
+    previous = collapsed.get("content_spans")
+    if not _is_content_collection(previous):
+        previous = _restore_collapsed_spans(row)
+    original = collapsed["combined_text"]
+    opcodes = _page_edit_opcodes(original, text)
+    patches = []
+    retained = []
+    consumed = set()
+    for old in previous:
+        span = dict(old)
+        column, field = span["column"], span["field"]
+        items = row.get(column)
+        box = tuple(_normalize_bbox(span.get("bbox")) or ())
+        matches = (
+            [
+                (index, item)
+                for index, item in enumerate(items)
+                if isinstance(item, dict) and tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()) == box
+            ]
+            if _is_content_collection(items)
+            else []
+        )
+        occurrence = int(span["occurrence"])
+        match = matches[occurrence] if occurrence < len(matches) else None
+        if match is not None:
+            consumed.add((column, match[0], field))
+        mapped = _map_content_span(span, opcodes)
+        if mapped is None:
+            if _unmapped_region_survives(span, original, text, opcodes):
+                raise ValueError(
+                    "Cannot reliably locate structured content after a cross-region page-text edit. "
+                    "Edit the original extraction fields and collapse them again."
+                )
+            span.update(start=-1, end=-1)
+            if match is not None and column in content_columns:
+                retained.append(span)
+            continue
+        start, end = mapped
+        value = match[1].get(field) if match is not None and column in content_columns else ""
+        value = value.strip() if isinstance(value, str) else ""
+        if not value:
+            if text[end:].startswith("\n\n"):
+                end += 2
+            elif text[end:].startswith("\n"):
+                end += 1
+            elif text[:start].endswith("\n\n"):
+                start -= 2
+            elif text[:start].endswith("\n"):
+                start -= 1
+            patches.append((start, end, ""))
+            continue
+        if value != span["source_value"]:
+            patches.append((start, end, value))
+            span["source_value"] = value
+        span.update(start=start, end=end)
+        retained.append(span)
+
+    merged = []
+    for start, end, value in sorted(patches):
+        if merged and start <= merged[-1][1] and not value and not merged[-1][2]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]), "")
+        else:
+            merged.append((start, end, value))
+    if merged and not merged[-1][2] and merged[-1][1] == len(text):
+        start, end, value = merged[-1]
+        if text[:start].endswith("\n\n"):
+            start -= 2
+        elif text[:start].endswith("\n"):
+            start -= 1
+        merged[-1] = (start, end, value)
+    parts = []
+    cursor = 0
+    for start, end, value in merged:
+        parts.extend((text[cursor:start], value))
+        cursor = end
+    parts.append(text[cursor:])
+    rendered = "".join(parts)
+
+    def shifted(position: int) -> int:
+        return position + sum(len(value) - (end - start) for start, end, value in merged if end <= position)
+
+    for span in retained:
+        if span["start"] >= 0:
+            span.update(start=shifted(span["start"]), end=shifted(span["end"]))
+    for column in content_columns:
+        items = row.get(column)
+        if not _is_content_collection(items):
+            continue
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            for field in ("text", "caption"):
+                value = item.get(field)
+                if (column, index, field) in consumed or not isinstance(value, str) or not value.strip():
+                    continue
+                value = value.strip()
+                start = len(rendered) + (2 if rendered else 0)
+                rendered += ("\n\n" if rendered else "") + value
+                box = _normalize_bbox(item.get("bbox_xyxy_norm")) or []
+                occurrence = sum(
+                    (_normalize_bbox(other.get("bbox_xyxy_norm")) or []) == box
+                    for other in items[:index]
+                    if isinstance(other, dict)
+                )
+                retained.append(
+                    {
+                        "column": column,
+                        "bbox": box,
+                        "occurrence": occurrence,
+                        "field": field,
+                        "source_value": value,
+                        "start": start,
+                        "end": start + len(value),
+                    }
+                )
+    if content_spans is not None:
+        content_spans.extend(retained)
+    return rendered
 
 
 def _normalize_bbox(value: Any) -> Any:
@@ -278,13 +543,16 @@ def collapse_content_to_page_rows(
     new_rows: List[Dict[str, Any]] = []
     for _, row in batch_df.iterrows():
         row_dict = _deep_copy_row(row.to_dict())
-        source_text = _page_source_text(row_dict, text_column)
-        row_dict[text_column] = _combine_text_with_content(row_dict, text_column, content_columns)
+        source_text, assembled_text_edited = _page_text_state(row_dict, text_column)
+        spans = []
+        row_dict[text_column] = _combine_text_with_content(row_dict, text_column, content_columns, spans)
         row_dict["_collapsed_page_text"] = {
             "text_column": text_column,
             "source_text": source_text if isinstance(source_text, str) else None,
             "combined_text": row_dict[text_column],
             "content_columns": list(content_columns),
+            "assembled_text_edited": assembled_text_edited,
+            "content_spans": spans,
         }
         page_image = row_dict.get("page_image") if has_page_image else None
         if modality in IMAGE_MODALITIES:

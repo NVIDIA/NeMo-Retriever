@@ -269,10 +269,20 @@ formatting does not reorder blocks or change Chart rendering. Extraction flags
 select the retained modalities; content-column selection and text splitting
 continue to apply when building page text. Full-page Parse retains blank-line
 paragraph separators and captions in their model positions. Page-text
-combination and Markdown export use current text and modality entries,
-including edits, removals, and replacements made after extraction. Markdown
-export supports collapsed page rows without repeating structured content and
-preserves their `content_columns` selection, including an empty selection.
+combination and Markdown export reconcile current text and modality entries
+before and after collapse. Direct page-text edits remain for unchanged
+regions. For tracked structured regions, modality changes and the
+`content_columns` selection, including an empty selection, take precedence.
+Setting `text` to an empty string or null after collapse clears the existing
+page text. If a cross-region page-text rewrite leaves structured content that
+cannot be located reliably, collapse and Markdown export raise `ValueError`.
+Edit the original extraction fields and collapse them again instead.
+
+Edited collapsed results saved by earlier versions can lack region positions.
+NeMo Retriever Library restores them only when stored source content exactly
+reproduces the cached page text. Otherwise, collapse and Markdown export raise
+`ValueError`. Recreate these collapsed rows from the original extraction
+results.
 
 ### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
 

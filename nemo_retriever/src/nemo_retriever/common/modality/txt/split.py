@@ -174,6 +174,9 @@ def split_df(
             # Only the first chunk keeps structured content so that
             # downstream explode does not duplicate tables/charts/etc.
             if i > 0:
+                collapsed = new_row.get("_collapsed_page_text")
+                if isinstance(collapsed, dict):
+                    collapsed["content_spans"] = []
                 for col in ("table", "chart", "infographic", "images"):
                     if col in new_row:
                         new_row[col] = []
