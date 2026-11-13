@@ -9,6 +9,7 @@ from typing import Any
 import nvtx
 import pandas as pd
 
+from nemo_retriever.common import nvtx_layers
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
@@ -26,6 +27,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::page_elements.startup", color="blue")
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
+        nvtx_layers.install("page_elements")
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = (
             str(self.detect_kwargs.get("page_elements_invoke_url") or "").strip()
