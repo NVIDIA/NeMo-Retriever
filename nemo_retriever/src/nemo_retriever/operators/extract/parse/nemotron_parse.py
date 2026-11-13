@@ -660,7 +660,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant that delegates to a remote Nemotron Parse endpoint.
 
     Defaults to the build.nvidia.com chat completions endpoint.
-    No local GPU model is loaded.
+    No local GPU model is loaded. Explicit DFlash2 draft lengths are rejected;
+    use ``"auto"`` or ``None`` to retain remote fallback.
     """
 
     DEFAULT_INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -674,6 +675,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -688,6 +690,11 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
         )
         self._nemotron_parse_model = nemotron_parse_model
+        self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=self._invoke_url,
+        )
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)

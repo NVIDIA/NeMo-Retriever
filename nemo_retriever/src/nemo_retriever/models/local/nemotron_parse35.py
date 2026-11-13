@@ -234,6 +234,9 @@ class NemotronParse35(BaseModel):
     def invoke_batch(self, inputs: Sequence[ImageInput], task_prompt: str | None = None) -> list[str]:
         """Convert and parse one page at a time, keeping the original order.
 
+        vLLM prepends ``<pad>`` directly to the task prompt in both DFlash2 and
+        MTP modes. No newline is inserted, including for custom task prompts.
+
         Args:
             inputs: Sequence of pages accepted by :meth:`preprocess`; an empty
                 sequence returns immediately without loading the checkpoint.

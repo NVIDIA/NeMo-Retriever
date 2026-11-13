@@ -36,7 +36,8 @@ def resolve_nemotron_parse_dflash_tokens(
         raise ValueError("DFlash2 draft length must be 'auto', an integer from 1 to 32, or None to disable DFlash2.")
     if not local_parse35:
         raise ValueError(
-            "DFlash2 requires local Nemotron Parse 3.5; remote endpoints and legacy Parse are unsupported."
+            "DFlash2 requires local Nemotron Parse 3.5; remote endpoints and legacy Parse are unsupported. "
+            "Use 'auto' or None to allow remote fallback, or run local Parse 3.5 with vLLM on a GPU."
         )
     if backend != "vllm":
         raise ValueError("DFlash2 requires the Parse 3.5 vLLM backend.")

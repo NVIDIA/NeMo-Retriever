@@ -64,6 +64,37 @@ class TestExtractParams:
         with pytest.raises(ValidationError, match="requires local Nemotron Parse 3.5"):
             ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=32, **overrides)
 
+    @pytest.mark.parametrize("tokens", ["auto", None, 1, 32])
+    def test_dflash_validation_after_cpu_only_resolution(self, tokens: str | int | None) -> None:
+        from unittest.mock import patch
+
+        from nemo_retriever.common.ray_resource_hueristics import Resources
+        from nemo_retriever.graph.graph_pipeline_registry import get_node_kwargs
+        from nemo_retriever.graph.ingestor_runtime import build_graph
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseCPUActor
+
+        params = ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=tokens)
+        graph = build_graph(extraction_mode="pdf", extract_params=params)
+        kwargs = get_node_kwargs(graph, "NemotronParseActor")
+        actor_class = NemotronParseActor.resolve_operator_class(
+            Resources(cpu_count=8, gpu_count=0), operator_kwargs=kwargs
+        )
+        assert actor_class is NemotronParseCPUActor
+        with patch("nemo_retriever.operators.extract.parse.nemotron_parse.NIMClient") as client:
+            if isinstance(tokens, int):
+                with pytest.raises(ValueError, match="requires local Nemotron Parse 3.5") as exc_info:
+                    actor_class(**kwargs)
+                assert "'auto' or None" in str(exc_info.value)
+                client.assert_not_called()
+            else:
+                actor = actor_class(**kwargs)
+                assert actor._invoke_url == NemotronParseCPUActor.DEFAULT_INVOKE_URL
+                assert actor._nemotron_parse_dflash_tokens is None
+                rebuilt = actor_class(**actor.get_constructor_kwargs())
+                assert rebuilt._invoke_url == NemotronParseCPUActor.DEFAULT_INVOKE_URL
+                assert rebuilt._nemotron_parse_dflash_tokens is None
+                assert client.call_count == 2
+
     def test_parse_specific_configuration_requires_parse_method(self) -> None:
         for field, value in (
             ("nemotron_parse_invoke_url", "http://parse:8000/v1/chat/completions"),

@@ -244,9 +244,22 @@ Parse 3.5 decoding.
 | Integer from 1 through 32 | Selects DFlash2 with that draft length. |
 | `None` | Turns off DFlash2 and retains the pinned plugin's one-token multi-token prediction (MTP) fallback. |
 
-An explicit integer is rejected for remote endpoints and legacy Parse.
+An explicit integer requires local Parse 3.5 on a GPU after actor resolution.
+It is rejected for remote endpoints and legacy Parse. When no GPU is available,
+the graph selects the CPU actor, which uses a remote endpoint, including the
+hosted default when you omit an invoke URL. That actor rejects an explicit
+integer instead of silently ignoring it. Use `"auto"` or `None` to allow the
+existing remote fallback.
+
 The target and `dflash2/` drafter load from the same immutable checkpoint
 revision. No separate drafter model ID or plugin installation is required.
+
+Local vLLM prompts concatenate `<pad>` directly with the task prompt, without
+inserting a newline. This input-format change applies to DFlash2 and MTP,
+including custom task prompts. Selecting `None` restores the MTP decoder; it
+does not restore the earlier newline after `<pad>`. Both decoders use the same
+prompt format so you can compare them with consistent input. This formatting
+change is independent of the decoder selection.
 
 The following example selects the MTP fallback for local Parse 3.5.
 

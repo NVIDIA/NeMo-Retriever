@@ -58,8 +58,11 @@ def vllm_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNames
     return SimpleNamespace(engine=engine, llm=llm, sampling=sampling, register=register, download=download)
 
 
-def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(max_tokens=123)
+@pytest.mark.parametrize("tokens", ["auto", None, 16])
+def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(
+    vllm_runtime: SimpleNamespace, tokens: str | int | None
+) -> None:
+    parser = NemotronParse35(max_tokens=123, dflash_tokens=tokens)
     assert parser.invoke_batch([]) == []
     vllm_runtime.download.assert_not_called()
     assert parser.invoke(Image.new("RGB", (16, 20))) == "<class_Text>page"
@@ -75,8 +78,11 @@ def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(vllm_runtime: Simpl
     assert vllm_runtime.engine.generate.call_args.kwargs["tokenization_kwargs"] == {"add_special_tokens": False}
 
 
-def test_vllm_converts_pages_only_as_generated(vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = NemotronParse35(backend="vllm")
+@pytest.mark.parametrize("tokens", [None, 32])
+def test_vllm_converts_pages_only_as_generated(
+    vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, tokens: int | None
+) -> None:
+    parser = NemotronParse35(backend="vllm", dflash_tokens=tokens)
     events = []
     original_preprocess = parser.preprocess
 
