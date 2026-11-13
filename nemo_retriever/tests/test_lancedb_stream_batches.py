@@ -377,3 +377,26 @@ def test_python_float_syntax_in_string_vectors_matches_record_path(tmp_path: Pat
 
     table = _assert_tables_equal(tmp_path)
     assert table.column("vector").to_pylist()[1] == pytest.approx([1000.0, 1.25, 1.5, 1.75])
+
+
+def test_input_error_after_the_first_batch_keeps_its_type(tmp_path: Path) -> None:
+    rows = [_row(index, text="x" * 2000) for index in range(400)]
+    rows.append(_row(400, embedding=None, embedding_error="embed failed"))
+    operator = IngestVdbOperator(vdb=_backend(tmp_path, overwrite=False, stream_batch_bytes=64 * 1024))
+
+    with pytest.raises(VdbUploadError, match="refusing a partial write"):
+        operator._stream_ingest(iter(_frames(rows, batch_size=50)))
+    with pytest.raises(ValueError):
+        _table(tmp_path)
+
+
+def test_bad_vector_after_the_first_batch_keeps_its_type(tmp_path: Path) -> None:
+    rows = [_row(index, text="x" * 2000) for index in range(400)]
+    rows.append(_row(400, embedding=_vector(400, dim=DIM + 1)))
+    operator = IngestVdbOperator(
+        vdb=_backend(tmp_path, overwrite=False, on_bad_vectors="error", stream_batch_bytes=64 * 1024)
+    )
+
+    with pytest.raises(ValueError) as caught:
+        operator._stream_ingest(iter(_frames(rows, batch_size=50)))
+    assert not isinstance(caught.value, RuntimeError)
