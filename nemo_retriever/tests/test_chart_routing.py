@@ -249,3 +249,108 @@ def test_routing_format_and_generation_overrides_reach_actual_request(helpers, t
     kwargs = client.invoke_chat_completions_images.call_args.kwargs
     assert kwargs["temperature"] == 0 and kwargs["repetition_penalty"] == 1.2
     assert kwargs["extra_body"] == dict(top_k=-1, top_p=0.9, seed=7, max_tokens=123, skip_special_tokens=False)
+
+
+@pytest.mark.parametrize("failure", ["transport", "postprocess"])
+def test_routing_failures_log_tracebacks_without_crop_payloads(helpers, failure, caplog):
+    client = Mock()
+    client.invoke_chat_completions_images.return_value = ["private model output"]
+    if failure == "transport":
+        client.invoke_chat_completions_images.side_effect = TimeoutError("service unavailable")
+    else:
+        helpers.postprocess_document.side_effect = ValueError("invalid table")
+    result = routing.route_chart_regions(frame(), invoke_url=URL, nim_client=client)
+    records = [record for record in caplog.records if record.name == routing.__name__]
+    assert len(records) == 1 and records[0].exc_info is not None
+    assert "Traceback" in caplog.text
+    assert "private model output" not in caplog.text
+    assert result.iloc[0]["chart"][0]["text"] == "old chart"
+
+
+def test_routing_actor_cleanup_releases_resources_and_can_reload(monkeypatch):
+    from nemo_retriever.operators.extract.parse import chart_routing as stage
+
+    model = Mock()
+    factory = Mock(return_value=model)
+    monkeypatch.setattr("nemo_retriever.models.local.nemotron_parse35.NemotronParse35", factory)
+    monkeypatch.setattr(stage, "route_chart_regions", lambda data, **kwargs: data)
+    register = Mock()
+    unregister = Mock()
+    monkeypatch.setattr(stage.atexit, "register", register)
+    monkeypatch.setattr(stage.atexit, "unregister", unregister)
+    actor = ChartRoutingGPUActor()
+    for _ in range(2):
+        actor.process(frame())
+    factory.assert_called_once()
+    model.unload.assert_not_called()
+    register.assert_called_once_with(actor.cleanup)
+    actor.cleanup()
+    actor.cleanup()
+    model.unload.assert_called_once()
+    unregister.assert_called_once_with(actor.cleanup)
+    assert actor._model is None
+    actor.process(frame())
+    assert factory.call_count == 2
+    actor.cleanup()
+
+
+def test_routing_actor_cleanup_closes_owned_remote_client(monkeypatch):
+    from nemo_retriever.operators.extract.parse import chart_routing as stage
+
+    client = Mock()
+    monkeypatch.setattr(stage, "NIMClient", Mock(return_value=client))
+    monkeypatch.setattr(stage, "route_chart_regions", lambda data, **kwargs: data)
+    actor = ChartRoutingCPUActor(nemotron_parse_invoke_url=URL)
+    actor.process(frame())
+    actor.cleanup()
+    actor.cleanup()
+    client.shutdown.assert_called_once()
+    assert actor._client is None
+
+
+@pytest.mark.parametrize("remote", [False, True])
+def test_routing_gpu_override_matches_endpoint(remote):
+    from nemo_retriever.common.params import BatchTuningParams
+    from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Resources
+    from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
+
+    resources = Resources(cpu_count=64, gpu_count=8)
+    params = ExtractParams(
+        method="ocr",
+        chart_routing=True,
+        nemotron_parse_invoke_url=URL if remote else None,
+        batch_tuning=BatchTuningParams(gpu_nemotron_parse=1.0),
+    )
+    overrides = batch_tuning_to_node_overrides(
+        params,
+        None,
+        cluster_resources=ClusterResources(total_resources=resources, available_resources=resources),
+        allow_no_gpu=False,
+    )
+    assert overrides["ChartRoutingActor"]["num_gpus"] == (0.0 if remote else 1.0)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_multitype_routing_cleanup_runs_on_stage_exit(monkeypatch, failure):
+    from nemo_retriever.operators.graph_ops import multi_type_extract_operator as module
+
+    actor = Mock()
+    actor.run.side_effect = RuntimeError("routing failed") if failure else lambda data: data
+    operator = module.MultiTypeExtractCPUActor(
+        extraction_mode="image",
+        extract_params=ExtractParams(method="ocr", chart_routing=True, nemotron_parse_invoke_url=URL),
+    )
+
+    class Passthrough:
+        def run(self, data):
+            return data
+
+    monkeypatch.setattr(
+        operator, "_instantiate_resolved", lambda cls, **kwargs: actor if cls is ChartRoutingActor else Passthrough()
+    )
+    if failure:
+        with pytest.raises(RuntimeError, match="routing failed"):
+            operator._run_detection_pipeline(frame())
+    else:
+        operator._run_detection_pipeline(frame())
+    actor.cleanup.assert_called_once()

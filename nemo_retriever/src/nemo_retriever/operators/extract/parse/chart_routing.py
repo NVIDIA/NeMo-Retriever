@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import atexit
 from typing import Any
 
 import pandas as pd
@@ -50,6 +51,7 @@ class _ChartRoutingBase(AbstractOperator):
         )
         self._model = None
         self._client = None
+        self._cleanup_registered = False
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=remote_max_pool_workers,
             remote_max_retries=remote_max_retries,
@@ -62,6 +64,9 @@ class _ChartRoutingBase(AbstractOperator):
 
     def process(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Replace chart content using the configured local or remote Parse 3.5 service."""
+        if not self._cleanup_registered:
+            atexit.register(self.cleanup)
+            self._cleanup_registered = True
         if self.nemotron_parse_invoke_url:
             if self._client is None:
                 self._client = NIMClient(max_pool_workers=self._remote_retry.remote_max_pool_workers)
@@ -86,6 +91,20 @@ class _ChartRoutingBase(AbstractOperator):
             table_format=self.nemotron_parse_table_format,
             sampling_params=self._sampling,
         )
+
+    def cleanup(self) -> None:
+        """Release the local engine and owned HTTP client; repeated calls are safe."""
+        try:
+            if self._model is not None:
+                self._model.unload()
+                self._model = None
+        finally:
+            if self._client is not None:
+                self._client.shutdown()
+                self._client = None
+            if self._model is None and self._client is None and self._cleanup_registered:
+                atexit.unregister(self.cleanup)
+                self._cleanup_registered = False
 
     def postprocess(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         """Return routed page rows, including per-crop diagnostics."""
@@ -128,6 +147,12 @@ class ChartRoutingActor(ArchetypeOperator):
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         """Return whether an explicit Parse endpoint selects remote CPU routing."""
         return bool((operator_kwargs or {}).get("nemotron_parse_invoke_url"))
+
+    def cleanup(self) -> None:
+        """Release resources held by a delegate without constructing a new one."""
+        delegate = self._resolved_delegate
+        if delegate is not None:
+            delegate.cleanup()
 
     def __init__(self, **routing_kwargs: Any) -> None:
         super().__init__(**routing_kwargs)

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -25,74 +24,85 @@ def _is_content_collection(value: Any) -> bool:
 
 
 def _combine_text_with_content(row: Any, text_column: str, content_columns: Sequence[str]) -> str:
-    """Combine page text with OCR content text for embedding."""
-    ordered_regions = row.get("ordered_regions")
-    use_ordered_regions = (
-        text_column == "text"
-        and isinstance(row.get("ordered_page_text"), str)
-        and _is_content_collection(ordered_regions)
-    )
+    """Combine current page content in region order while its source text is valid."""
+    regions = row.get("ordered_regions")
     separator = row.get("ordered_page_text_separator")
-    paragraph_regions = use_ordered_regions and isinstance(separator, str) and separator == "\n\n"
-    region_items = {}
-    if paragraph_regions:
-        for column in content_columns:
-            items = row.get(column)
-            if _is_content_collection(items):
-                for item in items:
-                    if isinstance(item, dict) and isinstance(item.get("text"), str):
-                        key = (column, item["text"], tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
-                        region_items.setdefault(key, []).append(item)
+    paragraphs = isinstance(separator, str) and separator == "\n\n"
+    ordered = (
+        text_column == "text" and isinstance(row.get("ordered_page_text"), str) and _is_content_collection(regions)
+    )
+    if ordered and paragraphs:
+        source_text = "\n\n".join(
+            region["text"]
+            for region in regions
+            if isinstance(region, dict)
+            and region.get("label_name") in ("text", "title", "header_footer")
+            and isinstance(region.get("text"), str)
+            and region["text"]
+        )
+        live_text = row.get(text_column)
+        ordered = isinstance(live_text, str) and live_text == source_text
+
+    items_by_box = {}
+    for column in content_columns:
+        items = row.get(column)
+        if _is_content_collection(items):
+            for index, item in enumerate(items):
+                if isinstance(item, dict):
+                    key = (column, tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
+                    items_by_box.setdefault(key, []).append((index, item))
     parts = []
-    # Match consumed regions by type, text, and geometry, not text substrings.
-    represented = Counter()
-    if use_ordered_regions:
-        selected_text = []
-        for region in ordered_regions:
+    consumed = set()
+
+    def append_item(item: Any, target: list[str]) -> None:
+        for field in ("text", "caption"):
+            value = item.get(field)
+            if isinstance(value, str) and value.strip():
+                target.append(value.strip())
+
+    if ordered:
+        selected = []
+        for region in regions:
             if not isinstance(region, dict):
                 continue
             label = region.get("label_name")
-            text = region.get("text")
-            if label not in ("text", "title", "header_footer") and label not in content_columns:
-                continue
-            if isinstance(text, str) and text.strip():
-                selected_text.append(text.strip() if paragraph_regions else text)
-                key = (label, text, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
-                if paragraph_regions:
-                    matches = region_items.get(key, [])
-                    if represented[key] < len(matches):
-                        caption = matches[represented[key]].get("caption")
-                        if isinstance(caption, str) and caption.strip():
-                            selected_text.append(caption.strip())
-                represented[key] += 1
-        if selected_text:
-            parts.append(("\n\n" if paragraph_regions else "\n").join(selected_text))
+            if label in ("text", "title", "header_footer"):
+                text = region.get("text")
+                if isinstance(text, str) and text.strip():
+                    selected.append(text.strip() if paragraphs else text)
+            elif label in content_columns:
+                key = (label, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
+                matches = items_by_box.get(key, [])
+                match = next(((index, item) for index, item in matches if (label, index) not in consumed), None)
+                if match is not None:
+                    index, item = match
+                    consumed.add((label, index))
+                    if paragraphs:
+                        append_item(item, selected)
+                    else:
+                        text = item.get("text")
+                        if isinstance(text, str) and text.strip():
+                            selected.append(text)
+        if selected:
+            parts.append(("\n\n" if paragraphs else "\n").join(selected))
     else:
         base = row.get(text_column)
         if isinstance(base, str) and base.strip():
             parts.append(base.strip())
-    for col in content_columns:
-        content_list = row.get(col)
-        if _is_content_collection(content_list):
-            for item in content_list:
-                if isinstance(item, dict):
-                    text_represented = False
-                    text = item.get("text", "")
-                    if isinstance(text, str) and text.strip():
-                        key = (
-                            (col, text, tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
-                            if use_ordered_regions
-                            else None
-                        )
-                        if key is not None and represented[key]:
-                            represented[key] -= 1
-                            text_represented = True
-                        else:
-                            parts.append(text.strip())
-                    caption = item.get("caption", "")
-                    if isinstance(caption, str) and caption.strip() and not (paragraph_regions and text_represented):
+    for column in content_columns:
+        items = row.get(column)
+        if _is_content_collection(items):
+            for index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+                if (column, index) not in consumed:
+                    append_item(item, parts)
+                    consumed.add((column, index))
+                elif not paragraphs:
+                    caption = item.get("caption")
+                    if isinstance(caption, str) and caption.strip():
                         parts.append(caption.strip())
-    return "\n\n".join(parts) if parts else ""
+    return "\n\n".join(parts)
 
 
 def _deep_copy_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:

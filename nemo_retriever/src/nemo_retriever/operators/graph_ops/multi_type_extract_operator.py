@@ -518,7 +518,13 @@ class _MultiTypeExtractBase(AbstractOperator):
             batch_df = self._instantiate_resolved(ocr_archetype, **ocr_kwargs).run(batch_df)
         if extract_params.chart_routing:
             routing_kwargs = build_parse_actor_kwargs(extract_params, chart_routing=True)
-            batch_df = self._instantiate_resolved(ChartRoutingActor, **routing_kwargs).run(batch_df)
+            routing_actor = self._instantiate_resolved(ChartRoutingActor, **routing_kwargs)
+            try:
+                batch_df = routing_actor.run(batch_df)
+            finally:
+                cleanup = getattr(routing_actor, "cleanup", None)
+                if callable(cleanup):
+                    cleanup()
 
         return batch_df
 

@@ -364,3 +364,36 @@ def test_real_split_does_not_restore_whole_page(interleaved: SimpleNamespace, mo
     result = split.split_df(_ordered_result(interleaved), max_tokens=1, overlap_tokens=0)
     collapsed = collapse_content_to_page_rows(result)
     assert collapsed["text"].tolist() == ["\n\n".join(["First", TABLE, CHART, "Label"]), "Last"]
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("edit", ["text", "remove_table", "replace_table"])
+def test_ordered_blocks_use_live_edits(interleaved: SimpleNamespace, serialization: str, edit: str) -> None:
+    import pyarrow as pa
+
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    result = _ordered_result(interleaved)
+    if edit == "text":
+        result.at[0, "text"] = "Corrected text"
+        expected = ["Corrected text", TABLE, CHART, "Label"]
+        text_only = "Corrected text"
+    elif edit == "remove_table":
+        result.at[0, "table"] = []
+        expected = ["First", "Last", CHART, "Label"]
+        text_only = "First\n\nLast"
+    else:
+        box = result.iloc[0]["table"][0]["bbox_xyxy_norm"]
+        result.at[0, "table"] = [{"bbox_xyxy_norm": box, "text": "Corrected table"}]
+        expected = ["First", "Corrected table", "Last", CHART, "Label"]
+        text_only = "First\n\nLast"
+    if serialization == "arrow":
+        result = pa.Table.from_pandas(result).to_pandas()
+    elif serialization == "parquet":
+        buffer = io.BytesIO()
+        result.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        result = pd.read_parquet(buffer)
+
+    assert collapse_content_to_page_rows(result).iloc[0]["text"] == "\n\n".join(expected)
+    assert collapse_content_to_page_rows(result, content_columns=()).iloc[0]["text"] == text_only

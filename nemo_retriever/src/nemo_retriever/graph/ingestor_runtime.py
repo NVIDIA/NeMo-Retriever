@@ -444,7 +444,10 @@ def batch_tuning_to_node_overrides(
             getattr(extract_tuning, "nemotron_parse_workers", None) if extract_tuning is not None else None,
             plan.nemotron_parse_initial_actors if plan else None,
         )
-        if effective_allow_no_gpu:
+        parse_endpoint = getattr(extract_params, "nemotron_parse_invoke_url", None)
+        if not getattr(extract_params, "chart_routing", False):
+            parse_endpoint = parse_endpoint or getattr(extract_params, "invoke_url", None)
+        if effective_allow_no_gpu or parse_endpoint:
             _force_cpu_only(parse_actor.__name__)
         else:
             _set_gpu(

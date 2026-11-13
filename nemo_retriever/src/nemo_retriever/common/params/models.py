@@ -593,20 +593,91 @@ class ParseParams(_ParamsModel):
     """
 
     _auto_resolve_unset_api_keys: ClassVar[bool] = False
-    model: Optional[str] = None
-    invoke_url: Optional[str] = None
-    api_key: Optional[str] = None
-    request_timeout_s: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
-    table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = None
-    temperature: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
-    repetition_penalty: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
-    top_k: Optional[int] = None
-    top_p: Optional[float] = Field(default=None, gt=0, le=1, allow_inf_nan=False)
-    seed: Optional[int] = Field(default=None, ge=0)
-    max_tokens: Optional[int] = Field(default=None, gt=0)
-
-    use_dflash: Optional[bool] = None
-    num_speculative_tokens: Optional[Literal[8, 16, 32]] = None
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Parse model identifier. Local inference defaults to nvidia/Nemotron-3.5-Parse; remote 3.5 "
+            "postprocessing requires that explicit identifier."
+        ),
+    )
+    invoke_url: Optional[str] = Field(
+        default=None, description="Optional comma-separated Parse endpoint URLs. Omit for local inference."
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Parse-only API key. Unset inherits the extraction key; NO_API_KEY disables Parse " "authentication."
+        ),
+    )
+    request_timeout_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Positive Parse request timeout in seconds. Unset inherits the extraction timeout.",
+    )
+    table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
+        default=None,
+        description=(
+            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to HTML for "
+            "full pages and simple_html for chart crops."
+        ),
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description=(
+            "Nonnegative sampling temperature; zero selects greedy decoding. Unset inherits the page "
+            "backend default or 0.1 for chart crops."
+        ),
+    )
+    repetition_penalty: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Positive repetition penalty. Unset inherits the page backend default or 1.0 for chart crops.",
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        description=(
+            "Positive top-k cutoff, or -1 to disable filtering. Unset inherits the page backend default "
+            "or 50 for chart crops."
+        ),
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        allow_inf_nan=False,
+        description="Nucleus probability in (0, 1]. Unset inherits the page backend default or 1.0 for chart crops.",
+    )
+    seed: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Nonnegative sampling seed. Unset inherits the page backend default or 0 for chart crops.",
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Positive output token limit per page or crop. Unset inherits the page backend default or "
+            "8744 for chart crops."
+        ),
+    )
+    use_dflash: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Explicit opt-in to native local DFlash2. Unset or False uses the pinned vLLM plugin; "
+            "remote servers configure decoding separately."
+        ),
+    )
+    num_speculative_tokens: Optional[Literal[8, 16, 32]] = Field(
+        default=None,
+        description=(
+            "Local DFlash2 draft length: 8, 16, or 32 tokens (default 32). Requires use_dflash=True; "
+            "not supported for remote endpoints."
+        ),
+    )
 
     @model_serializer(mode="wrap")
     def _serialize(self, handler: Any) -> dict[str, Any]:

@@ -260,3 +260,13 @@ def test_local_dflash_options_reach_graph_and_model(routing):
 def test_unsupported_dflash_configurations_fail_before_inference(config):
     with pytest.raises(ValueError):
         ExtractParams(method="nemotron_parse", parse=ParseParams(**config))
+
+
+def test_parse_configuration_schema_describes_all_fields():
+    schema = ParseParams.model_json_schema()
+    assert all(field.get("description") for field in schema["properties"].values())
+    draft = schema["properties"]["num_speculative_tokens"]["description"]
+    assert "8, 16, or 32" in draft and "use_dflash=True" in draft
+    assert "chart crops" in schema["properties"]["max_tokens"]["description"]
+    restored = ParseParams.model_validate({"table_format": "simple_html", "top_k": 50})
+    assert restored.table_format == "simple_html" and restored.top_k == 50

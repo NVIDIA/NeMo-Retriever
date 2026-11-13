@@ -268,7 +268,9 @@ Parse 3.5 retains model block order in `ordered_regions` and
 formatting does not reorder blocks or change Chart rendering. Extraction flags
 select the retained modalities; content-column selection and text splitting
 continue to apply when building page text. Full-page Parse retains blank-line
-paragraph separators and captions in their model positions.
+paragraph separators and captions in their model positions. Page-text
+combination uses current text and modality entries, including edits, removals,
+and replacements made after extraction.
 
 ### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
 
@@ -318,6 +320,10 @@ Inspect the `chart_routing` output column for per-crop raw output and errors.
 Inference or postprocessing failures preserve the original OCR content.
 Successful empty Parse output replaces that chart's OCR content with empty
 text. Invalid or very small crops are skipped and counted in the diagnostics.
+
+In-process ingestion releases the routing model and HTTP client when the stage
+finishes. Direct routing actor users can call `cleanup()` to release these
+resources explicitly.
 
 ### Choose raise or collect behavior
 
