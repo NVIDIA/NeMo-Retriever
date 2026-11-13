@@ -166,7 +166,7 @@ spawned workers.
 
 ```python
 from nemo_retriever import create_ingestor
-from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import ExtractParams, ParseParams
 
 
 def main():
@@ -176,6 +176,7 @@ def main():
         .extract(
             ExtractParams(
                 method="nemotron_parse",
+                parse=ParseParams(table_format="simple_html"),
             )
         )
         .ingest()
@@ -187,15 +188,16 @@ if __name__ == "__main__":
     main()
 ```
 
-The Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
+By default, the Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
 from the same revision pinned in the model registry. It registers the plugin
 in vLLM workers automatically; no separate plugin installation is required.
 During engine startup, the adapter temporarily selects the pinned plugin
 snapshot and forces `VLLM_WORKER_MULTIPROC_METHOD="spawn"`. It restores both
 environment settings after startup, including when startup fails.
 The adapter executes checkpoint custom code with `trust_remote_code=True`.
-Review the checkpoint and plugin code before use. The adapter retains the
-existing task prompt, which disables text prediction inside pictures. The
+Review the checkpoint and plugin code before use. Parse 3.5 enables text
+prediction inside pictures with `<predict_text_in_pic>`. Parse v1.2 retains
+its prompt. The
 default extraction method remains `pdfium_hybrid`; select
 `method="nemotron_parse"` to use Parse.
 
@@ -227,6 +229,103 @@ pipeline execution. To use a remote Nemotron Parse endpoint, configure
 `nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
 the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
 unchanged.
+
+### Configure Parse 3.5 { #configure-parse-35 }
+
+Pass `ParseParams` as `ExtractParams(parse=ParseParams(...))` for full-page
+Parse or chart routing. Unset fields inherit the selected path's defaults.
+Full-page remote Parse 3.5 requires an explicit
+`model="nvidia/Nemotron-3.5-Parse"`; older or unidentified endpoints retain
+their existing postprocessing.
+
+The following settings configure Parse independently of the OCR model.
+
+| Field | Behavior |
+| --- | --- |
+| `model`, `invoke_url` | Select the model and optional remote endpoint. Omit the URL for local inference. Parse 3.5 sampling and chart routing use `/v1/chat/completions` endpoints. |
+| `api_key`, `request_timeout_s` | Override only Parse credentials and the positive request timeout. Unset values inherit extraction settings. `NO_API_KEY` disables authentication for Parse only. |
+| `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `HTML`; chart routing defaults to `simple_html`. |
+| `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
+| `use_dflash` | Set `True` to opt into local native DFlash2. Unset or `False` uses the pinned vLLM plugin. |
+| `num_speculative_tokens` | Select 8, 16, or 32 draft tokens, with 32 as the DFlash2 default. Requires explicit `use_dflash=True`. |
+
+DFlash2 requires a separately prepared compatible vLLM environment. NeMo
+Retriever Library does not upgrade dependencies or start an external service
+automatically. Engine options cannot configure a remote server. Refer to
+[Local Parse runtime requirements](deployment-options.md#local-parse-runtime-requirements).
+
+The selected format applies only to `Table` blocks, as described below.
+
+| Format | Rendering |
+| --- | --- |
+| `HTML` | Keeps the official Hugging Face `postprocess_document()` table rendering. |
+| `simple_html` | Removes `rowspan="1"` and `colspan="1"` from table cells. Preserves actual merged cells. |
+| `markdown` | Converts the raw table with the Hugging Face formatter. If conversion fails, retains HTML and logs a warning. |
+| `latex` | Uses the Hugging Face formatter's LaTeX table output. |
+
+Parse 3.5 retains model block order in `ordered_regions` and
+`ordered_page_text` for page-text combination and Markdown export. Table
+formatting does not reorder blocks or change Chart rendering. Extraction flags
+select the retained modalities; content-column selection and text splitting
+continue to apply when building page text. Full-page Parse retains blank-line
+paragraph separators and captions in their model positions. Page-text
+combination and Markdown export use current text and modality entries,
+including edits, removals, and replacements made after extraction. Markdown
+export supports collapsed page rows without repeating structured content and
+preserves their `content_columns` selection, including an empty selection.
+
+### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
+
+Set `chart_routing=True` with `method="ocr"` or `"pdfium_hybrid"` to replace
+chart-region OCR content with Parse 3.5 output. The default is `False`.
+Routing requires `use_page_elements=True`, `extract_charts=True`, and
+`extract_page_as_image=True`. Local routing requires a CUDA GPU and the Parse
+dependencies. Remote routing requires a Parse 3.5 chat-completions endpoint.
+
+The following example runs OCR and then routes detected chart crops locally.
+Use the same `__main__` guard as the full-page example in standalone scripts.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams, ParseParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="ocr",
+                chart_routing=True,
+                use_page_elements=True,
+                extract_charts=True,
+                extract_page_as_image=True,
+                parse=ParseParams(table_format="simple_html"),
+            )
+        )
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Routing selects only Page Elements detections labeled `chart`. It sends crops
+of those regions to Parse and preserves other page content and region boxes.
+The default crop generation settings are `temperature=0.1`,
+`repetition_penalty=1.0`, `top_k=50`, `top_p=1.0`, `seed=0`, and
+`max_tokens=8744`. Override them through `ParseParams`.
+
+Inspect the `chart_routing` output column for per-crop raw output and errors.
+Inference or postprocessing failures preserve the original OCR content.
+Successful empty Parse output replaces that chart's OCR content with empty
+text. Invalid or very small crops are skipped and counted in the diagnostics.
+
+In-process ingestion releases the routing model and HTTP client when the stage
+finishes. Direct routing actor users can call `cleanup()` to release these
+resources explicitly.
 
 ### Choose raise or collect behavior
 

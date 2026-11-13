@@ -554,14 +554,20 @@ class InprocessExecutor(AbstractExecutor):
         except ImportError:
             tqdm = None
 
-        if self._show_progress and tqdm is not None:
-            pbar = tqdm(operators, desc="Pipeline stages", unit="stage")
-            for name, op in pbar:
-                pbar.set_postfix_str(name)
+        stages = (
+            tqdm(operators, desc="Pipeline stages", unit="stage")
+            if self._show_progress and tqdm is not None
+            else operators
+        )
+        for name, op in stages:
+            if stages is not operators:
+                stages.set_postfix_str(name)
+            try:
                 df = op.run(df)
-        else:
-            for _name, op in operators:
-                df = op.run(df)
+            finally:
+                cleanup = getattr(op, "cleanup", None)
+                if callable(cleanup):
+                    cleanup()
 
         return df
 

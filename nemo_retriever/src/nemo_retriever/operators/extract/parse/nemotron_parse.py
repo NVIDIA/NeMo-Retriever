@@ -58,6 +58,16 @@ except Exception:  # pragma: no cover
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
 NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>"
+
+
+def _is_parse35_model(model_name: Optional[str]) -> bool:
+    return str(model_name or "").lower() in {NEMOTRON_PARSE35_MODEL.lower(), "nemotron-3.5-parse"}
+
+
+def _default_task_prompt(model_name: Optional[str]) -> str:
+    return NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT if _is_parse35_model(model_name) else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
+
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -121,6 +131,9 @@ def _route_parsed_elements(
     extract_tables: bool,
     extract_charts: bool,
     extract_infographics: bool,
+    parse35: bool = False,
+    table_format: Optional[str] = None,
+    ordered_regions: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Split raw Nemotron Parse output by element class into pipeline channels.
 
@@ -129,28 +142,47 @@ def _route_parsed_elements(
     dicts and ``page_text`` is the concatenated text of non-structured elements
     (or ``None`` if there are none).
     """
-    classes, bboxes, texts = extract_classes_bboxes(raw_text)
+    if parse35:
+        from nemo_retriever.common.modality.parse.nemotron_parse35_postprocessing import _postprocess_parse35_blocks
+
+        elements = [
+            (block["class"], block["bbox"], block["content"])
+            for block in _postprocess_parse35_blocks(raw_text, table_format=table_format or "HTML")
+        ]
+    else:
+        classes, bboxes, texts = extract_classes_bboxes(raw_text)
+        elements = [
+            (cls, bbox, _postprocess_element_text(text, cls=cls, table_format="markdown"))
+            for cls, bbox, text in zip(classes, bboxes, texts)
+        ]
     table_items: List[Dict[str, Any]] = []
     chart_items: List[Dict[str, Any]] = []
     infographic_items: List[Dict[str, Any]] = []
     text_parts: List[str] = []
 
-    for cls, bbox, text in zip(classes, bboxes, texts):
+    for cls, bbox, processed in elements:
         bbox_list = list(bbox)
-        processed = _postprocess_element_text(text, cls=cls, table_format="markdown")
         if not processed:
             continue
         channel = _PARSE_CLASS_TO_CHANNEL.get(cls)
         entry = {"bbox_xyxy_norm": bbox_list, "text": processed}
         if channel == "table" and extract_tables:
             table_items.append(entry)
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "table"})
         elif channel == "chart" and extract_charts:
             chart_items.append(entry)
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "chart"})
         elif channel == "infographic" and extract_infographics:
             infographic_items.append(entry)
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "infographic"})
         else:
             # Text, Title, Header_footer, Formula, etc. → page text
             text_parts.append(processed)
+            if ordered_regions is not None:
+                ordered_regions.append({**entry, "label_name": "text"})
 
     page_text = "\n\n".join(text_parts) if text_parts else None
     return table_items, chart_items, infographic_items, page_text
@@ -303,7 +335,9 @@ def nemotron_parse_pages(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     nemotron_parse_model: Optional[str] = None,
-    task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+    nemotron_parse_table_format: Optional[str] = None,
+    parse_sampling_params: Optional[Dict[str, Any]] = None,
+    task_prompt: Optional[str] = None,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -317,9 +351,26 @@ def nemotron_parse_pages(
     concatenated into the ``text`` column, replacing the upstream pdfium
     extraction when ``extract_text`` is ``True``.
 
+    ``nemotron_parse_table_format`` selects ``HTML`` (the 3.5 default),
+    ``simple_html``, ``markdown``, or ``latex`` for Parse 3.5 Table blocks only.
+    ``parse_sampling_params`` contains validated Parse 3.5 generation overrides
+    (temperature, repetition_penalty, top_k, top_p, seed, max_tokens). Remote
+    overrides require chat-completions URLs; local adapters must be configured
+    with those settings at construction, as the GPU actor does. Unset settings
+    retain the selected backend's defaults. Unsupported models or endpoints
+    raise ValueError before inference.
+    With no format selection, legacy models retain Markdown tables.
+    ``task_prompt=None`` selects the version-specific prompt: Parse 3.5 requests
+    picture text; legacy models disable it. An explicit prompt takes precedence.
+    An explicit format requires an identified Parse 3.5 model; invalid selections
+    raise ``ValueError`` before inference.
+
     Native ``/v1/parse`` endpoints return tagged content in ``content``, which
     uses the same element routing. Untagged Markdown is preserved as page text.
     """
+    from nemo_retriever.common.params import ParseParams
+
+    sampling = ParseParams(**(parse_sampling_params or {}))._sampling_overrides()
     retry = remote_retry or RemoteRetryParams(
         remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),
         remote_max_retries=int(kwargs.get("remote_max_retries", 10)),
@@ -330,6 +381,25 @@ def nemotron_parse_pages(
 
     invoke_url = str(invoke_url or "").strip() or str(kwargs.get("nemotron_parse_invoke_url") or "").strip()
     use_remote = bool(invoke_url)
+    selected_model = nemotron_parse_model
+    if not use_remote and selected_model is None:
+        selected_model = getattr(model, "model_name", None)
+    parse35 = _is_parse35_model(selected_model)
+    if nemotron_parse_table_format is not None:
+        if nemotron_parse_table_format not in ("HTML", "simple_html", "markdown", "latex"):
+            raise ValueError("nemotron_parse_table_format must be HTML, simple_html, markdown, or latex.")
+        if not parse35:
+            raise ValueError("nemotron_parse_table_format requires an explicitly identified Parse 3.5 model.")
+    if sampling:
+        if not parse35:
+            raise ValueError("Parse sampling overrides require an explicitly identified Parse 3.5 model.")
+        if use_remote and any(
+            not url.rstrip("/").endswith("/v1/chat/completions")
+            for url in validate_nemotron_parse_endpoint_list(invoke_url)
+        ):
+            raise ValueError("Parse sampling overrides require local inference or /v1/chat/completions URLs.")
+    if task_prompt is None:
+        task_prompt = _default_task_prompt(selected_model)
     if use_remote:
         validate_nemotron_parse_endpoint_list(invoke_url)
     if not use_remote and model is None:
@@ -340,6 +410,7 @@ def nemotron_parse_pages(
     all_chart: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_infographic: List[List[Dict[str, Any]]] = [[] for _ in range(n_rows)]
     all_text: List[Optional[str]] = [None] * n_rows
+    all_ordered_regions: List[Optional[List[Dict[str, Any]]]] = [None] * n_rows
     all_meta: List[Dict[str, Any]] = [{"timing": None, "error": None} for _ in range(n_rows)]
 
     t0_total = time.perf_counter()
@@ -407,6 +478,8 @@ def nemotron_parse_pages(
                     contract = _resolve_nemotron_parse_contract(invoke_url, nemotron_parse_model)
                     uses_tool_call_routing = contract.uses_tool_call_routing
                     extra_body: Dict[str, Any] = {"max_tokens": 8192}
+                    if parse35:
+                        extra_body.update(max_tokens=8744, top_k=1, skip_special_tokens=False)
                     if contract.profile == _NemotronParseContractProfile.LEGACY_TOOL_CALL:
                         extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
                     _chat_kw = dict(
@@ -423,6 +496,13 @@ def nemotron_parse_pages(
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
+                    if sampling:
+                        for key in ("temperature", "repetition_penalty"):
+                            if key in sampling:
+                                _chat_kw[key] = sampling[key]
+                        extra_body.update(
+                            {k: v for k, v in sampling.items() if k not in ("temperature", "repetition_penalty")}
+                        )
                     if nim_client is not None:
                         raw_texts = nim_client.invoke_chat_completions_images(**_chat_kw)
                     else:
@@ -495,17 +575,32 @@ def nemotron_parse_pages(
                     raise ValueError("Untagged native Parse content requires extract_text=True.")
                 all_text[idx] = raw_text
                 continue
+            ordered_regions: List[Dict[str, Any]] = []
+            route_kwargs = (
+                {
+                    "parse35": parse35,
+                    "table_format": nemotron_parse_table_format,
+                    "ordered_regions": ordered_regions if parse35 else None,
+                }
+                if not uses_tool_call_routing
+                else {}
+            )
             fp_tables, fp_charts, fp_infographics, fp_text = route_fn(
                 raw_text,
                 extract_tables=extract_tables,
                 extract_charts=extract_charts,
                 extract_infographics=extract_infographics,
+                **route_kwargs,
             )
             all_table[idx] = fp_tables
             all_chart[idx] = fp_charts
             all_infographic[idx] = fp_infographics
             if fp_text is not None:
                 all_text[idx] = fp_text
+            if parse35:
+                all_ordered_regions[idx] = [
+                    region for region in ordered_regions if extract_text or region["label_name"] != "text"
+                ]
         except BaseException as e:
             all_meta[idx] = {
                 "timing": None,
@@ -528,6 +623,17 @@ def nemotron_parse_pages(
                 out.iat[i, out.columns.get_loc("text")] = parse_text
     elif extract_text:
         out["text"] = [t if t is not None else "" for t in all_text]
+    if parse35:
+        out["ordered_regions"] = all_ordered_regions
+        out["ordered_page_text_separator"] = "\n\n"
+        out["ordered_page_text"] = [
+            (
+                "\n\n".join(region["text"].strip() for region in regions if region["text"].strip())
+                if regions is not None
+                else None
+            )
+            for regions in all_ordered_regions
+        ]
     out["table"] = all_table
     out["chart"] = all_chart
     out["infographic"] = all_infographic
@@ -555,10 +661,14 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_table_format: Optional[str] = None,
+        parse_sampling_params: Optional[Dict[str, Any]] = None,
+        use_dflash: Optional[bool] = None,
+        num_speculative_tokens: Optional[int] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+        task_prompt: Optional[str] = None,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -567,10 +677,15 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         super().__init__(**kwargs)
         self._invoke_url = str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip()
         self._nemotron_parse_model = nemotron_parse_model
+        self._nemotron_parse_table_format = nemotron_parse_table_format
+        self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._use_dflash = use_dflash
+        self._num_speculative_tokens = num_speculative_tokens
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        self._task_prompt = str(task_prompt)
+        selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
+        self._task_prompt = task_prompt if task_prompt is not None else _default_task_prompt(selected_model)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -598,7 +713,18 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             if model_id == NEMOTRON_PARSE35_MODEL:
                 from nemo_retriever.models.local import NemotronParse35
 
-                self._model = NemotronParse35(task_prompt=self._task_prompt, backend="vllm")
+                model_kwargs: Dict[str, Any] = {"task_prompt": self._task_prompt, "backend": "vllm"}
+                if self._use_dflash is not None:
+                    model_kwargs["use_dflash"] = self._use_dflash
+                if self._num_speculative_tokens is not None:
+                    model_kwargs["num_speculative_tokens"] = self._num_speculative_tokens
+                if self._parse_sampling_params:
+                    model_kwargs["sampling_params"] = {
+                        key: value for key, value in self._parse_sampling_params.items() if key != "max_tokens"
+                    }
+                    if "max_tokens" in self._parse_sampling_params:
+                        model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
+                self._model = NemotronParse35(**model_kwargs)
             else:
                 from nemo_retriever.models.local import NemotronParseV12
 
@@ -611,6 +737,8 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             model=self._model,
             invoke_url=self._invoke_url,
             nemotron_parse_model=self._nemotron_parse_model,
+            nemotron_parse_table_format=self._nemotron_parse_table_format,
+            parse_sampling_params=self._parse_sampling_params,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -663,10 +791,14 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_table_format: Optional[str] = None,
+        parse_sampling_params: Optional[Dict[str, Any]] = None,
+        use_dflash: Optional[bool] = None,
+        num_speculative_tokens: Optional[int] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+        task_prompt: Optional[str] = None,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -677,10 +809,15 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             str(nemotron_parse_invoke_url or "").strip() or str(invoke_url or "").strip() or self.DEFAULT_INVOKE_URL
         )
         self._nemotron_parse_model = nemotron_parse_model
+        self._nemotron_parse_table_format = nemotron_parse_table_format
+        self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._use_dflash = use_dflash
+        self._num_speculative_tokens = num_speculative_tokens
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        self._task_prompt = str(task_prompt)
+        selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
+        self._task_prompt = task_prompt if task_prompt is not None else _default_task_prompt(selected_model)
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -702,6 +839,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             model=self._model,
             invoke_url=self._invoke_url,
             nemotron_parse_model=self._nemotron_parse_model,
+            nemotron_parse_table_format=self._nemotron_parse_table_format,
+            parse_sampling_params=self._parse_sampling_params,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -758,10 +897,14 @@ class NemotronParseActor(ArchetypeOperator):
         extract_infographics: bool = False,
         nemotron_parse_invoke_url: Optional[str] = None,
         nemotron_parse_model: Optional[str] = None,
+        nemotron_parse_table_format: Optional[str] = None,
+        parse_sampling_params: Optional[Dict[str, Any]] = None,
+        use_dflash: Optional[bool] = None,
+        num_speculative_tokens: Optional[int] = None,
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+        task_prompt: Optional[str] = None,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -774,6 +917,10 @@ class NemotronParseActor(ArchetypeOperator):
             extract_infographics=extract_infographics,
             nemotron_parse_invoke_url=nemotron_parse_invoke_url,
             nemotron_parse_model=nemotron_parse_model,
+            nemotron_parse_table_format=nemotron_parse_table_format,
+            parse_sampling_params=parse_sampling_params,
+            use_dflash=use_dflash,
+            num_speculative_tokens=num_speculative_tokens,
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,

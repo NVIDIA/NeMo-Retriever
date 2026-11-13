@@ -161,6 +161,40 @@ def _build_embed_batch_tuning(
     return BatchTuningParams(**tuning_kwargs) if tuning_kwargs else None
 
 
+def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dict[str, Any]:
+    """Translate extraction options for full-page Parse or chart-crop actors.
+
+    Parse-specific connection and sampling options override shared extraction
+    settings. Chart routing uses only the Parse endpoint so the OCR endpoint
+    cannot accidentally receive Parse requests.
+    """
+    kwargs: dict[str, Any] = {
+        "api_key": params.api_key,
+        "request_timeout_s": params.request_timeout_s,
+    }
+    retry = getattr(params, "remote_retry", None)
+    if retry is not None:
+        for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
+            kwargs[key] = int(getattr(retry, key))
+    if params.nemotron_parse_invoke_url:
+        kwargs["nemotron_parse_invoke_url"] = params.nemotron_parse_invoke_url
+    elif not chart_routing and params.invoke_url:
+        kwargs["invoke_url"] = params.invoke_url
+    if not chart_routing:
+        kwargs.update(
+            {
+                key: getattr(params, key)
+                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            }
+        )
+        if params.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = params.nemotron_parse_model
+    if params.nemotron_parse_table_format is not None:
+        kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
+    kwargs.update(params._parse_actor_overrides())
+    return kwargs
+
+
 def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> Dict[str, Any]:
     """Flatten an ``EmbedParams`` instance into a dict ready for actor/task kwargs.
 

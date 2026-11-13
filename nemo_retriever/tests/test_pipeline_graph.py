@@ -1132,6 +1132,11 @@ class TestMultiTypeExtractOperator:
             lambda self, data: data,
         )
 
+        monkeypatch.setattr(
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.PDFExtractionActor.run",
+            lambda self, data: data,
+        )
+
         def _fake_resolve(operator_class, resources, operator_kwargs=None):
             calls.append((operator_class.__name__, resources, operator_kwargs))
             return _IdentityStage
@@ -2446,3 +2451,43 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert result["val"].iloc[0] == 13
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_inprocess_executor_cleans_up_stage_before_next_stage(monkeypatch, failure):
+    import nemo_retriever.graph.executor as module
+
+    events = []
+
+    class ResourceStage(AbstractOperator):
+        def preprocess(self, data, **kwargs):
+            return data
+
+        def process(self, data, **kwargs):
+            events.append("run")
+            if failure:
+                raise RuntimeError("stage failed")
+            return data
+
+        def postprocess(self, data, **kwargs):
+            return data
+
+        def cleanup(self):
+            events.append("cleanup")
+
+    class NextStage(ResourceStage):
+        def process(self, data, **kwargs):
+            assert events == ["run", "cleanup"]
+            return data
+
+        def cleanup(self):
+            pass
+
+    monkeypatch.setattr(module, "resolve_graph", lambda graph, resources: graph)
+    executor = InprocessExecutor(Graph() >> ResourceStage() >> NextStage(), show_progress=False)
+    if failure:
+        with pytest.raises(RuntimeError, match="stage failed"):
+            executor.ingest(pd.DataFrame([{"text": "page"}]))
+    else:
+        executor.ingest(pd.DataFrame([{"text": "page"}]))
+    assert events == ["run", "cleanup"]
