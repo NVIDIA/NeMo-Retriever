@@ -344,7 +344,7 @@ Warning: Nemotron Parse page incomplete: path=/data/report.pdf page=3 finish_rea
 
 The native Parse NIM and the default local vLLM model generate at most 9,000 tokens per page. Very dense pages, or output that repeats until the limit, can stop before the page is finished. The library keeps the elements that the model completed and drops the unfinished final element. If the limit is reached before the first element finishes, the page has no extracted elements and is still reported as incomplete.
 
-To find incomplete pages in extraction results, read the `completion` field in each row's `nemotron_parse_v1_2` metadata. Its `status` is `complete`, `incomplete`, or `failed`, with the model's `finish_reason` and `output_tokens` when available. Pages that fail log `Warning: Nemotron Parse page failed:` or `Warning: Nemotron Parse batch failed:` and record an `error`.
+To find incomplete pages in extraction results, read the `completion` field in each row's `nemotron_parse_v1_2` metadata. Its `status` is `complete`, `incomplete`, `unknown`, or `failed`, with the model's `finish_reason` and `output_tokens` when available. `unknown` means the backend did not report why generation stopped, as with chat-completions endpoints and the Transformers backend, so a cut-off page cannot be ruled out. Pages that fail log `Warning: Nemotron Parse page failed:` or `Warning: Nemotron Parse batch failed:` and record an `error`.
 
 Sending the unchanged page again does not raise the limit. If missing content matters, review the page and consider extracting dense regions separately or using another extraction method for that document.
 

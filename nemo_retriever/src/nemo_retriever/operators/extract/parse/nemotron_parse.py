@@ -98,9 +98,19 @@ def _page_label(row: Any) -> str:
 
 
 def _completion(finish_reason: Any = None, output_tokens: Any = None, *, failed: bool = False) -> Dict[str, Any]:
-    """Describe whether generation failed or finished before its output token limit."""
+    """Describe whether generation failed, hit its output token limit, or finished.
+
+    ``complete`` requires a reported stop reason other than ``length``. Backends that
+    report none (chat-completions and Transformers) are ``unknown`` rather than
+    assumed finished.
+    """
+    status = (
+        "failed"
+        if failed
+        else "unknown" if finish_reason is None else "incomplete" if finish_reason == "length" else "complete"
+    )
     return {
-        "status": "failed" if failed else "incomplete" if finish_reason == "length" else "complete",
+        "status": status,
         "finish_reason": finish_reason,
         "output_tokens": output_tokens,
     }
@@ -343,7 +353,8 @@ def nemotron_parse_pages(
 
     Each parsed page records ``completion`` in its ``nemotron_parse_v1_2``
     metadata: ``status`` is ``"complete"``, ``"incomplete"`` when generation
-    reached its output token limit (``finish_reason="length"``), or ``"failed"``.
+    reached its output token limit (``finish_reason="length"``), ``"unknown"``
+    when the backend reports no stop reason, or ``"failed"``.
     Incomplete pages keep their fully tagged elements, drop the unterminated
     final element, and log ``Warning: Nemotron Parse page incomplete:`` with the
     page's source path and page number. Failures log

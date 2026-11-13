@@ -163,6 +163,19 @@ def test_native_markdown_capped_output_is_kept_as_page_text(content):
     assert result.iloc[0]["nemotron_parse_v1_2"]["completion"]["status"] == "incomplete"
 
 
+def test_page_without_a_reported_stop_reason_is_not_reported_complete():
+    client = Mock()
+    client.invoke_parse_pages.return_value = [{"content": "<x_0.1><y_0.2>Body<x_0.8><y_0.3><class_Text>"}]
+    batch = pd.DataFrame([{"path": "a.pdf", "page_number": 1, "page_image": {"image_b64": "aW1hZ2U="}}])
+    result = nemotron_parse_pages(batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True)
+    assert result.iloc[0]["nemotron_parse_v1_2"]["completion"] == {
+        "status": "unknown",
+        "finish_reason": None,
+        "output_tokens": None,
+    }
+    assert result.iloc[0]["text"] == "Body"
+
+
 def test_failed_native_batch_marks_every_page_failed(caplog):
     client = Mock()
     client.invoke_parse_pages.side_effect = TimeoutError("NIM unavailable")
