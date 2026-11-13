@@ -865,6 +865,7 @@ def postprocess_page_elements_v3(
     annotation_dict: Dict[str, List[List[float]]],
     labels: Optional[List[str]] = None,
     final_score: Optional[Dict[str, float]] = None,
+    suppress_text_in_infographics: bool = True,
 ) -> Dict[str, List[List[float]]]:
     """
     Expand bounding boxes of tables/charts/infographics and titles based on the bounding boxes of the other class.
@@ -873,6 +874,8 @@ def postprocess_page_elements_v3(
         "table", "chart", "infographics", "title", "paragraph", "header_footer".
         labels: ordered class labels corresponding to the annotation dictionary.
         final_score: per-class thresholds used by the final output filter.
+        suppress_text_in_infographics: remove text, title, and header/footer boxes contained in
+            infographic boxes. Disable when infographic content is not extracted, so that text is kept.
 
     Returns:
         annotation_dict: same as input, with expanded bboxes for page elements.
@@ -927,7 +930,9 @@ def postprocess_page_elements_v3(
         bboxes, confidences, label_idxs, labels
     )
     bboxes, label_idxs, confidences = expand_tables_and_charts(bboxes, confidences, label_idxs, labels, found_title)
-    bboxes, label_idxs, confidences = postprocess_included_texts(bboxes, confidences, label_idxs, labels)
+    bboxes, label_idxs, confidences = postprocess_included_texts(
+        bboxes, confidences, label_idxs, labels, suppress_text_in_infographics=suppress_text_in_infographics
+    )
 
     order = np.argsort(bboxes[:, 1] * 10 + bboxes[:, 0])
     bboxes, confidences, label_idxs = bboxes[order], confidences[order], label_idxs[order]
@@ -1578,7 +1583,14 @@ def get_overlaps(boxes, other_boxes, normalize="box_only"):
     return overlaps
 
 
-def postprocess_included(boxes, labels, confs, class_="title", classes=["table", "chart", "title", "infographic"]):
+def postprocess_included(
+    boxes,
+    labels,
+    confs,
+    class_="title",
+    classes=["table", "chart", "title", "infographic"],
+    suppress_text_in_infographics=True,
+):
     """
     Post process title predictions.
     - Remove titles that are included in other boxes
@@ -1588,6 +1600,7 @@ def postprocess_included(boxes, labels, confs, class_="title", classes=["table",
         labels (numpy.ndarray [N]): Array of labels.
         confs (numpy.ndarray [N]): Array of confidences.
         class_ (str, optional): Class to postprocess. Defaults to "title".
+        suppress_text_in_infographics (bool, optional): Treat infographic boxes as containers. Defaults to True.
         classes (list, optional): Classes. Defaults to ["table", "chart", "title", "infographic"].
 
     Returns:
@@ -1606,7 +1619,7 @@ def postprocess_included(boxes, labels, confs, class_="title", classes=["table",
 
     # other_boxes = boxes[labels != classes.index("title")]
 
-    inclusion_classes = ["table", "infographic", "chart"]
+    inclusion_classes = ["table", "infographic", "chart"] if suppress_text_in_infographics else ["table", "chart"]
     if class_ in ["header_footer", "title"]:
         inclusion_classes.append("paragraph")
 
@@ -1718,9 +1731,11 @@ def expand_tables_and_charts(boxes, confs, labels, classes, found_title):
     return boxes, labels, confs
 
 
-def postprocess_included_texts(boxes, confs, labels, classes):
+def postprocess_included_texts(boxes, confs, labels, classes, suppress_text_in_infographics=True):
     for c in ["title", "paragraph", "header_footer"]:
-        boxes, labels, confs = postprocess_included(boxes, labels, confs, c, classes)
+        boxes, labels, confs = postprocess_included(
+            boxes, labels, confs, c, classes, suppress_text_in_infographics=suppress_text_in_infographics
+        )
     return boxes, labels, confs
 
 

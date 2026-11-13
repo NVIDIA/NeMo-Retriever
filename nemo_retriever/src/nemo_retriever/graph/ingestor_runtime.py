@@ -927,7 +927,7 @@ def build_graph(
             parse_kwargs.update(_nim_remote_http_kwargs(extract_params))
             graph = graph >> NemotronParseActor(**parse_kwargs)
         else:
-            detect_kwargs: dict[str, Any] = {}
+            detect_kwargs: dict[str, Any] = {"extract_infographics": bool(extract_params.extract_infographics)}
             if extract_params.page_elements_invoke_url:
                 detect_kwargs["page_elements_invoke_url"] = extract_params.page_elements_invoke_url
             if extract_params.api_key:
