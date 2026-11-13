@@ -248,7 +248,7 @@ def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> Non
         actor = NemotronParseGPUActor(nemotron_parse_model=model_id)
         actor._ensure_model()
         actor._ensure_model()
-    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm")
+    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
     assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
 
 
@@ -333,3 +333,75 @@ def test_native_output_uses_existing_pipeline_routing(runtime: SimpleNamespace) 
     assert result.iloc[0]["chart"][0]["text"] == "Chart text"
     assert result.iloc[0]["table"][0]["text"] == "Table text"
     assert result.iloc[0]["infographic"][0]["bbox_xyxy_norm"] == [0.1, 0.3, 0.8, 0.7]
+
+
+def test_dflash_survives_actor_reconstruction_and_reaches_local_model():
+    actor = NemotronParseGPUActor(nemotron_parse_dflash_tokens=32)
+    reconstructed = NemotronParseGPUActor(**actor.get_constructor_kwargs())
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        reconstructed._ensure_model()
+    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"nemotron_parse_model": "nvidia/NVIDIA-Nemotron-Parse-v1.2"},
+        {"invoke_url": "http://parse.example/v1/chat/completions"},
+    ],
+)
+def test_actor_rejects_unsupported_dflash_configuration(kwargs):
+    from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+
+    for actor_class in (NemotronParseGPUActor, NemotronParseActor):
+        with pytest.raises(ValueError, match="requires local Nemotron Parse 3.5"):
+            actor_class(nemotron_parse_dflash_tokens=32, **kwargs)
+
+
+@pytest.mark.parametrize("tokens", ["auto", None, 16])
+def test_dflash_reaches_both_pdf_graph_paths(monkeypatch, tokens):
+    from nemo_retriever.common.params import ExtractParams
+    from nemo_retriever.graph.graph_pipeline_registry import get_node_kwargs
+    from nemo_retriever.graph.ingestor_runtime import build_graph
+    from nemo_retriever.operators.graph_ops import multi_type_extract_operator as multi_type
+
+    params = ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=tokens)
+    graph = build_graph(extraction_mode="pdf", extract_params=params)
+    assert get_node_kwargs(graph, "NemotronParseActor")["nemotron_parse_dflash_tokens"] == tokens
+    captured = {}
+
+    class Identity:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, data):
+            return data
+
+    for name in ("DocToPdfConversionActor", "PDFSplitActor", "PDFExtractionActor"):
+        monkeypatch.setattr(multi_type, name, Identity)
+    operator = multi_type.MultiTypeExtractCPUActor(extraction_mode="pdf", extract_params=params)
+
+    def instantiate(actor, **kwargs):
+        captured.update(kwargs)
+        return Identity()
+
+    monkeypatch.setattr(operator, "_instantiate_resolved", instantiate)
+    monkeypatch.setattr(operator, "_maybe_chunk", lambda data, mode: data)
+    operator._run_pdf_pipeline(pd.DataFrame())
+    assert captured["nemotron_parse_dflash_tokens"] == tokens
+
+
+def test_explicit_mtp_optout_survives_actor_reconstruction():
+    actor = NemotronParseGPUActor(nemotron_parse_dflash_tokens=None)
+    rebuilt = NemotronParseGPUActor(**actor.get_constructor_kwargs())
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        rebuilt._ensure_model()
+    assert parser.call_args.kwargs["dflash_tokens"] is None
+
+
+def test_remote_auto_default_preserves_remote_path():
+    actor = NemotronParseGPUActor(invoke_url="http://parse.example/v1/chat/completions")
+    assert actor._nemotron_parse_dflash_tokens is None
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        actor._ensure_model()
+    parser.assert_not_called()

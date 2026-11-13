@@ -40,6 +40,11 @@ For a Transformers fallback, direct adapter callers can select
 Refer to [Select a supported extraction method](nemo-retriever-api-reference.md#select-a-supported-extraction-method)
 for the configuration and checkpoint-code requirements.
 
+Local Parse 3.5 vLLM inference uses DFlash2 speculative decoding with a draft
+length of 32 tokens by default. Refer to [Configure DFlash2 for local Parse 3.5](nemo-retriever-api-reference.md#configure-dflash2-for-local-parse-35)
+to tune the draft length or select the one-token multi-token prediction (MTP)
+fallback.
+
 **Related**
 
 - [NeMo Retriever Library Overview](overview.md)
