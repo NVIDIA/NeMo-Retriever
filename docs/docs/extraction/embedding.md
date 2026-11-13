@@ -122,7 +122,8 @@ losslessly, not truncated.
 formatted embedding-input limit. `EmbedParams.query_max_length` controls the
 separate query limit.
 
-For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`, text
+For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`,
+`nvidia/Nemotron-3.5-Embed-1B-BF16`, or `nvidia/Nemotron-3.5-Embed-1B-NVFP4`, text
 admission also enforces a safety limit of 65,536 UTF-8 bytes per formatted input.
 The budget includes template escaping and the server-added prefix, even when
 your content already starts with that prefix.
