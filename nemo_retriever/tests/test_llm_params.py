@@ -582,6 +582,34 @@ class TestLLMJudgeConstruction:
         assert verdict.error is not None and "judge_no_score" in verdict.error
 
     @patch("litellm.completion")
+    def test_judge_reads_rating_after_closed_reasoning(self, mock_completion):
+        """A closed <think> block is dropped and the rating after it is read: both judges -> 2 (0.5)."""
+        from nemo_retriever.models.llm.clients import LLMJudge
+
+        mock_completion.return_value = _fake_litellm_response('<think>Missing the date.</think>{"rating": 2}')
+        judge = LLMJudge.from_kwargs(model="m")
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score == 0.5
+        assert mock_completion.call_count == 2
+
+    @patch("litellm.completion")
+    def test_judge_retries_when_reasoning_is_cut_off(self, mock_completion):
+        """A <think> block cut off by max_tokens is not a rating, even when it mentions 4."""
+        from nemo_retriever.models.llm.clients import LLMJudge
+
+        mock_completion.side_effect = [
+            _fake_litellm_response("<think>The scale is 4 for an equivalent answer, 2 for a partial one"),
+            _fake_litellm_response('{"rating": 2}'),
+            _fake_litellm_response('{"rating": 2}'),
+        ]
+        judge = LLMJudge.from_kwargs(model="m", num_retries=2)
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score == 0.5
+        assert verdict.error is None
+        # Judge 1 retries past the cut-off reply; judge 2 rates on its first call.
+        assert mock_completion.call_count == 3
+
+    @patch("litellm.completion")
     def test_judge_transport_error_surfaced(self, mock_completion):
         """When every attempt raises, the last transport error is in the JudgeResult."""
         from nemo_retriever.models.llm.clients import LLMJudge
