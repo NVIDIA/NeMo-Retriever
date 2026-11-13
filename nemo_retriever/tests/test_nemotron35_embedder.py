@@ -102,6 +102,16 @@ def test_local_defaults_preserve_remote_and_explicit_precisions(monkeypatch):
     assert resolve_local_embed_model(None, backend="vllm") == NEMOTRON_35_EMBED_BF16_MODEL
 
 
+@pytest.mark.parametrize("native_nvfp4", [True, False])
+@pytest.mark.parametrize("backend", ["vllm", "hf"])
+def test_explicit_native_nvfp4_answer_skips_driver_probe(monkeypatch, native_nvfp4, backend):
+    driver_probe = MagicMock(side_effect=AssertionError("Explicit answer must not probe CUDA"))
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
+    expected = NEMOTRON_35_EMBED_NVFP4_MODEL if native_nvfp4 and backend == "vllm" else NEMOTRON_35_EMBED_BF16_MODEL
+    assert resolve_local_embed_model(None, backend=backend, native_nvfp4=native_nvfp4) == expected
+    driver_probe.assert_not_called()
+
+
 def test_hf_masked_pooling_normalization_and_positions():
     embedder = Nemotron35Embedder("model", None, "query: ", "passage: ", backend="hf")
     embedder._template = TEMPLATE

@@ -49,7 +49,12 @@ from nemo_retriever.ingest.index_mode import (
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model, resolve_local_embed_model
+from nemo_retriever.models import (
+    NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_35_EMBED_MODEL,
+    resolve_embed_model,
+    resolve_local_embed_model,
+)
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
 
 IngestRunModeValue = Literal["inprocess", "batch"]
@@ -679,16 +684,19 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     # Unspecified defaults depend on the selected graph actor: GPU actors
     # use local N3.5, while CPU actors supply the hosted N3 endpoint. The
     # resolved graph shares that actor's identity with the index writer.
+    graph_selects_model = not remote_embedding and (
+        not embed.embed_model_name
+        or (validated_run_mode == "batch" and embed.embed_model_name == NEMOTRON_35_EMBED_MODEL)
+    )
     embedding_model_name = (
         None
-        if resolved_index_mode == "sparse" or (not remote_embedding and not embed.embed_model_name)
+        if resolved_index_mode == "sparse" or graph_selects_model
         else (
             resolve_embed_model(embed.embed_model_name)
             if remote_embedding or legacy_n3
             else resolve_local_embed_model(
                 embed.embed_model_name,
                 backend=embed.local_ingest_embed_backend or "vllm",
-                allow_native_nvfp4=validated_run_mode != "batch",
             )
         )
     )

@@ -15,11 +15,70 @@ from nemo_retriever.graph.operator_resolution import resolve_graph
 from nemo_retriever.models import (
     NEMOTRON_3_EMBED_BF16_MODEL,
     NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_3_EMBED_NVFP4_MODEL,
     NEMOTRON_35_EMBED_BF16_MODEL,
+    NEMOTRON_35_EMBED_MODEL,
     NEMOTRON_35_EMBED_NVFP4_MODEL,
+    ray_cluster_supports_native_nvfp4,
 )
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.operators.vdb import IngestVdbOperator
+
+
+@pytest.mark.parametrize(
+    "majors,error,expected",
+    [
+        ([[10, 10], [10]], None, True),
+        ([[9], [9]], None, False),
+        ([[10], [9]], None, False),
+        ([], None, False),
+        ([[]], None, False),
+        ([[10]], "nvml", False),
+        ([[10]], "ray_get", False),
+    ],
+)
+def test_ray_cluster_supports_native_nvfp4(monkeypatch, caplog, majors, error, expected):
+    import ray
+    import pynvml
+
+    ray_cluster_supports_native_nvfp4.cache_clear()
+    caplog.set_level("INFO", logger="nemo_retriever.models")
+    nodes = [{"NodeID": f"{i:056x}", "Alive": True, "Resources": {"GPU": 1}} for i in range(len(majors))]
+    if len(nodes) > 1:
+        nodes[1]["NodeManagerAddress"] = "192.0.2.2"
+    nodes += [
+        {"NodeID": "dead", "Alive": False, "Resources": {"GPU": 1}},
+        {"NodeID": "cpu", "Alive": True, "Resources": {"CPU": 8}},
+    ]
+    probed = []
+
+    def remote(probe):
+        task = MagicMock()
+
+        def options(*, scheduling_strategy):
+            probed.append(scheduling_strategy.node_id)
+            return task
+
+        task.options.side_effect = options
+        task.remote.side_effect = probe
+        return task
+
+    monkeypatch.setattr(ray, "remote", lambda **kwargs: remote)
+    monkeypatch.setattr(ray, "nodes", lambda: nodes)
+    monkeypatch.setattr(
+        ray, "get", MagicMock(side_effect=TimeoutError() if error == "ray_get" else lambda refs, timeout: refs)
+    )
+    monkeypatch.setattr(pynvml, "nvmlInit", MagicMock(side_effect=RuntimeError() if error == "nvml" else None))
+    monkeypatch.setattr(pynvml, "nvmlShutdown", lambda: None)
+    monkeypatch.setattr(pynvml, "nvmlDeviceGetCount", lambda: len(majors[int(probed[-1], 16)]))
+    monkeypatch.setattr(pynvml, "nvmlDeviceGetHandleByIndex", lambda index: index)
+    monkeypatch.setattr(
+        pynvml, "nvmlDeviceGetCudaComputeCapability", lambda index: (majors[int(probed[-1], 16)][index], 0)
+    )
+    assert ray_cluster_supports_native_nvfp4() is expected
+    assert "dead" not in probed and "cpu" not in probed
+    if majors == [[10], [9]]:
+        assert "Batch embed precision BF16: node 192.0.2.2 has CC 9.0" in caplog.text
 
 
 def resolved_stages(tmp_path, params, *, gpu_count=1, vdb_kwargs=None, resources=None):
@@ -107,12 +166,20 @@ def test_cli_default_is_resolved_by_selected_actor(tmp_path, monkeypatch, run_mo
     document.write_bytes(b"%PDF-1.4\n")
     driver_probe = MagicMock(return_value=True)
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
+    cluster_probe = MagicMock(return_value=True)
+    monkeypatch.setattr("nemo_retriever.models.ray_cluster_supports_native_nvfp4", cluster_probe)
     plan = resolve_ingest_plan(
         IngestPlanRequest(
             source=IngestSourceOptions(documents=[str(document)]),
             runtime=IngestRuntimeOptions(run_mode=run_mode),
             # Exercise non-model options as well as the entirely omitted embed params.
-            embed=IngestEmbedOptions(embed_granularity="page") if with_embed_options else IngestEmbedOptions(),
+            embed=(
+                IngestEmbedOptions(
+                    embed_granularity="page", embed_model_name=NEMOTRON_35_EMBED_MODEL if run_mode == "batch" else None
+                )
+                if with_embed_options
+                else IngestEmbedOptions()
+            ),
             storage=IngestStorageOptions(lancedb_uri=str(tmp_path / "index")),
         )
     )
@@ -136,7 +203,7 @@ def test_cli_default_is_resolved_by_selected_actor(tmp_path, monkeypatch, run_mo
     metadata = embed_node.children[0].operator_kwargs["vdb_kwargs"]
     params = embed_node.operator_kwargs["params"]
     if gpu_count:
-        expected = NEMOTRON_35_EMBED_BF16_MODEL if run_mode == "batch" else NEMOTRON_35_EMBED_NVFP4_MODEL
+        expected = NEMOTRON_35_EMBED_NVFP4_MODEL
         assert embed_node.operator_class is BatchEmbedGPUActor
         assert params.model_name == params.embed_model_name == metadata["embedding_model_name"] == expected
         assert params.embed_model_revision == metadata["embedding_model_revision"] == get_hf_revision(expected)
@@ -163,6 +230,8 @@ def test_cli_default_is_resolved_by_selected_actor(tmp_path, monkeypatch, run_mo
         assert request.call_args.kwargs["transform_config"].embedding_model == metadata["embedding_model_name"]
         assert request.call_args.kwargs["task_config"]["endpoint_url"] == _BatchEmbedCPUActor.DEFAULT_EMBED_INVOKE_URL
         driver_probe.assert_not_called()
+    if run_mode == "batch":
+        driver_probe.assert_not_called()
 
 
 def test_explicit_sink_identity_and_dimension_are_preserved(tmp_path, monkeypatch):
@@ -175,28 +244,32 @@ def test_explicit_sink_identity_and_dimension_are_preserved(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    "requested_model,expected",
-    [(None, NEMOTRON_35_EMBED_BF16_MODEL), (NEMOTRON_3_EMBED_MODEL, NEMOTRON_3_EMBED_BF16_MODEL)],
+    "requested_model,bf16,nvfp4",
+    [
+        (None, NEMOTRON_35_EMBED_BF16_MODEL, NEMOTRON_35_EMBED_NVFP4_MODEL),
+        (NEMOTRON_35_EMBED_MODEL, NEMOTRON_35_EMBED_BF16_MODEL, NEMOTRON_35_EMBED_NVFP4_MODEL),
+        (NEMOTRON_3_EMBED_MODEL, NEMOTRON_3_EMBED_BF16_MODEL, NEMOTRON_3_EMBED_NVFP4_MODEL),
+    ],
 )
-@pytest.mark.parametrize("driver_has_blackwell", [True, False])
+@pytest.mark.parametrize("supported", [True, False])
 def test_ray_default_does_not_use_driver_gpu_architecture(
-    tmp_path, monkeypatch, requested_model, expected, driver_has_blackwell
+    tmp_path, monkeypatch, requested_model, bf16, nvfp4, supported
 ):
-    driver_probe = MagicMock(return_value=driver_has_blackwell)
+    expected = nvfp4 if supported else bf16
+    driver_probe = MagicMock(side_effect=AssertionError("Driver CUDA must not select worker checkpoints"))
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
-    # The same scheduler snapshot can represent Hopper, mixed, or unknown
-    # workers, regardless of whether the driver itself has Blackwell GPUs.
+    monkeypatch.setattr("nemo_retriever.models.ray_cluster_supports_native_nvfp4", lambda: supported)
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=16, gpu_count=2),
         available_resources=Resources(cpu_count=16, gpu_count=1),
     )
-    original_params = EmbedParams(model_name=requested_model)
+    original_params = EmbedParams(embed_model_name=requested_model)
     actor_params, sink_kwargs = resolved_stages(tmp_path, original_params, resources=cluster)
     metadata = sink_kwargs["vdb_kwargs"]
     assert actor_params.model_name == actor_params.embed_model_name == metadata["embedding_model_name"] == expected
     assert actor_params.embed_model_revision == metadata["embedding_model_revision"] == get_hf_revision(expected)
     driver_probe.assert_not_called()
-    assert original_params.model_name == requested_model
+    assert original_params.embed_model_name == requested_model
     from nemo_retriever.graph.retriever import Retriever
 
     query_kwargs = Retriever()._resolve_embed_kwargs(expected, None, metadata["embedding_model_revision"])
@@ -208,9 +281,11 @@ def test_ray_default_does_not_use_driver_gpu_architecture(
 @pytest.mark.parametrize(
     "checkpoint", [NEMOTRON_35_EMBED_BF16_MODEL, NEMOTRON_35_EMBED_NVFP4_MODEL, NEMOTRON_3_EMBED_BF16_MODEL]
 )
-def test_ray_preserves_explicit_checkpoint_precision(tmp_path, monkeypatch, checkpoint):
+@pytest.mark.parametrize("supported", [False, True])
+def test_ray_preserves_explicit_checkpoint_precision(tmp_path, monkeypatch, checkpoint, supported):
     driver_probe = MagicMock(side_effect=AssertionError("Driver CUDA must not select worker checkpoints"))
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
+    monkeypatch.setattr("nemo_retriever.models.ray_cluster_supports_native_nvfp4", lambda: supported)
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=8, gpu_count=1),
         available_resources=Resources(cpu_count=8, gpu_count=1),
@@ -219,3 +294,14 @@ def test_ray_preserves_explicit_checkpoint_precision(tmp_path, monkeypatch, chec
     assert actor_params.model_name == sink_kwargs["vdb_kwargs"]["embedding_model_name"] == checkpoint
     assert actor_params.embed_model_revision == sink_kwargs["vdb_kwargs"]["embedding_model_revision"]
     driver_probe.assert_not_called()
+
+
+def test_batch_graph_without_embedding_does_not_probe(monkeypatch):
+    from nemo_retriever.graph.pipeline_graph import Graph
+
+    probe = MagicMock(side_effect=AssertionError("No embedding stage"))
+    monkeypatch.setattr("nemo_retriever.models.ray_cluster_supports_native_nvfp4", probe)
+    resources = Resources(cpu_count=8, gpu_count=1)
+    resolved = resolve_graph(Graph(), ClusterResources(total_resources=resources, available_resources=resources))
+    assert resolved.roots == []
+    probe.assert_not_called()
