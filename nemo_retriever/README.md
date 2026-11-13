@@ -525,6 +525,52 @@ results = agentic_query_documents(
 
 For CLI flags and operator details, refer to [Agentic retrieval](docs/cli/README.md#agentic-retrieval) in the CLI reference.
 
+#### Jev controller
+
+With `controller="jev"`, a System One model (Jev) chooses the retrieval loop's
+actions instead of the agent LLM. The LLM is called only to write text: an
+initial plan of sub-queries, more sub-queries (`expand`), or an analysis note
+(`think`). After each round of searches, Jev picks `expand`, `think`, or
+`finish`. `finish` is accepted only when Jev's "evidence is sufficient"
+probability clears `jev_stop_threshold` (default 0.7). The loop never writes a
+final list. The selection agent ranks the RRF-merged candidates, falling back
+to RRF order if selection fails. This mode is available from Python through
+`AgenticRetrievalConfig`; the CLI does not expose it.
+
+```python
+from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+cfg = AgenticRetrievalConfig(
+    vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
+    llm_model="nvidia/nvidia/nemotron-3-ultra",
+    invoke_url="https://inference-api.nvidia.com/v1/chat/completions",
+    api_key="os.environ/INFERENCE_API_KEY",
+    controller="jev",
+    jev_url="http://localhost:8000/v1/systemone",
+    jev_model="jev-latest",
+    jev_api_key="os.environ/JEV_API_KEY",
+    # Search budget: 1 bootstrap search, a plan, then up to max_expansions
+    # expand rounds and max_thinks think rounds.
+    jev_controller_options={"max_actions": 12, "max_expansions": 2, "max_thinks": 1},
+    # Leave unset to rank every candidate; a cap trades recall for tokens.
+    selection_max_candidates=None,
+    # Retry a ranking cut off by the output limit once, with thinking off.
+    selection_length_retry_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+)
+hits = AgenticRetriever(cfg).retrieve(["q1"], ["What is RAG?"])
+```
+
+Settings that matter most:
+
+- `selection_max_candidates`: on long multi-hop corpora such as
+  BrowseComp-Plus, capping the pool at 30 drops many relevant documents before
+  ranking. On page-level corpora such as ViDoRe, 30 to 45 is enough.
+- `selection_length_retry_extra_body`: thinking LLM rankers can exhaust their
+  output budget on large pools. Without a retry, those queries fall back to RRF
+  order.
+- `jev_controller_options`: any `JevControllerConfig` field, for example
+  `jev_stop_threshold`, `max_expansions`, `max_thinks`, or `batch_retrieve`.
+
 ### Live RAG SDK (retrieve + answer in one call)
 
 The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into the SDK as `Retriever.answer()` so live applications can skip the boilerplate. The same `Retriever` instance powers three entry points:
