@@ -1252,7 +1252,7 @@ def ocr_page_elements(
 
 
 # ---------------------------------------------------------------------------
-# Nemotron Parse v1.2
+# Nemotron Parse page elements
 # ---------------------------------------------------------------------------
 
 
@@ -1302,7 +1302,7 @@ def nemotron_parse_page_elements(
     **kwargs: Any,
 ) -> Any:
     """
-    Run Nemotron Parse v1.2 on cropped page elements.
+    Run a local or remote Nemotron Parse model on cropped page elements.
 
     Emits OCR-compatible content columns (``table``, ``chart``, ``infographic``)
     so this stage can replace the page-elements + OCR pair in pipeline wiring.

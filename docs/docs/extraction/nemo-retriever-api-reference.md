@@ -154,10 +154,9 @@ silently select another extraction path.
 For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
 `nvidia/Nemotron-3.5-Parse` through in-process vLLM on a CUDA GPU with BF16
 weights. You can also select this checkpoint explicitly with
-`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. To retain the local v1.2
-vLLM path, set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"`.
-Do not configure an invoke URL for either local path. Install the local GPU
-and Parse dependencies with
+`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. Parse 3.5 is the only
+supported local Parse checkpoint. Do not configure an invoke URL for local
+inference. Install the local GPU and Parse dependencies with
 `pip install "nemo-retriever[local,nemotron-parse]"`.
 
 The following example uses the default local Parse 3.5 checkpoint. Standalone
@@ -213,20 +212,26 @@ Batch parsing converts and generates one page at a time, preserving input
 order without retaining converted copies of the entire batch. If a page fails,
 the adapter does not return a partial batch.
 
-Both local Parse adapters accept PIL images, image paths, and HWC or CHW
+The local Parse 3.5 adapter accepts PIL images, image paths, and HWC or CHW
 NumPy arrays and tensors with 1, 3, or 4 channels. Arrays and tensors can
 include a leading batch dimension of size one. If both layouts are possible,
 inputs are interpreted as HWC. Inputs are converted to RGB; invalid shapes
 and nonfinite pixels raise `ValueError`. Parse 3.5 scales floating-point
-pixels in `[0, 1]` to `[0, 255]`. The v1.2 adapter retains its legacy scaling
-heuristic for floating-point inputs whose maximum is at most `1.5`.
+pixels in `[0, 1]` to `[0, 255]`.
 
-Other local Parse model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before
-pipeline execution. To use a remote Nemotron Parse endpoint, configure
-`nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
-unchanged.
+Local Parse v1.2 inference and the `NemotronParseV12` adapter are removed.
+Replace direct adapter calls with `NemotronParse35()`. Remove
+`nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"` from local ingestion
+configuration to select Parse 3.5. Unsupported local model values raise a
+Pydantic `ValidationError` before pipeline execution.
+
+Remote Parse v1.2 endpoints remain supported. To retain a self-hosted v1.2
+NIM, configure `nemotron_parse_invoke_url` or `invoke_url` with its
+chat-completions endpoint and set
+`nemotron_parse_model="nvidia/nemotron-parse-v1.2"`. Refer to
+[Parse endpoint contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted)
+for hosted Build and native Parse 3.5 endpoints. Hosted endpoint selection,
+Helm NIM defaults, and the `nemotron_parse_v1_2` result column are unchanged.
 
 ### Choose raise or collect behavior
 

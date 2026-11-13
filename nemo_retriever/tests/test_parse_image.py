@@ -14,16 +14,14 @@ import pytest
 import torch
 
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
-from nemo_retriever.models.local import nemotron_parse35, nemotron_parse_v1_2
+from nemo_retriever.models.local import nemotron_parse35
 
 
-@pytest.fixture(params=["helper", "parse35", "parse12"])
+@pytest.fixture(params=["helper", "parse35"])
 def normalize(request: pytest.FixtureRequest) -> Callable[[ImageInput], Image.Image]:
-    """Exercise both adapters without loading either checkpoint or vLLM."""
+    """Exercise the helper and local adapter without loading a checkpoint or vLLM."""
     if request.param == "parse35":
         return nemotron_parse35.NemotronParse35(backend="transformers", device="cpu").preprocess
-    if request.param == "parse12":
-        return nemotron_parse_v1_2.NemotronParseV12.__new__(nemotron_parse_v1_2.NemotronParseV12).preprocess
     return normalize_parse_image
 
 
@@ -106,40 +104,28 @@ def test_image_path_is_closed_and_owned(
 
 @pytest.mark.parametrize("as_tensor", [False, True])
 @pytest.mark.parametrize(
-    "values,expected35,expected12",
+    "values,expected",
     [
-        ([0, 0.5, 1], (0, 127, 255), (0, 127, 255)),
-        ([0, 1, 1.5], (0, 1, 1), (0, 255, 255)),
-        ([-0.5, 0.5, 1], (0, 0, 1), (0, 127, 255)),
-        ([0, 1, 1.6], (0, 1, 1), (0, 1, 1)),
-        ([0, 128, 300], (0, 128, 255), (0, 128, 255)),
+        ([0, 0.5, 1], (0, 127, 255)),
+        ([0, 1, 1.5], (0, 1, 1)),
+        ([-0.5, 0.5, 1], (0, 0, 1)),
+        ([0, 1, 1.6], (0, 1, 1)),
+        ([0, 128, 300], (0, 128, 255)),
     ],
 )
-def test_adapters_preserve_their_float_scaling_policies(
-    values: list[float], expected35: tuple[int, ...], expected12: tuple[int, ...], as_tensor: bool
+def test_float_scaling_preserves_parse35_policy(
+    normalize: Callable[[ImageInput], Image.Image], values: list[float], expected: tuple[int, ...], as_tensor: bool
 ) -> None:
     pixels = np.empty((20, 16, 3), dtype=np.float32)
     pixels[:] = values
-    input_data = torch.from_numpy(pixels) if as_tensor else pixels
-    parser35 = nemotron_parse35.NemotronParse35(backend="transformers", device="cpu")
-    parser12 = nemotron_parse_v1_2.NemotronParseV12.__new__(nemotron_parse_v1_2.NemotronParseV12)
-    with parser35.preprocess(input_data) as image:
-        assert image.getpixel((0, 0)) == expected35
-    with parser12.preprocess(input_data) as image:
-        assert image.getpixel((0, 0)) == expected12
+    with normalize(torch.from_numpy(pixels) if as_tensor else pixels) as image:
+        assert image.getpixel((0, 0)) == expected
 
 
-@pytest.mark.parametrize("module,legacy", [(nemotron_parse35, False), (nemotron_parse_v1_2, True)])
-def test_adapters_delegate_to_shared_normalizer(monkeypatch: pytest.MonkeyPatch, module: object, legacy: bool) -> None:
+def test_parse35_delegates_to_shared_normalizer(monkeypatch: pytest.MonkeyPatch) -> None:
     helper = MagicMock()
-    monkeypatch.setattr(module, "normalize_parse_image", helper)
-    if legacy:
-        parser = module.NemotronParseV12.__new__(module.NemotronParseV12)
-    else:
-        parser = module.NemotronParse35(backend="transformers", device="cpu")
+    monkeypatch.setattr(nemotron_parse35, "normalize_parse_image", helper)
+    parser = nemotron_parse35.NemotronParse35(backend="transformers", device="cpu")
     pixels = np.zeros((20, 16, 3))
     assert parser.preprocess(pixels) is helper.return_value
-    if legacy:
-        helper.assert_called_once_with(pixels, legacy_float_scaling=True)
-    else:
-        helper.assert_called_once_with(pixels)
+    helper.assert_called_once_with(pixels)

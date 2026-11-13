@@ -17,7 +17,6 @@ from transformers.feature_extraction_utils import BatchFeature
 from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE35_MODEL,
     NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
-    NEMOTRON_PARSE_V12_MODEL,
 )
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.local import nemotron_parse35 as parse35_module
@@ -243,23 +242,44 @@ def test_invalid_inputs_do_not_download_weights(runtime: SimpleNamespace) -> Non
         NemotronParse35(max_tokens=0)
 
 
-@pytest.mark.parametrize("model_id", [None, NEMOTRON_PARSE_V12_MODEL, NEMOTRON_PARSE35_MODEL])
-def test_gpu_actor_defaults_to_parse35_and_preserves_explicit_v12(model_id: str | None) -> None:
-    with (
-        patch("nemo_retriever.models.local.NemotronParseV12") as legacy_parser,
-        patch("nemo_retriever.models.local.NemotronParse35") as new_parser,
-    ):
+@pytest.mark.parametrize("model_id", [None, NEMOTRON_PARSE35_MODEL])
+def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> None:
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         actor = NemotronParseGPUActor(nemotron_parse_model=model_id)
         actor._ensure_model()
         actor._ensure_model()
-    expected_parser = legacy_parser if model_id == NEMOTRON_PARSE_V12_MODEL else new_parser
-    other_parser = new_parser if model_id == NEMOTRON_PARSE_V12_MODEL else legacy_parser
-    expected_kwargs = {"task_prompt": NEMOTRON_PARSE_DEFAULT_TASK_PROMPT}
-    if model_id != NEMOTRON_PARSE_V12_MODEL:
-        expected_kwargs["backend"] = "vllm"
-    expected_parser.assert_called_once_with(**expected_kwargs)
-    other_parser.assert_not_called()
+    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm")
     assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
+
+
+def test_local_v12_actor_fails_with_migration_guidance() -> None:
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        actor = NemotronParseGPUActor(nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2")
+        with pytest.raises(ValueError, match="Unsupported local") as exc_info:
+            actor._ensure_model()
+    assert NEMOTRON_PARSE35_MODEL in str(exc_info.value)
+    assert "nemotron_parse_invoke_url" in str(exc_info.value)
+    parser.assert_not_called()
+
+
+@pytest.mark.parametrize("model_id", [None, "nvidia/nemotron-parse-v1.2", "nvidia/NVIDIA-Nemotron-Parse-v1.2"])
+def test_remote_v12_actor_does_not_load_local_weights(model_id: str | None) -> None:
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        actor = NemotronParseGPUActor(nemotron_parse_model=model_id, invoke_url="http://parse:8000/v1/chat/completions")
+        actor._ensure_model()
+    parser.assert_not_called()
+    assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
+
+
+def test_crop_gpu_actor_uses_parse35_and_preserves_remote_selection() -> None:
+    from nemo_retriever.operators.extract.ocr.gpu_parse import NemotronParseActor
+
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        actor = NemotronParseActor(task_prompt="custom prompt")
+        assert actor._model is parser.return_value
+        remote_actor = NemotronParseActor(nemotron_parse_invoke_url="http://parse/v1/chat/completions")
+        assert remote_actor._model is None
+    parser.assert_called_once_with(task_prompt="custom prompt")
 
 
 def test_local_parse_default_does_not_change_remote_contracts() -> None:
