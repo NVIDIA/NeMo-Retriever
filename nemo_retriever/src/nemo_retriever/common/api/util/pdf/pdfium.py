@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import math
 from collections.abc import Iterator
 from typing import List, Any
 from typing import Optional
 from typing import Tuple
 
 import numpy as np
+from PIL import Image
 
 try:
     import cv2
@@ -581,17 +583,51 @@ def extract_forms_from_pdfium_page(page, **kwargs):
     return results
 
 
-def extract_image_like_objects_from_pdfium_page(page, merge=True, **kwargs):
+def extract_image_like_objects_from_pdfium_page(
+    page: pdfium.PdfPage,
+    page_image: Optional[np.ndarray] = None,
+    merge: bool = True,
+    **kwargs: Any,
+) -> List[Base64Image]:
+    """Crop the image, shape and form objects on a PDF page.
+
+    Crop boxes are in PDF points. When ``page_image`` is given, it is resized to
+    the page size in points and turned by the page rotation, so the boxes line up
+    with a ``page.render(scale=1, rotation=page.get_rotation())`` raster without
+    rendering the page again.
+
+    Parameters
+    ----------
+    page : pdfium.PdfPage
+        Page whose image, shape and form objects are cropped.
+    page_image : numpy.ndarray, optional
+        RGB ``uint8`` array of shape ``(height, width, 3)`` from ``page.render()``
+        at any scale, with the page's own rotation applied. When omitted, the page
+        is rendered at scale 1 for the crops.
+    merge : bool, default True
+        Merge nearby image and shape boxes into one crop.
+    **kwargs : Any
+        Grouping options passed to the box helpers, such as ``threshold``,
+        ``max_num_boxes`` and ``max_depth``.
+
+    Returns
+    -------
+    list of Base64Image
+        One entry per crop of at least 10x10 points, with its box in PDF points and
+        the page size. Returns an empty list if the page objects can't be read.
+    """
     page_width = page.get_width()
     page_height = page.get_height()
     rotation = page.get_rotation()
 
     try:
-        original_images, _ = pdfium_pages_to_numpy(
-            [page],  # A batch with a single image.
-            render_dpi=72,  # dpi = 72 is equivalent to scale = 1.
-            rotation=rotation,  # Without rotation, coordinates from page.get_pos() will not match.
-        )
+        if page_image is None:
+            page_image_pts = pdfium_pages_to_numpy([page], render_dpi=72, rotation=rotation)[0][0]
+        else:
+            points_size = (math.ceil(page_width), math.ceil(page_height))
+            page_image_pts = np.rot90(
+                np.asarray(Image.fromarray(page_image).resize(points_size, Image.BILINEAR)), k=-(rotation // 90)
+            )
         image_bboxes = extract_merged_images_from_pdfium_page(page, merge=merge, **kwargs)
         shape_bboxes = extract_merged_shapes_from_pdfium_page(page, merge=merge, **kwargs)
         form_bboxes = extract_forms_from_pdfium_page(page, **kwargs)
@@ -602,7 +638,7 @@ def extract_image_like_objects_from_pdfium_page(page, merge=True, **kwargs):
     extracted_images = []
     for bbox in image_bboxes + shape_bboxes + form_bboxes:
         try:
-            cropped_image = crop_image(original_images[0], bbox, min_width=10, min_height=10)
+            cropped_image = crop_image(page_image_pts, bbox, min_width=10, min_height=10)
             if cropped_image is None:  # Small images are filtered out.
                 continue
             image_base64 = numpy_to_base64(cropped_image)
