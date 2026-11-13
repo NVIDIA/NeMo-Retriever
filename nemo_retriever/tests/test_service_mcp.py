@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from nemo_retriever.service.app import create_app
@@ -344,7 +345,13 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
     ]
 
 
-def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("header_name", "mcp_path"),
+    [("Authorization", "/mcp"), ("X-Token", "/tools/mcp")],
+)
+def test_mounted_mcp_authenticated_tool_calls(monkeypatch, tmp_path, header_name, mcp_path) -> None:
+    """Exercise the real MCP transport, auth, and service routes without GPU work."""
+
     async def _stub_work(item: WorkItem) -> tuple[int, list[dict[str, Any]]]:
         return 1, [{"id": item.id, "stub": True}]
 
@@ -356,21 +363,104 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
         "nemo_retriever.service.services.pipeline_executor.create_batch_work_fn",
         lambda _c: _stub_work,
     )
-
     cfg = ServiceConfig(
         mode="standalone",
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
-        auth=AuthConfig(enabled=True, api_token="secret"),
+        auth=AuthConfig(enabled=True, api_token="secret", header_name=header_name),
+        mcp=MCPConfig(path=mcp_path, poll_interval_s=0.01, ingest_timeout_s=10),
     )
-
     app = create_app(cfg)
-    with TestClient(app) as client:
-        unauthorized = client.get("/mcp")
-        authorized = client.get("/mcp", headers={"Authorization": "Bearer secret"})
+    downstream_requests: list[httpx.Request] = []
 
-    assert unauthorized.status_code == 401
-    assert authorized.status_code != 401
+    async def _record(request: httpx.Request) -> None:
+        downstream_requests.append(request)
+
+    def _service_client(self, *, timeout_s=None):
+        return httpx.AsyncClient(
+            base_url="http://testserver",
+            headers=self._settings.auth_headers,
+            transport=httpx.ASGITransport(app=app),
+            event_hooks={"request": [_record]},
+        )
+
+    monkeypatch.setattr(ServiceMCPClient, "_client", _service_client)
+    headers = {"Accept": "application/json, text/event-stream"}
+    initialize = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "retriever-test", "version": "1"},
+        },
+    }
+    with TestClient(app) as client:
+        for auth in ({}, {header_name: "Bearer wrong"}):
+            response = client.post(mcp_path + "/", headers={**headers, **auth}, json=initialize)
+            assert response.status_code == 401
+        headers[header_name] = "Bearer secret"
+
+        def _rpc(payload):
+            response = client.post(mcp_path + "/", headers=headers, json=payload)
+            assert response.status_code == 200, response.text
+            if session_id := response.headers.get("mcp-session-id"):
+                headers["mcp-session-id"] = session_id
+            if response.headers.get("content-type", "").startswith("application/json"):
+                return response.json()
+            messages = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+            return next(message for message in messages if message.get("id") == payload["id"])
+
+        initialized = _rpc(initialize)
+        assert initialized["result"]["serverInfo"]["name"]
+        headers["MCP-Protocol-Version"] = initialized["result"]["protocolVersion"]
+        response = client.post(
+            mcp_path + "/",
+            headers=headers,
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        assert response.status_code == 202
+        listed = _rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        names = {tool["name"] for tool in listed["result"]["tools"]}
+        assert {"pipeline_config", "ingest_documents", "get_job"} <= names
+
+        def _call(request_id, name, arguments):
+            reply = _rpc(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": arguments},
+                }
+            )
+            result = reply["result"]
+            assert not result.get("isError"), result
+            return result.get("structuredContent") or json.loads(result["content"][0]["text"])
+
+        config = _call(3, "pipeline_config", {})
+        assert config["mode"] == "standalone"
+        ingested = _call(
+            4,
+            "ingest_documents",
+            {
+                "documents": [
+                    {
+                        "filename": "mcp-test.txt",
+                        "content_base64": base64.b64encode(b"MCP integration document").decode("ascii"),
+                    }
+                ]
+            },
+        )
+        assert ingested["upload_errors"] == []
+        assert ingested["documents"]["items"][0]["status"] == "completed"
+        assert ingested["documents"]["items"][0]["result_rows"] == 1
+        job = _call(5, "get_job", {"job_id": ingested["job_id"]})
+        assert job["job_id"] == ingested["job_id"]
+
+    assert downstream_requests
+    assert all(request.headers[header_name] == "Bearer secret" for request in downstream_requests)
+    assert "/v1/ingest/pipeline-config" in {request.url.path for request in downstream_requests}
 
 
 def test_query_tool_client_posts_rerank_controls() -> None:

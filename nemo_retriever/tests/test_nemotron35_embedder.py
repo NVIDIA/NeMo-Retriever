@@ -168,7 +168,7 @@ def test_vllm_unload_shuts_down_before_reload(monkeypatch, cuda_available):
             assert embedder._model is engine
             events.append(f"shutdown-{engine_index}")
 
-        engine.llm_engine.engine_core.shutdown.side_effect = shutdown
+        engine.shutdown.side_effect = shutdown
         engine.embed.return_value = [SimpleNamespace(outputs=SimpleNamespace(embedding=[1.0] * 2048))]
         engines.append(engine)
         return engine
@@ -194,7 +194,7 @@ def test_vllm_unload_shuts_down_before_reload(monkeypatch, cuda_available):
     assert embedder._model is embedder._processor is embedder._template is None
     assert empty_cache.call_count == int(cuda_available)
     embedder.unload()
-    engines[0].llm_engine.engine_core.shutdown.assert_called_once_with(timeout=30.0)
+    engines[0].shutdown.assert_called_once_with(timeout=30.0)
     second = embedder.embed(["document"])
     assert events == ["load-0", "shutdown-0", "load-1"]
     assert embedder._model is engines[1]
@@ -208,7 +208,7 @@ def test_vllm_unload_shuts_down_before_reload(monkeypatch, cuda_available):
 def test_vllm_unload_retains_references_if_shutdown_fails(monkeypatch):
     embedder = Nemotron35Embedder("model", None, "query:", "passage:", backend="vllm")
     engine = MagicMock()
-    engine.llm_engine.engine_core.shutdown.side_effect = RuntimeError("shutdown failed")
+    engine.shutdown.side_effect = RuntimeError("shutdown failed")
     processor = object()
     embedder._model = engine
     embedder._processor = processor
@@ -222,7 +222,7 @@ def test_vllm_unload_retains_references_if_shutdown_fails(monkeypatch):
     assert embedder._processor is processor
     assert embedder._template == TEMPLATE
     empty_cache.assert_not_called()
-    engine.llm_engine.engine_core.shutdown.side_effect = None
+    engine.shutdown.side_effect = None
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     embedder.unload()
     assert embedder._model is None
@@ -234,7 +234,7 @@ def test_hf_unload_does_not_attempt_vllm_shutdown(monkeypatch):
     embedder._model = model
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     embedder.unload()
-    model.llm_engine.engine_core.shutdown.assert_not_called()
+    model.shutdown.assert_not_called()
     assert embedder._model is None
 
 
@@ -305,66 +305,32 @@ def test_admission_does_not_add_special_tokens_twice():
     tokenizer.encode.assert_called_once_with("query: text", add_special_tokens=False)
 
 
-@pytest.mark.parametrize("causal", [True, None])
-def test_bidirectional_attention_rejects_other_profiles(causal):
-    from nemo_retriever.models.inference.nemotron35_vllm import (
-        create_bidirectional_attention,
-    )
+@pytest.mark.parametrize(
+    "model_type,text_type,causal",
+    [
+        ("mistral3", "ministral3", True),
+        ("mistral3", "ministral3", None),
+        ("other", "ministral3", False),
+        ("mistral3", "other", False),
+    ],
+)
+def test_bidirectional_config_rejects_unsupported_profiles(model_type, text_type, causal):
+    from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
-    model = SimpleNamespace(
-        config=SimpleNamespace(model_type="mistral3"),
-        text_config=SimpleNamespace(model_type="ministral3", is_causal=causal),
-    )
     with pytest.raises(ValueError, match="bidirectional"):
-        create_bidirectional_attention(
-            model,
-            attention_cls=MagicMock(),
-            attention_type="encoder",
-            pp_indices=MagicMock(),
+        validate_bidirectional_config(
+            SimpleNamespace(model_type=model_type),
+            SimpleNamespace(model_type=text_type, is_causal=causal),
         )
 
 
-def test_bidirectional_attention_preserves_shards_sliding_window_and_quantization():
-    from nemo_retriever.models.inference.nemotron35_vllm import (
-        create_bidirectional_attention,
-    )
+def test_bidirectional_config_accepts_retrieval_checkpoint():
+    from nemo_retriever.models.inference.nemotron35_vllm import validate_bidirectional_config
 
-    model = SimpleNamespace(
-        config=SimpleNamespace(model_type="mistral3"),
-        text_config=SimpleNamespace(
-            model_type="ministral3",
-            is_causal=False,
-            num_hidden_layers=4,
-            layer_types=[
-                "full_attention",
-                "full_attention",
-                "sliding_attention",
-                "full_attention",
-            ],
-            sliding_window=128,
-        ),
-        model_config=SimpleNamespace(
-            get_num_attention_heads=lambda parallel: 4,
-            get_head_size=lambda: 64,
-            get_num_kv_heads=lambda parallel: 2,
-        ),
-        parallel_config=object(),
-        cache_config=object(),
-        quant_config=object(),
-        pp_group=SimpleNamespace(rank_in_group=1, world_size=2),
+    validate_bidirectional_config(
+        SimpleNamespace(model_type="mistral3"),
+        SimpleNamespace(model_type="ministral3", is_causal=False),
     )
-    attention = MagicMock(side_effect=lambda **kwargs: kwargs)
-    result = create_bidirectional_attention(
-        model,
-        attention_cls=attention,
-        attention_type="encoder_only",
-        pp_indices=lambda layers, rank, size: (2, 4),
-    )
-    assert set(result) == {2, 3}
-    assert result[2]["attn_type"] == "encoder_only"
-    assert result[2]["per_layer_sliding_window"] == 128
-    assert result[3]["per_layer_sliding_window"] is None
-    assert result[2]["quant_config"] is model.quant_config
 
 
 def test_multimodal_admission_splits_losslessly_and_preserves_full_image():
@@ -610,3 +576,39 @@ def test_large_page_token_count_does_not_allocate_the_page():
     lengths = embedder._image_prompt_lengths(["passage: [IMG] text"], [SimpleNamespace(size=(8000, 10000))])
     assert lengths == [3 + 864 - 1]
     embedder._processor._get_num_multimodal_tokens.assert_not_called()
+
+
+def test_concurrent_first_calls_load_the_vllm_engine_once(monkeypatch):
+    import importlib
+    import threading
+    import time
+
+    import transformers
+    from nemo_retriever.models.inference import nemotron35_vllm, vllm
+
+    embedder_module = importlib.import_module(Nemotron35Embedder.__module__)
+    loads = []
+
+    def create_engine(*args, **kwargs):
+        loads.append(kwargs)
+        time.sleep(0.2)
+        return MagicMock()
+
+    monkeypatch.setattr(embedder_module, "load_retrieval_template", lambda *args: TEMPLATE)
+    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", MagicMock())
+    monkeypatch.setattr(nemotron35_vllm, "register_nemotron35_vllm", lambda: None)
+    monkeypatch.setattr(vllm, "create_vllm_llm", create_engine)
+    embedder = Nemotron35Embedder("model", None, "query:", "passage:", backend="vllm")
+    barrier = threading.Barrier(2)
+
+    def first_call():
+        barrier.wait()
+        embedder._ensure_loaded()
+
+    threads = [threading.Thread(target=first_call) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(loads) == 1

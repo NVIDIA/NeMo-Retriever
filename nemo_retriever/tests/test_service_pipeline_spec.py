@@ -1165,3 +1165,47 @@ def test_service_worker_installs_url_source_map_before_ingest(monkeypatch: pytes
     assert row_count == 1
     assert rows[0]["path"] == f"{source_url}_1"
     assert rows[0]["metadata"]["source_path"] == f"{source_url}_1"
+
+
+def test_policy_allows_bounded_dflash_tuning_without_a_model_path():
+    policy = PipelineOverridesConfig().to_policy()
+    spec = PipelineSpec(extract_params={"method": "nemotron_parse", "nemotron_parse_dflash_tokens": 32})
+    validate_pipeline_spec(spec, policy)
+
+
+def test_switching_away_from_local_parse_clears_dflash_setting():
+    from nemo_retriever.service.services.pipeline_executor import _resolve_extract_params
+
+    resolved = _resolve_extract_params(
+        {"method": "nemotron_parse", "nemotron_parse_dflash_tokens": 32}, {"method": "pdfium"}
+    )
+    assert resolved.nemotron_parse_dflash_tokens == "auto"
+
+
+def test_service_rejects_explicit_dflash_for_non_parse_method():
+    from nemo_retriever.service.services.pipeline_executor import _resolve_extract_params
+
+    with pytest.raises(ValueError, match="method='nemotron_parse'"):
+        _resolve_extract_params({}, {"method": "pdfium", "nemotron_parse_dflash_tokens": 32})
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        ExtractParams(method="nemotron_parse", nemotron_parse_dflash_tokens=None),
+        {"method": "nemotron_parse", "nemotron_parse_dflash_tokens": None},
+    ],
+)
+def test_service_mtp_optout_survives_wire_roundtrip(params):
+    from nemo_retriever.service.services.pipeline_executor import _resolve_extract_params
+    from nemo_retriever.graph.graph_pipeline_registry import get_node_kwargs
+    from nemo_retriever.graph.ingestor_runtime import build_graph
+
+    ing = ServiceIngestor(base_url="http://example:7670").extract(params)
+    payload = ing._pipeline_payload()
+    decoded = PipelineSpec.model_validate_json(PipelineSpec(**payload).model_dump_json(exclude_none=True))
+    assert "nemotron_parse_dflash_tokens" in decoded.extract_params
+    assert decoded.extract_params["nemotron_parse_dflash_tokens"] is None
+    resolved = _resolve_extract_params({"method": "nemotron_parse"}, decoded.extract_params)
+    graph = build_graph(extraction_mode="pdf", extract_params=resolved)
+    assert get_node_kwargs(graph, "NemotronParseActor")["nemotron_parse_dflash_tokens"] is None

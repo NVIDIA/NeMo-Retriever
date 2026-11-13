@@ -160,9 +160,9 @@ Do not configure an invoke URL for either local path. Install the local GPU
 and Parse dependencies with
 `pip install "nemo-retriever[local,nemotron-parse]"`.
 
-The following example uses the default local Parse 3.5 checkpoint. Standalone
-scripts need the `__main__` guard to prevent ingestion from running again in
-spawned workers.
+The following example uses the default local Parse 3.5 checkpoint with DFlash2
+and a draft length of 32 tokens. Standalone scripts need the `__main__` guard
+to prevent ingestion from running again in spawned workers.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -227,6 +227,84 @@ pipeline execution. To use a remote Nemotron Parse endpoint, configure
 `nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
 the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
 unchanged.
+
+#### Configure DFlash2 for local Parse 3.5
+
+Local Parse 3.5 vLLM inference uses DFlash2 speculative decoding with a draft
+length of 32 tokens by default. `nemotron_parse_dflash_tokens` defaults to
+`"auto"`. Automatic selection leaves remote endpoints, legacy Parse, and the
+Transformers backend on their existing decoding paths.
+
+Set `nemotron_parse_dflash_tokens` on `ExtractParams` to configure local
+Parse 3.5 decoding.
+
+| Value | Local Parse 3.5 vLLM behavior |
+| --- | --- |
+| `"auto"` | Uses DFlash2 with a draft length of 32 tokens. This is the default. |
+| Integer from 1 through 32 | Selects DFlash2 with that draft length. |
+| `None` | Turns off DFlash2 and retains the pinned plugin's one-token multi-token prediction (MTP) fallback. |
+
+An explicit integer requires local Parse 3.5 on a GPU after actor resolution.
+It is rejected for remote endpoints and legacy Parse. When no GPU is available,
+the graph selects the CPU actor, which uses a remote endpoint, including the
+hosted default when you omit an invoke URL. That actor rejects an explicit
+integer instead of silently ignoring it. Use `"auto"` or `None` to allow the
+existing remote fallback.
+
+The target and `dflash2/` drafter load from the same immutable checkpoint
+revision. No separate drafter model ID or plugin installation is required.
+
+Local vLLM prompts concatenate `<pad>` directly with the task prompt, without
+inserting a newline. This input-format change applies to DFlash2 and MTP,
+including custom task prompts. Selecting `None` restores the MTP decoder; it
+does not restore the earlier newline after `<pad>`. Both decoders use the same
+prompt format so you can compare them with consistent input. This formatting
+change is independent of the decoder selection.
+
+The following example selects the MTP fallback for local Parse 3.5.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_dflash_tokens=None,
+            )
+        )
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Direct `NemotronParse35()` callers use the same `"auto"` default. Set
+`dflash_tokens` to an integer from 1 through 32 to tune DFlash2, or `None`
+to select the MTP fallback. The Transformers backend rejects an explicit
+integer draft length.
+
+If startup reports a missing DFlash2 checkpoint, check the reported
+`<snapshot>/dflash2` directory for `config.json` and `model.safetensors`.
+Refresh the pinned Hugging Face snapshot to restore missing files. To select
+the MTP fallback instead, pass `dflash_tokens=None` to `NemotronParse35`, or
+`nemotron_parse_dflash_tokens=None` to `ExtractParams` for ingestion.
+
+The first DFlash2 startup can compile additional CUDA kernels. Report that
+startup cost separately when measuring steady-state throughput.
+
+Measure ingestion throughput and parsing quality on your documents before
+choosing a draft length. DFlash2 can change generated text, including with
+greedy sampling. Do not assume identical output between DFlash2 and the MTP
+fallback. Keep the task prompt and postprocessing settings fixed when comparing
+results.
 
 ### Choose raise or collect behavior
 

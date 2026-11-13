@@ -18,7 +18,12 @@ from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import ByteLevel
 
 from nemo_retriever.common.modality.txt.tokenizer_provider import _FastTokenizer
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, NEMOTRON_35_EMBED_MODEL
+from nemo_retriever.models import (
+    NEMOTRON_3_EMBED_MODEL,
+    NEMOTRON_35_EMBED_BF16_MODEL,
+    NEMOTRON_35_EMBED_MODEL,
+    NEMOTRON_35_EMBED_NVFP4_MODEL,
+)
 from nemo_retriever.models.inference import embedding_input, main_text_embed, runtime
 from nemo_retriever.models.inference.embedding_input import EmbeddingInputPolicy
 
@@ -136,7 +141,16 @@ def test_input_byte_limit_must_be_positive(tokenizer, limit):
 
 
 @pytest.mark.parametrize("endpoint_key", ["embedding_endpoint", "embed_invoke_url"])
-@pytest.mark.parametrize("model", [NEMOTRON_35_EMBED_MODEL, NEMOTRON_3_EMBED_MODEL, "custom/model"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        NEMOTRON_35_EMBED_MODEL,
+        NEMOTRON_35_EMBED_BF16_MODEL,
+        NEMOTRON_35_EMBED_NVFP4_MODEL,
+        NEMOTRON_3_EMBED_MODEL,
+        "custom/model",
+    ],
+)
 @pytest.mark.parametrize("remote", [False, True, "", "   "])
 def test_automatic_byte_cap_is_scoped_to_remote_nemotron35(tokenizer, monkeypatch, endpoint_key, model, remote):
     checkpoint = SimpleNamespace(
@@ -154,8 +168,9 @@ def test_automatic_byte_cap_is_scoped_to_remote_nemotron35(tokenizer, monkeypatc
 
     policy = embedding_input.configure_embedding_input_policy(kwargs)
 
-    assert policy.max_input_bytes == (65536 if remote is True and model == NEMOTRON_35_EMBED_MODEL else None)
-    assert policy.strip_existing_prefix is not (remote is True and model == NEMOTRON_35_EMBED_MODEL)
+    remote_nemotron35 = remote is True and model != NEMOTRON_3_EMBED_MODEL and model != "custom/model"
+    assert policy.max_input_bytes == (65536 if remote_nemotron35 else None)
+    assert policy.strip_existing_prefix is not remote_nemotron35
     assert kwargs["embedding_input_policy"] is policy
 
 

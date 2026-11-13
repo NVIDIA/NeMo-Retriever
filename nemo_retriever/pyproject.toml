@@ -7,8 +7,15 @@ managed = true
 package = true
 no-build-package = ["nemotron-ocr"]
 # The complete dependency graph, including `local`, must resolve on both Linux
-# architectures. Windows x64 and macOS x64/ARM64 support only the base install
+# architectures. Windows x64 and macOS ARM64 support only the base install
 # and are validated separately by CI.
+# Limit universal resolution to supported platforms; vendor dependencies on
+# unsupported architectures can otherwise conflict with the inference stack.
+environments = [
+  "sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  "sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'x86_64')",
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 required-environments = [
   "sys_platform == 'linux' and platform_machine == 'x86_64'",
   "sys_platform == 'linux' and platform_machine == 'aarch64'",
@@ -24,8 +31,8 @@ override-dependencies = [
   "requests>=2.33.0",
   "idna>=3.15",
   "pydantic-settings>=2.14.2",
-  "vllm==0.26.0",
-  "transformers>=5.17.0",
+  "vllm==0.32.0; sys_platform == 'linux'",
+  "transformers>=5.17.0,<5.20",
   "ray>=2.56.1",
   "nltk>=3.10.3",
   "litellm>=1.102.0rc2",
@@ -104,8 +111,8 @@ dependencies = [
   # targets the public NVCF Parakeet endpoint (the default) or any remote NIM.
   "nvidia-riva-client>=2.25.1",
   # Exact tokenizer-only TXT/HTML chunking (no transformers, torch, or weights).
-  # Transformers 5.17 requires tokenizers 0.23.1 or newer.
-  "tokenizers>=0.23.1",
+  # Keep tokenizer-only installs compatible with the local vLLM stack.
+  "tokenizers>=0.23.2",
   "huggingface-hub>=0.34.0",
 ]
 
@@ -138,17 +145,18 @@ service = [
 ]
 
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
-# Stable Nemotron extraction package selection for published local installs.
+# OCR requires a native-extension rebuild for the pinned Torch minor version.
+# Select the published Torch 2.13 build or a newer compatible OCR release.
 local = [
-  "transformers>=5.17.0,<6",
+  "transformers>=5.17.0,<5.20",
   "accelerate==1.15.0",
   "opencv-python-headless>=4.8.0",
-  "torch==2.11.0; sys_platform == 'linux'",
-  "torch==2.11.0; sys_platform == 'win32'",
-  "torch==2.11.0; sys_platform == 'darwin'",
-  "torchvision==0.26.0; sys_platform == 'linux'",
-  "torchvision==0.26.0; sys_platform == 'win32'",
-  "torchvision==0.26.0; sys_platform == 'darwin'",
+  "torch==2.13.0; sys_platform == 'linux'",
+  "torch==2.13.0; sys_platform == 'win32'",
+  "torch==2.13.0; sys_platform == 'darwin'",
+  "torchvision==0.28.0; sys_platform == 'linux'",
+  "torchvision==0.28.0; sys_platform == 'win32'",
+  "torchvision==0.28.0; sys_platform == 'darwin'",
   "tritonclient",
   "einops",
   "easydict",
@@ -158,18 +166,16 @@ local = [
   "albumentations==2.0.8",
   "nemotron-page-elements-v3>=3.0.1,<4",
   "nemotron-table-structure-v1>=1.0.0,<2",
-  "nemotron-ocr>=2.0.0,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  "nemotron-ocr>=2.0.3,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "nvidia-ml-py",
   "psutil>=5.9.0",
   # vLLM compiles CUDA kernels at runtime via torch inductor (requires Python.h).
   # Use a uv-managed Python (`uv python install 3.12`) so headers are available;
   # system Python installs typically omit them and will fail with InductorError.
-  "vllm==0.26.0; sys_platform == 'linux'",
-  # Older Quack releases use APIs removed in vLLM 0.26's required CUTLASS 4.6.
-  "quack-kernels==0.6.1; sys_platform == 'linux'",
-  # vLLM 0.26 requires FlashInfer 0.6.14. No matching cubin wheel is published;
-  # use FlashInfer's artifact cache rather than the incompatible 0.6.13 wheel.
-  "flashinfer-python==0.6.14; sys_platform == 'linux'",
+  "vllm==0.32.0; sys_platform == 'linux'",
+  # Keep CUDA kernel packages aligned with the vLLM runtime.
+  "quack-kernels==0.6.5; sys_platform == 'linux'",
+  "flashinfer-python==0.7.0.post1; sys_platform == 'linux'",
 ]
 
 # ── Multimedia — audio/ASR and SVG rendering ────────────────────────────────
@@ -238,7 +244,7 @@ dev = [
   "nemo_retriever[dev]",
   "nemotron-page-elements-v3>=3.0.1.dev0,!=3.0.1,!=3.0.2,<4",
   "nemotron-table-structure-v1>=1.0.1.dev0,!=1.0.1,<2",
-  "nemotron-ocr>=2.0.1.dev0,!=2.0.1,!=2.0.2,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  "nemotron-ocr>=2.0.3,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
 ]
 
 [tool.setuptools.dynamic]

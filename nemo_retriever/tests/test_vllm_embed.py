@@ -699,3 +699,117 @@ class TestVLLMEmbedderTextImage:
             result = self.embedder.embed_text_image(["text"], [b64])
         assert mock_mm.call_args.kwargs["normalize"] is False
         assert result.tolist() == [[3.0, 4.0]]
+
+
+def test_async_embed_engine_submits_each_prompt_and_keeps_prompt_order(monkeypatch):
+    pytest.importorskip("vllm", reason="vLLM not installed")
+    import asyncio
+    import threading
+
+    from vllm import PoolingParams
+    from vllm.outputs import EmbeddingRequestOutput
+    from vllm.renderers.inputs import preprocess
+
+    from nemo_retriever.models.inference.vllm import AsyncEmbedEngine
+
+    submitted = []
+
+    class _Renderer:
+        default_cmpl_tok_params = SimpleNamespace(with_kwargs=lambda **kwargs: kwargs)
+
+        def render_cmpl(self, prompts, tok_params):
+            assert tok_params == {"truncation": False}
+            return prompts
+
+    class _Engine:
+        renderer = _Renderer()
+        model_config = object()
+
+        async def encode(self, engine_input, params, request_id):
+            submitted.append((engine_input, params.task, request_id))
+            # Later prompts finish first; outputs must still follow prompt order.
+            await asyncio.sleep(0.01 * (3 - engine_input))
+            yield f"out-{engine_input}"
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    monkeypatch.setattr(EmbeddingRequestOutput, "from_base", staticmethod(lambda output: output))
+    engine = AsyncEmbedEngine.__new__(AsyncEmbedEngine)
+    engine._loop = asyncio.new_event_loop()
+    threading.Thread(target=engine._loop.run_forever, daemon=True).start()
+    engine.engine = _Engine()
+    engine._ids = iter(range(10))
+    try:
+        outputs = engine.embed([0, 1, 2], pooling_params=PoolingParams(), tokenization_kwargs={"truncation": False})
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+
+    assert outputs == ["out-0", "out-1", "out-2"]
+    assert sorted(item[0] for item in submitted) == [0, 1, 2]
+    assert {item[1] for item in submitted} == {"embed"}
+    assert len({item[2] for item in submitted}) == 3
+
+
+def test_async_embed_engine_cancels_other_prompts_when_one_fails(monkeypatch) -> None:
+    import asyncio
+    import itertools
+    import threading
+
+    pytest.importorskip("vllm")
+    import vllm.renderers.inputs.preprocess as preprocess
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    cancelled = []
+
+    async def encode(prompt, _params, _request_id):
+        if prompt == "bad":
+            await asyncio.sleep(0.01)
+            raise ValueError("bad prompt")
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.append(prompt)
+            raise
+        yield None
+
+    renderer = SimpleNamespace(
+        default_cmpl_tok_params=SimpleNamespace(with_kwargs=lambda **_: None),
+        render_cmpl=lambda prompts, _params: prompts,
+    )
+    engine = vllm_inference.AsyncEmbedEngine.__new__(vllm_inference.AsyncEmbedEngine)
+    engine.engine = SimpleNamespace(renderer=renderer, model_config=None, encode=encode)
+    engine._ids = itertools.count()
+    engine._loop = asyncio.new_event_loop()
+    threading.Thread(target=engine._loop.run_forever, daemon=True).start()
+    try:
+        with pytest.raises(ValueError, match="bad prompt"):
+            engine.embed(["a", "bad", "b"])
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+    assert sorted(cancelled) == ["a", "b"]
+
+
+@pytest.mark.parametrize("explicit_shutdown", [True, False])
+def test_async_embed_engine_closes_its_event_loop(monkeypatch, explicit_shutdown) -> None:
+    import gc
+    import threading
+
+    pytest.importorskip("vllm")
+    import vllm.engine.arg_utils as arg_utils
+    from vllm.v1.engine.async_llm import AsyncLLM
+
+    monkeypatch.setattr(arg_utils, "AsyncEngineArgs", lambda **kwargs: kwargs)
+    monkeypatch.setattr(AsyncLLM, "from_engine_args", lambda *args, **kwargs: MagicMock())
+    before = set(threading.enumerate())
+    engine = vllm_inference.AsyncEmbedEngine(model="model")
+    (thread,) = set(threading.enumerate()) - before
+    loop = engine._loop
+
+    if explicit_shutdown:
+        engine.shutdown()
+    else:
+        del engine
+        gc.collect()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert loop.is_closed()
