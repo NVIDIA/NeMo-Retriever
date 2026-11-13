@@ -26,7 +26,27 @@ def resolve_nemotron_parse_dflash_tokens(
     invoke_url: str | None = None,
     backend: str = "vllm",
 ) -> int | None:
-    """Select DFlash2-32 automatically for local Parse 3.5 vLLM, preserving explicit opt-outs."""
+    """Select the DFlash2 draft length while preserving explicit opt-outs.
+
+    Args:
+        tokens: "auto" for backend-aware selection, an integer from 1 through
+            32 for an explicit draft length, or None to disable DFlash2.
+        model_id: Local model ID. None selects the default Parse 3.5 model.
+        invoke_url: Effective remote endpoint URL, including any CPU fallback.
+            None, an empty string, or whitespace selects local inference.
+        backend: Inference backend; DFlash2 requires "vllm".
+
+    Returns:
+        32 for automatic local Parse 3.5 vLLM inference, the requested integer
+        for a supported explicit setting, or None when DFlash2 is disabled
+        or automatic selection chooses another model, endpoint, or backend.
+
+    Raises:
+        ValueError: If tokens is neither "auto", None, nor an integer from 1
+            through 32, including booleans. Also raised when an explicit draft
+            length is requested for a remote endpoint, another model, or a
+            backend other than "vllm".
+    """
     local_parse35 = not str(invoke_url or "").strip() and model_id in (None, NEMOTRON_PARSE35_MODEL)
     if tokens == "auto":
         return 32 if local_parse35 and backend == "vllm" else None
