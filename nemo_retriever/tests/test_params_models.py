@@ -40,8 +40,8 @@ class TestExtractParams:
     def test_extraction_method_schema_describes_page_text_source(self) -> None:
         schema = ExtractParams.model_json_schema()["properties"]["method"]
 
-        assert "Page text source" in schema["description"]
-        assert "controlled separately" in schema["description"]
+        assert "How PDF pages are read" in schema["description"]
+        assert "choose which content types to extract" in schema["description"]
         assert "audio" not in schema["description"]
 
     @pytest.mark.parametrize("tokens", ["auto", None, 1, 16, 32])
@@ -240,6 +240,12 @@ class TestStageApiKey:
         monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
         params = ExtractParams(api_key="shared-key", **{field_name: "stage-key"})
         assert params.stage_api_key(field_name) == "stage-key"
+
+    def test_explicit_stage_env_reference_wins(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        monkeypatch.setenv("NGC_API_KEY", "ngc-key")
+        params = ExtractParams(api_key="shared-key", ocr_api_key="os.environ/NGC_API_KEY")
+        assert params.stage_api_key("ocr_api_key") == "ngc-key"
 
     def test_env_only_uses_env_key(self, monkeypatch):
         monkeypatch.setenv("NVIDIA_API_KEY", "env-key")

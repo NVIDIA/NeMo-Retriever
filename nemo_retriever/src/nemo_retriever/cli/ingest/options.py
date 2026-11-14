@@ -51,10 +51,10 @@ MethodOption = Annotated[
     typer.Option(
         "--method",
         help=(
-            "PDF page text source: pdfium uses native PDF text only; pdfium_hybrid uses native text "
+            "How PDF pages are read: pdfium uses native PDF text only; pdfium_hybrid uses native text "
             "with OCR for scanned pages (the auto-profile default); ocr uses OCR for every page; "
-            "nemotron_parse uses the Nemotron Parse visual extraction path. Tables, charts, and "
-            "infographics are controlled by their own flags."
+            "nemotron_parse uses Nemotron Parse, which also extracts the enabled tables, charts, and "
+            "infographics. The --extract-* flags choose which content types to extract."
         ),
     ),
 ]

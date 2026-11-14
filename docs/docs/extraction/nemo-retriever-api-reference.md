@@ -143,9 +143,10 @@ as scanned. It also runs page-element detection and OCR for text-only
 configurations, and it OCRs image inputs. To use native PDF text only, set
 `method="pdfium"`.
 
-The `method` value selects only the page text source. Table, chart, and
-infographic extraction use their own `extract_tables`, `extract_charts`, and
-`extract_infographics` settings. For audio inputs, use
+The `method` value selects how PDF pages are read. The `extract_tables`,
+`extract_charts`, and `extract_infographics` settings choose which structured
+content types to extract. With `nemotron_parse`, Nemotron Parse extracts the
+enabled content types in place of page-element detection and OCR. For audio inputs, use
 [`GraphIngestor.extract_audio()`](#graph-ingestor).
 
 Any other value raises a Pydantic `ValidationError` before pipeline setup. The

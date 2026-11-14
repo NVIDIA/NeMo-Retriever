@@ -41,9 +41,6 @@ NO_API_KEY = ""
 _REDACTED = "***"
 
 ENVIRONMENT_REFERENCE_PREFIX = "os.environ/"
-_DEFAULT_API_KEY_ENV_REFERENCES = frozenset(
-    f"{ENVIRONMENT_REFERENCE_PREFIX}{name}" for name in ("NVIDIA_API_KEY", "NGC_API_KEY")
-)
 _ENVIRONMENT_VARIABLE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PROTECTED_LLM_REQUEST_KEYS = frozenset(
     {
@@ -205,6 +202,7 @@ class _ParamsModel(BaseModel):
     _no_api_key_fields: set[str] = PrivateAttr(default_factory=set)
     _api_key_env_references: dict[str, str] = PrivateAttr(default_factory=dict)
     _api_key_env_values: dict[str, str] = PrivateAttr(default_factory=dict)
+    _api_key_env_defaulted: set[str] = PrivateAttr(default_factory=set)
     _auto_resolve_unset_api_keys: ClassVar[bool] = True
 
     @model_validator(mode="after")
@@ -215,6 +213,7 @@ class _ParamsModel(BaseModel):
                 if value is None:
                     if field_name in self._no_api_key_fields:
                         continue
+                    self._api_key_env_defaulted.discard(field_name)
                     if not type(self)._auto_resolve_unset_api_keys:
                         self._api_key_env_references.pop(field_name, None)
                         self._api_key_env_values.pop(field_name, None)
@@ -228,10 +227,12 @@ class _ParamsModel(BaseModel):
                     if resolved and source_name:
                         self._api_key_env_references[field_name] = f"{ENVIRONMENT_REFERENCE_PREFIX}{source_name}"
                         self._api_key_env_values[field_name] = resolved
+                        self._api_key_env_defaulted.add(field_name)
                     else:
                         self._api_key_env_references.pop(field_name, None)
                         self._api_key_env_values.pop(field_name, None)
                 elif value == NO_API_KEY:
+                    self._api_key_env_defaulted.discard(field_name)
                     self._no_api_key_fields.add(field_name)
                     self._api_key_env_references.pop(field_name, None)
                     self._api_key_env_values.pop(field_name, None)
@@ -240,6 +241,7 @@ class _ParamsModel(BaseModel):
                     self._no_api_key_fields.discard(field_name)
                     explicit_reference = environment_reference_name(value)
                     if explicit_reference is not None:
+                        self._api_key_env_defaulted.discard(field_name)
                         self._api_key_env_references[field_name] = value
                         if type(self)._auto_resolve_unset_api_keys:
                             value = resolve_environment_reference(value)
@@ -248,6 +250,7 @@ class _ParamsModel(BaseModel):
                     else:
                         prior_value = self._api_key_env_values.get(field_name)
                         if prior_value != value:
+                            self._api_key_env_defaulted.discard(field_name)
                             self._api_key_env_references.pop(field_name, None)
                             self._api_key_env_values.pop(field_name, None)
         return self
@@ -263,6 +266,12 @@ class _ParamsModel(BaseModel):
         if self._api_key_env_values.get(field_name) != value:
             return None
         return reference
+
+    def _api_key_was_env_defaulted(self, field_name: str) -> bool:
+        """Return whether an unset API-key field was filled from ``NVIDIA_API_KEY`` or ``NGC_API_KEY``."""
+        return field_name in self._api_key_env_defaulted and self._api_key_env_values.get(field_name) == getattr(
+            self, field_name, None
+        )
 
     def _uses_no_api_key(self, field_name: str) -> bool:
         """Return whether an API-key field was explicitly disabled.
@@ -585,9 +594,10 @@ class ExtractParams(_ParamsModel):
     method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse"] = Field(
         default="pdfium_hybrid",
         description=(
-            "Page text source for PDFs. 'pdfium' uses the native text layer, 'pdfium_hybrid' uses native text "
+            "How PDF pages are read. 'pdfium' uses the native text layer, 'pdfium_hybrid' uses native text "
             "and OCRs pages without it, 'ocr' OCRs every page, and 'nemotron_parse' parses pages with "
-            "Nemotron Parse. Table, chart, and infographic extraction is controlled separately."
+            "Nemotron Parse, which also extracts the enabled tables, charts, and infographics. The extract_* flags "
+            "choose which content types to extract."
         ),
     )
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
@@ -641,8 +651,8 @@ class ExtractParams(_ParamsModel):
         if (
             stage_key
             and self.api_key
-            and self._api_key_env_reference(field_name) in _DEFAULT_API_KEY_ENV_REFERENCES
-            and self._api_key_env_reference("api_key") is None
+            and self._api_key_was_env_defaulted(field_name)
+            and not self._api_key_was_env_defaulted("api_key")
         ):
             return self.api_key
         return stage_key or self.api_key
