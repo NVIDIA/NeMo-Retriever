@@ -121,6 +121,10 @@ def expand_input_file_patterns(input_paths: InputPath | Iterable[InputPath]) -> 
     for input_path in paths:
         raw_path = fspath(input_path)
         pattern = str(Path(raw_path).expanduser())
+        if Path(pattern).is_file():
+            # An existing file is a literal path even if its name contains glob characters.
+            expanded.append(pattern)
+            continue
         matches = [match for match in glob.glob(pattern, recursive=True) if Path(match).is_file()]
         if matches:
             expanded.extend(sorted(matches))
