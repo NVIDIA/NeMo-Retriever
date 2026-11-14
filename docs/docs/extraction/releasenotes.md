@@ -26,6 +26,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 - The in-process `GraphIngestor` no longer provides methods inherited from the legacy NV-Ingest client: `load`, `ingest_async`, `all_tasks`, `filter`, `store_embed`, `udf`, `save_intermediate_results`, `pdf_split_config`, `completed_jobs`, `failed_jobs`, `cancelled_jobs`, `remaining_jobs`, and `get_status`. Each method had no effect or raised `NotImplementedError`, and a call now raises `AttributeError`. `ServiceIngestor` keeps its own implementations of these methods.
 - `pdf_extraction()` no longer has a `text_depth` parameter. The parameter had no effect because every value returned page text.
 - The hidden `retriever recall` command is removed. Use `retriever query` to retrieve results. To score a LanceDB table against a query CSV, call `evaluate_recall()` with a `RecallConfig` from `nemo_retriever.tools.recall`. For BEIR metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
+- `TextChunkParams` and `HtmlChunkParams` now raise a Pydantic `ValidationError` when `overlap_tokens` is not less than `max_tokens`. Previously, the text splitter accepted these values and advanced one token per chunk, which multiplied the number of chunks to embed. `retriever ingest` keeps its 150-token default overlap, so when you set `--text-chunk-max-tokens` to 150 or less, also set a smaller `--text-chunk-overlap-tokens`.
 
 ## 26.08.2 Helm Chart Patch { #release-26082 }
 

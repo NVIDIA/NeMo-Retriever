@@ -372,6 +372,14 @@ class TextChunkParams(_ParamsModel):
     encoding: str = "utf-8"
     tokenizer_cache_dir: Optional[str] = None
 
+    @model_validator(mode="after")
+    def _check_overlap_tokens(self) -> "TextChunkParams":
+        if self.max_tokens > 0 and self.overlap_tokens >= self.max_tokens:
+            raise ValueError(
+                f"overlap_tokens ({self.overlap_tokens}) must be less than max_tokens ({self.max_tokens})."
+            )
+        return self
+
 
 class HtmlChunkParams(TextChunkParams):
     pass

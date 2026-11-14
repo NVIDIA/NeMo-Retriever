@@ -7,7 +7,15 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_retriever.common.params.models import EmbedParams, ExtractParams, NO_API_KEY, StoreParams, VideoFrameParams
+from nemo_retriever.common.params.models import (
+    EmbedParams,
+    ExtractParams,
+    HtmlChunkParams,
+    NO_API_KEY,
+    StoreParams,
+    TextChunkParams,
+    VideoFrameParams,
+)
 
 
 class TestVideoFrameParams:
@@ -167,6 +175,20 @@ class TestExtractParams:
         assert "use_graphic_elements" not in ExtractParams.model_fields
         assert "graphic_elements_invoke_url" not in ExtractParams.model_fields
         assert "extract_charts" in ExtractParams.model_fields
+
+
+class TestTextChunkParams:
+    @pytest.mark.parametrize("params_type", [TextChunkParams, HtmlChunkParams])
+    @pytest.mark.parametrize("overlap_tokens", [100, 150])
+    def test_overlap_not_less_than_max_tokens_rejected(self, params_type: type, overlap_tokens: int) -> None:
+        """An overlap of at least ``max_tokens`` makes the splitter advance one token per chunk."""
+        with pytest.raises(ValidationError, match="overlap_tokens .* must be less than max_tokens"):
+            params_type(max_tokens=100, overlap_tokens=overlap_tokens)
+
+    def test_overlap_less_than_max_tokens_accepted(self) -> None:
+        params = TextChunkParams(max_tokens=100, overlap_tokens=99)
+
+        assert (params.max_tokens, params.overlap_tokens) == (100, 99)
 
 
 class TestStoreParams:
