@@ -227,3 +227,32 @@ def test_parse_decoder_schema_exposes_auto_default_and_bounded_draft_length():
     assert schema["default"] == "auto"
     integer = next(item for item in schema["anyOf"] if item.get("type") == "integer")
     assert integer["minimum"] == 1 and integer["maximum"] == 32
+
+
+class TestStageApiKey:
+    @pytest.mark.parametrize("field_name", ["page_elements_api_key", "ocr_api_key"])
+    def test_env_default_stage_key_yields_to_explicit_shared_key(self, monkeypatch, field_name):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        assert ExtractParams(api_key="shared-key").stage_api_key(field_name) == "shared-key"
+
+    @pytest.mark.parametrize("field_name", ["page_elements_api_key", "ocr_api_key"])
+    def test_explicit_stage_key_wins(self, monkeypatch, field_name):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        params = ExtractParams(api_key="shared-key", **{field_name: "stage-key"})
+        assert params.stage_api_key(field_name) == "stage-key"
+
+    def test_env_only_uses_env_key(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        assert ExtractParams().stage_api_key("page_elements_api_key") == "env-key"
+
+    def test_shared_key_without_env(self, monkeypatch):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        assert ExtractParams(api_key="shared-key").stage_api_key("page_elements_api_key") == "shared-key"
+
+    def test_shared_key_survives_ingestor_override_merge(self, monkeypatch):
+        from nemo_retriever.ingestor.graph_ingestor import _coerce
+
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        params = _coerce(ExtractParams(api_key="shared-key"), {"extract_tables": False})
+        assert params.stage_api_key("page_elements_api_key") == "shared-key"

@@ -1360,6 +1360,35 @@ def test_build_graph_routes_page_elements_api_key_to_detection(extract_kwargs: d
     assert detect.operator_kwargs["api_key"] == expected_key
 
 
+@pytest.mark.parametrize(
+    ("extract_kwargs", "expected_key"),
+    [
+        ({}, "env-key"),
+        ({"api_key": "shared-key"}, "shared-key"),
+        ({"api_key": "shared-key", "page_elements_api_key": "pe-key"}, "pe-key"),
+    ],
+    ids=["env-only", "explicit-shared-key", "explicit-stage-key"],
+)
+def test_build_graph_page_elements_env_key_does_not_override_shared_key(
+    monkeypatch: pytest.MonkeyPatch, extract_kwargs: dict, expected_key: str
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page-elements.example/v1",
+            **extract_kwargs,
+        ),
+    )
+
+    detect = next(node for node in _linear_nodes(graph) if node.name == "PageElementDetectionActor")
+    assert detect.operator_kwargs["api_key"] == expected_key
+
+
 def test_extract_params_rejects_audio_method() -> None:
     with pytest.raises(ValueError, match="method"):
         ExtractParams(method="audio")

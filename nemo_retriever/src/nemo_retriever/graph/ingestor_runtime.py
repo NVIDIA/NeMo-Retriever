@@ -845,7 +845,7 @@ def build_graph(
                 ocr_invoke_url=getattr(extract_params, "ocr_invoke_url", None),
                 ocr_version=getattr(extract_params, "ocr_version", "v2"),
                 ocr_lang=getattr(extract_params, "ocr_lang", None),
-                api_key=getattr(extract_params, "ocr_api_key", None) or getattr(extract_params, "api_key", None),
+                api_key=extract_params.stage_api_key("ocr_api_key") if extract_params is not None else None,
                 inference_batch_size=int(getattr(extract_params, "inference_batch_size", None) or 8),
                 request_timeout_s=float(
                     getattr(extract_params, "ocr_request_timeout_s", None)
@@ -925,8 +925,9 @@ def build_graph(
             detect_kwargs: dict[str, Any] = {}
             if extract_params.page_elements_invoke_url:
                 detect_kwargs["page_elements_invoke_url"] = extract_params.page_elements_invoke_url
-            if extract_params.page_elements_api_key or extract_params.api_key:
-                detect_kwargs["api_key"] = extract_params.page_elements_api_key or extract_params.api_key
+            page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
+            if page_elements_api_key:
+                detect_kwargs["api_key"] = page_elements_api_key
             if extract_params.inference_batch_size:
                 detect_kwargs["inference_batch_size"] = int(extract_params.inference_batch_size)
 

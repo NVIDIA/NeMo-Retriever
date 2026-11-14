@@ -41,6 +41,9 @@ NO_API_KEY = ""
 _REDACTED = "***"
 
 ENVIRONMENT_REFERENCE_PREFIX = "os.environ/"
+_DEFAULT_API_KEY_ENV_REFERENCES = frozenset(
+    f"{ENVIRONMENT_REFERENCE_PREFIX}{name}" for name in ("NVIDIA_API_KEY", "NGC_API_KEY")
+)
 _ENVIRONMENT_VARIABLE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PROTECTED_LLM_REQUEST_KEYS = frozenset(
     {
@@ -627,6 +630,22 @@ class ExtractParams(_ParamsModel):
 
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    def stage_api_key(self, field_name: str) -> Optional[str]:
+        """Return the key for one remote stage, falling back to the shared ``api_key``.
+
+        A stage key that was only filled from ``NVIDIA_API_KEY`` or ``NGC_API_KEY``
+        does not override an explicitly supplied shared ``api_key``.
+        """
+        stage_key = getattr(self, field_name, None)
+        if (
+            stage_key
+            and self.api_key
+            and self._api_key_env_reference(field_name) in _DEFAULT_API_KEY_ENV_REFERENCES
+            and self._api_key_env_reference("api_key") is None
+        ):
+            return self.api_key
+        return stage_key or self.api_key
 
     @model_validator(mode="after")
     def _auto_enable_features(self) -> "ExtractParams":
