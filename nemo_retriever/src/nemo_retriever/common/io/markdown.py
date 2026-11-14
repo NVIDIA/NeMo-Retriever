@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,9 @@ def _collect_page_record(by_page: dict[int, _PageContent], record: Mapping[str, 
 
     for column_name, label in _PAGE_CONTENT_COLUMNS:
         items = record.get(column_name)
+        if isinstance(items, np.ndarray):
+            # Parquet and Arrow round-trips return list columns as 1-D object arrays.
+            items = items.tolist()
         if not isinstance(items, list):
             continue
         for item in items:
