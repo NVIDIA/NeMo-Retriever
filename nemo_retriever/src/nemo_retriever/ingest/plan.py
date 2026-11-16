@@ -376,7 +376,21 @@ _FAST_TEXT_LOCKED_EXTRACT_KEYS = frozenset(
 
 
 def validate_profile_extract_overrides(profile: IngestProfileValue, overrides: Mapping[str, Any]) -> None:
-    """Reject explicit extract options that the profile would otherwise silently disable."""
+    """Reject explicit extract options that the profile would otherwise silently disable.
+
+    Args:
+        profile: Ingest profile to validate. Only ``fast-text`` restricts overrides.
+        overrides: Explicit extraction option names and values. Options not locked
+            by the profile are ignored.
+
+    Returns:
+        None when the overrides are compatible with the profile, including when
+        no overrides are supplied.
+
+    Raises:
+        ValueError: If ``fast-text`` is combined with a method other than ``pdfium``
+            or enabled table, chart, infographic, or page-element extraction.
+    """
     if profile != "fast-text":
         return
     fixed = profile_extract_defaults(profile)

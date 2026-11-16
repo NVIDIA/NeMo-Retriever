@@ -646,6 +646,16 @@ class ExtractParams(_ParamsModel):
 
         A stage key that was only filled from ``NVIDIA_API_KEY`` or ``NGC_API_KEY``
         does not override an explicitly supplied shared ``api_key``.
+
+        Args:
+            field_name: Stage credential field, ``ocr_api_key`` or
+                ``page_elements_api_key``. An unknown field falls back to ``api_key``.
+
+        Returns:
+            The selected stage or shared key, or ``None`` when neither is configured.
+
+        Raises:
+            TypeError: If ``field_name`` is not a string.
         """
         stage_key = getattr(self, field_name, None)
         if (
