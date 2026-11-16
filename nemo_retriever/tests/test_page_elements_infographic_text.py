@@ -76,3 +76,15 @@ def test_table_contained_paragraph_is_removed_either_way(suppress_text_in_infogr
     )
     assert len(result["table"]) == 1
     assert len(result["paragraph"]) == (0 if suppress_text_in_infographics else 1)
+
+
+@pytest.mark.parametrize("extract_infographics", [False, True])
+def test_title_only_infographic_preserves_title_when_extraction_is_off(extract_infographics):
+    detections = [
+        {"label_name": "infographic", "bbox_xyxy_norm": [0.1, 0.1, 0.9, 0.9], "score": 0.95},
+        {"label_name": "title", "bbox_xyxy_norm": [0.2, 0.2, 0.5, 0.25], "score": 0.95},
+    ]
+    result = _apply_page_elements_v3_postprocess(detections, extract_infographics=extract_infographics)
+    counts = _counts(_apply_final_score_filter(result))
+    assert counts.get("infographic") == 1
+    assert counts.get("title", 0) == (0 if extract_infographics else 1)

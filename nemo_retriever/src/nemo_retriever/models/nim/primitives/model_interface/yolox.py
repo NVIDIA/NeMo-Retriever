@@ -927,7 +927,7 @@ def postprocess_page_elements_v3(
         return {label: [] for label in labels}
 
     bboxes, confidences, label_idxs, found_title = match_structured_boxes_with_title(
-        bboxes, confidences, label_idxs, labels
+        bboxes, confidences, label_idxs, labels, match_infographics=suppress_text_in_infographics
     )
     bboxes, label_idxs, confidences = expand_tables_and_charts(bboxes, confidences, label_idxs, labels, found_title)
     bboxes, label_idxs, confidences = postprocess_included_texts(
@@ -1668,7 +1668,7 @@ def remove_overlapping_boxes_using_wbf(boxes, confs, labels):
     return boxes, confs, labels
 
 
-def match_structured_boxes_with_title(boxes, confs, labels, classes):
+def match_structured_boxes_with_title(boxes, confs, labels, classes, *, match_infographics=True):
     # Reorder by y, x
     order = np.argsort(boxes[:, 1] * 10 + boxes[:, 0])
     boxes, confs, labels = boxes[order], confs[order], labels[order]
@@ -1681,7 +1681,7 @@ def match_structured_boxes_with_title(boxes, confs, labels, classes):
         confs,
         labels,
         classes,
-        to_match_labels=["chart", "table", "infographic"],
+        to_match_labels=["chart", "table", "infographic"] if match_infographics else ["chart", "table"],
         remove_matched_titles=True,
     )
 
