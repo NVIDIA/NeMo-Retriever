@@ -66,6 +66,21 @@ def _gemma_config(**overrides):
     return config
 
 
+def _gemma2_config(**overrides):
+    config = {
+        "model_type": "embedding_gemma2",
+        "architectures": ["EmbeddingGemma2Model"],
+        "text_config": {
+            "model_type": "embedding_gemma2_text",
+            "hidden_size": 512,
+            "embedding_dim": 768,
+            "max_position_embeddings": 262144,
+        },
+    }
+    config.update(overrides)
+    return config
+
+
 def _vl_config(**overrides):
     config = {
         "model_type": "llama_nemotron_vl",
@@ -236,8 +251,9 @@ def test_ministral_checkpoint_requires_explicit_non_causal_config(tmp_path, is_c
         resolve_embed_model_spec(str(tmp_path))
 
 
-def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path):
-    _write_config(tmp_path, _gemma_config())
+@pytest.mark.parametrize("config,max_tokens", [(_gemma_config(), 2048), (_gemma2_config(), 8192)])
+def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path, config, max_tokens):
+    _write_config(tmp_path, config)
     _write_prompt_config(
         tmp_path,
         {
@@ -245,7 +261,10 @@ def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path):
             "document": "title: none | text: ",
         },
     )
-    _write_sentence_config(tmp_path, max_seq_length=2048)
+    if config["model_type"] == "gemma3_text":
+        _write_sentence_config(tmp_path, max_seq_length=max_tokens)
+    else:
+        _write_sentence_config(tmp_path, module_output_name="token_embeddings")
 
     spec = resolve_embed_model_spec(str(tmp_path))
 
@@ -253,8 +272,65 @@ def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path):
     assert spec.output_dimension == 768
     assert spec.query_prefix == "task: search result | query: "
     assert spec.document_prefix == "title: none | text: "
-    assert spec.max_input_tokens == 2048
+    assert spec.max_input_tokens == max_tokens
     assert spec.requires_vllm is True
+    assert spec.query_prefix_declared is True
+    assert spec.document_prefix_declared is True
+
+
+def test_gemma2_checkpoint_without_optional_metadata(tmp_path):
+    _write_config(tmp_path, _gemma2_config())
+
+    spec = resolve_embed_model_spec(str(tmp_path))
+
+    assert spec.output_dimension == 768
+    assert spec.max_input_tokens == 8192
+    assert spec.query_prefix == "query: "
+    assert spec.document_prefix == "passage: "
+    assert spec.query_prefix_declared is False
+    assert spec.document_prefix_declared is False
+
+
+@pytest.mark.parametrize("text_config", [None, {}, {"model_type": "gemma3_text", "embedding_dim": 768}])
+def test_gemma2_checkpoint_requires_text_config(tmp_path, text_config):
+    _write_config(tmp_path, _gemma2_config(text_config=text_config))
+
+    with pytest.raises(ValueError, match="requires an embedding_gemma2_text text_config"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize("dimension", [None, False, 0, -1, "768"])
+def test_gemma2_checkpoint_requires_embedding_dimension(tmp_path, dimension):
+    config = _gemma2_config()
+    config["text_config"]["embedding_dim"] = dimension
+    _write_config(tmp_path, config)
+
+    with pytest.raises(ValueError, match="a positive embedding_dim is required"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+def test_gemma2_checkpoint_rejects_wrong_architecture(tmp_path):
+    _write_config(tmp_path, _gemma2_config(architectures=["Gemma3TextModel"]))
+
+    with pytest.raises(ValueError, match="unsupported architectures"):
+        resolve_embed_model_spec(str(tmp_path))
+
+
+@pytest.mark.parametrize("max_seq_length,expected", [(4096, 4096), (16384, 8192)])
+def test_gemma2_checkpoint_caps_declared_input_limit(tmp_path, max_seq_length, expected):
+    _write_config(tmp_path, _gemma2_config())
+    _write_sentence_config(tmp_path, max_seq_length=max_seq_length)
+
+    assert resolve_embed_model_spec(str(tmp_path)).max_input_tokens == expected
+
+
+@pytest.mark.parametrize("max_seq_length", [False, 0, -1, "8192"])
+def test_gemma2_checkpoint_rejects_invalid_input_limit(tmp_path, max_seq_length):
+    _write_config(tmp_path, _gemma2_config())
+    _write_sentence_config(tmp_path, max_seq_length=max_seq_length)
+
+    with pytest.raises(ValueError, match="invalid supported input limit"):
+        resolve_embed_model_spec(str(tmp_path))
 
 
 @pytest.mark.parametrize("use_bidirectional_attention", [False, None])
@@ -265,10 +341,11 @@ def test_gemma_checkpoint_requires_bidirectional_attention(tmp_path, use_bidirec
         resolve_embed_model_spec(str(tmp_path))
 
 
-def test_gemma_checkpoint_rejects_hf_backend(tmp_path):
+@pytest.mark.parametrize("config", [_gemma_config(), _gemma2_config()])
+def test_gemma_checkpoint_rejects_hf_backend(tmp_path, config):
     from nemo_retriever.models.embed_model_spec import validate_embed_model_backend
 
-    _write_config(tmp_path, _gemma_config())
+    _write_config(tmp_path, config)
 
     with pytest.raises(ValueError, match="requires backend='vllm'"):
         validate_embed_model_backend(resolve_embed_model_spec(str(tmp_path)), "hf")
@@ -346,6 +423,8 @@ def test_local_directory_requires_config_json(tmp_path):
 @pytest.mark.parametrize(
     ("model_id", "config", "family", "dimension", "requires_vllm"),
     [
+        ("google/embeddinggemma-2", _gemma2_config(), "text", 768, True),
+        ("google/embeddinggemma-300m", _gemma_config(), "text", 768, True),
         ("nvidia/llama-3.2-nv-embedqa-1b-v2", _text_config(), "text", 2048, False),
         ("nvidia/llama-nemotron-embed-1b-v2", _text_config(), "text", 2048, False),
         ("nvidia/llama-nemotron-embed-vl-1b-v2", _vl_config(), "vl", 2048, False),
