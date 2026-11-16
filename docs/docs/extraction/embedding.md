@@ -30,37 +30,12 @@ Before changing an existing index's model or precision, validate retrieval quali
 ## Experimental EmbeddingGemma 2 embeddings
 
 The checkpoint resolver recognizes `google/embeddinggemma-2` at revision
-`f9972ac22e696a105c482202646979e33e4b5a1e` for local text, image, and paired text-and-image embedding.
-It produces 768-dimensional vectors and enforces an 8,192-token maximum input,
-including prefixes, special tokens, and expanded image tokens. Queries remain text-only.
-Audio and video embedding are not supported by this integration.
-
-This checkpoint requires the `vllm` backend and a separate compatible runtime:
-vLLM >=0.34.0 and Transformers >=5.19 with `embedding_gemma2` support.
-vLLM 0.34.0 includes the [Triton prefill shared-memory fix](https://github.com/vllm-project/vllm/pull/60942)
-for this model's 512-wide heads on GPUs with about 99 KiB of shared memory.
-The adapter uses vLLM's model-specific attention default, which selects `TRITON_ATTN` for EmbeddingGemma 2.
-The repository's locked local environment remains unchanged and does not support loading this checkpoint.
-Do not upgrade the shared extraction environment: its OCR dependencies require a different Torch stack.
-Use an isolated embedding-only environment without OCR extras for experiments.
-
-The resolver reads query and document prefixes from `config_sentence_transformers.json`:
-`task: search result | query: ` for queries and `title: none | text: ` for documents.
-Pass unformatted text and keep the same checkpoint for ingestion and retrieval.
-Validate retrieval quality before deployment or replacing an existing index.
-
-For full-page inputs, select `embed_granularity="page"` with
-`embed_modality="text_image"` or `embed_modality="image"` and explicitly select
-`google/embeddinggemma-2` as the embedding model. Use the same page-rendering
-workflow described in [Embed entire PDF pages as images](#example-with-embedding-entire-pdf-pages-as-images).
-The adapter supplies one `<|image|>` placeholder and one decoded image per document.
-Paired prompts use `title: none | text: {page text} <|image|>`, with the image after the text.
-Image-only prompts use exactly `title: none | text: <|image|>`, without trailing whitespace.
-Do not insert image placeholders yourself.
-The checkpoint processor expands each image to its native image-token representation, with 280 soft tokens by default.
-Paired text shares the configured input budget with the image and document prefix.
-Oversized paired text is split losslessly before inference, repeating the full image for each child.
-Direct paired embedding calls reject overflow instead of truncating text or images.
+`f9972ac22e696a105c482202646979e33e4b5a1e` for local text-only embedding.
+It produces 768-dimensional vectors with an 8,192-token input cap, including prefixes and special tokens.
+Use `embed_modality="text"` and the `vllm` backend with vLLM >=0.34.0 and Transformers >=5.19.
+The integration uses vLLM's model-specific attention default and the checkpoint's query and document prompts.
+Pass unformatted text. Image and paired text-and-image embedding are not supported by this integration.
+The locked environment remains unchanged; use a separate compatible runtime and validate retrieval quality before deployment.
 
 ## Hosted embedding defaults
 

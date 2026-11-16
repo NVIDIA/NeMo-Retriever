@@ -233,25 +233,6 @@ def _create_local_embedder_from_spec(
         min(int(query_max_length), spec.max_input_tokens) if spec.max_input_tokens else int(query_max_length)
     )
 
-    if spec.model_type == "embedding_gemma2":
-        from nemo_retriever.models.local.embedding_gemma2_embedder import EmbeddingGemma2Embedder
-
-        return EmbeddingGemma2Embedder(
-            model_id=model_id,
-            revision=spec.revision,
-            device=device,
-            hf_cache_dir=hf_cache_dir,
-            gpu_memory_utilization=gpu_memory_utilization,
-            enforce_eager=enforce_eager,
-            dimensions=dimensions,
-            normalize=normalize,
-            output_dimension=spec.output_dimension,
-            query_prefix=spec.query_prefix,
-            document_prefix=spec.document_prefix,
-            max_length=effective_max_length,
-            query_max_length=effective_query_max_length,
-        )
-
     if spec.model_type == "mistral3":
         from nemo_retriever.models.local.nemotron35_embedder import Nemotron35Embedder
 
@@ -324,6 +305,7 @@ def _create_local_embedder_from_spec(
     from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import (
         LlamaNemotronEmbed1BV2Embedder,
     )
+    from nemo_retriever.models.inference.vllm import VLLM_ATTENTION_BACKEND
 
     return LlamaNemotronEmbed1BV2Embedder(
         model_id=model_id,
@@ -337,6 +319,7 @@ def _create_local_embedder_from_spec(
         revision=spec.revision,
         query_prefix=spec.query_prefix,
         document_prefix=spec.document_prefix,
+        attention_backend=None if spec.model_type == "embedding_gemma2" else VLLM_ATTENTION_BACKEND,
     )
 
 

@@ -151,6 +151,31 @@ def test_alias_resolved_to_text_embedder(_patch_embedders):
     assert result is fake_text_vllm.return_value
 
 
+@pytest.mark.parametrize("model_type,attention_backend", [("gemma3_text", "FLASH_ATTN"), ("embedding_gemma2", None)])
+def test_gemma_uses_shared_text_embedder(monkeypatch, _patch_embedders, model_type, attention_backend):
+    fake_text_vllm, _, _, _ = _patch_embedders
+    spec = EmbedModelSpec(
+        model_id="google/embeddinggemma-2" if model_type == "embedding_gemma2" else "google/embeddinggemma-300m",
+        revision="a" * 40,
+        family="text",
+        output_dimension=768,
+        query_prefix="task: search result | query: ",
+        document_prefix="title: none | text: ",
+        requires_vllm=True,
+        max_input_tokens=8192,
+        model_type=model_type,
+    )
+    monkeypatch.setattr("nemo_retriever.models.resolve_embed_model_spec", lambda *args, **kwargs: spec)
+    result = create_local_embedder(spec.model_id, max_length=16384)
+    assert result is fake_text_vllm.return_value
+    kwargs = fake_text_vllm.call_args.kwargs
+    assert kwargs["max_length"] == 8192
+    assert kwargs["revision"] == spec.revision
+    assert kwargs["query_prefix"] == spec.query_prefix
+    assert kwargs["document_prefix"] == spec.document_prefix
+    assert kwargs["attention_backend"] == attention_backend
+
+
 @pytest.mark.parametrize(
     ("model_name", "expected"),
     [

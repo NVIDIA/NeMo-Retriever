@@ -551,6 +551,15 @@ class TestLlamaNemotronEmbed1BV2Embedder:
     def setup_method(self):
         self.embedder = _make_text_embedder()
 
+    @pytest.mark.parametrize("attention_backend", [None, "FLASH_ATTN"])
+    def test_engine_forwards_attention_backend(self, attention_backend):
+        embedder = LlamaNemotronEmbed1BV2Embedder(
+            model_id="google/embeddinggemma-2", attention_backend=attention_backend
+        )
+        with patch("nemo_retriever.models.inference.vllm.create_vllm_llm") as create:
+            embedder._ensure_loaded()
+        assert create.call_args.kwargs["attention_backend"] == attention_backend
+
     def test_finalize_vectors_rejects_one_missing_output(self):
         with pytest.raises(RuntimeError, match=r"failed to return.*1/2"):
             self.embedder._finalize_vectors([[1.0, 0.0], []])

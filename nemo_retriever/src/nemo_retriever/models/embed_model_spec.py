@@ -18,7 +18,7 @@ from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 EmbedModelFamily = Literal["text", "vl"]
 
 _MODEL_PROFILES: dict[str, tuple[EmbedModelFamily, str]] = {
-    "embedding_gemma2": ("vl", "EmbeddingGemma2Model"),
+    "embedding_gemma2": ("text", "EmbeddingGemma2Model"),
     "gemma3_text": ("text", "Gemma3TextModel"),
     "llama_bidirec": ("text", "LlamaBidirectionalModel"),
     "llama_nemotron_vl": ("vl", "LlamaNemotronVLModel"),

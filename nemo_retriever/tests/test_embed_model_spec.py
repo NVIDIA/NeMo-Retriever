@@ -268,7 +268,7 @@ def test_gemma_checkpoint_is_resolved_with_prompt_metadata(tmp_path, config, max
 
     spec = resolve_embed_model_spec(str(tmp_path))
 
-    assert spec.family == ("vl" if config["model_type"] == "embedding_gemma2" else "text")
+    assert spec.family == "text"
     assert spec.output_dimension == 768
     assert spec.query_prefix == "task: search result | query: "
     assert spec.document_prefix == "title: none | text: "
@@ -425,7 +425,7 @@ def test_local_directory_requires_config_json(tmp_path):
 @pytest.mark.parametrize(
     ("model_id", "config", "family", "dimension", "requires_vllm"),
     [
-        ("google/embeddinggemma-2", _gemma2_config(), "vl", 768, True),
+        ("google/embeddinggemma-2", _gemma2_config(), "text", 768, True),
         ("google/embeddinggemma-300m", _gemma_config(), "text", 768, True),
         ("nvidia/llama-3.2-nv-embedqa-1b-v2", _text_config(), "text", 2048, False),
         ("nvidia/llama-nemotron-embed-1b-v2", _text_config(), "text", 2048, False),
