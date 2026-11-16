@@ -58,7 +58,7 @@ class EmbeddingGemma2Embedder(LlamaNemotronEmbed1BV2Embedder):
             )
 
     def _image_prompt(self, text: str) -> str:
-        return f"{self.document_prefix}<|image|> {text}"
+        return f"{self.document_prefix}{text + ' ' if text else ''}<|image|>"
 
     def _image_prompt_length(self, prompt: str, image: Any) -> int:
         self._ensure_processor()
@@ -78,8 +78,8 @@ class EmbeddingGemma2Embedder(LlamaNemotronEmbed1BV2Embedder):
                 policy = EmbeddingInputPolicy(
                     tokenizer=self._processor.tokenizer,
                     max_tokens=self.max_length,
-                    prefix=self._image_prompt(""),
-                    formatted_token_counter=lambda prompt: self._image_prompt_length(prompt, image),
+                    prefix="",
+                    formatted_token_counter=lambda text: self._image_prompt_length(self._image_prompt(text), image),
                 )
                 if policy._formatted_token_count("") >= self.max_length:
                     raise ValueError("Image and document prefix leave no text budget within max_length.")

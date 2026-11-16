@@ -51,6 +51,8 @@ For full-page inputs, select `embed_granularity="page"` with
 `google/embeddinggemma-2` as the embedding model. Use the same page-rendering
 workflow described in [Embed entire PDF pages as images](#example-with-embedding-entire-pdf-pages-as-images).
 The adapter supplies one `<|image|>` placeholder and one decoded image per document.
+Paired prompts use `title: none | text: {page text} <|image|>`, with the image after the text.
+Image-only prompts use exactly `title: none | text: <|image|>`, without trailing whitespace.
 Do not insert image placeholders yourself.
 The checkpoint processor expands each image to its native image-token representation, with 280 soft tokens by default.
 Paired text shares the configured input budget with the image and document prefix.
