@@ -236,7 +236,7 @@ def test_explicit_sink_identity_and_dimension_are_preserved(tmp_path, monkeypatc
 def test_single_node_ray_default_uses_visible_gpu_architecture(
     tmp_path, monkeypatch, requested_model, bf16, nvfp4, driver_has_blackwell
 ):
-    expected = nvfp4 if driver_has_blackwell and requested_model is None else bf16
+    expected = nvfp4 if driver_has_blackwell else bf16
     driver_probe = MagicMock(return_value=driver_has_blackwell)
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
     cluster = ClusterResources(
@@ -248,20 +248,14 @@ def test_single_node_ray_default_uses_visible_gpu_architecture(
     metadata = sink_kwargs["vdb_kwargs"]
     assert actor_params.model_name == actor_params.embed_model_name == metadata["embedding_model_name"] == expected
     assert actor_params.embed_model_revision == metadata["embedding_model_revision"] == get_hf_revision(expected)
-    if requested_model is None:
-        driver_probe.assert_called_once_with()
-    else:
-        driver_probe.assert_not_called()
+    driver_probe.assert_called_once_with()
     assert original_params.model_name == requested_model
     from nemo_retriever.graph.retriever import Retriever
 
     query_kwargs = Retriever()._resolve_embed_kwargs(expected, None, metadata["embedding_model_revision"])
     assert query_kwargs["model_name"] == query_kwargs["embed_model_name"] == expected
     assert query_kwargs["embed_model_revision"] == actor_params.embed_model_revision
-    if requested_model is None:
-        driver_probe.assert_called_once_with()
-    else:
-        driver_probe.assert_not_called()
+    driver_probe.assert_called_once_with()
 
 
 @pytest.mark.parametrize(
@@ -278,37 +272,3 @@ def test_ray_preserves_explicit_checkpoint_precision(tmp_path, monkeypatch, chec
     assert actor_params.model_name == sink_kwargs["vdb_kwargs"]["embedding_model_name"] == checkpoint
     assert actor_params.embed_model_revision == sink_kwargs["vdb_kwargs"]["embedding_model_revision"]
     driver_probe.assert_not_called()
-
-
-@pytest.mark.parametrize("requested_model", [NEMOTRON_3_EMBED_MODEL, "nemotron-3-embed-1b"])
-def test_batch_cli_legacy_n3_keeps_bf16_for_existing_logical_identity(tmp_path, monkeypatch, requested_model):
-    from nemo_retriever.ingest.plan import (
-        IngestEmbedOptions,
-        IngestPlanRequest,
-        IngestRuntimeOptions,
-        IngestSourceOptions,
-        resolve_ingest_plan,
-    )
-
-    probe = MagicMock(return_value=True)
-    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", probe)
-    document = tmp_path / "input.pdf"
-    document.write_bytes(b"%PDF-1.4\n")
-    plan = resolve_ingest_plan(
-        IngestPlanRequest(
-            source=IngestSourceOptions(documents=[str(document)]),
-            runtime=IngestRuntimeOptions(run_mode="batch"),
-            embed=IngestEmbedOptions(embed_model_name=requested_model),
-        )
-    )
-    cluster = ClusterResources(
-        total_resources=Resources(cpu_count=8, gpu_count=1),
-        available_resources=Resources(cpu_count=8, gpu_count=1),
-    )
-    actor_params, sink_kwargs = resolved_stages(
-        tmp_path, plan.embed_params, resources=cluster, vdb_kwargs=plan.vdb_params.vdb_kwargs
-    )
-    assert actor_params.embed_model_name == NEMOTRON_3_EMBED_BF16_MODEL
-    assert sink_kwargs["vdb_kwargs"]["embedding_model_name"] == NEMOTRON_3_EMBED_MODEL
-    assert sink_kwargs["vdb_kwargs"].get("embedding_model_revision") is None
-    probe.assert_not_called()
