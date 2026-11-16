@@ -1748,7 +1748,16 @@ class LanceDB(VDB):
         write_kwargs: dict[str, Any] = {"on_bad_vectors": self.on_bad_vectors}
         if self.on_bad_vectors == "fill":
             write_kwargs["fill_value"] = self.fill_value
-        reader = pa.RecordBatchReader.from_batches(schema, batches)
+        input_failures: list[BaseException] = []
+
+        def recording_input_failures() -> Iterator[pa.RecordBatch]:
+            try:
+                yield from batches
+            except ValueError as exc:  # VdbUploadError, OversizedVdbRowError and bad-vector errors
+                input_failures.append(exc)
+                raise
+
+        reader = pa.RecordBatchReader.from_batches(schema, recording_input_failures())
         try:
             if existing_table is None:
                 table = db.create_table(
@@ -1802,6 +1811,9 @@ class LanceDB(VDB):
                         f"from version {base_version} to {latest_version}. Do not replay these records; "
                         "reconcile the table before another write."
                     ) from exc
+            if input_failures:
+                # LanceDB's reader rewraps input errors such as VdbUploadError as a generic error.
+                raise input_failures[0] from exc
             raise
 
         if markers is not None:
@@ -2008,9 +2020,10 @@ class LanceDB(VDB):
         The write tasks put their fragments in a staging directory beside the table, and
         :meth:`commit_partitions` moves them into the table just before its one commit. Leaving the block
         deletes the staging directory, so a write that fails, is rejected, or is interrupted before the
-        commit leaves no files in the table; a failed commit leaves the files it moved, unreferenced. The next
-        write to the table deletes a staging directory left
-        by a killed process. As with :meth:`stream_ingest`, writes to one table run one at a time.
+        commit leaves no files in the table. A failed commit deletes the files it moved unless the
+        table version changed, since the commit may then have landed. The next write to the table
+        deletes a staging directory left by a killed process. As with :meth:`stream_ingest`, writes to
+        one table run one at a time.
 
         Yields:
             LanceDB: A settings-only copy for the Ray write tasks (:meth:`write_partition`) and the
@@ -2212,10 +2225,37 @@ class LanceDB(VDB):
                 self._lance_table_uri(), lance.LanceOperation.Overwrite(schema, fragments), read_version=base_version
             )
         except Exception:
-            # A commit can land and still raise, so the moved files stay; unreferenced ones only use disk.
-            logger.warning("LanceDB worker commit failed; leaving %d moved data files in the table", len(moved))
+            self._discard_uncommitted_files(moved, base_version=base_version)
             raise
         return int(dataset.version)
+
+    def _discard_uncommitted_files(self, moved: list[Path], *, base_version: int | None) -> None:
+        """After a failed commit, delete moved files only if the table is still at ``base_version``.
+
+        A newer version means the commit may have landed, possibly followed by other commits whose
+        retained versions still reference the files, so they stay. So do they when the table cannot be read.
+        """
+
+        import lance
+
+        try:
+            version: int | None = int(lance.dataset(self._lance_table_uri()).version)
+        except ValueError as exc:
+            if "was not found" not in str(exc):
+                logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
+                return
+            version = None
+        except (OSError, RuntimeError):
+            logger.warning("Keeping %d moved LanceDB files: cannot read the table", len(moved), exc_info=True)
+            return
+        if version != base_version:
+            logger.warning("Keeping %d moved LanceDB files: the table moved to version %s", len(moved), version)
+            return
+        for path in moved:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not delete moved LanceDB file %s", path, exc_info=True)
 
     def _write_stream_records(self, records: Iterable[dict[str, Any]], *, operation_id: str | None) -> None:
         """Consume canonical NRL records through one coordinated LanceDB mutation."""
