@@ -38,7 +38,7 @@ def resolve_graph(
     resources: ClusterResources | Resources,
 ) -> Graph:
     from nemo_retriever.ingest.index_mode import _embedding_model_kwargs
-    from nemo_retriever.models import resolve_local_embed_model
+    from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model, resolve_local_embed_model
     from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
     from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
     from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor as BatchEmbedGPUActor
@@ -64,6 +64,11 @@ def resolve_graph(
                 model_name = resolve_local_embed_model(
                     params.embed_model_name or params.model_name,
                     backend=params.local_ingest_embed_backend,
+                    allow_native_nvfp4=not (
+                        isinstance(resources, ClusterResources)
+                        and bool(params.embed_model_name or params.model_name)
+                        and resolve_embed_model(params.embed_model_name or params.model_name) == NEMOTRON_3_EMBED_MODEL
+                    ),
                 )
                 revision = resolve_embed_model_revision(model_name, params.embed_model_revision)
                 # Resolve once before actor creation. Both the worker and sink
