@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Resolve dense embedding checkpoints (Nemotron and Gemma 3) from immutable HF config."""
+"""Resolve dense embedding checkpoints (Nemotron and Gemma) from immutable HF config."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from nemo_retriever.models.hf_model_registry import HF_MODEL_REVISIONS
 EmbedModelFamily = Literal["text", "vl"]
 
 _MODEL_PROFILES: dict[str, tuple[EmbedModelFamily, str]] = {
+    "embedding_gemma2": ("text", "EmbeddingGemma2Model"),
     "gemma3_text": ("text", "Gemma3TextModel"),
     "llama_bidirec": ("text", "LlamaBidirectionalModel"),
     "llama_nemotron_vl": ("vl", "LlamaNemotronVLModel"),
@@ -177,7 +178,7 @@ def _spec_from_config(
 
     dimension_config = (
         config.get("text_config")
-        if model_type == "mistral3"
+        if model_type in {"mistral3", "embedding_gemma2"}
         else (config.get("llm_config") if family == "vl" else config)
     )
     if model_type == "mistral3" and (
@@ -186,11 +187,16 @@ def _spec_from_config(
         or dimension_config.get("is_causal") is not False
     ):
         raise ValueError(f"Embedding model {model_id!r} requires a bidirectional Ministral3 text_config.")
-    dimension = dimension_config.get("hidden_size") if isinstance(dimension_config, dict) else None
+    if model_type == "embedding_gemma2" and (
+        not isinstance(dimension_config, dict) or dimension_config.get("model_type") != "embedding_gemma2_text"
+    ):
+        raise ValueError(f"Embedding model {model_id!r} requires an embedding_gemma2_text text_config.")
+    dimension_key = "embedding_dim" if model_type == "embedding_gemma2" else "hidden_size"
+    dimension = dimension_config.get(dimension_key) if isinstance(dimension_config, dict) else None
     if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
         raise ValueError(
             f"Embedding model {model_id!r} has invalid embedding dimension {dimension!r}; "
-            "a positive hidden_size is required."
+            f"a positive {dimension_key} is required."
         )
 
     requires_vllm = False
@@ -202,6 +208,8 @@ def _spec_from_config(
                 "Gemma 3 embedding profiles require use_bidirectional_attention=true."
             )
         # Gemma embedders pool and project through Sentence Transformers modules, which only vLLM applies.
+        requires_vllm = True
+    elif model_type == "embedding_gemma2":
         requires_vllm = True
     else:
         pooling = str(config.get("pooling") or "").strip().lower()
@@ -222,6 +230,8 @@ def _spec_from_config(
     query_prefix, document_prefix, query_prefix_declared, document_prefix_declared = _prompt_prefixes(prompt_config)
 
     max_input_tokens = sentence_config.get("max_seq_length") if isinstance(sentence_config, dict) else None
+    if model_type == "embedding_gemma2" and max_input_tokens is None:
+        max_input_tokens = 8192
     if max_input_tokens is None and family == "vl":
         max_input_tokens = config.get("p_max_length")
     if max_input_tokens is not None:
@@ -230,6 +240,8 @@ def _spec_from_config(
                 f"Embedding model {model_id!r} has invalid supported input limit {max_input_tokens!r}; "
                 "expected a positive integer."
             )
+    if model_type == "embedding_gemma2":
+        max_input_tokens = min(max_input_tokens, 8192)
 
     return EmbedModelSpec(
         model_id=model_id,
@@ -253,7 +265,7 @@ def resolve_embed_model_spec(
     revision: str | None = None,
     hf_cache_dir: str | None = None,
 ) -> EmbedModelSpec:
-    """Resolve and validate a dense Nemotron embedding checkpoint.
+    """Resolve and validate a supported dense embedding checkpoint.
 
     Registered Hub repositories retain their project-pinned revision. Other
     repositories are resolved to an immutable Hub commit before their config is

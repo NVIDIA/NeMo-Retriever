@@ -27,6 +27,24 @@ The 1B checkpoints produce 2,048-dimensional vectors. This adapter supports only
 
 Before changing an existing index's model or precision, validate retrieval quality on representative data. Follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain its recorded model or rebuild and re-ingest with the new default.
 
+## Experimental EmbeddingGemma 2 text embeddings
+
+The checkpoint resolver recognizes `google/embeddinggemma-2` at revision
+`f9972ac22e696a105c482202646979e33e4b5a1e` for text-only local embedding.
+It produces 768-dimensional vectors and enforces an 8,192-token maximum input,
+including prefixes and special tokens. Image, audio, and video embedding are not supported by this integration.
+
+This checkpoint requires the `vllm` backend and a separate compatible runtime:
+vLLM 0.33.0 and Transformers 5.19.0 with `embedding_gemma2` support.
+The repository's locked local environment remains unchanged and does not support loading this checkpoint.
+Do not upgrade the shared extraction environment: its OCR dependencies require a different Torch stack.
+Use an isolated embedding-only environment without OCR extras for experiments.
+
+The resolver reads query and document prefixes from `config_sentence_transformers.json`:
+`task: search result | query: ` for queries and `title: none | text: ` for documents.
+Pass unformatted text and keep the same checkpoint for ingestion and retrieval.
+Validate retrieval quality before deployment or replacing an existing index.
+
 ## Hosted embedding defaults
 
 Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.
