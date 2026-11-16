@@ -607,8 +607,10 @@ def extract_image_like_objects_from_pdfium_page(
     merge : bool, default True
         Merge nearby image and shape boxes into one crop.
     **kwargs : Any
-        Grouping options passed to the box helpers, such as ``threshold``,
-        ``max_num_boxes`` and ``max_depth``.
+        Grouping options passed to the box helpers: ``images_threshold`` and
+        ``images_max_num_boxes`` for images; ``shapes_threshold``,
+        ``shapes_max_num_boxes``, and ``shapes_min_num_components`` for shapes;
+        ``forms_threshold`` and ``forms_max_num_boxes`` for forms.
 
     Returns
     -------
