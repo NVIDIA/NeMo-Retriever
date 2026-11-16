@@ -358,18 +358,24 @@ def _apply_final_score_filter(
 
 def _apply_page_elements_v3_postprocess(
     dets: List[Dict[str, Any]],
+    *,
+    extract_infographics: bool = True,
 ) -> List[Dict[str, Any]]:
     """Apply ``postprocess_page_elements_v3`` (box fusion, title matching,
     expansion, overlap removal) to a single image's detection list.
 
-    Returns the original detections unchanged if the API function is unavailable.
+    Text inside infographic boxes is kept when ``extract_infographics`` is False, because no
+    infographic OCR would replace it. Returns the original detections unchanged if the API
+    function is unavailable.
     """
     if postprocess_page_elements_v3 is None or not dets:
         return dets
     try:
         ann_dict = _detections_to_annotation_dict(dets)
         labels = YOLOX_PAGE_V3_CLASS_LABELS if YOLOX_PAGE_V3_CLASS_LABELS is not None else list(ann_dict.keys())
-        result = postprocess_page_elements_v3(ann_dict, labels=labels)
+        result = postprocess_page_elements_v3(
+            ann_dict, labels=labels, suppress_text_in_infographics=extract_infographics
+        )
         return _annotation_dict_to_detections(result)
     except Exception:
         return dets
@@ -380,6 +386,7 @@ def _remote_response_to_detections(
     response_json: Dict[str, Any],
     label_names: List[str],
     thresholds_per_class: Sequence[float],
+    extract_infographics: bool = True,
 ) -> List[Dict[str, Any]]:
     # Try direct model-pred style payload first (or common wrappers around it).
     candidates: List[Any] = [response_json]
@@ -405,7 +412,7 @@ def _remote_response_to_detections(
                 batch_size=1,
                 label_names=label_names,
             )[0]
-            return _apply_page_elements_v3_postprocess(dets)
+            return _apply_page_elements_v3_postprocess(dets, extract_infographics=extract_infographics)
         except Exception:
             pass
 
@@ -418,7 +425,7 @@ def _remote_response_to_detections(
         if isinstance(bb, dict):
             try:
                 dets = _bounding_boxes_to_detections(bb)
-                return _apply_page_elements_v3_postprocess(dets)
+                return _apply_page_elements_v3_postprocess(dets, extract_infographics=extract_infographics)
             except Exception:
                 pass
 
@@ -430,7 +437,7 @@ def _remote_response_to_detections(
         if all(isinstance(v, list) for v in cand.values()):
             try:
                 dets = _annotation_dict_to_detections(cand)  # type: ignore[arg-type]
-                return _apply_page_elements_v3_postprocess(dets)
+                return _apply_page_elements_v3_postprocess(dets, extract_infographics=extract_infographics)
             except Exception:
                 pass
 
@@ -450,6 +457,7 @@ def detect_page_elements_v3(
     counts_by_label_column: str = "page_elements_v3_counts_by_label",
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
+    extract_infographics: bool = True,
     **kwargs: Any,
 ) -> Any:
     retry = remote_retry or RemoteRetryParams(
@@ -586,6 +594,7 @@ def detect_page_elements_v3(
                     response_json=response_items[local_i],
                     label_names=label_names,
                     thresholds_per_class=thresholds_per_class,
+                    extract_infographics=extract_infographics,
                 )
                 dets = _apply_final_score_filter(dets)
                 row_payloads[row_i] = {
@@ -712,7 +721,10 @@ def detect_page_elements_v3(
                 label_names=label_names,
             )
             # Apply v3 postprocessing (box fusion via WBF at iou=0.01, title matching, expansion, overlap removal)
-            per_image_dets = [_apply_page_elements_v3_postprocess(dets) for dets in per_image_dets]
+            per_image_dets = [
+                _apply_page_elements_v3_postprocess(dets, extract_infographics=extract_infographics)
+                for dets in per_image_dets
+            ]
             # Apply per-class final score filtering AFTER WBF (matches NIM pipeline ordering)
             per_image_dets = [_apply_final_score_filter(dets) for dets in per_image_dets]
             for local_i, row_i in enumerate(chunk_idx):

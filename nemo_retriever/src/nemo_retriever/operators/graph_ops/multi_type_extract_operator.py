@@ -455,7 +455,7 @@ class _MultiTypeExtractBase(AbstractOperator):
         ocr_version = getattr(extract_params, "ocr_version", "v2")
         ocr_lang = getattr(extract_params, "ocr_lang", None)
 
-        detect_kwargs: dict[str, Any] = {}
+        detect_kwargs: dict[str, Any] = {"extract_infographics": bool(extract_params.extract_infographics)}
         if extract_params.page_elements_invoke_url:
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
         page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
