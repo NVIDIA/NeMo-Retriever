@@ -990,9 +990,10 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
-def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> None:
+def test_build_graph_uses_explicit_audio_graph_for_audio_extraction_mode() -> None:
     graph = build_graph(
-        extract_params=ExtractParams(method="audio"),
+        extraction_mode="audio",
+        extract_params=ExtractParams(),
         audio_chunk_params=AudioChunkParams(split_type="size", split_interval=42),
     )
 
@@ -1318,3 +1319,76 @@ def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
         "OCRActor actors per GPU {'0': 2}, expected 1 on each of 2 GPUs"
     ]
     assert placement_problems(balanced[:1], {"OCRActor": 2}, 2) == ["OCRActor has 1 of 2 actors pending"]
+
+
+@pytest.mark.parametrize(
+    "embed_params",
+    [
+        EmbedParams(embed_invoke_url="http://embed.example/v1", batch_tuning=BatchTuningParams(gpu_embed=1.0)),
+        EmbedParams(embedding_endpoint="http://embed.example/v1", batch_tuning=BatchTuningParams(gpu_embed=1.0)),
+    ],
+    ids=["embed_invoke_url", "embedding_endpoint"],
+)
+def test_remote_embed_endpoint_alias_does_not_reserve_embed_gpu(embed_params: EmbedParams) -> None:
+    overrides = batch_tuning_to_node_overrides(extract_params=None, embed_params=embed_params)
+
+    assert "num_gpus" not in overrides.get("_BatchEmbedActor", {})
+
+
+@pytest.mark.parametrize(
+    ("extract_kwargs", "expected_key"),
+    [
+        ({"api_key": "shared-key"}, "shared-key"),
+        ({"api_key": "shared-key", "page_elements_api_key": "pe-key"}, "pe-key"),
+        ({"page_elements_api_key": "pe-key"}, "pe-key"),
+    ],
+)
+def test_build_graph_routes_page_elements_api_key_to_detection(extract_kwargs: dict, expected_key: str) -> None:
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page-elements.example/v1",
+            **extract_kwargs,
+        ),
+    )
+
+    detect = next(node for node in _linear_nodes(graph) if node.name == "PageElementDetectionActor")
+    assert detect.operator_kwargs["api_key"] == expected_key
+
+
+@pytest.mark.parametrize(
+    ("extract_kwargs", "expected_key"),
+    [
+        ({}, "env-key"),
+        ({"api_key": "shared-key"}, "shared-key"),
+        ({"api_key": "shared-key", "page_elements_api_key": "pe-key"}, "pe-key"),
+    ],
+    ids=["env-only", "explicit-shared-key", "explicit-stage-key"],
+)
+def test_build_graph_page_elements_env_key_does_not_override_shared_key(
+    monkeypatch: pytest.MonkeyPatch, extract_kwargs: dict, expected_key: str
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page-elements.example/v1",
+            **extract_kwargs,
+        ),
+    )
+
+    detect = next(node for node in _linear_nodes(graph) if node.name == "PageElementDetectionActor")
+    assert detect.operator_kwargs["api_key"] == expected_key
+
+
+def test_extract_params_rejects_audio_method() -> None:
+    with pytest.raises(ValueError, match="method"):
+        ExtractParams(method="audio")

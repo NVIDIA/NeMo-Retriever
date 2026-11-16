@@ -199,3 +199,18 @@ def test_execute_service_ingest_request_defaults_to_event_row_counts(
     assert execution.n_rows == 5
     assert execution.result_n_rows == 5
     assert execution.to_summary_dict()["result_n_rows"] == 5
+
+
+def test_resolve_service_ingest_request_rejects_fast_text_table_extraction(tmp_path: Path) -> None:
+    from nemo_retriever.ingest.service import ServiceIngestExtractOptions
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+
+    with pytest.raises(ValueError, match=r"--profile fast-text .*extract_tables=True"):
+        resolve_service_ingest_request(
+            ServiceIngestPlanRequest(
+                source=ServiceIngestSourceOptions(documents=[str(pdf)], profile="fast-text"),
+                extract=ServiceIngestExtractOptions(extract_tables=True),
+            )
+        )
