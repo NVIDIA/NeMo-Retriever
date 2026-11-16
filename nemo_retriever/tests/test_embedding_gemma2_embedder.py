@@ -37,13 +37,20 @@ def embedder():
     return model
 
 
-@pytest.mark.parametrize("modality,text", [("text_image", "Page text"), ("image", "")])
-def test_image_document_format(embedder, image_b64, monkeypatch, modality, text):
+@pytest.mark.parametrize(
+    "modality,text,expected_prompt",
+    [
+        ("text_image", "Page text", "title: none | text: Page text <|image|>"),
+        ("text_image", "", "title: none | text: <|image|>"),
+        ("image", "", "title: none | text: <|image|>"),
+    ],
+)
+def test_image_document_format(embedder, image_b64, monkeypatch, modality, text, expected_prompt):
     def embed(requests, llm, **kwargs):
         assert llm is embedder._llm
         assert kwargs == {"batch_size": 7, "normalize": True}
         assert len(requests) == 1
-        assert requests[0]["prompt"] == f"title: none | text: <|image|> {text}"
+        assert requests[0]["prompt"] == expected_prompt
         image = requests[0]["multi_modal_data"]["image"]
         assert image.mode == "RGB"
         assert image.size == (32, 32)
@@ -155,12 +162,30 @@ class CharacterTokenizer:
 def test_paired_admission_splits_losslessly(embedder, image_b64):
     embedder.max_length = 40
     embedder._processor.tokenizer = CharacterTokenizer()
-    embedder._processor.side_effect = lambda text, **kwargs: {"attention_mask": torch.ones(1, len(text[0]) + 5)}
+
+    def process(text, **kwargs):
+        assert text[0].startswith("title: none | text: ")
+        assert text[0].endswith(" <|image|>")
+        assert text[0].count("<|image|>") == 1
+        return {"attention_mask": torch.ones(1, len(text[0]) + 5)}
+
+    embedder._processor.side_effect = process
     text = "A long page of text with whitespace preserved. " * 2
     plan = embedder.plan_text_image(text, image_b64)
     assert plan.requires_split
     assert "".join(child.content for child in plan.children) == text
     assert all(len(embedder._image_prompt(child.content)) + 5 <= 40 for child in plan.children)
+
+
+@pytest.mark.parametrize("text", ["", "ab", "abc"])
+def test_paired_admission_counts_exact_suffix_prompt(embedder, image_b64, text):
+    embedder.max_length = 38
+    embedder._processor.tokenizer = CharacterTokenizer()
+    embedder._processor.side_effect = lambda text, **kwargs: {"attention_mask": torch.ones(1, len(text[0]) + 5)}
+    plan = embedder.plan_text_image(text, image_b64)
+    assert not plan.requires_split
+    assert plan.formatted_tokens == len(embedder._image_prompt(text)) + 5
+    assert embedder._processor.call_args.kwargs["text"] == [embedder._image_prompt(text)]
 
 
 def test_paired_admission_rejects_image_without_text_budget(embedder, image_b64):
