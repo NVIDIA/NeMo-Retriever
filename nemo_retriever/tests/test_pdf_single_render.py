@@ -59,7 +59,7 @@ def test_crops_match_native_render(size, rotation):
     expected = [(bbox, crop) for bbox in bboxes if (crop := _pdfium.crop_image(native, bbox)) is not None]
 
     page_rgb = _extract._render_page_rgb(page, dpi=200, render_mode="fit_to_model")
-    crops = _pdfium.extract_image_like_objects_from_pdfium_page(page, page_rgb)
+    crops = _pdfium.extract_image_like_objects_from_pdfium_page(page, page_image=page_rgb)
 
     assert [tuple(c.bbox) for c in crops] == [tuple(b) for b, _ in expected]
     for c, (_, crop) in zip(crops, expected):
@@ -87,7 +87,7 @@ def test_crops_without_page_image_render_at_scale_one(rotation):
 def test_upright_pages_yield_a_crop(size, rotation):
     page = pdfium.PdfDocument(_make_pdf(*size, rotation))[0]
     page_rgb = _extract._render_page_rgb(page, dpi=200, render_mode="fit_to_model")
-    assert len(_pdfium.extract_image_like_objects_from_pdfium_page(page, page_rgb)) == 1
+    assert len(_pdfium.extract_image_like_objects_from_pdfium_page(page, page_image=page_rgb)) == 1
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
@@ -106,3 +106,8 @@ def test_pdf_extraction_renders_each_page_once(size, rotation):
 
     page = pdfium.PdfDocument(pdf_bytes)[0]
     assert result.iloc[0]["page_image"] == _extract._render_page_to_base64(page)
+
+
+def test_merge_stays_the_second_positional_argument():
+    page = pdfium.PdfDocument(_make_pdf(612, 792, 0))[0]
+    assert len(_pdfium.extract_image_like_objects_from_pdfium_page(page, True)) == 1

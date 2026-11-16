@@ -398,7 +398,7 @@ def pdf_extraction(
                     nested_image_error: Optional[Dict[str, Any]] = None
                     if extract_images:
                         try:
-                            base64_images = extract_image_like_objects_from_pdfium_page(page, page_rgb)
+                            base64_images = extract_image_like_objects_from_pdfium_page(page, page_image=page_rgb)
                             detected_images.extend(_base64_image_to_record(img) for img in base64_images)
                         except Exception:
                             pass  # Image extraction failure should not crash the pipeline.

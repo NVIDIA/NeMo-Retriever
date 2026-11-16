@@ -585,8 +585,9 @@ def extract_forms_from_pdfium_page(page, **kwargs):
 
 def extract_image_like_objects_from_pdfium_page(
     page: pdfium.PdfPage,
-    page_image: Optional[np.ndarray] = None,
     merge: bool = True,
+    *,
+    page_image: Optional[np.ndarray] = None,
     **kwargs: Any,
 ) -> List[Base64Image]:
     """Crop the image, shape and form objects on a PDF page.
