@@ -147,7 +147,7 @@ def test_engine_uses_native_multimodal_configuration(embedder, monkeypatch):
     embedder._ensure_loaded()
     assert create.call_args.kwargs["limit_mm_per_prompt"] == {"image": 1, "audio": 0, "video": 0}
     assert create.call_args.kwargs["max_model_len"] == 8192
-    assert create.call_args.kwargs["attention_backend"] == "TRITON_ATTN"
+    assert create.call_args.kwargs["attention_backend"] is None
     assert create.call_args.kwargs["revision"] == embedder.revision
 
 

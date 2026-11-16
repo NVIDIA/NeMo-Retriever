@@ -44,7 +44,7 @@ class EmbeddingGemma2Embedder(LlamaNemotronEmbed1BV2Embedder):
             enforce_eager=self.enforce_eager,
             max_model_len=self.max_length,
             limit_mm_per_prompt={"image": 1, "audio": 0, "video": 0},
-            attention_backend="TRITON_ATTN",
+            attention_backend=None,
         )
 
     def _ensure_processor(self) -> None:

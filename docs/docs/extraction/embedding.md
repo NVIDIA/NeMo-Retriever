@@ -36,7 +36,10 @@ including prefixes, special tokens, and expanded image tokens. Queries remain te
 Audio and video embedding are not supported by this integration.
 
 This checkpoint requires the `vllm` backend and a separate compatible runtime:
-vLLM 0.33.0 and Transformers 5.19.0 with `embedding_gemma2` support.
+vLLM >=0.34.0 and Transformers >=5.19 with `embedding_gemma2` support.
+vLLM 0.34.0 includes the [Triton prefill shared-memory fix](https://github.com/vllm-project/vllm/pull/60942)
+for this model's 512-wide heads on GPUs with about 99 KiB of shared memory.
+The adapter uses vLLM's model-specific attention default, which selects `TRITON_ATTN` for EmbeddingGemma 2.
 The repository's locked local environment remains unchanged and does not support loading this checkpoint.
 Do not upgrade the shared extraction environment: its OCR dependencies require a different Torch stack.
 Use an isolated embedding-only environment without OCR extras for experiments.

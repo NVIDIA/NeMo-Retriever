@@ -182,7 +182,7 @@ def create_vllm_llm(
     download_dir: Optional[str] = None,
     model_impl: Optional[str] = None,
     async_engine: bool = False,
-    attention_backend: str = VLLM_ATTENTION_BACKEND,
+    attention_backend: str | None = VLLM_ATTENTION_BACKEND,
 ) -> Any:
     """Create a vLLM embedding engine (pooling runner) to reuse across embed batches.
 
@@ -219,7 +219,7 @@ def create_vllm_llm(
         Return an :class:`AsyncEmbedEngine`, which has the same ``embed`` call
         and accepts calls from several threads at once.
     attention_backend
-        Attention backend supported by the checkpoint's attention pattern.
+        Attention backend supported by the checkpoint's attention pattern, or None for vLLM's model default.
 
     Returns
     -------
