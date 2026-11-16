@@ -64,7 +64,13 @@ ExtractTextOption = Annotated[
 ]
 ExtractImagesOption = Annotated[
     bool | None,
-    typer.Option("--extract-images/--no-extract-images", help="Enable or disable PDF image extraction."),
+    typer.Option(
+        "--extract-images/--no-extract-images",
+        help=(
+            "Enable or disable PDF image-region crops. "
+            "Default: on only when captioning, dedup, or the image store reads them."
+        ),
+    ),
 ]
 ExtractNestedImagesOption = Annotated[
     bool | None,

@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal, Sequence
 
 import torch
 from PIL import Image
 
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL
+from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, resolve_nemotron_parse_dflash_tokens
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
@@ -36,6 +37,7 @@ class NemotronParse35(BaseModel):
         task_prompt: str = _DEFAULT_TASK_PROMPT,
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
+        dflash_tokens: int | Literal["auto"] | None = "auto",
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
 
@@ -45,13 +47,16 @@ class NemotronParse35(BaseModel):
             hf_cache_dir: Optional Hugging Face snapshot cache directory.
             task_prompt: Native control tokens. Picture text is disabled unless enabled explicitly.
             max_tokens: Positive maximum number of generated tokens per page.
+            dflash_tokens: "auto" selects DFlash2-32 for vLLM and leaves Transformers unchanged.
+                An integer from 1 to 32 selects a draft length; None preserves the vendor
+                one-token MTP default on vLLM. The drafter shares the target checkpoint revision.
             backend: In-process vLLM (the default) or explicit native Transformers.
                 vLLM requires CUDA device zero
                 in the worker's visible GPU set; Transformers also supports CPU.
 
         Raises:
             ValueError: If max_tokens is not positive, the backend is unsupported,
-                or the device is invalid for the selected backend.
+                the device is invalid, or the DFlash2 configuration is unsupported.
             RuntimeError: If PyTorch cannot interpret the device.
         """
         super().__init__()
@@ -59,6 +64,7 @@ class NemotronParse35(BaseModel):
             raise ValueError("max_tokens must be positive.")
         if backend not in ("transformers", "vllm"):
             raise ValueError(f"Unsupported Parse 3.5 backend: {backend}")
+        self._dflash_tokens = resolve_nemotron_parse_dflash_tokens(dflash_tokens, backend=backend)
         self._device = torch.device(device)
         if backend == "vllm" and (self._device.type != "cuda" or self._device.index not in (None, 0)):
             raise ValueError('Parse 3.5 vLLM requires device="cuda" or "cuda:0" in the worker GPU set.')
@@ -92,6 +98,7 @@ class NemotronParse35(BaseModel):
             revision=get_hf_revision(NEMOTRON_PARSE35_MODEL),
             cache_dir=cache_dir,
             allow_patterns=["*.json", "*.py", "*.safetensors", "*.jinja", "*.model", "*.txt"],
+            ignore_patterns=["dflash2/*"] if self._dflash_tokens is None else None,
         )
         if self._backend == "vllm":
             self._load_vllm(snapshot)
@@ -143,6 +150,26 @@ class NemotronParse35(BaseModel):
                 max_tokens=self._max_tokens,
                 skip_special_tokens=False,
             )
+            speculative_kwargs: dict[str, Any] = {}
+            if self._dflash_tokens is not None:
+                draft = Path(snapshot) / "dflash2"
+                missing = [name for name in ("config.json", "model.safetensors") if not (draft / name).is_file()]
+                if missing:
+                    raise RuntimeError(
+                        f"The pinned Parse 3.5 snapshot is missing its DFlash2 checkpoint at {draft} "
+                        f"(missing: {', '.join(missing)}). Refresh the pinned {NEMOTRON_PARSE35_MODEL} snapshot "
+                        f"at revision {get_hf_revision(NEMOTRON_PARSE35_MODEL)} in your configured Hugging Face "
+                        "cache, or select dflash_tokens=None (nemotron_parse_dflash_tokens=None for ingestion) "
+                        "to use the MTP fallback."
+                    )
+                speculative_kwargs = {
+                    "hf_overrides": {"architectures": ["NRLNemotronParse35DFlashModel"]},
+                    "speculative_config": {
+                        "method": "dflash",
+                        "model": str(draft),
+                        "num_speculative_tokens": self._dflash_tokens,
+                    },
+                }
             self._model = LLM(
                 model=snapshot,
                 trust_remote_code=True,
@@ -155,6 +182,7 @@ class NemotronParse35(BaseModel):
                 enable_prefix_caching=False,
                 attention_config={"flash_attn_version": 3},
                 gpu_memory_utilization=0.8,
+                **speculative_kwargs,
             )
         finally:
             # Workers inherit startup settings; unrelated engines retain the
@@ -206,6 +234,9 @@ class NemotronParse35(BaseModel):
     def invoke_batch(self, inputs: Sequence[ImageInput], task_prompt: str | None = None) -> list[str]:
         """Convert and parse one page at a time, keeping the original order.
 
+        vLLM prepends ``<pad>`` directly to the task prompt in both DFlash2 and
+        MTP modes. No newline is inserted, including for custom task prompts.
+
         Args:
             inputs: Sequence of pages accepted by :meth:`preprocess`; an empty
                 sequence returns immediately without loading the checkpoint.
@@ -230,7 +261,7 @@ class NemotronParse35(BaseModel):
             if self._backend == "vllm":
                 prompt = task_prompt if task_prompt is not None else self._task_prompt
                 generated = self._model.generate(
-                    [{"prompt": "<pad>\n" + prompt, "multi_modal_data": {"image": page}}],
+                    [{"prompt": "<pad>" + prompt, "multi_modal_data": {"image": page}}],
                     self._generation_config,
                     tokenization_kwargs={"add_special_tokens": False},
                 )
