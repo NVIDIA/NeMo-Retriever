@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 VLLM_DTYPE = "bfloat16"
 VLLM_ATTENTION_BACKEND = "FLASH_ATTN"
 VLLM_DEEP_GEMM_WARMUP_DEFAULT = "skip"
+VLLM_USE_FLASHINFER_SAMPLER_DEFAULT = "0"
 VLLM_BUILD_ATTEMPTS = 3
 ENGINE_EXIT_TIMEOUT_S = 30
 
@@ -53,6 +54,10 @@ def apply_vllm_startup_defaults(*, tensor_parallel_size: int = 1) -> None:
     # ahead-of-time warmup path, which may fail before local inference starts
     # when the optional DeepGEMM/CUDA-toolkit stack is not discoverable.
     os.environ.setdefault("VLLM_DEEP_GEMM_WARMUP", VLLM_DEEP_GEMM_WARMUP_DEFAULT)
+    # FlashInfer's sampling kernels are JIT-compiled with nvcc on first use, so
+    # engines fail to start on hosts without a CUDA toolkit. vLLM's native
+    # sampler needs no compilation.
+    os.environ.setdefault("VLLM_USE_FLASHINFER_SAMPLER", VLLM_USE_FLASHINFER_SAMPLER_DEFAULT)
 
     tp = int(tensor_parallel_size)
     if tp > 1 and not nvlink_is_available(tensor_parallel_size=tp):
