@@ -27,12 +27,13 @@ The 1B checkpoints produce 2,048-dimensional vectors. This adapter supports only
 
 Before changing an existing index's model or precision, validate retrieval quality on representative data. Follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain its recorded model or rebuild and re-ingest with the new default.
 
-## Experimental EmbeddingGemma 2 text embeddings
+## Experimental EmbeddingGemma 2 embeddings
 
 The checkpoint resolver recognizes `google/embeddinggemma-2` at revision
-`f9972ac22e696a105c482202646979e33e4b5a1e` for text-only local embedding.
+`f9972ac22e696a105c482202646979e33e4b5a1e` for local text, image, and paired text-and-image embedding.
 It produces 768-dimensional vectors and enforces an 8,192-token maximum input,
-including prefixes and special tokens. Image, audio, and video embedding are not supported by this integration.
+including prefixes, special tokens, and expanded image tokens. Queries remain text-only.
+Audio and video embedding are not supported by this integration.
 
 This checkpoint requires the `vllm` backend and a separate compatible runtime:
 vLLM 0.33.0 and Transformers 5.19.0 with `embedding_gemma2` support.
@@ -44,6 +45,17 @@ The resolver reads query and document prefixes from `config_sentence_transformer
 `task: search result | query: ` for queries and `title: none | text: ` for documents.
 Pass unformatted text and keep the same checkpoint for ingestion and retrieval.
 Validate retrieval quality before deployment or replacing an existing index.
+
+For full-page inputs, select `embed_granularity="page"` with
+`embed_modality="text_image"` or `embed_modality="image"` and explicitly select
+`google/embeddinggemma-2` as the embedding model. Use the same page-rendering
+workflow described in [Embed entire PDF pages as images](#example-with-embedding-entire-pdf-pages-as-images).
+The adapter supplies one `<|image|>` placeholder and one decoded image per document.
+Do not insert image placeholders yourself.
+The checkpoint processor expands each image to its native image-token representation, with 280 soft tokens by default.
+Paired text shares the configured input budget with the image and document prefix.
+Oversized paired text is split losslessly before inference, repeating the full image for each child.
+Direct paired embedding calls reject overflow instead of truncating text or images.
 
 ## Hosted embedding defaults
 
