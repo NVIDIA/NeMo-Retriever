@@ -311,4 +311,9 @@ def validate_embed_model_backend(spec: EmbedModelSpec, backend: str) -> None:
     """Reject backends that cannot load the resolved checkpoint format."""
     if spec.requires_vllm and backend != "vllm":
         quantization = f" ({spec.quantization})" if spec.quantization else ""
-        raise ValueError(f"Embedding model {spec.model_id!r}{quantization} requires backend='vllm'.")
+        runtime = (
+            " EmbeddingGemma 2 requires vLLM >=0.34.0 and Transformers >=5.19."
+            if spec.model_type == "embedding_gemma2"
+            else ""
+        )
+        raise ValueError(f"Embedding model {spec.model_id!r}{quantization} requires backend='vllm'.{runtime}")

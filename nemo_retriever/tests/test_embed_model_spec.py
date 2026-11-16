@@ -347,8 +347,10 @@ def test_gemma_checkpoint_rejects_hf_backend(tmp_path, config):
 
     _write_config(tmp_path, config)
 
-    with pytest.raises(ValueError, match="requires backend='vllm'"):
+    with pytest.raises(ValueError, match="requires backend='vllm'") as exc:
         validate_embed_model_backend(resolve_embed_model_spec(str(tmp_path)), "hf")
+    if config["model_type"] == "embedding_gemma2":
+        assert "vLLM >=0.34.0 and Transformers >=5.19" in str(exc.value)
 
 
 @pytest.mark.parametrize(

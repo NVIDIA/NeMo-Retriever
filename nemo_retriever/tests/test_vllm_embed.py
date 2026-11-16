@@ -218,6 +218,15 @@ class TestCreateVllmLlm:
     def setup_method(self):
         pytest.importorskip("vllm", reason="vLLM not installed")
 
+    @pytest.mark.parametrize("attention_backend", [None, "TRITON_ATTN"])
+    def test_attention_backend_forwarded(self, attention_backend):
+        with patch("vllm.LLM") as mock_llm_cls:
+            mock_llm_cls.return_value = MagicMock()
+            from nemo_retriever.models.inference.vllm import create_vllm_llm
+
+            create_vllm_llm("some-model", attention_backend=attention_backend)
+        assert mock_llm_cls.call_args.kwargs["attention_backend"] == attention_backend
+
     def test_limit_mm_per_prompt_absent_by_default(self):
         # LLM is imported inside create_vllm_llm's body, so patch at its source
         with patch("vllm.LLM") as mock_llm_cls:
@@ -227,6 +236,7 @@ class TestCreateVllmLlm:
             create_vllm_llm("some-model")
         _, kwargs = mock_llm_cls.call_args
         assert "limit_mm_per_prompt" not in kwargs
+        assert kwargs["attention_backend"] == "FLASH_ATTN"
 
     def test_limit_mm_per_prompt_forwarded_when_provided(self):
         with patch("vllm.LLM") as mock_llm_cls:
