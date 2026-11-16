@@ -154,15 +154,14 @@ silently select another extraction path.
 For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
 `nvidia/Nemotron-3.5-Parse` through in-process vLLM on a CUDA GPU with BF16
 weights. You can also select this checkpoint explicitly with
-`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. To retain the local v1.2
-vLLM path, set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"`.
-Do not configure an invoke URL for either local path. Install the local GPU
-and Parse dependencies with
+`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. Parse 3.5 is the only
+supported local Parse checkpoint. Do not configure an invoke URL for local
+inference. Install the local GPU and Parse dependencies with
 `pip install "nemo-retriever[local,nemotron-parse]"`.
 
-The following example uses the default local Parse 3.5 checkpoint. Standalone
-scripts need the `__main__` guard to prevent ingestion from running again in
-spawned workers.
+The following example uses the default local Parse 3.5 checkpoint with DFlash2
+and a draft length of 32 tokens. Standalone scripts need the `__main__` guard
+to prevent ingestion from running again in spawned workers.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -213,20 +212,104 @@ Batch parsing converts and generates one page at a time, preserving input
 order without retaining converted copies of the entire batch. If a page fails,
 the adapter does not return a partial batch.
 
-Both local Parse adapters accept PIL images, image paths, and HWC or CHW
+The local Parse 3.5 adapter accepts PIL images, image paths, and HWC or CHW
 NumPy arrays and tensors with 1, 3, or 4 channels. Arrays and tensors can
 include a leading batch dimension of size one. If both layouts are possible,
 inputs are interpreted as HWC. Inputs are converted to RGB; invalid shapes
 and nonfinite pixels raise `ValueError`. Parse 3.5 scales floating-point
-pixels in `[0, 1]` to `[0, 255]`. The v1.2 adapter retains its legacy scaling
-heuristic for floating-point inputs whose maximum is at most `1.5`.
+pixels in `[0, 1]` to `[0, 255]`.
 
-Other local Parse model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before
-pipeline execution. To use a remote Nemotron Parse endpoint, configure
-`nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
-unchanged.
+Local Parse v1.2 inference and the `NemotronParseV12` adapter are removed.
+Replace direct adapter calls with `NemotronParse35()`. Remove
+`nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"` from local ingestion
+configuration to select Parse 3.5. Unsupported local model values raise a
+Pydantic `ValidationError` before pipeline execution.
+
+Remote Parse v1.2 endpoints remain supported. To retain a self-hosted v1.2
+NIM, configure `nemotron_parse_invoke_url` or `invoke_url` with its
+chat-completions endpoint and set
+`nemotron_parse_model="nvidia/nemotron-parse-v1.2"`. Refer to
+[Parse endpoint contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted)
+for hosted Build and native Parse 3.5 endpoints. Hosted endpoint selection,
+Helm NIM defaults, and the `nemotron_parse_v1_2` result column are unchanged.
+
+#### Configure DFlash2 for local Parse 3.5
+
+Local Parse 3.5 vLLM inference uses DFlash2 speculative decoding with a draft
+length of 32 tokens by default. `nemotron_parse_dflash_tokens` defaults to
+`"auto"`. Automatic selection leaves remote endpoints and the Transformers
+backend on their existing decoding paths.
+
+Set `nemotron_parse_dflash_tokens` on `ExtractParams` to configure local
+Parse 3.5 decoding.
+
+| Value | Local Parse 3.5 vLLM behavior |
+| --- | --- |
+| `"auto"` | Uses DFlash2 with a draft length of 32 tokens. This is the default. |
+| Integer from 1 through 32 | Selects DFlash2 with that draft length. |
+| `None` | Turns off DFlash2 and retains the pinned plugin's one-token multi-token prediction (MTP) fallback. |
+
+An explicit integer requires local Parse 3.5 on a GPU after actor resolution.
+It is rejected for remote endpoints. When no GPU is available, the graph
+selects the CPU actor, which uses a remote endpoint, including the
+hosted default when you omit an invoke URL. That actor rejects an explicit
+integer instead of silently ignoring it. Use `"auto"` or `None` to allow the
+existing remote fallback.
+
+The target and `dflash2/` drafter load from the same immutable checkpoint
+revision. No separate drafter model ID or plugin installation is required.
+
+Local vLLM prompts concatenate `<pad>` directly with the task prompt, without
+inserting a newline. This input-format change applies to DFlash2 and MTP,
+including custom task prompts. Selecting `None` restores the MTP decoder; it
+does not restore the earlier newline after `<pad>`. Both decoders use the same
+prompt format so you can compare them with consistent input. This formatting
+change is independent of the decoder selection.
+
+The following example selects the MTP fallback for local Parse 3.5.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_dflash_tokens=None,
+            )
+        )
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Direct `NemotronParse35()` callers use the same `"auto"` default. Set
+`dflash_tokens` to an integer from 1 through 32 to tune DFlash2, or `None`
+to select the MTP fallback. The Transformers backend rejects an explicit
+integer draft length.
+
+If startup reports a missing DFlash2 checkpoint, check the reported
+`<snapshot>/dflash2` directory for `config.json` and `model.safetensors`.
+Refresh the pinned Hugging Face snapshot to restore missing files. To select
+the MTP fallback instead, pass `dflash_tokens=None` to `NemotronParse35`, or
+`nemotron_parse_dflash_tokens=None` to `ExtractParams` for ingestion.
+
+The first DFlash2 startup can compile additional CUDA kernels. Report that
+startup cost separately when measuring steady-state throughput.
+
+Measure ingestion throughput and parsing quality on your documents before
+choosing a draft length. DFlash2 can change generated text, including with
+greedy sampling. Do not assume identical output between DFlash2 and the MTP
+fallback. Keep the task prompt and postprocessing settings fixed when comparing
+results.
 
 ### Choose raise or collect behavior
 
@@ -434,6 +517,8 @@ Generated signatures for `TextGenerationOperator`, `GenericGenerationOperator`, 
 Graph loading imports operator classes and invokes their constructors. Load graph JSON only from trusted sources; do not expose graph payloads, callable references, or class names as model- or user-controlled agent tools.
 
 Version 2 graph files preserve shared-node DAG identity and reject cycles. Constructor state must consist of supported JSON-native values, typed Pydantic models, paths, sets and tuples, or importable type/callable references. Runtime data such as DataFrames and opaque client objects is not persistable.
+
+Graph files store every field of each parameter model, including default values, and loading validates them against the current model. When a release removes a parameter field or model, `load_graph()` raises `GraphSerializationError` for a file that still contains it. Rebuild the graph from its source code or configuration with the current release, and save it again with `save_graph()`. The [release notes](releasenotes.md#unreleased-upgrade-notes) list removed fields.
 
 API keys are never written into graph JSON. Use an explicit environment reference in persisted configuration:
 

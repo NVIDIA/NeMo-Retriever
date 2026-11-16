@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from typing import Any, ClassVar, Literal, Optional, Tuple
+from typing import Annotated, Any, ClassVar, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -27,6 +27,7 @@ from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_
 from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE_LOCAL_MODELS,
     validate_nemotron_parse_endpoint_list,
+    resolve_nemotron_parse_dflash_tokens,
 )
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -357,9 +358,6 @@ class IngestExecuteParams(_ParamsModel):
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
-    page_chunk_size: int = 32
-    runtime_metrics_dir: Optional[str] = None
-    runtime_metrics_prefix: Optional[str] = None
 
 
 class PdfSplitParams(_ParamsModel):
@@ -494,7 +492,6 @@ class LanceDbParams(_ParamsModel):
 
 
 class BatchTuningParams(_ParamsModel):
-    debug_run_id: str = "unknown"
     pdf_split_batch_size: int = 1
     pdf_extract_batch_size: int = 4
     pdf_extract_rows_per_block: Optional[int] = Field(
@@ -516,11 +513,9 @@ class BatchTuningParams(_ParamsModel):
             "and derives it otherwise."
         ),
     )
-    detect_batch_size: int = 24
     ocr_inference_batch_size: Optional[int] = None
     page_elements_workers: Optional[int] = None
     ocr_workers: Optional[int] = None
-    detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
     table_structure_workers: Optional[int] = None
@@ -560,15 +555,17 @@ class BatchTuningParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
-class GpuAllocationParams(_ParamsModel):
-    gpu_devices: list[str] = Field(default_factory=list)
-    startup_timeout: float = 600.0
-
-
 class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
-    extract_images: bool = True
+    extract_images: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Crop PDFium image regions into the images column. None selects them automatically: GraphIngestor "
+            "enables them only when nested images, captioning, dedup, or the image store reads them, and other "
+            "PDF extraction callers treat None as True."
+        ),
+    )
     extract_nested_images: bool = Field(
         default=False,
         description=(
@@ -599,7 +596,6 @@ class ExtractParams(_ParamsModel):
     jpeg_quality: int = 100
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     inference_batch_size: int = 8
-    ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
     ocr_lang: Optional[Literal["multi", "english"]] = None
 
@@ -609,13 +605,19 @@ class ExtractParams(_ParamsModel):
     request_timeout_s: float = 60.0
     page_elements_invoke_url: Optional[str] = None
     page_elements_api_key: Optional[str] = None
-    page_elements_request_timeout_s: Optional[float] = None
     ocr_invoke_url: Optional[str] = None
     ocr_api_key: Optional[str] = None
     ocr_request_timeout_s: Optional[float] = None
     table_structure_invoke_url: Optional[str] = None
     nemotron_parse_invoke_url: Optional[str] = None
     nemotron_parse_model: Optional[str] = None
+    nemotron_parse_dflash_tokens: Annotated[int, Field(strict=True, ge=1, le=32)] | Literal["auto"] | None = Field(
+        default="auto",
+        description=(
+            "DFlash2 draft length for local Parse 3.5 vLLM. 'auto' selects 32 tokens only for that backend/model; "
+            "None preserves the vendor MTP default. Other extraction paths keep their existing behavior."
+        ),
+    )
 
     # Output columns
     output_column: str = "page_elements_v3"
@@ -640,18 +642,25 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
-        if self.extract_nested_images and not self.extract_images:
+        if self.extract_nested_images and self.extract_images is False:
             raise ValueError(
                 "extract_nested_images=True requires extract_images=True because nested images extend image output."
             )
         if self.method != "nemotron_parse" and (
-            self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
+            self.nemotron_parse_invoke_url is not None
+            or self.nemotron_parse_model is not None
+            or self.nemotron_parse_dflash_tokens not in (None, "auto")
         ):
             raise ValueError(
-                "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
+                "`nemotron_parse_invoke_url`, `nemotron_parse_model`, and `nemotron_parse_dflash_tokens` require "
                 "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
             )
         if self.method == "nemotron_parse":
+            resolve_nemotron_parse_dflash_tokens(
+                self.nemotron_parse_dflash_tokens,
+                model_id=self.nemotron_parse_model,
+                invoke_url=self.nemotron_parse_invoke_url or self.invoke_url,
+            )
             parse_endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
             if (
                 not parse_endpoints
@@ -660,8 +669,8 @@ class ExtractParams(_ParamsModel):
             ):
                 raise ValueError(
                     f"Local Nemotron Parse supports only {', '.join(NEMOTRON_PARSE_LOCAL_MODELS)} in this release; "
-                    f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
-                    "to use a compatible remote model."
+                    f"received `{self.nemotron_parse_model}`. Select the supported local model, or configure "
+                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
                 )
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]
@@ -809,39 +818,6 @@ class StoreParams(_ParamsModel):
         if not urlparse(self.storage_uri).scheme:
             self.storage_uri = str(UPath(self.storage_uri).resolve())
         return self
-
-
-class PageElementsParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "page_elements_v3"
-    num_detections_column: str = "page_elements_v3_num_detections"
-    counts_by_label_column: str = "page_elements_v3_counts_by_label"
-
-
-class OcrParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    extract_tables: bool = False
-    extract_charts: bool = False
-    extract_infographics: bool = False
-
-
-class TableParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
-    output_column: str = "table_structure_v1"
-    num_detections_column: str = "table_structure_v1_num_detections"
-    counts_by_label_column: str = "table_structure_v1_counts_by_label"
-
-
-class ChartParams(_ParamsModel):
-    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
-    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
-    inference_batch_size: int = 8
 
 
 class LLMInferenceParams(_ParamsModel):

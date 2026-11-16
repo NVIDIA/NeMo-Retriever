@@ -426,6 +426,8 @@ def _resolve_extract_params(
     if extract_kwargs.get("method", "pdfium") != "nemotron_parse":
         extract_kwargs.pop("nemotron_parse_invoke_url", None)
         extract_kwargs.pop("nemotron_parse_model", None)
+        if "nemotron_parse_dflash_tokens" not in (extract_override or {}):
+            extract_kwargs.pop("nemotron_parse_dflash_tokens", None)
     return ExtractParams(**extract_kwargs)
 
 

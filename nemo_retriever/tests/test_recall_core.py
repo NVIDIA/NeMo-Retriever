@@ -6,7 +6,6 @@ from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
 from nemo_retriever.tools.recall.beir import BeirConfig
 from nemo_retriever.tools.recall.beir_eval import BEIREvaluatorActor
 from nemo_retriever.tools.recall.recall_eval import RecallEvaluatorActor
-from nemo_retriever.tools.recall.vdb_recall import recall_with_main, run
 from nemo_retriever.tools.recall.core import RecallConfig, _hit_to_audio_segment_key, _normalize_query_df, is_hit_at_k
 
 
@@ -18,10 +17,6 @@ def test_recall_defaults_use_index_model_with_vllm() -> None:
     assert beir_config.local_query_embed_backend == "vllm"
     for evaluator in (BEIREvaluatorActor, RecallEvaluatorActor):
         assert inspect.signature(evaluator).parameters["embedding_model"].default is None
-    for command in (recall_with_main, run):
-        parameters = inspect.signature(command).parameters
-        assert parameters["embedding_model"].default.default is None
-        assert parameters["local_query_embed_backend"].default.default == "vllm"
 
 
 @pytest.mark.parametrize(

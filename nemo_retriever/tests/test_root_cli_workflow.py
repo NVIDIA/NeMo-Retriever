@@ -98,7 +98,7 @@ def test_root_help_lists_only_product_workflows() -> None:
 
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline", "harness"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare", "pipeline", "harness", "recall"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
@@ -107,7 +107,7 @@ def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     assert f"No such command '{removed_command}'" in result.output
 
 
-@pytest.mark.parametrize("command", ("recall", "skill-eval"))
+@pytest.mark.parametrize("command", ("skill-eval",))
 def test_evaluation_commands_remain_callable(command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [command, "--help"])
 
@@ -1737,7 +1737,9 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert kwargs["av_fuse_params"].enabled is False
 
 
-def test_root_ingest_rejects_removed_profiles(tmp_path) -> None:
+def test_root_ingest_rejects_removed_profiles(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 

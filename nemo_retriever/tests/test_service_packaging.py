@@ -34,6 +34,9 @@ def test_core_dependencies_include_tokenizer_stack() -> None:
 
     assert "tokenizers" in names
     assert "huggingface-hub" in names
+    tokenizers = next(req for req in requirements if req.name == "tokenizers")
+    assert tokenizers.specifier.contains("0.23.2")
+    assert not tokenizers.specifier.contains("0.23.1")
 
 
 def test_platform_classifiers_describe_supported_operating_systems() -> None:

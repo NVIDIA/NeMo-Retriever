@@ -4,6 +4,7 @@
 
 """Native HF/vLLM adapter for dense Mistral3 retrieval checkpoints."""
 
+import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Sequence
 
@@ -16,6 +17,24 @@ from nemo_retriever.models.inference.retrieval_template import (
     load_retrieval_template,
     render_retrieval_input,
 )
+
+
+def _pixtral_image_tokens(processor: Any, height: int, width: int) -> int:
+    """Return Pixtral's expanded image-token count for one image size.
+
+    Same formula as ``PixtralProcessor._get_num_multimodal_tokens``, which
+    allocates a float64 array of the full image size just to read its shape.
+    """
+    import numpy as np
+    from transformers.models.pixtral.image_processing_pixtral import get_resize_output_image_size
+
+    longest_edge = processor.image_processor.size["longest_edge"]
+    patch = processor.patch_size * processor.spatial_merge_size
+    shape_only = np.broadcast_to(np.zeros(1, dtype=np.uint8), (height, width, 3))
+    resized_height, resized_width = get_resize_output_image_size(
+        shape_only, size=(longest_edge, longest_edge), patch_size=(patch, patch)
+    )
+    return (resized_width // patch + 1) * (resized_height // patch)
 
 
 @dataclass
@@ -37,6 +56,9 @@ class Nemotron35Embedder:
     _model: Any = field(default=None, init=False, repr=False)
     _processor: Any = field(default=None, init=False, repr=False)
     _template: str | None = field(default=None, init=False, repr=False)
+    # Mixed truncation settings mutate the shared fast tokenizer; serialize its callers.
+    _tokenizer_lock: Any = field(default_factory=threading.RLock, init=False, repr=False)
+    _load_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate configuration; raise ValueError for unsupported backend, limits, or dimensions."""
@@ -52,9 +74,24 @@ class Nemotron35Embedder:
         """Return False because this adapter owns local HF or in-process vLLM inference."""
         return False
 
+    @property
+    def supports_concurrent_calls(self) -> bool:
+        """Whether several threads may call ``embed`` at once.
+
+        Returns
+        -------
+        bool
+            True for the ``vllm`` backend, whose async engine batches concurrent
+            calls; False for ``hf``, which callers must serialize.
+        """
+        return self.backend == "vllm"
+
     def _ensure_loaded(self):
-        if self._model is not None:
-            return
+        with self._load_lock:
+            if self._model is None:
+                self._load()
+
+    def _load(self):
         from transformers import AutoModel, AutoProcessor
 
         options = dict(revision=self.revision, cache_dir=self.hf_cache_dir)
@@ -96,6 +133,7 @@ class Nemotron35Embedder:
                 limit_mm_per_prompt={"image": 1},
                 download_dir=self.hf_cache_dir,
                 model_impl="vllm",
+                async_engine=True,
                 hf_overrides={
                     "architectures": [NEMOTRON35_VLLM_ARCHITECTURE],
                     "is_causal": False,
@@ -118,15 +156,16 @@ class Nemotron35Embedder:
         for i in range(0, len(prompts), step):
             current = prompts[i : i + step]
             if images is None:
-                batch = self._processor.tokenizer(
-                    current,
-                    padding=True,
-                    truncation=True,
-                    max_length=limit,
-                    add_special_tokens=False,
-                    return_tensors="pt",
-                )
-            else:
+                with self._tokenizer_lock:
+                    batch = self._processor.tokenizer(
+                        current,
+                        padding=True,
+                        truncation=True,
+                        max_length=limit,
+                        add_special_tokens=False,
+                        return_tensors="pt",
+                    )
+            elif self.backend == "hf":
                 batch = self._processor(
                     text=current,
                     images=images[i : i + step],
@@ -154,6 +193,15 @@ class Nemotron35Embedder:
                     _pooling_params_for_normalize,
                 )
 
+                if images is not None:
+                    # vLLM preprocesses the pixels; admission only needs the expanded lengths.
+                    expected_lengths = self._image_prompt_lengths(current, images[i : i + step])
+                    if max(expected_lengths) > limit:
+                        raise ValueError(
+                            f"Text+image embedding exceeds max_length={limit} after image expansion; "
+                            "shorten the text or increase the configured limit within the checkpoint maximum."
+                        )
+
                 # Raw tokens prevent a second template pass or duplicate BOS/EOS.
                 requests = []
                 for j in range(len(current)):
@@ -178,7 +226,6 @@ class Nemotron35Embedder:
                     requests, pooling_params=_pooling_params_for_normalize(False), **inference_kwargs
                 )
                 if images is not None:
-                    expected_lengths = batch["attention_mask"].sum(1).tolist()
                     actual_lengths = [len(response.prompt_token_ids) for response in responses]
                     if actual_lengths != expected_lengths:
                         raise ValueError(
@@ -190,6 +237,44 @@ class Nemotron35Embedder:
                 raise ValueError("Checkpoint returned invalid dense embedding vectors.")
             outputs.append(torch.nn.functional.normalize(vectors, dim=-1) if self.normalize else vectors)
         return torch.cat(outputs)
+
+    def _image_prompt_lengths(self, prompts: Sequence[str], images: Sequence[Any]) -> list[int]:
+        """Count processor-expanded prompt tokens from image sizes, without preprocessing pixels.
+
+        Parameters
+        ----------
+        prompts : Sequence[str]
+            Rendered retrieval prompts, each with one image placeholder.
+        images : Sequence[Any]
+            PIL images paired with prompts; only ``size`` is read unless an
+            image is smaller than one merged patch.
+
+        Returns
+        -------
+        list[int]
+            Expanded token count per prompt, equal to the processor attention-mask sum.
+
+        Raises
+        ------
+        RuntimeError
+            If the processor or tokenizer fails.
+        """
+        processor = self._processor
+        lengths = []
+        with self._tokenizer_lock:
+            for prompt, image in zip(prompts, images):
+                width, height = image.size
+                if min(width, height) < processor.patch_size * processor.spatial_merge_size:
+                    # Sub-patch images keep the processor's exact resize and error behavior.
+                    batch = processor(
+                        text=[prompt], images=[image], truncation=False, add_special_tokens=False, return_tensors="pt"
+                    )
+                    lengths.append(int(batch["attention_mask"].sum()))
+                    continue
+                image_tokens = _pixtral_image_tokens(processor, height, width)
+                ids = processor.tokenizer(prompt, add_special_tokens=False, truncation=False)["input_ids"]
+                lengths.append(len(ids) + ids.count(processor.image_token_id) * (image_tokens - 1))
+        return lengths
 
     def embed(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed document text with the checkpoint's document template.
@@ -277,32 +362,26 @@ class Nemotron35Embedder:
         prefix = self.query_prefix if query else self.document_prefix
         image = decode_base64_image(image_b64)
         try:
+            with self._tokenizer_lock:
 
-            def expanded_count(prompt):
-                batch = self._processor(
-                    text=[prompt],
-                    images=[image],
-                    truncation=False,
+                def expanded_count(prompt):
+                    return self._image_prompt_lengths([prompt], [image])[0]
+
+                policy = EmbeddingInputPolicy(
+                    tokenizer=self._processor.tokenizer,
+                    max_tokens=limit,
+                    prefix=prefix,
+                    retrieval_template=self._template,
                     add_special_tokens=False,
-                    return_tensors="pt",
+                    image=True,
+                    formatted_token_counter=expanded_count,
                 )
-                return int(batch["attention_mask"].sum())
-
-            policy = EmbeddingInputPolicy(
-                tokenizer=self._processor.tokenizer,
-                max_tokens=limit,
-                prefix=prefix,
-                retrieval_template=self._template,
-                add_special_tokens=False,
-                image=True,
-                formatted_token_counter=expanded_count,
-            )
-            if policy._formatted_token_count("") >= limit:
-                raise ValueError(
-                    f"Image and retrieval template leave no text budget within max_length={limit}; "
-                    "increase the configured limit within the checkpoint maximum. The image is not truncated."
-                )
-            return policy.plan([text])[0]
+                if policy._formatted_token_count("") >= limit:
+                    raise ValueError(
+                        f"Image and retrieval template leave no text budget within max_length={limit}; "
+                        "increase the configured limit within the checkpoint maximum. The image is not truncated."
+                    )
+                return policy.plan([text])[0]
         finally:
             image.close()
 
@@ -397,7 +476,7 @@ class Nemotron35Embedder:
             References are retained if shutdown fails so cleanup can be retried.
         """
         if self.backend == "vllm" and self._model is not None:
-            self._model.llm_engine.engine_core.shutdown(timeout=30.0)
+            self._model.shutdown(timeout=30.0)
         self._model = self._processor = self._template = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

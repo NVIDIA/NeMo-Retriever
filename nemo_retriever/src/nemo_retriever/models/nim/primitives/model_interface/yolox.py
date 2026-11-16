@@ -926,8 +926,8 @@ def postprocess_page_elements_v3(
     bboxes, confidences, label_idxs, found_title = match_structured_boxes_with_title(
         bboxes, confidences, label_idxs, labels
     )
-    bboxes, confidences, label_idxs = expand_tables_and_charts(bboxes, confidences, label_idxs, labels, found_title)
-    bboxes, confidences, label_idxs = postprocess_included_texts(bboxes, confidences, label_idxs, labels)
+    bboxes, label_idxs, confidences = expand_tables_and_charts(bboxes, confidences, label_idxs, labels, found_title)
+    bboxes, label_idxs, confidences = postprocess_included_texts(bboxes, confidences, label_idxs, labels)
 
     order = np.argsort(bboxes[:, 1] * 10 + bboxes[:, 0])
     bboxes, confidences, label_idxs = bboxes[order], confidences[order], label_idxs[order]

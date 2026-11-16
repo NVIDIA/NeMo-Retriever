@@ -16,7 +16,7 @@ Concrete implementations are provided by runmodes:
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Self, Sequence, Tuple, Union
+from typing import Any, List, Optional, Self, Sequence, Tuple, Union
 
 from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.common.params import DedupParams
@@ -150,15 +150,6 @@ class ingestor:
         """Add in-memory buffers for processing."""
         self._not_implemented("buffers")
 
-    def load(self) -> "ingestor":
-        """
-        Placeholder for remote fetch/localization.
-
-        The client-side Ingestor supports downloading remote URIs locally.
-        In this system, each runmode may handle remote inputs differently.
-        """
-        self._not_implemented("load")
-
     def ingest(
         self,
         params: IngestExecuteParams | None = None,
@@ -178,14 +169,6 @@ class ingestor:
         """
         _ = _merge_params(params, kwargs)
         self._not_implemented("ingest")
-
-    def ingest_async(self, *, return_failures: bool = False, return_traces: bool = False) -> Any:
-        """Asynchronously execute ingestion (placeholder)."""
-        self._not_implemented("ingest_async")
-
-    def all_tasks(self) -> "ingestor":
-        """Record the default task chain (placeholder)."""
-        self._not_implemented("all_tasks")
 
     def dedup(self, params: DedupParams | None = None, **kwargs: Any) -> "ingestor":
         """Record image-deduplication settings.
@@ -229,39 +212,15 @@ class ingestor:
         _ = _merge_params(params, kwargs)
         self._not_implemented("extract_image_files")
 
-    def filter(self) -> "ingestor":
-        """Record a filter task configuration."""
-        self._not_implemented("filter")
-
     def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a store task configuration for extracted image assets."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("store")
 
-    def store_embed(self) -> "ingestor":
-        """Record a store-embed task configuration."""
-        self._not_implemented("store_embed")
-
-    def udf(
-        self,
-        udf_function: str,
-        udf_function_name: Optional[str] = None,
-        phase: Optional[Union[int, str]] = None,
-        target_stage: Optional[str] = None,
-        run_before: bool = False,
-        run_after: bool = False,
-    ) -> "ingestor":
-        """Record a UDF task configuration."""
-        self._not_implemented("udf")
-
     def vdb_upload(self, params: VdbUploadParams | None = None, **kwargs: Any) -> "ingestor":
         """Record a vector DB upload configuration (execution TBD)."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("vdb_upload")
-
-    def save_intermediate_results(self, output_dir: str) -> "ingestor":
-        """Record intermediate results persistence configuration."""
-        self._not_implemented("save_intermediate_results")
 
     def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "ingestor":
         """Record caption settings.
@@ -294,34 +253,6 @@ class ingestor:
         """Record a webhook notification configuration."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("webhook")
-
-    def pdf_split_config(self, pages_per_chunk: int = 32) -> "ingestor":
-        """Record PDF split configuration (execution TBD)."""
-        self._not_implemented("pdf_split_config")
-
-    def completed_jobs(self) -> int:
-        """Return completed job count (placeholder until backend populates job state)."""
-        self._not_implemented("completed_jobs")
-
-    def failed_jobs(self) -> int:
-        """Return failed job count (placeholder until backend populates job state)."""
-        self._not_implemented("failed_jobs")
-
-    def cancelled_jobs(self) -> int:
-        """Return cancelled job count (placeholder until backend populates job state)."""
-        self._not_implemented("cancelled_jobs")
-
-    def remaining_jobs(self) -> int:
-        """Return remaining job count (placeholder until backend populates job state)."""
-        self._not_implemented("remaining_jobs")
-
-    def get_status(self) -> Dict[str, str]:
-        """
-        Return per-document status mapping (placeholder).
-
-        Once Ray execution is wired, this should reflect actual job/task state.
-        """
-        self._not_implemented("get_status")
 
 
 # Backward compatibility alias.
