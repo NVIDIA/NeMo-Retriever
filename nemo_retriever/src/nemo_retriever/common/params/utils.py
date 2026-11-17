@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Literal
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
@@ -14,9 +14,54 @@ if TYPE_CHECKING:
 
 
 NEMOTRON_PARSE35_MODEL = "nvidia/Nemotron-3.5-Parse"
-NEMOTRON_PARSE_V12_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = NEMOTRON_PARSE35_MODEL
-NEMOTRON_PARSE_LOCAL_MODELS = (NEMOTRON_PARSE35_MODEL, NEMOTRON_PARSE_V12_MODEL)
+NEMOTRON_PARSE_LOCAL_MODELS = (NEMOTRON_PARSE35_MODEL,)
+
+
+def resolve_nemotron_parse_dflash_tokens(
+    tokens: int | Literal["auto"] | None,
+    *,
+    model_id: str | None = None,
+    invoke_url: str | None = None,
+    backend: str = "vllm",
+) -> int | None:
+    """Select the DFlash2 draft length while preserving explicit opt-outs.
+
+    Args:
+        tokens: "auto" for backend-aware selection, an integer from 1 through
+            32 for an explicit draft length, or None to disable DFlash2.
+        model_id: Local model ID. None selects the default Parse 3.5 model.
+        invoke_url: Effective remote endpoint URL, including any CPU fallback.
+            None, an empty string, or whitespace selects local inference.
+        backend: Inference backend; DFlash2 requires "vllm".
+
+    Returns:
+        32 for automatic local Parse 3.5 vLLM inference, the requested integer
+        for a supported explicit setting, or None when DFlash2 is disabled
+        or automatic selection chooses another model, endpoint, or backend.
+
+    Raises:
+        ValueError: If tokens is neither "auto", None, nor an integer from 1
+            through 32, including booleans. Also raised when an explicit draft
+            length is requested for a remote endpoint, another model, or a
+            backend other than "vllm".
+    """
+    local_parse35 = not str(invoke_url or "").strip() and model_id in (None, NEMOTRON_PARSE35_MODEL)
+    if tokens == "auto":
+        return 32 if local_parse35 and backend == "vllm" else None
+    if tokens is None:
+        return None
+    if type(tokens) is not int or not 1 <= tokens <= 32:
+        raise ValueError("DFlash2 draft length must be 'auto', an integer from 1 to 32, or None to disable DFlash2.")
+    if not local_parse35:
+        raise ValueError(
+            "DFlash2 requires local Nemotron Parse 3.5; remote endpoints and legacy Parse are unsupported. "
+            "Use 'auto' or None to allow remote fallback, or run local Parse 3.5 with vLLM on a GPU."
+        )
+    if backend != "vllm":
+        raise ValueError("DFlash2 requires the Parse 3.5 vLLM backend.")
+    return tokens
 
 
 def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, ...]:
@@ -159,6 +204,51 @@ def _build_embed_batch_tuning(
         if value is not None
     }
     return BatchTuningParams(**tuning_kwargs) if tuning_kwargs else None
+
+
+def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dict[str, Any]:
+    """Translate extraction options for full-page Parse or chart-crop actors.
+
+    Parse-specific connection and sampling options override shared extraction
+    settings. Chart routing uses only the Parse endpoint so the OCR endpoint
+    cannot accidentally receive Parse requests.
+    """
+    kwargs: dict[str, Any] = {
+        "api_key": params.api_key,
+        "request_timeout_s": params.request_timeout_s,
+    }
+    retry = getattr(params, "remote_retry", None)
+    if retry is not None:
+        for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
+            kwargs[key] = int(getattr(retry, key))
+    if params.nemotron_parse_invoke_url:
+        kwargs["nemotron_parse_invoke_url"] = params.nemotron_parse_invoke_url
+    elif not chart_routing and params.invoke_url:
+        kwargs["invoke_url"] = params.invoke_url
+    kwargs["nemotron_parse_dflash_tokens"] = params.nemotron_parse_dflash_tokens
+    if not chart_routing:
+        kwargs.update(
+            {
+                key: getattr(params, key)
+                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            }
+        )
+        if params.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = params.nemotron_parse_model
+    if params.nemotron_parse_table_format is not None:
+        kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
+    parse = params.parse
+    if parse is not None:
+        if parse.task_prompt is not None:
+            kwargs["task_prompt"] = parse.task_prompt
+        kwargs["parse_sampling_params"] = parse._sampling_overrides()
+        if parse.api_key is not None or parse._uses_no_api_key("api_key"):
+            from nemo_retriever.common.params.models import resolve_environment_reference
+
+            kwargs["api_key"] = resolve_environment_reference(parse.api_key)
+        if parse.request_timeout_s is not None:
+            kwargs["request_timeout_s"] = parse.request_timeout_s
+    return kwargs
 
 
 def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> Dict[str, Any]:

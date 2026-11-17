@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from typing import Any, ClassVar, Literal, Optional, Tuple
+from typing import Annotated, Any, ClassVar, Literal, Optional, Tuple
 from urllib.parse import urlparse
 
 
@@ -25,8 +25,11 @@ from pydantic import (
 
 from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
 from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE35_MODEL,
+    NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
     NEMOTRON_PARSE_LOCAL_MODELS,
     validate_nemotron_parse_endpoint_list,
+    resolve_nemotron_parse_dflash_tokens,
 )
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -554,6 +557,141 @@ class BatchTuningParams(_ParamsModel):
     inference_batch_size: int = 8
 
 
+class ParseParams(_ParamsModel):
+    """Parse 3.5 model, connection, generation, and Table rendering options.
+
+    Pass this group as ``ExtractParams(parse=ParseParams(...))``. Unset fields
+    inherit the extraction configuration and the selected path's defaults.
+    Full-page Parse 3.5 defaults to HTML; chart routing defaults to Simple
+    HTML and temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0,
+    seed=0, max_tokens=8744. Sampling overrides require local Parse 3.5 or a
+    Parse 3.5 chat-completions endpoint. Legacy models keep their defaults.
+
+    Attributes:
+        model: Model identifier; explicitly select ``nvidia/Nemotron-3.5-Parse``
+            for a remote Parse 3.5 service.
+        invoke_url: Optional comma-separated remote service URLs; omit for local inference.
+        api_key: Optional Parse-only credential, inheriting the extraction key when
+            unset. Use ``NO_API_KEY`` to disable authentication for Parse only.
+        request_timeout_s: Optional positive Parse request timeout, in seconds.
+        task_prompt: Optional native control prompt; unset preserves the model default.
+        table_format: Rendering for Table blocks only: HTML, simple_html, markdown,
+            or latex. Other block classes retain their model output rendering.
+        temperature: Nonnegative sampling temperature; zero selects greedy decoding.
+        repetition_penalty: Positive repetition penalty.
+        top_k: Positive top-k cutoff, or -1 to disable top-k filtering.
+        top_p: Nucleus probability in (0, 1].
+        seed: Optional nonnegative random seed.
+        max_tokens: Positive limit on generated output tokens per page or crop.
+
+    Raises:
+        ValueError: For invalid field values, unsupported formats, or unknown fields.
+            ExtractParams additionally rejects conflicting flat/nested options and
+            incompatible models or endpoint contracts before building the graph.
+    """
+
+    _auto_resolve_unset_api_keys: ClassVar[bool] = False
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Parse model identifier. Local inference defaults to nvidia/Nemotron-3.5-Parse; remote 3.5 "
+            "postprocessing requires that explicit identifier."
+        ),
+    )
+    invoke_url: Optional[str] = Field(
+        default=None, description="Optional comma-separated Parse endpoint URLs. Omit for local inference."
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Parse-only API key. Unset inherits the extraction key; NO_API_KEY disables Parse " "authentication."
+        ),
+    )
+    request_timeout_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Positive Parse request timeout in seconds. Unset inherits the extraction timeout.",
+    )
+    task_prompt: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description="Optional native Parse control prompt. Unset preserves the model's default prompt.",
+    )
+    table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
+        default=None,
+        description=(
+            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to HTML for "
+            "full pages and simple_html for chart crops."
+        ),
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description=(
+            "Nonnegative sampling temperature; zero selects greedy decoding. Unset inherits the page "
+            "backend default or 0.1 for chart crops."
+        ),
+    )
+    repetition_penalty: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Positive repetition penalty. Unset inherits the page backend default or 1.0 for chart crops.",
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        description=(
+            "Positive top-k cutoff, or -1 to disable filtering. Unset inherits the page backend default "
+            "or 50 for chart crops."
+        ),
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=1,
+        allow_inf_nan=False,
+        description="Nucleus probability in (0, 1]. Unset inherits the page backend default or 1.0 for chart crops.",
+    )
+    seed: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Nonnegative sampling seed. Unset inherits the page backend default or 0 for chart crops.",
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Positive output token limit per page or crop. Unset inherits the page backend default or "
+            "8744 for chart crops."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any) -> dict[str, Any]:
+        values = handler(self)
+        if self._uses_no_api_key("api_key"):
+            values["api_key"] = NO_API_KEY
+        return values
+
+    @field_validator("invoke_url")
+    @classmethod
+    def _normalize_parse_endpoint(cls, value: Optional[str]) -> Optional[str]:
+        return ",".join(validate_nemotron_parse_endpoint_list(value)) or None
+
+    @field_validator("top_k")
+    @classmethod
+    def _validate_top_k(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and value != -1 and value < 1:
+            raise ValueError("Parse top_k must be a positive integer or -1 to disable top-k filtering.")
+        return value
+
+    def _sampling_overrides(self) -> dict[str, Any]:
+        keys = ("temperature", "repetition_penalty", "top_k", "top_p", "seed", "max_tokens")
+        return {key: getattr(self, key) for key in keys if getattr(self, key) is not None}
+
+
 class ExtractParams(_ParamsModel):
     # Extraction flags
     extract_text: bool = True
@@ -588,6 +726,10 @@ class ExtractParams(_ParamsModel):
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
     # OCR. Safe to disable for text-only ingests.
     use_page_elements: bool = True
+    chart_routing: bool = Field(
+        default=False,
+        description="Route Page Elements chart crops to Parse 3.5; configure the model with parse=ParseParams(...).",
+    )
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     dpi: int = 200
@@ -610,6 +752,22 @@ class ExtractParams(_ParamsModel):
     table_structure_invoke_url: Optional[str] = None
     nemotron_parse_invoke_url: Optional[str] = None
     nemotron_parse_model: Optional[str] = None
+    nemotron_parse_table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
+        default=None,
+        description="Parse 3.5 Table format. Defaults to HTML for 3.5; legacy Parse keeps Markdown.",
+    )
+
+    parse: Optional[ParseParams] = Field(
+        default=None,
+        description="Parse model, endpoint, sampling overrides, and Table format for full pages or chart crops.",
+    )
+    nemotron_parse_dflash_tokens: Annotated[int, Field(strict=True, ge=1, le=32)] | Literal["auto"] | None = Field(
+        default="auto",
+        description=(
+            "DFlash2 draft length for local Parse 3.5 vLLM. 'auto' selects 32 tokens only for that backend/model; "
+            "None preserves the vendor MTP default. Applies to full-page Parse and chart routing."
+        ),
+    )
 
     # Output columns
     output_column: str = "page_elements_v3"
@@ -618,6 +776,11 @@ class ExtractParams(_ParamsModel):
 
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    @field_validator("nemotron_parse_invoke_url")
+    @classmethod
+    def _normalize_parse_endpoint(cls, value: Optional[str]) -> Optional[str]:
+        return ",".join(validate_nemotron_parse_endpoint_list(value)) or None
 
     @model_validator(mode="after")
     def _auto_enable_features(self) -> "ExtractParams":
@@ -628,6 +791,37 @@ class ExtractParams(_ParamsModel):
         * Default ``table_output_format`` to ``"markdown"`` when the stage is
           enabled and the caller did not explicitly choose a format.
         """
+        if self.parse is not None:
+            if self.method != "nemotron_parse" and not self.chart_routing:
+                raise ValueError("parse=ParseParams(...) requires method='nemotron_parse' or chart_routing=True.")
+            for nested, flat in (
+                ("model", "nemotron_parse_model"),
+                ("invoke_url", "nemotron_parse_invoke_url"),
+                ("table_format", "nemotron_parse_table_format"),
+            ):
+                value = getattr(self.parse, nested)
+                existing = getattr(self, flat)
+                if value is not None:
+                    if existing is not None and value != existing:
+                        raise ValueError(f"parse.{nested} conflicts with {flat}; use one value for both.")
+                    setattr(self, flat, value)
+            if self.parse.task_prompt is not None:
+                endpoints = validate_nemotron_parse_endpoint_list(
+                    self.nemotron_parse_invoke_url or (self.invoke_url if not self.chart_routing else None)
+                )
+                if any(not url.rstrip("/").endswith("/v1/chat/completions") for url in endpoints):
+                    raise ValueError("Parse task_prompt requires local inference or /v1/chat/completions URLs.")
+            if self.parse._sampling_overrides():
+                endpoints = validate_nemotron_parse_endpoint_list(
+                    self.nemotron_parse_invoke_url or (self.invoke_url if not self.chart_routing else None)
+                )
+                model = self.nemotron_parse_model or (
+                    NEMOTRON_PARSE35_MODEL if self.chart_routing or not endpoints else None
+                )
+                if str(model or "").lower() != NEMOTRON_PARSE35_MODEL.lower():
+                    raise ValueError(f"Parse sampling overrides require model='{NEMOTRON_PARSE35_MODEL}'.")
+                if any(not url.rstrip("/").endswith("/v1/chat/completions") for url in endpoints):
+                    raise ValueError("Parse sampling overrides require local inference or /v1/chat/completions URLs.")
         if self.table_structure_invoke_url and not self.use_table_structure:
             self.use_table_structure = True
         if self.table_output_format is None:
@@ -638,15 +832,55 @@ class ExtractParams(_ParamsModel):
             raise ValueError(
                 "extract_nested_images=True requires extract_images=True because nested images extend image output."
             )
-        if self.method != "nemotron_parse" and (
-            self.nemotron_parse_invoke_url is not None or self.nemotron_parse_model is not None
+        if self.chart_routing:
+            if self.method not in ("ocr", "pdfium_hybrid"):
+                raise ValueError("chart_routing=True requires method='ocr' or 'pdfium_hybrid'.")
+            if not self.use_page_elements or not self.extract_charts or self.extract_page_as_image is False:
+                raise ValueError(
+                    "chart_routing=True requires use_page_elements=True, extract_charts=True, "
+                    "and extract_page_as_image=True."
+                )
+            if self.nemotron_parse_model and self.nemotron_parse_model.lower() != NEMOTRON_PARSE35_MODEL.lower():
+                raise ValueError(f"chart_routing requires nemotron_parse_model='{NEMOTRON_PARSE35_MODEL}'.")
+            endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url)
+            if any(not url.rstrip("/").endswith("/v1/chat/completions") for url in endpoints):
+                raise ValueError("chart_routing requires Parse 3.5 /v1/chat/completions endpoints.")
+        if (
+            self.method != "nemotron_parse"
+            and not self.chart_routing
+            and (
+                self.nemotron_parse_invoke_url is not None
+                or self.nemotron_parse_model is not None
+                or self.nemotron_parse_table_format is not None
+                or self.nemotron_parse_dflash_tokens not in (None, "auto")
+            )
         ):
             raise ValueError(
-                "`nemotron_parse_invoke_url` and `nemotron_parse_model` require "
-                "`method='nemotron_parse'`; Parse-specific configuration is otherwise ignored."
+                "`nemotron_parse_invoke_url`, `nemotron_parse_model`, and `nemotron_parse_table_format` require "
+                "`method='nemotron_parse'` or `chart_routing=True`; Parse-specific configuration is otherwise ignored."
+            )
+        if self.chart_routing:
+            resolve_nemotron_parse_dflash_tokens(
+                self.nemotron_parse_dflash_tokens,
+                model_id=self.nemotron_parse_model,
+                invoke_url=self.nemotron_parse_invoke_url,
             )
         if self.method == "nemotron_parse":
+            resolve_nemotron_parse_dflash_tokens(
+                self.nemotron_parse_dflash_tokens,
+                model_id=self.nemotron_parse_model,
+                invoke_url=self.nemotron_parse_invoke_url or self.invoke_url,
+            )
             parse_endpoints = validate_nemotron_parse_endpoint_list(self.nemotron_parse_invoke_url or self.invoke_url)
+            if self.nemotron_parse_table_format is not None:
+                parse_model = self.nemotron_parse_model or (
+                    None if parse_endpoints else NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+                )
+                if str(parse_model or "").lower() != NEMOTRON_PARSE35_MODEL.lower():
+                    raise ValueError(
+                        "nemotron_parse_table_format requires Parse 3.5; select "
+                        f"nemotron_parse_model='{NEMOTRON_PARSE35_MODEL}' or omit the format for legacy models."
+                    )
             if (
                 not parse_endpoints
                 and self.nemotron_parse_model is not None
@@ -654,8 +888,8 @@ class ExtractParams(_ParamsModel):
             ):
                 raise ValueError(
                     f"Local Nemotron Parse supports only {', '.join(NEMOTRON_PARSE_LOCAL_MODELS)} in this release; "
-                    f"received `{self.nemotron_parse_model}`. Configure `nemotron_parse_invoke_url` or `invoke_url` "
-                    "to use a compatible remote model."
+                    f"received `{self.nemotron_parse_model}`. Select the supported local model, or configure "
+                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
                 )
         if not self.use_page_elements:
             consumers = [("use_table_structure", self.use_table_structure and self.extract_tables)]

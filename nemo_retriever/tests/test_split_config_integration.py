@@ -104,6 +104,9 @@ def test_pdf_split_page_embeddings_keep_chunk_text_without_restoring_whole_page(
     split_config = resolve_split_params({"pdf": {"max_tokens": 1}})
     chunks = TextChunkCPUActor(split_config["pdf"])(pages)
     assert chunks.text.tolist() == ["first", "last", "unsplit"]
+    assert pd.isna(chunks.iloc[0]["ordered_page_text_source"])
+    assert pd.isna(chunks.iloc[1]["ordered_page_text_source"])
+    assert chunks.iloc[2]["ordered_page_text_source"] == "unsplit"
 
     embedded = collapse_content_to_page_rows(chunks)
     first = "first\n\nTABLE\n\ntable caption" if with_table else "first"
