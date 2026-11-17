@@ -77,6 +77,117 @@ def test_invalid_or_truncated_native_responses_fail(monkeypatch, payload, recove
         client.shutdown()
 
 
+def test_truncated_native_response_is_returned_only_when_allowed(monkeypatch):
+    payload = {"content": "partial", "finish_reason": "length", "usage": {"output_tokens": 9000}}
+    monkeypatch.setattr(nim.requests, "post", lambda *args, **kwargs: response(payload))
+    client = nim.NIMClient()
+    try:
+        result = client.invoke_parse_pages(
+            invoke_url="http://nim/v1/parse", image_b64_list=["aW1hZ2U="], allow_incomplete=True
+        )
+    finally:
+        client.shutdown()
+    assert result == [payload]
+
+
+def test_length_limited_native_page_keeps_complete_elements_and_is_reported(caplog):
+    client = Mock()
+    client.invoke_parse_pages.return_value = [
+        {
+            "content": "<x_0.1><y_0.2>Budget 42000<x_0.8><y_0.3><class_Text>"
+            "<x_0.1><y_0.4><chart>| day | value |\n| 1 | 1000 |\n| 1 | 1000 |",
+            "finish_reason": "length",
+            "usage": {"output_tokens": 9000},
+        },
+        {"content": "<x_0.1><y_0.2>Next page<x_0.8><y_0.3><class_Text>", "finish_reason": "stop"},
+    ]
+    batch = pd.DataFrame(
+        [
+            {"path": "/docs/report.pdf", "page_number": 3, "text": "pdf text", "page_image": {"image_b64": "aW1hZ2U="}},
+            {"path": "/docs/report.pdf", "page_number": 4, "text": "pdf text", "page_image": {"image_b64": "aW1hZ2U="}},
+        ]
+    )
+    result = nemotron_parse_pages(
+        batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True, extract_charts=True
+    )
+    assert client.invoke_parse_pages.call_args.kwargs["allow_incomplete"] is True
+    assert result["text"].tolist() == ["Budget 42000", "Next page"]
+    assert result.iloc[0]["chart"] == []  # The unterminated element is not routed.
+    metadata = result["nemotron_parse_v1_2"].tolist()
+    assert [item["error"] for item in metadata] == [None, None]
+    assert metadata[0]["completion"] == {"status": "incomplete", "finish_reason": "length", "output_tokens": 9000}
+    assert metadata[1]["completion"] == {"status": "complete", "finish_reason": "stop", "output_tokens": None}
+    output = caplog.text
+    assert (
+        "Warning: Nemotron Parse page incomplete: path=/docs/report.pdf page=3 finish_reason=length "
+        "output_tokens=9000"
+    ) in output
+    assert "page=4" not in output
+
+
+@pytest.mark.parametrize("extract_text", [True, False])
+def test_native_output_capped_before_first_element_finishes_is_incomplete(caplog, extract_text):
+    client = Mock()
+    client.invoke_parse_pages.return_value = [
+        {
+            "content": "<x_0.1><y_0.2>Unfinished table that never reaches its closing tags",
+            "finish_reason": "length",
+            "usage": {"output_tokens": 9000},
+        }
+    ]
+    batch = pd.DataFrame(
+        [{"path": "/docs/report.pdf", "page_number": 7, "text": "pdf text", "page_image": {"image_b64": "aW1hZ2U="}}]
+    )
+    result = nemotron_parse_pages(
+        batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=extract_text, extract_tables=True
+    )
+    metadata = result.iloc[0]["nemotron_parse_v1_2"]
+    assert metadata["error"] is None
+    assert metadata["completion"] == {"status": "incomplete", "finish_reason": "length", "output_tokens": 9000}
+    assert result.iloc[0]["text"] == "pdf text"  # Raw tags replace neither the page text nor the output.
+    assert result.iloc[0]["table"] == []
+    assert "Warning: Nemotron Parse page incomplete: path=/docs/report.pdf page=7" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "content", ["Plain markdown cut off mid-sent", "Use <x_0.1> for coordinates, then <x_0.2><y_0.3"]
+)
+def test_native_markdown_capped_output_is_kept_as_page_text(content):
+    client = Mock()
+    client.invoke_parse_pages.return_value = [
+        {"content": content, "finish_reason": "length", "usage": {"output_tokens": 9000}}
+    ]
+    batch = pd.DataFrame([{"path": "a.pdf", "page_number": 1, "page_image": {"image_b64": "aW1hZ2U="}}])
+    result = nemotron_parse_pages(batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True)
+    assert result.iloc[0]["text"] == content
+    assert result.iloc[0]["nemotron_parse_v1_2"]["completion"]["status"] == "incomplete"
+
+
+def test_page_without_a_reported_stop_reason_is_not_reported_complete():
+    client = Mock()
+    client.invoke_parse_pages.return_value = [{"content": "<x_0.1><y_0.2>Body<x_0.8><y_0.3><class_Text>"}]
+    batch = pd.DataFrame([{"path": "a.pdf", "page_number": 1, "page_image": {"image_b64": "aW1hZ2U="}}])
+    result = nemotron_parse_pages(batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True)
+    assert result.iloc[0]["nemotron_parse_v1_2"]["completion"] == {
+        "status": "unknown",
+        "finish_reason": None,
+        "output_tokens": None,
+    }
+    assert result.iloc[0]["text"] == "Body"
+
+
+def test_failed_native_batch_marks_every_page_failed(caplog):
+    client = Mock()
+    client.invoke_parse_pages.side_effect = TimeoutError("NIM unavailable")
+    batch = pd.DataFrame([{"page_image": {"image_b64": "aW1hZ2U="}}, {"page_image": {"image_b64": "aW1hZ2U="}}])
+    result = nemotron_parse_pages(batch, invoke_url="http://nim/v1/parse", nim_client=client, extract_text=True)
+    for metadata in result["nemotron_parse_v1_2"]:
+        assert metadata["error"]["type"] == "TimeoutError"
+        assert metadata["completion"]["status"] == "failed"
+    assert "Warning: Nemotron Parse batch failed: TimeoutError: NIM unavailable" in caplog.text
+    assert caplog.records[-1].exc_info is not None
+
+
 def test_native_client_does_not_retry_bad_requests(monkeypatch):
     post = Mock(return_value=response(None, 400))
     monkeypatch.setattr(nim.requests, "post", post)
@@ -111,6 +222,11 @@ def test_native_markdown_is_preserved_as_page_text_and_usage_is_recorded(markdow
     assert result["text"].tolist() == [markdown, "no image"]
     assert result["table"].tolist() == [[], []]  # Native response has no element boxes.
     assert result.iloc[0]["nemotron_parse_v1_2"]["native_parse"]["usage"]["output_tokens"] == 42
+    assert result.iloc[0]["nemotron_parse_v1_2"]["completion"] == {
+        "status": "complete",
+        "finish_reason": "stop",
+        "output_tokens": 42,
+    }
     assert result.iloc[0]["nemotron_parse_v1_2"]["error"] is None
     client.invoke_chat_completions_images.assert_not_called()
     client.invoke_image_inference_batches.assert_not_called()

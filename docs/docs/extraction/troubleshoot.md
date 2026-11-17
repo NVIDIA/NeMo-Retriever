@@ -79,7 +79,7 @@ troubleshooting path. A single document can pass through several stages.
 | `ExtractParams(method="pdfium")` | File loading, PDF splitting, PDFium parsing, page rendering; optionally Page Elements and Table Structure when enabled | Malformed or encrypted input, `pypdfium2` import failure, local Python exception, or remote-stage `GraphIngestionError` when an invoke URL is explicitly configured |
 | `ExtractParams(method="pdfium_hybrid")` | PDFium plus Page Elements, OCR, and optionally Table Structure | The local PDF signals above, or a row-level/HTTP failure attributed to Page Elements, OCR, or Table Structure |
 | `ExtractParams(method="ocr")` | Page rendering, Page Elements, and the local or remote OCR backend | Missing local model dependencies, invalid image payload, authentication/transport status, or OCR row-level failure |
-| `ExtractParams(method="nemotron_parse")` | PDF rendering and local Nemotron Parse model or configured Nemotron Parse NIM | Missing `open_clip`, missing local model configuration, unsupported image input, or Nemotron Parse row-level/HTTP failure |
+| `ExtractParams(method="nemotron_parse")` | PDF rendering and local Nemotron Parse model or configured Nemotron Parse NIM | Missing `open_clip`, missing local model configuration, unsupported image input, Nemotron Parse row-level/HTTP failure, or an [incomplete page](#nemotron-parse-incomplete-page) warning |
 | `.caption(...)` | Local caption model or remote VLM endpoint | `ValueError` at setup when credentials or endpoint/protocol are invalid; remote inference failures can abort the whole ingest rather than populate a row error column |
 | `.embed(...)` | Local embedding model or configured embedding NIM | Model/dependency error, input-size or schema rejection, authentication/transport status, or embedding row-level failure; `GraphIngestionError` when a remote embed URL is configured |
 | Audio or video extraction | `ffmpeg`/`ffprobe`, media decoding, frame/chunk creation, and local or remote ASR | Missing executable, malformed media, codec failure, gRPC status, or credential error; ASR failures may omit rows and log warnings instead of raising, so verify logs when output is unexpectedly empty |
@@ -333,6 +333,20 @@ This can occur when you send a versioned self-hosted model (for example `nvidia/
 To use hosted Build, omit `nemotron_parse_model` so the library selects `nvidia/nemotron-parse` automatically, or set `nemotron_parse_model="nvidia/nemotron-parse"` explicitly. Send `nvidia/nemotron-parse-v1.2` only to a compatible self-hosted chat endpoint.
 
 Do not combine hosted Build and self-hosted endpoints in one `nemotron_parse_invoke_url` list. The library rejects this configuration because one workflow cannot send different model IDs and request contracts to individual endpoints. Setting `nemotron_parse_model` does not override this restriction. Use a homogeneous endpoint list, or configure separate ingestors or extraction workflows for hosted Build and self-hosted capacity. For more information, refer to [Nemotron Parse: hosted Build and self-hosted NIM contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted).
+
+## Nemotron Parse reports an incomplete page { #nemotron-parse-incomplete-page }
+
+When a Nemotron 3.5 Parse page reaches its output token limit, PDF extraction with `method="nemotron_parse"` logs a warning, through the Python `logging` module under `nemo_retriever.operators.extract.parse.nemotron_parse`, similar to the following:
+
+```text
+Warning: Nemotron Parse page incomplete: path=/data/report.pdf page=3 finish_reason=length output_tokens=9000
+```
+
+The native Parse NIM and the default local vLLM model generate at most 9,000 tokens per page. Very dense pages, or output that repeats until the limit, can stop before the page is finished. The library keeps the elements that the model completed and drops the unfinished final element. If the limit is reached before the first element finishes, the page has no extracted elements and is still reported as incomplete.
+
+To find incomplete pages in extraction results, read the `completion` field in each row's `nemotron_parse_v1_2` metadata. Its `status` is `complete`, `incomplete`, `unknown`, or `failed`, with the model's `finish_reason` and `output_tokens` when available. `unknown` means the backend did not report why generation stopped, as with chat-completions endpoints and the Transformers backend, so a cut-off page cannot be ruled out. Pages that fail log `Warning: Nemotron Parse page failed:` or `Warning: Nemotron Parse batch failed:` and record an `error`.
+
+Sending the unchanged page again does not raise the limit. If missing content matters, review the page and consider extracting dense regions separately or using another extraction method for that document.
 
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 

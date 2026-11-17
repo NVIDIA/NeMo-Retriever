@@ -6,19 +6,38 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
 import torch
 from PIL import Image
 
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, resolve_nemotron_parse_dflash_tokens
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE35_MODEL,
+    NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
+    resolve_nemotron_parse_dflash_tokens,
+)
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
 from nemo_retriever.models.model import BaseModel, ModelRunMode
 
-_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+
+@dataclass(frozen=True)
+class ParsePageResult:
+    """Generated output and termination evidence for one page.
+
+    Attributes:
+        text: Decoded text with coordinate and class tags preserved.
+        finish_reason: Generation stop reason reported by the backend, such as
+            ``"stop"`` or ``"length"``. ``None`` when the backend does not report one.
+        output_tokens: Number of generated tokens, or ``None`` when unavailable.
+    """
+
+    text: str
+    finish_reason: str | None = None
+    output_tokens: int | None = None
 
 
 class NemotronParse35(BaseModel):
@@ -34,10 +53,11 @@ class NemotronParse35(BaseModel):
         self,
         device: str = "cuda",
         hf_cache_dir: str | None = None,
-        task_prompt: str = _DEFAULT_TASK_PROMPT,
+        task_prompt: str = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
         dflash_tokens: int | Literal["auto"] | None = "auto",
+        sampling_params: dict[str, Any] | None = None,
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
 
@@ -54,6 +74,10 @@ class NemotronParse35(BaseModel):
                 vLLM requires CUDA device zero
                 in the worker's visible GPU set; Transformers also supports CPU.
 
+            sampling_params: Optional vLLM overrides for ``temperature``, ``top_k``,
+                ``top_p``, ``repetition_penalty``, and ``seed``. Defaults retain
+                greedy decoding. Available only with backend="vllm".
+
         Raises:
             ValueError: If max_tokens is not positive, the backend is unsupported,
                 the device is invalid, or the DFlash2 configuration is unsupported.
@@ -68,6 +92,12 @@ class NemotronParse35(BaseModel):
         self._device = torch.device(device)
         if backend == "vllm" and (self._device.type != "cuda" or self._device.index not in (None, 0)):
             raise ValueError('Parse 3.5 vLLM requires device="cuda" or "cuda:0" in the worker GPU set.')
+        allowed_sampling = {"temperature", "top_k", "top_p", "repetition_penalty", "seed"}
+        if sampling_params and (backend != "vllm" or set(sampling_params) - allowed_sampling):
+            raise ValueError(
+                "sampling_params requires vllm and accepts temperature, top_k, top_p, repetition_penalty, seed."
+            )
+        self._sampling_params = dict(sampling_params or {})
         self._backend = backend
         self._hf_cache_dir = hf_cache_dir
         self._task_prompt = task_prompt
@@ -144,9 +174,12 @@ class NemotronParse35(BaseModel):
             from vllm import LLM, SamplingParams
 
             self._generation_config = SamplingParams(
-                temperature=0,
-                top_k=1,
-                repetition_penalty=1.1,
+                **{
+                    "temperature": 0,
+                    "top_k": 1,
+                    "repetition_penalty": 1.1,
+                    **self._sampling_params,
+                },
                 max_tokens=self._max_tokens,
                 skip_special_tokens=False,
             )
@@ -243,7 +276,34 @@ class NemotronParse35(BaseModel):
             task_prompt: Optional native control tokens overriding the configured prompt.
 
         Returns:
-            One tagged output string per input page, in input order.
+            One tagged output string per input page, in input order. Use
+            :meth:`invoke_batch_results` to check whether generation reached
+            ``max_tokens``.
+
+        Raises:
+            TypeError: If an image type is unsupported.
+            ValueError: If image data or processor inputs are invalid.
+            OSError: If image or checkpoint assets cannot be loaded.
+            RuntimeError: If the requested CUDA device is unavailable, or model
+                loading or generation fails. No partial batch is returned.
+        """
+        return [result.text for result in self.invoke_batch_results(inputs, task_prompt=task_prompt)]
+
+    def invoke_batch_results(
+        self, inputs: Sequence[ImageInput], task_prompt: str | None = None
+    ) -> list[ParsePageResult]:
+        """Parse pages like :meth:`invoke_batch`, also returning termination evidence.
+
+        Args:
+            inputs: Sequence of pages accepted by :meth:`preprocess`; an empty
+                sequence returns immediately without loading the checkpoint.
+            task_prompt: Optional native control tokens overriding the configured prompt.
+
+        Returns:
+            One :class:`ParsePageResult` per input page, in input order. The vLLM
+            backend reports ``finish_reason="length"`` when a page reached
+            ``max_tokens``; its text is then incomplete. The Transformers backend
+            reports no finish reason or token count.
 
         Raises:
             TypeError: If an image type is unsupported.
@@ -254,18 +314,33 @@ class NemotronParse35(BaseModel):
         """
         if not inputs:
             return []
-        outputs: list[str] = []
+        outputs: list[ParsePageResult] = []
         for image in inputs:
             page = self.preprocess(image)
             self._ensure_model()
             if self._backend == "vllm":
                 prompt = task_prompt if task_prompt is not None else self._task_prompt
+                # vLLM's progress bar divides by tqdm's elapsed time, which is
+                # zero when TQDM_DISABLE is set; one page needs no progress bar.
                 generated = self._model.generate(
-                    [{"prompt": "<pad>" + prompt, "multi_modal_data": {"image": page}}],
+                    [
+                        {
+                            "prompt": "<pad>" + prompt,
+                            "multi_modal_data": {"image": page},
+                        }
+                    ],
                     self._generation_config,
+                    use_tqdm=False,
                     tokenization_kwargs={"add_special_tokens": False},
                 )
-                outputs.append(generated[0].outputs[0].text.strip())
+                completion = generated[0].outputs[0]
+                outputs.append(
+                    ParsePageResult(
+                        text=completion.text.strip(),
+                        finish_reason=completion.finish_reason,
+                        output_tokens=len(completion.token_ids),
+                    )
+                )
                 continue
             features = self._processor(
                 images=[page],
@@ -275,7 +350,9 @@ class NemotronParse35(BaseModel):
             ).to(self._device)
             with torch.inference_mode():
                 sequences = self._model.generate(**features, generation_config=self._generation_config)
-            outputs.append(self._processor.batch_decode(sequences, skip_special_tokens=False)[0].strip())
+            outputs.append(
+                ParsePageResult(text=self._processor.batch_decode(sequences, skip_special_tokens=False)[0].strip())
+            )
         return outputs
 
     def __call__(self, input_data: ImageInput, task_prompt: str | None = None) -> str:

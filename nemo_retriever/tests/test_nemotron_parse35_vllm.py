@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offline contracts for the official Parse 3.5 vLLM plugin and adapter."""
+"""Offline contracts for plugin MTP and DFlash2 Parse inference."""
 
 from pathlib import Path
 import os
@@ -18,7 +18,7 @@ from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference import nemotron_parse35_vllm as plugin_module
 from nemo_retriever.models.local import nemotron_parse35 as adapter_module
-from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35
+from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35, ParsePageResult
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +34,9 @@ def model_registry(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 def vllm_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace:
     """Replace vLLM and network I/O, without importing CUDA model classes."""
     engine = MagicMock()
-    engine.generate.return_value = [SimpleNamespace(outputs=[SimpleNamespace(text=" <class_Text>page ")])]
+    engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text=" <class_Text>page ", finish_reason="stop", token_ids=[1, 2])])
+    ]
     llm = MagicMock(return_value=engine)
     sampling = MagicMock()
     module = ModuleType("vllm")
@@ -78,6 +80,36 @@ def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(
     assert vllm_runtime.engine.generate.call_args.kwargs["tokenization_kwargs"] == {"add_special_tokens": False}
 
 
+def test_vllm_reports_length_limited_generation(vllm_runtime: SimpleNamespace) -> None:
+    vllm_runtime.engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text=" capped ", finish_reason="length", token_ids=[1, 2, 3])])
+    ]
+    parser = NemotronParse35()
+    assert parser.invoke_batch_results([Image.new("RGB", (16, 20))]) == [
+        ParsePageResult(text="capped", finish_reason="length", output_tokens=3)
+    ]
+    assert parser.invoke_batch_results([]) == []
+
+
+def test_vllm_generation_survives_disabled_progress_bars(
+    vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tqdm import tqdm
+
+    # Retriever's quiet CLI and benchmark harnesses set TQDM_DISABLE for Ray workers.
+    monkeypatch.setenv("TQDM_DISABLE", "1")
+
+    def generate(prompts: list[object], *args: object, use_tqdm: bool = True, **kwargs: object) -> list[object]:
+        if use_tqdm:
+            # vLLM's offline engine estimates speed from the bar after each request;
+            # a disabled bar reports zero elapsed time.
+            _ = 1 / tqdm(total=len(prompts)).format_dict["elapsed"]
+        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
+
+    vllm_runtime.engine.generate.side_effect = generate
+    assert NemotronParse35().invoke(Image.new("RGB", (16, 20))) == "page"
+
+
 @pytest.mark.parametrize("tokens", [None, 32])
 def test_vllm_converts_pages_only_as_generated(
     vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, tokens: int | None
@@ -92,7 +124,7 @@ def test_vllm_converts_pages_only_as_generated(
 
     def generate(*args: object, **kwargs: object) -> list[SimpleNamespace]:
         events.append("generate")
-        return [SimpleNamespace(outputs=[SimpleNamespace(text="page")])]
+        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
 
     monkeypatch.setattr(parser, "preprocess", preprocess)
     vllm_runtime.engine.generate.side_effect = generate
@@ -102,7 +134,7 @@ def test_vllm_converts_pages_only_as_generated(
 
 
 def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(backend="vllm")
+    parser = NemotronParse35(dflash_tokens=None, backend="vllm")
     page = Image.new("RGB", (16, 16))
     parser(page)
     parser.unload()
@@ -114,7 +146,7 @@ def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespac
 
 
 def test_vllm_shutdown_failure_retains_engine(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(backend="vllm")
+    parser = NemotronParse35(dflash_tokens=None, backend="vllm")
     parser(Image.new("RGB", (16, 16)))
     vllm_runtime.engine.llm_engine.engine_core.shutdown.side_effect = RuntimeError("shutdown failed")
     with pytest.raises(RuntimeError, match="shutdown failed"):
@@ -130,9 +162,9 @@ def test_snapshot_environment_does_not_leak_to_other_engines(
     if failure:
         vllm_runtime.llm.side_effect = RuntimeError("startup failed")
         with pytest.raises(RuntimeError, match="startup failed"):
-            NemotronParse35(backend="vllm")(Image.new("RGB", (16, 16)))
+            NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     else:
-        NemotronParse35(backend="vllm")(Image.new("RGB", (16, 16)))
+        NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     assert plugin_module.PARSE35_SNAPSHOT_ENV not in os.environ
 
 
@@ -171,7 +203,7 @@ def test_startup_forces_spawn_and_restores_caller_environment(
 
     vllm_runtime.register.side_effect = register
     vllm_runtime.llm.side_effect = load_engine
-    parser = NemotronParse35()
+    parser = NemotronParse35(dflash_tokens=None)
     if failure_stage is None:
         assert parser(Image.new("RGB", (16, 16))) == "<class_Text>page"
     else:
@@ -184,7 +216,7 @@ def test_startup_forces_spawn_and_restores_caller_environment(
 @pytest.mark.parametrize("device", ["cpu", "cuda:1"])
 def test_vllm_rejects_unsupported_devices_before_download(device: str) -> None:
     with pytest.raises(ValueError, match="worker GPU set"):
-        NemotronParse35(backend="vllm", device=device)
+        NemotronParse35(dflash_tokens=None, backend="vllm", device=device)
 
 
 def test_vllm_cuda_unavailable_fails_before_download(
@@ -192,19 +224,19 @@ def test_vllm_cuda_unavailable_fails_before_download(
 ) -> None:
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(RuntimeError, match='CUDA is unavailable.*device="cpu"'):
-        NemotronParse35(backend="vllm")(Image.new("RGB", (16, 16)))
+        NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     vllm_runtime.download.assert_not_called()
 
 
 def test_unknown_backend_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported Parse 3.5 backend"):
-        NemotronParse35(backend="unknown")
+        NemotronParse35(dflash_tokens=None, backend="unknown")
 
 
 def test_cpu_requires_explicit_transformers_backend() -> None:
     with pytest.raises(ValueError, match="requires device"):
-        NemotronParse35(device="cpu")
-    assert NemotronParse35(backend="transformers", device="cpu")._backend == "transformers"
+        NemotronParse35(dflash_tokens=None, device="cpu")
+    assert NemotronParse35(dflash_tokens=None, backend="transformers", device="cpu")._backend == "transformers"
 
 
 def test_plugin_is_noop_for_other_models(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -260,6 +292,17 @@ def test_plugin_rejects_already_imported_different_version(monkeypatch: pytest.M
     monkeypatch.setenv(plugin_module.PARSE35_SNAPSHOT_ENV, "/snapshot/" + get_hf_revision(NEMOTRON_PARSE35_MODEL))
     with pytest.raises(RuntimeError, match="different Parse vLLM plugin"):
         plugin_module.register_nemotron_parse35_vllm()
+
+
+def test_chart_sampling_reaches_local_vllm(vllm_runtime: SimpleNamespace) -> None:
+    sampling = dict(temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0, seed=0)
+    parser = NemotronParse35(dflash_tokens=None, max_tokens=8744, sampling_params=sampling)
+    parser.invoke(Image.new("RGB", (16, 20)))
+    assert vllm_runtime.sampling.call_args.kwargs == {
+        **sampling,
+        "max_tokens": 8744,
+        "skip_special_tokens": False,
+    }
 
 
 @pytest.mark.parametrize("tokens", [1, 16, 32])
