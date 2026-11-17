@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Mapping, Sequence, cast
+from typing import Any, Literal, Sequence, cast
 
 from nemo_retriever.ingestor.manifest import (
     DEFAULT_AUDIO_SPLIT_INTERVAL,
@@ -369,44 +369,6 @@ def profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
     return {"method": "pdfium_hybrid"}
 
 
-# fast-text runs without page elements or OCR, so these settings cannot take effect.
-_FAST_TEXT_LOCKED_EXTRACT_KEYS = frozenset(
-    {"method", "extract_tables", "extract_charts", "extract_infographics", "use_page_elements"}
-)
-
-
-def validate_profile_extract_overrides(profile: IngestProfileValue, overrides: Mapping[str, Any]) -> None:
-    """Reject explicit extract options that the profile would otherwise silently disable.
-
-    Args:
-        profile: Ingest profile to validate. Only ``fast-text`` restricts overrides.
-        overrides: Explicit extraction option names and values. Options not locked
-            by the profile are ignored.
-
-    Returns:
-        None when the overrides are compatible with the profile, including when
-        no overrides are supplied.
-
-    Raises:
-        ValueError: If ``fast-text`` is combined with a method other than ``pdfium``
-            or enabled table, chart, infographic, or page-element extraction.
-    """
-    if profile != "fast-text":
-        return
-    fixed = profile_extract_defaults(profile)
-    conflicts = [
-        f"{key}={value!r}"
-        for key, value in overrides.items()
-        if key in _FAST_TEXT_LOCKED_EXTRACT_KEYS and value != fixed[key]
-    ]
-    if conflicts:
-        raise ValueError(
-            f"--profile {profile} uses native PDF text without page elements (method 'pdfium', no tables, "
-            f"charts, or infographics) and cannot be combined with {', '.join(conflicts)}. "
-            "Remove those options or use --profile auto."
-        )
-
-
 def _build_asr_params(*, segment_audio: bool | None, needed: bool) -> ASRParams | None:
     if not needed and segment_audio is None:
         return None
@@ -678,33 +640,33 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     branches = plan_extraction_branches(build_input_manifest(document_list))
     _validate_profile_manifest(validated_profile, branches)
 
-    extract_overrides = {
-        key: value
-        for key, value in {
-            "method": extract.method,
-            "dpi": extract.dpi,
-            "extract_text": extract.extract_text,
-            "extract_images": extract.extract_images,
-            "extract_nested_images": extract.extract_nested_images,
-            "extract_tables": extract.extract_tables,
-            "extract_charts": extract.extract_charts,
-            "extract_infographics": extract.extract_infographics,
-            "extract_page_as_image": extract.extract_page_as_image,
-            "use_page_elements": extract.use_page_elements,
-            "use_table_structure": extract.use_table_structure,
-            "page_elements_invoke_url": extract.page_elements_invoke_url,
-            "ocr_invoke_url": extract.ocr_invoke_url,
-            "ocr_version": extract.ocr_version,
-            "ocr_lang": extract.ocr_lang,
-            "table_structure_invoke_url": extract.table_structure_invoke_url,
-            "table_output_format": extract.table_output_format,
-            "api_key": extract.extract_api_key,
-        }.items()
-        if value is not None
-    }
-    validate_profile_extract_overrides(validated_profile, extract_overrides)
     extract_kwargs = profile_extract_defaults(validated_profile)
-    extract_kwargs.update(extract_overrides)
+    extract_kwargs.update(
+        {
+            key: value
+            for key, value in {
+                "method": extract.method,
+                "dpi": extract.dpi,
+                "extract_text": extract.extract_text,
+                "extract_images": extract.extract_images,
+                "extract_nested_images": extract.extract_nested_images,
+                "extract_tables": extract.extract_tables,
+                "extract_charts": extract.extract_charts,
+                "extract_infographics": extract.extract_infographics,
+                "extract_page_as_image": extract.extract_page_as_image,
+                "use_page_elements": extract.use_page_elements,
+                "use_table_structure": extract.use_table_structure,
+                "page_elements_invoke_url": extract.page_elements_invoke_url,
+                "ocr_invoke_url": extract.ocr_invoke_url,
+                "ocr_version": extract.ocr_version,
+                "ocr_lang": extract.ocr_lang,
+                "table_structure_invoke_url": extract.table_structure_invoke_url,
+                "table_output_format": extract.table_output_format,
+                "api_key": extract.extract_api_key,
+            }.items()
+            if value is not None
+        }
+    )
     if extract.table_output_format == "markdown":
         extract_kwargs["use_table_structure"] = True
 

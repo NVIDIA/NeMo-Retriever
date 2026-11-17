@@ -18,7 +18,6 @@ from nemo_retriever.ingest.plan import (
     build_text_chunk_kwargs,
     expand_ingest_documents,
     profile_extract_defaults,
-    validate_profile_extract_overrides,
     validate_ingest_input_type,
     validate_ingest_profile,
 )
@@ -175,28 +174,28 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
     documents = expand_ingest_documents(source.documents, input_type=input_type)
     _validate_service_profile_documents(profile, documents)
 
-    extract_overrides = {
-        key: value
-        for key, value in {
-            "method": request.extract.method,
-            "dpi": request.extract.dpi,
-            "extract_text": request.extract.extract_text,
-            "extract_images": request.extract.extract_images,
-            "extract_nested_images": request.extract.extract_nested_images,
-            "extract_tables": request.extract.extract_tables,
-            "extract_charts": request.extract.extract_charts,
-            "extract_infographics": request.extract.extract_infographics,
-            "extract_page_as_image": request.extract.extract_page_as_image,
-            "use_page_elements": request.extract.use_page_elements,
-            "use_table_structure": request.extract.use_table_structure,
-            "table_output_format": request.extract.table_output_format,
-            "ocr_version": request.extract.ocr_version,
-        }.items()
-        if value is not None
-    }
-    validate_profile_extract_overrides(profile, extract_overrides)
     extract_kwargs = profile_extract_defaults(profile)
-    extract_kwargs.update(extract_overrides)
+    extract_kwargs.update(
+        {
+            key: value
+            for key, value in {
+                "method": request.extract.method,
+                "dpi": request.extract.dpi,
+                "extract_text": request.extract.extract_text,
+                "extract_images": request.extract.extract_images,
+                "extract_nested_images": request.extract.extract_nested_images,
+                "extract_tables": request.extract.extract_tables,
+                "extract_charts": request.extract.extract_charts,
+                "extract_infographics": request.extract.extract_infographics,
+                "extract_page_as_image": request.extract.extract_page_as_image,
+                "use_page_elements": request.extract.use_page_elements,
+                "use_table_structure": request.extract.use_table_structure,
+                "table_output_format": request.extract.table_output_format,
+                "ocr_version": request.extract.ocr_version,
+            }.items()
+            if value is not None
+        }
+    )
     if request.extract.table_output_format == "markdown":
         extract_kwargs["use_table_structure"] = True
 
