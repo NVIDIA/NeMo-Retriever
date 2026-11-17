@@ -27,6 +27,16 @@ The 1B checkpoints produce 2,048-dimensional vectors. This adapter supports only
 
 Before changing an existing index's model or precision, validate retrieval quality on representative data. Follow [Keep the embedding model aligned](vdbs.md#lancedb-embedding-model-compatibility) to retain its recorded model or rebuild and re-ingest with the new default.
 
+## Experimental EmbeddingGemma 2 embeddings
+
+The checkpoint resolver recognizes `google/embeddinggemma-2` at revision
+`f9972ac22e696a105c482202646979e33e4b5a1e` for local text-only embedding.
+It produces 768-dimensional vectors with an 8,192-token input cap, including prefixes and special tokens.
+Use `embed_modality="text"` and the `vllm` backend with vLLM >=0.34.0 and Transformers >=5.19.
+The integration uses vLLM's model-specific attention default and the checkpoint's query and document prompts.
+Pass unformatted text. Image and paired text-and-image embedding are not supported by this integration.
+The locked environment remains unchanged; use a separate compatible runtime and validate retrieval quality before deployment.
+
 ## Hosted embedding defaults
 
 Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.

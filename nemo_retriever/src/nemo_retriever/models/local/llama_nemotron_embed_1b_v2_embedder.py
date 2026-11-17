@@ -12,6 +12,7 @@ import torch
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
+from nemo_retriever.models.inference.vllm import VLLM_ATTENTION_BACKEND
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -47,6 +48,7 @@ class LlamaNemotronEmbed1BV2Embedder:
     revision: Optional[str] = None
     query_prefix: str = "query: "
     document_prefix: str = "passage: "
+    attention_backend: Optional[str] = VLLM_ATTENTION_BACKEND
 
     _llm: Any = field(default=None, init=False, repr=False)
 
@@ -77,6 +79,7 @@ class LlamaNemotronEmbed1BV2Embedder:
             gpu_memory_utilization=self.gpu_memory_utilization,
             enforce_eager=self.enforce_eager,
             max_model_len=max_model_len,
+            attention_backend=self.attention_backend,
         )
 
     @property
