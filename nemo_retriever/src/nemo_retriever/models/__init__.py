@@ -77,7 +77,7 @@ def _cuda_supports_native_nvfp4() -> bool:
         return False
 
 
-def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
+def resolve_local_embed_model(model_name: str | None, *, backend: str, allow_native_nvfp4: bool = True) -> str:
     """Resolve an embedding model to a backend-compatible checkpoint.
 
     Args:
@@ -85,6 +85,10 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
             value uses the default embedding model.
         backend: Normalized local inference backend, such as ``"vllm"`` or
             ``"hf"``.
+        allow_native_nvfp4: Whether legacy Nemotron 3 automatic selection can
+            use visible CUDA devices as evidence of native NVFP4 support.
+            This does not affect Nemotron 3.5 selection or explicit precision
+            checkpoint identifiers.
 
     Returns:
         The resolved Hugging Face checkpoint identifier. An omitted model or
@@ -104,7 +108,7 @@ def resolve_local_embed_model(model_name: str | None, *, backend: str) -> str:
     resolved = resolve_embed_model(model_name)
     if resolved != NEMOTRON_3_EMBED_MODEL:
         return resolved
-    if backend == "vllm" and _cuda_supports_native_nvfp4():
+    if backend == "vllm" and allow_native_nvfp4 and _cuda_supports_native_nvfp4():
         return NEMOTRON_3_EMBED_NVFP4_MODEL
     return NEMOTRON_3_EMBED_BF16_MODEL
 

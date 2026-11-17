@@ -83,7 +83,7 @@ The local checkpoint default on this development branch is Nemotron 3.5 Embed 1B
 
 New local Nemotron 3.5 indexes record the resolved precision-specific checkpoint and its pinned revision. Query uses that recorded identity rather than choosing a different precision from the current GPU. BF16 and NVFP4 checkpoint IDs remain distinct for index compatibility checks.
 
-Single-node Ray batch execution uses the driver's visible CUDA devices for automatic checkpoint selection. With `vllm`, it selects NVFP4 only when every visible device has compute capability major 10 or later, and BF16 otherwise. An explicit precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision.
+For Nemotron 3.5, single-node Ray batch execution uses the driver's visible CUDA devices for automatic checkpoint selection. With `vllm`, it selects NVFP4 only when every visible device has compute capability major 10 or later, and BF16 otherwise. An explicit Nemotron 3.5 precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision. Legacy Nemotron 3 automatic selection in batch mode remains BF16.
 
 An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 

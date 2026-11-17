@@ -13,7 +13,7 @@ When you omit the local embedding model, the library selects a checkpoint as fol
 - With the `hf` backend, it selects the BF16 checkpoint. The compressed-tensors NVFP4 checkpoint requires vLLM.
 - For single-node Ray batch GPU execution with `vllm`, automatic selection uses NVFP4 when every visible CUDA device has compute capability major 10 or later, and BF16 otherwise. Explicit Nemotron 3.5 precision checkpoint IDs remain unchanged.
 
-The `retriever ingest batch` CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects precision using the same hardware check.
+The `retriever ingest batch` CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16.
 
 The default modality remains `text`. Nemotron 3.5 also supports `image` and `text_image` inputs when you explicitly select those modalities.
 
