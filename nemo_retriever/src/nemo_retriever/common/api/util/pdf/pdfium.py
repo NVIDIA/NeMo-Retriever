@@ -338,14 +338,16 @@ def _visible_page_bbox(
 def _on_page_object_bboxes(page, object_type: int) -> list[list[int]]:
     """Return displayed-page boxes of the page's top-level ``object_type`` objects, skipping off-page ones.
 
-    Zero-width or zero-height boxes (e.g. table rules) are kept; only boxes left inverted by clipping are dropped.
+    Zero-width or zero-height boxes (e.g. table rules) are kept when they intersect the page.
     """
     page_box, rotation = page.get_bbox(), page.get_rotation()
-    bboxes = (
-        _page_rect_to_display(obj.get_pos(), page_box, rotation)
-        for obj in page.get_objects(filter=(object_type,), max_depth=1)
-    )
-    return [bbox for bbox in bboxes if bbox[0] <= bbox[2] and bbox[1] <= bbox[3]]
+    bboxes = []
+    for obj in page.get_objects(filter=(object_type,), max_depth=1):
+        left, bottom, right, top = obj.get_pos()
+        if right < page_box[0] or top < page_box[1] or left > page_box[2] or bottom > page_box[3]:
+            continue
+        bboxes.append(_page_rect_to_display((left, bottom, right, top), page_box, rotation))
+    return bboxes
 
 
 def extract_nested_simple_images_from_pdfium_page(

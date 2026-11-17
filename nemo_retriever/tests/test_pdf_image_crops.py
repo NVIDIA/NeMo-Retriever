@@ -125,8 +125,9 @@ def test_crop_is_upright_as_displayed(rotation):
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
-def test_off_page_image_does_not_stretch_the_visible_crop(rotation):
-    visible, off_page = (100.0, 5.0, 200.0, 95.0), (50.0, -200.0, 300.0, -5.0)
+@pytest.mark.parametrize("off_page", [(50.0, -200.0, 300.0, -5.0), (50.0, -0.2, 300.0, -0.1)])
+def test_off_page_image_does_not_stretch_the_visible_crop(rotation, off_page):
+    visible = (100.0, 5.0, 200.0, 95.0)
     page = _page("mediabox", rotation, rects=(visible, off_page))
 
     (crop,) = _pdfium.extract_image_like_objects_from_pdfium_page(page)
