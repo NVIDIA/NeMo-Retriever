@@ -603,7 +603,7 @@ def _decode_value(
                 or not all(isinstance(name, str) and name in fields and _is_api_key_field(name) for name in defaulted)
             ):
                 raise GraphSerializationError(f"{path}: malformed API-key defaults")
-            model._api_key_env_defaulted = set(defaulted)
+            model._api_key_env_defaulted.update(defaulted)
         return model
     if "__type_ref__" in value:
         if format_version >= 2:

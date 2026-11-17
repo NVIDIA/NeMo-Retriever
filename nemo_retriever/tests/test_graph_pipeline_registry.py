@@ -1659,6 +1659,16 @@ class TestGraphSerializationSecurity:
         assert restored.stage_api_key("ocr_api_key") is None
         assert restored.stage_api_key("page_elements_api_key") is None
 
+    @pytest.mark.parametrize("stage", ["ocr_api_key", "page_elements_api_key"])
+    def test_env_defaults_added_at_load_keep_shared_key_precedence(self, monkeypatch, stage):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        monkeypatch.setenv("SHARED_TEST_KEY", "shared-key")
+        encoded = _encode_value(ExtractParams(api_key="os.environ/SHARED_TEST_KEY"), path="params")
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        restored = _decode_value(encoded, path="params", format_version=2)
+        assert restored.stage_api_key(stage) == "shared-key"
+
     @pytest.mark.parametrize("defaulted", [None, "ocr_api_key", ["unknown"], ["method"], [1]])
     def test_invalid_default_provenance_is_rejected(self, defaulted):
         encoded = _encode_value(ExtractParams(), path="params")
