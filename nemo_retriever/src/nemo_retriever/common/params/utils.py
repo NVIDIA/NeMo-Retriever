@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 NEMOTRON_PARSE35_MODEL = "nvidia/Nemotron-3.5-Parse"
+NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = NEMOTRON_PARSE35_MODEL
 NEMOTRON_PARSE_LOCAL_MODELS = (NEMOTRON_PARSE35_MODEL,)
 
@@ -203,6 +204,51 @@ def _build_embed_batch_tuning(
         if value is not None
     }
     return BatchTuningParams(**tuning_kwargs) if tuning_kwargs else None
+
+
+def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dict[str, Any]:
+    """Translate extraction options for full-page Parse or chart-crop actors.
+
+    Parse-specific connection and sampling options override shared extraction
+    settings. Chart routing uses only the Parse endpoint so the OCR endpoint
+    cannot accidentally receive Parse requests.
+    """
+    kwargs: dict[str, Any] = {
+        "api_key": params.api_key,
+        "request_timeout_s": params.request_timeout_s,
+    }
+    retry = getattr(params, "remote_retry", None)
+    if retry is not None:
+        for key in ("remote_max_pool_workers", "remote_max_retries", "remote_max_429_retries"):
+            kwargs[key] = int(getattr(retry, key))
+    if params.nemotron_parse_invoke_url:
+        kwargs["nemotron_parse_invoke_url"] = params.nemotron_parse_invoke_url
+    elif not chart_routing and params.invoke_url:
+        kwargs["invoke_url"] = params.invoke_url
+    kwargs["nemotron_parse_dflash_tokens"] = params.nemotron_parse_dflash_tokens
+    if not chart_routing:
+        kwargs.update(
+            {
+                key: getattr(params, key)
+                for key in ("extract_text", "extract_tables", "extract_charts", "extract_infographics")
+            }
+        )
+        if params.nemotron_parse_model:
+            kwargs["nemotron_parse_model"] = params.nemotron_parse_model
+    if params.nemotron_parse_table_format is not None:
+        kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
+    parse = params.parse
+    if parse is not None:
+        if parse.task_prompt is not None:
+            kwargs["task_prompt"] = parse.task_prompt
+        kwargs["parse_sampling_params"] = parse._sampling_overrides()
+        if parse.api_key is not None or parse._uses_no_api_key("api_key"):
+            from nemo_retriever.common.params.models import resolve_environment_reference
+
+            kwargs["api_key"] = resolve_environment_reference(parse.api_key)
+        if parse.request_timeout_s is not None:
+            kwargs["request_timeout_s"] = parse.request_timeout_s
+    return kwargs
 
 
 def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> Dict[str, Any]:

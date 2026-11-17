@@ -22,7 +22,7 @@ from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.local import nemotron_parse35 as parse35_module
 from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35
 from nemo_retriever.operators.extract.parse.nemotron_parse import (
-    NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+    NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
     NemotronParseGPUActor,
     nemotron_parse_pages,
 )
@@ -75,7 +75,7 @@ def test_lazy_loading_pins_native_assets_and_preserves_tags(runtime: SimpleNames
     runtime.processor_loader.assert_called_once_with("/snapshot", trust_remote_code=True)
     runtime.generation_loader.assert_called_once_with("/snapshot")
     assert runtime.processor.call_args.kwargs["add_special_tokens"] is False
-    assert runtime.processor.call_args.kwargs["text"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
+    assert runtime.processor.call_args.kwargs["text"] == NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT
     assert runtime.processor.batch_decode.call_args.kwargs["skip_special_tokens"] is False
     assert runtime.generation_config.max_new_tokens == 123
     assert runtime.model.generate.call_args.kwargs["generation_config"] is runtime.generation_config
@@ -248,7 +248,7 @@ def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> Non
         actor = NemotronParseGPUActor(nemotron_parse_model=model_id)
         actor._ensure_model()
         actor._ensure_model()
-    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
+    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
     assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
 
 
@@ -307,7 +307,9 @@ def test_unknown_local_actor_model_is_not_silently_replaced() -> None:
         actor._ensure_model()
 
 
-def test_native_output_uses_existing_pipeline_routing(runtime: SimpleNamespace) -> None:
+def test_native_output_uses_existing_pipeline_routing(
+    runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import base64
     import io
 
@@ -320,6 +322,21 @@ def test_native_output_uses_existing_pipeline_routing(runtime: SimpleNamespace) 
         + "<x_0.2><y_0.4>Chart text<x_0.7><y_0.6><class_Chart>"
         + "<x_0.2><y_0.4>Table text<x_0.7><y_0.6><class_Table>"
     ]
+    from nemo_retriever.common.modality.parse import nemotron_parse35_postprocessing as postprocessing
+    from nemo_retriever.common.modality.parse.nemotron_parse_postprocessing import extract_classes_bboxes
+
+    def postprocess_document(raw_text: str) -> dict:
+        classes, boxes, texts = extract_classes_bboxes(raw_text)
+        return {
+            "blocks": [
+                {"class": cls, "bbox": list(box), "text": text, "content": text}
+                for cls, box, text in zip(classes, boxes, texts)
+            ]
+        }
+
+    monkeypatch.setattr(
+        postprocessing, "_load_parse35_helpers", lambda: SimpleNamespace(postprocess_document=postprocess_document)
+    )
     result = nemotron_parse_pages(
         frame,
         model=NemotronParse35(backend="transformers", device="cpu"),
@@ -340,7 +357,7 @@ def test_dflash_survives_actor_reconstruction_and_reaches_local_model():
     reconstructed = NemotronParseGPUActor(**actor.get_constructor_kwargs())
     with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         reconstructed._ensure_model()
-    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
+    parser.assert_called_once_with(task_prompt=NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT, backend="vllm", dflash_tokens=32)
 
 
 @pytest.mark.parametrize(
@@ -405,3 +422,14 @@ def test_remote_auto_default_preserves_remote_path():
     with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         actor._ensure_model()
     parser.assert_not_called()
+
+
+@pytest.mark.parametrize("tokens,expected", [(None, None), (16, 16), ("auto", 32)])
+def test_constructor_preserves_positional_dflash_argument(tokens, expected):
+    prompt = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT
+    parser = NemotronParse35("cuda", None, prompt, 9000, "vllm", tokens)
+    assert parser._dflash_tokens == expected
+    assert parser._sampling_params == {}
+    configured = NemotronParse35("cuda", None, prompt, 9000, "vllm", tokens, sampling_params={"temperature": 0.2})
+    assert configured._dflash_tokens == expected
+    assert configured._sampling_params == {"temperature": 0.2}

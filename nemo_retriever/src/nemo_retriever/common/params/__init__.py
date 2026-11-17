@@ -20,6 +20,7 @@ from nemo_retriever.common.params.models import LLMRemoteClientParams
 from nemo_retriever.common.params.models import LLMSamplingOverrides
 from nemo_retriever.common.params.models import ModelRuntimeParams
 from nemo_retriever.common.params.models import NO_API_KEY
+from nemo_retriever.common.params.models import ParseParams
 from nemo_retriever.common.params.models import PdfSplitParams
 from nemo_retriever.common.params.models import RemoteInvokeParams
 from nemo_retriever.common.params.models import RemoteRetryParams
@@ -55,6 +56,7 @@ __all__ = [
     "LLMSamplingOverrides",
     "ModelRuntimeParams",
     "NO_API_KEY",
+    "ParseParams",
     "PdfSplitParams",
     "RemoteInvokeParams",
     "RemoteRetryParams",
