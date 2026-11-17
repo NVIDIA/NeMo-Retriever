@@ -263,6 +263,20 @@ class TestVllmStartupDefaults:
 
         assert os.environ["VLLM_DEEP_GEMM_WARMUP"] == "full"
 
+    def test_flashinfer_sampler_defaults_off(self, monkeypatch):
+        monkeypatch.delenv("VLLM_USE_FLASHINFER_SAMPLER", raising=False)
+
+        apply_vllm_startup_defaults()
+
+        assert os.environ["VLLM_USE_FLASHINFER_SAMPLER"] == "0"
+
+    def test_flashinfer_sampler_respects_user_override(self, monkeypatch):
+        monkeypatch.setenv("VLLM_USE_FLASHINFER_SAMPLER", "1")
+
+        apply_vllm_startup_defaults()
+
+        assert os.environ["VLLM_USE_FLASHINFER_SAMPLER"] == "1"
+
     def test_single_gpu_keeps_nvlink_collectives_untouched(self, monkeypatch):
         monkeypatch.delenv("NCCL_NVLS_ENABLE", raising=False)
         monkeypatch.delenv("TORCH_SYMM_MEM_DISABLE_MULTICAST", raising=False)
