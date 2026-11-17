@@ -210,8 +210,14 @@ Direct adapter callers can select `NemotronParse35(backend="transformers")`
 for Transformers GPU inference, or
 `NemotronParse35(backend="transformers", device="cpu")` for CPU inference.
 The adapter does not fall back to Transformers or CPU automatically.
-Batch parsing converts and generates one page at a time, preserving input
-order without retaining converted copies of the entire batch. If a page fails,
+On vLLM, batch parsing converts every page in the batch, then submits the
+pages together to one asynchronous engine that generates up to 128 pages
+concurrently. Graph pipeline actors run 16 batches at a time against that
+engine. The engine allocates a fixed 24 GiB KV cache, so the GPU needs more
+than 24 GiB of free memory for Parse.
+A `uint8` NumPy page whose pixel standard deviation is below 0.01 is blank. It
+returns empty text without inference. The Transformers backend converts and
+generates one page at a time. Results preserve input order. If a page fails,
 the adapter does not return a partial batch.
 
 The local Parse 3.5 adapter accepts PIL images, image paths, and HWC or CHW
