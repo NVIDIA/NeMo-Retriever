@@ -37,6 +37,35 @@ def _page_text_state(row: Any, text_column: str = "text") -> tuple[Any, bool]:
     return text, False
 
 
+def _match_ordered_content_items(row: Any, regions: list, content_columns: Sequence[str]) -> dict:
+    """Resolve ordered regions to live items without moving surviving shared-box content."""
+    spans, positions, occurrences = [], {}, {}
+    for position, region in enumerate(regions):
+        if not isinstance(region, dict) or region.get("label_name") not in content_columns:
+            continue
+        column = region["label_name"]
+        box = tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ())
+        key = (column, box)
+        occurrence = occurrences.get(key, 0)
+        occurrences[key] = occurrence + 1
+        positions[(*key, occurrence)] = position
+        for field in ("text", "caption"):
+            value = region.get(field)
+            if field == "caption" and not isinstance(value, str):
+                continue
+            spans.append(
+                {
+                    "column": column,
+                    "bbox": box,
+                    "occurrence": occurrence,
+                    "field": field,
+                    "source_value": value.strip() if isinstance(value, str) else "",
+                }
+            )
+    matches = _match_edited_content_items(row, spans, content_columns)
+    return {positions[key]: match for key, match in matches.items()}
+
+
 def _combine_text_with_content(
     row: Any,
     text_column: str = "text",
@@ -67,14 +96,7 @@ def _combine_text_with_content(
         source_text = row["ordered_page_text_source"]
         ordered = (live_text if isinstance(live_text, str) else "") == source_text
 
-    items_by_box = {}
-    for column in content_columns:
-        items = row.get(column)
-        if _is_content_collection(items):
-            for index, item in enumerate(items):
-                if isinstance(item, dict):
-                    key = (column, tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
-                    items_by_box.setdefault(key, []).append((index, item))
+    ordered_matches = _match_ordered_content_items(row, regions, content_columns) if ordered else {}
     parts = []
     consumed = set()
 
@@ -95,7 +117,7 @@ def _combine_text_with_content(
 
     if ordered:
         selected = []
-        for region in regions:
+        for position, region in enumerate(regions):
             if not isinstance(region, dict):
                 continue
             label = region.get("label_name")
@@ -104,11 +126,9 @@ def _combine_text_with_content(
                 if isinstance(text, str) and text.strip():
                     append_piece(selected, text.strip() if paragraphs else text)
             elif label in content_columns:
-                key = (label, tuple(_normalize_bbox(region.get("bbox_xyxy_norm")) or ()))
-                matches = items_by_box.get(key, [])
-                match = next(((index, item) for index, item in matches if (label, index) not in consumed), None)
+                match = ordered_matches.get(position)
                 if match is not None:
-                    index, item = match
+                    index, item, _ = match
                     consumed.add((label, index))
                     if paragraphs:
                         append_item(item, selected, label, index)
@@ -284,9 +304,8 @@ def _match_edited_content_items(row: Any, spans: list, content_columns: Sequence
     resolved = {}
     for key, occurrences in originals.items():
         matches = live.get(key, [])
-        if len(matches) == max(occurrences) + 1:
-            for occurrence in occurrences:
-                resolved[(*key, occurrence)] = matches[occurrence]
+        if len(occurrences) == len(matches) == 1:
+            resolved[(*key, next(iter(occurrences)))] = matches[0]
             continue
         pending = dict(occurrences)
         available = list(matches)

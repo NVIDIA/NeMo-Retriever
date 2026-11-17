@@ -769,7 +769,7 @@ def test_local_edit_boundaries_preserve_region_filtering(serialization: str, edi
         assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
 
 
-def _collapsed_shared_box_tables(identical=False):
+def _collapsed_shared_box_tables(identical=False, *, collapsed=True):
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
     box = [0, 0.2, 1, 0.4]
@@ -782,7 +782,8 @@ def _collapsed_shared_box_tables(identical=False):
         "ordered_page_text": "\n\n".join(text for _, text in sequence),
         "ordered_regions": [{"label_name": label, "text": text, "bbox_xyxy_norm": box} for label, text in sequence],
     }
-    return collapse_content_to_page_rows(pd.DataFrame([row]))
+    frame = pd.DataFrame([row])
+    return collapse_content_to_page_rows(frame) if collapsed else frame
 
 
 def _round_trip_page(frame, serialization):
@@ -795,16 +796,22 @@ def _round_trip_page(frame, serialization):
     return frame
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("edit", ["remove_first", "remove_last", "prepend", "append_identical"])
-def test_shared_box_region_edits_preserve_remaining_region_positions(serialization, edit):
+@pytest.mark.parametrize(
+    "serialization,page_state",
+    [(storage, "edited") for storage in ["memory", "arrow", "parquet"]]
+    + [("memory", "raw"), ("memory", "collapsed"), ("arrow", "raw"), ("parquet", "collapsed")],
+)
+@pytest.mark.parametrize("edit", ["remove_first", "remove_last", "prepend", "append_identical", "reverse"])
+def test_shared_box_region_edits_preserve_remaining_region_positions(serialization, page_state, edit):
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
     from nemo_retriever.common.io import to_markdown
 
-    frame = _collapsed_shared_box_tables()
-    frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", "Corrected before")
+    frame = _collapsed_shared_box_tables(collapsed=page_state != "raw")
+    before = "Corrected before" if page_state == "edited" else "Before"
+    if page_state == "edited":
+        frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", before)
     tables = frame.iloc[0]["table"]
-    expected = ["Corrected before", "TABLE_A", "Middle", "TABLE_B", "After"]
+    expected = [before, "TABLE_A", "Middle", "TABLE_B", "After"]
     if edit == "remove_first":
         frame.at[0, "table"] = tables[1:]
         expected.remove("TABLE_A")
@@ -814,6 +821,8 @@ def test_shared_box_region_edits_preserve_remaining_region_positions(serializati
     elif edit == "prepend":
         frame.at[0, "table"] = [{"text": "NEW", "bbox_xyxy_norm": tables[0]["bbox_xyxy_norm"]}, *tables]
         expected.append("NEW")
+    elif edit == "reverse":
+        frame.at[0, "table"] = list(reversed(tables))
     else:
         frame.at[0, "table"] = [*tables, dict(tables[0])]
         expected.append("TABLE_A")
@@ -825,14 +834,20 @@ def test_shared_box_region_edits_preserve_remaining_region_positions(serializati
         assert frame.iloc[0]["text"] == expected_text
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize(
+    "serialization,page_state",
+    [(storage, "edited") for storage in ["memory", "arrow", "parquet"]]
+    + [("memory", "raw"), ("memory", "collapsed"), ("arrow", "raw"), ("parquet", "collapsed")],
+)
 @pytest.mark.parametrize("identical", [False, True])
-def test_ambiguous_shared_box_removal_does_not_silently_move_content(serialization, identical):
+def test_ambiguous_shared_box_removal_does_not_silently_move_content(serialization, page_state, identical):
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
     from nemo_retriever.common.io import to_markdown
 
-    frame = _collapsed_shared_box_tables(identical=identical)
-    frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", "Corrected before")
+    frame = _collapsed_shared_box_tables(identical=identical, collapsed=page_state != "raw")
+    before = "Corrected before" if page_state == "edited" else "Before"
+    if page_state == "edited":
+        frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", before)
     frame.at[0, "table"] = frame.iloc[0]["table"][:1]
     if not identical:
         frame.iloc[0]["table"][0]["text"] = "REPLACED"
@@ -841,7 +856,7 @@ def test_ambiguous_shared_box_removal_does_not_silently_move_content(serializati
         collapse_content_to_page_rows(frame)
     with pytest.raises(ValueError, match="sharing a bounding box"):
         to_markdown(frame)
-    expected = "Corrected before\n\nMiddle\n\nAfter"
+    expected = before + "\n\nMiddle\n\nAfter"
     filtered = collapse_content_to_page_rows(frame, content_columns=())
     assert filtered.iloc[0]["text"] == expected
 
