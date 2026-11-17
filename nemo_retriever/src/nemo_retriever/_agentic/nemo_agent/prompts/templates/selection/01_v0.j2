@@ -35,9 +35,11 @@ You are given a search query and a list of retrieved candidate documents that ar
 </WORKFLOW>
 
 
+{%- if enable_think %}
 <THINKING TIPS>
 * you have access to a "think" tool that you can use for complex thinking and analysis. Here are examples of cases where the think tool might be useful:
     - complex analysis and thinking to understand the meaning and intent of the query. E.g., what is the user trying to find with this query? what kind of information is helpful for the user?
     - extended thinking to analyze how each candidate document could or could not be relevant to the given query.
     - reasoning to identify the relative level of relevance between the query and selected documents. It helps you sort the documents correctly when reporting the final answer.
 </THINKING TIPS>
+{%- endif %}
