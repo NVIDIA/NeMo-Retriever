@@ -89,7 +89,9 @@ ExtractChartsOption = Annotated[
 ]
 ExtractInfographicsOption = Annotated[
     bool | None,
-    typer.Option("--extract-infographics", help="Enable PDF infographic extraction."),
+    typer.Option(
+        "--extract-infographics/--no-extract-infographics", help="Enable or disable PDF infographic extraction."
+    ),
 ]
 ExtractPageAsImageOption = Annotated[
     bool | None,
