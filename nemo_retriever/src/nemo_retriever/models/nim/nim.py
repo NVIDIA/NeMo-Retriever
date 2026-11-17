@@ -290,6 +290,7 @@ class NIMClient:
         timeout_s: float = 120.0,
         max_retries: int = 5,
         max_429_retries: int = 3,
+        allow_incomplete: bool = False,
     ) -> List[Dict[str, Any]]:
         """Call the native Parse multipart API, preserving input page order.
 
@@ -310,6 +311,9 @@ class NIMClient:
                 connection, and timeout failures, including the initial attempt.
             max_429_retries: Positive limit on rate-limited (HTTP 429) responses
                 per page. These use a separate counter and backoff.
+            allow_incomplete: Return responses with ``finish_reason="length"``
+                instead of raising. Their ``content`` stops at the output token
+                limit, so callers must keep it marked incomplete.
 
         Returns:
             One unmodified response dictionary per input image, in input order.
@@ -317,12 +321,13 @@ class NIMClient:
             Markdown. Optional ``finish_reason`` identifies why generation
             stopped, and optional ``usage`` includes token counts such as
             ``output_tokens``. Other server response fields are preserved.
-            Responses with ``finish_reason="length"`` are rejected.
+            Responses with ``finish_reason="length"`` are rejected unless
+            ``allow_incomplete`` is true.
 
         Raises:
             ValueError: No endpoint was supplied, an image is not valid base64,
-                or a response has an incompatible content field or truncated
-                output. Supply native ``/v1/parse`` endpoints and base64 image
+                or a response has an incompatible content field or, unless
+                ``allow_incomplete`` is true, truncated output. Supply native ``/v1/parse`` endpoints and base64 image
                 bytes. For an incompatible response, verify the deployed NIM
                 supports the native multipart contract. For truncated output,
                 split the page into smaller image regions and retry those
@@ -361,7 +366,7 @@ class NIMClient:
                     "Verify invoke_url targets a compatible Nemotron Parse NIM's native multipart /v1/parse "
                     "endpoint, rather than a chat-completions or legacy endpoint, before retrying."
                 )
-            if response.get("finish_reason") == "length":
+            if response.get("finish_reason") == "length" and not allow_incomplete:
                 raise ValueError(
                     f"Native Parse output for page {index + 1} reached its token limit; refusing truncated content. "
                     "Split this page into smaller image regions and retry those regions. Retrying the unchanged "
