@@ -727,7 +727,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     """Ray-friendly callable that initialises the selected local Parse model once per actor."""
 
     # Ray UDF threads per actor, so several batches share one vLLM engine and its scheduler.
-    UDF_THREADS = 16
+    UDF_THREADS: int = 16
 
     def __init__(
         self,

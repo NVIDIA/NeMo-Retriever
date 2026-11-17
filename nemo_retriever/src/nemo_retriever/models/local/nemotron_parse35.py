@@ -510,7 +510,10 @@ class _AsyncParseEngine:
             async for output in engine.generate(engine_input, request_params, request_id):
                 pass
             if output is None:
-                raise RuntimeError("Parse engine returned no output.")
+                raise RuntimeError(
+                    f"Parse engine returned no output for request {request_id}. "
+                    "Check the vLLM engine logs for an error, then retry the batch."
+                )
             return output
 
         async def gather() -> list[Any]:
