@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import threading
 from typing import Any, Literal, Sequence
 
+import numpy as np
 import torch
 from PIL import Image
 
@@ -22,6 +24,12 @@ from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
 from nemo_retriever.models.model import BaseModel, ModelRunMode
+
+
+# Pages generated concurrently per engine; Ray UDF threads keep this many in flight.
+_MAX_NUM_SEQS = 128
+# Rendered pages below this pixel standard deviation have no content to parse.
+_BLANK_PIXEL_STD = 0.01
 
 
 @dataclass(frozen=True)
@@ -44,8 +52,9 @@ class NemotronParse35(BaseModel):
     """Parse page images with the checkpoint's native Transformers or vLLM backend.
 
     Weights and custom code are loaded lazily from an immutable registry revision.
-    Pages are converted and generated sequentially to bound additional image
-    and GPU memory independently of batch size. The vLLM backend registers the
+    The vLLM backend submits each batch to one asynchronous engine, so concurrent
+    callers share its scheduler. Transformers converts and generates pages
+    sequentially. The vLLM backend registers the
     official plugin from the same pinned snapshot in each engine process.
     """
 
@@ -105,10 +114,16 @@ class NemotronParse35(BaseModel):
         self._model: Any = None
         self._processor: Any = None
         self._generation_config: Any = None
+        self._load_lock = threading.Lock()
 
     def _ensure_model(self) -> None:
         if self._model is not None:
             return
+        with self._load_lock:
+            if self._model is None:
+                self._load()
+
+    def _load(self) -> None:
         if self._device.type == "cuda":
             if not torch.cuda.is_available():
                 raise RuntimeError(
@@ -171,7 +186,7 @@ class NemotronParse35(BaseModel):
             os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
             os.environ[PARSE35_SNAPSHOT_ENV] = snapshot
             register_nemotron_parse35_vllm()
-            from vllm import LLM, SamplingParams
+            from vllm import SamplingParams
 
             self._generation_config = SamplingParams(
                 **{
@@ -203,18 +218,20 @@ class NemotronParse35(BaseModel):
                         "num_speculative_tokens": self._dflash_tokens,
                     },
                 }
-            self._model = LLM(
+            self._model = _AsyncParseEngine(
                 model=snapshot,
                 trust_remote_code=True,
                 dtype="bfloat16",
                 distributed_executor_backend="uni",
                 max_model_len=16384,
-                max_num_seqs=1,
+                max_num_seqs=_MAX_NUM_SEQS,
                 max_num_batched_tokens=16384,
                 limit_mm_per_prompt={"image": 1},
                 enable_prefix_caching=False,
                 attention_config={"flash_attn_version": 3},
-                gpu_memory_utilization=0.8,
+                gpu_memory_utilization=0.3,
+                kv_cache_memory_bytes=24 * 1024**3,
+                compilation_config={"mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"},
                 **speculative_kwargs,
             )
         finally:
@@ -265,7 +282,7 @@ class NemotronParse35(BaseModel):
         return self.invoke_batch([input_data], task_prompt=task_prompt)[0]
 
     def invoke_batch(self, inputs: Sequence[ImageInput], task_prompt: str | None = None) -> list[str]:
-        """Convert and parse one page at a time, keeping the original order.
+        """Parse pages in one vLLM submission or one at a time on Transformers, keeping input order.
 
         vLLM prepends ``<pad>`` directly to the task prompt in both DFlash2 and
         MTP modes. No newline is inserted, including for custom task prompts.
@@ -302,8 +319,10 @@ class NemotronParse35(BaseModel):
         Returns:
             One :class:`ParsePageResult` per input page, in input order. The vLLM
             backend reports ``finish_reason="length"`` when a page reached
-            ``max_tokens``; its text is then incomplete. The Transformers backend
-            reports no finish reason or token count.
+            ``max_tokens``; its text is then incomplete. On vLLM, a ``uint8`` NumPy page whose
+            pixel standard deviation is below 0.01 is blank: it returns empty text
+            with ``finish_reason="stop"`` and zero tokens, without inference. The
+            Transformers backend reports no finish reason or token count.
 
         Raises:
             TypeError: If an image type is unsupported.
@@ -314,34 +333,12 @@ class NemotronParse35(BaseModel):
         """
         if not inputs:
             return []
+        if self._backend == "vllm":
+            return self._invoke_vllm(inputs, task_prompt)
         outputs: list[ParsePageResult] = []
         for image in inputs:
             page = self.preprocess(image)
             self._ensure_model()
-            if self._backend == "vllm":
-                prompt = task_prompt if task_prompt is not None else self._task_prompt
-                # vLLM's progress bar divides by tqdm's elapsed time, which is
-                # zero when TQDM_DISABLE is set; one page needs no progress bar.
-                generated = self._model.generate(
-                    [
-                        {
-                            "prompt": "<pad>" + prompt,
-                            "multi_modal_data": {"image": page},
-                        }
-                    ],
-                    self._generation_config,
-                    use_tqdm=False,
-                    tokenization_kwargs={"add_special_tokens": False},
-                )
-                completion = generated[0].outputs[0]
-                outputs.append(
-                    ParsePageResult(
-                        text=completion.text.strip(),
-                        finish_reason=completion.finish_reason,
-                        output_tokens=len(completion.token_ids),
-                    )
-                )
-                continue
             features = self._processor(
                 images=[page],
                 text=task_prompt if task_prompt is not None else self._task_prompt,
@@ -354,6 +351,32 @@ class NemotronParse35(BaseModel):
                 ParsePageResult(text=self._processor.batch_decode(sequences, skip_special_tokens=False)[0].strip())
             )
         return outputs
+
+    def _invoke_vllm(self, inputs: Sequence[ImageInput], task_prompt: str | None) -> list[ParsePageResult]:
+        results = [ParsePageResult(text="", finish_reason="stop", output_tokens=0) for _ in inputs]
+        keep = [
+            index
+            for index, image in enumerate(inputs)
+            if not (isinstance(image, np.ndarray) and image.dtype == np.uint8 and float(image.std()) < _BLANK_PIXEL_STD)
+        ]
+        if not keep:
+            return results
+        pages = [self.preprocess(inputs[index]) for index in keep]
+        self._ensure_model()
+        prompt = "<pad>" + (task_prompt if task_prompt is not None else self._task_prompt)
+        generated = self._model.generate(
+            [{"prompt": prompt, "multi_modal_data": {"image": page}} for page in pages],
+            self._generation_config,
+            tokenization_kwargs={"add_special_tokens": False},
+        )
+        for index, request in zip(keep, generated, strict=True):
+            completion = request.outputs[0]
+            results[index] = ParsePageResult(
+                text=completion.text.strip(),
+                finish_reason=completion.finish_reason,
+                output_tokens=len(completion.token_ids),
+            )
+        return results
 
     def __call__(self, input_data: ImageInput, task_prompt: str | None = None) -> str:
         """Generate tagged text for a single page, delegating to :meth:`invoke`.
@@ -388,7 +411,7 @@ class NemotronParse35(BaseModel):
         """
         if self._model is not None:
             if self._backend == "vllm":
-                self._model.llm_engine.engine_core.shutdown(timeout=30.0)
+                self._model.shutdown(timeout=30.0)
             else:
                 self._model.to("cpu")
             self._model = None
@@ -428,5 +451,74 @@ class NemotronParse35(BaseModel):
 
     @property
     def input_batch_size(self) -> int:
-        """Return the number of pages generated concurrently (one)."""
-        return 1
+        """Return the maximum number of pages the vLLM engine generates concurrently."""
+        return _MAX_NUM_SEQS if self._backend == "vllm" else 1
+
+
+class _AsyncParseEngine:
+    """Run ``LLM.generate``-style calls on a vLLM ``AsyncLLM`` owned by a private event loop.
+
+    Each page is its own request, so the scheduler batches pages from every
+    calling thread together instead of serving one ``generate`` call at a time.
+    """
+
+    def __init__(self, **engine_kwargs: Any) -> None:
+        import asyncio
+        import itertools
+
+        from vllm.engine.arg_utils import AsyncEngineArgs
+        from vllm.usage.usage_lib import UsageContext
+        from vllm.v1.engine.async_llm import AsyncLLM
+
+        engine_kwargs.setdefault("disable_log_stats", True)
+        self._loop = asyncio.new_event_loop()
+        threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-parse-engine").start()
+
+        async def build() -> Any:
+            return AsyncLLM.from_engine_args(AsyncEngineArgs(**engine_kwargs), usage_context=UsageContext.LLM_CLASS)
+
+        try:
+            self.engine = asyncio.run_coroutine_threadsafe(build(), self._loop).result()
+        except BaseException:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            raise
+        self._request_ids = itertools.count()
+        self._render_lock = threading.Lock()
+
+    def generate(self, prompts: list[Any], params: Any, *, tokenization_kwargs: dict | None = None) -> list[Any]:
+        """Return each prompt's final ``RequestOutput`` in prompt order; any request failure raises."""
+        import asyncio
+        import os
+
+        from vllm.renderers.inputs.preprocess import parse_model_prompt
+        from vllm.sampling_params import RequestOutputKind
+
+        engine = self.engine
+        tok_params = engine.renderer.default_cmpl_tok_params.with_kwargs(**(tokenization_kwargs or {}))
+        # Image processing runs on the calling thread, so it overlaps generation for other threads.
+        with self._render_lock:
+            engine_inputs = engine.renderer.render_cmpl(
+                [parse_model_prompt(engine.model_config, prompt) for prompt in prompts], tok_params
+            )
+
+        async def one(engine_input: Any, request_id: str) -> Any:
+            request_params = params.clone()
+            request_params.output_kind = RequestOutputKind.FINAL_ONLY
+            output = None
+            async for output in engine.generate(engine_input, request_params, request_id):
+                pass
+            if output is None:
+                raise RuntimeError("Parse engine returned no output.")
+            return output
+
+        async def gather() -> list[Any]:
+            return await asyncio.gather(
+                *(one(item, f"nrl-parse-{os.getpid()}-{next(self._request_ids)}") for item in engine_inputs)
+            )
+
+        return asyncio.run_coroutine_threadsafe(gather(), self._loop).result()
+
+    def shutdown(self, timeout: float | None = None) -> None:
+        """Stop the engine core, then the private event loop."""
+        self.engine.shutdown(timeout=timeout)
+        self._loop.call_soon_threadsafe(self._loop.stop)
