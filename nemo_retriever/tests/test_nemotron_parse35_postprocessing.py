@@ -886,3 +886,35 @@ def test_remote_parse35_keeps_truncated_chat_text(monkeypatch, helpers):
     assert result.iloc[0]["nemotron_parse_v1_2"]["error"] is None
     assert result.iloc[0]["table"][0]["text"] == TABLE
     helpers.postprocess_document.assert_called_once_with(RAW)
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("later_edit", [False, True])
+@pytest.mark.parametrize("field", ["text", "caption"])
+def test_corrected_field_survives_deletion_from_assembled_text(serialization, later_edit, field):
+    from nemo_retriever.common.io.markdown import to_markdown
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    table = {"text": "OLD TABLE"}
+    if field == "caption":
+        table["caption"] = "OLD CAPTION"
+    frame = pd.DataFrame([{"text": "Before\n\nAfter", "table": [table]}])
+    frame = collapse_content_to_page_rows(frame)
+    old = frame.iloc[0]["table"][0][field]
+    frame.at[0, "text"] = frame.iloc[0]["text"].replace(old, "")
+    if later_edit:
+        frame = collapse_content_to_page_rows(_round_trip_page(frame, serialization))
+        assert old not in frame.iloc[0]["text"]
+        assert old not in to_markdown(frame)
+    corrected = "Corrected table" if field == "text" else "Corrected caption"
+    frame.iloc[0]["table"][0][field] = corrected
+    for _ in range(3):
+        frame = _round_trip_page(frame, serialization)
+        assert to_markdown(frame).count(corrected) == 1
+        frame = collapse_content_to_page_rows(frame)
+        assert frame.iloc[0]["text"].count(corrected) == 1
+        assert old not in frame.iloc[0]["text"]
+        assert to_markdown(frame).count(corrected) == 1
+    filtered = collapse_content_to_page_rows(frame, content_columns=())
+    assert corrected not in filtered.iloc[0]["text"]
+    assert corrected not in to_markdown(filtered)

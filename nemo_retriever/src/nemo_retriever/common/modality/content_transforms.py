@@ -336,59 +336,63 @@ def _match_edited_content_items(row: Any, spans: list, content_columns: Sequence
     return resolved
 
 
-def _reconcile_assembled_text(
-    row: Any, text: str, content_columns: Sequence[str], content_spans: list[dict[str, Any]] | None
-) -> str:
-    """Apply live region changes at tracked positions while retaining page-text edits."""
-    collapsed = row["_collapsed_page_text"]
-    previous = collapsed.get("content_spans")
-    if not _is_content_collection(previous):
-        previous = _restore_collapsed_spans(row)
-    original = collapsed["combined_text"]
+def _reconcile_tracked_span(
+    old: dict[str, Any], match: Any, original: str, text: str, opcodes: list
+) -> tuple[dict[str, Any] | None, tuple | None, bool]:
+    """Resolve one saved field to an updated span, a text patch, and its consumption state."""
+    span = dict(old)
+    if match is not None:
+        span["occurrence"] = match[2]
+    value = match[1].get(span["field"]) if match is not None else ""
+    value = value.strip() if isinstance(value, str) else ""
+    mapped = _map_content_span(span, opcodes)
+    if mapped is None:
+        if _unmapped_region_survives(span, original, text, opcodes):
+            raise ValueError(
+                "Cannot reliably locate structured content after a cross-region page-text edit. "
+                "Edit the original extraction fields and collapse them again."
+            )
+        span.update(start=-1, end=-1)
+        unchanged = match is not None and value == span["source_value"]
+        return (span if unchanged else None), None, unchanged
+    start, end = mapped
+    if not value:
+        if text[end:].startswith("\n\n"):
+            end += 2
+        elif text[end:].startswith("\n"):
+            end += 1
+        elif text[:start].endswith("\n\n"):
+            start -= 2
+        elif text[:start].endswith("\n"):
+            start -= 1
+        return None, (start, end, ""), match is not None
+    patch = (start, end, value) if value != span["source_value"] else None
+    span.update(start=start, end=end, source_value=value)
+    return span, patch, match is not None
+
+
+def _collect_content_edits(row: Any, text: str, previous: list, content_columns: Sequence[str]) -> tuple:
+    """Match live fields and collect independent edits to the assembled page."""
+    original = row["_collapsed_page_text"]["combined_text"]
     live_matches = _match_edited_content_items(row, previous, content_columns)
     opcodes = _page_edit_opcodes(original, text)
-    patches = []
-    retained = []
-    consumed = set()
+    patches, retained, consumed = [], [], set()
     for old in previous:
-        span = dict(old)
-        column, field = span["column"], span["field"]
-        box = tuple(_normalize_bbox(span.get("bbox")) or ())
-        match = live_matches.get((column, box, int(span["occurrence"])))
-        if match is not None:
+        column, field = old["column"], old["field"]
+        box = tuple(_normalize_bbox(old.get("bbox")) or ())
+        match = live_matches.get((column, box, int(old["occurrence"])))
+        span, patch, used = _reconcile_tracked_span(old, match, original, text, opcodes)
+        if used:
             consumed.add((column, match[0], field))
-            span["occurrence"] = match[2]
-        mapped = _map_content_span(span, opcodes)
-        if mapped is None:
-            if _unmapped_region_survives(span, original, text, opcodes):
-                raise ValueError(
-                    "Cannot reliably locate structured content after a cross-region page-text edit. "
-                    "Edit the original extraction fields and collapse them again."
-                )
-            span.update(start=-1, end=-1)
-            if match is not None and column in content_columns:
-                retained.append(span)
-            continue
-        start, end = mapped
-        value = match[1].get(field) if match is not None and column in content_columns else ""
-        value = value.strip() if isinstance(value, str) else ""
-        if not value:
-            if text[end:].startswith("\n\n"):
-                end += 2
-            elif text[end:].startswith("\n"):
-                end += 1
-            elif text[:start].endswith("\n\n"):
-                start -= 2
-            elif text[:start].endswith("\n"):
-                start -= 1
-            patches.append((start, end, ""))
-            continue
-        if value != span["source_value"]:
-            patches.append((start, end, value))
-            span["source_value"] = value
-        span.update(start=start, end=end)
-        retained.append(span)
+        if span is not None:
+            retained.append(span)
+        if patch is not None:
+            patches.append(patch)
+    return patches, retained, consumed
 
+
+def _merge_content_patches(text: str, patches: list) -> list:
+    """Merge adjacent removals and remove the separator before a deleted trailing field."""
     merged = []
     for start, end, value in sorted(patches):
         if merged and start <= merged[-1][1] and not value and not merged[-1][2]:
@@ -402,20 +406,59 @@ def _reconcile_assembled_text(
         elif text[:start].endswith("\n"):
             start -= 1
         merged[-1] = (start, end, value)
-    parts = []
-    cursor = 0
+    return merged
+
+
+def _apply_content_patches(text: str, patches: list, retained: list) -> str:
+    """Apply non-overlapping field edits and shift saved positions to the resulting page."""
+    merged = _merge_content_patches(text, patches)
+    parts, cursor = [], 0
     for start, end, value in merged:
         parts.extend((text[cursor:start], value))
         cursor = end
     parts.append(text[cursor:])
-    rendered = "".join(parts)
-
-    def shifted(position: int) -> int:
-        return position + sum(len(value) - (end - start) for start, end, value in merged if end <= position)
-
     for span in retained:
         if span["start"] >= 0:
-            span.update(start=shifted(span["start"]), end=shifted(span["end"]))
+            for boundary in ("start", "end"):
+                position = span[boundary]
+                span[boundary] += sum(len(value) - (end - start) for start, end, value in merged if end <= position)
+    return "".join(parts)
+
+
+def _insert_content_field(rendered: str, value: str, span: dict[str, Any], retained: list) -> str:
+    """Insert a field beside its retained sibling, or append it when no anchor remains."""
+    siblings = [
+        other
+        for other in retained
+        if other["column"] == span["column"]
+        and (_normalize_bbox(other.get("bbox")) or []) == span["bbox"]
+        and other["occurrence"] == span["occurrence"]
+        and other["start"] >= 0
+    ]
+    if siblings:
+        before = span["field"] == "text"
+        position = min(other["start"] for other in siblings) if before else max(other["end"] for other in siblings)
+        insertion = value + "\n\n" if before else "\n\n" + value
+        start = position if before else position + 2
+        rendered = rendered[:position] + insertion + rendered[position:]
+        for other in retained:
+            if other["start"] >= position:
+                other["start"] += len(insertion)
+                other["end"] += len(insertion)
+            elif other["end"] > position:
+                other["end"] += len(insertion)
+    else:
+        start = len(rendered) + (2 if rendered else 0)
+        rendered += ("\n\n" if rendered else "") + value
+    span.update(start=start, end=start + len(value))
+    retained.append(span)
+    return rendered
+
+
+def _append_untracked_fields(
+    row: Any, rendered: str, content_columns: Sequence[str], retained: list, consumed: set
+) -> str:
+    """Render new or corrected live fields that were not retained at a saved position."""
     for column in content_columns:
         items = row.get(column)
         if not _is_content_collection(items):
@@ -423,54 +466,37 @@ def _reconcile_assembled_text(
         for index, item in enumerate(items):
             if not isinstance(item, dict):
                 continue
+            box = _normalize_bbox(item.get("bbox_xyxy_norm")) or []
+            occurrence = sum(
+                (_normalize_bbox(other.get("bbox_xyxy_norm")) or []) == box
+                for other in items[:index]
+                if isinstance(other, dict)
+            )
             for field in ("text", "caption"):
                 value = item.get(field)
                 if (column, index, field) in consumed or not isinstance(value, str) or not value.strip():
                     continue
-                value = value.strip()
-                box = _normalize_bbox(item.get("bbox_xyxy_norm")) or []
-                occurrence = sum(
-                    (_normalize_bbox(other.get("bbox_xyxy_norm")) or []) == box
-                    for other in items[:index]
-                    if isinstance(other, dict)
-                )
-                siblings = [
-                    span
-                    for span in retained
-                    if span["column"] == column
-                    and (_normalize_bbox(span.get("bbox")) or []) == box
-                    and span["occurrence"] == occurrence
-                    and span["start"] >= 0
-                ]
-                if siblings:
-                    position = (
-                        min(span["start"] for span in siblings)
-                        if field == "text"
-                        else max(span["end"] for span in siblings)
-                    )
-                    insertion = value + "\n\n" if field == "text" else "\n\n" + value
-                    start = position if field == "text" else position + 2
-                    rendered = rendered[:position] + insertion + rendered[position:]
-                    for span in retained:
-                        if span["start"] >= position:
-                            span["start"] += len(insertion)
-                            span["end"] += len(insertion)
-                        elif span["end"] > position:
-                            span["end"] += len(insertion)
-                else:
-                    start = len(rendered) + (2 if rendered else 0)
-                    rendered += ("\n\n" if rendered else "") + value
-                retained.append(
-                    {
-                        "column": column,
-                        "bbox": box,
-                        "occurrence": occurrence,
-                        "field": field,
-                        "source_value": value,
-                        "start": start,
-                        "end": start + len(value),
-                    }
-                )
+                span = {
+                    "column": column,
+                    "bbox": box,
+                    "occurrence": occurrence,
+                    "field": field,
+                    "source_value": value.strip(),
+                }
+                rendered = _insert_content_field(rendered, value.strip(), span, retained)
+    return rendered
+
+
+def _reconcile_assembled_text(
+    row: Any, text: str, content_columns: Sequence[str], content_spans: list[dict[str, Any]] | None
+) -> str:
+    """Reconcile live page fields, render their edits, and retain updated field positions."""
+    previous = row["_collapsed_page_text"].get("content_spans")
+    if not _is_content_collection(previous):
+        previous = _restore_collapsed_spans(row)
+    patches, retained, consumed = _collect_content_edits(row, text, previous, content_columns)
+    rendered = _apply_content_patches(text, patches, retained)
+    rendered = _append_untracked_fields(row, rendered, content_columns, retained, consumed)
     if content_spans is not None:
         content_spans.extend(retained)
     return rendered

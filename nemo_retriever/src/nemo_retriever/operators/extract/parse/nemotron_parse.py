@@ -683,7 +683,6 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
         self._task_prompt = task_prompt if task_prompt is not None else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
@@ -814,7 +813,6 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
-        selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
         self._task_prompt = task_prompt if task_prompt is not None else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),

@@ -422,3 +422,14 @@ def test_remote_auto_default_preserves_remote_path():
     with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         actor._ensure_model()
     parser.assert_not_called()
+
+
+@pytest.mark.parametrize("tokens,expected", [(None, None), (16, 16), ("auto", 32)])
+def test_constructor_preserves_positional_dflash_argument(tokens, expected):
+    prompt = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT
+    parser = NemotronParse35("cuda", None, prompt, 9000, "vllm", tokens)
+    assert parser._dflash_tokens == expected
+    assert parser._sampling_params == {}
+    configured = NemotronParse35("cuda", None, prompt, 9000, "vllm", tokens, sampling_params={"temperature": 0.2})
+    assert configured._dflash_tokens == expected
+    assert configured._sampling_params == {"temperature": 0.2}

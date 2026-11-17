@@ -85,7 +85,10 @@ def _invoke_chart_crops(
 ) -> list[str]:
     """Run one local or remote batch and close only clients created for this call."""
     if not invoke_url:
-        return model.invoke_batch([crop for _, _, crop in jobs], task_prompt=task_prompt if task_prompt is not None else NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT)
+        return model.invoke_batch(
+            [crop for _, _, crop in jobs],
+            task_prompt=task_prompt if task_prompt is not None else NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
+        )
     client = nim_client or NIMClient(max_pool_workers=retry.remote_max_pool_workers)
     try:
         return client.invoke_chat_completions_images(

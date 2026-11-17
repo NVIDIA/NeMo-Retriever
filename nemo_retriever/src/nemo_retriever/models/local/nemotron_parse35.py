@@ -39,8 +39,8 @@ class NemotronParse35(BaseModel):
         task_prompt: str = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
-        sampling_params: dict[str, Any] | None = None,
         dflash_tokens: int | Literal["auto"] | None = "auto",
+        sampling_params: dict[str, Any] | None = None,
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
 
