@@ -466,12 +466,19 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
     monkeypatch.setitem(sys.modules, preprocess.__name__, preprocess)
     monkeypatch.setitem(sys.modules, sampling.__name__, sampling)
     request_ids = []
+    cancelled = []
 
     async def generate(item: str, params: SimpleNamespace, request_id: str):
         request_ids.append(request_id)
         assert params.output_kind == "final"
         if mode == "error":
-            raise RuntimeError("request failed")
+            if item == "first":
+                raise RuntimeError("request failed")
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.append(item)
+                raise
         if mode == "empty":
             return
         await asyncio.sleep(0.01 if item == "first" else 0)
@@ -479,8 +486,8 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
 
     engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
     engine._loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=engine._loop.run_forever)
-    thread.start()
+    engine._thread = threading.Thread(target=engine._loop.run_forever)
+    engine._thread.start()
     engine._request_ids = itertools.count()
     engine._render_lock = threading.Lock()
     engine.engine = SimpleNamespace(
@@ -499,9 +506,15 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
             assert len(set(request_ids)) == 2
         else:
             with pytest.raises(RuntimeError, match="no output" if mode == "empty" else "request failed"):
-                engine.generate(["first"], params)
+                engine.generate(["first", "second"], params)
+            assert cancelled == (["second"] if mode == "error" else [])
     finally:
         engine.shutdown(timeout=30)
-        thread.join()
-        engine._loop.close()
     engine.engine.shutdown.assert_called_once_with(timeout=30)
+    assert engine._loop.is_closed()
+    assert not engine._thread.is_alive()
+
+
+def test_vllm_validates_blank_pages(vllm_runtime: SimpleNamespace) -> None:
+    with pytest.raises(ValueError):
+        NemotronParse35().invoke_batch([np.zeros((16, 16, 2, 2), dtype=np.uint8)])

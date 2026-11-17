@@ -354,6 +354,7 @@ class NemotronParse35(BaseModel):
 
     def _invoke_vllm(self, inputs: Sequence[ImageInput], task_prompt: str | None) -> list[ParsePageResult]:
         results = [ParsePageResult(text="", finish_reason="stop", output_tokens=0) for _ in inputs]
+        converted = [self.preprocess(image) for image in inputs]
         keep = [
             index
             for index, image in enumerate(inputs)
@@ -361,7 +362,7 @@ class NemotronParse35(BaseModel):
         ]
         if not keep:
             return results
-        pages = [self.preprocess(inputs[index]) for index in keep]
+        pages = [converted[index] for index in keep]
         self._ensure_model()
         prompt = "<pad>" + (task_prompt if task_prompt is not None else self._task_prompt)
         generated = self._model.generate(
@@ -472,7 +473,8 @@ class _AsyncParseEngine:
 
         engine_kwargs.setdefault("disable_log_stats", True)
         self._loop = asyncio.new_event_loop()
-        threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-parse-engine").start()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True, name="nrl-parse-engine")
+        self._thread.start()
 
         async def build() -> Any:
             return AsyncLLM.from_engine_args(AsyncEngineArgs(**engine_kwargs), usage_context=UsageContext.LLM_CLASS)
@@ -480,7 +482,7 @@ class _AsyncParseEngine:
         try:
             self.engine = asyncio.run_coroutine_threadsafe(build(), self._loop).result()
         except BaseException:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._stop_loop()
             raise
         self._request_ids = itertools.count()
         self._render_lock = threading.Lock()
@@ -512,13 +514,27 @@ class _AsyncParseEngine:
             return output
 
         async def gather() -> list[Any]:
-            return await asyncio.gather(
-                *(one(item, f"nrl-parse-{os.getpid()}-{next(self._request_ids)}") for item in engine_inputs)
-            )
+            tasks = [
+                asyncio.ensure_future(one(item, f"nrl-parse-{os.getpid()}-{next(self._request_ids)}"))
+                for item in engine_inputs
+            ]
+            try:
+                return await asyncio.gather(*tasks)
+            except BaseException:
+                # Cancelling a request's stream aborts it in the engine, so a failed batch frees its slots.
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
 
         return asyncio.run_coroutine_threadsafe(gather(), self._loop).result()
 
     def shutdown(self, timeout: float | None = None) -> None:
         """Stop the engine core, then the private event loop."""
         self.engine.shutdown(timeout=timeout)
+        self._stop_loop()
+
+    def _stop_loop(self) -> None:
         self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join()
+        self._loop.close()
