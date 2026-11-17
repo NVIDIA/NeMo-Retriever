@@ -16,7 +16,11 @@ import pandas as pd
 from nemo_retriever.common.modality.ocr.shared import _crop_all_from_page
 from nemo_retriever.common.modality.parse.nemotron_parse35_postprocessing import _postprocess_parse35_blocks
 from nemo_retriever.common.params import ParseParams, RemoteRetryParams
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, validate_nemotron_parse_endpoint_list
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE35_MODEL,
+    NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
+    validate_nemotron_parse_endpoint_list,
+)
 from nemo_retriever.models.nim.nim import NIMClient
 
 logger = logging.getLogger(__name__)
@@ -29,7 +33,6 @@ _CHART_ROUTING_SAMPLING = {
     "seed": 0,
     "max_tokens": 8744,
 }
-_CHART_ROUTING_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>"
 
 
 def _items(value: Any) -> list[Any]:
@@ -78,17 +81,18 @@ def _invoke_chart_crops(
     retry: RemoteRetryParams,
     nim_client: NIMClient | None,
     sampling: dict[str, Any],
+    task_prompt: str | None = None,
 ) -> list[str]:
     """Run one local or remote batch and close only clients created for this call."""
     if not invoke_url:
-        return model.invoke_batch([crop for _, _, crop in jobs], task_prompt=_CHART_ROUTING_PROMPT)
+        return model.invoke_batch([crop for _, _, crop in jobs], task_prompt=task_prompt if task_prompt is not None else NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT)
     client = nim_client or NIMClient(max_pool_workers=retry.remote_max_pool_workers)
     try:
         return client.invoke_chat_completions_images(
             invoke_url=invoke_url,
             image_b64_list=[crop for _, _, crop in jobs],
             model=NEMOTRON_PARSE35_MODEL,
-            task_prompt=_CHART_ROUTING_PROMPT,
+            task_prompt=task_prompt if task_prompt is not None else NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
             api_key=api_key,
             timeout_s=timeout_s,
             temperature=sampling["temperature"],
@@ -105,8 +109,8 @@ def _invoke_chart_crops(
             client.shutdown()
 
 
-def _replace_chart_text(charts: list, box: list[float], text: str, used: set[int]) -> None:
-    """Update the next matching live chart, or append a detector-only region."""
+def _match_chart_index(charts: list, box: Any, used: set[int]) -> int | None:
+    """Reserve the next matching chart occurrence, including crops that fail later."""
     index = next(
         (
             i
@@ -115,57 +119,71 @@ def _replace_chart_text(charts: list, box: list[float], text: str, used: set[int
         ),
         None,
     )
-    if index is None:
-        charts.append({"bbox_xyxy_norm": box, "text": text})
-    else:
+    if index is not None:
         used.add(index)
-        charts[index]["text"] = text
+    return index
 
 
 def _apply_chart_outputs(
     jobs: list, raw_outputs: list[str], charts: list, metadata: list, *, table_format: str
-) -> None:
+) -> list[list[dict[str, Any]]]:
     """Format each crop independently, retaining its OCR entry when conversion fails."""
+    ordered_updates: list[list[dict[str, Any]]] = [[] for _ in charts]
     used_entries: dict[int, set[int]] = {}
     for (position, box, _), raw in zip(jobs, raw_outputs):
+        used = used_entries.setdefault(position, set())
+        index = _match_chart_index(charts[position], box, used)
+        update: dict[str, Any] = {"bbox_xyxy_norm": box}
+        ordered_updates[position].append(update)
         record: dict[str, Any] = {"bbox_xyxy_norm": box, "raw_output": raw, "error": None}
         try:
             blocks = _postprocess_parse35_blocks(raw, table_format=table_format)
             text = "\n".join(block["content"] for block in blocks if block.get("content"))
-            _replace_chart_text(charts[position], box, text, used_entries.setdefault(position, set()))
+            update["text"] = text
+            if index is None:
+                used.add(len(charts[position]))
+                charts[position].append({"bbox_xyxy_norm": box, "text": text})
+            else:
+                charts[position][index]["text"] = text
         except Exception as exc:
             logger.exception("Chart routing postprocessing failed for page row %d, bbox %s", position, box)
             record.update(error=str(exc), type=type(exc).__name__)
         metadata[position]["regions"].append(record)
+    return ordered_updates
 
 
-def _update_ordered_chart_text(out: pd.DataFrame, charts: list) -> None:
-    """Refresh ordered-page chart strings without moving page regions."""
+def _update_ordered_chart_text(out: pd.DataFrame, replacements: list) -> None:
+    """Refresh successful chart replacements without rewriting untouched page caches."""
     if "ordered_regions" in out.columns:
         updated = []
+        changed = []
         for position, value in enumerate(out["ordered_regions"]):
+            has_replacements = any("text" in item for item in replacements[position])
+            changed.append(has_replacements)
+            if not has_replacements:
+                updated.append(value)
+                continue
             regions = deepcopy(_items(value))
+            used: set[int] = set()
             for region in regions:
                 if isinstance(region, dict) and region.get("label_name") == "chart":
-                    match = next(
-                        (
-                            item
-                            for item in charts[position]
-                            if isinstance(item, dict)
-                            and _same_box(item.get("bbox_xyxy_norm"), region.get("bbox_xyxy_norm"))
-                        ),
-                        None,
-                    )
-                    if match is not None:
-                        region["text"] = match["text"]
+                    index = _match_chart_index(replacements[position], region.get("bbox_xyxy_norm"), used)
+                    if index is not None and "text" in replacements[position][index]:
+                        region["text"] = replacements[position][index]["text"]
             updated.append(regions)
         out["ordered_regions"] = updated
         if "ordered_page_text" in out.columns:
             out["ordered_page_text"] = [
-                "\n".join(
-                    r["text"] for r in regions if isinstance(r, dict) and isinstance(r.get("text"), str) and r["text"]
+                (
+                    "\n".join(
+                        r["text"]
+                        for r in _items(regions)
+                        if isinstance(r, dict) and isinstance(r.get("text"), str) and r["text"]
+                    )
+                    if changed[position]
+                    else out["ordered_page_text"].iloc[position]
                 )
-                for regions in updated
+                for position, regions in enumerate(updated)
             ]
 
 
@@ -180,6 +198,7 @@ def route_chart_regions(
     nim_client: NIMClient | None = None,
     table_format: str | None = None,
     sampling_params: dict[str, Any] | None = None,
+    task_prompt: str | None = None,
 ) -> pd.DataFrame:
     """Parse Page Elements chart crops and replace only their chart content.
 
@@ -198,6 +217,7 @@ def route_chart_regions(
             are closed before it returns.
         table_format: Table block rendering: HTML, simple_html (default), markdown,
             or latex. Other block classes are unchanged.
+        task_prompt: Optional native control prompt; unset preserves the model default.
         sampling_params: Optional generation overrides merged with crop defaults:
             temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0, seed=0,
             max_tokens=8744. A supplied local adapter must already use these settings.
@@ -245,6 +265,7 @@ def route_chart_regions(
             retry=remote_retry or RemoteRetryParams(),
             nim_client=nim_client,
             sampling=sampling,
+            task_prompt=task_prompt,
         )
         if len(raw_outputs) != len(jobs):
             raise ValueError(
@@ -256,8 +277,10 @@ def route_chart_regions(
             metadata[position]["regions"].append({"bbox_xyxy_norm": box, "error": str(exc), "type": type(exc).__name__})
         out["chart_routing"] = metadata
         return out
-    _apply_chart_outputs(jobs, raw_outputs, charts, metadata, table_format=options.table_format or "simple_html")
-    _update_ordered_chart_text(out, charts)
+    ordered_updates = _apply_chart_outputs(
+        jobs, raw_outputs, charts, metadata, table_format=options.table_format or "simple_html"
+    )
+    _update_ordered_chart_text(out, ordered_updates)
     out["chart"] = charts
     out["chart_routing"] = metadata
     return out

@@ -63,6 +63,9 @@ def _combine_text_with_content(
             and region["text"]
         )
         ordered = isinstance(live_text, str) and live_text == source_text
+    elif ordered and isinstance(row.get("ordered_page_text_source"), str):
+        source_text = row["ordered_page_text_source"]
+        ordered = (live_text if isinstance(live_text, str) else "") == source_text
 
     items_by_box = {}
     for column in content_columns:
@@ -261,6 +264,78 @@ def _restore_collapsed_spans(row: Any) -> list[dict[str, Any]]:
     )
 
 
+def _match_edited_content_items(row: Any, spans: list, content_columns: Sequence[str]) -> dict:
+    """Match live items to their previous occurrences when shared-box lists change size."""
+    originals: dict = {}
+    for span in spans:
+        if span["column"] not in content_columns:
+            continue
+        key = (span["column"], tuple(_normalize_bbox(span.get("bbox")) or ()))
+        originals.setdefault(key, {}).setdefault(int(span["occurrence"]), {})[span["field"]] = span["source_value"]
+    live: dict = {}
+    for column in {key[0] for key in originals}:
+        items = row.get(column)
+        if _is_content_collection(items):
+            for index, item in enumerate(items):
+                if isinstance(item, dict):
+                    key = (column, tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()))
+                    matches = live.setdefault(key, [])
+                    matches.append((index, item, len(matches)))
+    resolved = {}
+    for key, occurrences in originals.items():
+        matches = live.get(key, [])
+        if len(matches) == max(occurrences) + 1:
+            for occurrence in occurrences:
+                resolved[(*key, occurrence)] = matches[occurrence]
+            continue
+        pending = dict(occurrences)
+        available = list(matches)
+        for occurrence, fields in occurrences.items():
+            candidates = [
+                match
+                for match in available
+                if all(
+                    isinstance(match[1].get(field), str) and match[1][field].strip() == value
+                    for field, value in fields.items()
+                )
+            ]
+            if len(candidates) != 1:
+                continue
+            candidate = candidates[0]
+            competing = sum(
+                all(
+                    isinstance(candidate[1].get(field), str) and candidate[1][field].strip() == value
+                    for field, value in other.items()
+                )
+                for other in pending.values()
+            )
+            if competing == 1:
+                resolved[(*key, occurrence)] = candidate
+                available = [match for match in available if match[0] != candidate[0]]
+                pending.pop(occurrence)
+        equivalent_insertions = (
+            len(available) > len(pending)
+            and len(
+                {
+                    tuple(
+                        item.get(field, "").strip() if isinstance(item.get(field), str) else ""
+                        for field in ("text", "caption")
+                    )
+                    for _, item, _ in available
+                }
+            )
+            == 1
+        )
+        if pending and available and len(pending) != len(available) and not equivalent_insertions:
+            raise ValueError(
+                "Cannot identify edited structured items sharing a bounding box after insertion or removal. "
+                "Edit the original extraction fields and collapse them again."
+            )
+        for occurrence, match in zip(pending, available):
+            resolved[(*key, occurrence)] = match
+    return resolved
+
+
 def _reconcile_assembled_text(
     row: Any, text: str, content_columns: Sequence[str], content_spans: list[dict[str, Any]] | None
 ) -> str:
@@ -270,6 +345,7 @@ def _reconcile_assembled_text(
     if not _is_content_collection(previous):
         previous = _restore_collapsed_spans(row)
     original = collapsed["combined_text"]
+    live_matches = _match_edited_content_items(row, previous, content_columns)
     opcodes = _page_edit_opcodes(original, text)
     patches = []
     retained = []
@@ -277,21 +353,11 @@ def _reconcile_assembled_text(
     for old in previous:
         span = dict(old)
         column, field = span["column"], span["field"]
-        items = row.get(column)
         box = tuple(_normalize_bbox(span.get("bbox")) or ())
-        matches = (
-            [
-                (index, item)
-                for index, item in enumerate(items)
-                if isinstance(item, dict) and tuple(_normalize_bbox(item.get("bbox_xyxy_norm")) or ()) == box
-            ]
-            if _is_content_collection(items)
-            else []
-        )
-        occurrence = int(span["occurrence"])
-        match = matches[occurrence] if occurrence < len(matches) else None
+        match = live_matches.get((column, box, int(span["occurrence"])))
         if match is not None:
             consumed.add((column, match[0], field))
+            span["occurrence"] = match[2]
         mapped = _map_content_span(span, opcodes)
         if mapped is None:
             if _unmapped_region_survives(span, original, text, opcodes):
@@ -362,14 +428,38 @@ def _reconcile_assembled_text(
                 if (column, index, field) in consumed or not isinstance(value, str) or not value.strip():
                     continue
                 value = value.strip()
-                start = len(rendered) + (2 if rendered else 0)
-                rendered += ("\n\n" if rendered else "") + value
                 box = _normalize_bbox(item.get("bbox_xyxy_norm")) or []
                 occurrence = sum(
                     (_normalize_bbox(other.get("bbox_xyxy_norm")) or []) == box
                     for other in items[:index]
                     if isinstance(other, dict)
                 )
+                siblings = [
+                    span
+                    for span in retained
+                    if span["column"] == column
+                    and (_normalize_bbox(span.get("bbox")) or []) == box
+                    and span["occurrence"] == occurrence
+                    and span["start"] >= 0
+                ]
+                if siblings:
+                    position = (
+                        min(span["start"] for span in siblings)
+                        if field == "text"
+                        else max(span["end"] for span in siblings)
+                    )
+                    insertion = value + "\n\n" if field == "text" else "\n\n" + value
+                    start = position if field == "text" else position + 2
+                    rendered = rendered[:position] + insertion + rendered[position:]
+                    for span in retained:
+                        if span["start"] >= position:
+                            span["start"] += len(insertion)
+                            span["end"] += len(insertion)
+                        elif span["end"] > position:
+                            span["end"] += len(insertion)
+                else:
+                    start = len(rendered) + (2 if rendered else 0)
+                    rendered += ("\n\n" if rendered else "") + value
                 retained.append(
                     {
                         "column": column,

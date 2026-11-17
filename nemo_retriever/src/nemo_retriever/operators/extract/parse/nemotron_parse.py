@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from urllib.parse import urlsplit
 
 import base64
@@ -39,10 +39,12 @@ from nemo_retriever.models.nim.chat_completions import invoke_chat_completions_i
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE35_MODEL,
+    NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
     NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
     NEMOTRON_PARSE_LOCAL_MODELS,
-    NEMOTRON_PARSE35_MODEL,
     validate_nemotron_parse_endpoint_list,
+    resolve_nemotron_parse_dflash_tokens,
 )
 
 try:
@@ -57,16 +59,11 @@ except Exception:  # pragma: no cover
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_HOSTED_MODEL = "nvidia/nemotron-parse"
-NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
-NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>"
+NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT
 
 
 def _is_parse35_model(model_name: Optional[str]) -> bool:
     return str(model_name or "").lower() in {NEMOTRON_PARSE35_MODEL.lower(), "nemotron-3.5-parse"}
-
-
-def _default_task_prompt(model_name: Optional[str]) -> str:
-    return NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT if _is_parse35_model(model_name) else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
 
 
 # Map Nemotron Parse class labels to the pipeline content channels.
@@ -360,8 +357,8 @@ def nemotron_parse_pages(
     retain the selected backend's defaults. Unsupported models or endpoints
     raise ValueError before inference.
     With no format selection, legacy models retain Markdown tables.
-    ``task_prompt=None`` selects the version-specific prompt: Parse 3.5 requests
-    picture text; legacy models disable it. An explicit prompt takes precedence.
+    ``task_prompt=None`` preserves the default prompt with picture text disabled.
+    An explicit prompt takes precedence.
     An explicit format requires an identified Parse 3.5 model; invalid selections
     raise ``ValueError`` before inference.
 
@@ -399,7 +396,7 @@ def nemotron_parse_pages(
         ):
             raise ValueError("Parse sampling overrides require local inference or /v1/chat/completions URLs.")
     if task_prompt is None:
-        task_prompt = _default_task_prompt(selected_model)
+        task_prompt = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
     if use_remote:
         validate_nemotron_parse_endpoint_list(invoke_url)
     if not use_remote and model is None:
@@ -663,8 +660,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
-        use_dflash: Optional[bool] = None,
-        num_speculative_tokens: Optional[int] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -679,13 +675,16 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
-        self._use_dflash = use_dflash
-        self._num_speculative_tokens = num_speculative_tokens
+        self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=self._invoke_url,
+        )
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
-        self._task_prompt = task_prompt if task_prompt is not None else _default_task_prompt(selected_model)
+        self._task_prompt = task_prompt if task_prompt is not None else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -709,26 +708,22 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         if self._model is None and not self._invoke_url:
             model_id = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
             if model_id not in NEMOTRON_PARSE_LOCAL_MODELS:
-                raise ValueError(f"Unsupported local Nemotron Parse model: {model_id}")
-            if model_id == NEMOTRON_PARSE35_MODEL:
-                from nemo_retriever.models.local import NemotronParse35
+                raise ValueError(
+                    f"Unsupported local Nemotron Parse model: {model_id}. "
+                    f"Use `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` locally, or configure "
+                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
+                )
+            from nemo_retriever.models.local import NemotronParse35
 
-                model_kwargs: Dict[str, Any] = {"task_prompt": self._task_prompt, "backend": "vllm"}
-                if self._use_dflash is not None:
-                    model_kwargs["use_dflash"] = self._use_dflash
-                if self._num_speculative_tokens is not None:
-                    model_kwargs["num_speculative_tokens"] = self._num_speculative_tokens
-                if self._parse_sampling_params:
-                    model_kwargs["sampling_params"] = {
-                        key: value for key, value in self._parse_sampling_params.items() if key != "max_tokens"
-                    }
-                    if "max_tokens" in self._parse_sampling_params:
-                        model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
-                self._model = NemotronParse35(**model_kwargs)
-            else:
-                from nemo_retriever.models.local import NemotronParseV12
-
-                self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            model_kwargs: Dict[str, Any] = {"task_prompt": self._task_prompt, "backend": "vllm"}
+            model_kwargs["dflash_tokens"] = self._nemotron_parse_dflash_tokens
+            if self._parse_sampling_params:
+                model_kwargs["sampling_params"] = {
+                    key: value for key, value in self._parse_sampling_params.items() if key != "max_tokens"
+                }
+                if "max_tokens" in self._parse_sampling_params:
+                    model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
+            self._model = NemotronParse35(**model_kwargs)
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
@@ -777,7 +772,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant that delegates to a remote Nemotron Parse endpoint.
 
     Defaults to the build.nvidia.com chat completions endpoint.
-    No local GPU model is loaded.
+    No local GPU model is loaded. Explicit DFlash2 draft lengths are rejected;
+    use ``"auto"`` or ``None`` to retain remote fallback.
     """
 
     DEFAULT_INVOKE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -793,8 +789,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
-        use_dflash: Optional[bool] = None,
-        num_speculative_tokens: Optional[int] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -811,13 +806,16 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
-        self._use_dflash = use_dflash
-        self._num_speculative_tokens = num_speculative_tokens
+        self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=self._invoke_url,
+        )
         validate_nemotron_parse_endpoint_list(self._invoke_url)
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
         selected_model = nemotron_parse_model or (NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL if not self._invoke_url else None)
-        self._task_prompt = task_prompt if task_prompt is not None else _default_task_prompt(selected_model)
+        self._task_prompt = task_prompt if task_prompt is not None else NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         self._remote_retry = RemoteRetryParams(
             remote_max_pool_workers=int(remote_max_pool_workers),
             remote_max_retries=int(remote_max_retries),
@@ -899,8 +897,7 @@ class NemotronParseActor(ArchetypeOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
-        use_dflash: Optional[bool] = None,
-        num_speculative_tokens: Optional[int] = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
@@ -910,6 +907,11 @@ class NemotronParseActor(ArchetypeOperator):
         remote_max_429_retries: int = 5,
         **kwargs: Any,
     ) -> None:
+        resolve_nemotron_parse_dflash_tokens(
+            nemotron_parse_dflash_tokens,
+            model_id=nemotron_parse_model,
+            invoke_url=nemotron_parse_invoke_url or invoke_url,
+        )
         super().__init__(
             extract_text=extract_text,
             extract_tables=extract_tables,
@@ -919,8 +921,6 @@ class NemotronParseActor(ArchetypeOperator):
             nemotron_parse_model=nemotron_parse_model,
             nemotron_parse_table_format=nemotron_parse_table_format,
             parse_sampling_params=parse_sampling_params,
-            use_dflash=use_dflash,
-            num_speculative_tokens=num_speculative_tokens,
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
@@ -928,5 +928,6 @@ class NemotronParseActor(ArchetypeOperator):
             remote_max_pool_workers=remote_max_pool_workers,
             remote_max_retries=remote_max_retries,
             remote_max_429_retries=remote_max_429_retries,
+            nemotron_parse_dflash_tokens=nemotron_parse_dflash_tokens,
             **kwargs,
         )

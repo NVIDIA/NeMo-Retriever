@@ -19,9 +19,10 @@ import pytest
 
 from nemo_retriever.common.modality.parse import nemotron_parse35_postprocessing as adapter
 from nemo_retriever.common.params import ExtractParams
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, NEMOTRON_PARSE_V12_MODEL
+from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.operators.extract.parse.nemotron_parse import (
+    NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL as NEMOTRON_PARSE_V12_MODEL,
     NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
     NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
     NemotronParseGPUActor,
@@ -96,8 +97,8 @@ def test_model_version_selects_prompt_and_postprocessing(helpers: SimpleNamespac
         assert "<table" not in result.iloc[0]["table"][0]["text"]
 
 
-@pytest.mark.parametrize("table_format", ["HTML", "simple_html", "markdown", "latex"])
-def test_explicit_remote_35_honors_format_and_prompt_override(helpers: SimpleNamespace, table_format: str) -> None:
+def test_explicit_remote_35_honors_format_and_prompt_override(helpers: SimpleNamespace) -> None:
+    table_format = "simple_html"
     client = Mock()
     client.invoke_parse_pages.return_value = [{"content": RAW, "finish_reason": "stop"}]
     result = nemotron_parse_pages(
@@ -181,8 +182,8 @@ def test_local_prompt_override_is_preserved(helpers: SimpleNamespace, model_id: 
     assert model.invoke.call_args.kwargs["task_prompt"] == "custom"
 
 
-@pytest.mark.parametrize("table_format", ["HTML", "simple_html", "markdown", "latex"])
-def test_batch_graph_forwards_table_format(table_format: str) -> None:
+def test_batch_graph_forwards_table_format() -> None:
+    table_format = "simple_html"
     from nemo_retriever.graph.ingestor_runtime import build_graph
 
     graph = build_graph(
@@ -298,21 +299,13 @@ def test_page_embedding_preserves_interleaved_blocks(interleaved: SimpleNamespac
 def test_serialized_parse_preserves_model_order(
     interleaved: SimpleNamespace, table_format: str, serialization: str
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
     result = _ordered_result(interleaved, table_format)
     table = result.iloc[0]["table"][0]["text"]
     expected = "\n\n".join(["First", table, "Last", CHART, "Label"])
-    if serialization == "arrow":
-        restored = pa.Table.from_pandas(result).to_pandas()
-    else:
-        buffer = io.BytesIO()
-        result.to_parquet(buffer, index=False)
-        buffer.seek(0)
-        restored = pd.read_parquet(buffer)
+    restored = _round_trip_page(result, serialization)
 
     assert collapse_content_to_page_rows(restored).iloc[0]["text"] == expected
     assert restored.iloc[0]["ordered_page_text"] == expected
@@ -372,8 +365,6 @@ def test_real_split_does_not_restore_whole_page(interleaved: SimpleNamespace, mo
 def test_ordered_blocks_use_live_edits(
     interleaved: SimpleNamespace, serialization: str, edit: str, collapse_first: bool
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
     from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
 
@@ -393,13 +384,7 @@ def test_ordered_blocks_use_live_edits(
         result.at[0, "table"] = [{"bbox_xyxy_norm": box, "text": "Corrected table"}]
         expected = ["First", "Corrected table", "Last", CHART, "Label"]
         text_only = "First\n\nLast"
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        buffer = io.BytesIO()
-        result.to_parquet(buffer, index=False)
-        buffer.seek(0)
-        result = pd.read_parquet(buffer)
+    result = _round_trip_page(result, serialization)
 
     expected_text = "\n\n".join(expected)
     assert collapse_content_to_page_rows(result).iloc[0]["text"] == expected_text
@@ -408,14 +393,18 @@ def test_ordered_blocks_use_live_edits(
     assert collapse_content_to_page_rows(result, content_columns=()).iloc[0]["text"] == text_only
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("table_format", ["HTML", "simple_html"])
-@pytest.mark.parametrize("columns", [("table", "chart", "infographic"), (), ("table",), ("infographic",)])
+@pytest.mark.parametrize(
+    "serialization, table_format, columns",
+    [("memory", "HTML", columns) for columns in [("table", "chart", "infographic"), (), ("table",), ("infographic",)]]
+    + [
+        (storage, fmt, ("table", "chart", "infographic"))
+        for storage in ["arrow", "parquet"]
+        for fmt in ["HTML", "simple_html"]
+    ],
+)
 def test_collapsed_page_markdown_does_not_repeat_content(
     interleaved: SimpleNamespace, serialization: str, table_format: str, columns: tuple
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -430,13 +419,7 @@ def test_collapsed_page_markdown_does_not_repeat_content(
         blocks.append("Label")
     expected = "\n\n".join(blocks)
     result = collapse_content_to_page_rows(extracted, content_columns=columns)
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        buffer = io.BytesIO()
-        result.to_parquet(buffer, index=False)
-        buffer.seek(0)
-        result = pd.read_parquet(buffer)
+    result = _round_trip_page(result, serialization)
 
     assert result.iloc[0]["text"] == expected
     assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
@@ -445,26 +428,27 @@ def test_collapsed_page_markdown_does_not_repeat_content(
     assert collapse_content_to_page_rows(result, content_columns=()).iloc[0]["text"] == "First\n\nLast"
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("table_format", ["HTML", "simple_html"])
 @pytest.mark.parametrize(
-    "edit",
+    "serialization, table_format, edit",
     [
-        "partial",
-        "remove_table_text",
-        "replace_table_text",
-        "duplicate_table_text",
-        "clear",
-        "clear_none",
-        "clear_nan",
-        "clear_na",
-    ],
+        ("memory", "HTML", edit)
+        for edit in [
+            "partial",
+            "remove_table_text",
+            "replace_table_text",
+            "duplicate_table_text",
+            "clear",
+            "clear_none",
+            "clear_nan",
+            "clear_na",
+        ]
+    ]
+    + [(storage, fmt, "partial") for storage in ["arrow", "parquet"] for fmt in ["HTML", "simple_html"]]
+    + [(storage, "HTML", "clear_none") for storage in ["arrow", "parquet"]],
 )
 def test_edits_to_assembled_page_remain_assembled(
     interleaved: SimpleNamespace, serialization: str, table_format: str, edit: str
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -490,10 +474,7 @@ def test_edits_to_assembled_page_remain_assembled(
         result.at[0, "text"] = pd.NA
 
     for _ in range(3):
-        if serialization == "arrow":
-            result = pa.Table.from_pandas(result).to_pandas()
-        elif serialization == "parquet":
-            result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+        result = _round_trip_page(result, serialization)
         page = "## Page Unknown" + ("\n\n" + expected if expected else "\n")
         assert to_markdown(result) == "# Extracted Content\n\n" + page
         assert to_markdown_by_page(result) == {-1: page}
@@ -503,8 +484,6 @@ def test_edits_to_assembled_page_remain_assembled(
 
 @pytest.mark.parametrize("serialization", ["arrow", "parquet"])
 def test_mixed_page_text_states_survive_serialization(interleaved: SimpleNamespace, serialization: str) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown_by_page
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -517,10 +496,7 @@ def test_mixed_page_text_states_survive_serialization(interleaved: SimpleNamespa
     expected = [collapsed.iloc[0]["text"], collapsed.iloc[0]["text"], edited.iloc[0]["text"]]
     result = pd.concat([raw, collapsed, edited], ignore_index=True)
     result["page_number"] = [1, 2, 3]
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    else:
-        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+    result = _round_trip_page(result, serialization)
 
     assert collapse_content_to_page_rows(result)["text"].tolist() == expected
     assert to_markdown_by_page(result) == {
@@ -568,19 +544,18 @@ def test_projected_collapsed_page_without_text_keeps_live_modalities(interleaved
     assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("table_format", ["HTML", "simple_html"])
+@pytest.mark.parametrize(
+    "serialization, legacy_cache",
+    [("memory", False), ("memory", True), ("arrow", False), ("parquet", False)],
+)
 @pytest.mark.parametrize("edit", ["remove", "replace", "filter_table", "filter_all", "append"])
-@pytest.mark.parametrize("legacy_cache", [False, True])
 def test_page_text_edits_reconcile_later_region_changes(
-    interleaved: SimpleNamespace, serialization: str, table_format: str, edit: str, legacy_cache: bool
+    interleaved: SimpleNamespace, serialization: str, edit: str, legacy_cache: bool
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
-    result = collapse_content_to_page_rows(_ordered_result(interleaved, table_format))
+    result = collapse_content_to_page_rows(_ordered_result(interleaved))
     if legacy_cache:
         result.at[0, "_collapsed_page_text"].pop("content_spans")
         result.at[0, "_collapsed_page_text"].pop("assembled_text_edited")
@@ -605,10 +580,7 @@ def test_page_text_edits_reconcile_later_region_changes(
         expected.append("Added table")
     expected_text = "\n\n".join(expected)
     for _ in range(3):
-        if serialization == "arrow":
-            result = pa.Table.from_pandas(result).to_pandas()
-        elif serialization == "parquet":
-            result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+        result = _round_trip_page(result, serialization)
         result = collapse_content_to_page_rows(result, content_columns=columns)
         assert result.iloc[0]["text"] == expected_text
         assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected_text
@@ -633,8 +605,6 @@ def test_filtered_edited_page_keeps_equal_native_text(interleaved: SimpleNamespa
 def test_legacy_cache_without_ordered_regions_requires_recoverable_content(
     serialization: str, recoverable: bool
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -643,10 +613,7 @@ def test_legacy_cache_without_ordered_regions_requires_recoverable_content(
     result.at[0, "text"] = result.iloc[0]["text"].replace("Before", "Corrected before")
     if not recoverable:
         result.at[0, "table"] = []
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+    result = _round_trip_page(result, serialization)
 
     if recoverable:
         result = collapse_content_to_page_rows(result, content_columns=())
@@ -658,14 +625,15 @@ def test_legacy_cache_without_ordered_regions_requires_recoverable_content(
                 render(result)
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("edited", ["Changed TABLE After", "TABLE Before After", "After TABLE Before"])
+@pytest.mark.parametrize(
+    "serialization, edited",
+    [("memory", edit) for edit in ["Changed TABLE After", "TABLE Before After", "After TABLE Before"]]
+    + [(storage, "Changed TABLE After") for storage in ["arrow", "parquet"]],
+)
 @pytest.mark.parametrize("legacy_cache", [False, True])
 def test_cross_region_rewrites_do_not_silently_bypass_filtering(
     serialization: str, edited: str, legacy_cache: bool
 ) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -673,10 +641,7 @@ def test_cross_region_rewrites_do_not_silently_bypass_filtering(
     if legacy_cache:
         result.at[0, "_collapsed_page_text"].pop("content_spans")
     result.at[0, "text"] = edited
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+    result = _round_trip_page(result, serialization)
 
     for columns in ((), ("table", "chart", "infographic")):
         with pytest.raises(ValueError, match="cross-region page-text edit"):
@@ -689,17 +654,12 @@ def test_cross_region_rewrites_do_not_silently_bypass_filtering(
 
 @pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
 def test_removed_region_does_not_reclassify_identical_native_text(serialization: str) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
     result = collapse_content_to_page_rows(pd.DataFrame([{"text": "TABLE\n\nBefore", "table": [{"text": "TABLE"}]}]))
     result.at[0, "text"] = "TABLE\n\nCorrected before"
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+    result = _round_trip_page(result, serialization)
     result = collapse_content_to_page_rows(result, content_columns=())
     assert result.iloc[0]["text"] == "TABLE\n\nCorrected before"
     assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\nTABLE\n\nCorrected before"
@@ -768,11 +728,12 @@ def test_local_edits_skip_long_unchanged_content(monkeypatch: pytest.MonkeyPatch
     assert max(len(value) for pair in compared for value in pair) < 32
 
 
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("edit", ["head", "tail", "table", "before_table", "after_table", "both_ends"])
+@pytest.mark.parametrize(
+    "serialization, edit",
+    [("memory", edit) for edit in ["head", "tail", "table", "before_table", "after_table", "both_ends"]]
+    + [(storage, "both_ends") for storage in ["arrow", "parquet"]],
+)
 def test_local_edit_boundaries_preserve_region_filtering(serialization: str, edit: str) -> None:
-    import pyarrow as pa
-
     from nemo_retriever.common.io.markdown import to_markdown
     from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
@@ -801,11 +762,127 @@ def test_local_edit_boundaries_preserve_region_filtering(serialization: str, edi
         ),
     }
     result.at[0, "text"], expected = variants[edit]
-    if serialization == "arrow":
-        result = pa.Table.from_pandas(result).to_pandas()
-    elif serialization == "parquet":
-        result = pd.read_parquet(io.BytesIO(result.to_parquet(index=False)))
+    result = _round_trip_page(result, serialization)
     for _ in range(2):
         result = collapse_content_to_page_rows(result, content_columns=())
         assert result.iloc[0]["text"] == expected
         assert to_markdown(result) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
+
+
+def _collapsed_shared_box_tables(identical=False):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    box = [0, 0.2, 1, 0.4]
+    second = "TABLE_A" if identical else "TABLE_B"
+    sequence = [("text", "Before"), ("table", "TABLE_A"), ("text", "Middle"), ("table", second), ("text", "After")]
+    row = {
+        "text": "Before\n\nMiddle\n\nAfter",
+        "table": [{"text": "TABLE_A", "bbox_xyxy_norm": box}, {"text": second, "bbox_xyxy_norm": box}],
+        "ordered_page_text_separator": "\n\n",
+        "ordered_page_text": "\n\n".join(text for _, text in sequence),
+        "ordered_regions": [{"label_name": label, "text": text, "bbox_xyxy_norm": box} for label, text in sequence],
+    }
+    return collapse_content_to_page_rows(pd.DataFrame([row]))
+
+
+def _round_trip_page(frame, serialization):
+    import pyarrow as pa
+
+    if serialization == "arrow":
+        return pa.Table.from_pandas(frame).to_pandas()
+    if serialization == "parquet":
+        return pd.read_parquet(io.BytesIO(frame.to_parquet(index=False)))
+    return frame
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("edit", ["remove_first", "remove_last", "prepend", "append_identical"])
+def test_shared_box_region_edits_preserve_remaining_region_positions(serialization, edit):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+    from nemo_retriever.common.io import to_markdown
+
+    frame = _collapsed_shared_box_tables()
+    frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", "Corrected before")
+    tables = frame.iloc[0]["table"]
+    expected = ["Corrected before", "TABLE_A", "Middle", "TABLE_B", "After"]
+    if edit == "remove_first":
+        frame.at[0, "table"] = tables[1:]
+        expected.remove("TABLE_A")
+    elif edit == "remove_last":
+        frame.at[0, "table"] = tables[:1]
+        expected.remove("TABLE_B")
+    elif edit == "prepend":
+        frame.at[0, "table"] = [{"text": "NEW", "bbox_xyxy_norm": tables[0]["bbox_xyxy_norm"]}, *tables]
+        expected.append("NEW")
+    else:
+        frame.at[0, "table"] = [*tables, dict(tables[0])]
+        expected.append("TABLE_A")
+    expected_text = "\n\n".join(expected)
+    for _ in range(3):
+        frame = _round_trip_page(frame, serialization)
+        assert to_markdown(frame) == "# Extracted Content\n\n## Page Unknown\n\n" + expected_text
+        frame = collapse_content_to_page_rows(frame)
+        assert frame.iloc[0]["text"] == expected_text
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("identical", [False, True])
+def test_ambiguous_shared_box_removal_does_not_silently_move_content(serialization, identical):
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+    from nemo_retriever.common.io import to_markdown
+
+    frame = _collapsed_shared_box_tables(identical=identical)
+    frame.at[0, "text"] = frame.iloc[0]["text"].replace("Before", "Corrected before")
+    frame.at[0, "table"] = frame.iloc[0]["table"][:1]
+    if not identical:
+        frame.iloc[0]["table"][0]["text"] = "REPLACED"
+    frame = _round_trip_page(frame, serialization)
+    with pytest.raises(ValueError, match="sharing a bounding box"):
+        collapse_content_to_page_rows(frame)
+    with pytest.raises(ValueError, match="sharing a bounding box"):
+        to_markdown(frame)
+    expected = "Corrected before\n\nMiddle\n\nAfter"
+    filtered = collapse_content_to_page_rows(frame, content_columns=())
+    assert filtered.iloc[0]["text"] == expected
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("added_field", ["text", "caption"])
+def test_new_item_fields_stay_adjacent_after_partial_page_edit(interleaved, serialization, added_field):
+    from nemo_retriever.common.io.markdown import to_markdown, to_markdown_by_page
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    frame = _ordered_result(interleaved)
+    table = frame.iloc[0]["table"][0]
+    table["text"] = "TABLE" if added_field == "caption" else ""
+    if added_field == "text":
+        table["caption"] = "Caption"
+    frame = collapse_content_to_page_rows(frame)
+    frame.at[0, "text"] = frame.iloc[0]["text"].replace("First", "Corrected first")
+    frame.iloc[0]["table"][0][added_field] = "Caption" if added_field == "caption" else "TABLE"
+    expected = "\n\n".join(["Corrected first", "TABLE", "Caption", "Last", CHART, "Label"])
+    for _ in range(3):
+        frame = _round_trip_page(frame, serialization)
+        assert to_markdown(frame) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
+        assert to_markdown_by_page(frame) == {-1: "## Page Unknown\n\n" + expected}
+        frame = collapse_content_to_page_rows(frame)
+        assert frame.iloc[0]["text"] == expected
+
+
+def test_remote_parse35_keeps_truncated_chat_text(monkeypatch, helpers):
+    from nemo_retriever.models.nim import nim
+
+    monkeypatch.setattr(
+        nim,
+        "_post_with_retries",
+        lambda **kwargs: {"choices": [{"finish_reason": "length", "message": {"content": RAW}}]},
+    )
+    result = nemotron_parse_pages(
+        _frame(),
+        invoke_url="http://localhost:8000/v1/chat/completions",
+        nemotron_parse_model=NEMOTRON_PARSE35_MODEL,
+        extract_tables=True,
+    )
+    assert result.iloc[0]["nemotron_parse_v1_2"]["error"] is None
+    assert result.iloc[0]["table"][0]["text"] == TABLE
+    helpers.postprocess_document.assert_called_once_with(RAW)

@@ -32,15 +32,18 @@ For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with
 
 For local GPU extraction, install `nemo-retriever[local,nemotron-parse]`.
 With `method="nemotron_parse"`, the local default is
-`nvidia/Nemotron-3.5-Parse` through in-process vLLM with BF16 weights. Explicitly
-select `nvidia/NVIDIA-Nemotron-Parse-v1.2` to retain the legacy v1.2 vLLM path.
-The default uses the pinned vLLM plugin. Native DFlash2 is an explicit opt-in
-that requires a separately prepared compatible environment. Refer to
-[Local Parse runtime requirements](deployment-options.md#local-parse-runtime-requirements).
+`nvidia/Nemotron-3.5-Parse` through in-process vLLM with BF16 weights. Local
+Parse v1.2 inference is no longer supported. To continue using a remote v1.2
+NIM, configure its chat-completions endpoint and the matching model ID.
 For a Transformers backend, direct adapter callers can select
 `NemotronParse35(backend="transformers")`.
 Refer to [Select a supported extraction method](nemo-retriever-api-reference.md#select-a-supported-extraction-method)
 for the configuration and checkpoint-code requirements.
+
+Local Parse 3.5 vLLM inference uses DFlash2 speculative decoding with a draft
+length of 32 tokens by default. Refer to [Configure DFlash2 for local Parse 3.5](nemo-retriever-api-reference.md#configure-dflash2-for-local-parse-35)
+to tune the draft length or select the one-token multi-token prediction (MTP)
+fallback.
 
 **Related**
 
@@ -51,6 +54,8 @@ for the configuration and checkpoint-code requirements.
 ## PDF image extraction { #pdf-image-extraction }
 
 For the PDFium path, `extract_images=True` extracts rendered page regions that resemble images. A region can represent a composite figure, including an entire PDF Form XObject. The output does not necessarily correspond one-to-one with the raster IMAGE XObjects stored in the PDF.
+
+By default, `extract_images` is unset, which selects image extraction automatically. NeMo Retriever Library enables it only when nested image extraction, captioning, dedup, or the image store reads the extracted regions, and turns it off otherwise. The log reports the result, for example `extract_images=auto -> False (no caption/store/dedup consumer)`. Set `extract_images=True` to keep the regions in the `images` column of the results. This does not affect the full page render from `extract_page_as_image`, which page element detection, OCR, and image embedding use.
 
 Set `extract_nested_images=True` when you also need the individual raster IMAGE objects nested in Form XObjects. This option applies only to PDFium extraction and requires `extract_images=True`. Configuration validation rejects `extract_nested_images=True` when `extract_images=False`.
 
@@ -105,8 +110,8 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 For Parse 3.5, set `ExtractParams(parse=ParseParams(table_format=...))` to choose
 `HTML`, `simple_html`, `markdown`, or `latex`. This choice applies only to
-Table blocks. Simple HTML removes only redundant unit cell spans and preserves
-merged cells. Refer to [Configure Parse 3.5](nemo-retriever-api-reference.md#configure-parse-35)
+`Table` blocks. Simple HTML removes `rowspan="1"` and `colspan="1"` while
+preserving merged cells. Refer to [Configure Parse 3.5](nemo-retriever-api-reference.md#configure-parse-35)
 for format details and defaults.
 
 **Related**
@@ -119,18 +124,15 @@ for format details and defaults.
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` defaults to `True`; `extract_infographics` defaults to `False`. Set `extract_infographics=True` to retain infographic output. Outputs use the same metadata schema as other extracted objects.
 
-!!! important "Parse chart output depends on the model version"
-    [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) semantic classes do not include `Chart` or `Infographic`. The model labels regions as `Text`, `Table`, `Picture`, `Caption`, `List-item`, `Section-header`, and similar types instead.
+!!! important "Remote Parse v1.2 does not predict chart classes"
+    Remote [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) endpoints remain supported, but the model's semantic classes do not include `Chart` or `Infographic`.
+    Chart-heavy regions can be labeled `Picture`. The pipeline routes `Picture` elements to the infographic channel when `extract_infographics=True`.
 
-    When you select Parse v1.2 with `method="nemotron_parse"`:
+    For explicit chart detection and chart-filtered retrieval, use Parse 3.5 or the PDFium layout path with page-elements detection and OCR.
 
-    - The pipeline does not produce `chart` or `infographic` modality rows, even when `extract_charts=True` or `extract_infographics=True`.
-    - Chart- and infographic-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
-    - Chart-heavy and infographic-heavy pages are typically emitted as `Picture` or other non-chart modalities.
-
-    Parse 3.5 supports Chart and Infographic blocks. It retains model block order
-    for page text and Markdown export, while extraction flags select which
-    modalities are retained.
+Parse 3.5 supports Chart and Infographic blocks. It retains model block order
+for page text and Markdown export, while extraction flags select which
+modalities are retained.
 
 Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](#image-captioning).
 

@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Offline contracts for legacy plugin and native DFlash2 Parse engines."""
+"""Offline contracts for plugin MTP and DFlash2 Parse inference."""
 
 from pathlib import Path
 import os
@@ -21,8 +21,17 @@ from nemo_retriever.models.local import nemotron_parse35 as adapter_module
 from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35
 
 
+@pytest.fixture(autouse=True)
+def model_registry(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Keep plugin registration checks independent of the optional vLLM install."""
+    module = ModuleType("vllm.model_executor.models")
+    module.ModelRegistry = MagicMock()
+    monkeypatch.setitem(sys.modules, "vllm.model_executor.models", module)
+    return module.ModelRegistry
+
+
 @pytest.fixture
-def vllm_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+def vllm_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNamespace:
     """Replace vLLM and network I/O, without importing CUDA model classes."""
     engine = MagicMock()
     engine.generate.return_value = [SimpleNamespace(outputs=[SimpleNamespace(text=" <class_Text>page ")])]
@@ -37,15 +46,23 @@ def vllm_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "empty_cache", MagicMock())
     monkeypatch.setattr(adapter_module, "configure_global_hf_cache_base", lambda _: "/cache")
-    snapshot = "/snapshot/" + get_hf_revision(NEMOTRON_PARSE35_MODEL)
+    snapshot = tmp_path / get_hf_revision(NEMOTRON_PARSE35_MODEL)
+    draft = snapshot / "dflash2"
+    draft.mkdir(parents=True, exist_ok=True)
+    (draft / "config.json").write_text("{}")
+    (draft / "model.safetensors").touch()
+    snapshot = str(snapshot)
     download = MagicMock(return_value=snapshot)
     monkeypatch.setattr("huggingface_hub.snapshot_download", download)
     monkeypatch.setenv(plugin_module.PARSE35_SNAPSHOT_ENV, snapshot)
     return SimpleNamespace(engine=engine, llm=llm, sampling=sampling, register=register, download=download)
 
 
-def test_legacy_vllm_pins_plugin_and_weights_and_uses_legacy_prompt(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(use_dflash=False, max_tokens=123)
+@pytest.mark.parametrize("tokens", ["auto", None, 16])
+def test_vllm_pins_plugin_and_weights_and_uses_native_prompt(
+    vllm_runtime: SimpleNamespace, tokens: str | int | None
+) -> None:
+    parser = NemotronParse35(max_tokens=123, dflash_tokens=tokens)
     assert parser.invoke_batch([]) == []
     vllm_runtime.download.assert_not_called()
     assert parser.invoke(Image.new("RGB", (16, 20))) == "<class_Text>page"
@@ -56,13 +73,16 @@ def test_legacy_vllm_pins_plugin_and_weights_and_uses_legacy_prompt(vllm_runtime
     assert vllm_runtime.sampling.call_args.kwargs["skip_special_tokens"] is False
     assert vllm_runtime.sampling.call_args.kwargs["max_tokens"] == 123
     request = vllm_runtime.engine.generate.call_args.args[0][0]
-    assert request["prompt"] == "<pad>\n" + parser._task_prompt
+    assert request["prompt"] == "<pad>" + parser._task_prompt
     assert request["multi_modal_data"]["image"].size == (16, 20)
     assert vllm_runtime.engine.generate.call_args.kwargs["tokenization_kwargs"] == {"add_special_tokens": False}
 
 
-def test_vllm_converts_pages_only_as_generated(vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
-    parser = NemotronParse35(use_dflash=False, backend="vllm")
+@pytest.mark.parametrize("tokens", [None, 32])
+def test_vllm_converts_pages_only_as_generated(
+    vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, tokens: int | None
+) -> None:
+    parser = NemotronParse35(backend="vllm", dflash_tokens=tokens)
     events = []
     original_preprocess = parser.preprocess
 
@@ -78,11 +98,11 @@ def test_vllm_converts_pages_only_as_generated(vllm_runtime: SimpleNamespace, mo
     vllm_runtime.engine.generate.side_effect = generate
     assert parser.invoke_batch([Image.new("RGB", (16, 16))] * 2, task_prompt="custom") == ["page", "page"]
     assert events == ["convert", "generate", "convert", "generate"]
-    assert vllm_runtime.engine.generate.call_args.args[0][0]["prompt"] == "<pad>\ncustom"
+    assert vllm_runtime.engine.generate.call_args.args[0][0]["prompt"] == "<pad>custom"
 
 
 def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(use_dflash=False, backend="vllm")
+    parser = NemotronParse35(dflash_tokens=None, backend="vllm")
     page = Image.new("RGB", (16, 16))
     parser(page)
     parser.unload()
@@ -94,7 +114,7 @@ def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespac
 
 
 def test_vllm_shutdown_failure_retains_engine(vllm_runtime: SimpleNamespace) -> None:
-    parser = NemotronParse35(use_dflash=False, backend="vllm")
+    parser = NemotronParse35(dflash_tokens=None, backend="vllm")
     parser(Image.new("RGB", (16, 16)))
     vllm_runtime.engine.llm_engine.engine_core.shutdown.side_effect = RuntimeError("shutdown failed")
     with pytest.raises(RuntimeError, match="shutdown failed"):
@@ -110,9 +130,9 @@ def test_snapshot_environment_does_not_leak_to_other_engines(
     if failure:
         vllm_runtime.llm.side_effect = RuntimeError("startup failed")
         with pytest.raises(RuntimeError, match="startup failed"):
-            NemotronParse35(use_dflash=False, backend="vllm")(Image.new("RGB", (16, 16)))
+            NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     else:
-        NemotronParse35(use_dflash=False, backend="vllm")(Image.new("RGB", (16, 16)))
+        NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     assert plugin_module.PARSE35_SNAPSHOT_ENV not in os.environ
 
 
@@ -151,7 +171,7 @@ def test_startup_forces_spawn_and_restores_caller_environment(
 
     vllm_runtime.register.side_effect = register
     vllm_runtime.llm.side_effect = load_engine
-    parser = NemotronParse35(use_dflash=False)
+    parser = NemotronParse35(dflash_tokens=None)
     if failure_stage is None:
         assert parser(Image.new("RGB", (16, 16))) == "<class_Text>page"
     else:
@@ -164,7 +184,7 @@ def test_startup_forces_spawn_and_restores_caller_environment(
 @pytest.mark.parametrize("device", ["cpu", "cuda:1"])
 def test_vllm_rejects_unsupported_devices_before_download(device: str) -> None:
     with pytest.raises(ValueError, match="worker GPU set"):
-        NemotronParse35(use_dflash=False, backend="vllm", device=device)
+        NemotronParse35(dflash_tokens=None, backend="vllm", device=device)
 
 
 def test_vllm_cuda_unavailable_fails_before_download(
@@ -172,19 +192,19 @@ def test_vllm_cuda_unavailable_fails_before_download(
 ) -> None:
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(RuntimeError, match='CUDA is unavailable.*device="cpu"'):
-        NemotronParse35(use_dflash=False, backend="vllm")(Image.new("RGB", (16, 16)))
+        NemotronParse35(dflash_tokens=None, backend="vllm")(Image.new("RGB", (16, 16)))
     vllm_runtime.download.assert_not_called()
 
 
 def test_unknown_backend_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported Parse 3.5 backend"):
-        NemotronParse35(use_dflash=False, backend="unknown")
+        NemotronParse35(dflash_tokens=None, backend="unknown")
 
 
 def test_cpu_requires_explicit_transformers_backend() -> None:
     with pytest.raises(ValueError, match="requires device"):
-        NemotronParse35(use_dflash=False, device="cpu")
-    assert NemotronParse35(use_dflash=False, backend="transformers", device="cpu")._backend == "transformers"
+        NemotronParse35(dflash_tokens=None, device="cpu")
+    assert NemotronParse35(dflash_tokens=None, backend="transformers", device="cpu")._backend == "transformers"
 
 
 def test_plugin_is_noop_for_other_models(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -244,7 +264,7 @@ def test_plugin_rejects_already_imported_different_version(monkeypatch: pytest.M
 
 def test_chart_sampling_reaches_local_vllm(vllm_runtime: SimpleNamespace) -> None:
     sampling = dict(temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0, seed=0)
-    parser = NemotronParse35(use_dflash=False, max_tokens=8744, sampling_params=sampling)
+    parser = NemotronParse35(dflash_tokens=None, max_tokens=8744, sampling_params=sampling)
     parser.invoke(Image.new("RGB", (16, 20)))
     assert vllm_runtime.sampling.call_args.kwargs == {
         **sampling,
@@ -253,102 +273,122 @@ def test_chart_sampling_reaches_local_vllm(vllm_runtime: SimpleNamespace) -> Non
     }
 
 
-@pytest.fixture
-def native_runtime(vllm_runtime, monkeypatch, tmp_path):
-    import json
-    from nemo_retriever.models.hf_model_registry import NEMOTRON_PARSE35_DFLASH2_REVISION
-
-    snapshot = tmp_path / NEMOTRON_PARSE35_DFLASH2_REVISION
+@pytest.mark.parametrize("tokens", [1, 16, 32])
+def test_dflash_uses_drafter_from_same_pinned_snapshot(vllm_runtime, tmp_path, tokens):
+    snapshot = tmp_path / get_hf_revision(NEMOTRON_PARSE35_MODEL)
     draft = snapshot / "dflash2"
-    draft.mkdir(parents=True)
-    (draft / "config.json").write_text(json.dumps({"architectures": ["DFlash2DraftModel"]}))
-    (draft / "model.safetensors").write_bytes(b"weights")
+    draft.mkdir(parents=True, exist_ok=True)
+    (draft / "config.json").write_text("{}")
+    (draft / "model.safetensors").touch()
     vllm_runtime.download.return_value = str(snapshot)
-    registry = MagicMock()
-    registry.get_supported_archs.return_value = {"RadioMBartPrefixForCausalLM", "DFlash2DraftModel"}
-    monkeypatch.setattr(sys.modules["vllm"], "ModelRegistry", registry, raising=False)
-    vllm_runtime.registry = registry
-    return vllm_runtime
-
-
-@pytest.mark.parametrize("draft_length", [8, 16, 32])
-def test_native_dflash_opt_in_uses_pinned_drafter(native_runtime, draft_length):
-    from nemo_retriever.models.hf_model_registry import NEMOTRON_PARSE35_DFLASH2_REVISION
-
-    parser = NemotronParse35(use_dflash=True, num_speculative_tokens=draft_length)
-    assert parser.invoke_batch([]) == []
-    native_runtime.download.assert_not_called()
-    assert parser(Image.new("RGB", (16, 20))) == "<class_Text>page"
-    native_runtime.register.assert_not_called()
-    assert native_runtime.download.call_args.kwargs["revision"] == NEMOTRON_PARSE35_DFLASH2_REVISION
-    assert "dflash2/*" in native_runtime.download.call_args.kwargs["allow_patterns"]
-    args = native_runtime.llm.call_args.kwargs
-    assert args["speculative_config"] == dict(
-        method="dflash",
-        model=native_runtime.download.return_value + "/dflash2",
-        num_speculative_tokens=draft_length,
-    )
-    assert native_runtime.engine.generate.call_args.args[0][0]["prompt"] == "<pad>" + parser._task_prompt
-    assert native_runtime.sampling.call_args.kwargs["skip_special_tokens"] is False
-
-
-def test_native_runtime_without_dflash_fails_before_download(native_runtime):
-    native_runtime.registry.get_supported_archs.return_value = {"RadioMBartPrefixForCausalLM"}
-    with pytest.raises(RuntimeError, match="lacks native Parse/DFlash2.*use_dflash=False"):
-        NemotronParse35(use_dflash=True)(Image.new("RGB", (16, 16)))
-    native_runtime.download.assert_not_called()
-    native_runtime.llm.assert_not_called()
-
-
-@pytest.mark.parametrize("asset", ["config.json", "model.safetensors"])
-def test_native_missing_drafter_is_actionable(native_runtime, asset):
-    (Path(native_runtime.download.return_value) / "dflash2" / asset).unlink()
-    with pytest.raises(RuntimeError, match="drafter assets are missing"):
-        NemotronParse35(use_dflash=True)(Image.new("RGB", (16, 16)))
-    native_runtime.llm.assert_not_called()
-
-
-@pytest.mark.parametrize("failure", [False, True])
-def test_native_startup_isolates_legacy_plugin_and_restores_environment(native_runtime, monkeypatch, failure):
-    previous = {
-        plugin_module.PARSE35_SNAPSHOT_ENV: "/legacy/snapshot",
-        "NP_VLLM_MTP": "1",
-        "VLLM_WORKER_MULTIPROC_METHOD": "fork",
+    parser = NemotronParse35(dflash_tokens=tokens)
+    parser.invoke(Image.new("RGB", (16, 16)))
+    options = vllm_runtime.llm.call_args.kwargs
+    assert options["speculative_config"] == {
+        "method": "dflash",
+        "model": str(draft),
+        "num_speculative_tokens": tokens,
     }
-    for key, value in previous.items():
-        monkeypatch.setenv(key, value)
-
-    def load(**kwargs):
-        assert os.environ.get(plugin_module.PARSE35_SNAPSHOT_ENV) is None
-        assert os.environ.get("NP_VLLM_MTP") is None
-        assert os.environ["VLLM_WORKER_MULTIPROC_METHOD"] == "spawn"
-        if failure:
-            raise RuntimeError("native startup failed")
-        return native_runtime.engine
-
-    native_runtime.llm.side_effect = load
-    parser = NemotronParse35(use_dflash=True)
-    if failure:
-        with pytest.raises(RuntimeError, match="native startup failed"):
-            parser(Image.new("RGB", (16, 16)))
-    else:
-        parser(Image.new("RGB", (16, 16)))
-    for key, value in previous.items():
-        assert os.environ.get(key) == value
-    native_runtime.register.assert_not_called()
+    assert options["hf_overrides"]["architectures"] == ["NRLNemotronParse35DFlashModel"]
+    assert vllm_runtime.download.call_args.kwargs["ignore_patterns"] is None
 
 
-def test_native_sampling_overrides_are_independent_of_draft_length(native_runtime):
-    sampling = dict(temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0, seed=0)
-    NemotronParse35(use_dflash=True, max_tokens=8744, sampling_params=sampling)(Image.new("RGB", (16, 16)))
-    assert native_runtime.sampling.call_args.kwargs == {
-        **sampling,
-        "max_tokens": 8744,
-        "skip_special_tokens": False,
-    }
+def test_explicit_none_preserves_mtp_without_dflash_drafter(vllm_runtime):
+    NemotronParse35(dflash_tokens=None).invoke(Image.new("RGB", (16, 16)))
+    assert "speculative_config" not in vllm_runtime.llm.call_args.kwargs
+    assert "hf_overrides" not in vllm_runtime.llm.call_args.kwargs
+    assert vllm_runtime.download.call_args.kwargs["ignore_patterns"] == ["dflash2/*"]
 
 
-@pytest.mark.parametrize("tokens", [0, 1, 64])
-def test_native_invalid_draft_length_is_rejected(tokens):
-    with pytest.raises(ValueError, match="must be 8, 16, or 32"):
-        NemotronParse35(num_speculative_tokens=tokens)
+@pytest.mark.parametrize("missing_asset", ["config.json", "model.safetensors"])
+def test_dflash_missing_checkpoint_fails_before_engine_start(vllm_runtime, missing_asset):
+    draft = Path(vllm_runtime.download.return_value) / "dflash2"
+    (draft / missing_asset).unlink()
+    with pytest.raises(RuntimeError, match="missing its DFlash2 checkpoint") as error:
+        NemotronParse35(dflash_tokens=32).invoke(Image.new("RGB", (16, 16)))
+    message = str(error.value)
+    assert str(draft) in message and missing_asset in message
+    assert "Refresh the pinned" in message
+    assert get_hf_revision(NEMOTRON_PARSE35_MODEL) in message
+    assert "dflash_tokens=None" in message and "nemotron_parse_dflash_tokens=None" in message
+    assert "MTP fallback" in message
+    vllm_runtime.llm.assert_not_called()
+
+
+@pytest.mark.parametrize("tokens", [0, -1, 33, True, 1.5, "32"])
+def test_invalid_dflash_length_fails_before_download(vllm_runtime, tokens):
+    with pytest.raises(ValueError, match="draft length"):
+        NemotronParse35(dflash_tokens=tokens)
+    vllm_runtime.download.assert_not_called()
+
+
+def test_dflash_rejects_transformers_backend():
+    with pytest.raises(ValueError, match="vLLM backend"):
+        NemotronParse35(backend="transformers", device="cpu", dflash_tokens=32)
+
+
+class _Increment(torch.nn.Module):
+    def forward(self, values):
+        return values + 1
+
+
+class _TargetBase(torch.nn.Module):
+    def _embed_text_input_ids(self, input_ids, embed_input_ids, *, is_multimodal):
+        return embed_input_ids(input_ids)
+
+    def forward(self, *args, **kwargs):
+        return "base forward"
+
+
+class _DFlashTarget(plugin_module.Parse35DFlashMixin, _TargetBase):
+    def __init__(self):
+        super().__init__()
+        self.decoder = torch.nn.Module()
+        self.decoder.layers = torch.nn.ModuleList([_Increment() for _ in range(10)])
+        self.decoder.layernorm_embedding = _Increment()
+        self.decoder.layer_norm = _Increment()
+        self.decoder.embed_tokens = torch.nn.Embedding(4, 2)
+        self.decoder.embed_input_ids = self.decoder.embed_tokens
+        self.lm_head = torch.nn.Linear(2, 4)
+
+
+def test_dflash_returns_post_block_states_without_final_normalization():
+    model = _DFlashTarget()
+    assert model.get_language_model() is model
+    assert model.model is model.decoder
+    assert model.forward(None, None) == "base forward"
+    model.set_aux_hidden_state_layers((2, 5, 9))
+    hidden, auxiliary = model.forward(None, None, inputs_embeds=torch.zeros(1, 2))
+    torch.testing.assert_close(hidden, torch.full((1, 2), 12.0))
+    for actual, expected in zip(auxiliary, [3.0, 6.0, 10.0], strict=True):
+        torch.testing.assert_close(actual, torch.full((1, 2), expected))
+    token = torch.tensor([1])
+    token_hidden, _ = model.forward(token, None)
+    torch.testing.assert_close(token_hidden, model.decoder.embed_tokens(token) + 12)
+
+
+@pytest.mark.parametrize("layers", [(), (0,), (11,), (5, 2), (2, 2)])
+def test_dflash_rejects_invalid_auxiliary_layers(layers):
+    with pytest.raises(ValueError, match="auxiliary layers"):
+        _DFlashTarget().set_aux_hidden_state_layers(layers)
+
+
+def test_dflash_text_embedding_delegates_to_decoder_without_recursion():
+    model = _DFlashTarget()
+    ids = torch.tensor([1, 2])
+
+    def recursive_embedding(_):
+        pytest.fail("Text embedding delegated back to the multimodal target")
+
+    actual = model._embed_text_input_ids(ids, recursive_embedding, is_multimodal=None)
+    torch.testing.assert_close(actual, model.decoder.embed_tokens(ids))
+
+
+def test_default_vllm_backend_selects_dflash32(vllm_runtime):
+    parser = NemotronParse35()
+    parser.invoke(Image.new("RGB", (16, 16)))
+    assert vllm_runtime.llm.call_args.kwargs["speculative_config"]["num_speculative_tokens"] == 32
+
+
+def test_transformers_auto_default_does_not_enable_dflash():
+    assert NemotronParse35(backend="transformers", device="cpu")._dflash_tokens is None

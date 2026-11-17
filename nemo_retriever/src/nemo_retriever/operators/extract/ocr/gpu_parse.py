@@ -16,7 +16,7 @@ from nemo_retriever.common.modality.ocr.shared import _error_payload, nemotron_p
 
 
 class NemotronParseActor(AbstractOperator, GPUOperator):
-    """Ray-friendly callable that initializes Nemotron Parse v1.2 once per actor."""
+    """Ray-friendly callable for local Parse 3.5 or a remote Parse endpoint."""
 
     def __init__(
         self,
@@ -50,9 +50,9 @@ class NemotronParseActor(AbstractOperator, GPUOperator):
                 max_pool_workers=int(remote_max_pool_workers),
             )
         else:
-            from nemo_retriever.models.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParse35
 
-            self._model = NemotronParseV12(task_prompt=self._task_prompt)
+            self._model = NemotronParse35(task_prompt=self._task_prompt)
             self._nim_client = None
         self._extract_text = bool(extract_text)
         self._extract_tables = bool(extract_tables)

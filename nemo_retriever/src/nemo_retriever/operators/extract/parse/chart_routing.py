@@ -7,12 +7,16 @@
 from __future__ import annotations
 
 import atexit
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
 from nemo_retriever.common.modality.chart_routing import _CHART_ROUTING_SAMPLING, route_chart_regions
 from nemo_retriever.common.params import ParseParams, RemoteRetryParams
+from nemo_retriever.common.params.utils import (
+    resolve_nemotron_parse_dflash_tokens,
+    validate_nemotron_parse_endpoint_list,
+)
 from nemo_retriever.models.nim.nim import NIMClient
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -27,22 +31,28 @@ class _ChartRoutingBase(AbstractOperator):
         nemotron_parse_invoke_url: str | None = None,
         nemotron_parse_table_format: str | None = None,
         parse_sampling_params: dict[str, Any] | None = None,
-        use_dflash: bool | None = None,
-        num_speculative_tokens: int | None = None,
+        task_prompt: str | None = None,
+        nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         api_key: str | None = None,
         request_timeout_s: float = 120.0,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
     ) -> None:
-        options = ParseParams(table_format=nemotron_parse_table_format, **(parse_sampling_params or {}))
+        options = ParseParams(
+            invoke_url=nemotron_parse_invoke_url,
+            table_format=nemotron_parse_table_format,
+            task_prompt=task_prompt,
+            **(parse_sampling_params or {}),
+        )
+        resolve_nemotron_parse_dflash_tokens(nemotron_parse_dflash_tokens, invoke_url=options.invoke_url)
         self._sampling = {**_CHART_ROUTING_SAMPLING, **options._sampling_overrides()}
         super().__init__(
-            nemotron_parse_invoke_url=nemotron_parse_invoke_url,
+            nemotron_parse_invoke_url=options.invoke_url,
             nemotron_parse_table_format=options.table_format or "simple_html",
             parse_sampling_params=options._sampling_overrides(),
-            use_dflash=False if use_dflash is None else use_dflash,
-            num_speculative_tokens=32 if num_speculative_tokens is None else num_speculative_tokens,
+            task_prompt=options.task_prompt,
+            nemotron_parse_dflash_tokens=nemotron_parse_dflash_tokens,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
             remote_max_pool_workers=remote_max_pool_workers,
@@ -75,8 +85,7 @@ class _ChartRoutingBase(AbstractOperator):
 
             self._model = NemotronParse35(
                 backend="vllm",
-                use_dflash=self.use_dflash,
-                num_speculative_tokens=self.num_speculative_tokens,
+                dflash_tokens=self.nemotron_parse_dflash_tokens,
                 max_tokens=self._sampling["max_tokens"],
                 sampling_params={k: v for k, v in self._sampling.items() if k != "max_tokens"},
             )
@@ -90,6 +99,7 @@ class _ChartRoutingBase(AbstractOperator):
             nim_client=self._client,
             table_format=self.nemotron_parse_table_format,
             sampling_params=self._sampling,
+            task_prompt=self.task_prompt,
         )
 
     def cleanup(self) -> None:
@@ -121,7 +131,7 @@ class ChartRoutingCPUActor(_ChartRoutingBase, CPUOperator):
     """
 
     def __init__(self, **kwargs: Any) -> None:
-        if not kwargs.get("nemotron_parse_invoke_url"):
+        if not validate_nemotron_parse_endpoint_list(kwargs.get("nemotron_parse_invoke_url")):
             raise ValueError("ChartRoutingCPUActor requires nemotron_parse_invoke_url for Parse 3.5.")
         super().__init__(**kwargs)
 
@@ -146,7 +156,7 @@ class ChartRoutingActor(ArchetypeOperator):
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
         """Return whether an explicit Parse endpoint selects remote CPU routing."""
-        return bool((operator_kwargs or {}).get("nemotron_parse_invoke_url"))
+        return bool(validate_nemotron_parse_endpoint_list((operator_kwargs or {}).get("nemotron_parse_invoke_url")))
 
     def cleanup(self) -> None:
         """Release resources held by a delegate without constructing a new one."""

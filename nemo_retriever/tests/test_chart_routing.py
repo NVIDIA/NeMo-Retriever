@@ -227,6 +227,7 @@ def test_routing_format_and_generation_overrides_reach_actual_request(helpers, t
         invoke_url=URL,
         nim_client=client,
         table_format=table_format,
+        task_prompt="custom picture prompt",
         sampling_params={
             "temperature": 0,
             "repetition_penalty": 1.2,
@@ -247,6 +248,7 @@ def test_routing_format_and_generation_overrides_reach_actual_request(helpers, t
         helpers.postprocessing.postprocess_text.assert_called_once_with("table", "Table", table_format=table_format)
     assert '<td colspan="1">Chart</td>' in text
     kwargs = client.invoke_chat_completions_images.call_args.kwargs
+    assert kwargs["task_prompt"] == "custom picture prompt"
     assert kwargs["temperature"] == 0 and kwargs["repetition_penalty"] == 1.2
     assert kwargs["extra_body"] == dict(top_k=-1, top_p=0.9, seed=7, max_tokens=123, skip_special_tokens=False)
 
@@ -354,3 +356,146 @@ def test_multitype_routing_cleanup_runs_on_stage_exit(monkeypatch, failure):
     else:
         operator._run_detection_pipeline(frame())
     actor.cleanup.assert_called_once()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_duplicate_chart_boxes_keep_distinct_outputs(monkeypatch, existing):
+    source = frame()
+    source.iloc[0]["page_elements_v3"]["detections"] = [
+        {"label_name": "chart", "bbox_xyxy_norm": BOX},
+        {"label_name": "chart", "bbox_xyxy_norm": BOX},
+    ]
+    source.at[7, "chart"] = (
+        [{"bbox_xyxy_norm": BOX, "text": "first OCR"}, {"bbox_xyxy_norm": BOX, "text": "second OCR"}]
+        if existing
+        else []
+    )
+    source.at[7, "ordered_regions"] = [
+        {"label_name": "chart", "bbox_xyxy_norm": BOX, "text": "first OCR"},
+        {"label_name": "chart", "bbox_xyxy_norm": BOX, "text": "second OCR"},
+    ]
+    monkeypatch.setattr(routing, "_postprocess_parse35_blocks", lambda raw, **_: [{"content": raw}])
+    model = Mock()
+    model.invoke_batch.return_value = ["first Parse", "second Parse"]
+    row = routing.route_chart_regions(source, model=model).iloc[0]
+    assert [item["text"] for item in row["chart"]] == ["first Parse", "second Parse"]
+    assert [item["text"] for item in row["ordered_regions"]] == ["first Parse", "second Parse"]
+    assert row["ordered_page_text"] == "first Parse\nsecond Parse"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_failed_duplicate_crop_keeps_its_own_ocr_slot(monkeypatch, existing):
+    source = frame()
+    source.iloc[0]["page_elements_v3"]["detections"] *= 2
+    source.at[7, "chart"] = (
+        [
+            {"bbox_xyxy_norm": BOX, "text": "first OCR"},
+            {"bbox_xyxy_norm": BOX, "text": "second OCR"},
+        ]
+        if existing
+        else []
+    )
+    source.at[7, "ordered_regions"] = [
+        {"label_name": "chart", "bbox_xyxy_norm": BOX, "text": "first OCR"},
+        {"label_name": "chart", "bbox_xyxy_norm": BOX, "text": "second OCR"},
+    ]
+    monkeypatch.setattr(
+        routing,
+        "_postprocess_parse35_blocks",
+        Mock(side_effect=[ValueError("bad crop"), [{"content": "second Parse"}]]),
+    )
+    model = Mock()
+    model.invoke_batch.return_value = ["bad", "good"]
+    row = routing.route_chart_regions(source, model=model).iloc[0]
+    assert [item["text"] for item in row["chart"]] == (["first OCR", "second Parse"] if existing else ["second Parse"])
+    assert [item["text"] for item in row["ordered_regions"]] == ["first OCR", "second Parse"]
+
+
+def test_unrouted_chart_without_text_does_not_break_routing(monkeypatch):
+    source = frame()
+    other_box = [0.1, 0.6, 0.4, 0.8]
+    source.iloc[0]["chart"].append({"bbox_xyxy_norm": other_box})
+    source.iloc[0]["ordered_regions"].append({"label_name": "chart", "bbox_xyxy_norm": other_box, "text": "unchanged"})
+    monkeypatch.setattr(routing, "_postprocess_parse35_blocks", lambda raw, **_: [{"content": raw}])
+    model = Mock()
+    model.invoke_batch.return_value = ["Parse"]
+    row = routing.route_chart_regions(source, model=model).iloc[0]
+    assert row["ordered_regions"][-1]["text"] == "unchanged"
+    assert row["chart"][0]["text"] == "Parse"
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_routing_keeps_untouched_and_failed_page_caches(monkeypatch, failed):
+    source = pd.concat([frame(), frame()], ignore_index=True)
+    source.at[1, "page_elements_v3"] = {"detections": []}
+    source.at[1, "ordered_regions"] = None
+    source.at[1, "ordered_page_text"] = "Untouched formatting\n\n"
+    source.at[0, "ordered_page_text"] = "Before\n\nold chart\n\nAfter"
+    if failed:
+        monkeypatch.setattr(routing, "_postprocess_parse35_blocks", Mock(side_effect=ValueError("bad crop")))
+    else:
+        monkeypatch.setattr(routing, "_postprocess_parse35_blocks", lambda raw, **_: [{"content": raw}])
+    model = Mock()
+    model.invoke_batch.return_value = ["Parse"]
+    out = routing.route_chart_regions(source, model=model)
+    assert out.iloc[1]["ordered_regions"] is None
+    assert out.iloc[1]["ordered_page_text"] == "Untouched formatting\n\n"
+    if failed:
+        assert out.iloc[0]["ordered_page_text"] == source.iloc[0]["ordered_page_text"]
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    [({}, 32), ({"nemotron_parse_dflash_tokens": None}, None), ({"nemotron_parse_dflash_tokens": 16}, 16)],
+)
+def test_routing_inherits_main_decoder_default_and_keeps_explicit_overrides(monkeypatch, options, expected):
+    from nemo_retriever.operators.extract.parse import chart_routing as stage
+
+    monkeypatch.setattr(stage, "route_chart_regions", lambda data, **kwargs: data)
+    original = ChartRoutingGPUActor(**options)
+    actor = ChartRoutingGPUActor(**original.get_constructor_kwargs())
+    try:
+        actor.process(pd.DataFrame())
+        assert actor._model._dflash_tokens == expected
+        assert actor._model._model is None
+    finally:
+        actor.cleanup()
+
+
+def test_remote_routing_keeps_server_decoding_configuration(monkeypatch):
+    from nemo_retriever.operators.extract.parse import chart_routing as stage
+
+    factory = Mock()
+    monkeypatch.setattr("nemo_retriever.models.local.nemotron_parse35.NemotronParse35", factory)
+    monkeypatch.setattr(stage, "NIMClient", Mock())
+    monkeypatch.setattr(stage, "route_chart_regions", lambda data, **kwargs: data)
+    actor = ChartRoutingCPUActor(nemotron_parse_invoke_url=URL)
+    try:
+        actor.process(pd.DataFrame())
+        factory.assert_not_called()
+        assert actor.nemotron_parse_dflash_tokens == "auto"
+    finally:
+        actor.cleanup()
+
+
+@pytest.mark.parametrize(
+    "response, expected",
+    [
+        ({"choices": [{"finish_reason": "length", "message": {"content": "partial"}}]}, "partial"),
+        ({"choices": [{"finish_reason": "content_filter", "message": {"content": None}}]}, ""),
+        ({"choices": [{"finish_reason": "stop", "message": {"content": None}}]}, ""),
+        ({"error": {"message": "invalid response"}}, ""),
+        ({"choices": [{"message": {"content": "unverified"}}]}, "unverified"),
+        ({"choices": [{"finish_reason": "stop", "message": {"content": ""}}]}, ""),
+        ({"choices": [{"finish_reason": "stop", "message": {"content": "complete"}}]}, "complete"),
+    ],
+)
+def test_remote_routing_uses_standard_chat_response_handling(monkeypatch, response, expected):
+    from nemo_retriever.models.nim import nim
+
+    monkeypatch.setattr(nim, "_post_with_retries", lambda **kwargs: response)
+    monkeypatch.setattr(routing, "_postprocess_parse35_blocks", lambda raw, **kwargs: [{"content": raw}] if raw else [])
+    source = frame()
+    row = routing.route_chart_regions(source, invoke_url=URL).iloc[0]
+    assert row["chart"][0]["text"] == expected
+    assert row["chart_routing"]["regions"][0]["error"] is None

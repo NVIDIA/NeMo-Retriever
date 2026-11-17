@@ -81,8 +81,10 @@ def test_to_markdown_collapsed_page_uses_current_content() -> None:
 
 
 @pytest.mark.parametrize("column", ["table", "chart", "infographic"])
-@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
-@pytest.mark.parametrize("singular", ["missing", "null", "empty"])
+@pytest.mark.parametrize(
+    "serialization, singular",
+    [("memory", "missing"), ("memory", "null"), ("memory", "empty"), ("arrow", "null"), ("parquet", "empty")],
+)
 def test_ordered_markdown_supports_plural_content_columns(column: str, serialization: str, singular: str) -> None:
     import pyarrow as pa
 

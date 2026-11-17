@@ -1854,6 +1854,65 @@ class TestRayDataExecutor:
         assert input_dataset.context.batch_to_block_arrow_format
         assert input_dataset.context.enable_tensor_extension_casting
 
+    @pytest.mark.parametrize(
+        ("concurrency", "pool", "extra", "threads"),
+        [
+            (3, {"size": 3}, {}, 2),
+            ((1, 4, 2), {"min_size": 1, "max_size": 4, "initial_size": 2}, {}, 2),
+            (3, {"size": 3}, {"max_concurrency": 1}, 1),
+        ],
+    )
+    def test_build_dataset_runs_udf_threads_on_a_true_multithreaded_pool(
+        self, monkeypatch, concurrency, pool, extra, threads
+    ):
+        import sys
+        from types import SimpleNamespace
+
+        captured: list[dict[str, Any]] = []
+
+        class _FakeDataContext:
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                return self
+
+        class _ThreadedUDF(UDFOperator):
+            UDF_THREADS = 2
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset, DataContext=_FakeDataContext, ActorPoolStrategy=lambda **kwargs: kwargs
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = Graph() >> _ThreadedUDF(lambda frame: frame)
+        (node,) = graph.roots
+        executor = RayDataExecutor(graph, node_overrides={node.name: {"concurrency": concurrency, **extra}})
+        executor._resources_preflight_complete = True
+        executor.build_dataset(_FakeDataset())
+
+        (call,) = captured
+        assert "concurrency" not in call
+        assert call["compute"] == {**pool, "enable_true_multi_threading": True}
+        assert call["max_concurrency"] == threads
+
     def test_node_overrides_stored(self):
 
         g = Graph()
@@ -2395,9 +2454,11 @@ class TestInprocessExecutor:
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_inprocess_executor_cleans_up_stage_before_next_stage(monkeypatch, failure):
+@pytest.mark.parametrize("routing", [False, True])
+def test_inprocess_executor_cleans_up_only_routing_before_next_stage(monkeypatch, failure, routing):
     import nemo_retriever.graph.executor as module
 
+    expected = ["run", "cleanup"] if routing else ["run"]
     events = []
 
     class ResourceStage(AbstractOperator):
@@ -2418,12 +2479,16 @@ def test_inprocess_executor_cleans_up_stage_before_next_stage(monkeypatch, failu
 
     class NextStage(ResourceStage):
         def process(self, data, **kwargs):
-            assert events == ["run", "cleanup"]
+            assert events == expected
             return data
 
         def cleanup(self):
             pass
 
+    if routing:
+        import nemo_retriever.operators.extract.parse.chart_routing as routing_module
+
+        monkeypatch.setattr(routing_module, "ChartRoutingCPUActor", ResourceStage)
     monkeypatch.setattr(module, "resolve_graph", lambda graph, resources: graph)
     executor = InprocessExecutor(Graph() >> ResourceStage() >> NextStage(), show_progress=False)
     if failure:
@@ -2431,4 +2496,4 @@ def test_inprocess_executor_cleans_up_stage_before_next_stage(monkeypatch, failu
             executor.ingest(pd.DataFrame([{"text": "page"}]))
     else:
         executor.ingest(pd.DataFrame([{"text": "page"}]))
-    assert events == ["run", "cleanup"]
+    assert events == expected

@@ -154,15 +154,14 @@ silently select another extraction path.
 For local `nemotron_parse` extraction, omit `nemotron_parse_model` to use
 `nvidia/Nemotron-3.5-Parse` through in-process vLLM on a CUDA GPU with BF16
 weights. You can also select this checkpoint explicitly with
-`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. To retain the local v1.2
-vLLM path, set `nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"`.
-Do not configure an invoke URL for either local path. Install the local GPU
-and Parse dependencies with
+`nemotron_parse_model="nvidia/Nemotron-3.5-Parse"`. Parse 3.5 is the only
+supported local Parse checkpoint. Do not configure an invoke URL for local
+inference. Install the local GPU and Parse dependencies with
 `pip install "nemo-retriever[local,nemotron-parse]"`.
 
-The following example uses the default local Parse 3.5 checkpoint. Standalone
-scripts need the `__main__` guard to prevent ingestion from running again in
-spawned workers.
+The following example uses the default local Parse 3.5 checkpoint with DFlash2
+and a draft length of 32 tokens. Standalone scripts need the `__main__` guard
+to prevent ingestion from running again in spawned workers.
 
 ```python
 from nemo_retriever import create_ingestor
@@ -188,17 +187,17 @@ if __name__ == "__main__":
     main()
 ```
 
-By default, the Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
+The Parse 3.5 adapter downloads the checkpoint and its official vLLM plugin
 from the same revision pinned in the model registry. It registers the plugin
 in vLLM workers automatically; no separate plugin installation is required.
 During engine startup, the adapter temporarily selects the pinned plugin
 snapshot and forces `VLLM_WORKER_MULTIPROC_METHOD="spawn"`. It restores both
 environment settings after startup, including when startup fails.
 The adapter executes checkpoint custom code with `trust_remote_code=True`.
-Review the checkpoint and plugin code before use. Parse 3.5 enables text
-prediction inside pictures with `<predict_text_in_pic>`. Parse v1.2 retains
-its prompt. The
-default extraction method remains `pdfium_hybrid`; select
+Review the checkpoint and plugin code before use. Parse 3.5 uses
+`<predict_no_text_in_pic>` by default. To extract text inside pictures,
+configure [`ParseParams.task_prompt`](#configure-parse-35) explicitly.
+The default extraction method is `pdfium_hybrid`; select
 `method="nemotron_parse"` to use Parse.
 
 The `NemotronParse35` adapter loads lazily. Before downloading checkpoint
@@ -215,28 +214,115 @@ Batch parsing converts and generates one page at a time, preserving input
 order without retaining converted copies of the entire batch. If a page fails,
 the adapter does not return a partial batch.
 
-Both local Parse adapters accept PIL images, image paths, and HWC or CHW
+The local Parse 3.5 adapter accepts PIL images, image paths, and HWC or CHW
 NumPy arrays and tensors with 1, 3, or 4 channels. Arrays and tensors can
 include a leading batch dimension of size one. If both layouts are possible,
 inputs are interpreted as HWC. Inputs are converted to RGB; invalid shapes
 and nonfinite pixels raise `ValueError`. Parse 3.5 scales floating-point
-pixels in `[0, 1]` to `[0, 255]`. The v1.2 adapter retains its legacy scaling
-heuristic for floating-point inputs whose maximum is at most `1.5`.
+pixels in `[0, 1]` to `[0, 255]`.
 
-Other local Parse model values, including
-`nvidia/NVIDIA-Nemotron-Parse-2.0`, raise a Pydantic `ValidationError` before
-pipeline execution. To use a remote Nemotron Parse endpoint, configure
-`nemotron_parse_invoke_url` or `invoke_url` and select the model that matches
-the endpoint contract. Hosted endpoint selection and Helm NIM defaults are
-unchanged.
+Local Parse v1.2 inference and the `NemotronParseV12` adapter are removed.
+Replace direct adapter calls with `NemotronParse35()`. Remove
+`nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2"` from local ingestion
+configuration to select Parse 3.5. Unsupported local model values raise a
+Pydantic `ValidationError` before pipeline execution.
+
+Remote Parse v1.2 endpoints remain supported. To retain a self-hosted v1.2
+NIM, configure `nemotron_parse_invoke_url` or `invoke_url` with its
+chat-completions endpoint and set
+`nemotron_parse_model="nvidia/nemotron-parse-v1.2"`. Refer to
+[Parse endpoint contracts](prerequisites-support-matrix.md#nemotron-parse-hosted-vs-self-hosted)
+for hosted Build and native Parse 3.5 endpoints. Hosted endpoint selection,
+Helm NIM defaults, and the `nemotron_parse_v1_2` result column are unchanged.
+
+#### Configure DFlash2 for local Parse 3.5
+
+Local Parse 3.5 vLLM inference uses DFlash2 speculative decoding with a draft
+length of 32 tokens by default. `nemotron_parse_dflash_tokens` defaults to
+`"auto"`. Automatic selection leaves remote endpoints and the Transformers
+backend on their existing decoding paths.
+
+Set `nemotron_parse_dflash_tokens` on `ExtractParams` to configure local
+Parse 3.5 decoding for full-page extraction and chart routing.
+
+| Value | Local Parse 3.5 vLLM behavior |
+| --- | --- |
+| `"auto"` | Uses DFlash2 with a draft length of 32 tokens. This is the default. |
+| Integer from 1 through 32 | Selects DFlash2 with that draft length. |
+| `None` | Turns off DFlash2 and retains the pinned plugin's one-token multi-token prediction (MTP) fallback. |
+
+An explicit integer requires local Parse 3.5 on a GPU after actor resolution.
+It is rejected for remote endpoints. When no GPU is available, the graph
+selects the CPU actor, which uses a remote endpoint, including the
+hosted default when you omit an invoke URL. That actor rejects an explicit
+integer instead of silently ignoring it. Use `"auto"` or `None` to allow the
+existing remote fallback.
+
+The target and `dflash2/` drafter load from the same immutable checkpoint
+revision. No separate drafter model ID or plugin installation is required.
+
+Local vLLM prompts concatenate `<pad>` directly with the task prompt, without
+inserting a newline. This input-format change applies to DFlash2 and MTP,
+including custom task prompts. Selecting `None` restores the MTP decoder; it
+does not restore the earlier newline after `<pad>`. Both decoders use the same
+prompt format so you can compare them with consistent input. This formatting
+change is independent of the decoder selection.
+
+The following example selects the MTP fallback for local Parse 3.5.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+                nemotron_parse_dflash_tokens=None,
+            )
+        )
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Direct `NemotronParse35()` callers use the same `"auto"` default. Set
+`dflash_tokens` to an integer from 1 through 32 to tune DFlash2, or `None`
+to select the MTP fallback. The Transformers backend rejects an explicit
+integer draft length.
+
+If startup reports a missing DFlash2 checkpoint, check the reported
+`<snapshot>/dflash2` directory for `config.json` and `model.safetensors`.
+Refresh the pinned Hugging Face snapshot to restore missing files. To select
+the MTP fallback instead, pass `dflash_tokens=None` to `NemotronParse35`, or
+`nemotron_parse_dflash_tokens=None` to `ExtractParams` for ingestion.
+
+The first DFlash2 startup can compile additional CUDA kernels. Report that
+startup cost separately when measuring steady-state throughput.
+
+Measure ingestion throughput and parsing quality on your documents before
+choosing a draft length. DFlash2 can change generated text, including with
+greedy sampling. Do not assume identical output between DFlash2 and the MTP
+fallback. Keep the task prompt and postprocessing settings fixed when comparing
+results.
 
 ### Configure Parse 3.5 { #configure-parse-35 }
 
 Pass `ParseParams` as `ExtractParams(parse=ParseParams(...))` for full-page
 Parse or chart routing. Unset fields inherit the selected path's defaults.
-Full-page remote Parse 3.5 requires an explicit
-`model="nvidia/Nemotron-3.5-Parse"`; older or unidentified endpoints retain
-their existing postprocessing.
+For a remote Parse 3.5 endpoint, set
+`model="nvidia/Nemotron-3.5-Parse"` to select Parse 3.5 postprocessing.
+
+Blank or whitespace-only Parse-specific endpoints are treated as unset.
+Full-page extraction then falls back to `ExtractParams.invoke_url`; chart
+routing stays local when no Parse-specific endpoint is provided.
 
 The following settings configure Parse independently of the OCR model.
 
@@ -245,14 +331,24 @@ The following settings configure Parse independently of the OCR model.
 | `model`, `invoke_url` | Select the model and optional remote endpoint. Omit the URL for local inference. Parse 3.5 sampling and chart routing use `/v1/chat/completions` endpoints. |
 | `api_key`, `request_timeout_s` | Override only Parse credentials and the positive request timeout. Unset values inherit extraction settings. `NO_API_KEY` disables authentication for Parse only. |
 | `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `HTML`; chart routing defaults to `simple_html`. |
+| `task_prompt` | Override the native Parse control-token prompt for full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. |
 | `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
-| `use_dflash` | Set `True` to opt into local native DFlash2. Unset or `False` uses the pinned vLLM plugin. |
-| `num_speculative_tokens` | Select 8, 16, or 32 draft tokens, with 32 as the DFlash2 default. Requires explicit `use_dflash=True`. |
 
-DFlash2 requires a separately prepared compatible vLLM environment. NeMo
-Retriever Library does not upgrade dependencies or start an external service
-automatically. Engine options cannot configure a remote server. Refer to
-[Local Parse runtime requirements](deployment-options.md#local-parse-runtime-requirements).
+To include text inside pictures, pass the complete control-token prompt.
+This setting applies to both full-page Parse and chart routing.
+
+```python
+parse = ParseParams(
+    task_prompt="</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>",
+    table_format="simple_html",
+)
+```
+
+Use
+[`ExtractParams.nemotron_parse_dflash_tokens`](#configure-dflash2-for-local-parse-35)
+to select automatic local decoding, a draft length from 1 through 32, or MTP.
+Remote servers control their own decoding; automatic selection and `None`
+preserve that behavior, while an explicit draft length is rejected.
 
 The selected format applies only to `Table` blocks, as described below.
 
@@ -263,26 +359,22 @@ The selected format applies only to `Table` blocks, as described below.
 | `markdown` | Converts the raw table with the Hugging Face formatter. If conversion fails, retains HTML and logs a warning. |
 | `latex` | Uses the Hugging Face formatter's LaTeX table output. |
 
-Parse 3.5 retains model block order in `ordered_regions` and
-`ordered_page_text` for page-text combination and Markdown export. Table
-formatting does not reorder blocks or change Chart rendering. Extraction flags
-select the retained modalities; content-column selection and text splitting
-continue to apply when building page text. Full-page Parse retains blank-line
-paragraph separators and captions in their model positions. Page-text
-combination and Markdown export reconcile current text and modality entries
-before and after collapse. Direct page-text edits remain for unchanged
-regions. For tracked structured regions, modality changes and the
-`content_columns` selection, including an empty selection, take precedence.
-Setting `text` to an empty string or null after collapse clears the existing
-page text. If a cross-region page-text rewrite leaves structured content that
-cannot be located reliably, collapse and Markdown export raise `ValueError`.
-Edit the original extraction fields and collapse them again instead.
+Parse 3.5 preserves model block order, blank-line paragraph separators, and
+captions in page text and Markdown export. Table formatting does not reorder
+blocks or change Chart rendering. Extraction flags select the retained
+modalities.
 
-Edited collapsed results saved by earlier versions can lack region positions.
-NeMo Retriever Library restores them only when stored source content exactly
-reproduces the cached page text. Otherwise, collapse and Markdown export raise
-`ValueError`. Recreate these collapsed rows from the original extraction
-results.
+When editing extraction results, update the original text and modality fields
+before calling `collapse_content_to_page_rows()`. Page collapse and Markdown
+export reflect current content, including removed or replaced regions.
+The `content_columns` selection controls which structured content is included.
+
+You can also edit assembled page text after collapse. Setting `text` to an
+empty string or null clears the existing page text. Changes to modality fields
+and `content_columns` take precedence over edits to their assembled text.
+If an edit makes region positions or identities ambiguous, collapse and
+Markdown export raise `ValueError`. Edit the original extraction fields and
+collapse them again to resolve the ambiguity.
 
 ### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
 
@@ -324,12 +416,16 @@ if __name__ == "__main__":
 
 Routing selects only Page Elements detections labeled `chart`. It sends crops
 of those regions to Parse and preserves other page content and region boxes.
+Configure local decoding with
+[`nemotron_parse_dflash_tokens`](#configure-dflash2-for-local-parse-35).
+Remote servers control their own decoding settings.
 The default crop generation settings are `temperature=0.1`,
 `repetition_penalty=1.0`, `top_k=50`, `top_p=1.0`, `seed=0`, and
 `max_tokens=8744`. Override them through `ParseParams`.
 
 Inspect the `chart_routing` output column for per-crop raw output and errors.
-Inference or postprocessing failures preserve the original OCR content.
+Inference or postprocessing failures preserve the corresponding crop's OCR
+content. Chart entries with identical bounding boxes remain distinct.
 Successful empty Parse output replaces that chart's OCR content with empty
 text. Invalid or very small crops are skipped and counted in the diagnostics.
 

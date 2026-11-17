@@ -163,6 +163,7 @@ def split_df(
             new_row = {k: copy.deepcopy(v) if isinstance(v, (dict, list)) else v for k, v in row_dict.items()}
             new_row["text"] = chunk
             new_row.pop("ordered_page_text", None)
+            new_row.pop("ordered_page_text_source", None)
             new_row.pop("ordered_regions", None)
             if "content" in new_row:
                 new_row["content"] = chunk

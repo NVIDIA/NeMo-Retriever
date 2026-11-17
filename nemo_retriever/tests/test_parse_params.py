@@ -10,11 +10,15 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.common.params import ExtractParams, NO_API_KEY, ParseParams
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, NEMOTRON_PARSE_V12_MODEL
+from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, build_parse_actor_kwargs
 from nemo_retriever.graph.graph_pipeline_registry import get_node_kwargs
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.operators.extract.parse.chart_routing import ChartRoutingCPUActor, ChartRoutingGPUActor
-from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor, nemotron_parse_pages
+from nemo_retriever.operators.extract.parse.nemotron_parse import (
+    NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL as NEMOTRON_PARSE_V12_MODEL,
+    NemotronParseGPUActor,
+    nemotron_parse_pages,
+)
 
 URL = "http://localhost:8000/v1/chat/completions"
 SAMPLING = dict(temperature=0.2, repetition_penalty=1.05, top_k=50, top_p=1.0, seed=0, max_tokens=8744)
@@ -30,7 +34,13 @@ def test_nested_configuration_round_trips_and_reaches_pdf_actor(routing):
         method="ocr" if routing else "nemotron_parse",
         chart_routing=routing,
         api_key="ocr-secret",
-        parse=config(table_format="markdown", api_key="parse-secret", request_timeout_s=321, **SAMPLING),
+        parse=config(
+            table_format="markdown",
+            task_prompt="picture text",
+            api_key="parse-secret",
+            request_timeout_s=321,
+            **SAMPLING,
+        ),
     )
     assert "parse-secret" not in repr(params) and "ocr-secret" not in repr(params)
     restored = ExtractParams.model_validate_json(params.model_dump_json())
@@ -42,6 +52,7 @@ def test_nested_configuration_round_trips_and_reaches_pdf_actor(routing):
     assert kwargs["api_key"] == "parse-secret"
     assert kwargs["request_timeout_s"] == 321
     assert kwargs["parse_sampling_params"] == SAMPLING
+    assert kwargs["task_prompt"] == "picture text"
     assert params.api_key == "ocr-secret"
     if routing:
         assert get_node_kwargs(graph, "OCRActor")["api_key"] == "ocr-secret"
@@ -106,16 +117,16 @@ def test_parse_auth_inherits_or_disables_only_parse_key(monkeypatch):
     group = ParseParams()
     assert group.api_key is None
     params = ExtractParams(method="nemotron_parse", api_key="explicit-key", parse=group)
-    assert "api_key" not in params._parse_actor_overrides()
-    assert params._parse_actor_overrides()["request_timeout_s"] == params.request_timeout_s
+    assert build_parse_actor_kwargs(params)["api_key"] == "explicit-key"
+    assert build_parse_actor_kwargs(params)["request_timeout_s"] == params.request_timeout_s
     disabled = ExtractParams(method="nemotron_parse", api_key="explicit-key", parse=ParseParams(api_key=NO_API_KEY))
-    assert disabled._parse_actor_overrides()["api_key"] is None
+    assert build_parse_actor_kwargs(disabled)["api_key"] is None
     restored = ExtractParams.model_validate_json(disabled.model_dump_json())
-    assert restored._parse_actor_overrides()["api_key"] is None
+    assert build_parse_actor_kwargs(restored)["api_key"] is None
     assert restored.api_key == "explicit-key"
     monkeypatch.setenv("PARSE_TEST_API_KEY", "parse-key")
     reference = ExtractParams(method="nemotron_parse", parse=ParseParams(api_key="os.environ/PARSE_TEST_API_KEY"))
-    assert reference._parse_actor_overrides()["api_key"] == "parse-key"
+    assert build_parse_actor_kwargs(reference)["api_key"] == "parse-key"
 
 
 def test_local_fullpage_adapter_receives_explicit_sampling():
@@ -229,44 +240,110 @@ def test_mixed_input_parse_path_renders_and_forwards_group(monkeypatch, mode):
 
 
 @pytest.mark.parametrize("routing", [False, True])
-def test_local_dflash_options_reach_graph_and_model(routing):
+@pytest.mark.parametrize("tokens", ["auto", None, 1, 16])
+def test_main_dflash_option_reaches_both_paths(routing, tokens):
     params = ExtractParams(
         method="ocr" if routing else "nemotron_parse",
         chart_routing=routing,
-        parse=ParseParams(use_dflash=True, num_speculative_tokens=16),
+        nemotron_parse_dflash_tokens=tokens,
     )
     graph = build_graph(extraction_mode="pdf", extract_params=params)
     kwargs = get_node_kwargs(graph, "ChartRoutingActor" if routing else "NemotronParseActor")
-    assert kwargs["use_dflash"] is True and kwargs["num_speculative_tokens"] == 16
-    with patch("nemo_retriever.models.local.NemotronParse35") as factory:
-        actor = NemotronParseGPUActor(use_dflash=True, num_speculative_tokens=16)
-        actor._ensure_model()
-    assert factory.call_args.kwargs["use_dflash"] is True
-    assert factory.call_args.kwargs["num_speculative_tokens"] == 16
-    assert actor.get_constructor_kwargs()["num_speculative_tokens"] == 16
+    assert kwargs["nemotron_parse_dflash_tokens"] == tokens
+    actor_class = ChartRoutingGPUActor if routing else NemotronParseGPUActor
+    target = (
+        "nemo_retriever.models.local.nemotron_parse35.NemotronParse35"
+        if routing
+        else "nemo_retriever.models.local.NemotronParse35"
+    )
+    original = actor_class(nemotron_parse_dflash_tokens=tokens)
+    actor = actor_class(**original.get_constructor_kwargs())
+    with patch(target) as factory:
+        if routing:
+            actor.process(pd.DataFrame())
+        else:
+            actor._ensure_model()
+    expected = tokens if routing or tokens != "auto" else 32
+    assert factory.call_args.kwargs["dflash_tokens"] == expected
+    if routing:
+        actor.cleanup()
 
 
-@pytest.mark.parametrize(
-    "config",
-    [
-        dict(use_dflash=True, invoke_url=URL),
-        dict(use_dflash=False, invoke_url=URL),
-        dict(num_speculative_tokens=16, invoke_url=URL),
-        dict(use_dflash=False, num_speculative_tokens=16),
-        dict(use_dflash=True, model=NEMOTRON_PARSE_V12_MODEL),
-        dict(num_speculative_tokens=7),
-    ],
-)
-def test_unsupported_dflash_configurations_fail_before_inference(config):
+@pytest.mark.parametrize("routing", [False, True])
+@pytest.mark.parametrize("tokens", [0, 33, True, 1.5])
+def test_invalid_main_dflash_setting_is_rejected(routing, tokens):
     with pytest.raises(ValueError):
-        ExtractParams(method="nemotron_parse", parse=ParseParams(**config))
+        ExtractParams(
+            method="ocr" if routing else "nemotron_parse", chart_routing=routing, nemotron_parse_dflash_tokens=tokens
+        )
+
+
+@pytest.mark.parametrize("tokens", ["auto", None, 16])
+def test_remote_routing_uses_main_decoding_validation(tokens):
+    if isinstance(tokens, int):
+        with pytest.raises(ValueError, match="requires local Nemotron Parse 3.5"):
+            ExtractParams(
+                method="ocr", chart_routing=True, nemotron_parse_invoke_url=URL, nemotron_parse_dflash_tokens=tokens
+            )
+        with pytest.raises(ValueError, match="requires local Nemotron Parse 3.5"):
+            ChartRoutingCPUActor(nemotron_parse_invoke_url=URL, nemotron_parse_dflash_tokens=tokens)
+    else:
+        params = ExtractParams(
+            method="ocr", chart_routing=True, nemotron_parse_invoke_url=URL, nemotron_parse_dflash_tokens=tokens
+        )
+        graph = build_graph(extraction_mode="pdf", extract_params=params)
+        kwargs = get_node_kwargs(graph, "ChartRoutingActor")
+        assert kwargs["nemotron_parse_dflash_tokens"] == tokens
 
 
 def test_parse_configuration_schema_describes_all_fields():
     schema = ParseParams.model_json_schema()
     assert all(field.get("description") for field in schema["properties"].values())
-    draft = schema["properties"]["num_speculative_tokens"]["description"]
-    assert "8, 16, or 32" in draft and "use_dflash=True" in draft
+    assert "use_dflash" not in schema["properties"]
+    assert "num_speculative_tokens" not in schema["properties"]
     assert "chart crops" in schema["properties"]["max_tokens"]["description"]
     restored = ParseParams.model_validate({"table_format": "simple_html", "top_k": 50})
     assert restored.table_format == "simple_html" and restored.top_k == 50
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_blank_parse_endpoint_keeps_remote_fallback(nested):
+    kwargs = {"parse": ParseParams(invoke_url="  \n")} if nested else {"nemotron_parse_invoke_url": "  \n"}
+    params = ExtractParams(method="nemotron_parse", invoke_url=URL, **kwargs)
+    graph = build_graph(extraction_mode="pdf", extract_params=params)
+    options = get_node_kwargs(graph, "NemotronParseActor")
+    assert options.get("invoke_url") == URL
+    assert not options.get("nemotron_parse_invoke_url")
+
+
+def test_blank_routing_endpoint_selects_local_gpu():
+    params = ExtractParams(method="ocr", chart_routing=True, nemotron_parse_invoke_url=" \n ")
+    assert params.nemotron_parse_invoke_url is None
+    from nemo_retriever.operators.extract.parse.chart_routing import ChartRoutingActor
+
+    assert not ChartRoutingActor.prefers_cpu_variant({"nemotron_parse_invoke_url": " \n "})
+    with pytest.raises(ValueError, match="requires nemotron_parse_invoke_url"):
+        ChartRoutingCPUActor(nemotron_parse_invoke_url=" \n ")
+
+
+def test_explicit_dflash_cannot_be_silently_lost_on_cpu_fallback():
+    from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseCPUActor
+
+    with pytest.raises(ValueError, match="requires local Nemotron Parse 3.5"):
+        NemotronParseCPUActor(nemotron_parse_dflash_tokens=16)
+
+
+@pytest.mark.parametrize("routing", [False, True])
+def test_parse_picture_text_is_explicit_and_default_prompt_is_unchanged(routing):
+    from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT
+
+    default = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
+    enabled = default.replace("predict_no_text_in_pic", "predict_text_in_pic")
+    params = ExtractParams(method="ocr" if routing else "nemotron_parse", chart_routing=routing)
+    assert NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT == default
+    assert "task_prompt" not in build_parse_actor_kwargs(params, chart_routing=routing)
+    params = ExtractParams(method=params.method, chart_routing=routing, parse=ParseParams(task_prompt=enabled))
+    kwargs = build_parse_actor_kwargs(params, chart_routing=routing)
+    assert kwargs["task_prompt"] == enabled
+    actor = ChartRoutingGPUActor(**kwargs) if routing else NemotronParseGPUActor(**kwargs)
+    assert (actor.task_prompt if routing else actor._task_prompt) == enabled
