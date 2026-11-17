@@ -13,13 +13,15 @@ from typing import Any, Literal, Sequence
 import torch
 from PIL import Image
 
-from nemo_retriever.common.params.utils import NEMOTRON_PARSE35_MODEL, resolve_nemotron_parse_dflash_tokens
+from nemo_retriever.common.params.utils import (
+    NEMOTRON_PARSE35_MODEL,
+    NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
+    resolve_nemotron_parse_dflash_tokens,
+)
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
 from nemo_retriever.models.inference.parse_image import ImageInput, normalize_parse_image
 from nemo_retriever.models.model import BaseModel, ModelRunMode
-
-_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
 
 @dataclass(frozen=True)
@@ -51,10 +53,11 @@ class NemotronParse35(BaseModel):
         self,
         device: str = "cuda",
         hf_cache_dir: str | None = None,
-        task_prompt: str = _DEFAULT_TASK_PROMPT,
+        task_prompt: str = NEMOTRON_PARSE35_DEFAULT_TASK_PROMPT,
         max_tokens: int = 9000,
         backend: Literal["transformers", "vllm"] = "vllm",
         dflash_tokens: int | Literal["auto"] | None = "auto",
+        sampling_params: dict[str, Any] | None = None,
     ) -> None:
         """Configure a lazy BF16 parser without loading weights.
 
@@ -71,6 +74,10 @@ class NemotronParse35(BaseModel):
                 vLLM requires CUDA device zero
                 in the worker's visible GPU set; Transformers also supports CPU.
 
+            sampling_params: Optional vLLM overrides for ``temperature``, ``top_k``,
+                ``top_p``, ``repetition_penalty``, and ``seed``. Defaults retain
+                greedy decoding. Available only with backend="vllm".
+
         Raises:
             ValueError: If max_tokens is not positive, the backend is unsupported,
                 the device is invalid, or the DFlash2 configuration is unsupported.
@@ -85,6 +92,12 @@ class NemotronParse35(BaseModel):
         self._device = torch.device(device)
         if backend == "vllm" and (self._device.type != "cuda" or self._device.index not in (None, 0)):
             raise ValueError('Parse 3.5 vLLM requires device="cuda" or "cuda:0" in the worker GPU set.')
+        allowed_sampling = {"temperature", "top_k", "top_p", "repetition_penalty", "seed"}
+        if sampling_params and (backend != "vllm" or set(sampling_params) - allowed_sampling):
+            raise ValueError(
+                "sampling_params requires vllm and accepts temperature, top_k, top_p, repetition_penalty, seed."
+            )
+        self._sampling_params = dict(sampling_params or {})
         self._backend = backend
         self._hf_cache_dir = hf_cache_dir
         self._task_prompt = task_prompt
@@ -161,9 +174,12 @@ class NemotronParse35(BaseModel):
             from vllm import LLM, SamplingParams
 
             self._generation_config = SamplingParams(
-                temperature=0,
-                top_k=1,
-                repetition_penalty=1.1,
+                **{
+                    "temperature": 0,
+                    "top_k": 1,
+                    "repetition_penalty": 1.1,
+                    **self._sampling_params,
+                },
                 max_tokens=self._max_tokens,
                 skip_special_tokens=False,
             )
@@ -307,7 +323,12 @@ class NemotronParse35(BaseModel):
                 # vLLM's progress bar divides by tqdm's elapsed time, which is
                 # zero when TQDM_DISABLE is set; one page needs no progress bar.
                 generated = self._model.generate(
-                    [{"prompt": "<pad>" + prompt, "multi_modal_data": {"image": page}}],
+                    [
+                        {
+                            "prompt": "<pad>" + prompt,
+                            "multi_modal_data": {"image": page},
+                        }
+                    ],
                     self._generation_config,
                     use_tqdm=False,
                     tokenization_kwargs={"add_special_tokens": False},

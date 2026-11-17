@@ -325,3 +325,60 @@ def test_remote_crop_padding_matches_local_pixels_without_numpy_roundtrip(shape)
     np.testing.assert_array_equal(actual, expected)
     if shape[0] == shape[1]:
         assert padded == encoded
+
+
+@pytest.mark.parametrize("serialization", ["memory", "arrow", "parquet"])
+@pytest.mark.parametrize("columns", [(), ("table",), ("table", "chart")])
+def test_ordered_ocr_pages_keep_live_text_edits_in_collapse_and_markdown(serialization, columns):
+    from nemo_retriever.common.io.markdown import to_markdown
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    frame = page_postprocessing.finalize_page_regions(
+        pd.DataFrame(
+            [
+                {
+                    "text": "Before\nAfter",
+                    "ocr_text_regions": [
+                        {"label_name": "text", "bbox_xyxy_norm": [0, 0, 1, 0.1], "text": "Before"},
+                        {"label_name": "text", "bbox_xyxy_norm": [0, 0.5, 1, 0.6], "text": "After"},
+                    ],
+                    "table": [{"bbox_xyxy_norm": [0, 0.2, 1, 0.3], "text": "TABLE"}],
+                    "chart": [{"bbox_xyxy_norm": [0, 0.7, 1, 0.8], "text": "CHART"}],
+                }
+            ]
+        )
+    )
+    frame.at[0, "text"] = "Corrected text"
+    if serialization == "arrow":
+        import pyarrow as pa
+
+        frame = pa.Table.from_pandas(frame).to_pandas()
+    elif serialization == "parquet":
+        frame = pd.read_parquet(io.BytesIO(frame.to_parquet(index=False)))
+    collapsed = collapse_content_to_page_rows(frame, content_columns=columns)
+    expected = "\n\n".join(["Corrected text", *[column.upper() for column in columns]])
+    assert collapsed.iloc[0]["text"] == expected
+    assert to_markdown(collapsed) == "# Extracted Content\n\n## Page Unknown\n\n" + expected
+    markdown = to_markdown(frame)
+    assert "Corrected text" in markdown
+    assert "Before" not in markdown and "After" not in markdown
+
+
+def test_unedited_ocr_source_keeps_existing_region_order():
+    from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
+
+    original = pd.DataFrame(
+        [
+            {
+                "text": "native fallback",
+                "ocr_text_regions": [
+                    {"label_name": "text", "bbox_xyxy_norm": [0, 0, 1, 0.1], "text": "top"},
+                    {"label_name": "text", "bbox_xyxy_norm": [0, 0.8, 1, 1], "text": "bottom"},
+                ],
+                "table": [{"bbox_xyxy_norm": [0, 0.3, 1, 0.5], "text": "TABLE"}],
+            }
+        ]
+    )
+    ordered = page_postprocessing.finalize_page_regions(original)
+    assert ordered.iloc[0]["ordered_page_text_source"] == "native fallback"
+    assert collapse_content_to_page_rows(ordered).iloc[0]["text"] == "top\nTABLE\nbottom"
