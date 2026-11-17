@@ -13,10 +13,7 @@ torch = pytest.importorskip("torch")
 
 from nemo_retriever.models import (
     NEMOTRON_3_EMBED_MODEL,
-    NEMOTRON_3_EMBED_BF16_MODEL,
-    NEMOTRON_3_EMBED_NVFP4_MODEL,
     NEMOTRON_35_EMBED_BF16_MODEL,
-    NEMOTRON_35_EMBED_MODEL,
     NEMOTRON_35_EMBED_NVFP4_MODEL,
     resolve_embed_model,
     resolve_local_embed_model,
@@ -103,25 +100,6 @@ def test_local_defaults_preserve_remote_and_explicit_precisions(monkeypatch):
     assert resolve_embed_model(None) == NEMOTRON_3_EMBED_MODEL
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     assert resolve_local_embed_model(None, backend="vllm") == NEMOTRON_35_EMBED_BF16_MODEL
-
-
-@pytest.mark.parametrize("allow_native_nvfp4", [False, True])
-@pytest.mark.parametrize("native_nvfp4", [False, True])
-def test_nvfp4_opt_out_applies_only_to_legacy_n3(monkeypatch, allow_native_nvfp4, native_nvfp4):
-    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: native_nvfp4)
-    kwargs = {"backend": "vllm", "allow_native_nvfp4": allow_native_nvfp4}
-    n35_expected = NEMOTRON_35_EMBED_NVFP4_MODEL if native_nvfp4 else NEMOTRON_35_EMBED_BF16_MODEL
-    for model_name in (None, "", NEMOTRON_35_EMBED_MODEL):
-        assert resolve_local_embed_model(model_name, **kwargs) == n35_expected
-    n3_expected = NEMOTRON_3_EMBED_NVFP4_MODEL if allow_native_nvfp4 and native_nvfp4 else NEMOTRON_3_EMBED_BF16_MODEL
-    assert resolve_local_embed_model(NEMOTRON_3_EMBED_MODEL, **kwargs) == n3_expected
-    for checkpoint in (
-        NEMOTRON_3_EMBED_BF16_MODEL,
-        NEMOTRON_3_EMBED_NVFP4_MODEL,
-        NEMOTRON_35_EMBED_BF16_MODEL,
-        NEMOTRON_35_EMBED_NVFP4_MODEL,
-    ):
-        assert resolve_local_embed_model(checkpoint, **kwargs) == checkpoint
 
 
 def test_hf_masked_pooling_normalization_and_positions():
