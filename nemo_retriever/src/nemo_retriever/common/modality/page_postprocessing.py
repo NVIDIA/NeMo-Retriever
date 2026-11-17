@@ -88,6 +88,8 @@ def finalize_page_regions(frame: pd.DataFrame) -> pd.DataFrame:
         ``ordered_regions`` containing the sorted region dictionaries and
         ``ordered_page_text`` containing their nonempty strings joined by
         newlines. These columns replace existing columns of the same names.
+        ``ordered_page_text_source`` records the original page text so consumers
+        can detect later text edits without replacing them with cached regions.
         Pages without regions receive an empty list and an empty string.
 
     Raises
@@ -105,7 +107,10 @@ def finalize_page_regions(frame: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
     pages = []
     all_regions = []
+    source_texts = []
     for _, row in out.iterrows():
+        native_text = row.get("text")
+        source_texts.append(native_text if isinstance(native_text, str) else "")
         regions = []
         text_regions = row.get("ocr_text_regions")
         if isinstance(text_regions, (list, np.ndarray)):
@@ -132,4 +137,5 @@ def finalize_page_regions(frame: pd.DataFrame) -> pd.DataFrame:
         pages.append("\n".join(item["text"] for item in regions if isinstance(item.get("text"), str) and item["text"]))
     out["ordered_regions"] = all_regions
     out["ordered_page_text"] = pages
+    out["ordered_page_text_source"] = source_texts
     return out

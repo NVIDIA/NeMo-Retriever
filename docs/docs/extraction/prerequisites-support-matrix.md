@@ -38,6 +38,12 @@ set `FLASHINFER_CUBIN_DIR` before starting Python to use another directory.
 This setting relocates artifacts only. By default, runtime compilation
 caches remain under `~/.cache/flashinfer`.
 
+Local vLLM engines use vLLM's native sampler by default
+(`VLLM_USE_FLASHINFER_SAMPLER=0`), because FlashInfer's sampling kernels are
+compiled with `nvcc` on first use and fail to build on hosts without a CUDA
+toolkit. Set `VLLM_USE_FLASHINFER_SAMPLER=1` before starting Python to use
+FlashInfer sampling on hosts that have `nvcc`.
+
 Use a fresh environment when upgrading. A retained `flashinfer-cubin` wheel
 that does not match `flashinfer-python` can prevent FlashInfer from importing
 or loading precompiled kernels, even when `FLASHINFER_CUBIN_DIR` is set.

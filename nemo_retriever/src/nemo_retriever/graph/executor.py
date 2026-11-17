@@ -554,14 +554,25 @@ class InprocessExecutor(AbstractExecutor):
         except ImportError:
             tqdm = None
 
-        if self._show_progress and tqdm is not None:
-            pbar = tqdm(operators, desc="Pipeline stages", unit="stage")
-            for name, op in pbar:
-                pbar.set_postfix_str(name)
+        from nemo_retriever.operators.extract.parse.chart_routing import (
+            ChartRoutingActor,
+            ChartRoutingCPUActor,
+            ChartRoutingGPUActor,
+        )
+
+        stages = (
+            tqdm(operators, desc="Pipeline stages", unit="stage")
+            if self._show_progress and tqdm is not None
+            else operators
+        )
+        for name, op in stages:
+            if stages is not operators:
+                stages.set_postfix_str(name)
+            try:
                 df = op.run(df)
-        else:
-            for _name, op in operators:
-                df = op.run(df)
+            finally:
+                if isinstance(op, (ChartRoutingActor, ChartRoutingCPUActor, ChartRoutingGPUActor)):
+                    op.cleanup()
 
         return df
 
