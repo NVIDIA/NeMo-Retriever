@@ -172,7 +172,6 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
     input_type = validate_ingest_input_type(source.input_type)
     profile = validate_ingest_profile(source.profile)
     documents = expand_ingest_documents(source.documents, input_type=input_type)
-    _validate_service_profile_documents(profile, documents)
 
     extract_kwargs = profile_extract_defaults(profile)
     extract_kwargs.update(
@@ -378,23 +377,6 @@ def resolve_service_dedup_for_request(
             "exempt_families": ["image"],
         }
     return dedup_params, None
-
-
-def _validate_service_profile_documents(profile: ServiceIngestProfileValue, documents: Sequence[str]) -> None:
-    if profile != "fast-text":
-        return
-    disallowed = sorted(
-        {
-            family
-            for document in documents
-            if not _glob.has_magic(str(document))
-            for family in [input_type_for_path(document)]
-            if family not in {"pdf", "doc"}
-        }
-    )
-    if disallowed:
-        observed = ", ".join(disallowed)
-        raise ValueError(f"--profile {profile} only supports PDF/document inputs; observed {observed}.")
 
 
 def _service_extraction_mode(input_type: str) -> str:
