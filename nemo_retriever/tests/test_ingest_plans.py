@@ -1081,13 +1081,12 @@ def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
 
 
 def _first_fit_gpu_placement(plan: dict[str, tuple[int, float, float]], gpus: int) -> list[dict[str, int]]:
-    """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another."""
+    """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another in graph order."""
     room = [10_000] * gpus  # Ray tracks GPU fractions in 1/10000 units.
     placement: list[dict[str, int]] = [{} for _ in range(gpus)]
-    for name in ("PageElementDetectionActor", "TableStructureActor", "OCRActor", "_BatchEmbedActor"):
-        if name not in plan:
+    for name, (concurrency, _cpus, share) in plan.items():
+        if not 0 < share < 1:
             continue
-        concurrency, _cpus, share = plan[name]
         need = round(share * 10_000)
         for _actor in range(concurrency):
             gpu = next(index for index in range(gpus) if room[index] >= need)
