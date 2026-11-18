@@ -66,6 +66,9 @@ TABLE_STRUCTURE_BATCH_SIZE = 16
 GPU_CELL_LARGE_MIN_MIB = 72 * 1024  # GPUs with at least this much memory get the large cell.
 GPU_CELL_LARGE = ((4, 0.21), (2, 0.06), (1, 0.04))  # (actors, GPU share) for page-elements, OCR, embed.
 GPU_CELL_SMALL = ((1, 0.51), (1, 0.25), (1, 0.24))  # Smaller or unknown GPU memory, e.g. 48 GB cards.
+# With local table structure the graph runs page elements, table structure, OCR, then embed.
+GPU_CELL_LARGE_TABLE_STRUCTURE = ((4, 0.21), (1, 0.09), (2, 0.03), (1, 0.01))
+GPU_CELL_SMALL_TABLE_STRUCTURE = ((1, 0.51), (1, 0.25), (1, 0.13), (1, 0.11))
 
 # PDF EXTRACTOR constants (PER-GPU) - reason being more GPU means more CPU needed to feed the models and keep up
 EMBED_RESHAPE_ACTORS_PER_GPU = 2  # One reshape actor is single-threaded and caps an 8-GPU run near 120 pages/s.
@@ -577,6 +580,7 @@ def resolve_requested_plan(
     caption_enabled: bool = False,
     override_caption_gpus_per_actor: Optional[float] = None,
     per_gpu_cell: bool = False,
+    table_structure: bool = False,
     gpu_memory_mib: Optional[int] = None,
 ) -> RequestedPlan:
     available_gpu_count = max(0, int(cluster_resources.available_gpu_count()))
@@ -687,15 +691,27 @@ def resolve_requested_plan(
     per_gpu_cell = per_gpu_cell and available_gpu_count >= 2 and not caption_enabled
     if per_gpu_cell:
         memory_mib = _min_gpu_memory_mib(available_gpu_count) if gpu_memory_mib is None else gpu_memory_mib
-        cell = GPU_CELL_LARGE if memory_mib >= GPU_CELL_LARGE_MIN_MIB else GPU_CELL_SMALL
+        large = memory_mib >= GPU_CELL_LARGE_MIN_MIB
         logger.info(
-            "Using the %s per-GPU cell on %d GPUs: smallest free GPU memory %d MiB, large cell needs %d MiB",
-            "large" if cell is GPU_CELL_LARGE else "small",
+            "Using the %s per-GPU cell%s on %d GPUs: smallest free GPU memory %d MiB, large cell needs %d MiB",
+            "large" if large else "small",
+            " with table structure" if table_structure else "",
             available_gpu_count,
             memory_mib,
             GPU_CELL_LARGE_MIN_MIB,
         )
-        (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
+        if table_structure:
+            cell = GPU_CELL_LARGE_TABLE_STRUCTURE if large else GPU_CELL_SMALL_TABLE_STRUCTURE
+            (pe_actors, pe_share), (table_actors, table_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = (
+                cell
+            )
+            if override_table_structure_initial_actors is None:
+                table_structure_initial_actors = table_actors * available_gpu_count
+            if override_table_structure_gpus_per_actor is None:
+                table_structure_gpus_per_actor = table_share
+        else:
+            cell = GPU_CELL_LARGE if large else GPU_CELL_SMALL
+            (pe_actors, pe_share), (ocr_actors, ocr_share), (embed_actors, embed_share) = cell
         if override_page_elements_initial_actors is None:
             page_elements_initial_actors = pe_actors * available_gpu_count
         if override_page_elements_gpus_per_actor is None:

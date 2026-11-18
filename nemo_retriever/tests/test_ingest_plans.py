@@ -582,10 +582,12 @@ def _preflight_default_overrides(
     return {node.name: derived[node.name] for node in nodes if node.name in derived}
 
 
-def _preflight_default_pdf_embed_plan(cpus: int, gpus: int) -> dict[str, tuple[int, float, float]]:
+def _preflight_default_pdf_embed_plan(
+    cpus: int, gpus: int, extract_params: ExtractParams | None = None
+) -> dict[str, tuple[int, float, float]]:
     return {
         name: (override.get("concurrency", 1), override.get("num_cpus", 1.0), override.get("num_gpus", 0.0))
-        for name, override in _preflight_default_overrides(cpus, gpus).items()
+        for name, override in _preflight_default_overrides(cpus, gpus, extract_params).items()
     }
 
 
@@ -1082,7 +1084,9 @@ def _first_fit_gpu_placement(plan: dict[str, tuple[int, float, float]], gpus: in
     """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another."""
     room = [10_000] * gpus  # Ray tracks GPU fractions in 1/10000 units.
     placement: list[dict[str, int]] = [{} for _ in range(gpus)]
-    for name in ("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"):
+    for name in ("PageElementDetectionActor", "TableStructureActor", "OCRActor", "_BatchEmbedActor"):
+        if name not in plan:
+            continue
         concurrency, _cpus, share = plan[name]
         need = round(share * 10_000)
         for _actor in range(concurrency):
@@ -1108,6 +1112,21 @@ def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
     monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
     plan = _preflight_default_pdf_embed_plan(cpus, gpus)
     expected = dict(zip(("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"), cell))
+
+    assert sum(plan[name][0] * plan[name][2] for name in expected) == pytest.approx(gpus)
+    assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
+
+
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, cell",
+    [(256, 8, 97_887, (4, 1, 2, 1)), (64, 2, 97_887, (4, 1, 2, 1)), (64, 4, 46_068, (1, 1, 1, 1))],
+)
+def test_table_structure_plan_gives_every_gpu_the_same_cell(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, cell: tuple[int, int, int, int]
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus, ExtractParams(use_table_structure=True, extract_tables=True))
+    expected = dict(zip(("PageElementDetectionActor", "TableStructureActor", "OCRActor", "_BatchEmbedActor"), cell))
 
     assert sum(plan[name][0] * plan[name][2] for name in expected) == pytest.approx(gpus)
     assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
@@ -1168,7 +1187,11 @@ def test_default_cell_plan_skips_page_elements_and_embed_repartition(
             ExtractParams(batch_tuning=BatchTuningParams(page_elements_repartition=True)),
             EmbedParams(batch_tuning=BatchTuningParams(embed_repartition=True)),
         ),
-        (8, ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (
+            8,
+            ExtractParams(use_table_structure=True, extract_tables=True, batch_tuning={"table_structure_workers": 4}),
+            EmbedParams(),
+        ),
         (1, ExtractParams(), EmbedParams()),
     ],
 )
@@ -1209,7 +1232,16 @@ def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> No
 @pytest.mark.parametrize(
     "extract_params, embed_params",
     [
-        (ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (
+            ExtractParams(
+                use_table_structure=True, extract_tables=True, table_structure_invoke_url="http://table:8000/v1/infer"
+            ),
+            EmbedParams(),
+        ),
+        (
+            ExtractParams(use_table_structure=True, extract_tables=True, batch_tuning={"gpu_table_structure": 0.1}),
+            EmbedParams(),
+        ),
         (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
         (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
         (ExtractParams(), EmbedParams(embedding_endpoint="http://embed:8000/v1/embeddings")),

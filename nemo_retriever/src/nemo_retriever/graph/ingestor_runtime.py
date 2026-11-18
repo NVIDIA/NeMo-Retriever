@@ -169,8 +169,11 @@ def batch_tuning_to_node_overrides(
     """
     auto_allow_no_gpu = bool(cluster_resources is not None and cluster_resources.total_gpu_count() == 0)
     effective_allow_no_gpu = allow_no_gpu if allow_no_gpu is not None else auto_allow_no_gpu
-    # The per-GPU cell assumes the PDF graph with local page elements, OCR and embedding, that these are
-    # its only local GPU pools, and that none of them is sized explicitly.
+    # The per-GPU cell assumes the PDF graph with local page elements, OCR and embedding, optionally local
+    # table structure, that these are its only local GPU pools, and that none of them is sized explicitly.
+    table_structure = bool(
+        getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
+    )
     per_gpu_cell = (
         extract_params is not None
         and embed_params is not None
@@ -180,7 +183,12 @@ def batch_tuning_to_node_overrides(
         and getattr(extract_params, "use_page_elements", False)
         and _pdf_ocr_needed(extract_params)
         and not (
-            getattr(extract_params, "use_table_structure", False) and getattr(extract_params, "extract_tables", False)
+            table_structure
+            and (
+                _positive(getattr(extract_params, "table_structure_invoke_url", None))
+                or _positive(getattr(_batch_tuning(extract_params), "table_structure_workers", None))
+                or getattr(_batch_tuning(extract_params), "gpu_table_structure", None) is not None
+            )
         )
         and not any(
             _positive(getattr(params, name, None))
@@ -214,6 +222,7 @@ def batch_tuning_to_node_overrides(
             allow_no_gpu=effective_allow_no_gpu,
             caption_enabled=caption_params is not None,
             per_gpu_cell=per_gpu_cell,
+            table_structure=table_structure,
             override_caption_gpus_per_actor=caption_gpus_per_actor,
         )
         if cluster_resources is not None
