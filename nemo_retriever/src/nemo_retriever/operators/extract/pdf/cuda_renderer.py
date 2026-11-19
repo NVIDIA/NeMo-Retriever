@@ -41,6 +41,19 @@ def render_bitmap(page: Any, *, scale: float, rotation: int = 0) -> Any:
         ) from exc
 
 
+class _SceneBitmap:
+    def __init__(self, scene):
+        self.scene = scene
+
+    def close(self):
+        pass
+
+    def to_numpy(self):
+        raise PdfRendererError(
+            "GPU-resident scenes cannot be materialized as host bitmaps"
+        )
+
+
 class _CudaBatch:
     def __init__(self, data: Any, config: dict[str, Any], module: Any) -> None:
         self.bitmaps: list[Any] = []
@@ -53,7 +66,7 @@ class _CudaBatch:
             backend = importlib.import_module("cuda_pdf_renderer")
         except ImportError as exc:
             raise PdfRendererError(
-                "pdf_renderer='cuda' requires the separately built cuda-pdf-renderer package and a running renderer service"
+                "CUDA PDF rendering requires the separately built cuda-pdf-renderer package; encoded cuda mode also requires its renderer service"
             ) from exc
         packets: list[bytes] = []
         scales: list[float] = []
@@ -70,7 +83,7 @@ class _CudaBatch:
                     raise PdfRendererError(
                         "CUDA PDF rendering requires single-page PDF byte packets"
                     )
-                if config["extract_images"]:
+                if config["extract_images"] and config["pdf_renderer"] != "cuda_rdt":
                     page = document.get_page(0)
                     try:
                         width, height = page.get_size()
@@ -96,12 +109,21 @@ class _CudaBatch:
             packets.append(packet)
             scales.append(scale)
             rotations.append(0)
-            if config["extract_images"]:
+            if config["extract_images"] and config["pdf_renderer"] != "cuda_rdt":
                 packets.append(packet)
                 scales.append(1.0)
                 rotations.append(rotation)
         try:
-            self.bitmaps = list(backend.render_batch(packets, scales, rotations))
+            if config["pdf_renderer"] == "cuda_rdt":
+                from cuda_pdf_renderer.device import SceneRecorder
+
+                recorder = SceneRecorder()
+                self.bitmaps = [
+                    _SceneBitmap(recorder.record(packet, scale, rotation))
+                    for packet, scale, rotation in zip(packets, scales, rotations)
+                ]
+            else:
+                self.bitmaps = list(backend.render_batch(packets, scales, rotations))
             if len(self.bitmaps) != len(packets):
                 raise PdfRendererError(
                     "CUDA PDF renderer returned an incomplete page batch"
@@ -144,7 +166,7 @@ def with_cuda_rendering(function: Any) -> Any:
         renderer = kwargs.get("pdf_renderer", "pdfium")
         if renderer == "pdfium":
             return function(data, *args, **kwargs)
-        if renderer != "cuda":
+        if renderer not in ("cuda", "cuda_rdt"):
             raise ValueError(f"Unsupported PDF renderer: {renderer!r}")
         bound = signature.bind(data, *args, **kwargs)
         bound.apply_defaults()

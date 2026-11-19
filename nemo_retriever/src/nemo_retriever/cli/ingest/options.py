@@ -59,8 +59,8 @@ MethodOption = Annotated[
 ]
 DpiOption = Annotated[int | None, typer.Option("--dpi", min=72, help="Render DPI for PDF page images.")]
 PdfRendererOption = Annotated[
-    Literal["pdfium", "cuda"] | None,
-    typer.Option("--pdf-renderer", help="PDF rasterizer: pdfium (default) or experimental cuda."),
+    Literal["pdfium", "cuda", "cuda_rdt"] | None,
+    typer.Option("--pdf-renderer", help="PDF rasterizer: pdfium (default), cuda (encoded images), or cuda_rdt (native Ray GPU transport)."),
 ]
 ExtractTextOption = Annotated[
     bool | None,

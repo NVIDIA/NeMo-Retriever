@@ -93,7 +93,9 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
     }
 
 
-def _decode_b64_image_to_chw_tensor(image_b64: str) -> Tuple["torch.Tensor", Tuple[int, int]]:
+def _decode_b64_image_to_chw_tensor(
+    image_b64: str,
+) -> Tuple["torch.Tensor", Tuple[int, int]]:
     if torch is None or Image is None or np is None:  # pragma: no cover
         raise ImportError("page element detection requires torch, pillow, and numpy.")
 
@@ -254,7 +256,14 @@ def _postprocess_to_per_image_detections(
 
 
 # -- Label mapping between retriever ("text") and API ("paragraph") --
-_RETRIEVER_LABEL_NAMES = ["table", "chart", "title", "infographic", "text", "header_footer"]
+_RETRIEVER_LABEL_NAMES = [
+    "table",
+    "chart",
+    "title",
+    "infographic",
+    "text",
+    "header_footer",
+]
 _RETRIEVER_TO_API = {"text": "paragraph"}
 _API_TO_RETRIEVER = {"paragraph": "text"}
 
@@ -529,6 +538,18 @@ def detect_page_elements_v3(
 
     for _, row in pages_df.iterrows():
         try:
+            from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
+
+            page_image = row.get("page_image")
+            gpu_image = page_image.get("gpu_image") if isinstance(page_image, dict) else None
+            if isinstance(gpu_image, GpuPageImage):
+                if use_remote:
+                    raise ValueError("GPU-resident pages require local models")
+                row_b64.append(None)
+                row_tensors.append(gpu_image.tensor())
+                row_shapes.append((gpu_image.height, gpu_image.width))
+                row_payloads.append({"detections": []})
+                continue
             b64 = row.get("page_image")["image_b64"]
             if not b64:
                 raise ValueError("No usable image_b64 found in row.")
@@ -586,7 +607,7 @@ def detect_page_elements_v3(
 
             if len(response_items) != len(valid_indices):
                 raise RuntimeError(
-                    "Remote response count mismatch: " f"expected {len(valid_indices)}, got {len(response_items)}"
+                    f"Remote response count mismatch: expected {len(valid_indices)}, got {len(response_items)}"
                 )
 
             for local_i, row_i in enumerate(valid_indices):
@@ -629,9 +650,18 @@ def detect_page_elements_v3(
             orig_shapes.append(sh)
             try:
                 # `preprocess` may accept/return torch.Tensor or np.ndarray.
-                from nemo_retriever.common.modality.page_postprocessing import prepare_detector_input
+                from nemo_retriever.common.modality.page_postprocessing import (
+                    prepare_detector_input,
+                )
 
-                pre = torch.from_numpy(prepare_detector_input(t, tuple(model.input_shape)))
+                if isinstance(t, torch.Tensor) and t.is_cuda:
+                    from nemo_retriever.common.modality.page_postprocessing import (
+                        prepare_detector_input_gpu,
+                    )
+
+                    pre = prepare_detector_input_gpu(t, tuple(model.input_shape))
+                else:
+                    pre = torch.from_numpy(prepare_detector_input(t, tuple(model.input_shape)))
 
                 # Normalize to a single-image CHW-like item (torch or numpy); we'll convert to torch at stack time.
                 if isinstance(pre, torch.Tensor):

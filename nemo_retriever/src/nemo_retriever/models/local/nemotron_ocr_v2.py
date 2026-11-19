@@ -54,8 +54,12 @@ class NemotronOCRV2(BaseModel):
         super().__init__()
         configure_global_hf_cache_base()
         try:
-            from nemotron_ocr.inference import pipeline as _nemotron_ocr_pipeline  # local-only import
-            from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
+            from nemotron_ocr.inference import (
+                pipeline as _nemotron_ocr_pipeline,
+            )  # local-only import
+            from nemotron_ocr.inference import (
+                pipeline_v2 as _nemotron_ocr_pipeline_v2,
+            )  # local-only import
         except ImportError as exc:
             raise ImportError(
                 "Local Nemotron OCR v2 requires the `nemotron_ocr` package. "
@@ -69,7 +73,15 @@ class NemotronOCRV2(BaseModel):
         # NemotronOCRV2 inherits checkpoint loading from NemotronOCR, whose
         # module owns the hf_hub_download global used by _download_checkpoints.
         install_pinned_hf_hub_download(_nemotron_ocr_pipeline)
-        _NemotronOCRV2 = _nemotron_ocr_pipeline_v2.NemotronOCRV2
+
+        class _NemotronOCRV2(_nemotron_ocr_pipeline_v2.NemotronOCRV2):
+            @staticmethod
+            def _load_image_to_tensor_uint8(image):
+                if isinstance(image, torch.Tensor) and image.is_cuda:
+                    if image.dtype != torch.uint8 or image.ndim != 3:
+                        raise ValueError("GPU OCR expects RGB uint8 images")
+                    return image.permute(2, 0, 1).contiguous() if image.shape[-1] == 3 else image.contiguous()
+                return _nemotron_ocr_pipeline_v2.NemotronOCRV2._load_image_to_tensor_uint8(image)
 
         if model_dir:
             self._model = _NemotronOCRV2(model_dir=model_dir, lang=lang)
@@ -197,6 +209,14 @@ class NemotronOCRV2(BaseModel):
         if self._model is None:
             raise RuntimeError("Local OCR model was not initialized.")
 
+        if isinstance(input_data, torch.Tensor) and input_data.is_cuda:
+            return self._model(input_data, merge_level=merge_level)
+        if (
+            isinstance(input_data, list)
+            and input_data
+            and all(isinstance(image, torch.Tensor) and image.is_cuda for image in input_data)
+        ):
+            return self._model(input_data, merge_level=merge_level)
         if isinstance(input_data, torch.Tensor):
             if input_data.ndim == 4:
                 out: List[Any] = []

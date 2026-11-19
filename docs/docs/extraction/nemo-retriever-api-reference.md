@@ -142,7 +142,17 @@ to evaluate CUDA rasterization with local or native batch PDF ingestion.
 This setting is independent of `method`, which selects the text extraction
 strategy.
 
-The CUDA backend requires the separately built `cuda-pdf-renderer` Python
+The experimental choices have different image transport paths:
+
+| `pdf_renderer` | Run mode | Image path |
+| --- | --- | --- |
+| `"pdfium"` | Existing supported modes | CPU rasterization and encoded images. |
+| `"cuda"` | Local or native batch PDF ingestion | CUDA rasterization, host RGB, and the existing encoded-image pipeline. |
+| `"cuda_rdt"` | Native Ray batch PDF ingestion | CUDA rasterization and GPU tensors delivered to local Page Elements and OCR through Ray Direct Transport. |
+
+#### Encoded CUDA rendering
+
+The `"cuda"` backend requires the separately built `cuda-pdf-renderer` Python
 package, its native client library, and a running local renderer service.
 Follow the renderer package build and startup instructions. Set
 `CUDA_PDF_RENDERER_LIBRARY` to the native client library and
@@ -173,6 +183,74 @@ PDFium still parses PDF objects and prepares resources on the CPU. CUDA
 rasterizes page drawing commands. Rendered pixels return to host memory;
 the existing JPEG/base64 serialization and model preprocessing remain.
 Text-only extraction that needs no page raster does not invoke the CUDA backend.
+
+#### GPU-resident Ray batch rendering
+
+Set `pdf_renderer="cuda_rdt"` with `run_mode="batch"` for the dedicated PDF
+graph. This path requires local Page Elements, local Nemotron OCR v2, and text
+embeddings. It does not require an externally started renderer socket service.
+
+Install the separate renderer package and native libraries in every worker
+environment. Set `CUDA_PDF_RENDERER_LIBRARY` to the built native client library.
+Workers also need CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL for Ray
+Direct Transport. Bounded integration tests use Ray 2.56.1, NIXL 1.5.2, and
+PyTorch 2.13 with CUDA 13.0. Other dependency combinations require validation.
+
+The following example explicitly selects the PDF graph and text embedding:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="batch")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(pdf_renderer="cuda_rdt"),
+            extraction_mode="pdf",
+        )
+        .embed()
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+CPU PDFium parses pages and records drawing commands and resources. Renderer
+actors rasterize into PyTorch-owned CUDA RGB tensors. Page Elements resizes
+those tensors on the GPU, and OCR consumes GPU crops. Page RGB does not return
+to host memory or pass through JPEG/base64 encoding. Text, region coordinates,
+and model results still use CPU processing where required.
+
+NRL enables tensor transport on both GPU actor endpoints. Renderer children
+share the owning model pool's GPU reservation and exact GPU UUID. The executor
+keeps renderer owners alive until ingestion drains, then releases them. GPU
+image references are removed before text embedding and index writing.
+
+The supported configuration has the following restrictions:
+
+- Use PDF inputs and the native Ray batch executor. In-process, service,
+  mixed-file dispatch, and Nemotron Parse paths are outside this mode.
+- Keep Page Elements and OCR local, with `ocr_version="v2"`. Remote endpoints,
+  table-structure routing, chart routing, and nested image extraction are
+  unsupported.
+- Use text embeddings. Image and paired text-image embeddings, captioning,
+  image storage, and explicit `extract_images=True` are unsupported.
+- Retain the default image-extraction setting. Native text ingestion resolves
+  `extract_images=None` to `False` when no captioning, storage, or deduplication
+  consumer needs images. This mode does not return encoded image artifacts.
+
+Unsupported combinations raise configuration errors. Transport or rendering
+failures stop ingestion without materializing host images as a fallback.
+
+Removing JPEG compression changes the pixels presented to models. Raster
+pixel equivalence does not establish matching extraction or retrieval accuracy.
+Bounded integration checks do not establish full-dataset accuracy or a
+throughput improvement.
 
 !!! warning "Experimental backend"
     Concurrent profiling has exposed illegal GPU-memory accesses and native

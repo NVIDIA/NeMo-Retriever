@@ -20,8 +20,10 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 
 PDF page rasterization uses CPU PDFium by default. Local and native batch
 PDF ingestion can opt into the experimental CUDA renderer through
-`ExtractParams(pdf_renderer="cuda")`. PDF interpretation remains on the CPU,
-and image serialization and model preprocessing remain unchanged. Refer to
+`ExtractParams(pdf_renderer="cuda")`, retaining encoded-image transport.
+Native Ray batch PDF ingestion can instead select `pdf_renderer="cuda_rdt"`
+for GPU RGB transport to local Page Elements and OCR v2, followed by text
+embedding. PDF interpretation remains on the CPU in both modes. Refer to
 [Select an experimental CUDA PDF renderer](nemo-retriever-api-reference.md#select-an-experimental-cuda-pdf-renderer)
 for setup requirements and limitations.
 
@@ -59,6 +61,15 @@ fallback.
 - [Chunking](concepts.md#chunking)
 
 ## PDF image extraction { #pdf-image-extraction }
+
+The experimental `pdf_renderer="cuda_rdt"` mode supports native batch text
+ingestion without encoded image artifacts. The default `extract_images=None`
+resolves to `False` when no image consumer needs images, as on the default
+text-ingestion path. This mode rejects explicit `extract_images=True`, nested
+images, captions, image storage, and image embeddings. Use the default PDFium
+renderer or encoded CUDA mode when you need those outputs. Refer to
+[GPU-resident Ray batch rendering](nemo-retriever-api-reference.md#gpu-resident-ray-batch-rendering)
+for its supported configuration.
 
 For the PDFium path, `extract_images=True` extracts rendered page regions that resemble images. A region can represent a composite figure, including an entire PDF Form XObject. The output does not necessarily correspond one-to-one with the raster IMAGE XObjects stored in the PDF.
 

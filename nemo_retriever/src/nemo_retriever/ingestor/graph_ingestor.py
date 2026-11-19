@@ -934,6 +934,8 @@ class GraphIngestor(ingestor):
             If URL fetching or a collected graph stage fails and
             ``return_failures`` is false.
         """
+        if getattr(self._extract_params, "pdf_renderer", "pdfium") == "cuda_rdt" and self._run_mode != "batch":
+            raise ValueError("cuda_rdt requires run_mode='batch' for Ray Direct Transport")
         return_failures = self._resolve_execute_flag(params, kwargs, "return_failures", default=False)
         return_results = resolve_return_results_option(params, kwargs)
         summary_eligible = (

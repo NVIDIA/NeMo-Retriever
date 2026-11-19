@@ -834,6 +834,19 @@ class RayDataExecutor(AbstractExecutor):
             check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
             if check is not None:
                 check.stop()
+            pool, self._cuda_rdt_pool = getattr(self, "_cuda_rdt_pool", None), None
+            if pool is not None:
+                import ray
+                try:
+                    statuses = ray.get(pool.close.remote(), timeout=60)
+                    logger.info("CUDA RDT renderer summary: %s", statuses)
+                    import os
+                    audit_path = os.environ.get("CUDA_PDF_RDT_AUDIT_PATH")
+                    if audit_path:
+                        from pathlib import Path
+                        Path(audit_path).write_text(json.dumps({"producers": statuses, "pages": sum(item["pages"] for item in statuses), "rgb_readback_bytes": sum(item["rgb_readback_bytes"] for item in statuses), "cpu_raster_calls": sum(item["cpu_raster_calls"] for item in statuses)}, indent=2) + "\n")
+                finally:
+                    ray.kill(pool)
 
     @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest_graph(
@@ -1093,6 +1106,17 @@ class RayDataExecutor(AbstractExecutor):
             map_operator_class = node.operator_class
             map_batch_format = batch_format
             constructor_kwargs = node.operator_kwargs
+            if constructor_kwargs.get("cuda_rdt"):
+                from importlib.util import find_spec
+                if find_spec("nixl") is None:
+                    raise ImportError("cuda_rdt requires NIXL in every worker environment; install nixl")
+                overrides["enable_tensor_transport"] = True
+                if "page_elements" in node.operator_class.__module__:
+                    if getattr(self, "_cuda_rdt_pool", None) is None:
+                        from cuda_pdf_renderer.client import library_path
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import RendererPool
+                        self._cuda_rdt_pool = ray.remote(num_cpus=0)(RendererPool).remote(str(library_path()))
+                    constructor_kwargs = dict(constructor_kwargs, _cuda_renderer_pool=self._cuda_rdt_pool)
             if batch_format == "pandas":
                 # Ray's Arrow-backed pandas conversion can preserve unsafe
                 # offsets for sliced structs with inferred null children.
@@ -1113,7 +1137,7 @@ class RayDataExecutor(AbstractExecutor):
                 map_batch_format = "pandas" if stable_pandas_input else "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,
-                    "operator_kwargs": node.operator_kwargs,
+                    "operator_kwargs": constructor_kwargs,
                 }
 
             concurrency = overrides.get("concurrency")

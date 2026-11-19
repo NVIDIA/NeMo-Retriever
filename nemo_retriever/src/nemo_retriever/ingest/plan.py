@@ -122,7 +122,7 @@ class IngestExtractBatchOptions:
 @dataclass(frozen=True)
 class IngestExtractOptions:
     method: str | None = None
-    pdf_renderer: Literal["pdfium", "cuda"] | None = None
+    pdf_renderer: Literal["pdfium", "cuda", "cuda_rdt"] | None = None
     dpi: int | None = None
     extract_text: bool | None = None
     extract_images: bool | None = None

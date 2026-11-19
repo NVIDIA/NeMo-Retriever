@@ -28,7 +28,7 @@ Ray Data runs repartition steps as short tasks that each reserve 1 CPU. Repartit
 
 For example, the default PDF graph on a single-GPU node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
 
-Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
+Each PDF extraction worker reserves 1 CPU by default. With the default PDFium renderer, page rasterization is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
 
 On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when the graph runs all three stages locally and has no other local GPU stage. Graphs with page elements off, captioning, table structure, Nemotron Parse, audio, or a remote endpoint for one of these stages keep the previous defaults. Any explicit `page_elements_workers`, `ocr_workers`, `embed_workers`, `gpu_page_elements`, `gpu_ocr`, or `gpu_embed` value also keeps the previous defaults for the other two stages. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
 
@@ -218,6 +218,30 @@ chunks = (
 
 For typed ingest plans, set `pdf_extract_rows_per_block` in
 `IngestExtractBatchOptions`.
+
+## Evaluate GPU-resident PDF ingestion
+
+The experimental `pdf_renderer="cuda_rdt"` mode moves page RGB directly between
+renderer and local GPU model actors through Ray Direct Transport. CPU PDF
+parsing and command preparation remain. Refer to
+[GPU-resident Ray batch rendering](nemo-retriever-api-reference.md#gpu-resident-ray-batch-rendering)
+for dependencies, configuration, and supported outputs.
+
+Renderer children share their owning model pool's GPU reservation. These
+reservations control scheduling, not GPU memory consumption. Rendered page
+buffers remain owned until ingestion drains, so monitor GPU memory as well as
+throughput when increasing page batch sizes or worker counts. Separate model
+pools can also require GPU-to-GPU transfers.
+
+Measure complete ingestion through index writing and retain the same PDF
+inputs, model settings, and text embedding configuration. Record page and
+indexed-row counts, ingestion pages per second, GPU memory, and stage timings.
+GPU utilization alone does not identify the limiting stage.
+
+The encoded renderers and GPU-resident mode present different model pixels
+because the latter avoids JPEG compression. Compare extracted outputs and
+retrieval accuracy before accepting a throughput result. Successful bounded
+integration tests do not establish full-dataset accuracy or a performance gain.
 
 ## Profile batch ingestion with Nsight Systems
 

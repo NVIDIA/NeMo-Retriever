@@ -451,7 +451,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--embed-model-name` | unset | Local GPU inference selects Nemotron 3.5 Embed 1B: NVFP4 with native-capable GPUs and vLLM, or BF16 otherwise. Ray batch GPU embedding automatically selects BF16. Explicit Nemotron 3.5 precision IDs remain unchanged. The CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16 for batch GPU embedding. Remote inference, including implicit hosted CPU fallback, retains `nvidia/nemotron-3-embed-1b`. |
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. With no model override, explicit `hf` use selects the Nemotron 3.5 BF16 checkpoint. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
-| `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium` or experimental `cuda`. Requires a separately built renderer package and local service for CUDA. |
+| `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium`, experimental `cuda` with encoded images, or experimental `cuda_rdt` with native Ray GPU transport. Both CUDA modes require a separately built renderer package. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -610,6 +610,40 @@ NIM rendering, and Nemotron Parse are outside its validated scope.
 The renderer is experimental. Concurrent profiling has exposed illegal
 GPU-memory accesses and native heap corruption. Missing dependencies or CUDA
 rendering failures stop ingestion without silently switching to CPU rendering.
+
+#### GPU-resident Ray batch rendering
+
+Use `--pdf-renderer cuda_rdt` for native Ray batch PDF ingestion with local
+Page Elements and OCR v2. This mode keeps page RGB and model input crops on
+the GPU, bypassing page JPEG/base64 encoding and decoding. CPU PDFium parsing
+and command preparation remain.
+
+Install the renderer Python package and native libraries in every worker
+environment, and set `CUDA_PDF_RENDERER_LIBRARY` to the built client library.
+This mode does not use an externally started socket service. Workers need
+CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL. Bounded integration tests
+use Ray 2.56.1, NIXL 1.5.2, and PyTorch 2.13 with CUDA 13.0.
+
+After configuring those dependencies, ingest PDF inputs into the default index:
+
+```bash
+retriever ingest batch /path/to/your/pdfs --pdf-renderer cuda_rdt
+```
+
+Keep local Page Elements, OCR v2, and text embedding enabled. Remote Page
+Elements or OCR endpoints, Nemotron Parse, table-structure routing, chart routing, and nested image
+extraction are unsupported. This mode also rejects explicit image extraction,
+captioning, image storage, and image or paired text-image embeddings. As on
+the default text-ingestion path, automatic image extraction resolves to off
+when no image consumer needs it. No encoded image artifacts are returned.
+
+NRL manages renderer actor placement, GPU tensor transport, and buffer lifetime.
+GPU image references are removed before text embedding and index writing.
+Unsupported configurations or failed GPU transport stop ingestion without a
+host-image fallback.
+
+Removing JPEG compression can change model outputs. Bounded integration tests
+do not establish full-dataset accuracy or improved ingestion throughput.
 
 ### PDF extraction method
 

@@ -33,6 +33,7 @@ from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.operators.extract.pdf.cuda_renderer import (
     PdfRendererError,
+    _SceneBitmap,
     render_bitmap,
     select_packet,
     with_cuda_rendering,
@@ -161,6 +162,9 @@ def _render_page_to_base64(
         render_scale = max(float(dpi) / 72.0, 0.01)
     bitmap = render_bitmap(page, scale=render_scale)
 
+    if isinstance(bitmap, _SceneBitmap):
+        scene = bitmap.scene
+        return {"cuda_scene": scene.data, "orig_shape_hw": (scene.height, scene.width), "encoding": "cuda_scene", "image_b64": None}
     arr = convert_bitmap_to_corrected_numpy(bitmap)
 
     orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])
@@ -269,7 +273,7 @@ def pdf_extraction(
     text_extraction_method: str = "pdfium_hybrid",
     render_mode: RenderMode = "fit_to_model",
     *,
-    pdf_renderer: Literal["pdfium", "cuda"] = "pdfium",
+    pdf_renderer: Literal["pdfium", "cuda", "cuda_rdt"] = "pdfium",
     **kwargs: Any,
 ) -> Any:
     """
@@ -406,7 +410,10 @@ def pdf_extraction(
                     # Extract cropped images from pdfium page objects.
                     detected_images: List[Dict[str, Any]] = []
                     nested_image_error: Optional[Dict[str, Any]] = None
-                    if extract_images:
+                    if extract_images and pdf_renderer == "cuda_rdt":
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import image_region_metadata
+                        detected_images.extend(image_region_metadata(page))
+                    if extract_images and pdf_renderer != "cuda_rdt":
                         try:
                             image_kwargs = {"render_page": render_bitmap} if pdf_renderer == "cuda" else {}
                             base64_images = extract_image_like_objects_from_pdfium_page(page, **image_kwargs)
