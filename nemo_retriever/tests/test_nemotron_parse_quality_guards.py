@@ -178,14 +178,18 @@ def test_failed_length_retry_keeps_first_pass_output() -> None:
     assert list(iter_stage_errors_from_value(meta)) == []
 
 
-def test_fallback_page_keeps_each_table_cell_once() -> None:
+@pytest.mark.parametrize(
+    "table_text",
+    [
+        "| Region | Q1 | Q2 |\n| North | 1200 | 1350 |\n| South | 980 | 1010 |",
+        "<table><tr><th>Region</th><th>Q1</th><th>Q2</th></tr><tr><td>North</td><td>1200</td><td>1350</td></tr>"
+        "<tr><td>South</td><td>980</td><td>1010</td></tr></table>",
+    ],
+)
+def test_fallback_page_keeps_each_table_cell_once(table_text: str) -> None:
     table_rows = ["Region Q1 Q2", "North 1200 1350", "South 980 1010"]
     native = "\n".join([NATIVE, *table_rows, "Closing remarks about outlook and guidance for investors"])
-    page = (
-        _tagged("Ɋǝʌǝnnǝ ƃɹǝʍ ʂʇɹouƃlʎ " * 10)
-        + "<x_0.1><y_0.5>| Region | Q1 | Q2 |\n| North | 1200 | 1350 |\n| South | 980 | 1010 |"
-        + "<x_0.9><y_0.7><class_Table>"
-    )
+    page = _tagged("Ɋǝʌǝnnǝ ƃɹǝʍ ʂʇɹouƃlʎ " * 10) + f"<x_0.1><y_0.5>{table_text}<x_0.9><y_0.7><class_Table>"
     df = pd.DataFrame({"text": [native], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
     out = nemotron_parse_pages(
         df,
