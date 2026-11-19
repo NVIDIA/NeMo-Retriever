@@ -253,7 +253,7 @@ def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> Non
 
 
 def test_gpu_actor_cleanup_unloads_engine_once() -> None:
-    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+    with patch("nemo_retriever.models.local.NemotronParse35", autospec=True) as parser:
         actor = NemotronParseGPUActor()
         actor._ensure_model()
         actor.cleanup()
