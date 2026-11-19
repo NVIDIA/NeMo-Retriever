@@ -640,15 +640,28 @@ def nemotron_parse_pages(
                         and not _looks_repetitive(raw_texts[pos])
                     ]
                     if retry:
-                        retried = invoke_batch_results(
-                            [batch_images[pos] for pos in retry],
-                            task_prompt=task_prompt,
-                            max_tokens=length_retry_max_tokens,
-                        )
-                        for pos, result in zip(retry, retried, strict=True):
-                            raw_texts[pos] = str(result.text or "").strip()
-                            outcomes[pos] = (result.finish_reason, result.output_tokens)
-                            all_meta[batch_indices[pos]]["length_retry"] = {"max_tokens": length_retry_max_tokens}
+                        try:
+                            retried = invoke_batch_results(
+                                [batch_images[pos] for pos in retry],
+                                task_prompt=task_prompt,
+                                max_tokens=length_retry_max_tokens,
+                            )
+                        except Exception as retry_error:
+                            logger.warning(
+                                f"Warning: Nemotron Parse length retry failed: "
+                                f"{type(retry_error).__name__}: {retry_error}",
+                                exc_info=retry_error,
+                            )
+                            for pos in retry:
+                                all_meta[batch_indices[pos]]["length_retry"] = {
+                                    "max_tokens": length_retry_max_tokens,
+                                    "error": {"type": retry_error.__class__.__name__, "message": str(retry_error)},
+                                }
+                        else:
+                            for pos, result in zip(retry, retried, strict=True):
+                                raw_texts[pos] = str(result.text or "").strip()
+                                outcomes[pos] = (result.finish_reason, result.output_tokens)
+                                all_meta[batch_indices[pos]]["length_retry"] = {"max_tokens": length_retry_max_tokens}
                 elif invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
                 else:

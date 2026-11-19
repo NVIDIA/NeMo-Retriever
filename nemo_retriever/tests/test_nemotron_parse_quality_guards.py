@@ -134,3 +134,22 @@ def test_parse_actor_kwargs_length_retry_default() -> None:
     assert build_parse_actor_kwargs(ExtractParams(method="nemotron_parse"))["length_retry_max_tokens"] == 8192
     params = ExtractParams(method="nemotron_parse", parse=ParseParams(length_retry_max_tokens=None))
     assert build_parse_actor_kwargs(params)["length_retry_max_tokens"] is None
+
+
+def test_failed_length_retry_keeps_first_pass_output() -> None:
+    class _FailingRetry(_CappedParse):
+        def invoke_batch_results(self, images, task_prompt=None, max_tokens=None):
+            if max_tokens is not None:
+                self.calls.append(max_tokens)
+                raise RuntimeError("engine stopped")
+            return super().invoke_batch_results(images, task_prompt)
+
+    model = _FailingRetry(_tagged("Varied opening text") + "<x_0.1><y_0.3>cut")
+    df = pd.DataFrame({"text": [""], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(df, model=model, extract_text=True, length_retry_max_tokens=8192)
+    meta = out.loc[0, "nemotron_parse_v1_2"]
+    assert model.calls == [None, 8192]
+    assert out.loc[0, "text"] == "Varied opening text"
+    assert meta["error"] is None
+    assert meta["completion"]["status"] == "incomplete"
+    assert meta["length_retry"]["error"]["type"] == "RuntimeError"
