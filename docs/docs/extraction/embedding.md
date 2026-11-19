@@ -13,8 +13,6 @@ When you omit the local embedding model, the library selects a checkpoint as fol
 - With the `hf` backend, it selects the BF16 checkpoint. The compressed-tensors NVFP4 checkpoint requires vLLM.
 - For single-node Ray batch GPU execution with `vllm`, automatic selection uses NVFP4 when every visible CUDA device has compute capability major 10 or later, and BF16 otherwise. Explicit Nemotron 3.5 precision checkpoint IDs remain unchanged.
 
-The `retriever ingest batch` CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects precision using the same hardware check.
-
 The default modality remains `text`. Nemotron 3.5 also supports `image` and `text_image` inputs when you explicitly select those modalities.
 
 The prerelease checkpoints require Hugging Face repository access. Set `HF_TOKEN` to a token from an account with access before loading them. Do not include tokens in source files or shared configuration.
@@ -29,7 +27,7 @@ Before changing an existing index's model or precision, validate retrieval quali
 
 ## Hosted embedding defaults
 
-Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.
+Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`.
 
 When graph execution selects the CPU embedding actor without an explicit endpoint, it calls `https://integrate.api.nvidia.com/v1/embeddings`. This hosted fallback retains the Nemotron 3 default and records that model on the index. Set `NVIDIA_API_KEY` or `NGC_API_KEY` before ingest.
 

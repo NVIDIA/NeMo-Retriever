@@ -170,7 +170,14 @@ def test_cli_default_is_resolved_by_selected_actor(tmp_path, monkeypatch, run_mo
 @pytest.mark.parametrize("native_nvfp4", [True, False])
 @pytest.mark.parametrize("backend", ["vllm", "hf"])
 @pytest.mark.parametrize(
-    "requested_model", [NEMOTRON_35_EMBED_MODEL, NEMOTRON_35_EMBED_BF16_MODEL, NEMOTRON_35_EMBED_NVFP4_MODEL]
+    "requested_model",
+    [
+        NEMOTRON_35_EMBED_MODEL,
+        NEMOTRON_35_EMBED_BF16_MODEL,
+        NEMOTRON_35_EMBED_NVFP4_MODEL,
+        NEMOTRON_3_EMBED_MODEL,
+        NEMOTRON_3_EMBED_BF16_MODEL,
+    ],
 )
 def test_batch_cli_plan_and_graph_share_checkpoint(tmp_path, monkeypatch, native_nvfp4, backend, requested_model):
     from nemo_retriever.ingest.plan import (
@@ -194,6 +201,8 @@ def test_batch_cli_plan_and_graph_share_checkpoint(tmp_path, monkeypatch, native
     expected = requested_model
     if requested_model == NEMOTRON_35_EMBED_MODEL:
         expected = NEMOTRON_35_EMBED_NVFP4_MODEL if native_nvfp4 and backend == "vllm" else NEMOTRON_35_EMBED_BF16_MODEL
+    elif requested_model == NEMOTRON_3_EMBED_MODEL:
+        expected = NEMOTRON_3_EMBED_NVFP4_MODEL if native_nvfp4 and backend == "vllm" else NEMOTRON_3_EMBED_BF16_MODEL
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=8, gpu_count=1),
         available_resources=Resources(cpu_count=8, gpu_count=1),
