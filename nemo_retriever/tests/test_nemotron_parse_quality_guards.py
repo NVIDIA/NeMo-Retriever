@@ -183,7 +183,8 @@ def test_fallback_page_keeps_each_table_cell_once() -> None:
     native = "\n".join([NATIVE, *table_rows, "Closing remarks about outlook and guidance for investors"])
     page = (
         _tagged("Ɋǝʌǝnnǝ ƃɹǝʍ ʂʇɹouƃlʎ " * 10)
-        + "<x_0.1><y_0.5>| Region | Q1 | Q2 |\n| North | 1200 | 1350 |\n| South | 980 | 1010 |<x_0.9><y_0.7><class_Table>"
+        + "<x_0.1><y_0.5>| Region | Q1 | Q2 |\n| North | 1200 | 1350 |\n| South | 980 | 1010 |"
+        + "<x_0.9><y_0.7><class_Table>"
     )
     df = pd.DataFrame({"text": [native], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
     out = nemotron_parse_pages(
