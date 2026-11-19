@@ -546,6 +546,16 @@ class _AsyncParseEngine:
         self._stop_loop()
 
     def _stop_loop(self) -> None:
+        import asyncio
+
+        async def cancel_pending() -> None:
+            # vLLM's shutdown only schedules its output handler's cancellation; let it finish before closing.
+            tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        asyncio.run_coroutine_threadsafe(cancel_pending(), self._loop).result()
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join()
         self._loop.close()

@@ -513,9 +513,11 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
             with pytest.raises(RuntimeError, match=expected):
                 engine.generate(["first", "second"], params)
             assert cancelled == (["second"] if mode == "error" else [])
+        pending = asyncio.run_coroutine_threadsafe(asyncio.sleep(30), engine._loop)
     finally:
         engine.shutdown(timeout=30)
     engine.engine.shutdown.assert_called_once_with(timeout=30)
+    assert pending.cancelled()
     assert engine._loop.is_closed()
     assert not engine._thread.is_alive()
 
