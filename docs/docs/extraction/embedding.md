@@ -210,6 +210,23 @@ row, it also logs a summary with `input_rows`, `output_rows`, `overlength`,
 `split`, `split_children`, `truncated`, `failed`, `embedded`, and `unembedded`.
 The deterministic split policy reports `truncated=0`.
 
+## Local vLLM multimodal cache recovery { #local-vllm-multimodal-cache-recovery }
+
+When a local vLLM embedding request returns a retryable
+`multimodal_cache_miss` response, NeMo Retriever Library retries that request
+once. The retry reprocesses the original input with a fresh request ID and
+resends the image data without relying on cached processor references.
+Successful requests in the same batch are not repeated, and results retain
+their original input order. Recovery does not restart the engine, disable
+caching globally, discard inputs, or substitute embedding vectors.
+
+The local adapter raises `RuntimeError` for other error responses, including
+non-retryable cache misses, or when the retry still reports a cache miss.
+An embedding request that returns no output also raises `RuntimeError`.
+Embedding validation and ingestion failure handling remain active. The vector
+database boundary still refuses mixed partial writes when searchable rows are
+missing embeddings.
+
 ## Example with Embedding Structured Elements as Text + Images { #example-with-embedding-structured-elements-as-text-images }
 
 It is common to process PDFs by embedding standard text as text and visual elements such as tables and charts as images.

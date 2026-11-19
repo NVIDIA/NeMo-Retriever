@@ -360,6 +360,9 @@ class AsyncEmbedEngine:
 
         Raises
         ------
+        RuntimeError
+            A structured request error, including a retryable multimodal cache
+            miss that persists after one retry with the original media attached.
         Exception
             The first error a prompt raises in the engine. The other prompts of
             this call are cancelled before it propagates.
@@ -374,14 +377,31 @@ class AsyncEmbedEngine:
         tok_params = engine.renderer.default_cmpl_tok_params.with_kwargs(**(tokenization_kwargs or {}))
 
         async def one(prompt: Any, request_id: str) -> Any:
-            (engine_input,) = engine.renderer.render_cmpl([parse_model_prompt(engine.model_config, prompt)], tok_params)
-            params = (pooling_params or PoolingParams()).clone()
-            if params.task is None:
-                params.task = "embed"
-            output = None
-            async for output in engine.encode(engine_input, params, request_id):
-                pass
-            return output
+            for attempt in range(2):
+                # A prepared cache reference cannot recover a missing engine-side
+                # image. Rerender the original prompt and attach media on retry.
+                render_options = {"skip_mm_cache": True} if attempt else {}
+                (engine_input,) = engine.renderer.render_cmpl(
+                    [parse_model_prompt(engine.model_config, prompt)], tok_params, **render_options
+                )
+                params = (pooling_params or PoolingParams()).clone()
+                if params.task is None:
+                    params.task = "embed"
+                current_id = request_id if not attempt else f"nrl-embed-{os.getpid()}-{next(self._ids)}"
+                output = None
+                async for output in engine.encode(engine_input, params, current_id):
+                    pass
+                if output is None:
+                    raise RuntimeError("vLLM embedding request returned no output")
+                error = getattr(output, "error", None)
+                if error is None:
+                    return output
+                code = getattr(error, "code", "unknown")
+                if not attempt and code == "multimodal_cache_miss" and getattr(error, "retryable", False):
+                    logger.warning("Retrying vLLM embedding request after a multimodal processor cache miss")
+                    continue
+                recovery = " after cache-recovery retry" if attempt else ""
+                raise RuntimeError(f"vLLM embedding request failed{recovery} ({code}): {error.message}")
 
         async def run_all() -> list[Any]:
             try:

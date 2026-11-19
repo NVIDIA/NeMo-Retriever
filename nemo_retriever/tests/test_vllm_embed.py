@@ -827,3 +827,116 @@ def test_async_embed_engine_closes_its_event_loop(monkeypatch, explicit_shutdown
 
     assert not thread.is_alive()
     assert loop.is_closed()
+
+
+def test_async_embed_engine_retries_cache_miss_with_image_and_keeps_successful_peer(monkeypatch):
+    """A cache miss rerenders only that original prompt with media attached."""
+    import asyncio
+    import itertools
+    import threading
+
+    pytest.importorskip("vllm")
+    from vllm.outputs import EmbeddingRequestOutput
+    from vllm.renderers.inputs import preprocess
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    monkeypatch.setattr(EmbeddingRequestOutput, "from_base", staticmethod(lambda output: output))
+    prompts = [
+        {"prompt": "good", "multi_modal_data": {"image": object()}},
+        {"prompt": "recover", "multi_modal_data": {"image": object()}},
+    ]
+    rendered = []
+    submitted = []
+
+    class Renderer:
+        default_cmpl_tok_params = SimpleNamespace(with_kwargs=lambda **kwargs: kwargs)
+
+        def render_cmpl(self, values, tok_params, *, skip_mm_cache=False):
+            assert tok_params == {"truncation": False}
+            rendered.append((values[0], skip_mm_cache))
+            return [(values[0], skip_mm_cache)]
+
+    async def encode(engine_input, params, request_id):
+        prompt, bypass = engine_input
+        submitted.append((prompt["prompt"], request_id, params.task))
+        if prompt["prompt"] == "recover" and not bypass:
+            yield SimpleNamespace(
+                error=SimpleNamespace(
+                    code="multimodal_cache_miss",
+                    message="cache miss",
+                    retryable=True,
+                )
+            )
+        else:
+            # Recovery finishes before the successful peer; ordering must survive.
+            await asyncio.sleep(0.01 if prompt["prompt"] == "good" else 0)
+            yield SimpleNamespace(error=None, value=prompt["prompt"])
+
+    engine = vllm_inference.AsyncEmbedEngine.__new__(vllm_inference.AsyncEmbedEngine)
+    engine.engine = SimpleNamespace(renderer=Renderer(), model_config=None, encode=encode)
+    engine._ids = itertools.count()
+    engine._loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        outputs = engine.embed(prompts, tokenization_kwargs={"truncation": False})
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+        thread.join(timeout=5)
+        engine._loop.close()
+    assert [output.value for output in outputs] == ["good", "recover"]
+    assert [(name, task) for name, _, task in submitted].count(("good", "embed")) == 1
+    assert [(name, task) for name, _, task in submitted].count(("recover", "embed")) == 2
+    assert len({request_id for _, request_id, _ in submitted}) == 3
+    assert [(prompt["prompt"], bypass) for prompt, bypass in rendered] == [
+        ("good", False),
+        ("recover", False),
+        ("recover", True),
+    ]
+    assert all(prompt is prompts[1] for prompt, _ in rendered if prompt["prompt"] == "recover")
+
+
+@pytest.mark.parametrize(
+    "code,retryable,expected_attempts",
+    [("multimodal_cache_miss", True, 2), ("multimodal_cache_miss", False, 1), ("invalid_input", True, 1)],
+)
+def test_async_embed_engine_limits_retries_and_surfaces_structured_errors(
+    monkeypatch, code, retryable, expected_attempts
+):
+    import asyncio
+    import itertools
+    import threading
+
+    pytest.importorskip("vllm")
+    from vllm.outputs import EmbeddingRequestOutput
+    from vllm.renderers.inputs import preprocess
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    # An errored response must never be converted into an empty embedding.
+    monkeypatch.setattr(
+        EmbeddingRequestOutput, "from_base", staticmethod(lambda _: pytest.fail("converted error output"))
+    )
+    submissions = []
+    renderer = SimpleNamespace(
+        default_cmpl_tok_params=SimpleNamespace(with_kwargs=lambda **_: None),
+        render_cmpl=lambda prompts, _params, **kwargs: prompts,
+    )
+
+    async def encode(prompt, _params, request_id):
+        submissions.append(request_id)
+        yield SimpleNamespace(error=SimpleNamespace(code=code, message="request rejected", retryable=retryable))
+
+    engine = vllm_inference.AsyncEmbedEngine.__new__(vllm_inference.AsyncEmbedEngine)
+    engine.engine = SimpleNamespace(renderer=renderer, model_config=None, encode=encode)
+    engine._ids = itertools.count()
+    engine._loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(RuntimeError, match=code):
+            engine.embed(["bad"])
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+        thread.join(timeout=5)
+        engine._loop.close()
+    assert len(submissions) == len(set(submissions)) == expected_attempts
