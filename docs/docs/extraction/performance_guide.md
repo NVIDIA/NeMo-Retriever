@@ -223,7 +223,10 @@ For typed ingest plans, set `pdf_extract_rows_per_block` in
 
 The experimental `pdf_renderer="cuda_rdt"` mode moves page RGB directly between
 renderer and local GPU model actors through Ray Direct Transport. CPU PDF
-parsing and command preparation remain. Refer to
+parsing and command preparation remain. Native shared-memory scene handles
+avoid copying large command buffers into Python `bytes`. The path requires a
+single Linux host, the same worker user, and a shared process namespace with
+access to the scene owners' `/proc` file descriptors. Refer to
 [GPU-resident Ray batch rendering](nemo-retriever-api-reference.md#gpu-resident-ray-batch-rendering)
 for dependencies, configuration, and supported outputs.
 

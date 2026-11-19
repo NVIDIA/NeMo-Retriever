@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -69,6 +70,7 @@ class _GpuProducer:
         self.renderer = DeviceRenderer(library)
         self.pages = 0
         self.gpu_uuid = gpu_uuid
+        self.max_scene_bytes = 0
 
     @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
     def render(self, scenes):
@@ -83,6 +85,20 @@ class _GpuProducer:
 
         return {"reference": ray.put(results, _tensor_transport="nixl")}
 
+    @nvtx.annotate("nrl.cuda_rdt::render_shared_scene", color="green")
+    def render_handles(self, handles):
+        import ray
+
+        results = []
+        for handle in handles:
+            rgb, stats = self.renderer.replay_handle(handle)
+            if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
+                raise GpuTransportError("Renderer violated GPU-only pixel output contract")
+            self.max_scene_bytes = max(self.max_scene_bytes, handle.size)
+            results.append(rgb)
+        self.pages += len(results)
+        return {"reference": ray.put(results, _tensor_transport="nixl")}
+
     def status(self):
         import torch
 
@@ -92,6 +108,7 @@ class _GpuProducer:
             "rgb_readback_bytes": 0,
             "cpu_raster_calls": 0,
             "tensor_allocated_bytes": torch.cuda.memory_allocated(),
+            "max_scene_bytes": self.max_scene_bytes,
             "tensor_peak_bytes": torch.cuda.max_memory_allocated(),
             "tensor_reserved_bytes": torch.cuda.memory_reserved(),
         }
@@ -103,6 +120,7 @@ class RendererPool:
     def __init__(self, library):
         self.library = library
         self.producers = {}
+        self.next_gpu = 0
 
     def get(self, node_id, gpu_uuid):
         import ray
@@ -119,11 +137,22 @@ class RendererPool:
             ).remote(self.library, gpu_uuid)
         return self.producers[key]
 
-    def close(self):
+    async def get_next(self, node_id):
+        # Model constructors register their Ray-assigned GPUs. Awaiting lets
+        # registration proceed while CPU frontends retain their native scenes.
+        while True:
+            available = [actor for (node, _), actor in self.producers.items() if node == node_id]
+            if available:
+                result = available[self.next_gpu % len(available)]
+                self.next_gpu += 1
+                return result
+            await asyncio.sleep(0.05)
+
+    async def close(self):
         import ray
 
         try:
-            return ray.get([actor.status.remote() for actor in self.producers.values()])
+            return await asyncio.gather(*[actor.status.remote() for actor in self.producers.values()])
         finally:
             for actor in self.producers.values():
                 ray.kill(actor)
@@ -137,6 +166,8 @@ def render_page_batch(frame, pool):
     from cuda_pdf_renderer.device import RecordedScene
 
     images = [item for item in frame["page_image"]]
+    if all(isinstance(item.get("gpu_image"), GpuPageImage) for item in images):
+        return frame
     scenes = [RecordedScene(item["cuda_scene"], item["orig_shape_hw"][1], item["orig_shape_hw"][0]) for item in images]
     gpu_uuid = str(torch.cuda.get_device_properties(torch.cuda.current_device()).uuid)
     gpu_uuid = gpu_uuid if gpu_uuid.startswith("GPU-") else "GPU-" + gpu_uuid
@@ -198,3 +229,14 @@ def raise_stage_errors(frame, column):
     for payload in frame[column]:
         if isinstance(payload, dict) and payload.get("error"):
             raise GpuTransportError(f"GPU-resident {column} stage failed: {payload['error']}")
+
+
+@nvtx.annotate("nrl.cuda_rdt::submit_shared_scenes", color="green")
+def submit_scene_batch(scenes, pool):
+    """Keep native command memfds alive until GPU replay has consumed them."""
+    import ray
+
+    producer = ray.get(pool.get_next.remote(ray.get_runtime_context().get_node_id()))
+    handles = [scene.handle() for scene in scenes]
+    reference = ray.get(producer.render_handles.remote(handles))["reference"]
+    return [GpuPageImage(reference, index, scene.height, scene.width) for index, scene in enumerate(scenes)]

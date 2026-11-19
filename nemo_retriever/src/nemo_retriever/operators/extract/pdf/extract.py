@@ -164,7 +164,7 @@ def _render_page_to_base64(
 
     if isinstance(bitmap, _SceneBitmap):
         scene = bitmap.scene
-        return {"cuda_scene": scene.data, "orig_shape_hw": (scene.height, scene.width), "encoding": "cuda_scene", "image_b64": None}
+        return {"gpu_image": bitmap.gpu_image, "orig_shape_hw": (scene.height, scene.width), "encoding": "gpu_rgb", "image_b64": None}
     arr = convert_bitmap_to_corrected_numpy(bitmap)
 
     orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])

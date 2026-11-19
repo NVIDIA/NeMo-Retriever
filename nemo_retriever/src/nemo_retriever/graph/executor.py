@@ -1106,12 +1106,13 @@ class RayDataExecutor(AbstractExecutor):
             map_operator_class = node.operator_class
             map_batch_format = batch_format
             constructor_kwargs = node.operator_kwargs
-            if constructor_kwargs.get("cuda_rdt"):
+            if constructor_kwargs.get("cuda_rdt") or constructor_kwargs.get("pdf_renderer") == "cuda_rdt":
                 from importlib.util import find_spec
                 if find_spec("nixl") is None:
                     raise ImportError("cuda_rdt requires NIXL in every worker environment; install nixl")
-                overrides["enable_tensor_transport"] = True
-                if "page_elements" in node.operator_class.__module__:
+                if constructor_kwargs.get("cuda_rdt"):
+                    overrides["enable_tensor_transport"] = True
+                if "page_elements" in node.operator_class.__module__ or constructor_kwargs.get("pdf_renderer") == "cuda_rdt":
                     if getattr(self, "_cuda_rdt_pool", None) is None:
                         from cuda_pdf_renderer.client import library_path
                         from nemo_retriever.operators.extract.pdf.gpu_transport import RendererPool

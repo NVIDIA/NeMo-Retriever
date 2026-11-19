@@ -620,8 +620,11 @@ and command preparation remain.
 
 Install the renderer Python package and native libraries in every worker
 environment, and set `CUDA_PDF_RENDERER_LIBRARY` to the built client library.
-This mode does not use an externally started socket service. Workers need
-CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL. Bounded integration tests
+This mode does not use an externally started socket service. Run on a single
+Linux host with the same user and shared process namespace for CPU and GPU
+workers. Workers must be able to access each other's `/proc` file descriptors.
+Native shared-memory scene handles avoid copying large command buffers into
+Python `bytes`. Workers need CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL. Bounded integration tests
 use Ray 2.56.1, NIXL 1.5.2, and PyTorch 2.13 with CUDA 13.0.
 
 After configuring those dependencies, ingest PDF inputs into the default index:

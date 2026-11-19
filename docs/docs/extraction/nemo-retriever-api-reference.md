@@ -188,7 +188,10 @@ Text-only extraction that needs no page raster does not invoke the CUDA backend.
 
 Set `pdf_renderer="cuda_rdt"` with `run_mode="batch"` for the dedicated PDF
 graph. This path requires local Page Elements, local Nemotron OCR v2, and text
-embeddings. It does not require an externally started renderer socket service.
+embeddings. It runs on a single Linux host. CPU scene producers and GPU actors
+must use the same user and a shared process namespace with access to each
+other's `/proc` file descriptors. It does not require an externally started
+renderer socket service.
 
 Install the separate renderer package and native libraries in every worker
 environment. Set `CUDA_PDF_RENDERER_LIBRARY` to the built native client library.
@@ -220,8 +223,11 @@ if __name__ == "__main__":
     main()
 ```
 
-CPU PDFium parses pages and records drawing commands and resources. Renderer
-actors rasterize into PyTorch-owned CUDA RGB tensors. Page Elements resizes
+CPU PDFium parses pages and records drawing commands and resources in native
+shared-memory scenes. CPU workers retain scene owners while GPU actors map
+same-host descriptors for replay. Large command scenes are not copied into
+Python `bytes` or serialized as pixel payloads. Renderer actors rasterize into
+PyTorch-owned CUDA RGB tensors. Page Elements resizes
 those tensors on the GPU, and OCR consumes GPU crops. Page RGB does not return
 to host memory or pass through JPEG/base64 encoding. Text, region coordinates,
 and model results still use CPU processing where required.

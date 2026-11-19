@@ -18,27 +18,19 @@ class PdfRendererError(RuntimeError):
     """An explicitly selected PDF renderer failed; CPU fallback is prohibited."""
 
 
-_CURRENT_BATCH: contextvars.ContextVar[Any] = contextvars.ContextVar(
-    "cuda_pdf_batch", default=None
-)
+_CURRENT_BATCH: contextvars.ContextVar[Any] = contextvars.ContextVar("cuda_pdf_batch", default=None)
 
 
 def render_bitmap(page: Any, *, scale: float, rotation: int = 0) -> Any:
     """Render through the active CUDA batch, or the unchanged default PDFium API."""
     batch = _CURRENT_BATCH.get()
     if batch is None:
-        return (
-            page.render(scale=scale, rotation=rotation)
-            if rotation
-            else page.render(scale=scale)
-        )
+        return page.render(scale=scale, rotation=rotation) if rotation else page.render(scale=scale)
     try:
         return batch.take(float(scale), rotation)
     except Exception as exc:
         batch.failure = exc
-        raise PdfRendererError(
-            "CUDA PDF rendering failed; CPU fallback is disabled"
-        ) from exc
+        raise PdfRendererError("CUDA PDF rendering failed; CPU fallback is disabled") from exc
 
 
 class _SceneBitmap:
@@ -46,20 +38,18 @@ class _SceneBitmap:
         self.scene = scene
 
     def close(self):
-        pass
+        close = getattr(self.scene, "close", None)
+        if close is not None:
+            close()
 
     def to_numpy(self):
-        raise PdfRendererError(
-            "GPU-resident scenes cannot be materialized as host bitmaps"
-        )
+        raise PdfRendererError("GPU-resident scenes cannot be materialized as host bitmaps")
 
 
 class _CudaBatch:
     def __init__(self, data: Any, config: dict[str, Any], module: Any) -> None:
         self.bitmaps: list[Any] = []
-        self.cache: dict[tuple[bytes, float, int], Any] = collections.defaultdict(
-            collections.deque
-        )
+        self.cache: dict[tuple[bytes, float, int], Any] = collections.defaultdict(collections.deque)
         self.packet: bytes | None = None
         self.failure: Exception | None = None
         try:
@@ -73,16 +63,12 @@ class _CudaBatch:
         rotations: list[int] = []
         for value in data["bytes"].tolist():
             if not isinstance(value, (bytes, bytearray, memoryview)):
-                raise PdfRendererError(
-                    "CUDA PDF rendering requires single-page PDF byte packets"
-                )
+                raise PdfRendererError("CUDA PDF rendering requires single-page PDF byte packets")
             packet = bytes(value)
             document = module.pdfium.PdfDocument(packet)
             try:
                 if len(document) != 1:
-                    raise PdfRendererError(
-                        "CUDA PDF rendering requires single-page PDF byte packets"
-                    )
+                    raise PdfRendererError("CUDA PDF rendering requires single-page PDF byte packets")
                 if config["extract_images"] and config["pdf_renderer"] != "cuda_rdt":
                     page = document.get_page(0)
                     try:
@@ -101,9 +87,7 @@ class _CudaBatch:
                     get_width=lambda value=width: value,
                     get_height=lambda value=height: value,
                 )
-                scale = module._compute_fit_to_model_scale(
-                    dimensions, module._MODEL_INPUT_SIZE, max_dpi=dpi
-                )
+                scale = module._compute_fit_to_model_scale(dimensions, module._MODEL_INPUT_SIZE, max_dpi=dpi)
             else:
                 scale = max(float(dpi) / 72.0, 0.01)
             packets.append(packet)
@@ -119,18 +103,26 @@ class _CudaBatch:
 
                 recorder = SceneRecorder()
                 self.bitmaps = [
-                    _SceneBitmap(recorder.record(packet, scale, rotation))
+                    _SceneBitmap(recorder.record_native(packet, scale, rotation))
                     for packet, scale, rotation in zip(packets, scales, rotations)
                 ]
+                pool = config["kwargs"].get("_cuda_renderer_pool")
+                if pool is None:
+                    raise PdfRendererError("GPU-resident rendering requires the native Ray batch executor")
+                from nemo_retriever.operators.extract.pdf.gpu_transport import submit_scene_batch
+
+                try:
+                    images = submit_scene_batch([bitmap.scene for bitmap in self.bitmaps], pool)
+                    for bitmap, image in zip(self.bitmaps, images):
+                        bitmap.gpu_image = image
+                finally:
+                    for bitmap in self.bitmaps:
+                        bitmap.close()
             else:
                 self.bitmaps = list(backend.render_batch(packets, scales, rotations))
             if len(self.bitmaps) != len(packets):
-                raise PdfRendererError(
-                    "CUDA PDF renderer returned an incomplete page batch"
-                )
-            for packet, scale, rotation, bitmap in zip(
-                packets, scales, rotations, self.bitmaps
-            ):
+                raise PdfRendererError("CUDA PDF renderer returned an incomplete page batch")
+            for packet, scale, rotation, bitmap in zip(packets, scales, rotations, self.bitmaps):
                 self.cache[packet, scale, rotation].append(bitmap)
         except Exception:
             self.close()
@@ -139,9 +131,7 @@ class _CudaBatch:
     def take(self, scale: float, rotation: int) -> Any:
         values = self.cache.get((self.packet, scale, rotation))
         if not values:
-            raise PdfRendererError(
-                "CUDA PDF render request did not match its prepared batch"
-            )
+            raise PdfRendererError("CUDA PDF render request did not match its prepared batch")
         return values.popleft()
 
     def close(self) -> None:
@@ -206,16 +196,12 @@ def with_cuda_rendering(function: Any) -> Any:
             token = _CURRENT_BATCH.set(batch)
             result = function(data, *args, **kwargs)
             if batch.failure is not None:
-                raise PdfRendererError(
-                    "CUDA PDF image extraction failed"
-                ) from batch.failure
+                raise PdfRendererError("CUDA PDF image extraction failed") from batch.failure
             return result
         except PdfRendererError:
             raise
         except Exception as exc:
-            raise PdfRendererError(
-                "CUDA PDF rendering failed; CPU fallback is disabled"
-            ) from exc
+            raise PdfRendererError("CUDA PDF rendering failed; CPU fallback is disabled") from exc
         finally:
             if token is not None:
                 _CURRENT_BATCH.reset(token)

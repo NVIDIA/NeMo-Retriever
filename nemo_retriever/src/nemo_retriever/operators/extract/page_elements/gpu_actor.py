@@ -49,6 +49,14 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             warmed = get_warmed_model("page_elements")
             self._model = warmed if warmed is not None else NemotronPageElementsV3()
             self._nim_client = None
+        if self._cuda_rdt:
+            import ray
+            import torch
+            uuid = str(torch.cuda.get_device_properties(torch.cuda.current_device()).uuid)
+            uuid = uuid if uuid.startswith("GPU-") else "GPU-" + uuid
+            if self._cuda_renderer_pool is None:
+                raise RuntimeError("GPU-resident rendering requires the native Ray batch executor")
+            ray.get(self._cuda_renderer_pool.get.remote(ray.get_runtime_context().get_node_id(), uuid))
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
