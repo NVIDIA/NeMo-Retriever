@@ -34,6 +34,25 @@ The `service` target installs `nemo_retriever[service]`, copies the packaged `re
 retriever service start --config /etc/nemo-retriever/retriever-service.yaml
 ```
 
+### Build the GPU service image
+
+For local GPU inference, build the `service-gpu` target from the repository root:
+
+```bash
+docker build -f Dockerfile --target service-gpu -t nemo-retriever-service-gpu:dev .
+```
+
+This source build installs `[service,local,multimedia]`, then runs
+`python -m flashinfer install-jit-cache-wheel` during image creation.
+FlashInfer selects the matching version and CUDA build from the installed
+runtime. The default command installs all architecture providers without
+requiring a visible GPU, increasing image size to support different deployment GPUs.
+Covered kernels use precompiled libraries; other kernels and helpers can still
+compile on first use. Provide writable runtime caches and validate your intended
+model on the deployment GPU before offline use. Refer to
+[Local GPU kernel cache](../docs/docs/extraction/prerequisites-support-matrix.md#local-gpu-kernel-cache)
+for local Python installation and cache preparation.
+
 ## Run The Service Container
 
 For remote NVIDIA-hosted NIM endpoints, pass the API key into the container and publish the service port:
