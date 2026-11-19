@@ -340,7 +340,7 @@ The following settings configure Parse independently of the OCR model.
 | `task_prompt` | Override the native Parse control-token prompt for full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. |
 | `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
 | `length_retry_max_tokens` | Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. Pages whose output ends in repeated text are not rerun. Applies only when the value is larger than the first limit. The local default first limit is 9,000 tokens, so set `max_tokens` below `length_retry_max_tokens` (for example, `4096`) to use the rerun. Defaults to `8192`. Set `None` to disable the rerun. |
-| `text_layer_min_overlap` | Use the native PDF text layer as page text when fewer than this fraction of the Parse page-text words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native words. Defaults to `0.3`. Set `0` to keep Parse page text. |
+| `text_layer_min_overlap` | Use the native PDF text layer as page text when fewer than this fraction of the Parse page-text words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native words. Text-layer lines already present in the page's table, chart, or infographic output are left out. Defaults to `0.3`. Set `0` to keep Parse page text. |
 
 To include text inside pictures, pass the complete control-token prompt.
 This setting applies to both full-page Parse and chart routing.

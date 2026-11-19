@@ -176,3 +176,29 @@ def test_failed_length_retry_keeps_first_pass_output() -> None:
     assert meta["completion"]["status"] == "incomplete"
     assert meta["length_retry"]["retry_failure"] == "RuntimeError: engine stopped"
     assert list(iter_stage_errors_from_value(meta)) == []
+
+
+def test_fallback_page_keeps_each_table_cell_once() -> None:
+    table_rows = ["Region Q1 Q2", "North 1200 1350", "South 980 1010"]
+    native = "\n".join([NATIVE, *table_rows, "Closing remarks about outlook and guidance for investors"])
+    page = (
+        _tagged("Ɋǝʌǝnnǝ ƃɹǝʍ ʂʇɹouƃlʎ " * 10)
+        + "<x_0.1><y_0.5>| Region | Q1 | Q2 |\n| North | 1200 | 1350 |\n| South | 980 | 1010 |<x_0.9><y_0.7><class_Table>"
+    )
+    df = pd.DataFrame({"text": [native], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(
+        df,
+        model=_FakeParse([page]),
+        extract_text=True,
+        extract_tables=True,
+        nemotron_parse_table_format="HTML",
+        text_layer_min_overlap=0.3,
+    )
+    meta = out.loc[0, "nemotron_parse_v1_2"]
+    assert meta["text_source"] == "text_layer"
+    assert meta["text_layer_lines_dropped"] == 3
+    assert out.loc[0, "text"] == NATIVE + "\nClosing remarks about outlook and guidance for investors"
+    assert len(out.loc[0, "table"]) == 1
+    for cell in ("1200", "1350", "980", "1010"):
+        combined = out.loc[0, "text"] + out.loc[0, "table"][0]["text"]
+        assert combined.count(cell) == 1

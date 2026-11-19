@@ -173,6 +173,30 @@ def _words(text: Any) -> List[str]:
     return _RE_WORD.findall(text.lower()) if isinstance(text, str) else []
 
 
+_STRUCTURED_LINE_MIN_COVERAGE = 0.8
+
+
+def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tuple[str, int]:
+    """Remove native text-layer lines already present in Parse table, chart, or infographic text.
+
+    A line is removed when at least ``_STRUCTURED_LINE_MIN_COVERAGE`` of its
+    words occur in the structured text, so fallback page text does not repeat
+    table cells that the page's structured regions already carry.
+    """
+    structured_words = set(_words("\n".join(structured_texts)))
+    if not structured_words:
+        return native_text, 0
+    kept: List[str] = []
+    dropped = 0
+    for line in native_text.splitlines():
+        words = _words(line)
+        if words and sum(word in structured_words for word in words) / len(words) >= _STRUCTURED_LINE_MIN_COVERAGE:
+            dropped += 1
+            continue
+        kept.append(line)
+    return "\n".join(kept), dropped
+
+
 def _text_layer_fallback(parse_text: Optional[str], native_text: Any, min_overlap: float) -> bool:
     """Return True when the native PDF text layer should replace Parse page text.
 
@@ -768,8 +792,12 @@ def nemotron_parse_pages(
             native_text = batch_df.iat[idx, native_col]
             if not _text_layer_fallback(all_text[idx], native_text, text_layer_min_overlap):
                 continue
+            structured = [item["text"] for items in (all_table, all_chart, all_infographic) for item in items[idx]]
+            native_text, dropped = _drop_structured_lines(native_text, structured)
             all_text[idx] = native_text
             all_meta[idx]["text_source"] = "text_layer"
+            if dropped:
+                all_meta[idx]["text_layer_lines_dropped"] = dropped
             if all_ordered_regions[idx] is not None:
                 all_ordered_regions[idx] = [
                     {"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": native_text, "label_name": "text"}
