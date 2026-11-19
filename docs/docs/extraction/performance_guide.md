@@ -236,6 +236,13 @@ buffers remain owned until ingestion drains, so monitor GPU memory as well as
 throughput when increasing page batch sizes or worker counts. Separate model
 pools can also require GPU-to-GPU transfers.
 
+Each GPU renderer producer shares a pool of 16 page workers across up to
+16 concurrent batch requests. Each page worker uses its own nondefault
+PyTorch CUDA stream. Before publishing a page tensor, the worker waits for
+that page's stream to complete. This host wait does not copy RGB pixels to
+CPU memory or synchronize every page. These internal limits are separate from
+page batch size and do not guarantee simultaneous kernel execution.
+
 Measure complete ingestion through index writing and retain the same PDF
 inputs, model settings, and text embedding configuration. Record page and
 indexed-row counts, ingestion pages per second, GPU memory, and stage timings.

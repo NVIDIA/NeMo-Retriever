@@ -108,3 +108,27 @@ def test_gpu_transport_rejects_unsupported_outputs():
             extract_params=ExtractParams(pdf_renderer="cuda_rdt"),
             embed_params=EmbedParams(embed_modality="image"),
         )
+
+
+def test_failed_batch_drains_other_descriptor_readers_before_returning():
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from nemo_retriever.operators.extract.pdf.gpu_transport import _GpuProducer
+
+    producer = _GpuProducer.__new__(_GpuProducer)
+    completed = []
+
+    def read(handle):
+        if handle == 0:
+            raise RuntimeError("invalid scene descriptor")
+        time.sleep(0.02)
+        completed.append(handle)
+        return object()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        producer._pages = executor
+        producer._render_shared_page = read
+        with pytest.raises(RuntimeError, match="invalid scene"):
+            producer.render_handles([0, 1, 2])
+        assert sorted(completed) == [1, 2]

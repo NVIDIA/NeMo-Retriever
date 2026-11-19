@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -71,6 +73,9 @@ class _GpuProducer:
         self.pages = 0
         self.gpu_uuid = gpu_uuid
         self.max_scene_bytes = 0
+        self._stats_lock = threading.Lock()
+        self._thread_state = threading.local()
+        self._pages = ThreadPoolExecutor(max_workers=16, thread_name_prefix="cuda-page")
 
     @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
     def render(self, scenes):
@@ -85,18 +90,41 @@ class _GpuProducer:
 
         return {"reference": ray.put(results, _tensor_transport="nixl")}
 
+    def _render_shared_page(self, handle):
+        import torch
+
+        if not hasattr(self._thread_state, "stream"):
+            torch.cuda.set_device(0)
+            self._thread_state.stream = torch.cuda.Stream(device=0)
+        stream = self._thread_state.stream
+        with torch.cuda.stream(stream):
+            rgb, stats = self.renderer.replay_handle(handle)
+            # Publish only completed GPU data. This waits for this page's
+            # stream, without copying pixels or synchronizing other pages.
+            stream.synchronize()
+        if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
+            raise GpuTransportError("Renderer violated GPU-only pixel output contract")
+        return rgb
+
     @nvtx.annotate("nrl.cuda_rdt::render_shared_scene", color="green")
     def render_handles(self, handles):
         import ray
 
-        results = []
-        for handle in handles:
-            rgb, stats = self.renderer.replay_handle(handle)
-            if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
-                raise GpuTransportError("Renderer violated GPU-only pixel output contract")
-            self.max_scene_bytes = max(self.max_scene_bytes, handle.size)
-            results.append(rgb)
-        self.pages += len(results)
+        futures = [self._pages.submit(self._render_shared_page, handle) for handle in handles]
+        try:
+            results = [future.result() for future in futures]
+        except BaseException:
+            # The caller owns the descriptors: drain every reader before
+            # returning an error that allows the caller to close them.
+            for future in futures:
+                try:
+                    future.result()
+                except BaseException:
+                    pass
+            raise
+        with self._stats_lock:
+            self.max_scene_bytes = max([self.max_scene_bytes] + [handle.size for handle in handles])
+            self.pages += len(results)
         return {"reference": ray.put(results, _tensor_transport="nixl")}
 
     def status(self):
@@ -108,6 +136,8 @@ class _GpuProducer:
             "rgb_readback_bytes": 0,
             "cpu_raster_calls": 0,
             "tensor_allocated_bytes": torch.cuda.memory_allocated(),
+            "page_streams": 16,
+            "batch_rpc_concurrency": 16,
             "max_scene_bytes": self.max_scene_bytes,
             "tensor_peak_bytes": torch.cuda.max_memory_allocated(),
             "tensor_reserved_bytes": torch.cuda.memory_reserved(),
@@ -128,7 +158,7 @@ class RendererPool:
 
         key = (node_id, gpu_uuid)
         if key not in self.producers:
-            actor = ray.remote(num_cpus=0, num_gpus=0, enable_tensor_transport=True)(_GpuProducer)
+            actor = ray.remote(num_cpus=0, num_gpus=0, enable_tensor_transport=True, max_concurrency=16)(_GpuProducer)
             self.producers[key] = actor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
                 runtime_env={
