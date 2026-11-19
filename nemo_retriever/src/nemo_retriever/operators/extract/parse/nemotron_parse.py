@@ -835,6 +835,13 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
+    def cleanup(self) -> None:
+        """Release the local engine; repeated calls are safe."""
+        with self._model_lock:
+            if self._model is not None:
+                self._model.unload()
+                self._model = None
+
     def __call__(self, batch_df: Any, **override_kwargs: Any) -> Any:
         try:
             return self.run(batch_df, **override_kwargs)

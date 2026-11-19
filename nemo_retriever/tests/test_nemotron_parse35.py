@@ -252,6 +252,16 @@ def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> Non
     assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
 
 
+def test_gpu_actor_cleanup_unloads_engine_once() -> None:
+    with patch("nemo_retriever.models.local.NemotronParse35") as parser:
+        actor = NemotronParseGPUActor()
+        actor._ensure_model()
+        actor.cleanup()
+        actor.cleanup()
+    parser.return_value.unload.assert_called_once_with()
+    assert actor._model is None
+
+
 def test_local_v12_actor_fails_with_migration_guidance() -> None:
     with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         actor = NemotronParseGPUActor(nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2")

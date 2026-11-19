@@ -424,6 +424,7 @@ def test_vllm_engine_batches_pages_with_bounded_memory(vllm_runtime: SimpleNames
     assert engine["max_num_seqs"] == NemotronParse35().input_batch_size == 128
     assert engine["gpu_memory_utilization"] == 0.3
     assert engine["kv_cache_memory_bytes"] == 24 * 1024**3
+    assert engine["mm_processor_cache_gb"] == 0
     assert NemotronParse35(backend="transformers", device="cpu").input_batch_size == 1
 
 
@@ -457,7 +458,7 @@ def test_concurrent_callers_load_one_engine(vllm_runtime: SimpleNamespace) -> No
     vllm_runtime.llm.assert_called_once()
 
 
-@pytest.mark.parametrize("mode", ["normal", "empty", "error"])
+@pytest.mark.parametrize("mode", ["normal", "empty", "error", "abort", "error_finish"])
 def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     preprocess = ModuleType("vllm.renderers.inputs.preprocess")
     preprocess.parse_model_prompt = lambda config, prompt: prompt
@@ -482,7 +483,10 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
         if mode == "empty":
             return
         await asyncio.sleep(0.01 if item == "first" else 0)
-        yield item
+        reason = "error" if mode == "error_finish" and item == "second" else "stop"
+        yield SimpleNamespace(
+            outputs=[SimpleNamespace(finish_reason="abort" if mode == "abort" else reason)], item=item
+        )
 
     engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
     engine._loop = asyncio.new_event_loop()
@@ -502,10 +506,11 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
     params = SimpleNamespace(clone=SimpleNamespace)
     try:
         if mode == "normal":
-            assert engine.generate(["first", "second"], params) == ["first", "second"]
+            assert [output.item for output in engine.generate(["first", "second"], params)] == ["first", "second"]
             assert len(set(request_ids)) == 2
         else:
-            with pytest.raises(RuntimeError, match="no output" if mode == "empty" else "request failed"):
+            expected = {"empty": "no output", "error": "request failed"}.get(mode, "finished with reason")
+            with pytest.raises(RuntimeError, match=expected):
                 engine.generate(["first", "second"], params)
             assert cancelled == (["second"] if mode == "error" else [])
     finally:
