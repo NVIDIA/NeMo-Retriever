@@ -166,7 +166,7 @@ def _looks_repetitive(text: str) -> bool:
 
 
 _RE_WORD = re.compile(r"\w{2,}", re.UNICODE)
-_TEXT_LAYER_MIN_WORDS = 20
+_TEXT_LAYER_MIN_WORDS = 30
 
 
 def _words(text: Any) -> List[str]:

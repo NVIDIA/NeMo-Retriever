@@ -687,7 +687,7 @@ class ParseParams(_ParamsModel):
         le=1,
         description=(
             "Use the native PDF text layer as page text when fewer than this fraction of Parse page-text "
-            "words occur in it, or when Parse returns no page text. Applies to pages with at least 20 native "
+            "words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native "
             "words. 0 disables the fallback."
         ),
     )
