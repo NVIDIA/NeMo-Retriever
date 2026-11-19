@@ -537,7 +537,7 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
 def test_async_engine_shutdown_does_not_wait_past_timeout_for_stuck_tasks() -> None:
     engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
     engine._loop = asyncio.new_event_loop()
-    engine._thread = threading.Thread(target=engine._loop.run_forever)
+    engine._thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
     engine._thread.start()
     engine.engine = SimpleNamespace(shutdown=MagicMock())
 
