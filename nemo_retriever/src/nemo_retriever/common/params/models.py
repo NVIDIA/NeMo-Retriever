@@ -583,6 +583,8 @@ class ParseParams(_ParamsModel):
         top_p: Nucleus probability in (0, 1].
         seed: Optional nonnegative random seed.
         max_tokens: Positive limit on generated output tokens per page or crop.
+        text_layer_min_overlap: Minimum fraction of Parse page-text words found in the
+            native PDF text layer before the text layer replaces Parse page text; 0 disables.
 
     Raises:
         ValueError: For invalid field values, unsupported formats, or unknown fields.
@@ -665,6 +667,17 @@ class ParseParams(_ParamsModel):
         description=(
             "Positive output token limit per page or crop. Unset inherits the page backend default or "
             "8744 for chart crops."
+        ),
+    )
+
+    text_layer_min_overlap: float = Field(
+        default=0.3,
+        ge=0,
+        le=1,
+        description=(
+            "Use the native PDF text layer as page text when fewer than this fraction of Parse page-text "
+            "words occur in it, or when Parse returns no page text. Applies to pages with at least 20 native "
+            "words. 0 disables the fallback."
         ),
     )
 

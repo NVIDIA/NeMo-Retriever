@@ -154,6 +154,33 @@ def _extract_parse_text(response_item: Any) -> str:
         return ""
 
 
+_RE_WORD = re.compile(r"\w{2,}", re.UNICODE)
+_TEXT_LAYER_MIN_WORDS = 20
+
+
+def _words(text: Any) -> List[str]:
+    return _RE_WORD.findall(text.lower()) if isinstance(text, str) else []
+
+
+def _text_layer_fallback(parse_text: Optional[str], native_text: Any, min_overlap: float) -> bool:
+    """Return True when the native PDF text layer should replace Parse page text.
+
+    Applies when the page has at least ``_TEXT_LAYER_MIN_WORDS`` native words and
+    either Parse produced no page text or fewer than ``min_overlap`` of its
+    words occur in the native text layer (for example, pages whose embedded
+    fonts render as unreadable glyphs).
+    """
+    native_words = _words(native_text)
+    if min_overlap <= 0 or len(native_words) < _TEXT_LAYER_MIN_WORDS:
+        return False
+    parse_words = _words(parse_text)
+    if not parse_words:
+        return True
+    native_set = set(native_words)
+    overlap = sum(1 for word in parse_words if word in native_set) / len(parse_words)
+    return overlap < min_overlap
+
+
 def _route_parsed_elements(
     raw_text: str,
     *,
@@ -367,6 +394,7 @@ def nemotron_parse_pages(
     nemotron_parse_table_format: Optional[str] = None,
     parse_sampling_params: Optional[Dict[str, Any]] = None,
     task_prompt: Optional[str] = None,
+    text_layer_min_overlap: float = 0.0,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -686,6 +714,21 @@ def nemotron_parse_pages(
                 "completion": _completion(*outcomes[pos], failed=True),
             }
 
+    if extract_text and parse35 and text_layer_min_overlap > 0 and "text" in batch_df.columns:
+        native_col = batch_df.columns.get_loc("text")
+        for idx in batch_indices:
+            if all_meta[idx].get("error") is not None:
+                continue
+            native_text = batch_df.iat[idx, native_col]
+            if not _text_layer_fallback(all_text[idx], native_text, text_layer_min_overlap):
+                continue
+            all_text[idx] = native_text
+            all_meta[idx]["text_source"] = "text_layer"
+            if all_ordered_regions[idx] is not None:
+                all_ordered_regions[idx] = [
+                    {"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": native_text, "label_name": "text"}
+                ] + [region for region in all_ordered_regions[idx] if region["label_name"] != "text"]
+
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:
         meta["timing"] = {"seconds": float(elapsed)}
@@ -740,6 +783,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -755,6 +799,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._text_layer_min_overlap = float(text_layer_min_overlap)
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -820,6 +865,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             nemotron_parse_model=self._nemotron_parse_model,
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
+            text_layer_min_overlap=self._text_layer_min_overlap,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -876,6 +922,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -893,6 +940,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._text_layer_min_overlap = float(text_layer_min_overlap)
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -925,6 +973,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             nemotron_parse_model=self._nemotron_parse_model,
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
+            text_layer_min_overlap=self._text_layer_min_overlap,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -984,6 +1033,7 @@ class NemotronParseActor(ArchetypeOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -1008,6 +1058,7 @@ class NemotronParseActor(ArchetypeOperator):
             nemotron_parse_model=nemotron_parse_model,
             nemotron_parse_table_format=nemotron_parse_table_format,
             parse_sampling_params=parse_sampling_params,
+            text_layer_min_overlap=text_layer_min_overlap,
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,

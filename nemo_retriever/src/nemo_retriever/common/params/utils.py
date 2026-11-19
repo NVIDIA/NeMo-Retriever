@@ -238,6 +238,10 @@ def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dic
     if params.nemotron_parse_table_format is not None:
         kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
     parse = params.parse
+    if not chart_routing:
+        from nemo_retriever.common.params.models import ParseParams
+
+        kwargs["text_layer_min_overlap"] = (parse or ParseParams()).text_layer_min_overlap
     if parse is not None:
         if parse.task_prompt is not None:
             kwargs["task_prompt"] = parse.task_prompt
