@@ -339,6 +339,7 @@ The following settings configure Parse independently of the OCR model.
 | `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `HTML`; chart routing defaults to `simple_html`. |
 | `task_prompt` | Override the native Parse control-token prompt for full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. |
 | `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
+| `text_layer_min_overlap` | Use the native PDF text layer as page text when fewer than this fraction of the Parse page-text words occur in it, or when Parse returns no page text. Applies to pages with at least 20 native words. Defaults to `0.3`. Set `0` to keep Parse page text. |
 
 To include text inside pictures, pass the complete control-token prompt.
 This setting applies to both full-page Parse and chart routing.
