@@ -17,6 +17,27 @@ from nemo_retriever.common.stage_errors import iter_stage_errors_from_value
 from nemo_retriever.common.params.utils import build_parse_actor_kwargs
 from nemo_retriever.operators.extract.parse.nemotron_parse import _text_layer_fallback, nemotron_parse_pages
 
+
+@pytest.fixture(autouse=True)
+def _parse35_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Decode tagged Parse 3.5 output without downloading HF's helper package."""
+    from nemo_retriever.common.modality.parse import nemotron_parse35_postprocessing as postprocessing
+    from nemo_retriever.common.modality.parse.nemotron_parse_postprocessing import extract_classes_bboxes
+
+    def postprocess_document(raw_text: str) -> dict:
+        classes, boxes, texts = extract_classes_bboxes(raw_text)
+        return {
+            "blocks": [
+                {"class": cls, "bbox": list(box), "text": text, "content": text}
+                for cls, box, text in zip(classes, boxes, texts)
+            ]
+        }
+
+    monkeypatch.setattr(
+        postprocessing, "_load_parse35_helpers", lambda: SimpleNamespace(postprocess_document=postprocess_document)
+    )
+
+
 NATIVE = " ".join(f"native{i} revenue grew strongly" for i in range(10))
 
 
