@@ -513,11 +513,23 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
             with pytest.raises(RuntimeError, match=expected):
                 engine.generate(["first", "second"], params)
             assert cancelled == (["second"] if mode == "error" else [])
-        pending = asyncio.run_coroutine_threadsafe(asyncio.sleep(30), engine._loop)
+        unwound = []
+
+        async def output_handler() -> None:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0)
+                unwound.append(True)
+                raise
+
+        handler = asyncio.run_coroutine_threadsafe(output_handler(), engine._loop)
+        # Like vLLM, engine shutdown only schedules the handler's cancellation on the loop.
+        engine.engine.shutdown.side_effect = lambda timeout: handler.cancel()
     finally:
         engine.shutdown(timeout=30)
     engine.engine.shutdown.assert_called_once_with(timeout=30)
-    assert pending.cancelled()
+    assert unwound == [True]
     assert engine._loop.is_closed()
     assert not engine._thread.is_alive()
 
