@@ -543,9 +543,9 @@ class _AsyncParseEngine:
     def shutdown(self, timeout: float | None = None) -> None:
         """Stop the engine core, then the private event loop."""
         self.engine.shutdown(timeout=timeout)
-        self._stop_loop()
+        self._stop_loop(timeout=timeout)
 
-    def _stop_loop(self) -> None:
+    def _stop_loop(self, timeout: float | None = 30.0) -> None:
         import asyncio
 
         async def cancel_pending() -> None:
@@ -554,7 +554,8 @@ class _AsyncParseEngine:
             for task in tasks:
                 if not task.cancelling():
                     task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            if tasks:
+                await asyncio.wait(tasks, timeout=timeout)
 
         asyncio.run_coroutine_threadsafe(cancel_pending(), self._loop).result()
         self._loop.call_soon_threadsafe(self._loop.stop)

@@ -11,6 +11,7 @@ import itertools
 import os
 import sys
 import threading
+import time
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -530,6 +531,28 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
         engine.shutdown(timeout=30)
     engine.engine.shutdown.assert_called_once_with(timeout=30)
     assert unwound == [True]
+    assert engine._loop.is_closed()
+    assert not engine._thread.is_alive()
+
+
+def test_async_engine_shutdown_does_not_wait_past_timeout_for_stuck_tasks() -> None:
+    engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
+    engine._loop = asyncio.new_event_loop()
+    engine._thread = threading.Thread(target=engine._loop.run_forever)
+    engine._thread.start()
+    engine.engine = SimpleNamespace(shutdown=MagicMock())
+
+    async def ignores_cancellation() -> None:
+        while True:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run_coroutine_threadsafe(ignores_cancellation(), engine._loop)
+    started = time.monotonic()
+    engine.shutdown(timeout=0.1)
+    assert time.monotonic() - started < 5
     assert engine._loop.is_closed()
     assert not engine._thread.is_alive()
 
