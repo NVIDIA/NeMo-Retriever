@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 from nemo_retriever.common.params import ExtractParams, ParseParams
+from nemo_retriever.common.stage_errors import iter_stage_errors_from_value
 from nemo_retriever.common.params.utils import build_parse_actor_kwargs
 from nemo_retriever.operators.extract.parse.nemotron_parse import _text_layer_fallback, nemotron_parse_pages
 
@@ -152,4 +153,5 @@ def test_failed_length_retry_keeps_first_pass_output() -> None:
     assert out.loc[0, "text"] == "Varied opening text"
     assert meta["error"] is None
     assert meta["completion"]["status"] == "incomplete"
-    assert meta["length_retry"]["error"]["type"] == "RuntimeError"
+    assert meta["length_retry"]["retry_failure"] == "RuntimeError: engine stopped"
+    assert list(iter_stage_errors_from_value(meta)) == []

@@ -647,15 +647,17 @@ def nemotron_parse_pages(
                                 max_tokens=length_retry_max_tokens,
                             )
                         except Exception as retry_error:
+                            pages = ", ".join(_page_label(rows[batch_indices[pos]]) for pos in retry)
                             logger.warning(
-                                f"Warning: Nemotron Parse length retry failed: "
+                                f"Warning: Nemotron Parse length retry failed; keeping first-pass output: "
+                                f"max_tokens={length_retry_max_tokens} pages=[{pages}] "
                                 f"{type(retry_error).__name__}: {retry_error}",
                                 exc_info=retry_error,
                             )
                             for pos in retry:
                                 all_meta[batch_indices[pos]]["length_retry"] = {
                                     "max_tokens": length_retry_max_tokens,
-                                    "error": {"type": retry_error.__class__.__name__, "message": str(retry_error)},
+                                    "retry_failure": f"{type(retry_error).__name__}: {retry_error}",
                                 }
                         else:
                             for pos, result in zip(retry, retried, strict=True):
