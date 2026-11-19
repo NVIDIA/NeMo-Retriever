@@ -231,6 +231,8 @@ class NemotronParse35(BaseModel):
                 attention_config={"flash_attn_version": 3},
                 gpu_memory_utilization=0.3,
                 kv_cache_memory_bytes=24 * 1024**3,
+                # UDF threads render concurrently, so a cached repeat image could reach the engine before its data.
+                mm_processor_cache_gb=0,
                 compilation_config={"mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"},
                 **speculative_kwargs,
             )
@@ -512,6 +514,12 @@ class _AsyncParseEngine:
             if output is None:
                 raise RuntimeError(
                     f"Parse engine returned no output for request {request_id}. "
+                    "Check the vLLM engine logs for an error, then retry the batch."
+                )
+            reason = output.outputs[0].finish_reason
+            if reason in ("abort", "error"):
+                raise RuntimeError(
+                    f"Parse engine request {request_id} finished with reason {reason!r}. "
                     "Check the vLLM engine logs for an error, then retry the batch."
                 )
             return output

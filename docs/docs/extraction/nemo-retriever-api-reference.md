@@ -388,7 +388,9 @@ Set `chart_routing=True` with `method="ocr"` or `"pdfium_hybrid"` to replace
 chart-region OCR content with Parse 3.5 output. The default is `False`.
 Routing requires `use_page_elements=True`, `extract_charts=True`, and
 `extract_page_as_image=True`. Local routing requires a CUDA GPU and the Parse
-dependencies. Remote routing requires a Parse 3.5 chat-completions endpoint.
+dependencies. Local routing uses the same Parse engine as full-page Parse, with
+a fixed 24 GiB KV cache, so each routing GPU needs more than 24 GiB of free
+memory. Remote routing requires a Parse 3.5 chat-completions endpoint.
 
 The following example runs OCR and then routes detected chart crops locally.
 Use the same `__main__` guard as the full-page example in standalone scripts.
