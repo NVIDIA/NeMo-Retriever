@@ -11,7 +11,6 @@ import itertools
 import os
 import sys
 import threading
-import time
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
