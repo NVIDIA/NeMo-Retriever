@@ -550,9 +550,10 @@ def test_async_engine_shutdown_does_not_wait_past_timeout_for_stuck_tasks() -> N
                 pass
 
     asyncio.run_coroutine_threadsafe(ignores_cancellation(), engine._loop)
-    started = time.monotonic()
-    engine.shutdown(timeout=0.1)
-    assert time.monotonic() - started < 5
+    shutdown = threading.Thread(target=engine.shutdown, kwargs={"timeout": 0.1}, daemon=True)
+    shutdown.start()
+    shutdown.join(timeout=5)
+    assert not shutdown.is_alive()
     assert engine._loop.is_closed()
     assert not engine._thread.is_alive()
 
