@@ -336,7 +336,7 @@ The following settings configure Parse independently of the OCR model.
 | --- | --- |
 | `model`, `invoke_url` | Select the model and optional remote endpoint. Omit the URL for local inference. Parse 3.5 sampling and chart routing use `/v1/chat/completions` endpoints. |
 | `api_key`, `request_timeout_s` | Override only Parse credentials and the positive request timeout. Unset values inherit extraction settings. `NO_API_KEY` disables authentication for Parse only. |
-| `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `HTML`; chart routing defaults to `simple_html`. |
+| `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `markdown`; chart routing defaults to `simple_html`. |
 | `task_prompt` | Override the native Parse control-token prompt for full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. |
 | `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
 | `length_retry_max_tokens` | Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. Pages whose output ends in repeated text are not rerun. Applies only when the value is larger than the first limit. Defaults to `8192`. Set `None` to disable the rerun. |

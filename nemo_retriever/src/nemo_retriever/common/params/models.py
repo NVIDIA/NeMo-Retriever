@@ -562,7 +562,7 @@ class ParseParams(_ParamsModel):
 
     Pass this group as ``ExtractParams(parse=ParseParams(...))``. Unset fields
     inherit the extraction configuration and the selected path's defaults.
-    Full-page Parse 3.5 defaults to HTML; chart routing defaults to Simple
+    Full-page Parse 3.5 defaults to Markdown; chart routing defaults to Simple
     HTML and temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0,
     seed=0, max_tokens=8744. Sampling overrides require local Parse 3.5 or a
     Parse 3.5 chat-completions endpoint. Legacy models keep their defaults.
@@ -625,7 +625,7 @@ class ParseParams(_ParamsModel):
     table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
         default=None,
         description=(
-            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to HTML for "
+            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to markdown for "
             "full pages and simple_html for chart crops."
         ),
     )
@@ -778,7 +778,7 @@ class ExtractParams(_ParamsModel):
     nemotron_parse_model: Optional[str] = None
     nemotron_parse_table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
         default=None,
-        description="Parse 3.5 Table format. Defaults to HTML for 3.5; legacy Parse keeps Markdown.",
+        description="Parse 3.5 Table format. Defaults to markdown for 3.5 and legacy Parse.",
     )
 
     parse: Optional[ParseParams] = Field(

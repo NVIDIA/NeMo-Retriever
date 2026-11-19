@@ -214,7 +214,7 @@ def _route_parsed_elements(
 
         elements = [
             (block["class"], block["bbox"], block["content"])
-            for block in _postprocess_parse35_blocks(raw_text, table_format=table_format or "HTML")
+            for block in _postprocess_parse35_blocks(raw_text, table_format=table_format or "markdown")
         ]
     else:
         classes, bboxes, texts = extract_classes_bboxes(raw_text)
@@ -420,8 +420,8 @@ def nemotron_parse_pages(
     concatenated into the ``text`` column, replacing the upstream pdfium
     extraction when ``extract_text`` is ``True``.
 
-    ``nemotron_parse_table_format`` selects ``HTML`` (the 3.5 default),
-    ``simple_html``, ``markdown``, or ``latex`` for Parse 3.5 Table blocks only.
+    ``nemotron_parse_table_format`` selects ``markdown`` (the 3.5 default), ``HTML``,
+    ``simple_html``, or ``latex`` for Parse 3.5 Table blocks only.
     ``parse_sampling_params`` contains validated Parse 3.5 generation overrides
     (temperature, repetition_penalty, top_k, top_p, seed, max_tokens). Remote
     overrides require chat-completions URLs; local adapters must be configured
