@@ -305,13 +305,7 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_parse_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         parse_kwargs = build_parse_actor_kwargs(extract_params)
-        parse_actor = self._instantiate_resolved(NemotronParseActor, **parse_kwargs)
-        try:
-            return parse_actor.run(batch_df)
-        finally:
-            cleanup = getattr(parse_actor, "cleanup", None)
-            if callable(cleanup):
-                cleanup()
+        return self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
 
     def _run_pdf_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params

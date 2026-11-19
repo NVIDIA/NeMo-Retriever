@@ -252,33 +252,6 @@ def test_gpu_actor_uses_only_parse35_and_loads_once(model_id: str | None) -> Non
     assert actor.get_constructor_kwargs()["nemotron_parse_model"] == model_id
 
 
-def test_gpu_actor_cleanup_unloads_engine_once() -> None:
-    with patch("nemo_retriever.models.local.NemotronParse35", autospec=True) as parser:
-        actor = NemotronParseGPUActor()
-        actor._ensure_model()
-        actor.cleanup()
-        actor.cleanup()
-    parser.return_value.unload.assert_called_once_with()
-    assert actor._model is None
-
-
-def test_multi_type_parse_pipeline_cleans_up_parse_actor_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    from unittest.mock import create_autospec
-
-    import pandas as pd
-
-    from nemo_retriever.common.params import ExtractParams
-    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractGPUActor
-
-    actor = create_autospec(NemotronParseGPUActor, instance=True)
-    actor.run.side_effect = RuntimeError("parse failed")
-    operator = MultiTypeExtractGPUActor(extract_params=ExtractParams())
-    monkeypatch.setattr(operator, "_instantiate_resolved", lambda operator_class, **kwargs: actor)
-    with pytest.raises(RuntimeError, match="parse failed"):
-        operator._run_parse_pipeline(pd.DataFrame())
-    actor.cleanup.assert_called_once_with()
-
-
 def test_local_v12_actor_fails_with_migration_guidance() -> None:
     with patch("nemo_retriever.models.local.NemotronParse35") as parser:
         actor = NemotronParseGPUActor(nemotron_parse_model="nvidia/NVIDIA-Nemotron-Parse-v1.2")
