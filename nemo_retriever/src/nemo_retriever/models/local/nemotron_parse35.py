@@ -552,7 +552,8 @@ class _AsyncParseEngine:
             # vLLM's shutdown only schedules its output handler's cancellation; let it finish before closing.
             tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
             for task in tasks:
-                task.cancel()
+                if not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
         asyncio.run_coroutine_threadsafe(cancel_pending(), self._loop).result()
