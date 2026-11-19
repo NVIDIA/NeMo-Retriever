@@ -85,3 +85,52 @@ def test_parse_actor_kwargs_default_and_override() -> None:
     assert "text_layer_min_overlap" not in build_parse_actor_kwargs(params, chart_routing=True)
     with pytest.raises(ValueError):
         ParseParams(text_layer_min_overlap=1.5)
+
+
+class _CappedParse(_FakeParse):
+    def __init__(self, first: str) -> None:
+        super().__init__([first])
+        self.calls: list[int | None] = []
+
+    def invoke_batch_results(self, images, task_prompt=None, max_tokens=None):
+        self.calls.append(max_tokens)
+        if max_tokens is None:
+            return [SimpleNamespace(text=self._texts[0], finish_reason="length", output_tokens=4096) for _ in images]
+        return [
+            SimpleNamespace(text=_tagged("finished page"), finish_reason="stop", output_tokens=5000) for _ in images
+        ]
+
+
+def _run_capped(first: str, retry_tokens: int | None) -> tuple[pd.DataFrame, _CappedParse]:
+    model = _CappedParse(first)
+    df = pd.DataFrame({"text": [""], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(df, model=model, extract_text=True, length_retry_max_tokens=retry_tokens)
+    return out, model
+
+
+def test_length_capped_page_is_rerun_with_larger_limit() -> None:
+    out, model = _run_capped(_tagged("Varied opening text") + "<x_0.1><y_0.3>cut", 8192)
+    assert model.calls == [None, 8192]
+    assert out.loc[0, "text"] == "finished page"
+    meta = out.loc[0, "nemotron_parse_v1_2"]
+    assert meta["completion"]["status"] == "complete"
+    assert meta["length_retry"] == {"max_tokens": 8192}
+
+
+@pytest.mark.parametrize("retry_tokens", [None, 4096])
+def test_length_retry_disabled_or_not_larger(retry_tokens: int | None) -> None:
+    _, model = _run_capped(_tagged("Varied opening text") + "<x_0.1><y_0.3>cut", retry_tokens)
+    assert model.calls == [None]
+
+
+def test_repetitive_capped_page_is_not_rerun() -> None:
+    out, model = _run_capped(_tagged("Total 0.00 " * 400) + "<x_0.1><y_0.3>Total 0.00", 8192)
+    assert model.calls == [None]
+    assert out.loc[0, "nemotron_parse_v1_2"]["completion"]["status"] == "incomplete"
+    assert "length_retry" not in out.loc[0, "nemotron_parse_v1_2"]
+
+
+def test_parse_actor_kwargs_length_retry_default() -> None:
+    assert build_parse_actor_kwargs(ExtractParams(method="nemotron_parse"))["length_retry_max_tokens"] == 8192
+    params = ExtractParams(method="nemotron_parse", parse=ParseParams(length_retry_max_tokens=None))
+    assert build_parse_actor_kwargs(params)["length_retry_max_tokens"] is None

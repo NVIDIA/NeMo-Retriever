@@ -583,6 +583,8 @@ class ParseParams(_ParamsModel):
         top_p: Nucleus probability in (0, 1].
         seed: Optional nonnegative random seed.
         max_tokens: Positive limit on generated output tokens per page or crop.
+        length_retry_max_tokens: Larger output token limit for rerunning local pages that
+            reach the first limit without repeating; None disables.
         text_layer_min_overlap: Minimum fraction of Parse page-text words found in the
             native PDF text layer before the text layer replaces Parse page text; 0 disables.
 
@@ -670,6 +672,15 @@ class ParseParams(_ParamsModel):
         ),
     )
 
+    length_retry_max_tokens: Optional[int] = Field(
+        default=8192,
+        gt=0,
+        description=(
+            "Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. "
+            "Pages whose output tail repeats are not rerun. Applies only when larger than the first "
+            "attempt's limit. None disables the rerun."
+        ),
+    )
     text_layer_min_overlap: float = Field(
         default=0.3,
         ge=0,

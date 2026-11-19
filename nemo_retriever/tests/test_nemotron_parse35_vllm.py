@@ -96,6 +96,16 @@ def test_vllm_reports_length_limited_generation(vllm_runtime: SimpleNamespace) -
     assert parser.invoke_batch_results([]) == []
 
 
+def test_vllm_max_tokens_override_uses_cloned_params(vllm_runtime: SimpleNamespace) -> None:
+    parser = NemotronParse35()
+    parser.invoke_batch_results([Image.new("RGB", (16, 20))], max_tokens=8192)
+    params = vllm_runtime.engine.generate.call_args.args[1]
+    assert params is parser._generation_config.clone.return_value
+    assert params.max_tokens == 8192
+    with pytest.raises(ValueError, match="max_tokens"):
+        parser.invoke_batch_results([Image.new("RGB", (16, 20))], max_tokens=0)
+
+
 @pytest.mark.parametrize("tokens", [None, 32])
 def test_vllm_converts_then_submits_batch(
     vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, tokens: int | None

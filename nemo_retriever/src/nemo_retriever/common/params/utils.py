@@ -241,7 +241,9 @@ def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dic
     if not chart_routing:
         from nemo_retriever.common.params.models import ParseParams
 
-        kwargs["text_layer_min_overlap"] = (parse or ParseParams()).text_layer_min_overlap
+        resolved = parse or ParseParams()
+        kwargs["text_layer_min_overlap"] = resolved.text_layer_min_overlap
+        kwargs["length_retry_max_tokens"] = resolved.length_retry_max_tokens
     if parse is not None:
         if parse.task_prompt is not None:
             kwargs["task_prompt"] = parse.task_prompt

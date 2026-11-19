@@ -309,7 +309,7 @@ class NemotronParse35(BaseModel):
         return [result.text for result in self.invoke_batch_results(inputs, task_prompt=task_prompt)]
 
     def invoke_batch_results(
-        self, inputs: Sequence[ImageInput], task_prompt: str | None = None
+        self, inputs: Sequence[ImageInput], task_prompt: str | None = None, max_tokens: int | None = None
     ) -> list[ParsePageResult]:
         """Parse pages like :meth:`invoke_batch`, also returning termination evidence.
 
@@ -317,6 +317,7 @@ class NemotronParse35(BaseModel):
             inputs: Sequence of pages accepted by :meth:`preprocess`; an empty
                 sequence returns immediately without loading the checkpoint.
             task_prompt: Optional native control tokens overriding the configured prompt.
+            max_tokens: Optional positive output token limit for this call; vLLM only.
 
         Returns:
             One :class:`ParsePageResult` per input page, in input order. The vLLM
@@ -333,10 +334,12 @@ class NemotronParse35(BaseModel):
             RuntimeError: If the requested CUDA device is unavailable, or model
                 loading or generation fails. No partial batch is returned.
         """
+        if max_tokens is not None and (max_tokens <= 0 or self._backend != "vllm"):
+            raise ValueError("max_tokens overrides must be positive and require the vllm backend.")
         if not inputs:
             return []
         if self._backend == "vllm":
-            return self._invoke_vllm(inputs, task_prompt)
+            return self._invoke_vllm(inputs, task_prompt, max_tokens)
         outputs: list[ParsePageResult] = []
         for image in inputs:
             page = self.preprocess(image)
@@ -354,7 +357,9 @@ class NemotronParse35(BaseModel):
             )
         return outputs
 
-    def _invoke_vllm(self, inputs: Sequence[ImageInput], task_prompt: str | None) -> list[ParsePageResult]:
+    def _invoke_vllm(
+        self, inputs: Sequence[ImageInput], task_prompt: str | None, max_tokens: int | None = None
+    ) -> list[ParsePageResult]:
         results = [ParsePageResult(text="", finish_reason="stop", output_tokens=0) for _ in inputs]
         converted = [self.preprocess(image) for image in inputs]
         keep = [
@@ -367,9 +372,13 @@ class NemotronParse35(BaseModel):
         pages = [converted[index] for index in keep]
         self._ensure_model()
         prompt = "<pad>" + (task_prompt if task_prompt is not None else self._task_prompt)
+        params = self._generation_config
+        if max_tokens is not None and max_tokens != params.max_tokens:
+            params = params.clone()
+            params.max_tokens = max_tokens
         generated = self._model.generate(
             [{"prompt": prompt, "multi_modal_data": {"image": page}} for page in pages],
-            self._generation_config,
+            params,
             tokenization_kwargs={"add_special_tokens": False},
         )
         for index, request in zip(keep, generated, strict=True):

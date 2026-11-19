@@ -22,6 +22,7 @@ import io
 import json
 import logging
 import re
+import zlib
 import threading
 import time
 import traceback
@@ -152,6 +153,16 @@ def _extract_parse_text(response_item: Any) -> str:
         return str(response_item).strip()
     except Exception:
         return ""
+
+
+_LOOP_TAIL_CHARS = 2000
+_LOOP_MAX_COMPRESSION_RATIO = 0.1
+
+
+def _looks_repetitive(text: str) -> bool:
+    """Return True when the output tail compresses like a generation loop."""
+    tail = text[-_LOOP_TAIL_CHARS:].encode("utf-8")
+    return len(tail) >= _LOOP_TAIL_CHARS and len(zlib.compress(tail)) / len(tail) < _LOOP_MAX_COMPRESSION_RATIO
 
 
 _RE_WORD = re.compile(r"\w{2,}", re.UNICODE)
@@ -395,6 +406,7 @@ def nemotron_parse_pages(
     parse_sampling_params: Optional[Dict[str, Any]] = None,
     task_prompt: Optional[str] = None,
     text_layer_min_overlap: float = 0.0,
+    length_retry_max_tokens: Optional[int] = None,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -618,6 +630,25 @@ def nemotron_parse_pages(
                     results = invoke_batch_results(batch_images, task_prompt=task_prompt)
                     raw_texts = [str(result.text or "").strip() for result in results]
                     outcomes = [(result.finish_reason, result.output_tokens) for result in results]
+                    retry = [
+                        pos
+                        for pos, (reason, tokens) in enumerate(outcomes)
+                        if length_retry_max_tokens
+                        and reason == "length"
+                        and isinstance(tokens, int)
+                        and tokens < length_retry_max_tokens
+                        and not _looks_repetitive(raw_texts[pos])
+                    ]
+                    if retry:
+                        retried = invoke_batch_results(
+                            [batch_images[pos] for pos in retry],
+                            task_prompt=task_prompt,
+                            max_tokens=length_retry_max_tokens,
+                        )
+                        for pos, result in zip(retry, retried, strict=True):
+                            raw_texts[pos] = str(result.text or "").strip()
+                            outcomes[pos] = (result.finish_reason, result.output_tokens)
+                            all_meta[batch_indices[pos]]["length_retry"] = {"max_tokens": length_retry_max_tokens}
                 elif invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
                 else:
@@ -784,6 +815,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
         text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -800,6 +832,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
         self._text_layer_min_overlap = float(text_layer_min_overlap)
+        self._length_retry_max_tokens = length_retry_max_tokens
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -866,6 +899,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
             text_layer_min_overlap=self._text_layer_min_overlap,
+            length_retry_max_tokens=self._length_retry_max_tokens,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -923,6 +957,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
         text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -941,6 +976,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
         self._text_layer_min_overlap = float(text_layer_min_overlap)
+        self._length_retry_max_tokens = length_retry_max_tokens
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -974,6 +1010,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
             text_layer_min_overlap=self._text_layer_min_overlap,
+            length_retry_max_tokens=self._length_retry_max_tokens,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
             task_prompt=self._task_prompt,
@@ -1034,6 +1071,7 @@ class NemotronParseActor(ArchetypeOperator):
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
         text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -1059,6 +1097,7 @@ class NemotronParseActor(ArchetypeOperator):
             nemotron_parse_table_format=nemotron_parse_table_format,
             parse_sampling_params=parse_sampling_params,
             text_layer_min_overlap=text_layer_min_overlap,
+            length_retry_max_tokens=length_retry_max_tokens,
             invoke_url=invoke_url,
             api_key=api_key,
             request_timeout_s=request_timeout_s,
