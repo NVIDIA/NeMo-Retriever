@@ -134,6 +134,53 @@ and server-side document failures are also available in
 `ServiceIngestResult.failures`. URL fetch and upload failures identify the
 submitted URL instead of an internal transport filename.
 
+### Select an experimental CUDA PDF renderer
+
+`ExtractParams.pdf_renderer` selects the PDF rasterizer. The default,
+`"pdfium"`, retains the existing CPU renderer. Set `pdf_renderer="cuda"`
+to evaluate CUDA rasterization with local or native batch PDF ingestion.
+This setting is independent of `method`, which selects the text extraction
+strategy.
+
+The CUDA backend requires the separately built `cuda-pdf-renderer` Python
+package, its native client library, and a running local renderer service.
+Follow the renderer package build and startup instructions. Set
+`CUDA_PDF_RENDERER_LIBRARY` to the native client library and
+`CUDA_PDF_RENDER_SOCKET` to the service's Unix-domain socket. Make the package,
+libraries, and socket available to each extraction worker.
+
+For example, configure a local ingestor after starting the renderer service:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(ExtractParams(pdf_renderer="cuda"))
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+PDFium still parses PDF objects and prepares resources on the CPU. CUDA
+rasterizes page drawing commands. Rendered pixels return to host memory;
+the existing JPEG/base64 serialization and model preprocessing remain.
+Text-only extraction that needs no page raster does not invoke the CUDA backend.
+
+!!! warning "Experimental backend"
+    Concurrent profiling has exposed illegal GPU-memory accesses and native
+    heap corruption in the renderer. Use this backend for controlled evaluation.
+    Missing dependencies or CUDA rendering failures stop the job; NRL does not
+    silently switch to CPU rasterization. Service mode, NIM rendering, and
+    Nemotron Parse are outside this integration's validated scope.
+
 ### Select a supported extraction method
 
 `ExtractParams` validates `method` when you construct the model. For PDF

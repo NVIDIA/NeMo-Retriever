@@ -451,6 +451,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--embed-model-name` | unset | Local GPU inference selects Nemotron 3.5 Embed 1B: NVFP4 with native-capable GPUs and vLLM, or BF16 otherwise. Ray batch GPU embedding automatically selects BF16. Explicit Nemotron 3.5 precision IDs remain unchanged. The CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16 for batch GPU embedding. Remote inference, including implicit hosted CPU fallback, retains `nvidia/nemotron-3-embed-1b`. |
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. With no model override, explicit `hf` use selects the Nemotron 3.5 BF16 checkpoint. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
+| `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium` or experimental `cuda`. Requires a separately built renderer package and local service for CUDA. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -582,6 +583,33 @@ retriever query "What is in this corpus?" \
 Hugging Face remains the local query backend for checkpoints that do not require vLLM quantization support.
 Local directories must contain `config.json`, and their absolute path must be
 available to every Ray worker or service replica that loads the model.
+
+### Experimental CUDA PDF rendering
+
+Local and native batch ingestion can select CUDA page rasterization with
+`--pdf-renderer cuda`. The default remains `--pdf-renderer pdfium`.
+This option changes the page renderer independently of `--method`.
+
+Build and install the separate `cuda-pdf-renderer` package and start its local
+service before ingestion. Set `CUDA_PDF_RENDERER_LIBRARY` to the native client
+library and `CUDA_PDF_RENDER_SOCKET` to the service's Unix-domain socket.
+Every extraction worker needs access to the package, libraries, and socket.
+
+After configuring the renderer, run ingestion with the existing model and
+index settings:
+
+```bash
+retriever ingest /path/to/your/pdfs --pdf-renderer cuda
+```
+
+PDFium still interprets PDF objects on the CPU. CUDA rasterizes page commands,
+and NRL retains its existing image serialization and model preprocessing.
+This integration targets local and native batch PDF extraction. Service mode,
+NIM rendering, and Nemotron Parse are outside its validated scope.
+
+The renderer is experimental. Concurrent profiling has exposed illegal
+GPU-memory accesses and native heap corruption. Missing dependencies or CUDA
+rendering failures stop ingestion without silently switching to CPU rendering.
 
 ### PDF extraction method
 

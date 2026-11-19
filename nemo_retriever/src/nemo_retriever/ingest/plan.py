@@ -122,6 +122,7 @@ class IngestExtractBatchOptions:
 @dataclass(frozen=True)
 class IngestExtractOptions:
     method: str | None = None
+    pdf_renderer: Literal["pdfium", "cuda"] | None = None
     dpi: int | None = None
     extract_text: bool | None = None
     extract_images: bool | None = None
@@ -646,6 +647,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
             key: value
             for key, value in {
                 "method": extract.method,
+                "pdf_renderer": extract.pdf_renderer,
                 "dpi": extract.dpi,
                 "extract_text": extract.extract_text,
                 "extract_images": extract.extract_images,

@@ -196,6 +196,7 @@ def _graph_ingest_command(
     dry_run: opts.DryRunOption = False,
     method: opts.MethodOption = None,
     dpi: opts.DpiOption = None,
+    pdf_renderer: opts.PdfRendererOption = None,
     extract_text: opts.ExtractTextOption = None,
     extract_images: opts.ExtractImagesOption = None,
     extract_nested_images: opts.ExtractNestedImagesOption = None,

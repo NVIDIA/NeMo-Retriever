@@ -31,6 +31,12 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.extract.pdf.cuda_renderer import (
+    PdfRendererError,
+    render_bitmap,
+    select_packet,
+    with_cuda_rendering,
+)
 
 if TYPE_CHECKING:
     from nemo_retriever.common.params import ExtractParams
@@ -70,6 +76,7 @@ def build_pdf_extraction_kwargs(params: ExtractParams) -> dict[str, Any]:
         "image_format": params.image_format,
         "jpeg_quality": int(params.jpeg_quality),
         "render_mode": params.render_mode,
+        "pdf_renderer": params.pdf_renderer,
         "extract_text": params.extract_text,
         "extract_images": params.extract_images is not False,
         "extract_nested_images": params.extract_nested_images,
@@ -152,7 +159,7 @@ def _render_page_to_base64(
         render_scale = _compute_fit_to_model_scale(page, _MODEL_INPUT_SIZE, max_dpi=dpi)
     else:
         render_scale = max(float(dpi) / 72.0, 0.01)
-    bitmap = page.render(scale=render_scale)
+    bitmap = render_bitmap(page, scale=render_scale)
 
     arr = convert_bitmap_to_corrected_numpy(bitmap)
 
@@ -246,6 +253,7 @@ def _extract_page_text(page) -> str:
     return textpage.get_text_bounded()
 
 
+@with_cuda_rendering
 def pdf_extraction(
     pdf_binary: Any,
     extract_text: bool = False,
@@ -260,6 +268,8 @@ def pdf_extraction(
     jpeg_quality: int = 100,
     text_extraction_method: str = "pdfium_hybrid",
     render_mode: RenderMode = "fit_to_model",
+    *,
+    pdf_renderer: Literal["pdfium", "cuda"] = "pdfium",
     **kwargs: Any,
 ) -> Any:
     """
@@ -330,6 +340,7 @@ def pdf_extraction(
             try:
                 if not isinstance(pdf_bytes, (bytes, bytearray, memoryview)):
                     raise RuntimeError(f"Unsupported bytes payload type: {type(pdf_bytes)!r}")
+                select_packet(pdf_bytes)
 
                 # Step 1: load the *single-page* PDF bytes.
                 try:
@@ -397,7 +408,8 @@ def pdf_extraction(
                     nested_image_error: Optional[Dict[str, Any]] = None
                     if extract_images:
                         try:
-                            base64_images = extract_image_like_objects_from_pdfium_page(page)
+                            image_kwargs = {"render_page": render_bitmap} if pdf_renderer == "cuda" else {}
+                            base64_images = extract_image_like_objects_from_pdfium_page(page, **image_kwargs)
                             detected_images.extend(_base64_image_to_record(img) for img in base64_images)
                         except Exception:
                             pass  # Image extraction failure should not crash the pipeline.
@@ -453,6 +465,8 @@ def pdf_extraction(
                         doc.close()
                     except Exception:
                         pass
+            except PdfRendererError:
+                raise
             except BaseException as e:
                 report_error("pdf_extraction:page_processing", e)
                 err = _error_record(
@@ -503,6 +517,8 @@ class PDFExtractionCPUActor(AbstractOperator, CPUOperator):
     def __call__(self, pdf: Any, **override_kwargs: Any) -> Optional[Any]:
         try:
             return self.run(pdf, **override_kwargs)
+        except PdfRendererError:
+            raise
         except BaseException as e:
             # As a last line of defense, never let the Ray UDF raise.
             source_path = None

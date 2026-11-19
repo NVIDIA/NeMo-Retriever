@@ -736,6 +736,10 @@ class ExtractParams(_ParamsModel):
     image_format: str = "jpeg"
     jpeg_quality: int = 100
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
+    pdf_renderer: Literal["pdfium", "cuda"] = Field(
+        default="pdfium",
+        description="PDF rasterizer. The experimental CUDA backend requires a separately built renderer service.",
+    )
     inference_batch_size: int = 8
     ocr_version: Literal["v1", "v2"] = "v2"
     ocr_lang: Optional[Literal["multi", "english"]] = None

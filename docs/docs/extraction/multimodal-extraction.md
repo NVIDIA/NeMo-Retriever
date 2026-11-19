@@ -18,6 +18,13 @@ NeMo Retriever Library classifies and extracts text, tables, charts, infographic
 
 NeMo Retriever Library accepts multiple document and media types. A current list (including PDF, Office formats, HTML, images, audio, and video, some early access) appears in [NeMo Retriever Library Overview](overview.md) under **NeMo Retriever Library supports the following file types**.
 
+PDF page rasterization uses CPU PDFium by default. Local and native batch
+PDF ingestion can opt into the experimental CUDA renderer through
+`ExtractParams(pdf_renderer="cuda")`. PDF interpretation remains on the CPU,
+and image serialization and model preprocessing remain unchanged. Refer to
+[Select an experimental CUDA PDF renderer](nemo-retriever-api-reference.md#select-an-experimental-cuda-pdf-renderer)
+for setup requirements and limitations.
+
 **Related**
 
 - [Troubleshoot](troubleshoot.md) for format-specific issues
