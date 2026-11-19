@@ -933,10 +933,63 @@ def test_async_embed_engine_limits_retries_and_surfaces_structured_errors(
     thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
     thread.start()
     try:
-        with pytest.raises(RuntimeError, match=code):
+        with pytest.raises(RuntimeError, match=code) as exc_info:
             engine.embed(["bad"])
     finally:
         engine._loop.call_soon_threadsafe(engine._loop.stop)
         thread.join(timeout=5)
         engine._loop.close()
     assert len(submissions) == len(set(submissions)) == expected_attempts
+    message = str(exc_info.value)
+    assert "Check the vLLM engine logs" in message
+    assert "report the failure with those logs" in message
+    assert ("after cache-recovery retry" in message) == (expected_attempts == 2)
+
+
+@pytest.mark.parametrize("after_cache_miss", [False, True])
+def test_async_embed_engine_rejects_no_output_before_conversion(monkeypatch, after_cache_miss):
+    """An empty stream fails clearly, including when it follows a cache miss."""
+    import asyncio
+    import itertools
+    import threading
+
+    pytest.importorskip("vllm")
+    from vllm.outputs import EmbeddingRequestOutput
+    from vllm.renderers.inputs import preprocess
+
+    monkeypatch.setattr(preprocess, "parse_model_prompt", lambda _config, prompt: prompt)
+    monkeypatch.setattr(
+        EmbeddingRequestOutput, "from_base", staticmethod(lambda _: pytest.fail("converted missing output"))
+    )
+    submissions = []
+    renderer = SimpleNamespace(
+        default_cmpl_tok_params=SimpleNamespace(with_kwargs=lambda **_: None),
+        render_cmpl=lambda prompts, _params, **kwargs: prompts,
+    )
+
+    async def encode(prompt, _params, request_id):
+        submissions.append(request_id)
+        if after_cache_miss and len(submissions) == 1:
+            yield SimpleNamespace(
+                error=SimpleNamespace(code="multimodal_cache_miss", message="cache miss", retryable=True)
+            )
+        # Otherwise, finish the async stream without yielding a response.
+
+    engine = vllm_inference.AsyncEmbedEngine.__new__(vllm_inference.AsyncEmbedEngine)
+    engine.engine = SimpleNamespace(renderer=renderer, model_config=None, encode=encode)
+    engine._ids = itertools.count()
+    engine._loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(RuntimeError, match="returned no output") as exc_info:
+            engine.embed(["empty"])
+    finally:
+        engine._loop.call_soon_threadsafe(engine._loop.stop)
+        thread.join(timeout=5)
+        engine._loop.close()
+    assert len(submissions) == len(set(submissions)) == 1 + int(after_cache_miss)
+    message = str(exc_info.value)
+    assert "Check the vLLM engine logs" in message
+    assert "report the failure with those logs" in message
+    assert ("after cache-recovery retry" in message) == after_cache_miss

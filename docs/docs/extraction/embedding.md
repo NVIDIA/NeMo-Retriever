@@ -210,19 +210,22 @@ row, it also logs a summary with `input_rows`, `output_rows`, `overlength`,
 `split`, `split_children`, `truncated`, `failed`, `embedded`, and `unembedded`.
 The deterministic split policy reports `truncated=0`.
 
-## Local vLLM multimodal cache recovery { #local-vllm-multimodal-cache-recovery }
+## Local Nemotron 3.5 vLLM cache recovery { #local-vllm-multimodal-cache-recovery }
 
-When a local vLLM embedding request returns a retryable
-`multimodal_cache_miss` response, NeMo Retriever Library retries that request
-once. The retry reprocesses the original input with a fresh request ID and
+Local Nemotron 3.5 embedding models with the `vllm` backend use the asynchronous embedding adapter.
+When a request through this adapter returns a retryable
+`multimodal_cache_miss` response, the adapter retries that request once.
+The retry reprocesses the original input with a fresh request ID and
 resends the image data without relying on cached processor references.
 Successful requests in the same batch are not repeated, and results retain
 their original input order. Recovery does not restart the engine, disable
 caching globally, discard inputs, or substitute embedding vectors.
 
-The local adapter raises `RuntimeError` for other error responses, including
+The asynchronous adapter raises `RuntimeError` for other error responses, including
 non-retryable cache misses, or when the retry still reports a cache miss.
 An embedding request that returns no output also raises `RuntimeError`.
+Check the vLLM engine logs for details. If the failure repeats, report it
+with those logs.
 Embedding validation and ingestion failure handling remain active. The vector
 database boundary still refuses mixed partial writes when searchable rows are
 missing embeddings.

@@ -375,6 +375,9 @@ class AsyncEmbedEngine:
 
         engine = self.engine
         tok_params = engine.renderer.default_cmpl_tok_params.with_kwargs(**(tokenization_kwargs or {}))
+        failure_guidance = (
+            "Check the vLLM engine logs for details. If this repeats, report the failure with those logs."
+        )
 
         async def one(prompt: Any, request_id: str) -> Any:
             for attempt in range(2):
@@ -391,8 +394,9 @@ class AsyncEmbedEngine:
                 output = None
                 async for output in engine.encode(engine_input, params, current_id):
                     pass
+                recovery = " after cache-recovery retry" if attempt else ""
                 if output is None:
-                    raise RuntimeError("vLLM embedding request returned no output")
+                    raise RuntimeError(f"vLLM embedding request returned no output{recovery}. {failure_guidance}")
                 error = getattr(output, "error", None)
                 if error is None:
                     return output
@@ -400,8 +404,9 @@ class AsyncEmbedEngine:
                 if not attempt and code == "multimodal_cache_miss" and getattr(error, "retryable", False):
                     logger.warning("Retrying vLLM embedding request after a multimodal processor cache miss")
                     continue
-                recovery = " after cache-recovery retry" if attempt else ""
-                raise RuntimeError(f"vLLM embedding request failed{recovery} ({code}): {error.message}")
+                raise RuntimeError(
+                    f"vLLM embedding request failed{recovery} ({code}): {error.message}. {failure_guidance}"
+                )
 
         async def run_all() -> list[Any]:
             try:
