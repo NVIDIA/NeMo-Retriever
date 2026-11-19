@@ -126,13 +126,28 @@ uv pip install torch==2.13.0 torchvision==0.28.0 -i https://download.pytorch.org
 
 Skip this step if you are using remote NIM inference only.
 
+3. Install precompiled FlashInfer kernels (local GPU only)
+
+After installing `[local]` and matching CUDA-enabled Torch, run the following
+command in the same Python environment:
+
+```bash
+python -m flashinfer install-jit-cache-wheel --mode minimal
+```
+
+This installs matching precompiled kernel providers for the visible GPUs.
+The `[local]` extra does not install these packages automatically. Covered
+kernels avoid first-use compilation; other kernels and helpers can still
+compile. The source `service-gpu` image build installs all architecture
+providers automatically, with a larger image size.
+
 Local vLLM inference also requires a writable FlashInfer cache and HTTPS
 access to `edge.urm.nvidia.com` for missing GPU kernel artifacts. The default
 artifact cache is `~/.cache/flashinfer/cubins`. Before running offline, prefetch
 artifacts and exercise your intended model on matching GPU hardware. Refer to
 [Local GPU kernel cache](../docs/docs/extraction/prerequisites-support-matrix.md#local-gpu-kernel-cache)
-for the prefetch command and cache configuration. Model weights require
-separate caching.
+for headless installation, the prefetch command, and cache configuration.
+Model weights require separate caching.
 
 ## Run the pipeline
 

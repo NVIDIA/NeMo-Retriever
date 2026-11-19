@@ -31,8 +31,33 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 
 ### Local GPU kernel cache { #local-gpu-kernel-cache }
 
-Local vLLM inference uses FlashInfer, which downloads missing GPU kernel
-artifacts on demand. Allow HTTPS access to `edge.urm.nvidia.com` and provide a
+Local vLLM inference uses FlashInfer. After installing `nemo-retriever[local]`
+and matching CUDA-enabled Torch, install precompiled kernels in the same Python
+environment with the following command:
+
+```bash
+python -m flashinfer install-jit-cache-wheel --mode minimal
+```
+
+This separate installation step downloads the matching `flashinfer-jit-cache`
+package and providers for the visible GPUs from FlashInfer's wheel index.
+The `[local]` extra does not install these packages automatically. FlashInfer
+selects versions using its installed version and Torch's CUDA version.
+On a build host without a visible GPU, specify the deployment architecture.
+For example, the following command selects the `sm120f` provider:
+
+```bash
+python -m flashinfer install-jit-cache-wheel --mode minimal --sm sm120f
+```
+
+The source `service-gpu` container build installs all matching architecture
+providers automatically to support deployment across GPU types. This increases
+image size compared with a minimal installation. Precompiled providers avoid
+compilation for covered kernels; other kernels and helpers can still compile
+on first use. They do not change the GPU capabilities required by a model.
+
+FlashInfer also downloads missing GPU kernel artifacts on demand.
+Allow HTTPS access to `edge.urm.nvidia.com` and provide a
 writable cache. The default artifact cache is `~/.cache/flashinfer/cubins`;
 set `FLASHINFER_CUBIN_DIR` before starting Python to use another directory.
 This setting relocates artifacts only. By default, runtime compilation
@@ -50,6 +75,12 @@ or loading precompiled kernels, even when `FLASHINFER_CUBIN_DIR` is set.
 If you reuse an environment, remove an incompatible old wheel with
 `python -m pip uninstall flashinfer-cubin`. Install a cubin wheel only when its
 version exactly matches FlashInfer; do not disable the version check.
+Before upgrading FlashInfer in a reused environment, uninstall
+`flashinfer-jit-cache` and its installed architecture-provider packages.
+An incompatible old JIT cache package can prevent FlashInfer's installation
+command from starting. After upgrading, rerun the JIT cache installation command
+to select compatible providers. Rerun it after changing Torch's CUDA build or
+deployment GPU architecture, and keep version checks enabled.
 
 Before an offline deployment, prefetch artifacts in the installed local GPU
 environment while network access is available.
