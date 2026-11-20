@@ -56,7 +56,8 @@ class _CudaBatch:
             backend = importlib.import_module("cuda_pdf_renderer")
         except ImportError as exc:
             raise PdfRendererError(
-                "CUDA PDF rendering requires the separately built cuda-pdf-renderer package; encoded cuda mode also requires its renderer service"
+                "CUDA PDF rendering requires the separately built cuda-pdf-renderer package; "
+                "encoded cuda mode also requires its renderer service"
             ) from exc
         packets: list[bytes] = []
         scales: list[float] = []

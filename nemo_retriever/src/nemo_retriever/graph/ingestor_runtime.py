@@ -813,8 +813,14 @@ def build_graph(
         if extraction_mode != "pdf" or extract_params.method == "nemotron_parse":
             raise ValueError("cuda_rdt requires the dedicated native Ray PDF pipeline")
         if caption_params is not None or store_params is not None or extract_params.extract_images is True:
-            raise ValueError("cuda_rdt supports text retrieval and automatic image-region metadata; encoded image outputs, storage and captions require an encoded renderer")
-        if any(getattr(embed_params, name, None) in image_modalities for name in ("embed_modality", "text_elements_modality", "structured_elements_modality")):
+            raise ValueError(
+                "cuda_rdt supports text retrieval and automatic image-region metadata; "
+                "encoded image outputs, storage and captions require an encoded renderer"
+            )
+        if any(
+            getattr(embed_params, name, None) in image_modalities
+            for name in ("embed_modality", "text_elements_modality", "structured_elements_modality")
+        ):
             raise ValueError("cuda_rdt currently requires text embeddings")
         if getattr(extract_params, "ocr_version", "v2") != "v2":
             raise ValueError("cuda_rdt currently requires local OCR v2")
@@ -989,7 +995,19 @@ def build_graph(
                 (extract_params.use_table_structure and extract_params.extract_tables) or needs_ocr
             )
             if getattr(extract_params, "pdf_renderer", "pdfium") == "cuda_rdt":
-                if not page_elements_needed or not needs_ocr or any((extract_params.page_elements_invoke_url, extract_params.ocr_invoke_url, extract_params.use_table_structure, extract_params.chart_routing, extract_params.extract_nested_images)):
+                if (
+                    not page_elements_needed
+                    or not needs_ocr
+                    or any(
+                        (
+                            extract_params.page_elements_invoke_url,
+                            extract_params.ocr_invoke_url,
+                            extract_params.use_table_structure,
+                            extract_params.chart_routing,
+                            extract_params.extract_nested_images,
+                        )
+                    )
+                ):
                     raise ValueError("cuda_rdt requires local Page Elements and OCR with default region routing")
                 extract_kwargs["preserve_pandas_output"] = True
                 detect_kwargs["cuda_rdt"] = True

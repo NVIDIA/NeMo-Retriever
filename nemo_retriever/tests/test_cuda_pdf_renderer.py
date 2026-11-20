@@ -52,9 +52,7 @@ def backend(monkeypatch):
         bitmaps.extend(result)
         return result
 
-    monkeypatch.setitem(
-        sys.modules, "cuda_pdf_renderer", SimpleNamespace(render_batch=render_batch)
-    )
+    monkeypatch.setitem(sys.modules, "cuda_pdf_renderer", SimpleNamespace(render_batch=render_batch))
 
     def no_cpu(*args, **kwargs):
         pytest.fail("CUDA selection attempted CPU rasterization")
@@ -77,16 +75,12 @@ def test_default_and_graph_wiring():
     assert ExtractParams().pdf_renderer == "pdfium"
     with pytest.raises(ValidationError):
         ExtractParams(pdf_renderer="unknown")
-    graph = build_graph(
-        extraction_mode="pdf", extract_params=ExtractParams(pdf_renderer="cuda")
-    )
+    graph = build_graph(extraction_mode="pdf", extract_params=ExtractParams(pdf_renderer="cuda"))
     assert get_node_kwargs(graph, "PDFExtractionActor")["pdf_renderer"] == "cuda"
 
 
 def test_batch_order_cleanup_and_duplicate_packets(pages, backend):
-    data = pd.concat(
-        [pages.assign(page_number=i) for i in (3, 1, 2)], ignore_index=True
-    )
+    data = pd.concat([pages.assign(page_number=i) for i in (3, 1, 2)], ignore_index=True)
     result = run(data)
     calls, bitmaps = backend
     assert result.page_number.tolist() == [3, 1, 2]
@@ -125,17 +119,13 @@ def test_swallowed_crop_render_failure_still_stops_batch(pages, backend, monkeyp
     assert adapter._CURRENT_BATCH.get() is None
 
 
-def test_native_failure_is_not_an_error_row_or_cpu_fallback(
-    pages, backend, monkeypatch
-):
+def test_native_failure_is_not_an_error_row_or_cpu_fallback(pages, backend, monkeypatch):
     def fail(*args):
         raise RuntimeError("native render failed")
 
     monkeypatch.setattr(sys.modules["cuda_pdf_renderer"], "render_batch", fail)
     with pytest.raises(adapter.PdfRendererError, match="CPU fallback is disabled"):
-        extract.PDFExtractionCPUActor(extract_page_as_image=True, pdf_renderer="cuda")(
-            pages
-        )
+        extract.PDFExtractionCPUActor(extract_page_as_image=True, pdf_renderer="cuda")(pages)
 
 
 def test_incomplete_batch_closes_returned_bitmaps(pages, backend, monkeypatch):
@@ -151,17 +141,13 @@ def test_incomplete_batch_closes_returned_bitmaps(pages, backend, monkeypatch):
 
 def test_text_only_does_not_load_external_backend(pages, monkeypatch):
     monkeypatch.setitem(sys.modules, "cuda_pdf_renderer", None)
-    result = extract.pdf_extraction(
-        pages, extract_text=True, method="pdfium", pdf_renderer="cuda"
-    )
+    result = extract.pdf_extraction(pages, extract_text=True, method="pdfium", pdf_renderer="cuda")
     assert len(result) == 1
     with pytest.raises(adapter.PdfRendererError, match="separately built"):
         run(pages)
 
 
-@pytest.mark.parametrize(
-    "command", [["ingest"], ["ingest", "local"], ["ingest", "batch"]]
-)
+@pytest.mark.parametrize("command", [["ingest"], ["ingest", "local"], ["ingest", "batch"]])
 def test_cli_renderer_reaches_ingest_plan(command, tmp_path, monkeypatch):
     import importlib
 
@@ -181,26 +167,16 @@ def test_cli_renderer_reaches_ingest_plan(command, tmp_path, monkeypatch):
     def capture(values, *, run_mode):
         options = graph_commands._build_extract_options(
             values,
-            batch=graph_commands._build_extract_batch_options(
-                values, enabled=run_mode == "batch"
-            ),
+            batch=graph_commands._build_extract_batch_options(values, enabled=run_mode == "batch"),
         )
         plan = resolve_ingest_plan(
-            IngestPlanRequest(
-                source=IngestSourceOptions(documents=[str(document)]), extract=options
-            )
+            IngestPlanRequest(source=IngestSourceOptions(documents=[str(document)]), extract=options)
         )
         captured.append(plan.extract_params.pdf_renderer)
 
-    monkeypatch.setattr(
-        graph_commands, "_run_graph_ingest_from_parsed_options", capture
-    )
-    result = CliRunner().invoke(
-        main.app, [*command, str(document), "--pdf-renderer", "cuda"]
-    )
+    monkeypatch.setattr(graph_commands, "_run_graph_ingest_from_parsed_options", capture)
+    result = CliRunner().invoke(main.app, [*command, str(document), "--pdf-renderer", "cuda"])
     assert result.exit_code == 0, result.output
     assert captured == ["cuda"]
-    result = CliRunner().invoke(
-        main.app, [*command, str(document), "--pdf-renderer", "unknown"]
-    )
+    result = CliRunner().invoke(main.app, [*command, str(document), "--pdf-renderer", "unknown"])
     assert result.exit_code != 0

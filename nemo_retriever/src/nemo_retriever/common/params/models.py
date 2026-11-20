@@ -738,7 +738,11 @@ class ExtractParams(_ParamsModel):
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
     pdf_renderer: Literal["pdfium", "cuda", "cuda_rdt"] = Field(
         default="pdfium",
-        description="PDF rasterizer: pdfium, experimental cuda with a local service, or cuda_rdt with native Ray GPU transport. CUDA modes require a separately built renderer package.",
+        description=(
+            "PDF rasterizer: pdfium, experimental cuda with a local service, "
+            "or cuda_rdt with native Ray GPU transport. "
+            "CUDA modes require a separately built renderer package."
+        ),
     )
     inference_batch_size: int = 8
     ocr_version: Literal["v1", "v2"] = "v2"

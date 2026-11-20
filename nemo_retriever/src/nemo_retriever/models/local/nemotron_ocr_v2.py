@@ -227,7 +227,9 @@ class NemotronOCRV2(BaseModel):
         return self._model(input_data, merge_level=merge_level)
 
     @nvtx.annotate("nrl.model::ocr_v2.invoke", color="blue")
-    def invoke_gpu_rgb(self, input_data: Union[torch.Tensor, List[torch.Tensor]], merge_level: str = "paragraph") -> Any:
+    def invoke_gpu_rgb(
+        self, input_data: Union[torch.Tensor, List[torch.Tensor]], merge_level: str = "paragraph"
+    ) -> Any:
         """Run CUDA uint8 HWC RGB images without encoding or host copies.
 
         This explicit entry point keeps the existing CHW/BCHW ``invoke``

@@ -52,6 +52,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
         if self._cuda_rdt:
             import ray
             import torch
+
             uuid = str(torch.cuda.get_device_properties(torch.cuda.current_device()).uuid)
             uuid = uuid if uuid.startswith("GPU-") else "GPU-" + uuid
             if self._cuda_renderer_pool is None:
@@ -82,6 +83,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             )
         if getattr(self, "_cuda_rdt", False):
             from nemo_retriever.operators.extract.pdf.gpu_transport import raise_stage_errors
+
             raise_stage_errors(result, "page_elements_v3")
         return result
 

@@ -837,14 +837,28 @@ class RayDataExecutor(AbstractExecutor):
             pool, self._cuda_rdt_pool = getattr(self, "_cuda_rdt_pool", None), None
             if pool is not None:
                 import ray
+
                 try:
                     statuses = ray.get(pool.close.remote(), timeout=60)
                     logger.info("CUDA RDT renderer summary: %s", statuses)
                     import os
+
                     audit_path = os.environ.get("CUDA_PDF_RDT_AUDIT_PATH")
                     if audit_path:
                         from pathlib import Path
-                        Path(audit_path).write_text(json.dumps({"producers": statuses, "pages": sum(item["pages"] for item in statuses), "rgb_readback_bytes": sum(item["rgb_readback_bytes"] for item in statuses), "cpu_raster_calls": sum(item["cpu_raster_calls"] for item in statuses)}, indent=2) + "\n")
+
+                        Path(audit_path).write_text(
+                            json.dumps(
+                                {
+                                    "producers": statuses,
+                                    "pages": sum(item["pages"] for item in statuses),
+                                    "rgb_readback_bytes": sum(item["rgb_readback_bytes"] for item in statuses),
+                                    "cpu_raster_calls": sum(item["cpu_raster_calls"] for item in statuses),
+                                },
+                                indent=2,
+                            )
+                            + "\n"
+                        )
                 finally:
                     ray.kill(pool)
 
@@ -1108,14 +1122,19 @@ class RayDataExecutor(AbstractExecutor):
             constructor_kwargs = node.operator_kwargs
             if constructor_kwargs.get("cuda_rdt") or constructor_kwargs.get("pdf_renderer") == "cuda_rdt":
                 from importlib.util import find_spec
+
                 if find_spec("nixl") is None:
                     raise ImportError("cuda_rdt requires NIXL in every worker environment; install nixl")
                 if constructor_kwargs.get("cuda_rdt"):
                     overrides["enable_tensor_transport"] = True
-                if "page_elements" in node.operator_class.__module__ or constructor_kwargs.get("pdf_renderer") == "cuda_rdt":
+                if (
+                    "page_elements" in node.operator_class.__module__
+                    or constructor_kwargs.get("pdf_renderer") == "cuda_rdt"
+                ):
                     if getattr(self, "_cuda_rdt_pool", None) is None:
                         from cuda_pdf_renderer.client import library_path
                         from nemo_retriever.operators.extract.pdf.gpu_transport import RendererPool
+
                         self._cuda_rdt_pool = ray.remote(num_cpus=0)(RendererPool).remote(str(library_path()))
                     constructor_kwargs = dict(constructor_kwargs, _cuda_renderer_pool=self._cuda_rdt_pool)
             if batch_format == "pandas":

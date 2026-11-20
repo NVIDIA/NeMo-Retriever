@@ -164,7 +164,12 @@ def _render_page_to_base64(
 
     if isinstance(bitmap, _SceneBitmap):
         scene = bitmap.scene
-        return {"gpu_image": bitmap.gpu_image, "orig_shape_hw": (scene.height, scene.width), "encoding": "gpu_rgb", "image_b64": None}
+        return {
+            "gpu_image": bitmap.gpu_image,
+            "orig_shape_hw": (scene.height, scene.width),
+            "encoding": "gpu_rgb",
+            "image_b64": None,
+        }
     arr = convert_bitmap_to_corrected_numpy(bitmap)
 
     orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])
@@ -412,6 +417,7 @@ def pdf_extraction(
                     nested_image_error: Optional[Dict[str, Any]] = None
                     if extract_images and pdf_renderer == "cuda_rdt":
                         from nemo_retriever.operators.extract.pdf.gpu_transport import image_region_metadata
+
                         detected_images.extend(image_region_metadata(page))
                     if extract_images and pdf_renderer != "cuda_rdt":
                         try:
