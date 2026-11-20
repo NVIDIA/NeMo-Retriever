@@ -169,6 +169,14 @@ class NemotronPageElementsV3(HuggingFaceModel):
 
         return boxes_list, labels_list, scores_list
 
+    def _postprocess_cuda(self, preds):
+        """Batch prediction metadata readback for GPU-resident image inputs."""
+        from nemo_retriever.common.modality.page_elements.gpu_metadata import prediction_batch_to_cpu
+
+        if isinstance(preds, dict):
+            return self.postprocess(prediction_batch_to_cpu([preds])[0])
+        return self.postprocess(prediction_batch_to_cpu(preds))
+
     @property
     def model_dir(self) -> str:
         """Model directory."""

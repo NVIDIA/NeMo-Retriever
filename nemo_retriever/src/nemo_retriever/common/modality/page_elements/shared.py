@@ -720,7 +720,10 @@ def detect_page_elements_v3(
         try:
             # Preferred: allow model wrapper to handle batched postprocess.
             if hasattr(model, "postprocess"):
-                boxes, labels, scores = model.postprocess(preds_list2)  # type: ignore[attr-defined]
+                postprocess = model.postprocess
+                if batch.is_cuda:
+                    postprocess = getattr(model, "_postprocess_cuda", postprocess)
+                boxes, labels, scores = postprocess(preds_list2)
             else:
                 # Fallback: run upstream util per-image.
                 # `postprocess_preds_page_element` expects a single pred dict and returns numpy arrays.

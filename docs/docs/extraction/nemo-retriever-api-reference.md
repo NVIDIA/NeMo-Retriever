@@ -232,6 +232,11 @@ those tensors on the GPU, and OCR consumes GPU crops. Page RGB does not return
 to host memory or pass through JPEG/base64 encoding. Text, region coordinates,
 and model results still use CPU processing where required.
 
+For compatible GPU prediction tensors, Page Elements packs boxes, labels, and
+scores into one metadata readback per inference batch. Existing CPU
+postprocessing and detection thresholds remain unchanged. This transfers
+detector results; page RGB and OCR crop pixels remain on the GPU.
+
 NRL enables tensor transport on both GPU actor endpoints. Renderer children
 share the owning model pool's GPU reservation and exact GPU UUID. The executor
 keeps renderer owners alive until ingestion drains, then releases them. GPU
