@@ -142,7 +142,7 @@ content. Failed crops retain their OCR text; successful empty output clears
 the original chart text. Refer to [Route chart crops to Parse 3.5](nemo-retriever-api-reference.md#route-chart-crops-to-parse-35)
 for prerequisites, defaults, and diagnostics.
 
-For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions. When deduplication drops an image crop because it overlaps an infographic, that infographic is captioned even without `caption_infographics`, so the region keeps its visual description.
 
 **Related**
 
