@@ -574,7 +574,7 @@ class ParseParams(_ParamsModel):
 
     Pass this group as ``ExtractParams(parse=ParseParams(...))``. Unset fields
     inherit the extraction configuration and the selected path's defaults.
-    Full-page Parse 3.5 defaults to HTML; chart routing defaults to Simple
+    Full-page Parse 3.5 defaults to Markdown; chart routing defaults to Simple
     HTML and temperature=0.1, repetition_penalty=1.0, top_k=50, top_p=1.0,
     seed=0, max_tokens=8744. Sampling overrides require local Parse 3.5 or a
     Parse 3.5 chat-completions endpoint. Legacy models keep their defaults.
@@ -595,6 +595,10 @@ class ParseParams(_ParamsModel):
         top_p: Nucleus probability in (0, 1].
         seed: Optional nonnegative random seed.
         max_tokens: Positive limit on generated output tokens per page or crop.
+        length_retry_max_tokens: Larger output token limit for rerunning local pages that
+            reach the first limit without repeating; None disables.
+        text_layer_min_overlap: Minimum fraction of Parse page-text words found in the
+            native PDF text layer before the text layer replaces Parse page text; 0 disables.
 
     Raises:
         ValueError: For invalid field values, unsupported formats, or unknown fields.
@@ -633,7 +637,7 @@ class ParseParams(_ParamsModel):
     table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
         default=None,
         description=(
-            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to HTML for "
+            "Rendering for Table blocks: HTML, simple_html, markdown, or latex. Defaults to markdown for "
             "full pages and simple_html for chart crops."
         ),
     )
@@ -677,6 +681,27 @@ class ParseParams(_ParamsModel):
         description=(
             "Positive output token limit per page or crop. Unset inherits the page backend default or "
             "8744 for chart crops."
+        ),
+    )
+
+    length_retry_max_tokens: Optional[int] = Field(
+        default=8192,
+        gt=0,
+        description=(
+            "Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. "
+            "Pages whose output tail repeats are not rerun. Applies only when larger than the first "
+            "attempt's limit. None disables the rerun."
+        ),
+    )
+    text_layer_min_overlap: float = Field(
+        default=0.3,
+        ge=0,
+        le=1,
+        description=(
+            "Use the native PDF text layer as page text when fewer than this fraction of Parse page-text "
+            "words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native "
+            "words. Text-layer lines already present in table, chart, or infographic output are left out. "
+            "0 disables the fallback."
         ),
     )
 
@@ -768,7 +793,7 @@ class ExtractParams(_ParamsModel):
     nemotron_parse_model: Optional[str] = None
     nemotron_parse_table_format: Optional[Literal["HTML", "simple_html", "markdown", "latex"]] = Field(
         default=None,
-        description="Parse 3.5 Table format. Defaults to HTML for 3.5; legacy Parse keeps Markdown.",
+        description="Parse 3.5 Table format. Defaults to markdown for 3.5 and legacy Parse.",
     )
 
     parse: Optional[ParseParams] = Field(

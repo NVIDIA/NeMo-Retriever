@@ -29,6 +29,7 @@ from nemo_retriever.operators.extract.parse.nemotron_parse import (
     nemotron_parse_pages,
 )
 
+MARKDOWN_TABLE = "| A | B |"
 TABLE = '<table><tr><th rowspan="1" colspan="2">Group</th></tr><tr><td rowspan="2" colspan="1">A</td></tr></table>'
 CHART = '<table><tr><td colspan="1">Chart label</td></tr></table>'
 RAW_TABLE = r"\begin{tabular}{cc} A & B \\ 1 & 2 \\ \end{tabular}"
@@ -43,7 +44,9 @@ def helpers(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         {"class": "Picture", "bbox": [0, 0, 1, 1], "text": "Label", "content": "Label"},
     ]
     document = Mock(side_effect=lambda _: {"blocks": deepcopy(blocks)})
-    convert = Mock(side_effect=lambda text, cls, *, table_format: RAW_TABLE if table_format == "latex" else "| A | B |")
+    convert = Mock(
+        side_effect=lambda text, cls, *, table_format: RAW_TABLE if table_format == "latex" else MARKDOWN_TABLE
+    )
     result = SimpleNamespace(postprocess_document=document, postprocessing=SimpleNamespace(postprocess_text=convert))
     monkeypatch.setattr(adapter, "_load_parse35_helpers", lambda: result)
     return result
@@ -90,7 +93,7 @@ def test_model_version_selects_prompt_and_postprocessing(helpers: SimpleNamespac
     )
     assert result.iloc[0]["nemotron_parse_v1_2"]["error"] is None
     if is35:
-        assert result.iloc[0]["table"][0]["text"] == TABLE
+        assert result.iloc[0]["table"][0]["text"] == MARKDOWN_TABLE
         helpers.postprocess_document.assert_called_once_with(RAW)
     else:
         helpers.postprocess_document.assert_not_called()
@@ -899,7 +902,7 @@ def test_remote_parse35_keeps_truncated_chat_text(monkeypatch, helpers):
         extract_tables=True,
     )
     assert result.iloc[0]["nemotron_parse_v1_2"]["error"] is None
-    assert result.iloc[0]["table"][0]["text"] == TABLE
+    assert result.iloc[0]["table"][0]["text"] == MARKDOWN_TABLE
     helpers.postprocess_document.assert_called_once_with(RAW)
 
 
