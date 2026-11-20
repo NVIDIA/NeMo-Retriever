@@ -503,9 +503,10 @@ def test_remote_routing_uses_standard_chat_response_handling(monkeypatch, respon
 
 @pytest.mark.parametrize("failure", [False, True])
 def test_multitype_parse_cleanup_runs_on_stage_exit(monkeypatch, failure):
+    from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
     from nemo_retriever.operators.graph_ops import multi_type_extract_operator as module
 
-    actor = Mock()
+    actor = Mock(spec=NemotronParseGPUActor)
     actor.run.side_effect = RuntimeError("parse failed") if failure else lambda data: data
     operator = module.MultiTypeExtractCPUActor(
         extraction_mode="image",
@@ -516,15 +517,17 @@ def test_multitype_parse_cleanup_runs_on_stage_exit(monkeypatch, failure):
         with pytest.raises(RuntimeError, match="parse failed"):
             operator._run_parse_pipeline(frame())
     else:
-        operator._run_parse_pipeline(frame())
-    actor.cleanup.assert_called_once()
+        source = frame()
+        assert operator._run_parse_pipeline(source) is source
+    actor.cleanup.assert_called_once_with()
 
 
 def test_parse_actor_cleanup_unloads_engine_once():
+    from nemo_retriever.models.local.nemotron_parse35 import NemotronParse35
     from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
 
     actor = NemotronParseGPUActor()
-    model = Mock()
+    model = Mock(spec=NemotronParse35)
     actor._model = model
     actor.cleanup()
     actor.cleanup()
