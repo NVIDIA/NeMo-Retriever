@@ -582,10 +582,12 @@ def _preflight_default_overrides(
     return {node.name: derived[node.name] for node in nodes if node.name in derived}
 
 
-def _preflight_default_pdf_embed_plan(cpus: int, gpus: int) -> dict[str, tuple[int, float, float]]:
+def _preflight_default_pdf_embed_plan(
+    cpus: int, gpus: int, extract_params: ExtractParams | None = None
+) -> dict[str, tuple[int, float, float]]:
     return {
         name: (override.get("concurrency", 1), override.get("num_cpus", 1.0), override.get("num_gpus", 0.0))
-        for name, override in _preflight_default_overrides(cpus, gpus).items()
+        for name, override in _preflight_default_overrides(cpus, gpus, extract_params).items()
     }
 
 
@@ -990,9 +992,10 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
 
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
-def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> None:
+def test_build_graph_uses_explicit_audio_graph_for_audio_extraction_mode() -> None:
     graph = build_graph(
-        extract_params=ExtractParams(method="audio"),
+        extraction_mode="audio",
+        extract_params=ExtractParams(),
         audio_chunk_params=AudioChunkParams(split_type="size", split_interval=42),
     )
 
@@ -1079,11 +1082,12 @@ def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
 
 
 def _first_fit_gpu_placement(plan: dict[str, tuple[int, float, float]], gpus: int) -> list[dict[str, int]]:
-    """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another."""
+    """Place GPU actors the way Ray does for fractional GPUs: first fit, one pool after another in graph order."""
     room = [10_000] * gpus  # Ray tracks GPU fractions in 1/10000 units.
     placement: list[dict[str, int]] = [{} for _ in range(gpus)]
-    for name in ("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"):
-        concurrency, _cpus, share = plan[name]
+    for name, (concurrency, _cpus, share) in plan.items():
+        if not 0 < share < 1:
+            continue
         need = round(share * 10_000)
         for _actor in range(concurrency):
             gpu = next(index for index in range(gpus) if room[index] >= need)
@@ -1108,6 +1112,21 @@ def test_default_multi_gpu_plan_gives_every_gpu_the_same_cell(
     monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
     plan = _preflight_default_pdf_embed_plan(cpus, gpus)
     expected = dict(zip(("PageElementDetectionActor", "OCRActor", "_BatchEmbedActor"), cell))
+
+    assert sum(plan[name][0] * plan[name][2] for name in expected) == pytest.approx(gpus)
+    assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
+
+
+@pytest.mark.parametrize(
+    "cpus, gpus, memory_mib, cell",
+    [(256, 8, 97_887, (4, 1, 2, 1)), (64, 2, 97_887, (4, 1, 2, 1)), (64, 4, 46_068, (1, 1, 1, 1))],
+)
+def test_table_structure_plan_gives_every_gpu_the_same_cell(
+    monkeypatch: pytest.MonkeyPatch, cpus: int, gpus: int, memory_mib: int, cell: tuple[int, int, int, int]
+) -> None:
+    monkeypatch.setattr("nemo_retriever.common.ray_resource_hueristics._min_gpu_memory_mib", lambda _count: memory_mib)
+    plan = _preflight_default_pdf_embed_plan(cpus, gpus, ExtractParams(use_table_structure=True, extract_tables=True))
+    expected = dict(zip(("PageElementDetectionActor", "TableStructureActor", "OCRActor", "_BatchEmbedActor"), cell))
 
     assert sum(plan[name][0] * plan[name][2] for name in expected) == pytest.approx(gpus)
     assert _first_fit_gpu_placement(plan, gpus) == [expected] * gpus
@@ -1168,7 +1187,11 @@ def test_default_cell_plan_skips_page_elements_and_embed_repartition(
             ExtractParams(batch_tuning=BatchTuningParams(page_elements_repartition=True)),
             EmbedParams(batch_tuning=BatchTuningParams(embed_repartition=True)),
         ),
-        (8, ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (
+            8,
+            ExtractParams(use_table_structure=True, extract_tables=True, batch_tuning={"table_structure_workers": 4}),
+            EmbedParams(),
+        ),
         (1, ExtractParams(), EmbedParams()),
     ],
 )
@@ -1209,7 +1232,16 @@ def test_single_gpu_plan_keeps_its_shares(monkeypatch: pytest.MonkeyPatch) -> No
 @pytest.mark.parametrize(
     "extract_params, embed_params",
     [
-        (ExtractParams(use_table_structure=True, extract_tables=True), EmbedParams()),
+        (
+            ExtractParams(
+                use_table_structure=True, extract_tables=True, table_structure_invoke_url="http://table:8000/v1/infer"
+            ),
+            EmbedParams(),
+        ),
+        (
+            ExtractParams(use_table_structure=True, extract_tables=True, batch_tuning={"gpu_table_structure": 0.1}),
+            EmbedParams(),
+        ),
         (ExtractParams(ocr_invoke_url="http://ocr:8000/v1/infer"), EmbedParams()),
         (ExtractParams(), EmbedParams(embed_invoke_url="http://embed:8000/v1/embeddings")),
         (ExtractParams(), EmbedParams(embedding_endpoint="http://embed:8000/v1/embeddings")),
@@ -1318,3 +1350,76 @@ def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
         "OCRActor actors per GPU {'0': 2}, expected 1 on each of 2 GPUs"
     ]
     assert placement_problems(balanced[:1], {"OCRActor": 2}, 2) == ["OCRActor has 1 of 2 actors pending"]
+
+
+@pytest.mark.parametrize(
+    "embed_params",
+    [
+        EmbedParams(embed_invoke_url="http://embed.example/v1", batch_tuning=BatchTuningParams(gpu_embed=1.0)),
+        EmbedParams(embedding_endpoint="http://embed.example/v1", batch_tuning=BatchTuningParams(gpu_embed=1.0)),
+    ],
+    ids=["embed_invoke_url", "embedding_endpoint"],
+)
+def test_remote_embed_endpoint_alias_does_not_reserve_embed_gpu(embed_params: EmbedParams) -> None:
+    overrides = batch_tuning_to_node_overrides(extract_params=None, embed_params=embed_params)
+
+    assert "num_gpus" not in overrides.get("_BatchEmbedActor", {})
+
+
+@pytest.mark.parametrize(
+    ("extract_kwargs", "expected_key"),
+    [
+        ({"api_key": "shared-key"}, "shared-key"),
+        ({"api_key": "shared-key", "page_elements_api_key": "pe-key"}, "pe-key"),
+        ({"page_elements_api_key": "pe-key"}, "pe-key"),
+    ],
+)
+def test_build_graph_routes_page_elements_api_key_to_detection(extract_kwargs: dict, expected_key: str) -> None:
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page-elements.example/v1",
+            **extract_kwargs,
+        ),
+    )
+
+    detect = next(node for node in _linear_nodes(graph) if node.name == "PageElementDetectionActor")
+    assert detect.operator_kwargs["api_key"] == expected_key
+
+
+@pytest.mark.parametrize(
+    ("extract_kwargs", "expected_key"),
+    [
+        ({}, "env-key"),
+        ({"api_key": "shared-key"}, "shared-key"),
+        ({"api_key": "shared-key", "page_elements_api_key": "pe-key"}, "pe-key"),
+    ],
+    ids=["env-only", "explicit-shared-key", "explicit-stage-key"],
+)
+def test_build_graph_page_elements_env_key_does_not_override_shared_key(
+    monkeypatch: pytest.MonkeyPatch, extract_kwargs: dict, expected_key: str
+) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+    graph = build_graph(
+        extract_params=ExtractParams(
+            method="ocr",
+            extract_text=True,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+            page_elements_invoke_url="http://page-elements.example/v1",
+            **extract_kwargs,
+        ),
+    )
+
+    detect = next(node for node in _linear_nodes(graph) if node.name == "PageElementDetectionActor")
+    assert detect.operator_kwargs["api_key"] == expected_key
+
+
+def test_extract_params_rejects_audio_method() -> None:
+    with pytest.raises(ValueError, match="method"):
+        ExtractParams(method="audio")

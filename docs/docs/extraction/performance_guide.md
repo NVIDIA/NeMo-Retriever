@@ -30,12 +30,19 @@ For example, the default PDF graph on a single-GPU node with 32 CPUs keeps 3 + 4
 
 Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
 
-On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when the graph runs all three stages locally and has no other local GPU stage. Graphs with page elements off, captioning, table structure, Nemotron Parse, audio, or a remote endpoint for one of these stages keep the previous defaults. Any explicit `page_elements_workers`, `ocr_workers`, `embed_workers`, `gpu_page_elements`, `gpu_ocr`, or `gpu_embed` value also keeps the previous defaults for the other two stages. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
+On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when the graph runs all three stages locally and has no other local GPU stage except table structure. Local table structure adds 1 table structure actor to every GPU. Graphs with page elements off, captioning, Nemotron Parse, audio, or a remote endpoint for page elements, OCR, embedding, or table structure keep the previous defaults. Any explicit `page_elements_workers`, `ocr_workers`, `embed_workers`, `gpu_page_elements`, `gpu_ocr`, or `gpu_embed` value also keeps the previous defaults for the other two stages. With table structure on, an explicit `table_structure_workers` or `gpu_table_structure` value also keeps the previous defaults. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
 
 | Smallest GPU memory | Page elements | OCR | Embedding |
 |---|---|---|---|
 | 72 GiB or more | 4 actors × 0.21 GPU | 2 actors × 0.06 GPU | 1 actor × 0.04 GPU |
 | Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.24 GPU |
+
+With local table structure, the graph runs page elements, table structure, OCR, and then embedding, and each GPU gets the following actors:
+
+| Smallest GPU memory | Page elements | Table structure | OCR | Embedding |
+|---|---|---|---|---|
+| 72 GiB or more | 4 actors × 0.21 GPU | 1 actor × 0.09 GPU | 2 actors × 0.03 GPU | 1 actor × 0.01 GPU |
+| Less than 72 GiB, unknown, or GPUs on other Ray nodes | 1 actor × 0.51 GPU | 1 actor × 0.25 GPU | 1 actor × 0.13 GPU | 1 actor × 0.11 GPU |
 
 These pools apply only to the PDF graph. Text, HTML, image, audio, video, and automatic-detection graphs keep the previous defaults. GPU memory means the smallest free memory among the GPUs that Ray uses, as named by `CUDA_VISIBLE_DEVICES`. The library logs the chosen set and the reason at INFO. After the GPU actors start, it logs a WARNING if any of these pools has pending actors or an uneven number of actors on each GPU.
 

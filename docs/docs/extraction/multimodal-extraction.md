@@ -124,6 +124,8 @@ for format details and defaults.
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` defaults to `True`; `extract_infographics` defaults to `False`. Set `extract_infographics=True` to retain infographic output. Outputs use the same metadata schema as other extracted objects.
 
+When `extract_infographics=False`, detected text and title boxes inside infographic regions are kept in the page text. When `extract_infographics=True`, that text is removed from the page text because infographic OCR reads it instead.
+
 !!! important "Remote Parse v1.2 does not predict chart classes"
     Remote [Nemotron Parse v1.2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) endpoints remain supported, but the model's semantic classes do not include `Chart` or `Infographic`.
     Chart-heavy regions can be labeled `Picture`. The pipeline routes `Picture` elements to the infographic channel when `extract_infographics=True`.

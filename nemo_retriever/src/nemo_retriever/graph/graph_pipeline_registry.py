@@ -51,6 +51,7 @@ from typing import (
 
 from pydantic import BaseModel
 
+from nemo_retriever.common.params.models import _ParamsModel
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 
@@ -375,11 +376,14 @@ def _encode_value(
                 owner=value,
                 inside_storage_options=inside_storage_options,
             )
-        return {
+        encoded = {
             _PYDANTIC_MODEL_MARKER: qualified,
             _PYDANTIC_FIELDS: fields,
             _PYDANTIC_FIELDS_SET: sorted(value.model_fields_set),
         }
+        if isinstance(value, _ParamsModel):
+            encoded["api_key_env_defaulted"] = sorted(name for name in fields if value._api_key_was_env_defaulted(name))
+        return encoded
     if isinstance(value, type):
         qualified = _qualified_name(value)
         try:
@@ -544,7 +548,7 @@ def _decode_value(
         _validate_value_envelope(
             value,
             required={_PYDANTIC_MODEL_MARKER, _PYDANTIC_FIELDS},
-            optional={_PYDANTIC_FIELDS_SET},
+            optional={_PYDANTIC_FIELDS_SET, "api_key_env_defaulted"},
             path=path,
             label="Pydantic model",
         )
@@ -591,6 +595,15 @@ def _decode_value(
         if unknown:
             raise GraphSerializationError(f"{path}: Pydantic fields_set contains unknown fields: {sorted(unknown)}")
         model.__pydantic_fields_set__ = set(fields_set)
+        if "api_key_env_defaulted" in value:
+            defaulted = value["api_key_env_defaulted"]
+            if (
+                not isinstance(model, _ParamsModel)
+                or not isinstance(defaulted, list)
+                or not all(isinstance(name, str) and name in fields and _is_api_key_field(name) for name in defaulted)
+            ):
+                raise GraphSerializationError(f"{path}: malformed API-key defaults")
+            model._api_key_env_defaulted.update(defaulted)
         return model
     if "__type_ref__" in value:
         if format_version >= 2:

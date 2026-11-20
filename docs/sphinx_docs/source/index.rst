@@ -62,7 +62,6 @@ Ingestor link to see descriptions of the available tasks)
             paddle_output_format="markdown",
             extract_infographics=True,
             # extract_method="nemotron_parse",  # Alternate PDF extraction method
-            text_depth="page"
         ).embed()
         .vdb_upload(
             vdb_op="lancedb",
