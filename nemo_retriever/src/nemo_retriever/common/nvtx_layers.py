@@ -116,6 +116,18 @@ _TARGETS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
             "vLLM",
             "runner.output_copy_sync",
         ),
+        # Model Runner V2, the default GPU runner since vLLM 0.32.
+        ("vllm.v1.worker.gpu.model_runner", "GPUModelRunner.execute_model", "vLLM", "runner.execute_model"),
+        ("vllm.v1.worker.gpu.model_runner", "GPUModelRunner.prepare_inputs", "vLLM", "runner.prepare_inputs"),
+        ("vllm.v1.worker.gpu.mm.encoder_runner", "EncoderRunner.execute_mm_encoder", "vLLM", "runner.mm_encoder"),
+        (
+            "vllm.v1.worker.gpu.mm.encoder_runner",
+            "EncoderRunner.gather_mm_embeddings",
+            "vLLM",
+            "runner.gather_mm_embeddings",
+        ),
+        ("vllm.v1.worker.gpu.model_runner", "GPUModelRunner.pool", "vLLM", "runner.pooler"),
+        ("vllm.v1.worker.gpu.async_utils", "AsyncPoolingOutput.get_output", "vLLM", "runner.output_copy_sync"),
     ),
 }
 # NRL_NVTX=full adds high-frequency host-sync and serialization ranges; they cost steady-state time.
