@@ -264,8 +264,10 @@ Ray 2.56.1 exactly. It validates each original RGB tensor and its completed
 CUDA event before publication, while retaining existing reference and buffer
 ownership rules. Refer to
 [Publish only completed RGB tensors](performance_guide.md#publish-only-completed-rgb-tensors)
-for compatibility and synchronization limits. Full-pipeline validation of this
-option remains pending.
+for compatibility and synchronization limits. Bounded tests pass 384 exact
+RGB renders and four real-model pages, but a full-corpus trial fails with an
+illegal GPU-memory access. The originating kernel remains unidentified. This
+option is not validated for full ingestion.
 
 The supported configuration has the following restrictions:
 

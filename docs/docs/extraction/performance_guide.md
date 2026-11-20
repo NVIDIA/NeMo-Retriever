@@ -338,10 +338,15 @@ Source and receiver arenas register with the transport manager selected for
 the transferred reference. Pool settings, model configuration, actor counts,
 and the default renderer remain unchanged. Page RGB stays on the GPU.
 
-Bounded diagnostics do not establish complete ingestion performance. Correctness,
-reference lifetime, retrieval, and full-corpus performance validation of this
-option remain pending. Earlier DC10K results do not establish an ingestion
-speedup or GPU utilization improvement for this transport.
+Bounded checks pass 384 exact RGB renders and four real-model pages. A
+full-corpus trial then fails with an illegal GPU-memory access that propagates
+to OCR and renderer clients. The originating kernel remains unidentified;
+these observations do not establish the causal source of the fault.
+
+This option is not validated for full ingestion. The failed trial provides no
+valid full-corpus throughput or accuracy result and does not resolve earlier
+GPU memory faults. Stock transport remains the default. Earlier DC10K results
+do not establish a speedup or GPU utilization improvement for this transport.
 
 ### Reuse registered GPU RGB buffers
 
