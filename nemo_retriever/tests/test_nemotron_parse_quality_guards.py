@@ -243,3 +243,22 @@ def test_fallback_keeps_lines_whose_labels_differ_from_structured_regions() -> N
     kept, dropped = _drop_structured_lines("Bonus 1 2 3 4\nBase 1 2 3 4", ["| Base | 1 | 2 | 3 | 4 |"])
     assert kept == "Bonus 1 2 3 4"
     assert dropped == 1
+
+
+def test_untagged_native_markdown_is_not_replaced_by_text_layer() -> None:
+    markdown = "Scanned summary\n\n| Region | Q1 |\n| --- | --- |\n| North | 1200 |"
+
+    class _NativeClient:
+        def invoke_parse_pages(self, *, image_b64_list, **kwargs):
+            return [{"content": markdown, "finish_reason": "stop", "usage": {}} for _ in image_b64_list]
+
+    df = pd.DataFrame({"text": [NATIVE], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(
+        df,
+        invoke_url="http://parse:8000/v1/parse",
+        nim_client=_NativeClient(),
+        extract_text=True,
+        text_layer_min_overlap=0.3,
+    )
+    assert out.loc[0, "text"] == markdown
+    assert "text_source" not in out.loc[0, "nemotron_parse_v1_2"]

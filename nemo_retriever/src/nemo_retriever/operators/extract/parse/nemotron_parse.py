@@ -722,6 +722,8 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
+    # Untagged Markdown keeps tables inline in page text, so it is never replaced.
+    untagged_pages: set[int] = set()
     route_fn = _route_tool_call_elements if uses_tool_call_routing else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
@@ -743,6 +745,7 @@ def nemotron_parse_pages(
                 if not extract_text:
                     raise ValueError("Untagged native Parse content requires extract_text=True.")
                 all_text[idx] = raw_text
+                untagged_pages.add(idx)
                 continue
             ordered_regions: List[Dict[str, Any]] = []
             route_kwargs = (
@@ -789,7 +792,7 @@ def nemotron_parse_pages(
     if extract_text and (parse35 or native_parse) and text_layer_min_overlap > 0 and "text" in batch_df.columns:
         native_col = batch_df.columns.get_loc("text")
         for idx in batch_indices:
-            if all_meta[idx].get("error") is not None:
+            if all_meta[idx].get("error") is not None or idx in untagged_pages:
                 continue
             native_text = batch_df.iat[idx, native_col]
             if not _text_layer_fallback(all_text[idx], native_text, text_layer_min_overlap):
