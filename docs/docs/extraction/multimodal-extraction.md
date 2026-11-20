@@ -192,7 +192,7 @@ result = (
 )
 ```
 
-Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
+Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions, optional infographics (`caption_infographics=True`), and infographics that replace a deduplicated image crop receive Omni captions.
 
 ### Control image deduplication
 
