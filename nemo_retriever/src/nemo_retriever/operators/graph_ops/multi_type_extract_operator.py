@@ -352,7 +352,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             "ocr_invoke_url": ep.ocr_invoke_url,
             "ocr_version": getattr(ep, "ocr_version", "v2"),
             "ocr_lang": getattr(ep, "ocr_lang", None),
-            "api_key": ep.ocr_api_key or ep.api_key,
+            "api_key": ep.stage_api_key("ocr_api_key"),
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
@@ -459,8 +459,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         detect_kwargs: dict[str, Any] = {"extract_infographics": bool(extract_params.extract_infographics)}
         if extract_params.page_elements_invoke_url:
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-        if extract_params.api_key:
-            detect_kwargs["api_key"] = extract_params.api_key
+        page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
+        if page_elements_api_key:
+            detect_kwargs["api_key"] = page_elements_api_key
         inference_batch_size = getattr(extract_params, "inference_batch_size", None) or getattr(
             tuning, "page_elements_batch_size", None
         )

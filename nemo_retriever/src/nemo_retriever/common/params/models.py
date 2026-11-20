@@ -204,6 +204,7 @@ class _ParamsModel(BaseModel):
     _no_api_key_fields: set[str] = PrivateAttr(default_factory=set)
     _api_key_env_references: dict[str, str] = PrivateAttr(default_factory=dict)
     _api_key_env_values: dict[str, str] = PrivateAttr(default_factory=dict)
+    _api_key_env_defaulted: set[str] = PrivateAttr(default_factory=set)
     _auto_resolve_unset_api_keys: ClassVar[bool] = True
 
     @model_validator(mode="after")
@@ -214,6 +215,7 @@ class _ParamsModel(BaseModel):
                 if value is None:
                     if field_name in self._no_api_key_fields:
                         continue
+                    self._api_key_env_defaulted.discard(field_name)
                     if not type(self)._auto_resolve_unset_api_keys:
                         self._api_key_env_references.pop(field_name, None)
                         self._api_key_env_values.pop(field_name, None)
@@ -227,10 +229,12 @@ class _ParamsModel(BaseModel):
                     if resolved and source_name:
                         self._api_key_env_references[field_name] = f"{ENVIRONMENT_REFERENCE_PREFIX}{source_name}"
                         self._api_key_env_values[field_name] = resolved
+                        self._api_key_env_defaulted.add(field_name)
                     else:
                         self._api_key_env_references.pop(field_name, None)
                         self._api_key_env_values.pop(field_name, None)
                 elif value == NO_API_KEY:
+                    self._api_key_env_defaulted.discard(field_name)
                     self._no_api_key_fields.add(field_name)
                     self._api_key_env_references.pop(field_name, None)
                     self._api_key_env_values.pop(field_name, None)
@@ -239,6 +243,7 @@ class _ParamsModel(BaseModel):
                     self._no_api_key_fields.discard(field_name)
                     explicit_reference = environment_reference_name(value)
                     if explicit_reference is not None:
+                        self._api_key_env_defaulted.discard(field_name)
                         self._api_key_env_references[field_name] = value
                         if type(self)._auto_resolve_unset_api_keys:
                             value = resolve_environment_reference(value)
@@ -247,6 +252,7 @@ class _ParamsModel(BaseModel):
                     else:
                         prior_value = self._api_key_env_values.get(field_name)
                         if prior_value != value:
+                            self._api_key_env_defaulted.discard(field_name)
                             self._api_key_env_references.pop(field_name, None)
                             self._api_key_env_values.pop(field_name, None)
         return self
@@ -262,6 +268,12 @@ class _ParamsModel(BaseModel):
         if self._api_key_env_values.get(field_name) != value:
             return None
         return reference
+
+    def _api_key_was_env_defaulted(self, field_name: str) -> bool:
+        """Return whether an unset API-key field was filled from ``NVIDIA_API_KEY`` or ``NGC_API_KEY``."""
+        return field_name in self._api_key_env_defaulted and self._api_key_env_values.get(field_name) == getattr(
+            self, field_name, None
+        )
 
     def _uses_no_api_key(self, field_name: str) -> bool:
         """Return whether an API-key field was explicitly disabled.
@@ -716,11 +728,13 @@ class ExtractParams(_ParamsModel):
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options
-    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse", "audio"] = Field(
+    method: Literal["pdfium", "pdfium_hybrid", "ocr", "nemotron_parse"] = Field(
         default="pdfium_hybrid",
         description=(
-            "Extraction method. PDF extraction supports 'pdfium', 'pdfium_hybrid', 'ocr', and "
-            "'nemotron_parse'; 'audio' is retained for the legacy params-driven audio path."
+            "How PDF pages are read. 'pdfium' uses the native text layer, 'pdfium_hybrid' uses native text "
+            "and OCRs pages without it, 'ocr' OCRs every page, and 'nemotron_parse' parses pages with "
+            "Nemotron Parse, which also extracts the enabled tables, charts, and infographics. The extract_* flags "
+            "choose which content types to extract."
         ),
     )
     # Run PageElementDetection (layout/yolox). Required by TableStructure and
@@ -776,6 +790,32 @@ class ExtractParams(_ParamsModel):
 
     remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    def stage_api_key(self, field_name: str) -> Optional[str]:
+        """Return the key for one remote stage, falling back to the shared ``api_key``.
+
+        A stage key that was only filled from ``NVIDIA_API_KEY`` or ``NGC_API_KEY``
+        does not override an explicitly supplied shared ``api_key``.
+
+        Args:
+            field_name: Stage credential field, ``ocr_api_key`` or
+                ``page_elements_api_key``. An unknown field falls back to ``api_key``.
+
+        Returns:
+            The selected stage or shared key, or ``None`` when neither is configured.
+
+        Raises:
+            TypeError: If ``field_name`` is not a string.
+        """
+        stage_key = getattr(self, field_name, None)
+        if (
+            stage_key
+            and self.api_key
+            and self._api_key_was_env_defaulted(field_name)
+            and not self._api_key_was_env_defaulted("api_key")
+        ):
+            return self.api_key
+        return stage_key or self.api_key
 
     @field_validator("nemotron_parse_invoke_url")
     @classmethod
@@ -965,6 +1005,17 @@ class EmbedParams(_ParamsModel):
         if modality not in VALID_EMBED_MODALITIES:
             raise ValueError(f"Modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
         return modality
+
+    @model_validator(mode="after")
+    def _reject_conflicting_endpoint_aliases(self) -> "EmbedParams":
+        invoke_url = str(self.embed_invoke_url or "").strip()
+        endpoint = str(self.embedding_endpoint or "").strip()
+        if invoke_url and endpoint and invoke_url != endpoint:
+            raise ValueError(
+                "embed_invoke_url and embedding_endpoint are aliases for the remote embedding URL but were set to "
+                f"different values ({invoke_url!r} and {endpoint!r}). Set only one."
+            )
+        return self
 
     @model_validator(mode="after")
     def _warn_page_granularity_overrides(self) -> "EmbedParams":

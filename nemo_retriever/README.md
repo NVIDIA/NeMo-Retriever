@@ -208,7 +208,7 @@ memory, so prefer file ingestion when the corpus may exceed the available memory
 
 ### Optional extras
 
-- **`multimedia`** — Audio/video extraction and SVG rendering support. Install this extra when using Parakeet ASR through `extract_method="audio"` so audio decoding and resampling dependencies are available:
+- **`multimedia`** — Audio/video extraction and SVG rendering support. Install this extra when using Parakeet ASR through `GraphIngestor.extract_audio()` so audio decoding and resampling dependencies are available:
   ```bash
   uv pip install "nemo-retriever[multimedia]"
   # or, for local GPU inference:

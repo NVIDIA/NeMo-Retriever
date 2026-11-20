@@ -134,7 +134,7 @@ def test_build_graph_audio_only_path_appends_text_chunk_actor_when_audio_split_s
     cfg = resolve_split_params({"audio": {"max_tokens": 256}})
     graph = build_graph(
         extraction_mode="audio",
-        extract_params=ExtractParams(method="audio"),
+        extract_params=ExtractParams(),
         asr_params=ASRParams(),
         split_config=cfg,
     )

@@ -13,13 +13,15 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, SecretStr, field_validator
 
-from nemo_retriever.common.params import LLMRemoteClientParams, RemoteInvokeParams, StoreParams
+from nemo_retriever.common.params import ExtractParams, LLMRemoteClientParams, RemoteInvokeParams, StoreParams
 from nemo_retriever.graph.graph_pipeline_registry import (
     GraphBlueprint,
     GraphDiff,
     GraphSerializationError,
     GraphPipelineRegistry,
     _PlaceholderOperator,
+    _decode_value,
+    _encode_value,
     _import_class,
     _qualified_name,
     _safe_serialize_value,
@@ -1643,6 +1645,60 @@ class TestLegacyRegistryCompatibility:
 
 
 class TestGraphSerializationSecurity:
+    def test_params_without_default_provenance_still_load(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        encoded = _encode_value(ExtractParams(), path="params")
+        encoded.pop("api_key_env_defaulted")
+        restored = _decode_value(encoded, path="params", format_version=2)
+        assert restored.stage_api_key("ocr_api_key") == "env-key"
+
+    def test_empty_default_provenance_round_trip(self, monkeypatch):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        restored = _decode_value(_encode_value(ExtractParams(), path="params"), path="params", format_version=2)
+        assert restored.stage_api_key("ocr_api_key") is None
+        assert restored.stage_api_key("page_elements_api_key") is None
+
+    @pytest.mark.parametrize("stage", ["ocr_api_key", "page_elements_api_key"])
+    def test_env_defaults_added_at_load_keep_shared_key_precedence(self, monkeypatch, stage):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        monkeypatch.setenv("SHARED_TEST_KEY", "shared-key")
+        encoded = _encode_value(ExtractParams(api_key="os.environ/SHARED_TEST_KEY"), path="params")
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        restored = _decode_value(encoded, path="params", format_version=2)
+        assert restored.stage_api_key(stage) == "shared-key"
+
+    @pytest.mark.parametrize("defaulted", [None, "ocr_api_key", ["unknown"], ["method"], [1]])
+    def test_invalid_default_provenance_is_rejected(self, defaulted):
+        encoded = _encode_value(ExtractParams(), path="params")
+        encoded["api_key_env_defaulted"] = defaulted
+        with pytest.raises(GraphSerializationError, match="malformed API-key defaults"):
+            _decode_value(encoded, path="params", format_version=2)
+
+    @pytest.mark.parametrize("stage", ["ocr_api_key", "page_elements_api_key"])
+    @pytest.mark.parametrize("explicit_stage", [False, True])
+    @pytest.mark.parametrize("round_trip", ["codec", "save_load", "clone"])
+    def test_stage_key_precedence_round_trip(self, monkeypatch, tmp_path, stage, explicit_stage, round_trip):
+        monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+        monkeypatch.setenv("SHARED_TEST_KEY", "shared-key")
+        kwargs = {stage: "os.environ/NVIDIA_API_KEY"} if explicit_stage else {}
+        params = ExtractParams(api_key="os.environ/SHARED_TEST_KEY", **kwargs)
+        expected = "env-key" if explicit_stage else "shared-key"
+        assert params.stage_api_key(stage) == expected
+        if round_trip == "codec":
+            restored = _decode_value(_encode_value(params, path="params"), path="params", format_version=2)
+        else:
+            graph = Graph()
+            graph.add_root(StoreParamsOp(params))
+            if round_trip == "save_load":
+                save_graph(graph, tmp_path / "graph.json")
+                restored_graph = load_graph(tmp_path / "graph.json")
+            else:
+                restored_graph = clone_graph(graph)
+            restored = restored_graph.roots[0].operator.params
+        assert restored.stage_api_key(stage) == expected
+
     def test_auto_resolved_params_preserve_exact_environment_provenance(self, monkeypatch):
         monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
         monkeypatch.setenv("NGC_API_KEY", "DRIVER-KEY")
