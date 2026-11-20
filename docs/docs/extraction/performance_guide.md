@@ -343,6 +343,14 @@ the watchdog does not limit an admitted batch's rendering duration. On error,
 the caller attempts to cancel its queued request without masking the original
 failure. Cancellation removes pending admission metadata, not published images.
 
+Producer acknowledgements and admission cancellation use a dedicated Ray
+concurrency group with one control slot, scheduled independently of the
+16 rendering request slots. Occupied rendering slots therefore do not consume
+the control slot needed to release completed images or cancel queued admission.
+GPU completion fences, byte limits, and lease-release conditions remain
+unchanged. This requires no additional setting and does not establish an
+end-to-end throughput or GPU utilization improvement.
+
 After publication, the producer retains the actual source `ObjectRef`.
 OCR, the final supported image consumer, waits for its scoped GPU work before
 acknowledging page indices. The source batch releases its reference and charge

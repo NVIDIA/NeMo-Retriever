@@ -236,7 +236,12 @@ def test_owner_image_finishes_gpu_uses_even_without_receive_pool(gpu_rgb, monkey
     from nemo_retriever.operators.extract.pdf import gpu_transport
 
     events = []
-    owner = SimpleNamespace(acknowledge_images=SimpleNamespace(remote=lambda batches: events.append("ack") or True))
+
+    def control_options(**kwargs):
+        assert kwargs == {"concurrency_group": "owner_control"}
+        return SimpleNamespace(remote=lambda batches: events.append("ack") or True)
+
+    owner = SimpleNamespace(acknowledge_images=SimpleNamespace(options=control_options))
     ref = object()
     image = GpuPageImage(ref, 0, 20, 30, ((20, 30),), owner, 1)
     monkeypatch.setattr(ray, "get", lambda value: [gpu_rgb] if value is ref else [True])

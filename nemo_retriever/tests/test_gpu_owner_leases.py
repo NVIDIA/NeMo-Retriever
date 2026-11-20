@@ -309,9 +309,14 @@ def test_progress_watchdog_allows_slow_fair_queue_and_cancels_on_stall(monkeypat
     from nemo_retriever.operators.extract.pdf.gpu_transport import _render_with_credit, GpuTransportError
 
     calls, cancellations = [], []
+
+    def cancel_options(**kwargs):
+        assert kwargs == {"concurrency_group": "owner_control"}
+        return SimpleNamespace(remote=lambda request: cancellations.append(request) or "cancel")
+
     producer = SimpleNamespace(
         render_handles=SimpleNamespace(remote=lambda scenes, **kwargs: calls.append(kwargs["request_id"]) or "render"),
-        cancel_admission=SimpleNamespace(remote=lambda request: cancellations.append(request) or "cancel"),
+        cancel_admission=SimpleNamespace(options=cancel_options),
     )
     clock = iter([0, 119, 238])
     replies = iter([{"busy": True, "owner_progress": value} for value in [0, 1, 2]] + [{"reference": "complete"}])

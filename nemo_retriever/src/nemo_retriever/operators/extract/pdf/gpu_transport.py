@@ -363,7 +363,16 @@ class RendererPool:
 
         key = (node_id, gpu_uuid)
         if key not in self.producers:
-            actor = ray.remote(num_cpus=0, num_gpus=0, enable_tensor_transport=True, max_concurrency=16)(_GpuProducer)
+            # A long render must not occupy the last slot needed to release
+            # completed images or cancel an admission request. Control RPCs do
+            # no GPU work and use the lease book's existing synchronization.
+            actor = ray.remote(
+                num_cpus=0,
+                num_gpus=0,
+                enable_tensor_transport=True,
+                max_concurrency=16,
+                concurrency_groups={"owner_control": 1},
+            )(_GpuProducer)
             self.producers[key] = actor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
                 runtime_env={
@@ -515,7 +524,7 @@ def _render_with_credit(producer, method, scenes):
             delay = min(0.05, delay * 1.5)
     except BaseException:
         try:
-            ray.get(producer.cancel_admission.remote(request_id), timeout=5)
+            ray.get(producer.cancel_admission.options(concurrency_group="owner_control").remote(request_id), timeout=5)
         except Exception:
             # Preserve the original failure when its owner is already unavailable.
             pass
@@ -549,4 +558,9 @@ def acknowledge_gpu_images(frame):
         owner, batches = groups.setdefault(id(image.owner), (image.owner, {}))
         batches.setdefault(image.owner_token, set()).add(image.index)
     if groups:
-        ray.get([owner.acknowledge_images.remote(batches) for owner, batches in groups.values()])
+        ray.get(
+            [
+                owner.acknowledge_images.options(concurrency_group="owner_control").remote(batches)
+                for owner, batches in groups.values()
+            ]
+        )
