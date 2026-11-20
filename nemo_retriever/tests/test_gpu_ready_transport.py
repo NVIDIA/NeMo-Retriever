@@ -9,6 +9,12 @@ from nemo_retriever.operators.extract.pdf import gpu_ready_transport as ready
 from nemo_retriever.operators.extract.pdf.gpu_transport import _ready_transport_enabled
 
 
+@pytest.fixture
+def audited_ray_runtime():
+    if ready.ray.__version__ != "2.56.1":
+        pytest.skip("Private ready-transport contracts require audited Ray 2.56.1")
+
+
 @pytest.mark.parametrize("value,enabled", [(None, False), ("0", False), ("1", True)])
 def test_opt_in(value, enabled, monkeypatch):
     monkeypatch.delenv("CUDA_PDF_READY_TRANSPORT", raising=False)
@@ -24,10 +30,13 @@ def test_invalid_opt_in(value, monkeypatch):
         _ready_transport_enabled()
 
 
-def test_incompatible_ray_fails_closed(monkeypatch):
-    monkeypatch.setattr(ready.ray, "__version__", "different")
+@pytest.mark.parametrize("version", ["different", "2.60.0", "3.0.0.dev0"])
+def test_incompatible_ray_fails_closed(monkeypatch, version):
+    monkeypatch.setattr(ready.ray, "__version__", version)
     with pytest.raises(RuntimeError, match="requires Ray 2.56.1"):
         ready.register()
+    with pytest.raises(RuntimeError, match="requires Ray 2.56.1"):
+        ready.ReadyNixlTransport()
 
 
 @pytest.fixture
@@ -79,7 +88,7 @@ def test_bad_output_is_rejected_before_ray_put(completed_rgb, which, monkeypatch
         ready.publish(tensors, events)
 
 
-def test_metadata_requires_exact_tensor_identity(completed_rgb):
+def test_metadata_requires_exact_tensor_identity(audited_ray_runtime, completed_rgb):
     rgb, event = completed_rgb
     transport = ready.ReadyNixlTransport()
     with pytest.raises(ValueError, match="scoped completion"):
@@ -92,7 +101,7 @@ def test_metadata_requires_exact_tensor_identity(completed_rgb):
         ready._READY.reset(token)
 
 
-def test_descriptor_failure_rolls_back_registration(completed_rgb, monkeypatch):
+def test_descriptor_failure_rolls_back_registration(audited_ray_runtime, completed_rgb, monkeypatch):
     rgb, event = completed_rgb
     transport = ready.ReadyNixlTransport()
     calls = []
@@ -111,7 +120,7 @@ def test_descriptor_failure_rolls_back_registration(completed_rgb, monkeypatch):
     assert transport._get_num_managed_meta_nixl() == 0
 
 
-def test_aborted_fetch_fails_without_registering_targets():
+def test_aborted_fetch_fails_without_registering_targets(audited_ray_runtime):
     from ray.experimental.rdt.nixl_tensor_transport import NixlCommunicatorMetadata, NixlTransportMetadata
 
     transport = ready.ReadyNixlTransport()
@@ -128,12 +137,13 @@ def test_aborted_fetch_fails_without_registering_targets():
 def test_transport_name_collision_fails_closed(monkeypatch):
     from ray.experimental.rdt import util
 
+    monkeypatch.setattr(ready, "_check_version", lambda: None)
     monkeypatch.setattr(util, "transport_manager_info", {ready.NAME: SimpleNamespace(transport_manager_class=object)})
     with pytest.raises(RuntimeError, match="name collision"):
         ready.register()
 
 
-def test_publication_binds_context_on_fresh_ray_thread(completed_rgb, monkeypatch):
+def test_publication_binds_context_on_fresh_ray_thread(audited_ray_runtime, completed_rgb, monkeypatch):
     import ctypes
     from concurrent.futures import ThreadPoolExecutor
 
