@@ -207,22 +207,72 @@ def test_batch_cli_plan_and_graph_share_checkpoint(tmp_path, monkeypatch, native
         total_resources=Resources(cpu_count=8, gpu_count=1),
         available_resources=Resources(cpu_count=8, gpu_count=1),
     )
+    assert plan.embed_params.embed_model_name == expected
+    assert plan.embed_params.embed_model_revision is None
+    assert "embedding_model_name" not in plan.vdb_params.vdb_kwargs
+    assert "embedding_model_revision" not in plan.vdb_params.vdb_kwargs
     actor_params, sink_kwargs = resolved_stages(
         tmp_path, plan.embed_params, resources=cluster, vdb_kwargs=plan.vdb_params.vdb_kwargs
     )
     metadata = sink_kwargs["vdb_kwargs"]
-    assert (
-        plan.embed_params.embed_model_name
-        == actor_params.embed_model_name
-        == metadata["embedding_model_name"]
-        == expected
+    assert actor_params.embed_model_name == metadata["embedding_model_name"] == expected
+    assert actor_params.embed_model_revision == metadata["embedding_model_revision"] == get_hf_revision(expected)
+
+
+@pytest.mark.parametrize("run_mode", ["inprocess", "batch"])
+@pytest.mark.parametrize("requested_model", [NEMOTRON_3_EMBED_MODEL, NEMOTRON_3_EMBED_BF16_MODEL])
+def test_explicit_n3_cpu_fallback_keeps_hosted_identity(tmp_path, monkeypatch, run_mode, requested_model):
+    import pandas as pd
+    from nemo_retriever.ingest.plan import (
+        IngestEmbedOptions,
+        IngestPlanRequest,
+        IngestRuntimeOptions,
+        IngestSourceOptions,
+        resolve_ingest_plan,
     )
-    assert (
-        plan.embed_params.embed_model_revision
-        == actor_params.embed_model_revision
-        == metadata["embedding_model_revision"]
-        == get_hf_revision(expected)
+    from nemo_retriever.models.inference import runtime
+    from nemo_retriever.models.inference.main_text_embed import assign_embedding_columns
+    from nemo_retriever.models.inference.shared import build_embed_kwargs
+    from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
+
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
+    document = tmp_path / "input.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    plan = resolve_ingest_plan(
+        IngestPlanRequest(
+            source=IngestSourceOptions(documents=[str(document)]),
+            runtime=IngestRuntimeOptions(run_mode=run_mode),
+            embed=IngestEmbedOptions(embed_model_name=requested_model),
+        )
     )
+    resources = Resources(cpu_count=8, gpu_count=0)
+    if run_mode == "batch":
+        resources = ClusterResources(total_resources=resources, available_resources=resources)
+    graph = build_post_extract_graph(
+        embed_params=plan.embed_params,
+        vdb_upload_params=plan.vdb_params,
+        stage_order=("embed",),
+        reshape_content_before_embed=False,
+    )
+    embed_node = resolve_graph(graph, resources).roots[0]
+    metadata = embed_node.children[0].operator_kwargs["vdb_kwargs"]
+    params = embed_node.operator_kwargs["params"]
+    assert embed_node.operator_class is _BatchEmbedCPUActor
+    assert params.embed_model_revision is None
+    assert metadata["embedding_model_name"] == NEMOTRON_3_EMBED_MODEL
+    assert "embedding_model_revision" not in metadata
+    # The hosted request must use the identity the index records.
+    kwargs = build_embed_kwargs(params)
+    kwargs["embedding_endpoint"] = _BatchEmbedCPUActor.DEFAULT_EMBED_INVOKE_URL
+    request = MagicMock(
+        side_effect=lambda frame, **options: (
+            assign_embedding_columns(frame, [[1.0]] * len(frame), [None] * len(frame), output_column="embedding"),
+            {},
+        )
+    )
+    monkeypatch.setattr(runtime, "create_text_embeddings_for_df", request)
+    runtime.embed_text_main_text_embed(pd.DataFrame([{"text": "document"}]), **kwargs)
+    assert request.call_args.kwargs["transform_config"].embedding_model == NEMOTRON_3_EMBED_MODEL
 
 
 def test_explicit_sink_identity_and_dimension_are_preserved(tmp_path, monkeypatch):
