@@ -265,9 +265,11 @@ CUDA event before publication, while retaining existing reference and buffer
 ownership rules. Refer to
 [Publish only completed RGB tensors](performance_guide.md#publish-only-completed-rgb-tensors)
 for compatibility and synchronization limits. Bounded tests pass 384 exact
-RGB renders and four real-model pages, but a full-corpus trial fails with an
-illegal GPU-memory access. The originating kernel remains unidentified. This
-option is not validated for full ingestion.
+RGB renders and four real-model pages. Full-corpus trials fail with illegal
+GPU-memory access or Ray reference-counting errors for deleted GPU image
+references. Bounded publication-thread CUDA context checks do not establish
+memory or reference-lifetime safety. The originating causes remain unresolved;
+this option is not validated for full ingestion.
 
 The supported configuration has the following restrictions:
 

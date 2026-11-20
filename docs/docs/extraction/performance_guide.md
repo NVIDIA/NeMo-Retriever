@@ -338,15 +338,20 @@ Source and receiver arenas register with the transport manager selected for
 the transferred reference. Pool settings, model configuration, actor counts,
 and the default renderer remain unchanged. Page RGB stays on the GPU.
 
-Bounded checks pass 384 exact RGB renders and four real-model pages. A
-full-corpus trial then fails with an illegal GPU-memory access that propagates
-to OCR and renderer clients. The originating kernel remains unidentified;
-these observations do not establish the causal source of the fault.
+Bounded checks pass 384 exact RGB renders and four real-model pages. One
+full-corpus trial fails with illegal GPU-memory access that propagates to OCR
+and renderer clients. A later trial, after publication-thread CUDA device
+binding, fails with `RayReferenceCountingAssertionError` and a deleted GPU image
+reference during Page Elements fetch. That trial logs no illegal GPU-memory
+access, but it also does not complete.
 
-This option is not validated for full ingestion. The failed trial provides no
-valid full-corpus throughput or accuracy result and does not resolve earlier
-GPU memory faults. Stock transport remains the default. Earlier DC10K results
-do not establish a speedup or GPU utilization improvement for this transport.
+Publication-thread context binding passes bounded fresh-thread checks. Those
+checks do not establish broad memory or reference-lifetime safety. The
+originating kernel and causal sources of the full-run failures remain unresolved.
+This option is not validated for full ingestion. Neither failed trial provides
+a valid full-corpus throughput or accuracy result. Stock transport remains the
+default. Earlier DC10K results do not establish a speedup or GPU utilization
+improvement for this transport.
 
 ### Reuse registered GPU RGB buffers
 
