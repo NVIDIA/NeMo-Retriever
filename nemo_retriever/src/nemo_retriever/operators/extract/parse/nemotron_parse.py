@@ -174,24 +174,26 @@ def _words(text: Any) -> List[str]:
 
 
 _RE_TOKEN = re.compile(r"\w+", re.UNICODE)
+_RE_STRUCTURED_ROW = re.compile(r"\n|</tr>", re.IGNORECASE)
 
 
 def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tuple[str, int]:
     """Remove native text-layer lines already present in Parse table, chart, or infographic text.
 
-    A line is removed only when every one of its tokens occurs in the
-    structured text, so fallback page text does not repeat table cells that
-    the page's structured regions already carry but keeps lines whose labels
-    or values differ.
+    A line is removed only when every one of its tokens occurs in a single
+    structured row (a line, or an HTML table row), so fallback page text does
+    not repeat table cells that the page's structured regions already carry,
+    while tokens matched across different rows or regions keep the line.
     """
-    structured_tokens = set(_RE_TOKEN.findall("\n".join(structured_texts).lower()))
-    if not structured_tokens:
+    rows = [set(_RE_TOKEN.findall(row.lower())) for text in structured_texts for row in _RE_STRUCTURED_ROW.split(text)]
+    rows = [row for row in rows if row]
+    if not rows:
         return native_text, 0
     kept: List[str] = []
     dropped = 0
     for line in native_text.splitlines():
-        tokens = _RE_TOKEN.findall(line.lower())
-        if tokens and all(token in structured_tokens for token in tokens):
+        tokens = set(_RE_TOKEN.findall(line.lower()))
+        if tokens and any(tokens <= row for row in rows):
             dropped += 1
             continue
         kept.append(line)
@@ -745,7 +747,8 @@ def nemotron_parse_pages(
                 if not extract_text:
                     raise ValueError("Untagged native Parse content requires extract_text=True.")
                 all_text[idx] = raw_text
-                untagged_pages.add(idx)
+                if raw_text.strip():
+                    untagged_pages.add(idx)
                 continue
             ordered_regions: List[Dict[str, Any]] = []
             route_kwargs = (

@@ -262,3 +262,28 @@ def test_untagged_native_markdown_is_not_replaced_by_text_layer() -> None:
     )
     assert out.loc[0, "text"] == markdown
     assert "text_source" not in out.loc[0, "nemotron_parse_v1_2"]
+
+
+def test_fallback_keeps_lines_matched_only_across_structured_rows() -> None:
+    from nemo_retriever.operators.extract.parse.nemotron_parse import _drop_structured_lines
+
+    kept, dropped = _drop_structured_lines("Sales 2024 100\nSales 2023 100", ["Sales 2023 100", "Costs 2024 200"])
+    assert kept == "Sales 2024 100"
+    assert dropped == 1
+
+
+def test_empty_native_response_falls_back_to_text_layer() -> None:
+    class _NativeClient:
+        def invoke_parse_pages(self, *, image_b64_list, **kwargs):
+            return [{"content": "  ", "finish_reason": "stop", "usage": {}} for _ in image_b64_list]
+
+    df = pd.DataFrame({"text": [NATIVE], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(
+        df,
+        invoke_url="http://parse:8000/v1/parse",
+        nim_client=_NativeClient(),
+        extract_text=True,
+        text_layer_min_overlap=0.3,
+    )
+    assert out.loc[0, "text"] == NATIVE
+    assert out.loc[0, "nemotron_parse_v1_2"]["text_source"] == "text_layer"
