@@ -313,6 +313,36 @@ The encoded renderers and GPU-resident mode present different model pixels
 because the latter avoids JPEG compression. Compare extracted outputs and
 retrieval accuracy before accepting a throughput result.
 
+### Publish only completed RGB tensors
+
+For native `cuda_rdt`, set `CUDA_PDF_READY_TRANSPORT=1` in the NRL driver
+environment to enable experimental readiness-checked RGB publication. Unset or
+`0` retains stock Ray NIXL transport. The driver accepts only `0` or `1` and
+registers the selected transport before creating renderer actors.
+
+This option requires the audited Ray version 2.56.1 exactly. Incompatible Ray
+versions fail setup. The implementation registers `NRL_READY_NIXL`, a separate
+transport that reuses Ray's NIXL transfers, descriptor ownership, and cleanup.
+It checks the exact original contiguous CUDA `uint8` HWC RGB tensor and a
+completed CUDA event on the same device before extracting publication metadata.
+Missing, mismatched, or pending completion proofs raise errors without a
+host-image fallback.
+
+Each page records and completes its own CUDA event before publication. The
+readiness-checked metadata path avoids the stock device-wide publication wait,
+which can include unrelated streams. It does not eliminate page completion
+waits or receiver model-scope synchronization. Original tensor and pool leases
+must still remain valid until all consumers and transfers finish.
+
+Source and receiver arenas register with the transport manager selected for
+the transferred reference. Pool settings, model configuration, actor counts,
+and the default renderer remain unchanged. Page RGB stays on the GPU.
+
+Bounded diagnostics do not establish complete ingestion performance. Correctness,
+reference lifetime, retrieval, and full-corpus performance validation of this
+option remain pending. Earlier DC10K results do not establish an ingestion
+speedup or GPU utilization improvement for this transport.
+
 ### Reuse registered GPU RGB buffers
 
 For `cuda_rdt`, the following independent settings reserve reusable RGB

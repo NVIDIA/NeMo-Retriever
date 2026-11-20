@@ -31,16 +31,32 @@ def _rgb_pool_capacity(name="CUDA_PDF_RGB_POOL_BYTES"):
     return value
 
 
-def _receive_pool(capacity):
+def _ready_transport_enabled():
+    import os
+
+    value = os.environ.get("CUDA_PDF_READY_TRANSPORT", "0")
+    if value not in ("0", "1"):
+        raise ValueError("CUDA_PDF_READY_TRANSPORT must be 0 or 1")
+    return value == "1"
+
+
+def _receive_pool(capacity, transport="NIXL"):
     import torch
     from cuda_pdf_renderer.buffer_pool import DeviceRgbPool
     from ray.experimental import register_nixl_memory
 
-    key = (torch.cuda.current_device(), capacity)
+    key = (torch.cuda.current_device(), capacity, transport)
     with _RECEIVE_LOCK:
         if key not in _RECEIVE_POOLS:
             pool = DeviceRgbPool(capacity)
-            register_nixl_memory(pool.storage)
+            if transport == "NIXL":
+                register_nixl_memory(pool.storage)
+            else:
+                from nemo_retriever.operators.extract.pdf.gpu_ready_transport import NAME, manager
+
+                if transport != NAME:
+                    raise GpuTransportError("Unsupported GPU RGB transport")
+                manager().register_nixl_memory(pool.storage)
             _RECEIVE_POOLS[key] = pool
         return _RECEIVE_POOLS[key]
 
@@ -74,7 +90,8 @@ class GpuPageImage:
                     with nvtx.annotate("nrl.cuda_rdt::receive_targets", color="purple"):
                         from ray.experimental import set_target_for_ref
 
-                        pool = _receive_pool(capacity)
+                        transport = getattr(self.reference, "tensor_transport", lambda: "NIXL")() or "NIXL"
+                        pool = _receive_pool(capacity) if transport == "NIXL" else _receive_pool(capacity, transport)
                         buffers = []
                         for height, width in self.batch_shapes:
                             target = pool.image(height, width)
@@ -131,7 +148,7 @@ def gpu_image_scope(receive_pool_bytes=0):
 class _GpuProducer:
     """A renderer uses the GPU reservation of its owning model-actor pool."""
 
-    def __init__(self, library, gpu_uuid):
+    def __init__(self, library, gpu_uuid, ready_transport=False):
         import os
 
         # Ray assigned the reservation to the model actor. This child owns no
@@ -141,6 +158,13 @@ class _GpuProducer:
         from cuda_pdf_renderer.device import DeviceRenderer
 
         self.renderer = DeviceRenderer(library)
+        self._ready_transport = ready_transport
+        self._publication_transport = "NIXL"
+        if ready_transport:
+            from nemo_retriever.operators.extract.pdf.gpu_ready_transport import NAME, register
+
+            register()
+            self._publication_transport = NAME
         pool_bytes = _rgb_pool_capacity()
         self._rgb_pool = None
         if pool_bytes:
@@ -150,7 +174,12 @@ class _GpuProducer:
             self._rgb_pool = DeviceRgbPool(pool_bytes)
             # All leased views share this storage. A permanent registration
             # prevents per-page registration churn and remote metadata changes.
-            register_nixl_memory(self._rgb_pool.storage)
+            if self._ready_transport:
+                from nemo_retriever.operators.extract.pdf.gpu_ready_transport import manager
+
+                manager().register_nixl_memory(self._rgb_pool.storage)
+            else:
+                register_nixl_memory(self._rgb_pool.storage)
         self.pages = 0
         self.gpu_uuid = gpu_uuid
         self.max_scene_bytes = 0
@@ -161,15 +190,27 @@ class _GpuProducer:
     @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
     def render(self, scenes):
         results = []
+        events = []
         for scene in scenes:
             rgb, stats = self.renderer.replay(scene)
             if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
                 raise GpuTransportError("Renderer violated GPU-only pixel output contract")
             results.append(rgb)
+            if self._ready_transport:
+                import torch
+
+                event = torch.cuda.Event()
+                event.record(torch.cuda.current_stream())
+                event.synchronize()
+                events.append(event)
         self.pages += len(results)
         import ray
 
         with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
+            if self._ready_transport:
+                from nemo_retriever.operators.extract.pdf.gpu_ready_transport import publish
+
+                return {"reference": publish(results, events)}
             return {"reference": ray.put(results, _tensor_transport="nixl")}
 
     def _render_shared_page(self, handle):
@@ -189,10 +230,16 @@ class _GpuProducer:
             # Publish only completed GPU data. This waits for this page's
             # stream, without copying pixels or synchronizing other pages.
             with nvtx.annotate("nrl.cuda_rdt::page_ready_wait", color="purple"):
-                stream.synchronize()
+                event = None
+                if self._ready_transport:
+                    event = torch.cuda.Event()
+                    event.record(stream)
+                    event.synchronize()
+                else:
+                    stream.synchronize()
         if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
             raise GpuTransportError("Renderer violated GPU-only pixel output contract")
-        return rgb
+        return (rgb, event) if self._ready_transport else rgb
 
     @nvtx.annotate("nrl.cuda_rdt::render_shared_scene", color="green")
     def render_handles(self, handles):
@@ -210,10 +257,17 @@ class _GpuProducer:
                 except BaseException:
                     pass
             raise
+        events = []
+        if self._ready_transport:
+            results, events = map(list, zip(*results)) if results else ([], [])
         with self._stats_lock:
             self.max_scene_bytes = max([self.max_scene_bytes] + [handle.size for handle in handles])
             self.pages += len(results)
         with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
+            if self._ready_transport:
+                from nemo_retriever.operators.extract.pdf.gpu_ready_transport import publish
+
+                return {"reference": publish(results, events)}
             return {"reference": ray.put(results, _tensor_transport="nixl")}
 
     def status(self):
@@ -221,6 +275,7 @@ class _GpuProducer:
 
         return {
             "pages": self.pages,
+            "publication_transport": self._publication_transport,
             "gpu_uuid": self.gpu_uuid,
             "rgb_readback_bytes": 0,
             "cpu_raster_calls": 0,
@@ -237,8 +292,13 @@ class _GpuProducer:
 class RendererPool:
     """Keep GPU-buffer owners alive until the complete ingestion graph drains."""
 
-    def __init__(self, library, rgb_pool_bytes=None):
+    def __init__(self, library, rgb_pool_bytes=None, ready_transport=False):
         self.library = library
+        self.ready_transport = ready_transport
+        if ready_transport:
+            from nemo_retriever.operators.extract.pdf.gpu_ready_transport import register
+
+            register()
         self.rgb_pool_bytes = _rgb_pool_capacity() if rgb_pool_bytes is None else rgb_pool_bytes
         self.producers = {}
         self.next_gpu = 0
@@ -259,7 +319,7 @@ class RendererPool:
                         "CUDA_PDF_RGB_POOL_BYTES": str(self.rgb_pool_bytes),
                     }
                 },
-            ).remote(self.library, gpu_uuid)
+            ).remote(self.library, gpu_uuid, self.ready_transport)
         return self.producers[key]
 
     async def get_next(self, node_id):

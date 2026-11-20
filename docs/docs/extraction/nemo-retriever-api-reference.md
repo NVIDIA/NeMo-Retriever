@@ -257,6 +257,16 @@ Refer to
 [Reuse registered GPU RGB buffers](performance_guide.md#reuse-registered-gpu-rgb-buffers)
 for sizing, allocation behavior, and validation limits.
 
+For experimental readiness-checked publication, set
+`CUDA_PDF_READY_TRANSPORT=1` in the NRL driver environment. Unset or `0`
+retains stock Ray NIXL transport; other values fail setup. This option requires
+Ray 2.56.1 exactly. It validates each original RGB tensor and its completed
+CUDA event before publication, while retaining existing reference and buffer
+ownership rules. Refer to
+[Publish only completed RGB tensors](performance_guide.md#publish-only-completed-rgb-tensors)
+for compatibility and synchronization limits. Full-pipeline validation of this
+option remains pending.
+
 The supported configuration has the following restrictions:
 
 - Use PDF inputs and the native Ray batch executor. In-process, service,

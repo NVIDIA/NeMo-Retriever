@@ -1144,10 +1144,19 @@ class RayDataExecutor(AbstractExecutor):
                 ):
                     if getattr(self, "_cuda_rdt_pool", None) is None:
                         from cuda_pdf_renderer.client import library_path
-                        from nemo_retriever.operators.extract.pdf.gpu_transport import RendererPool, _rgb_pool_capacity
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import (
+                            RendererPool,
+                            _rgb_pool_capacity,
+                            _ready_transport_enabled,
+                        )
 
+                        ready_transport = _ready_transport_enabled()
+                        if ready_transport:
+                            from nemo_retriever.operators.extract.pdf.gpu_ready_transport import register
+
+                            register()
                         self._cuda_rdt_pool = ray.remote(num_cpus=0)(RendererPool).remote(
-                            str(library_path()), rgb_pool_bytes=_rgb_pool_capacity()
+                            str(library_path()), rgb_pool_bytes=_rgb_pool_capacity(), ready_transport=ready_transport
                         )
                     constructor_kwargs = dict(constructor_kwargs, _cuda_renderer_pool=self._cuda_rdt_pool)
             if batch_format == "pandas":
