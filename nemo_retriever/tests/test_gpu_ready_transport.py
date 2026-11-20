@@ -131,3 +131,55 @@ def test_transport_name_collision_fails_closed(monkeypatch):
     monkeypatch.setattr(util, "transport_manager_info", {ready.NAME: SimpleNamespace(transport_manager_class=object)})
     with pytest.raises(RuntimeError, match="name collision"):
         ready.register()
+
+
+def test_publication_binds_context_on_fresh_ray_thread(completed_rgb, monkeypatch):
+    import ctypes
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        driver = ctypes.CDLL("libcuda.so.1")
+    except OSError:
+        pytest.skip("The Linux CUDA driver is required for the thread-context regression")
+    driver.cuCtxGetCurrent.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+
+    def has_context():
+        context = ctypes.c_void_p()
+        assert driver.cuCtxGetCurrent(ctypes.byref(context)) == 0
+        return bool(context.value)
+
+    rgb, event = completed_rgb
+    transport = ready.ReadyNixlTransport()
+    agent = SimpleNamespace(
+        get_xfer_descs=lambda tensors: object(),
+        get_serialized_descs=lambda descriptors: b"descriptors",
+        get_agent_metadata=lambda: b"agent",
+        name="test",
+    )
+
+    def register(tensors):
+        # UCX may query the current CUDA context while registering memory.
+        assert has_context(), "Publication left its thread without a CUDA context"
+
+    monkeypatch.setattr(transport, "get_nixl_agent", lambda: agent)
+    monkeypatch.setattr(transport, "_add_tensor_descs", register)
+
+    def publish_on_new_thread():
+        assert not has_context()
+        token = ready._READY.set({id(rgb): (rgb, event)})
+        try:
+            return transport.extract_tensor_transport_metadata("thread-test", [rgb])
+        finally:
+            ready._READY.reset(token)
+
+    # Recreate the old missing-binding path, then verify the repaired path.
+    import torch
+
+    with monkeypatch.context() as missing_binding:
+        missing_binding.setattr(torch.cuda, "set_device", lambda device: None)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            with pytest.raises(AssertionError, match="without a CUDA context"):
+                executor.submit(publish_on_new_thread).result(timeout=15)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        metadata = executor.submit(publish_on_new_thread).result(timeout=15)
+    assert metadata.tensor_meta == [(rgb.shape, rgb.dtype)]

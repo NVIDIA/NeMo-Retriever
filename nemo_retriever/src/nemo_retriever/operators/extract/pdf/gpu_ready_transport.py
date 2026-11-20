@@ -67,6 +67,12 @@ class ReadyNixlTransport(NixlTensorTransport):
         device = rdt_object[0].device
         if any(t.device != device for t in rdt_object):
             raise ValueError("RGB batch must use one CUDA device")
+        import torch
+
+        # Completion events belong to page-worker threads. Ray can publish on
+        # another thread with no current CUDA context. Bind its primary context
+        # before UCX registration; this does not wait for unrelated streams.
+        torch.cuda.set_device(device)
         with self._cache_lock:
             if self._memory_pool is not None:
                 raise RuntimeError("Ready RGB transport does not use Ray copy pools")
