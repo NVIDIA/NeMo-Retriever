@@ -33,6 +33,7 @@ class OCRActor(AbstractOperator, GPUOperator):
             warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
         self._cuda_rdt = bool(ocr_kwargs.pop("cuda_rdt", False))
+        self._cuda_rgb_receive_pool_bytes = int(ocr_kwargs.pop("_cuda_rgb_receive_pool_bytes", 0))
         self.ocr_kwargs = dict(ocr_kwargs)
         invoke_url = (
             str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
@@ -78,7 +79,7 @@ class OCRActor(AbstractOperator, GPUOperator):
     def process(self, data: Any, **kwargs: Any) -> Any:
         from nemo_retriever.operators.extract.pdf.gpu_transport import gpu_image_scope
 
-        with gpu_image_scope():
+        with gpu_image_scope(receive_pool_bytes=getattr(self, "_cuda_rgb_receive_pool_bytes", 0)):
             result = ocr_page_elements(
                 data,
                 model=self._model,

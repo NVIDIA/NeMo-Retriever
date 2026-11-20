@@ -240,7 +240,13 @@ image references are removed before text embedding and index writing.
 Optional GPU RGB pooling uses `CUDA_PDF_RGB_POOL_BYTES` in the NRL driver
 environment. NRL validates the value and forwards it to renderer producers.
 Unset or `0` retains ordinary GPU allocations. A positive value reserves a
-reusable GPU buffer per producer; it must be at least 3,145,728 bytes. Refer to
+reusable GPU buffer per producer; it must be at least 3,145,728 bytes.
+Independently, `CUDA_PDF_RGB_RECEIVER_POOL_BYTES` reserves reusable receive
+storage in each Page Elements and OCR actor. It uses the same driver-side
+validation and default-off behavior. Capacity multiplies by the number of
+model actors, not just the number of GPUs. Missing batch shapes or invalid
+received CUDA tensor shapes stop the GPU path without host-image fallback.
+Refer to
 [Reuse registered GPU RGB buffers](performance_guide.md#reuse-registered-gpu-rgb-buffers)
 for sizing, allocation behavior, and validation limits.
 

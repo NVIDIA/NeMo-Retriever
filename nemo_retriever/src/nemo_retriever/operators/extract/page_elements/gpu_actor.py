@@ -30,6 +30,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
         self._cuda_rdt = bool(detect_kwargs.pop("cuda_rdt", False))
+        self._cuda_rgb_receive_pool_bytes = int(detect_kwargs.pop("_cuda_rgb_receive_pool_bytes", 0))
         self._cuda_renderer_pool = detect_kwargs.pop("_cuda_renderer_pool", None)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = (
@@ -73,7 +74,7 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             if self._cuda_renderer_pool is None:
                 raise RuntimeError("GPU-resident rendering requires the native Ray batch executor")
             data = render_page_batch(data, self._cuda_renderer_pool)
-        with gpu_image_scope():
+        with gpu_image_scope(receive_pool_bytes=getattr(self, "_cuda_rgb_receive_pool_bytes", 0)):
             result = detect_page_elements_v3(
                 data,
                 model=self._model,

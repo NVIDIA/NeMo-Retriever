@@ -47,6 +47,62 @@ def test_scoped_transport_caches_gpu_fetch_and_checks_shape(gpu_rgb, monkeypatch
     assert calls == [ref, ref]
 
 
+def test_receive_targets_are_reused_within_scope_and_finished_before_release(gpu_rgb, monkeypatch):
+    import ray
+    import torch
+    from nemo_retriever.operators.extract.pdf import gpu_transport
+
+    buffers = []
+    calls = []
+
+    class Pool:
+        def image(self, height, width):
+            result = torch.empty((height, width, 3), dtype=torch.uint8, device="cuda")
+            buffers.append(result)
+            return result
+
+    monkeypatch.setattr(gpu_transport, "_receive_pool", lambda capacity: Pool())
+    monkeypatch.setattr(ray.experimental, "set_target_for_ref", lambda ref, target: calls.append((ref, target)))
+
+    def fetch(ref):
+        buffers[0].copy_(gpu_rgb)
+        return buffers
+
+    monkeypatch.setattr(ray, "get", fetch)
+    original_sync = torch.cuda.synchronize
+    syncs = []
+
+    def sync(*args, **kwargs):
+        syncs.append(True)
+        return original_sync(*args, **kwargs)
+
+    monkeypatch.setattr(torch.cuda, "synchronize", sync)
+    ref = object()
+    image = GpuPageImage(ref, 0, 20, 30, ((20, 30),))
+    with gpu_image_scope(receive_pool_bytes=3145728):
+        with gpu_image_scope(receive_pool_bytes=3145728):
+            assert image.tensor() is buffers[0]
+            assert image.tensor() is buffers[0]
+            assert torch.equal(buffers[0], gpu_rgb)
+        assert syncs == []
+    assert len(calls) == len(syncs) == 1
+    assert calls[0][0] is ref
+
+
+def test_receive_pool_requires_complete_batch_shapes():
+    image = GpuPageImage(object(), 0, 12, 10)
+    with gpu_image_scope(receive_pool_bytes=3145728):
+        with pytest.raises(GpuTransportError, match="complete batch shape"):
+            image.tensor()
+
+
+def test_nested_scopes_cannot_change_receive_capacity():
+    with gpu_image_scope():
+        with pytest.raises(GpuTransportError, match="same receive-pool capacity"):
+            with gpu_image_scope(receive_pool_bytes=3145728):
+                pass
+
+
 def test_gpu_crops_and_padding_match_pixel_bounds(gpu_rgb, monkeypatch):
     import ray
     import torch

@@ -315,17 +315,28 @@ retrieval accuracy before accepting a throughput result.
 
 ### Reuse registered GPU RGB buffers
 
-For `cuda_rdt`, `CUDA_PDF_RGB_POOL_BYTES` optionally reserves reusable RGB
-storage in each GPU renderer producer. Set this variable in the NRL driver
-environment before ingestion. The driver validates it and explicitly forwards
-the value to its renderer actors. This applies to the supported single-host
-native Ray path. The default, unset or `0`, disables pooling. Positive values
-must be at least 3,145,728 bytes (3 MiB); invalid values fail setup.
+For `cuda_rdt`, the following independent settings reserve reusable RGB
+storage. Set them in the NRL driver environment before ingestion. The driver
+validates the values and passes them to the relevant actors in the supported
+single-host native Ray path.
+
+| Environment variable | Allocation scope | Purpose |
+| --- | --- | --- |
+| `CUDA_PDF_RGB_POOL_BYTES` | Each GPU renderer producer. | Reuses registered source RGB storage. |
+| `CUDA_PDF_RGB_RECEIVER_POOL_BYTES` | Each Page Elements and OCR GPU actor. | Reuses registered destination RGB storage. |
+
+Both settings default to disabled when unset or `0`. Positive values must be
+at least 3,145,728 bytes (3 MiB); invalid values fail setup. Source and receiver
+pooling can be enabled independently.
 
 The pool divides its capacity into 3 MiB slots and rounds capacity down to a
 whole number of slots. Each slot fits a 1,024 × 1,024 RGB `uint8` image or a
 smaller image. For example, `100663296` bytes reserves 96 MiB, or 32 slots,
-per producer. This is a per-producer allocation, not a shared pipeline budget.
+per configured actor. These capacities are not shared pipeline budgets.
+Receiver memory multiplies by Page Elements and OCR actor counts. For example,
+32 Page Elements actors and 16 OCR actors create 48 receiver pools, independent
+of any source pools on eight GPU producers. Budget memory separately on each
+GPU for its model actors, receiver pools, and producer pool.
 
 NRL registers the slab with Ray NIXL once for its lifetime. Page tensors reuse
 views of that storage, avoiding repeated per-page registration and associated
@@ -333,6 +344,20 @@ remote metadata changes. Pool ownership must remain valid until all GPU and
 transport consumers finish. If a page exceeds one slot or no slot is free,
 rendering uses an ordinary GPU allocation. This allocation fallback does not
 copy RGB pixels to the CPU or select CPU rasterization.
+
+Receiver actors allocate target tensors from complete CPU-side batch-shape
+metadata and register the targets with Ray through `set_target_for_ref`
+before fetching RGB. This reuses destination storage as well as source
+storage. Each model scope retains the original target leases, then waits for
+its GPU context before releasing them. This completion wait transfers no
+image pixels to host memory. Missing shape metadata or invalid received
+CUDA RGB tensors raise errors; these failures do not select a host-image path.
+Receiver slot exhaustion or oversized pages use ordinary GPU allocations.
+
+The NVTX ranges `nrl.cuda_rdt::receive_targets` and
+`nrl.cuda_rdt::receive_scope_ready` identify receive-target preparation and
+the scope's completion wait. These ranges can include allocation or waiting
+time and do not by themselves measure GPU kernel execution.
 
 Renderer status includes pool capacity, slot size, active and peak usage,
 allocation and release counts, and counts of exhausted or oversized requests.
@@ -343,9 +368,10 @@ Transport microbenchmarks do not establish complete ingestion performance.
 Bounded pooled-output checks pass exact RGB comparisons and delayed-consumer,
 slot-exhaustion, and slot-reuse tests without RGB readback or CPU rasterization.
 A guarded local-model test also passes without image tensor readback.
-Full-corpus validation of the pooled configuration remains pending. The DC10K
-results below precede this option; they do not establish its accuracy,
-throughput, or GPU utilization.
+Receiver pooling also passes bounded exact-pixel, cross-GPU lifetime and
+slot-reuse checks, plus a guarded local-model test. Full-corpus receiver-pool
+validation remains pending. The DC10K results below precede both options;
+they do not establish their accuracy, throughput, or GPU utilization.
 
 ### DC10K renderer comparison
 

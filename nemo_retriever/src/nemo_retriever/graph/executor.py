@@ -1126,7 +1126,13 @@ class RayDataExecutor(AbstractExecutor):
                 if find_spec("nixl") is None:
                     raise ImportError("cuda_rdt requires NIXL in every worker environment; install nixl")
                 if constructor_kwargs.get("cuda_rdt"):
+                    from nemo_retriever.operators.extract.pdf.gpu_transport import _rgb_pool_capacity
+
                     overrides["enable_tensor_transport"] = True
+                    constructor_kwargs = dict(
+                        constructor_kwargs,
+                        _cuda_rgb_receive_pool_bytes=_rgb_pool_capacity("CUDA_PDF_RGB_RECEIVER_POOL_BYTES"),
+                    )
                 if (
                     "page_elements" in node.operator_class.__module__
                     or constructor_kwargs.get("pdf_renderer") == "cuda_rdt"

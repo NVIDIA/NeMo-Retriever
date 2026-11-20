@@ -14,18 +14,35 @@ from dataclasses import dataclass
 import nvtx
 
 _RESOLVED = contextvars.ContextVar("nrl_gpu_images", default=None)
+_RECEIVE_CAPACITY = contextvars.ContextVar("nrl_gpu_receive_capacity", default=0)
+_RECEIVE_POOLS = {}
+_RECEIVE_LOCK = threading.Lock()
 
 
-def _rgb_pool_capacity():
+def _rgb_pool_capacity(name="CUDA_PDF_RGB_POOL_BYTES"):
     import os
 
     try:
-        value = int(os.environ.get("CUDA_PDF_RGB_POOL_BYTES", "0"))
+        value = int(os.environ.get(name, "0"))
     except ValueError:
-        raise ValueError("CUDA_PDF_RGB_POOL_BYTES must be an integer byte count") from None
+        raise ValueError(f"{name} must be an integer byte count") from None
     if value < 0 or 0 < value < 3 * 1024**2:
-        raise ValueError("CUDA_PDF_RGB_POOL_BYTES must be zero or at least 3145728")
+        raise ValueError(f"{name} must be zero or at least 3145728")
     return value
+
+
+def _receive_pool(capacity):
+    import torch
+    from cuda_pdf_renderer.buffer_pool import DeviceRgbPool
+    from ray.experimental import register_nixl_memory
+
+    key = (torch.cuda.current_device(), capacity)
+    with _RECEIVE_LOCK:
+        if key not in _RECEIVE_POOLS:
+            pool = DeviceRgbPool(capacity)
+            register_nixl_memory(pool.storage)
+            _RECEIVE_POOLS[key] = pool
+        return _RECEIVE_POOLS[key]
 
 
 class GpuTransportError(RuntimeError):
@@ -38,6 +55,7 @@ class GpuPageImage:
     index: int
     height: int
     width: int
+    batch_shapes: tuple[tuple[int, int], ...] | None = None
 
     def tensor(self):
         import ray
@@ -48,7 +66,31 @@ class GpuPageImage:
             raise GpuTransportError("GPU images must be consumed inside a scoped model call")
         if self.reference not in cache:
             with nvtx.annotate("nrl.cuda_rdt::fetch_rgb", color="purple"):
-                cache[self.reference] = ray.get(self.reference)
+                buffers = None
+                capacity = _RECEIVE_CAPACITY.get()
+                if capacity:
+                    if self.batch_shapes is None:
+                        raise GpuTransportError("GPU receive pooling requires complete batch shape metadata")
+                    with nvtx.annotate("nrl.cuda_rdt::receive_targets", color="purple"):
+                        from ray.experimental import set_target_for_ref
+
+                        pool = _receive_pool(capacity)
+                        buffers = []
+                        for height, width in self.batch_shapes:
+                            target = pool.image(height, width)
+                            if target is None:
+                                target = torch.empty((height, width, 3), dtype=torch.uint8, device="cuda:0")
+                            buffers.append(target)
+                        cache[self.reference] = buffers
+                        set_target_for_ref(self.reference, buffers)
+                # Keep target leases alive until Ray returns the received tensors.
+                received = ray.get(self.reference)
+                if buffers is not None and (
+                    len(received) != len(buffers)
+                    or any(actual is not target for actual, target in zip(received, buffers))
+                ):
+                    raise GpuTransportError("Ray did not return the supplied GPU receive buffers")
+                cache[self.reference] = received
         rgb = cache[self.reference][self.index]
         if (
             not isinstance(rgb, torch.Tensor)
@@ -61,12 +103,29 @@ class GpuPageImage:
 
 
 @contextmanager
-def gpu_image_scope():
-    token = _RESOLVED.set({})
+def gpu_image_scope(receive_pool_bytes=0):
+    if _RESOLVED.get() is not None:
+        if receive_pool_bytes != _RECEIVE_CAPACITY.get():
+            raise GpuTransportError("Nested GPU image scopes must use the same receive-pool capacity")
+        yield
+        return
+    cache = {}
+    token = _RESOLVED.set(cache)
+    capacity_token = _RECEIVE_CAPACITY.set(receive_pool_bytes)
     try:
         yield
     finally:
-        _RESOLVED.reset(token)
+        try:
+            if receive_pool_bytes and cache:
+                import torch
+
+                # These actors process one scoped model batch at a time. Finish
+                # its GPU uses before releasing original receive-buffer leases.
+                with nvtx.annotate("nrl.cuda_rdt::receive_scope_ready", color="purple"):
+                    torch.cuda.synchronize()
+        finally:
+            _RECEIVE_CAPACITY.reset(capacity_token)
+            _RESOLVED.reset(token)
 
 
 class _GpuProducer:
@@ -242,9 +301,10 @@ def render_page_batch(frame, pool):
     # Keep the reference itself in the CPU metadata block. Only an enabled GPU
     # model actor resolves it; pixel payloads never enter an Arrow/pandas block.
     result = frame.copy()
+    shapes = tuple((scene.height, scene.width) for scene in scenes)
     result["page_image"] = [
         {
-            "gpu_image": GpuPageImage(reference, i, scene.height, scene.width),
+            "gpu_image": GpuPageImage(reference, i, scene.height, scene.width, shapes),
             "image_b64": None,
             "encoding": "gpu_rgb",
             "orig_shape_hw": (scene.height, scene.width),
@@ -305,4 +365,5 @@ def submit_scene_batch(scenes, pool):
     producer = ray.get(pool.get_next.remote(ray.get_runtime_context().get_node_id()))
     handles = [scene.handle() for scene in scenes]
     reference = ray.get(producer.render_handles.remote(handles))["reference"]
-    return [GpuPageImage(reference, index, scene.height, scene.width) for index, scene in enumerate(scenes)]
+    shapes = tuple((scene.height, scene.width) for scene in scenes)
+    return [GpuPageImage(reference, index, scene.height, scene.width, shapes) for index, scene in enumerate(scenes)]
