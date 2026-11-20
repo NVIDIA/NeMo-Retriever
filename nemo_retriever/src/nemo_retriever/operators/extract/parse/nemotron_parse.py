@@ -173,17 +173,16 @@ def _words(text: Any) -> List[str]:
     return _RE_WORD.findall(text.lower()) if isinstance(text, str) else []
 
 
-_STRUCTURED_LINE_MIN_COVERAGE = 0.8
 _RE_TOKEN = re.compile(r"\w+", re.UNICODE)
 
 
 def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tuple[str, int]:
     """Remove native text-layer lines already present in Parse table, chart, or infographic text.
 
-    A line is removed when at least ``_STRUCTURED_LINE_MIN_COVERAGE`` of its
-    tokens, and every token containing a digit, occur in the structured text,
-    so fallback page text does not repeat table cells that the page's
-    structured regions already carry but keeps lines whose values differ.
+    A line is removed only when every one of its tokens occurs in the
+    structured text, so fallback page text does not repeat table cells that
+    the page's structured regions already carry but keeps lines whose labels
+    or values differ.
     """
     structured_tokens = set(_RE_TOKEN.findall("\n".join(structured_texts).lower()))
     if not structured_tokens:
@@ -192,9 +191,7 @@ def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tup
     dropped = 0
     for line in native_text.splitlines():
         tokens = _RE_TOKEN.findall(line.lower())
-        covered = [token in structured_tokens for token in tokens]
-        values_covered = all(hit for token, hit in zip(tokens, covered) if any(char.isdigit() for char in token))
-        if tokens and values_covered and sum(covered) / len(tokens) >= _STRUCTURED_LINE_MIN_COVERAGE:
+        if tokens and all(token in structured_tokens for token in tokens):
             dropped += 1
             continue
         kept.append(line)

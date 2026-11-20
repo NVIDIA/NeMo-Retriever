@@ -235,3 +235,11 @@ def test_native_endpoint_without_model_name_applies_text_layer_fallback() -> Non
     )
     assert out.loc[0, "text"] == NATIVE
     assert out.loc[0, "nemotron_parse_v1_2"]["text_source"] == "text_layer"
+
+
+def test_fallback_keeps_lines_whose_labels_differ_from_structured_regions() -> None:
+    from nemo_retriever.operators.extract.parse.nemotron_parse import _drop_structured_lines
+
+    kept, dropped = _drop_structured_lines("Bonus 1 2 3 4\nBase 1 2 3 4", ["| Base | 1 | 2 | 3 | 4 |"])
+    assert kept == "Bonus 1 2 3 4"
+    assert dropped == 1
