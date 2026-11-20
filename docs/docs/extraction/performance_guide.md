@@ -321,7 +321,9 @@ benchmark without `nsys` attached, each level changed wall time by less than
 with unprofiled runs. When `NRL_NVTX` is unset, the library does not wrap any
 third-party code.
 
-The ranges nest, so attribute each instant to the innermost open range.
+Synchronous ranges nest on each thread, so attribute each instant on a thread to the innermost open
+synchronous range. Async ranges include awaits and can overlap rather than nest, so do not use
+them alone to attribute time.
 
 Profile with the same `nsys profile` command shown earlier, and then summarize
 the ranges as follows:

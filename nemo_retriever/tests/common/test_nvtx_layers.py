@@ -124,3 +124,80 @@ def test_full_level_adds_sync_and_serialization_targets(enabled, monkeypatch, fu
 
     assert patched == (["ocr_mod", "ocr_full_mod", "torch_mod"] if full else ["ocr_mod"])
     assert syncs == ([True] if full else [])
+
+
+def test_wrapped_async_generator_closes_range_on_completion_close_and_cancel(enabled):
+    async def agen():
+        yield 1
+        yield 2
+
+    wrapped = nvtx_layers._wrap(agen, "vLLM", "a")
+
+    async def consume():
+        return [item async for item in wrapped()]
+
+    async def close_early():
+        it = wrapped()
+        assert await it.__anext__() == 1
+        await it.aclose()
+
+    async def cancel():
+        started = asyncio.Event()
+
+        async def slow():
+            yield 1
+            started.set()
+            await asyncio.sleep(10)
+            yield 2
+
+        async def drain():
+            async for _ in nvtx_layers._wrap(slow, "vLLM", "s")():
+                pass
+
+        task = asyncio.ensure_future(drain())
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert asyncio.run(consume()) == [1, 2]
+    asyncio.run(close_early())
+    asyncio.run(cancel())
+    assert enabled == [("start", "a"), ("end", "a")] * 2 + [("start", "s"), ("end", "s")]
+
+
+def test_tensor_to_check_reads_devices_without_formatting_tensors():
+    torch = pytest.importorskip("torch")
+
+    class _NoFormat(torch.Tensor):
+        def __format__(self, spec):
+            pytest.fail("formatted a tensor argument")
+
+        __repr__ = __str__ = __format__
+
+    other = torch.zeros(1).as_subclass(_NoFormat)
+    assert nvtx_layers._to_blocks_on_cpu((other,), {})
+    assert nvtx_layers._to_blocks_on_cpu(("cpu",), {})
+    assert nvtx_layers._to_blocks_on_cpu((torch.device("cpu"),), {})
+    assert nvtx_layers._to_blocks_on_cpu((), {"device": "cpu"})
+    assert not nvtx_layers._to_blocks_on_cpu(("cuda:0",), {})
+    assert not nvtx_layers._to_blocks_on_cpu((torch.float16,), {})
+    assert not nvtx_layers._to_blocks_on_cpu((), {})
+
+
+def test_tensor_sync_wrappers_forward_results(enabled, monkeypatch):
+    torch = pytest.importorskip("torch")
+    for name in ("item", "tolist", "cpu", "numpy", "to", "__bool__", "__int__", "__float__"):
+        monkeypatch.setattr(torch.Tensor, name, getattr(torch.Tensor, name))
+    nvtx_layers._install_tensor_syncs()
+
+    tensor = torch.tensor([1.5, 2.5])
+    assert torch.Tensor.to.__nrl_nvtx__
+    assert tensor.tolist() == [1.5, 2.5]
+    assert tensor[0].item() == 1.5
+    assert float(tensor[1]) == 2.5
+    assert tensor.cpu().numpy().tolist() == [1.5, 2.5]
+    assert tensor.to(torch.float64).dtype == torch.float64
+    assert tensor.to(torch.zeros(1, dtype=torch.int64)).dtype == torch.int64
+    # CPU tensors never block on the GPU, so no host-sync range opens.
+    assert enabled == []

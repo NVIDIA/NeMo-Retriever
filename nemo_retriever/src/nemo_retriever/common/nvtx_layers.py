@@ -236,6 +236,16 @@ def _patch(module: str, path: str, layer: str, name: str) -> None:
         setattr(owner, attr, _wrap(raw, layer, name))
 
 
+def _to_blocks_on_cpu(args: tuple, kwargs: dict) -> bool:
+    """Return whether ``Tensor.to`` targets the CPU, without formatting tensor arguments."""
+    import torch
+
+    target = kwargs.get("device", args[0] if args else None)
+    if isinstance(target, torch.Tensor):
+        target = target.device
+    return isinstance(target, (str, torch.device)) and str(target).startswith("cpu")
+
+
 def _install_tensor_syncs() -> None:
     import torch
 
@@ -257,7 +267,7 @@ def _install_tensor_syncs() -> None:
 
     for name in ("item", "tolist", "cpu", "numpy", "__bool__", "__int__", "__float__"):
         wrap(name, lambda args, kwargs: True)
-    wrap("to", lambda args, kwargs: str(kwargs.get("device", args[0] if args else "")).startswith("cpu"))
+    wrap("to", _to_blocks_on_cpu)
 
 
 def install(*groups: str) -> None:
