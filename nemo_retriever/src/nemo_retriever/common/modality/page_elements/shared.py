@@ -686,12 +686,15 @@ def detect_page_elements_v3(
 
         batch = torch.stack([_ensure_chw_float_tensor(x) for x in pre_list], dim=0)
 
+        invoke = model
+        if all(isinstance(row_tensors[i], torch.Tensor) and row_tensors[i].is_cuda for i in chunk_idx):
+            invoke = getattr(model, "_invoke_cuda", invoke)
         t0 = time.perf_counter()
         try:
             # Best-effort: pass list of shapes for batching; fall back to per-image if unsupported.
             with torch.inference_mode():
                 with torch.autocast(device_type="cuda"):
-                    preds = model(batch, orig_shapes) if len(pre_list) > 1 else model(batch, orig_shapes[0])
+                    preds = invoke(batch, orig_shapes) if len(pre_list) > 1 else invoke(batch, orig_shapes[0])
             # Some local wrappers return only the first prediction dict even for batched inputs.
             # Detect that and force per-image invocation so every row gets its own detections.
             if len(pre_list) > 1:
@@ -705,7 +708,7 @@ def detect_page_elements_v3(
             print(f"Error invoking model: {ex}")
             preds_list: List[Any] = []
             for j in range(int(batch.shape[0])):
-                preds_list.append(model(batch[j : j + 1], orig_shapes[j]))
+                preds_list.append(invoke(batch[j : j + 1], orig_shapes[j]))
             preds = preds_list
         elapsed = time.perf_counter() - t0
 

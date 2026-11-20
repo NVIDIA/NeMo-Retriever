@@ -94,11 +94,13 @@ def test_extraction_selects_specialized_postprocess_only_for_supported_gpu_input
     from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
 
     calls = []
+    invocations = []
 
     class Model:
         input_shape = (8, 8)
 
         def __call__(self, batch, shapes):
+            invocations.append("public")
             return [prediction(0, "cpu") for _ in batch]
 
         def postprocess(self, predictions):
@@ -106,6 +108,10 @@ def test_extraction_selects_specialized_postprocess_only_for_supported_gpu_input
             return tuple([page[key] for page in predictions] for key in ("boxes", "labels", "scores"))
 
     class SpecializedModel(Model):
+        def _invoke_cuda(self, batch, shapes):
+            invocations.append("cuda")
+            return [prediction(0, "cpu") for _ in batch]
+
         def _postprocess_cuda(self, predictions):
             calls.append("cuda")
             return super().postprocess(predictions)
@@ -123,3 +129,4 @@ def test_extraction_selects_specialized_postprocess_only_for_supported_gpu_input
     result = shared.detect_page_elements_v3(pd.DataFrame({"page_image": [page_image]}), model=model)
     assert result.iloc[0]["page_elements_v3"]["error"] is None
     assert calls == (["cuda", "public"] if gpu_input and specialized else ["public"])
+    assert invocations == (["cuda"] if gpu_input and specialized else ["public"])

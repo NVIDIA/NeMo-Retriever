@@ -169,6 +169,16 @@ class NemotronPageElementsV3(HuggingFaceModel):
 
         return boxes_list, labels_list, scores_list
 
+    @nvtx.annotate("nrl.model::page_elements.invoke", color="blue")
+    def _invoke_cuda(self, input_data, orig_shape):
+        """Use renderer shape metadata without scalar reads from GPU dimensions."""
+        from nemo_retriever.common.modality.page_elements.gpu_model import forward_with_cpu_shapes
+
+        if self._model is None or isinstance(orig_shape, torch.Tensor):
+            return self.invoke(input_data, orig_shape)
+        with torch.inference_mode(), torch.autocast(device_type="cuda"):
+            return forward_with_cpu_shapes(self._model, input_data, orig_shape)
+
     def _postprocess_cuda(self, preds):
         """Batch prediction metadata readback for GPU-resident image inputs."""
         from nemo_retriever.common.modality.page_elements.gpu_metadata import prediction_batch_to_cpu
