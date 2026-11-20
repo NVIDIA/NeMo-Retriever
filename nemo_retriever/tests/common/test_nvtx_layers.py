@@ -127,9 +127,15 @@ def test_full_level_adds_sync_and_serialization_targets(enabled, monkeypatch, fu
 
 
 def test_wrapped_async_generator_closes_range_on_completion_close_and_cancel(enabled):
+    closed = []
+
     async def agen():
-        yield 1
-        yield 2
+        try:
+            yield 1
+            yield 2
+        finally:
+            await asyncio.sleep(0)
+            closed.append(True)
 
     wrapped = nvtx_layers._wrap(agen, "vLLM", "a")
 
@@ -140,6 +146,7 @@ def test_wrapped_async_generator_closes_range_on_completion_close_and_cancel(ena
         it = wrapped()
         assert await it.__anext__() == 1
         await it.aclose()
+        assert closed == [True, True]
 
     async def cancel():
         started = asyncio.Event()

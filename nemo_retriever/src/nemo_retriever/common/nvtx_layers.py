@@ -195,8 +195,9 @@ def _wrap(fn: Callable[..., Any], layer: str, name: str) -> Callable[..., Any]:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             range_id = rng.start()
             try:
-                async for item in fn(*args, **kwargs):
-                    yield item
+                async with contextlib.aclosing(fn(*args, **kwargs)) as it:
+                    async for item in it:
+                        yield item
             finally:
                 rng.end(range_id)
 
