@@ -3,7 +3,33 @@
 
 """Detector output geometry using original CPU page dimensions."""
 
+import ast
+from functools import lru_cache
+import hashlib
+import inspect
+import textwrap
+
 import torch
+
+
+_AUDITED_GEOMETRY_SHA256 = "bc96ed6757adddd881d583de626bee633e5b23af96b571e83a6c96ae3a3bbc24"
+
+
+@lru_cache(maxsize=8)
+def _supports_forward(wrapper_type):
+    """Enable the optimization only for the audited provider geometry contract."""
+    try:
+        functions = [
+            ast.parse(textwrap.dedent(inspect.getsource(getattr(wrapper_type, name)))).body[0]
+            for name in ("forward", "reformat_input")
+        ]
+        for function in functions:
+            if ast.get_docstring(function, clean=False) is not None:
+                function.body = function.body[1:]
+        source = "\n".join(ast.dump(function, include_attributes=False) for function in functions)
+    except (AttributeError, OSError, TypeError, SyntaxError):
+        return False
+    return hashlib.sha256(source.encode()).hexdigest() == _AUDITED_GEOMETRY_SHA256
 
 
 def forward_with_cpu_shapes(wrapper, x, orig_sizes):
