@@ -369,9 +369,11 @@ Bounded pooled-output checks pass exact RGB comparisons and delayed-consumer,
 slot-exhaustion, and slot-reuse tests without RGB readback or CPU rasterization.
 A guarded local-model test also passes without image tensor readback.
 Receiver pooling also passes bounded exact-pixel, cross-GPU lifetime and
-slot-reuse checks, plus a guarded local-model test. Full-corpus receiver-pool
-validation remains pending. The DC10K results below precede both options;
-they do not establish their accuracy, throughput, or GPU utilization.
+slot-reuse checks, plus a guarded local-model test. A full DC10K receiver-pool
+run completes ingestion and retrieval evaluation with zero CPU raster calls
+and page RGB readback. These checks do not establish exact pixel equality
+for every corpus page or identical model outputs. The historical DC10K
+results below precede both pool options and describe that earlier revision.
 
 ### DC10K renderer comparison
 
