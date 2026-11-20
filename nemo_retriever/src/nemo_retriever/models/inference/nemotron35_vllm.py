@@ -33,6 +33,9 @@ def register_nemotron35_vllm() -> None:
         NEMOTRON35_VLLM_ARCHITECTURE,
         "nemo_retriever.models.local.nemotron35_vllm:NRLNemotron35EmbeddingModel",
     )
+    from nemo_retriever.common import nvtx_layers
+
+    nvtx_layers.install("vllm")
 
 
 def validate_bidirectional_config(config: Any, text_config: Any) -> None:
