@@ -360,6 +360,10 @@ PdfSplitBatchSizeOption = Annotated[
     int | None,
     typer.Option("--pdf-split-batch-size", min=1, help="Batch mode only. PDF split batch size."),
 ]
+PdfSplitWorkersOption = Annotated[
+    int | None,
+    typer.Option("--pdf-split-workers", min=1, help="Batch mode only. Number of Ray actors for PDF splitting."),
+]
 PdfExtractWorkersOption = Annotated[
     int | None,
     typer.Option("--pdf-extract-workers", min=1, help="Batch mode only. Maximum Ray tasks for PDF extraction."),

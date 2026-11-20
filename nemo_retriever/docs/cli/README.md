@@ -452,6 +452,8 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. With no model override, explicit `hf` use selects the Nemotron 3.5 BF16 checkpoint. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
 | `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium`, experimental `cuda` with encoded images, or experimental `cuda_rdt` with native Ray GPU transport. Both CUDA modes require a separately built renderer package. |
+| `--pdf-split-workers` | unset | Batch mode only. Positive number of independent Ray actors for CPU PDF splitting; unset retains the existing single splitter. |
+| `--pdf-split-batch-size` | `1` | Batch mode only. Input PDF documents per splitter actor batch, separate from extraction page batches. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -465,7 +467,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--quiet/--no-quiet` | quiet | Suppress verbose progress output by default. |
 
 Batch-only options include `--ray-address`, `--ray-log-to-driver`,
-`--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers`,
+`--pdf-split-batch-size`, `--pdf-split-workers`, `--pdf-extract-workers`, `--ocr-workers`,
 `--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
 related batch-size / CPU / GPU tuning flags.
 

@@ -180,6 +180,67 @@ embedding skip their repartition steps when the default per-GPU pools apply.
 Compare throughput, memory use, errors, and extracted outputs against a
 representative baseline after changing these controls.
 
+### Tune PDF splitting separately from page extraction
+
+PDF splitting runs on the CPU before page extraction. Each splitter actor
+opens input PDF documents and emits single-page PDF packets. Page extraction
+then interprets and renders those packets. The splitter and extractor have
+separate worker and batch controls.
+
+In native Ray batch mode, use the following splitter settings:
+
+| Python batch tuning | CLI option | Default | Behavior |
+| --- | --- | --- | --- |
+| `pdf_split_workers` | `--pdf-split-workers` | `None` | Keeps the existing single splitter actor when unset. A positive value selects independent Ray splitter actors. |
+| `pdf_split_batch_size` | `--pdf-split-batch-size` | `1` | Sets input PDF documents per splitter actor batch. This is not rendered pages per batch. |
+
+Increase splitter workers when PDF input work queues up while page extraction
+and GPU model stages wait for input. Independent actor processes can split
+different documents concurrently. Increasing the document batch size alone
+does not add splitter processes or distribute one large PDF across workers.
+
+The following example selects four splitter actors with one document per
+splitter batch, retaining the other pipeline defaults:
+
+```bash
+retriever ingest batch /path/to/your/pdfs \
+  --pdf-split-workers 4 \
+  --pdf-split-batch-size 1
+```
+
+The equivalent Python configuration passes splitter tuning to `.extract()`:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(["report.pdf", "appendix.pdf"])
+    .extract(
+        extraction_mode="pdf",
+        batch_tuning=BatchTuningParams(
+            pdf_split_workers=4,
+            pdf_split_batch_size=1,
+        ),
+    )
+    .embed()
+    .ingest()
+)
+```
+
+More actors and larger document batches can increase CPU use, open document
+state, buffered page packets, and Ray object-store memory. Leave capacity for
+file loading and downstream stages. Monitor CPU scheduling, memory, queue
+depths, completed page counts, and end-to-end throughput before increasing
+these settings further. No particular worker count guarantees higher GPU
+utilization or ingestion throughput.
+
+Use `pdf_extract_workers` and `pdf_extract_batch_size` for downstream page
+extraction. The splitter settings do not change CUDA page-stream concurrency
+or model inference batch sizes. Typed ingest plans expose both splitter
+settings in `IngestExtractBatchOptions`.
+
 ### Set the PDF extraction block size
 
 In batch mode, the library repartitions pages before PDF extraction, targeting

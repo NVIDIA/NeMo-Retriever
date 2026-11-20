@@ -339,6 +339,8 @@ def batch_tuning_to_node_overrides(
     page_elements_concurrency: int = 0
     page_elements_cpus: float = 1.0
     if extract_params is not None:
+        _set(PDFSplitActor.__name__, "batch_size", getattr(extract_tuning, "pdf_split_batch_size", None))
+        _set(PDFSplitActor.__name__, "concurrency", getattr(extract_tuning, "pdf_split_workers", None))
         ocr_invoke_url = _positive(getattr(extract_params, "ocr_invoke_url", None))
         page_elements_invoke_url = _positive(getattr(extract_params, "page_elements_invoke_url", None))
         ocr_actor_name = resolve_ocr_archetype(extract_params).__name__

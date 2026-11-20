@@ -117,6 +117,7 @@ class IngestExtractBatchOptions:
     page_elements_repartition: bool | None = None
     table_structure_repartition: bool | None = None
     pdf_extract_rows_per_block: int | None = None
+    pdf_split_workers: int | None = None
 
 
 @dataclass(frozen=True)
@@ -535,6 +536,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
         key: value
         for key, value in {
             "pdf_split_batch_size": batch.pdf_split_batch_size,
+            "pdf_split_workers": batch.pdf_split_workers,
             "pdf_extract_workers": batch.pdf_extract_workers,
             "pdf_extract_batch_size": batch.pdf_extract_batch_size,
             "pdf_extract_rows_per_block": batch.pdf_extract_rows_per_block,

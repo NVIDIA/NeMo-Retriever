@@ -693,9 +693,23 @@ actions, and escalation criteria, refer to
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
 
-To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
+For native Ray batch ingestion, pass splitter controls through
+`.extract(batch_tuning=BatchTuningParams(...))`. These controls apply before
+page extraction:
 
-**Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs are split automatically on the default graph ingest path without client-side configuration.
+| `BatchTuningParams` field | Default | Behavior |
+| --- | --- | --- |
+| `pdf_split_workers` | `None` | Keeps the existing single splitter actor when unset. A positive integer selects independent Ray splitter actors. |
+| `pdf_split_batch_size` | `1` | Sets the number of input PDF documents per splitter actor batch. |
+
+The CLI equivalents, `--pdf-split-workers` and `--pdf-split-batch-size`, apply
+only to `retriever ingest batch`. These settings differ from extraction
+workers and page batches. They also do not change page-chunking parameters
+for the remote service. Refer to
+[Tune PDF splitting separately from page extraction](performance_guide.md#tune-pdf-splitting-separately-from-page-extraction)
+for examples and CPU and memory tradeoffs.
+
+**Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs split automatically on the default graph ingest path. Native Ray batch tuning controls splitter scheduling separately from this service-only method.
 
 ## One-shot text generation { #one-shot-text-generation }
 
