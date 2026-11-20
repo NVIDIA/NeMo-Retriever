@@ -106,7 +106,6 @@ repository and the PyPI package do not include a `pdf_corpus` dataset.
 
 ```bash
 retriever ingest batch /path/to/your/pdfs \
-  --profile fast-text \
   --pdf-extract-workers 4 \
   --embed-workers 2
 ```
@@ -443,14 +442,14 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | Option | Default | Notes |
 |---|---|---|
 | `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
-| `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. `fast-text` selects `pdfium` and disables Page Elements, image, table, and chart extraction for text-only PDFs. |
+| `--profile` | `auto` | `auto` uses manifest-routed ingest and selects `pdfium_hybrid` for PDFs. |
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. Python `.vdb_upload()` and default `Retriever()` use the same default. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
 | `--index-mode` | `auto` | Recommended: leave this unset. `auto` creates a hybrid vector + BM25/FTS configuration for new tables and preserves an existing table on append. Use `dense`, `hybrid`, or `sparse` only for explicit experiments or specialized deployments. |
 | `--embed-model-name` | unset | Local GPU inference selects Nemotron 3.5 Embed 1B: NVFP4 with native-capable GPUs and vLLM, or BF16 otherwise. Ray batch GPU embedding automatically selects BF16. Explicit Nemotron 3.5 precision IDs remain unchanged. The CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16 for batch GPU embedding. Remote inference, including implicit hosted CPU fallback, retains `nvidia/nemotron-3-embed-1b`. |
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. With no model override, explicit `hf` use selects the Nemotron 3.5 BF16 checkpoint. |
-| `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
+| `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`. An explicit value overrides the profile-selected method. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -501,15 +500,6 @@ retriever ingest ./data/multimodal_test.pdf \
 retriever query "What is in this document?" \
   --lancedb-uri ./my-lancedb \
   --table-name my-corpus
-```
-
-### Fast text-only PDF fallback
-
-Replace `/path/to/your/pdfs` with a directory of PDF files that you supply.
-
-```bash
-retriever ingest /path/to/your/pdfs \
-  --profile fast-text
 ```
 
 ### Dense Nemotron embedding checkpoints
@@ -598,10 +588,6 @@ selected by the profile.
 - `ocr` uses Page Elements and OCR for PDF page text on every page.
 - `nemotron_parse` uses the Nemotron Parse visual extraction path instead of
   the Page Elements and OCR path.
-
-The `fast-text` profile is the explicit text-only exception. It selects
-`pdfium` and disables Page Elements, page rendering, image extraction, table
-extraction, and chart extraction.
 
 For example, select hybrid extraction for a PDF that contains scanned pages:
 

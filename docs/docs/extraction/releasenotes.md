@@ -26,6 +26,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 - The in-process `GraphIngestor` no longer provides methods inherited from the legacy NV-Ingest client: `load`, `ingest_async`, `all_tasks`, `filter`, `store_embed`, `udf`, `save_intermediate_results`, `pdf_split_config`, `completed_jobs`, `failed_jobs`, `cancelled_jobs`, `remaining_jobs`, and `get_status`. Each method had no effect or raised `NotImplementedError`, and a call now raises `AttributeError`. `ServiceIngestor` keeps its own implementations of these methods.
 - `pdf_extraction()` no longer has a `text_depth` parameter. The parameter had no effect because every value returned page text.
 - The hidden `retriever recall` command is removed. Use `retriever query` to retrieve results. To score a LanceDB table against a query CSV, call `evaluate_recall()` with a `RecallConfig` from `nemo_retriever.tools.recall`. For BEIR metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
+- The `fast-text` ingest profile is removed, and `--profile fast-text` now fails with an invalid-value error. Omit `--profile` to use the `auto` profile. To keep native-text-only PDF extraction, pass `--method pdfium` with `--no-extract-images`, `--no-extract-tables`, `--no-extract-charts`, and `--no-extract-page-as-image`. In Python, also set `use_page_elements=False` in `ExtractParams` to skip Page Elements.
 
 ## 26.08.2 Helm Chart Patch { #release-26082 }
 
