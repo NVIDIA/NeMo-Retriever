@@ -811,6 +811,13 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
                 model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
         self._model = NemotronParse35(**model_kwargs)
 
+    def cleanup(self) -> None:
+        """Shut down the local engine and its event-loop thread; repeated calls are safe."""
+        with self._model_lock:
+            if self._model is not None:
+                self._model.unload()
+                self._model = None
+
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()
         return nemotron_parse_pages(
