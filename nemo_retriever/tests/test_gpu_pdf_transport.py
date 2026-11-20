@@ -96,6 +96,43 @@ def test_model_stage_errors_stop_instead_of_becoming_index_rows():
         raise_stage_errors(pd.DataFrame({"ocr": [{"error": {"message": "transfer failed"}}]}), "ocr")
 
 
+@pytest.mark.parametrize("height,width", [(3, 7), (7, 3), (20, 30)])
+def test_gpu_ocr_has_explicit_hwc_contract(height, width, gpu_rgb, monkeypatch):
+    import torch
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
+
+    image = gpu_rgb[:height, :width]
+    model = NemotronOCRV2.__new__(NemotronOCRV2)
+    calls = []
+    model._model = lambda images, **kwargs: calls.append(images) or ["recognized"]
+
+    def no_cpu(*args, **kwargs):
+        raise AssertionError("GPU RGB must not be read back")
+
+    monkeypatch.setattr(torch.Tensor, "cpu", no_cpu)
+    assert model.invoke_gpu_rgb([image]) == ["recognized"]
+    actual = calls[0][0]
+    assert actual.is_cuda and actual.is_contiguous()
+    assert actual.shape == (3, height, width)
+    assert torch.equal(actual, image.permute(2, 0, 1))
+    with pytest.raises(ValueError, match="CUDA uint8 HWC"):
+        model.invoke_gpu_rgb(image.float())
+
+
+def test_legacy_gpu_ocr_tensors_keep_chw_bchw_conversion(gpu_rgb, monkeypatch):
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
+
+    model = NemotronOCRV2.__new__(NemotronOCRV2)
+    encoded = []
+    calls = []
+    monkeypatch.setattr(model, "_tensor_to_png_b64", lambda image: encoded.append(image.shape) or "png")
+    model._model = lambda image, **kwargs: calls.append(image) or ["recognized"]
+    chw = gpu_rgb.permute(2, 0, 1).float() / 255
+    assert model.invoke(chw) == ["recognized"]
+    assert model.invoke(chw.unsqueeze(0).expand(2, -1, -1, -1)) == ["recognized", "recognized"]
+    assert encoded == [chw.shape] * 3 and calls == [b"png"] * 3
+
+
 def test_gpu_transport_rejects_unsupported_outputs():
     from nemo_retriever.common.params import EmbedParams, ExtractParams
     from nemo_retriever.graph.ingestor_runtime import build_graph

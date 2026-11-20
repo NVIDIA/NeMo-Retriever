@@ -250,8 +250,47 @@ GPU utilization alone does not identify the limiting stage.
 
 The encoded renderers and GPU-resident mode present different model pixels
 because the latter avoids JPEG compression. Compare extracted outputs and
-retrieval accuracy before accepting a throughput result. Successful bounded
-integration tests do not establish full-dataset accuracy or a performance gain.
+retrieval accuracy before accepting a throughput result.
+
+### DC10K renderer comparison
+
+A completed DC10K evaluation processes 10,000 PDFs containing 213,538 pages
+through native NRL ingestion, text embedding, index writing, and retrieval.
+The `cuda_rdt` run uses all eight GPUs and reports zero page RGB readback
+and zero CPU raster calls. The evaluated sources are NRL `be908600` and
+renderer `df7d8a5`.
+
+The following results compare that run with the saved default PDFium renderer
+baseline. Both pipelines use GPU model inference; CPU refers to rasterization
+in the baseline, not to the entire pipeline.
+
+| Metric | Default PDFium renderer | CUDA renderer with Ray Direct Transport |
+| --- | ---: | ---: |
+| Ingestion pages per second | 385.9195 | 347.2670 |
+| Retrieval queries per second | 5.5287 | 5.3764 |
+| nDCG@10 | 0.63006314 | 0.63241428 |
+| Recall@10 | 0.76169265 | 0.76391982 |
+
+CUDA ingestion is approximately 10% slower in this comparison. Observed
+retrieval quality is similar, with slightly higher aggregate nDCG@10 and
+Recall@10 for this run. These measurements do not establish exact accuracy
+equivalence, statistical significance, or a speedup. Paired analysis covers
+1,347 queries; 95% bootstrap confidence intervals for both quality differences
+include zero. The baseline is a saved run rather than a freshly repeated
+baseline measurement.
+
+Rendering every input page does not imply that every page produces index
+rows. The CUDA index contains 9,987 documents and 211,621 pages; the baseline
+contains 9,986 documents and 211,603 pages. No baseline indexed document is
+missing, but 15 baseline indexed pages lack CUDA rows, and 33 additional pages
+have CUDA rows. These output differences require consideration alongside the
+aggregate retrieval metrics.
+
+Full-corpus completion and retrieval metrics are separate from the bounded
+64-page exact RGB gate. These results do not establish pixel equality for
+every DC10K page or resolve the previously observed concurrent-profiling
+memory failures. Repeat validation after changing hardware, dependencies,
+concurrency, or model settings.
 
 ## Profile batch ingestion with Nsight Systems
 

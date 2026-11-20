@@ -645,8 +645,13 @@ GPU image references are removed before text embedding and index writing.
 Unsupported configurations or failed GPU transport stop ingestion without a
 host-image fallback.
 
-Removing JPEG compression can change model outputs. Bounded integration tests
-do not establish full-dataset accuracy or improved ingestion throughput.
+Removing JPEG compression can change model outputs. A completed full DC10K
+comparison uses all eight GPUs without page RGB readback or CPU raster calls.
+Observed retrieval quality is similar to the saved default PDFium baseline,
+while ingestion is approximately 10% slower. GPU models run in both pipelines.
+These measurements establish neither exact accuracy equivalence nor a speedup.
+Refer to the [DC10K renderer comparison](../../../docs/docs/extraction/performance_guide.md#dc10k-renderer-comparison)
+for results and limitations.
 
 ### PDF extraction method
 

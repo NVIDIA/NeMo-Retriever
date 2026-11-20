@@ -1049,16 +1049,19 @@ def _run_local_ocr_batches(
         for start in range(0, len(jobs), batch_size):
             batch_jobs = jobs[start : start + batch_size]
             batch_crops = [job.crop_array for job in batch_jobs]
+            # GPU RGB has an explicit HWC contract; invoke retains its legacy
+            # CHW/BCHW tensor conversion for callers outside this transport.
+            invoke = model.invoke_gpu_rgb if getattr(batch_crops[0], "is_cuda", False) else model.invoke
 
             try:
-                batch_preds = model.invoke(batch_crops, merge_level=merge_level)
+                batch_preds = invoke(batch_crops, merge_level=merge_level)
             except Exception:
                 batch_preds = None
 
             if not isinstance(batch_preds, list) or len(batch_preds) != len(batch_jobs):
                 for job in batch_jobs:
                     try:
-                        preds = model.invoke(job.crop_array, merge_level=merge_level)
+                        preds = invoke(job.crop_array, merge_level=merge_level)
                         _append_ocr_prediction(
                             row_results[job.row_index],
                             row=job.row,

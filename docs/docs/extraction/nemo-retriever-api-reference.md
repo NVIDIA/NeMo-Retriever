@@ -255,8 +255,12 @@ failures stop ingestion without materializing host images as a fallback.
 
 Removing JPEG compression changes the pixels presented to models. Raster
 pixel equivalence does not establish matching extraction or retrieval accuracy.
-Bounded integration checks do not establish full-dataset accuracy or a
-throughput improvement.
+A completed full DC10K run uses all eight GPUs with no page RGB readback or
+CPU raster calls. Its observed retrieval metrics are similar to the saved
+PDFium baseline, while ingestion is approximately 10% slower. Refer to the
+[DC10K renderer comparison](performance_guide.md#dc10k-renderer-comparison)
+for measurements and validation limits. This result does not establish exact
+accuracy equivalence or a throughput improvement.
 
 !!! warning "Experimental backend"
     Concurrent profiling has exposed illegal GPU-memory accesses and native

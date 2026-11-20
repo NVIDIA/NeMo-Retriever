@@ -54,12 +54,8 @@ class NemotronOCRV2(BaseModel):
         super().__init__()
         configure_global_hf_cache_base()
         try:
-            from nemotron_ocr.inference import (
-                pipeline as _nemotron_ocr_pipeline,
-            )  # local-only import
-            from nemotron_ocr.inference import (
-                pipeline_v2 as _nemotron_ocr_pipeline_v2,
-            )  # local-only import
+            from nemotron_ocr.inference import pipeline as _nemotron_ocr_pipeline  # local-only import
+            from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
         except ImportError as exc:
             raise ImportError(
                 "Local Nemotron OCR v2 requires the `nemotron_ocr` package. "
@@ -77,10 +73,14 @@ class NemotronOCRV2(BaseModel):
         class _NemotronOCRV2(_nemotron_ocr_pipeline_v2.NemotronOCRV2):
             @staticmethod
             def _load_image_to_tensor_uint8(image):
-                if isinstance(image, torch.Tensor) and image.is_cuda:
-                    if image.dtype != torch.uint8 or image.ndim != 3:
-                        raise ValueError("GPU OCR expects RGB uint8 images")
-                    return image.permute(2, 0, 1).contiguous() if image.shape[-1] == 3 else image.contiguous()
+                if (
+                    isinstance(image, torch.Tensor)
+                    and image.is_cuda
+                    and image.dtype == torch.uint8
+                    and image.ndim == 3
+                    and image.shape[0] == 3
+                ):
+                    return image.contiguous()
                 return _nemotron_ocr_pipeline_v2.NemotronOCRV2._load_image_to_tensor_uint8(image)
 
         if model_dir:
@@ -209,14 +209,6 @@ class NemotronOCRV2(BaseModel):
         if self._model is None:
             raise RuntimeError("Local OCR model was not initialized.")
 
-        if isinstance(input_data, torch.Tensor) and input_data.is_cuda:
-            return self._model(input_data, merge_level=merge_level)
-        if (
-            isinstance(input_data, list)
-            and input_data
-            and all(isinstance(image, torch.Tensor) and image.is_cuda for image in input_data)
-        ):
-            return self._model(input_data, merge_level=merge_level)
         if isinstance(input_data, torch.Tensor):
             if input_data.ndim == 4:
                 out: List[Any] = []
@@ -233,6 +225,28 @@ class NemotronOCRV2(BaseModel):
             return self._model(input_data.encode("utf-8"), merge_level=merge_level)
 
         return self._model(input_data, merge_level=merge_level)
+
+    @nvtx.annotate("nrl.model::ocr_v2.invoke", color="blue")
+    def invoke_gpu_rgb(self, input_data: Union[torch.Tensor, List[torch.Tensor]], merge_level: str = "paragraph") -> Any:
+        """Run CUDA uint8 HWC RGB images without encoding or host copies.
+
+        This explicit entry point keeps the existing CHW/BCHW ``invoke``
+        contract intact, including images whose height or width is three.
+        """
+        if self._model is None:
+            raise RuntimeError("Local OCR model was not initialized.")
+        images = input_data if isinstance(input_data, list) else [input_data]
+        if not images or not all(
+            isinstance(image, torch.Tensor)
+            and image.is_cuda
+            and image.dtype == torch.uint8
+            and image.ndim == 3
+            and image.shape[-1] == 3
+            for image in images
+        ):
+            raise ValueError("GPU OCR expects nonempty CUDA uint8 HWC RGB images")
+        chw = [image.permute(2, 0, 1).contiguous() for image in images]
+        return self._model(chw if isinstance(input_data, list) else chw[0], merge_level=merge_level)
 
     @property
     def model_name(self) -> str:
