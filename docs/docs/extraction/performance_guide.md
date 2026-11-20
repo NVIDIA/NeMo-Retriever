@@ -379,29 +379,39 @@ the ownership protocol caused or resolved the fault.
 A later experimental candidate, revision `f1d09da5`, completes all 213,538
 DC10K pages on eight GPUs without MPS. Ingestion takes 623.5897 seconds, with
 zero page RGB readback or CPU raster calls. Owner, admission, and RGB lease
-ledgers drain at completion. The following results compare this candidate with
-the saved CPU PDFium renderer baseline; inference models run on GPUs in both.
+ledgers drain at completion. The following results compare this and a
+subsequent candidate with the saved CPU PDFium renderer baseline. Inference
+models run on GPUs in all cases.
 
-| Metric | Saved PDFium baseline | Ownership candidate |
-| --- | ---: | ---: |
-| Ingestion pages per second | 385.9195 | 342.4335 |
-| Retrieval queries per second | 5.5287 | 4.9809 |
-| nDCG@10 | 0.63006314 | 0.63086199 |
-| Recall@10 | 0.76169265 | 0.76391982 |
+| Metric | Saved PDFium baseline | Initial ownership candidate | Subsequent kernel candidate |
+| --- | ---: | ---: | ---: |
+| Ingestion pages per second | 385.9195 | 342.4335 | 351.6552 |
+| Retrieval queries per second | 5.5287 | 4.9809 | 4.6714 |
+| nDCG@10 | 0.63006314 | 0.63086199 | 0.63171757 |
+| Recall@10 | 0.76169265 | 0.76391982 | 0.76391982 |
 
-Retrieval against the completed index succeeds after a telemetry failure
-requires a query-only retry. It completes all 1,347 queries with no unmapped
+For the initial ownership candidate, retrieval against the completed index
+succeeds after a telemetry failure requires a query-only retry. It completes all 1,347 queries with no unmapped
 hits; model warmup of 45.4222 seconds is separate from query throughput. Neither aggregate score
 decreases in this run, but that observation does not establish accuracy
 equivalence. Ingestion remains slower than the saved baseline.
 
-The natural run records zero busy admissions, so it does not exercise
-sustained owner backpressure. Separate synthetic stress covers bounded
-admission. This candidate snapshot does not replace earlier results or select
-a new default. The mode remains experimental and disabled by default. Full
-completion does not establish general GPU memory safety, liveness under
-backpressure, or retry recovery after final acknowledgement. Earlier MPS faults
-and their originating kernel remain unresolved.
+The initial natural run records zero busy admissions. A subsequent candidate
+with a CUDA kernel optimization and unchanged NRL runtime completes all
+213,538 pages on eight GPUs without MPS in 607.2369 seconds. It records 28,413
+busy admission returns, exercising owner backpressure on natural input. All
+source, owner, and admission ledgers drain, with zero page RGB readback or CPU
+raster calls. Retrieval completes all 1,347 queries with no unmapped hits;
+its separate model warmup takes 47.1631 seconds.
+
+Both candidate snapshots remain below the saved CPU renderer ingestion
+throughput. Their aggregate retrieval scores do not decrease relative to that
+baseline, but no accuracy-equivalence margin has been established. The 90%
+whole-CLI GPU utilization target remains unmet. These experimental snapshots
+do not select a new default; the mode remains disabled by default. Natural
+backpressure and successful drain do not establish general GPU memory safety,
+liveness under all workloads, or retry recovery after final acknowledgement.
+Earlier MPS faults and their originating kernel remain unresolved.
 
 ### Publish only completed RGB tensors
 
