@@ -174,23 +174,27 @@ def _words(text: Any) -> List[str]:
 
 
 _STRUCTURED_LINE_MIN_COVERAGE = 0.8
+_RE_TOKEN = re.compile(r"\w+", re.UNICODE)
 
 
 def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tuple[str, int]:
     """Remove native text-layer lines already present in Parse table, chart, or infographic text.
 
     A line is removed when at least ``_STRUCTURED_LINE_MIN_COVERAGE`` of its
-    words occur in the structured text, so fallback page text does not repeat
-    table cells that the page's structured regions already carry.
+    tokens, and every token containing a digit, occur in the structured text,
+    so fallback page text does not repeat table cells that the page's
+    structured regions already carry but keeps lines whose values differ.
     """
-    structured_words = set(_words("\n".join(structured_texts)))
-    if not structured_words:
+    structured_tokens = set(_RE_TOKEN.findall("\n".join(structured_texts).lower()))
+    if not structured_tokens:
         return native_text, 0
     kept: List[str] = []
     dropped = 0
     for line in native_text.splitlines():
-        words = _words(line)
-        if words and sum(word in structured_words for word in words) / len(words) >= _STRUCTURED_LINE_MIN_COVERAGE:
+        tokens = _RE_TOKEN.findall(line.lower())
+        covered = [token in structured_tokens for token in tokens]
+        values_covered = all(hit for token, hit in zip(tokens, covered) if any(char.isdigit() for char in token))
+        if tokens and values_covered and sum(covered) / len(tokens) >= _STRUCTURED_LINE_MIN_COVERAGE:
             dropped += 1
             continue
         kept.append(line)
@@ -784,7 +788,8 @@ def nemotron_parse_pages(
                 "completion": _completion(*outcomes[pos], failed=True),
             }
 
-    if extract_text and parse35 and text_layer_min_overlap > 0 and "text" in batch_df.columns:
+    # Native /v1/parse endpoints serve Parse 3.5 and select the model server-side.
+    if extract_text and (parse35 or native_parse) and text_layer_min_overlap > 0 and "text" in batch_df.columns:
         native_col = batch_df.columns.get_loc("text")
         for idx in batch_indices:
             if all_meta[idx].get("error") is not None:

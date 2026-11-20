@@ -207,3 +207,31 @@ def test_fallback_page_keeps_each_table_cell_once(table_text: str) -> None:
     for cell in ("1200", "1350", "980", "1010"):
         combined = out.loc[0, "text"] + out.loc[0, "table"][0]["text"]
         assert combined.count(cell) == 1
+
+
+def test_fallback_keeps_lines_whose_values_differ_from_structured_regions() -> None:
+    from nemo_retriever.operators.extract.parse.nemotron_parse import _drop_structured_lines
+
+    kept, dropped = _drop_structured_lines("Revenue 9\nRevenue 5\nNorth 1200", ["| Revenue | 5 |\n| North | 1200 |"])
+    assert kept == "Revenue 9"
+    assert dropped == 2
+
+
+def test_native_endpoint_without_model_name_applies_text_layer_fallback() -> None:
+    class _NativeClient:
+        def invoke_parse_pages(self, *, image_b64_list, **kwargs):
+            return [
+                {"content": _tagged("Ɋǝʌǝnnǝ ƃɹǝʍ ʂʇɹouƃlʎ " * 10), "finish_reason": "stop", "usage": {}}
+                for _ in image_b64_list
+            ]
+
+    df = pd.DataFrame({"text": [NATIVE], "page_image": [{"image_b64": _page_b64()}], "path": ["a.pdf"]})
+    out = nemotron_parse_pages(
+        df,
+        invoke_url="http://parse:8000/v1/parse",
+        nim_client=_NativeClient(),
+        extract_text=True,
+        text_layer_min_overlap=0.3,
+    )
+    assert out.loc[0, "text"] == NATIVE
+    assert out.loc[0, "nemotron_parse_v1_2"]["text_source"] == "text_layer"
