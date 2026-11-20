@@ -226,6 +226,7 @@ class _GpuProducer:
             return self._owner_leases.cancel_request(request_id)
         return False
 
+    @nvtx.annotate("nrl.cuda_rdt::owner_ack_apply", color="purple")
     def acknowledge_images(self, groups):
         if self._owner_leases is None:
             raise GpuTransportError("GPU image owner leases are disabled")
@@ -534,6 +535,7 @@ def _image_metadata(metadata, producer, index, height, width, shapes):
     )
 
 
+@nvtx.annotate("nrl.cuda_rdt::owner_ack_wait", color="purple")
 def acknowledge_gpu_images(frame):
     """Release source ownership only after the final consumer's GPU scope."""
     import ray
