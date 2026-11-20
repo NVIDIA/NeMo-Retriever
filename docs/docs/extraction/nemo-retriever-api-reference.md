@@ -266,11 +266,12 @@ admission keeps request order across retries. A 120-second watchdog detects capa
 without new final-consumer acknowledgements, rather than limiting total wait
 time while consumption progresses. Refer to
 [Bound source ownership through final consumption](performance_guide.md#bound-source-ownership-through-final-consumption)
-for byte charging, admission limits, and acknowledgement semantics. Bounded
-ownership and model checks pass, but a full native CLI trial fails with an
-illegal GPU-memory access. The originating kernel remains unknown. This mode
-is not validated for full ingestion; no valid full-run throughput or accuracy
-result is available for this ownership revision.
+for byte charging, admission limits, and acknowledgement semantics. A later
+experimental ownership revision completes full DC10K ingestion and retrieval
+without MPS, with no observed aggregate score decrease and below-baseline
+ingestion throughput. These results do not establish accuracy equivalence or
+resolve earlier MPS GPU-memory faults. The mode remains disabled by default;
+refer to the linked validation details before evaluating it.
 
 For experimental readiness-checked publication, set
 `CUDA_PDF_READY_TRANSPORT=1` in the NRL driver environment. Unset or `0`

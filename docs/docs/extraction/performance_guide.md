@@ -376,12 +376,32 @@ so the failure does not indicate exhaustion of the configured owner limit.
 The originating kernel remains unknown; the observations do not establish that
 the ownership protocol caused or resolved the fault.
 
-This mode remains experimental and disabled by default. The failed trial does
-not complete retrieval and provides no valid full-run throughput or accuracy
-result. Bounded passes do not establish GPU memory safety or full-corpus
-reliability. Previously completed DC10K snapshots do not validate this ownership
-revision. Full-pipeline validation of the FIFO admission and progress-watchdog
-revision remains pending; it does not establish resolution of earlier failures.
+A later experimental candidate, revision `f1d09da5`, completes all 213,538
+DC10K pages on eight GPUs without MPS. Ingestion takes 623.5897 seconds, with
+zero page RGB readback or CPU raster calls. Owner, admission, and RGB lease
+ledgers drain at completion. The following results compare this candidate with
+the saved CPU PDFium renderer baseline; inference models run on GPUs in both.
+
+| Metric | Saved PDFium baseline | Ownership candidate |
+| --- | ---: | ---: |
+| Ingestion pages per second | 385.9195 | 342.4335 |
+| Retrieval queries per second | 5.5287 | 4.9809 |
+| nDCG@10 | 0.63006314 | 0.63086199 |
+| Recall@10 | 0.76169265 | 0.76391982 |
+
+Retrieval against the completed index succeeds after a telemetry failure
+requires a query-only retry. It completes all 1,347 queries with no unmapped
+hits; model warmup of 45.4222 seconds is separate from query throughput. Neither aggregate score
+decreases in this run, but that observation does not establish accuracy
+equivalence. Ingestion remains slower than the saved baseline.
+
+The natural run records zero busy admissions, so it does not exercise
+sustained owner backpressure. Separate synthetic stress covers bounded
+admission. This candidate snapshot does not replace earlier results or select
+a new default. The mode remains experimental and disabled by default. Full
+completion does not establish general GPU memory safety, liveness under
+backpressure, or retry recovery after final acknowledgement. Earlier MPS faults
+and their originating kernel remain unresolved.
 
 ### Publish only completed RGB tensors
 
