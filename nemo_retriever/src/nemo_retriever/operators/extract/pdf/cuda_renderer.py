@@ -103,10 +103,13 @@ class _CudaBatch:
                 from cuda_pdf_renderer.device import SceneRecorder
 
                 recorder = SceneRecorder()
-                self.bitmaps = [
-                    _SceneBitmap(recorder.record_native(packet, scale, rotation))
-                    for packet, scale, rotation in zip(packets, scales, rotations)
-                ]
+                import nvtx
+
+                with nvtx.annotate("nrl.cuda_rdt::record_scene_batch", color="orange"):
+                    self.bitmaps = [
+                        _SceneBitmap(recorder.record_native(packet, scale, rotation))
+                        for packet, scale, rotation in zip(packets, scales, rotations)
+                    ]
                 pool = config["kwargs"].get("_cuda_renderer_pool")
                 if pool is None:
                     raise PdfRendererError("GPU-resident rendering requires the native Ray batch executor")

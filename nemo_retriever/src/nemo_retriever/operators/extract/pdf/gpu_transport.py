@@ -16,6 +16,18 @@ import nvtx
 _RESOLVED = contextvars.ContextVar("nrl_gpu_images", default=None)
 
 
+def _rgb_pool_capacity():
+    import os
+
+    try:
+        value = int(os.environ.get("CUDA_PDF_RGB_POOL_BYTES", "0"))
+    except ValueError:
+        raise ValueError("CUDA_PDF_RGB_POOL_BYTES must be an integer byte count") from None
+    if value < 0 or 0 < value < 3 * 1024**2:
+        raise ValueError("CUDA_PDF_RGB_POOL_BYTES must be zero or at least 3145728")
+    return value
+
+
 class GpuTransportError(RuntimeError):
     """A requested GPU image path failed; host raster fallback is forbidden."""
 
@@ -70,6 +82,16 @@ class _GpuProducer:
         from cuda_pdf_renderer.device import DeviceRenderer
 
         self.renderer = DeviceRenderer(library)
+        pool_bytes = _rgb_pool_capacity()
+        self._rgb_pool = None
+        if pool_bytes:
+            from cuda_pdf_renderer.buffer_pool import DeviceRgbPool
+            from ray.experimental import register_nixl_memory
+
+            self._rgb_pool = DeviceRgbPool(pool_bytes)
+            # All leased views share this storage. A permanent registration
+            # prevents per-page registration churn and remote metadata changes.
+            register_nixl_memory(self._rgb_pool.storage)
         self.pages = 0
         self.gpu_uuid = gpu_uuid
         self.max_scene_bytes = 0
@@ -88,7 +110,8 @@ class _GpuProducer:
         self.pages += len(results)
         import ray
 
-        return {"reference": ray.put(results, _tensor_transport="nixl")}
+        with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
+            return {"reference": ray.put(results, _tensor_transport="nixl")}
 
     def _render_shared_page(self, handle):
         import torch
@@ -98,10 +121,16 @@ class _GpuProducer:
             self._thread_state.stream = torch.cuda.Stream(device=0)
         stream = self._thread_state.stream
         with torch.cuda.stream(stream):
-            rgb, stats = self.renderer.replay_handle(handle)
+            with nvtx.annotate("nrl.cuda_rdt::native_page_replay", color="green"):
+                if self._rgb_pool is None:
+                    rgb, stats = self.renderer.replay_handle(handle)
+                else:
+                    out = self._rgb_pool.image(handle.height, handle.width)
+                    rgb, stats = self.renderer.replay_handle(handle, out=out)
             # Publish only completed GPU data. This waits for this page's
             # stream, without copying pixels or synchronizing other pages.
-            stream.synchronize()
+            with nvtx.annotate("nrl.cuda_rdt::page_ready_wait", color="purple"):
+                stream.synchronize()
         if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
             raise GpuTransportError("Renderer violated GPU-only pixel output contract")
         return rgb
@@ -125,7 +154,8 @@ class _GpuProducer:
         with self._stats_lock:
             self.max_scene_bytes = max([self.max_scene_bytes] + [handle.size for handle in handles])
             self.pages += len(results)
-        return {"reference": ray.put(results, _tensor_transport="nixl")}
+        with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
+            return {"reference": ray.put(results, _tensor_transport="nixl")}
 
     def status(self):
         import torch
@@ -141,14 +171,16 @@ class _GpuProducer:
             "max_scene_bytes": self.max_scene_bytes,
             "tensor_peak_bytes": torch.cuda.max_memory_allocated(),
             "tensor_reserved_bytes": torch.cuda.memory_reserved(),
+            "rgb_pool": self._rgb_pool.status() if self._rgb_pool else None,
         }
 
 
 class RendererPool:
     """Keep GPU-buffer owners alive until the complete ingestion graph drains."""
 
-    def __init__(self, library):
+    def __init__(self, library, rgb_pool_bytes=None):
         self.library = library
+        self.rgb_pool_bytes = _rgb_pool_capacity() if rgb_pool_bytes is None else rgb_pool_bytes
         self.producers = {}
         self.next_gpu = 0
 
@@ -162,7 +194,11 @@ class RendererPool:
             self.producers[key] = actor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
                 runtime_env={
-                    "env_vars": {"CUDA_VISIBLE_DEVICES": gpu_uuid, "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"}
+                    "env_vars": {
+                        "CUDA_VISIBLE_DEVICES": gpu_uuid,
+                        "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
+                        "CUDA_PDF_RGB_POOL_BYTES": str(self.rgb_pool_bytes),
+                    }
                 },
             ).remote(self.library, gpu_uuid)
         return self.producers[key]

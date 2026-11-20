@@ -237,6 +237,13 @@ share the owning model pool's GPU reservation and exact GPU UUID. The executor
 keeps renderer owners alive until ingestion drains, then releases them. GPU
 image references are removed before text embedding and index writing.
 
+Optional GPU RGB pooling uses `CUDA_PDF_RGB_POOL_BYTES` in the NRL driver
+environment. NRL validates the value and forwards it to renderer producers.
+Unset or `0` retains ordinary GPU allocations. A positive value reserves a
+reusable GPU buffer per producer; it must be at least 3,145,728 bytes. Refer to
+[Reuse registered GPU RGB buffers](performance_guide.md#reuse-registered-gpu-rgb-buffers)
+for sizing, allocation behavior, and validation limits.
+
 The supported configuration has the following restrictions:
 
 - Use PDF inputs and the native Ray batch executor. In-process, service,

@@ -313,6 +313,40 @@ The encoded renderers and GPU-resident mode present different model pixels
 because the latter avoids JPEG compression. Compare extracted outputs and
 retrieval accuracy before accepting a throughput result.
 
+### Reuse registered GPU RGB buffers
+
+For `cuda_rdt`, `CUDA_PDF_RGB_POOL_BYTES` optionally reserves reusable RGB
+storage in each GPU renderer producer. Set this variable in the NRL driver
+environment before ingestion. The driver validates it and explicitly forwards
+the value to its renderer actors. This applies to the supported single-host
+native Ray path. The default, unset or `0`, disables pooling. Positive values
+must be at least 3,145,728 bytes (3 MiB); invalid values fail setup.
+
+The pool divides its capacity into 3 MiB slots and rounds capacity down to a
+whole number of slots. Each slot fits a 1,024 × 1,024 RGB `uint8` image or a
+smaller image. For example, `100663296` bytes reserves 96 MiB, or 32 slots,
+per producer. This is a per-producer allocation, not a shared pipeline budget.
+
+NRL registers the slab with Ray NIXL once for its lifetime. Page tensors reuse
+views of that storage, avoiding repeated per-page registration and associated
+remote metadata changes. Pool ownership must remain valid until all GPU and
+transport consumers finish. If a page exceeds one slot or no slot is free,
+rendering uses an ordinary GPU allocation. This allocation fallback does not
+copy RGB pixels to the CPU or select CPU rasterization.
+
+Renderer status includes pool capacity, slot size, active and peak usage,
+allocation and release counts, and counts of exhausted or oversized requests.
+Monitor those counters alongside GPU memory and pipeline throughput. Increasing
+the reserved capacity consumes memory that models and other GPU stages need.
+
+Transport microbenchmarks do not establish complete ingestion performance.
+Bounded pooled-output checks pass exact RGB comparisons and delayed-consumer,
+slot-exhaustion, and slot-reuse tests without RGB readback or CPU rasterization.
+A guarded local-model test also passes without image tensor readback.
+Full-corpus validation of the pooled configuration remains pending. The DC10K
+results below precede this option; they do not establish its accuracy,
+throughput, or GPU utilization.
+
 ### DC10K renderer comparison
 
 A completed DC10K evaluation processes 10,000 PDFs containing 213,538 pages
