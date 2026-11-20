@@ -377,6 +377,8 @@ results below precede both pool options and describe that earlier revision.
 
 ### DC10K renderer comparison
 
+#### Initial GPU-resident snapshot
+
 A completed DC10K evaluation processes 10,000 PDFs containing 213,538 pages
 through native NRL ingestion, text embedding, index writing, and retrieval.
 The `cuda_rdt` run uses all eight GPUs and reports zero page RGB readback
@@ -414,6 +416,53 @@ Full-corpus completion and retrieval metrics are separate from the bounded
 every DC10K page or resolve the previously observed concurrent-profiling
 memory failures. Repeat validation after changing hardware, dependencies,
 concurrency, or model settings.
+
+#### Reference-lifetime fix snapshot
+
+A later completed run evaluates NRL `4ea60d78` with renderer `17ee48e`,
+including the native pandas metadata reference-lifetime fix. It processes all
+10,000 PDFs and 213,538 pages with eight GPU producers, zero CPU raster calls,
+and zero page RGB readback. The final ownership audit reports all source
+buffer leases released.
+
+The following measurements describe this revision separately from the initial
+snapshot and use the same saved default PDFium renderer baseline. Both
+pipelines run their inference models on GPUs.
+
+| Metric | Saved default PDFium renderer | Reference-lifetime fix snapshot |
+| --- | ---: | ---: |
+| Ingestion pages per second | 385.919537 | 422.444051 |
+| Retrieval queries per second | 5.5287 | 5.133720 |
+| nDCG@10 | 0.63006313719 | 0.63221404349 |
+| Recall@10 | 0.761692650334 | 0.763919821826 |
+
+The whole ingestion CLI completes in 505.4823 seconds. Its ingestion throughput
+is approximately 9.46% higher than the saved baseline. Retrieval evaluates all
+1,347 queries in 262.3828 seconds; its separate warmup takes 46.0295 seconds.
+The mean whole-CLI GPU utilization is 56.60%, calculated from time-weighted
+one-second NVML samples across all eight GPUs. The 90% utilization target
+remains unmet.
+
+Observed aggregate retrieval scores remain similar. Paired 95% confidence
+intervals for CUDA minus baseline include zero: [-0.00331831, 0.00757341]
+for nDCG@10 and [-0.00371195, 0.00816630] for Recall@10. These results do not
+establish exact accuracy equivalence or a statistically significant gain.
+
+The index contains 306,930 rows from 9,987 documents and 211,621 pages. No
+baseline indexed document is missing. However, 16 baseline indexed pages lack
+CUDA rows, and 34 additional pages have CUDA rows. Rendering completion and
+aggregate quality therefore do not establish identical extraction coverage.
+
+An earlier pooled snapshot remains the fastest observed run at 461.659 pages
+per second, with 61.09% mean whole-CLI GPU utilization. The reference-lifetime
+fix run is approximately 8.5% slower than that snapshot. These separate runs
+do not isolate an intrinsic performance effect of the metadata block format.
+
+The exact 64-page RGB gate remains distinct from full-corpus processing and
+retrieval validation. The previously observed illegal GPU-memory accesses and
+native heap corruption during concurrent profiling remain unresolved. This
+completed run does not establish production readiness or a 90% utilization
+result.
 
 ## Profile batch ingestion with Nsight Systems
 

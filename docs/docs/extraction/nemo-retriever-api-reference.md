@@ -275,12 +275,16 @@ failures stop ingestion without materializing host images as a fallback.
 
 Removing JPEG compression changes the pixels presented to models. Raster
 pixel equivalence does not establish matching extraction or retrieval accuracy.
-A completed full DC10K run uses all eight GPUs with no page RGB readback or
-CPU raster calls. Its observed retrieval metrics are similar to the saved
-PDFium baseline, while ingestion is approximately 10% slower. Refer to the
+Completed full DC10K runs use all eight GPUs without page RGB readback or
+CPU raster calls. The initial snapshot is approximately 10% slower than the
+saved PDFium baseline. A later reference-lifetime fix snapshot reaches
+422.4441 pages per second, approximately 9.46% above that baseline, with
+similar observed aggregate retrieval quality. Its mean whole-CLI GPU
+utilization is 56.60%, below the 90% target. Refer to the
 [DC10K renderer comparison](performance_guide.md#dc10k-renderer-comparison)
-for measurements and validation limits. This result does not establish exact
-accuracy equivalence or a throughput improvement.
+for source revisions, historical results, and validation limits. These
+measurements do not establish exact accuracy equivalence or explain the
+performance differences between revisions.
 
 !!! warning "Experimental backend"
     Concurrent profiling has exposed illegal GPU-memory accesses and native
