@@ -312,7 +312,7 @@ ranges in the following NVTX domains.
 | `NRL` | NeMo Retriever Library code, such as embedding request building, Page Elements, and OCR preprocessing and postprocessing. | `1` |
 | `vLLM` | The vLLM front end and EngineCore, such as request rendering, scheduling, and model execution. | `1` |
 | `torch` | Model forwards. With `full`, also host calls that wait on the GPU, such as `Tensor.item` and `torch.cuda.synchronize`. | `1`, `full` |
-| `Ray` | Ray Data task steps, batch formatting, and object serialization. | `full` |
+| `Ray` | Ray Data batch formatting and object serialization. | `full` |
 
 `NRL_NVTX=1` adds stage ranges. `NRL_NVTX=full` also wraps high-frequency
 calls, such as tensor host syncs and Ray serialization. In an 8-GPU text ingest

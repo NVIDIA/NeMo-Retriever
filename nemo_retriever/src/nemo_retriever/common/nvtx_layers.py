@@ -138,7 +138,6 @@ _FULL_TARGETS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
         ("torch.cuda", "Stream.synchronize", "torch", "host_sync:stream.synchronize"),
     ),
     "ray": (
-        ("ray.data._internal.execution.operators.actor_pool_map_operator", "_MapWorker.submit", "Ray", "task_step"),
         ("ray.data._internal.block_batching.util", "_format_batch", "Ray", "format_batch"),
         ("ray.data.block", "BlockAccessor.batch_to_block", "Ray", "batch_to_block"),
         ("ray._private.serialization", "SerializationContext.deserialize_objects", "Ray", "deserialize"),
