@@ -6,7 +6,7 @@
 
 ``NRL_NVTX=1`` emits stage ranges in the ``NRL``, ``vLLM``, and ``torch`` (model forward)
 domains. ``NRL_NVTX=full`` also wraps high-frequency calls: ``torch`` host syncs that block on
-the GPU and, in Ray workers, ``Ray`` task steps, batch formatting, and serialization.
+the GPU and, in Ray workers, ``Ray`` batch formatting and serialization.
 
 NRL call sites use :func:`span`. :func:`install` wraps the third-party targets of the named
 groups; GPU actors and vLLM model registration (which also runs in EngineCore) call it. When
