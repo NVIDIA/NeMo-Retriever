@@ -724,7 +724,7 @@ class ExtractParams(_ParamsModel):
     )
     extract_tables: bool = True
     extract_charts: bool = True
-    extract_infographics: bool = False
+    extract_infographics: bool = True
     extract_page_as_image: Optional[bool] = True
 
     # Extraction options

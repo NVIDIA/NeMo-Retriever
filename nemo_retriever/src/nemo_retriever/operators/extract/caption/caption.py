@@ -336,6 +336,12 @@ def _caption_one(
     return captions[0] if captions else ""
 
 
+def _has_replacing_infographic(value: Any) -> bool:
+    return isinstance(value, (list, tuple, np.ndarray)) and any(
+        isinstance(item, dict) and item.get("replaces_image") for item in value
+    )
+
+
 def caption_images(
     batch_df: pd.DataFrame,
     *,
@@ -377,7 +383,10 @@ def caption_images(
 
     When ``caption_infographics`` is True, infographic entries are cropped
     from the page image and captioned.  The VLM caption is written to the
-    ``caption`` field, preserving the existing OCR ``text``.
+    ``caption`` field, preserving the existing OCR ``text``.  Infographic
+    entries marked ``replaces_image`` (an image crop deduplicated in their
+    favor) are captioned the same way even when ``caption_infographics`` is
+    False, so the replaced image keeps a visual description.
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
@@ -385,7 +394,9 @@ def caption_images(
     has_images = "images" in batch_df.columns
     has_page_image = "page_image" in batch_df.columns
     has_direct_page_image = has_page_image and any(_is_direct_image_row(row) for _, row in batch_df.iterrows())
-    has_infographics = caption_infographics and "infographic" in batch_df.columns
+    has_infographics = "infographic" in batch_df.columns and (
+        caption_infographics or any(_has_replacing_infographic(value) for value in batch_df["infographic"])
+    )
     if not has_images and not has_direct_page_image and not has_infographics:
         return batch_df
     if not has_images and has_direct_page_image:
@@ -456,7 +467,7 @@ def caption_images(
         # Infographics — crop from page image.
         if has_infographics:
             infographics = row.get("infographic")
-            if isinstance(infographics, list):
+            if isinstance(infographics, (list, np.ndarray)):
                 page_image = row.get("page_image")
                 page_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
                 if page_b64:
@@ -465,8 +476,10 @@ def caption_images(
                             continue
                         if item.get("caption"):
                             continue  # already captioned
+                        if not caption_infographics and not item.get("replaces_image"):
+                            continue
                         bbox = item.get("bbox_xyxy_norm")
-                        if not bbox or len(bbox) < 4:
+                        if bbox is None or len(bbox) < 4:
                             continue
                         cropped_b64, _ = _crop_b64_image_by_norm_bbox(page_b64, bbox_xyxy_norm=bbox)
                         if cropped_b64 and _image_meets_min_size(cropped_b64):

@@ -86,6 +86,25 @@ class TestBboxIouDedup:
         result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
         assert len(result.iloc[0]["images"]) == 0
 
+    def test_marks_infographic_that_replaces_dropped_image(self):
+        df = _make_df(
+            [
+                {
+                    "images": [_make_image("X", bbox=[0.0, 0.0, 0.5, 0.5])],
+                    "table": [],
+                    "chart": [],
+                    "infographic": [
+                        {"bbox_xyxy_norm": [0.0, 0.0, 0.5, 0.5], "text": ""},
+                        {"bbox_xyxy_norm": [0.6, 0.6, 1.0, 1.0], "text": "other"},
+                    ],
+                }
+            ]
+        )
+        result = dedup_images(df, content_hash=False, bbox_iou=True, iou_threshold=0.45)
+        assert result.iloc[0]["images"] == []
+        assert result.iloc[0]["infographic"][0]["replaces_image"] is True
+        assert "replaces_image" not in result.iloc[0]["infographic"][1]
+
     def test_keeps_image_below_threshold(self):
         df = _make_df(
             [

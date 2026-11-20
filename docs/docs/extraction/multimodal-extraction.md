@@ -122,7 +122,7 @@ for format details and defaults.
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` defaults to `True`; `extract_infographics` defaults to `False`. Set `extract_infographics=True` to retain infographic output. Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` both default to `True`. Set `extract_infographics=False` to skip OCR on infographic regions. Outputs use the same metadata schema as other extracted objects.
 
 When `extract_infographics=False`, detected text and title boxes inside infographic regions are kept in the page text. When `extract_infographics=True`, that text is removed from the page text because infographic OCR reads it instead.
 
@@ -144,7 +144,7 @@ content. Failed crops retain their OCR text; successful empty output clears
 the original chart text. Refer to [Route chart crops to Parse 3.5](nemo-retriever-api-reference.md#route-chart-crops-to-parse-35)
 for prerequisites, defaults, and diagnostics.
 
-For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions. When deduplication drops an image crop because it overlaps an infographic, that infographic is captioned even without `caption_infographics`, so the region keeps its visual description.
 
 **Related**
 
@@ -194,7 +194,7 @@ result = (
 )
 ```
 
-Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
+Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions, optional infographics (`caption_infographics=True`), and infographics that replace a deduplicated image crop receive Omni captions.
 
 ### Control image deduplication
 

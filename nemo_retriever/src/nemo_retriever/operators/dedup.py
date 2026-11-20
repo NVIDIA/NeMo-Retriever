@@ -57,6 +57,25 @@ def _collect_structured_bboxes(row: pd.Series) -> List[Tuple[float, ...]]:
     return bboxes
 
 
+def _mark_replacing_infographics(
+    batch_df: pd.DataFrame, row_idx: Any, row: pd.Series, image_bbox: Tuple[float, ...], iou_threshold: float
+) -> None:
+    infographics = _as_element_list(row.get("infographic"))
+    if not infographics:
+        return
+    marked = []
+    changed = False
+    for item in infographics:
+        bbox = _as_bbox(item.get("bbox_xyxy_norm")) if isinstance(item, dict) else None
+        if bbox is not None and calculate_iou(image_bbox, bbox) >= iou_threshold and not item.get("replaces_image"):
+            item = {**item, "replaces_image": True}
+            changed = True
+        marked.append(item)
+    if changed:
+        batch_df.at[row_idx, "infographic"] = marked
+        row["infographic"] = marked
+
+
 def dedup_images(
     batch_df: pd.DataFrame,
     *,
@@ -73,7 +92,9 @@ def dedup_images(
     2. **Bbox IoU dedup** (``bbox_iou=True``): Compare each image's
        ``bbox_xyxy_norm`` against all entries in ``table``, ``chart``,
        ``infographic``. If IoU >= ``iou_threshold``, drop the image
-       (prefer structured content).
+       (prefer structured content). Infographics that replace a dropped
+       image are marked ``replaces_image=True`` so captioning still
+       describes them.
     """
     if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
         return batch_df
@@ -81,8 +102,9 @@ def dedup_images(
         return batch_df
 
     # Arrow-backed columns reject assignment of a filtered Python list.
-    if isinstance(batch_df["images"].dtype, pd.ArrowDtype):
-        batch_df["images"] = batch_df["images"].astype(object)
+    for column in ("images", "infographic"):
+        if column in batch_df.columns and isinstance(batch_df[column].dtype, pd.ArrowDtype):
+            batch_df[column] = batch_df[column].astype(object)
 
     for row_idx, row in batch_df.iterrows():
         images = _as_element_list(row.get("images"))
@@ -125,6 +147,8 @@ def dedup_images(
                     overlaps = any(calculate_iou(img_bbox_t, sb) >= iou_threshold for sb in structured_bboxes)
                     if not overlaps:
                         surviving.append(item)
+                    else:
+                        _mark_replacing_infographics(batch_df, row_idx, row, img_bbox_t, iou_threshold)
                 filtered = surviving
 
         batch_df.at[row_idx, "images"] = filtered
