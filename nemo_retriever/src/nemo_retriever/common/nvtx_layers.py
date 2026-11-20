@@ -248,9 +248,11 @@ def _patch(module: str, path: str, layer: str, name: str) -> None:
 
 
 def _to_blocks_on_cpu(args: tuple, kwargs: dict) -> bool:
-    """Return whether ``Tensor.to`` targets the CPU, without formatting tensor arguments."""
+    """Return whether ``Tensor.to`` waits for a CPU copy, without formatting tensor arguments."""
     import torch
 
+    if kwargs.get("non_blocking"):
+        return False
     target = kwargs.get("device", args[0] if args else None)
     if isinstance(target, torch.Tensor):
         target = target.device

@@ -183,6 +183,7 @@ def test_tensor_to_check_reads_devices_without_formatting_tensors():
     assert not nvtx_layers._to_blocks_on_cpu(("cuda:0",), {})
     assert not nvtx_layers._to_blocks_on_cpu((torch.float16,), {})
     assert not nvtx_layers._to_blocks_on_cpu((), {})
+    assert not nvtx_layers._to_blocks_on_cpu(("cpu",), {"non_blocking": True})
 
 
 def test_tensor_sync_wrappers_forward_results(enabled, monkeypatch):
