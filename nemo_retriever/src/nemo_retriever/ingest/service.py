@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import glob as _glob
 import logging
+import os as _os
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -309,6 +310,10 @@ def expand_service_file_patterns(documents: Sequence[str]) -> list[str]:
 
     resolved_files: list[str] = []
     for pattern in documents:
+        if _os.path.isfile(str(pattern)):
+            # An existing file is a literal path even if its name contains glob characters.
+            resolved_files.append(str(pattern))
+            continue
         resolved_files.extend(sorted(_glob.glob(str(pattern), recursive=True)))
     return resolved_files
 
