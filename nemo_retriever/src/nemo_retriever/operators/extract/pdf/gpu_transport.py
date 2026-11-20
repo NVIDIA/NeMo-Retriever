@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import nvtx
 
 _RESOLVED = contextvars.ContextVar("nrl_gpu_images", default=None)
+_OWNER_IMAGES = contextvars.ContextVar("nrl_gpu_owner_images", default=False)
 _RECEIVE_CAPACITY = contextvars.ContextVar("nrl_gpu_receive_capacity", default=0)
 _RECEIVE_POOLS = {}
 _RECEIVE_LOCK = threading.Lock()
@@ -72,6 +73,8 @@ class GpuPageImage:
     height: int
     width: int
     batch_shapes: tuple[tuple[int, int], ...] | None = None
+    owner: object = None
+    owner_token: int | None = None
 
     def tensor(self):
         import ray
@@ -80,6 +83,8 @@ class GpuPageImage:
         cache = _RESOLVED.get()
         if cache is None:
             raise GpuTransportError("GPU images must be consumed inside a scoped model call")
+        if self.owner is not None:
+            _OWNER_IMAGES.set(True)
         if self.reference not in cache:
             with nvtx.annotate("nrl.cuda_rdt::fetch_rgb", color="purple"):
                 buffers = None
@@ -129,11 +134,12 @@ def gpu_image_scope(receive_pool_bytes=0):
     cache = {}
     token = _RESOLVED.set(cache)
     capacity_token = _RECEIVE_CAPACITY.set(receive_pool_bytes)
+    owner_token = _OWNER_IMAGES.set(False)
     try:
         yield
     finally:
         try:
-            if receive_pool_bytes and cache:
+            if cache and (receive_pool_bytes or _OWNER_IMAGES.get()):
                 import torch
 
                 # These actors process one scoped model batch at a time. Finish
@@ -141,6 +147,7 @@ def gpu_image_scope(receive_pool_bytes=0):
                 with nvtx.annotate("nrl.cuda_rdt::receive_scope_ready", color="purple"):
                     torch.cuda.synchronize()
         finally:
+            _OWNER_IMAGES.reset(owner_token)
             _RECEIVE_CAPACITY.reset(capacity_token)
             _RESOLVED.reset(token)
 
@@ -180,6 +187,10 @@ class _GpuProducer:
                 manager().register_nixl_memory(self._rgb_pool.storage)
             else:
                 register_nixl_memory(self._rgb_pool.storage)
+        from nemo_retriever.operators.extract.pdf.gpu_owner_leases import OwnerLeaseBook
+
+        owner_bytes = _rgb_pool_capacity("CUDA_PDF_RGB_OWNER_BYTES")
+        self._owner_leases = OwnerLeaseBook(owner_bytes) if owner_bytes else None
         self.pages = 0
         self.gpu_uuid = gpu_uuid
         self.max_scene_bytes = 0
@@ -187,31 +198,64 @@ class _GpuProducer:
         self._thread_state = threading.local()
         self._pages = ThreadPoolExecutor(max_workers=16, thread_name_prefix="cuda-page")
 
-    @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
-    def render(self, scenes):
-        results = []
-        events = []
-        for scene in scenes:
-            rgb, stats = self.renderer.replay(scene)
-            if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
-                raise GpuTransportError("Renderer violated GPU-only pixel output contract")
-            results.append(rgb)
-            if self._ready_transport:
-                import torch
+    def _reserve(self, scenes):
+        if self._owner_leases is None:
+            return None
+        slot = 3 * 1024**2
+        charge = sum(((scene.height * scene.width * 3 + slot - 1) // slot) * slot for scene in scenes)
+        return self._owner_leases.reserve(charge, len(scenes))
 
-                event = torch.cuda.Event()
-                event.record(torch.cuda.current_stream())
-                event.synchronize()
-                events.append(event)
-        self.pages += len(results)
+    def _publish(self, results, events, token):
         import ray
 
         with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
             if self._ready_transport:
                 from nemo_retriever.operators.extract.pdf.gpu_ready_transport import publish
 
-                return {"reference": publish(results, events)}
-            return {"reference": ray.put(results, _tensor_transport="nixl")}
+                reference = publish(results, events)
+            else:
+                reference = ray.put(results, _tensor_transport="nixl")
+        metadata = {"reference": reference}
+        if self._owner_leases is not None:
+            self._owner_leases.commit(token, reference)
+            metadata["owner_token"] = token
+        return metadata
+
+    def acknowledge_images(self, groups):
+        if self._owner_leases is None:
+            raise GpuTransportError("GPU image owner leases are disabled")
+        for token, indices in groups.items():
+            self._owner_leases.acknowledge(token, indices)
+        return True
+
+    @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
+    def render(self, scenes):
+        token = self._reserve(scenes)
+        if self._owner_leases is not None and token is None:
+            return {"busy": True}
+        try:
+            results = []
+            events = []
+            for scene in scenes:
+                rgb, stats = self.renderer.replay(scene)
+                if not rgb.is_cuda or stats["cpu_raster_calls"] or stats["readback_ms"]:
+                    raise GpuTransportError("Renderer violated GPU-only pixel output contract")
+                results.append(rgb)
+                if self._ready_transport:
+                    import torch
+
+                    event = torch.cuda.Event()
+                    event.record(torch.cuda.current_stream())
+                    event.synchronize()
+                    events.append(event)
+            metadata = self._publish(results, events, token)
+        except BaseException:
+            if token is not None:
+                self._owner_leases.cancel(token)
+            raise
+        with self._stats_lock:
+            self.pages += len(results)
+        return metadata
 
     def _render_shared_page(self, handle):
         import torch
@@ -243,32 +287,32 @@ class _GpuProducer:
 
     @nvtx.annotate("nrl.cuda_rdt::render_shared_scene", color="green")
     def render_handles(self, handles):
-        import ray
-
-        futures = [self._pages.submit(self._render_shared_page, handle) for handle in handles]
+        token = self._reserve(handles)
+        if self._owner_leases is not None and token is None:
+            return {"busy": True}
+        futures = []
         try:
+            for handle in handles:
+                futures.append(self._pages.submit(self._render_shared_page, handle))
             results = [future.result() for future in futures]
+            events = []
+            if self._ready_transport:
+                results, events = map(list, zip(*results)) if results else ([], [])
+            metadata = self._publish(results, events, token)
         except BaseException:
-            # The caller owns the descriptors: drain every reader before
-            # returning an error that allows the caller to close them.
+            # Drain every descriptor reader before its CPU owner may close it.
             for future in futures:
                 try:
                     future.result()
                 except BaseException:
                     pass
+            if token is not None:
+                self._owner_leases.cancel(token)
             raise
-        events = []
-        if self._ready_transport:
-            results, events = map(list, zip(*results)) if results else ([], [])
         with self._stats_lock:
             self.max_scene_bytes = max([self.max_scene_bytes] + [handle.size for handle in handles])
             self.pages += len(results)
-        with nvtx.annotate("nrl.cuda_rdt::publish_rgb", color="purple"):
-            if self._ready_transport:
-                from nemo_retriever.operators.extract.pdf.gpu_ready_transport import publish
-
-                return {"reference": publish(results, events)}
-            return {"reference": ray.put(results, _tensor_transport="nixl")}
+        return metadata
 
     def status(self):
         import torch
@@ -276,6 +320,7 @@ class _GpuProducer:
         return {
             "pages": self.pages,
             "publication_transport": self._publication_transport,
+            "owner_leases": self._owner_leases.status() if self._owner_leases else None,
             "gpu_uuid": self.gpu_uuid,
             "rgb_readback_bytes": 0,
             "cpu_raster_calls": 0,
@@ -292,7 +337,7 @@ class _GpuProducer:
 class RendererPool:
     """Keep GPU-buffer owners alive until the complete ingestion graph drains."""
 
-    def __init__(self, library, rgb_pool_bytes=None, ready_transport=False):
+    def __init__(self, library, rgb_pool_bytes=None, ready_transport=False, rgb_owner_bytes=None):
         self.library = library
         self.ready_transport = ready_transport
         if ready_transport:
@@ -300,6 +345,9 @@ class RendererPool:
 
             register()
         self.rgb_pool_bytes = _rgb_pool_capacity() if rgb_pool_bytes is None else rgb_pool_bytes
+        self.rgb_owner_bytes = (
+            _rgb_pool_capacity("CUDA_PDF_RGB_OWNER_BYTES") if rgb_owner_bytes is None else rgb_owner_bytes
+        )
         self.producers = {}
         self.next_gpu = 0
 
@@ -317,6 +365,7 @@ class RendererPool:
                         "CUDA_VISIBLE_DEVICES": gpu_uuid,
                         "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1",
                         "CUDA_PDF_RGB_POOL_BYTES": str(self.rgb_pool_bytes),
+                        "CUDA_PDF_RGB_OWNER_BYTES": str(self.rgb_owner_bytes),
                     }
                 },
             ).remote(self.library, gpu_uuid, self.ready_transport)
@@ -357,14 +406,14 @@ def render_page_batch(frame, pool):
     gpu_uuid = str(torch.cuda.get_device_properties(torch.cuda.current_device()).uuid)
     gpu_uuid = gpu_uuid if gpu_uuid.startswith("GPU-") else "GPU-" + gpu_uuid
     producer = ray.get(pool.get.remote(ray.get_runtime_context().get_node_id(), gpu_uuid))
-    reference = ray.get(producer.render.remote(scenes))["reference"]
+    metadata = _render_with_credit(producer, "render", scenes)
     # Keep the reference itself in the CPU metadata block. Only an enabled GPU
     # model actor resolves it; pixel payloads never enter an Arrow/pandas block.
     result = frame.copy()
     shapes = tuple((scene.height, scene.width) for scene in scenes)
     result["page_image"] = [
         {
-            "gpu_image": GpuPageImage(reference, i, scene.height, scene.width, shapes),
+            "gpu_image": _image_metadata(metadata, producer, i, scene.height, scene.width, shapes),
             "image_b64": None,
             "encoding": "gpu_rgb",
             "orig_shape_hw": (scene.height, scene.width),
@@ -424,6 +473,52 @@ def submit_scene_batch(scenes, pool):
 
     producer = ray.get(pool.get_next.remote(ray.get_runtime_context().get_node_id()))
     handles = [scene.handle() for scene in scenes]
-    reference = ray.get(producer.render_handles.remote(handles))["reference"]
+    metadata = _render_with_credit(producer, "render_handles", handles)
     shapes = tuple((scene.height, scene.width) for scene in scenes)
-    return [GpuPageImage(reference, index, scene.height, scene.width, shapes) for index, scene in enumerate(scenes)]
+    return [
+        _image_metadata(metadata, producer, index, scene.height, scene.width, shapes)
+        for index, scene in enumerate(scenes)
+    ]
+
+
+def _render_with_credit(producer, method, scenes):
+    import time
+    import ray
+
+    deadline = time.monotonic() + 120
+    while True:
+        metadata = ray.get(getattr(producer, method).remote(scenes))
+        if not metadata.get("busy"):
+            return metadata
+        if time.monotonic() >= deadline:
+            raise GpuTransportError("GPU image owner capacity remained exhausted for 120 seconds")
+        time.sleep(0.01)
+
+
+def _image_metadata(metadata, producer, index, height, width, shapes):
+    token = metadata.get("owner_token")
+    return GpuPageImage(
+        metadata["reference"],
+        index,
+        height,
+        width,
+        shapes,
+        producer if token is not None else None,
+        token,
+    )
+
+
+def acknowledge_gpu_images(frame):
+    """Release source ownership only after the final consumer's GPU scope."""
+    import ray
+
+    groups = {}
+    for item in frame["page_image"]:
+        image = item.get("gpu_image") if isinstance(item, dict) else None
+        if not isinstance(image, GpuPageImage) or image.owner is None:
+            continue
+        # Identity grouping needs no private Ray ActorHandle attributes.
+        owner, batches = groups.setdefault(id(image.owner), (image.owner, {}))
+        batches.setdefault(image.owner_token, set()).add(image.index)
+    if groups:
+        ray.get([owner.acknowledge_images.remote(batches) for owner, batches in groups.values()])

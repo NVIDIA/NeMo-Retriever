@@ -89,9 +89,10 @@ class OCRActor(AbstractOperator, GPUOperator):
                 **kwargs,
             )
         if getattr(self, "_cuda_rdt", False):
-            from nemo_retriever.operators.extract.pdf.gpu_transport import raise_stage_errors
+            from nemo_retriever.operators.extract.pdf.gpu_transport import acknowledge_gpu_images, raise_stage_errors
 
             raise_stage_errors(result, "ocr")
+            acknowledge_gpu_images(result)
             result = result.copy()
             result["page_image"] = [
                 {

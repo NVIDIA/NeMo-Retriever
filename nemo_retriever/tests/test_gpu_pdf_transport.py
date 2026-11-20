@@ -210,6 +210,7 @@ def test_failed_batch_drains_other_descriptor_readers_before_returning():
     from nemo_retriever.operators.extract.pdf.gpu_transport import _GpuProducer
 
     producer = _GpuProducer.__new__(_GpuProducer)
+    producer._owner_leases = None
     completed = []
 
     def read(handle):
@@ -225,3 +226,32 @@ def test_failed_batch_drains_other_descriptor_readers_before_returning():
         with pytest.raises(RuntimeError, match="invalid scene"):
             producer.render_handles([0, 1, 2])
         assert sorted(completed) == [1, 2]
+
+
+def test_owner_image_finishes_gpu_uses_even_without_receive_pool(gpu_rgb, monkeypatch):
+    import pandas as pd
+    import ray
+    import torch
+    from types import SimpleNamespace
+    from nemo_retriever.operators.extract.pdf import gpu_transport
+
+    events = []
+    owner = SimpleNamespace(acknowledge_images=SimpleNamespace(remote=lambda batches: events.append("ack") or True))
+    ref = object()
+    image = GpuPageImage(ref, 0, 20, 30, ((20, 30),), owner, 1)
+    monkeypatch.setattr(ray, "get", lambda value: [gpu_rgb] if value is ref else [True])
+    original = torch.cuda.synchronize
+
+    def synchronize():
+        original()
+        events.append("gpu_finished")
+
+    monkeypatch.setattr(torch.cuda, "synchronize", synchronize)
+    with gpu_image_scope():
+        image.tensor()
+    gpu_transport.acknowledge_gpu_images(pd.DataFrame({"page_image": [{"gpu_image": image}]}))
+    assert events == ["gpu_finished", "ack"]
+    events.clear()
+    with gpu_image_scope():
+        GpuPageImage(ref, 0, 20, 30).tensor()
+    assert events == []

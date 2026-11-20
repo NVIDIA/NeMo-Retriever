@@ -313,6 +313,55 @@ The encoded renderers and GPU-resident mode present different model pixels
 because the latter avoids JPEG compression. Compare extracted outputs and
 retrieval accuracy before accepting a throughput result.
 
+### Bound source ownership through final consumption
+
+For native `cuda_rdt`, `CUDA_PDF_RGB_OWNER_BYTES` optionally enables explicit
+producer ownership of published RGB references. Set it in the NRL driver
+environment before ingestion. Unset or `0` disables owner leases. Positive
+integer values must be at least 3,145,728 bytes (3 MiB); invalid values fail
+setup. The driver forwards the value to renderer producers.
+
+The value limits charged outstanding bytes per producer. Each page's RGB
+byte size rounds up to a 3 MiB multiple, and a batch charges the sum of its
+pages. This accounting applies even without a source RGB pool. The limit is
+independent of `CUDA_PDF_RGB_POOL_BYTES` and
+`CUDA_PDF_RGB_RECEIVER_POOL_BYTES`; it does not allocate another image slab
+or bound all GPU memory used by models and transport.
+
+Before rendering, the producer reserves its batch charge. A batch exceeding
+the entire owner limit fails before rendering. If other batches temporarily
+consume capacity, admission returns busy immediately so producer actor threads
+remain available for acknowledgements. The caller retries capacity admission
+for up to 120 seconds before raising a capacity-exhaustion error. This timeout
+limits waiting for capacity, not the rendering duration of an admitted batch.
+
+After publication, the producer retains the actual source `ObjectRef`.
+OCR, the final supported image consumer, waits for its scoped GPU work before
+acknowledging page indices. The source batch releases its reference and charge
+only after every page index has been acknowledged. This completion wait also
+applies when receiver pooling is disabled. Source command-scene ownership
+through replay remains separate and unchanged.
+
+Producer status reports owner limits, active and peak charged bytes, active
+and retained batches, pending pages, completed batches, and capacity rejections.
+Use those counters to distinguish outstanding consumers from ordinary GPU
+allocation pressure. No image is expired by age, and no unbounded reference
+cache is introduced. Capacity or ownership failures do not select CPU
+rasterization or host RGB transport.
+
+Synthetic GPU ownership stress checks finish with zero retained owner entries,
+charged bytes, and pending pages. Exact RGB gates also pass with GPU allocation
+overflow, slot reuse, and terminated encoding actors before consumer fetch;
+their source leases and owner entries drain. Four guarded Page Elements/OCR
+pages pass without image tensor readback or encoding.
+
+Normal pipeline completion additionally requires zero active owner batches;
+an undrained ledger raises an ownership error. This completion check does not
+replace an original model failure. The experimental mode does not guarantee
+replay or retry recovery after final acknowledgement releases a source.
+Full-corpus reliability, retrieval, and performance validation remain pending.
+Previously completed DC10K snapshots do not validate this ownership revision.
+
 ### Publish only completed RGB tensors
 
 For native `cuda_rdt`, set `CUDA_PDF_READY_TRANSPORT=1` in the NRL driver

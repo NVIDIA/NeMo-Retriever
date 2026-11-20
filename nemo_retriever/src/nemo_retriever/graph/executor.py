@@ -832,8 +832,11 @@ class RayDataExecutor(AbstractExecutor):
         validate_batch: Callable[[pd.DataFrame], None] | None = None,
     ) -> Any:
         self._check_gpu_placement = True
+        completed = False
         try:
-            return self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+            result = self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+            completed = True
+            return result
         finally:
             self._check_gpu_placement = False
             check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
@@ -864,6 +867,12 @@ class RayDataExecutor(AbstractExecutor):
                             )
                             + "\n"
                         )
+                    if completed and any(
+                        (item.get("owner_leases") or {}).get("active_batches", 0) for item in statuses
+                    ):
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import GpuTransportError
+
+                        raise GpuTransportError("GPU source ownership did not drain after final image consumption")
                 finally:
                     ray.kill(pool)
 
@@ -1156,7 +1165,10 @@ class RayDataExecutor(AbstractExecutor):
 
                             register()
                         self._cuda_rdt_pool = ray.remote(num_cpus=0)(RendererPool).remote(
-                            str(library_path()), rgb_pool_bytes=_rgb_pool_capacity(), ready_transport=ready_transport
+                            str(library_path()),
+                            rgb_pool_bytes=_rgb_pool_capacity(),
+                            ready_transport=ready_transport,
+                            rgb_owner_bytes=_rgb_pool_capacity("CUDA_PDF_RGB_OWNER_BYTES"),
                         )
                     constructor_kwargs = dict(constructor_kwargs, _cuda_renderer_pool=self._cuda_rdt_pool)
             if batch_format == "pandas":
