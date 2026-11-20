@@ -359,8 +359,19 @@ Normal pipeline completion additionally requires zero active owner batches;
 an undrained ledger raises an ownership error. This completion check does not
 replace an original model failure. The experimental mode does not guarantee
 replay or retry recovery after final acknowledgement releases a source.
-Full-corpus reliability, retrieval, and performance validation remain pending.
-Previously completed DC10K snapshots do not validate this ownership revision.
+A full native CLI trial with owner leases fails with illegal GPU-memory access
+under NVIDIA Multi-Process Service (MPS). The trial uses stock NIXL transport,
+an upstream Ray nightly, readiness-checked transport disabled, and a 64 GiB
+owner limit per producer across eight GPUs. No capacity rejections are recorded,
+so the failure does not indicate exhaustion of the configured owner limit.
+The originating kernel remains unknown; the observations do not establish that
+the ownership protocol caused or resolved the fault.
+
+This mode remains experimental and disabled by default. The failed trial does
+not complete retrieval and provides no valid full-run throughput or accuracy
+result. Bounded passes do not establish GPU memory safety or full-corpus
+reliability. Previously completed DC10K snapshots do not validate this ownership
+revision.
 
 ### Publish only completed RGB tensors
 

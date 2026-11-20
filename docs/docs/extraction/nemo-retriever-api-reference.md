@@ -264,8 +264,10 @@ per-producer limit retains the actual source `ObjectRef` until final OCR
 consumption acknowledges every page in its batch. Refer to
 [Bound source ownership through final consumption](performance_guide.md#bound-source-ownership-through-final-consumption)
 for byte charging, admission limits, and acknowledgement semantics. Bounded
-ownership and model checks pass; full-corpus reliability, retrieval, and
-performance validation remain pending.
+ownership and model checks pass, but a full native CLI trial fails with an
+illegal GPU-memory access. The originating kernel remains unknown. This mode
+is not validated for full ingestion; no valid full-run throughput or accuracy
+result is available for this ownership revision.
 
 For experimental readiness-checked publication, set
 `CUDA_PDF_READY_TRANSPORT=1` in the NRL driver environment. Unset or `0`
