@@ -260,6 +260,13 @@ def test_only_opted_in_operators_preserve_pandas_output() -> None:
     assert _preserves_pandas_output(_PassthroughOperator, {"preserve_pandas_output": True})
 
 
+@pytest.mark.parametrize("renderer", ["pypdfium", "cuda", "cuda_rdt"])
+def test_only_gpu_resident_renderer_preserves_reference_metadata(renderer) -> None:
+    assert _preserves_pandas_output(_PassthroughOperator, {"pdf_renderer": renderer}) == (renderer == "cuda_rdt")
+    graph = Graph() >> _PassthroughOperator(pdf_renderer=renderer)
+    assert _requires_stable_pandas_blocks([graph.roots[0]]) == (renderer == "cuda_rdt")
+
+
 def test_text_chunk_operator_preserves_heterogeneous_pandas_output() -> None:
     assert _preserves_pandas_output(TextChunkCPUActor, {})
 

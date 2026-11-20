@@ -237,6 +237,13 @@ share the owning model pool's GPU reservation and exact GPU UUID. The executor
 keeps renderer owners alive until ingestion drains, then releases them. GPU
 image references are removed before text embedding and index writing.
 
+The native Ray executor keeps transport metadata in pandas blocks so Ray can
+track GPU `ObjectRef` dependencies through downstream stages. Hiding those
+references in opaque Arrow pickled cells can release live images when an
+upstream worker exits. These metadata blocks retain references and dimensions;
+page pixels remain in CUDA memory and move through NIXL. This lifetime rule
+is managed by the executor and requires no additional configuration.
+
 Optional GPU RGB pooling uses `CUDA_PDF_RGB_POOL_BYTES` in the NRL driver
 environment. NRL validates the value and forwards it to renderer producers.
 Unset or `0` retains ordinary GPU allocations. A positive value reserves a

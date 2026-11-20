@@ -221,7 +221,12 @@ def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPand
 def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, Any]) -> bool:
     """Return whether an operator's heterogeneous rows should stay in pandas."""
     return bool(
-        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False) or operator_kwargs.get("preserve_pandas_output", False)
+        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False)
+        or operator_kwargs.get("preserve_pandas_output", False)
+        # GPU ObjectRefs must stay visible to Ray's serializer. Arrow's
+        # pickled-object cells hide those dependencies from its reference
+        # counter, so a completed upstream worker can release live images.
+        or operator_kwargs.get("pdf_renderer") == "cuda_rdt"
     )
 
 
