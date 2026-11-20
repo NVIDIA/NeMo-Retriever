@@ -305,7 +305,13 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_parse_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         parse_kwargs = build_parse_actor_kwargs(extract_params)
-        return self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
+        parse_actor = self._instantiate_resolved(NemotronParseActor, **parse_kwargs)
+        try:
+            return parse_actor.run(batch_df)
+        finally:
+            cleanup = getattr(parse_actor, "cleanup", None)
+            if callable(cleanup):
+                cleanup()
 
     def _run_pdf_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
@@ -352,7 +358,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             "ocr_invoke_url": ep.ocr_invoke_url,
             "ocr_version": getattr(ep, "ocr_version", "v2"),
             "ocr_lang": getattr(ep, "ocr_lang", None),
-            "api_key": ep.ocr_api_key or ep.api_key,
+            "api_key": ep.stage_api_key("ocr_api_key"),
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
@@ -459,8 +465,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         detect_kwargs: dict[str, Any] = {"extract_infographics": bool(extract_params.extract_infographics)}
         if extract_params.page_elements_invoke_url:
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-        if extract_params.api_key:
-            detect_kwargs["api_key"] = extract_params.api_key
+        page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
+        if page_elements_api_key:
+            detect_kwargs["api_key"] = page_elements_api_key
         inference_batch_size = (
             getattr(tuning, "page_elements_inference_batch_size", None)
             or getattr(extract_params, "inference_batch_size", None)

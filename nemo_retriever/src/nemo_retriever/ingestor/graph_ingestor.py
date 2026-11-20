@@ -449,8 +449,12 @@ def _coerce(params: Any, kwargs: dict[str, Any], *, default_factory: Callable[[]
         values = params.model_dump()
         uses_no_api_key = getattr(params, "_uses_no_api_key", None)
         api_key_env_reference = getattr(params, "_api_key_env_reference", None)
+        api_key_was_env_defaulted = getattr(params, "_api_key_was_env_defaulted", None)
         for field_name in type(params).model_fields:
             if field_name in kwargs:
+                continue
+            if callable(api_key_was_env_defaulted) and api_key_was_env_defaulted(field_name):
+                values[field_name] = None
                 continue
             if callable(uses_no_api_key) and uses_no_api_key(field_name):
                 values[field_name] = NO_API_KEY

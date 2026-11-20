@@ -22,6 +22,7 @@ import io
 import json
 import logging
 import re
+import threading
 import time
 import traceback
 
@@ -725,6 +726,9 @@ def nemotron_parse_pages(
 class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     """Ray-friendly callable that initialises the selected local Parse model once per actor."""
 
+    # Ray UDF threads per actor, so several batches share one vLLM engine and its scheduler.
+    UDF_THREADS: int = 16
+
     def __init__(
         self,
         *,
@@ -766,6 +770,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             remote_max_429_retries=int(remote_max_429_retries),
         )
         self._model = None
+        self._model_lock = threading.Lock()
         if self._invoke_url:
             self._nim_client = NIMClient(max_pool_workers=int(remote_max_pool_workers))
         else:
@@ -780,25 +785,38 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
 
     def _ensure_model(self) -> None:
         """Load the selected local model on the worker rather than the driver."""
-        if self._model is None and not self._invoke_url:
-            model_id = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
-            if model_id not in NEMOTRON_PARSE_LOCAL_MODELS:
-                raise ValueError(
-                    f"Unsupported local Nemotron Parse model: {model_id}. "
-                    f"Use `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` locally, or configure "
-                    "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
-                )
-            from nemo_retriever.models.local import NemotronParse35
+        if self._model is not None or self._invoke_url:
+            return
+        with self._model_lock:
+            if self._model is None:
+                self._load_model()
 
-            model_kwargs: Dict[str, Any] = {"task_prompt": self._task_prompt, "backend": "vllm"}
-            model_kwargs["dflash_tokens"] = self._nemotron_parse_dflash_tokens
-            if self._parse_sampling_params:
-                model_kwargs["sampling_params"] = {
-                    key: value for key, value in self._parse_sampling_params.items() if key != "max_tokens"
-                }
-                if "max_tokens" in self._parse_sampling_params:
-                    model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
-            self._model = NemotronParse35(**model_kwargs)
+    def _load_model(self) -> None:
+        model_id = self._nemotron_parse_model or NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL
+        if model_id not in NEMOTRON_PARSE_LOCAL_MODELS:
+            raise ValueError(
+                f"Unsupported local Nemotron Parse model: {model_id}. "
+                f"Use `{NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL}` locally, or configure "
+                "`nemotron_parse_invoke_url` or `invoke_url` to use a compatible remote model."
+            )
+        from nemo_retriever.models.local import NemotronParse35
+
+        model_kwargs: Dict[str, Any] = {"task_prompt": self._task_prompt, "backend": "vllm"}
+        model_kwargs["dflash_tokens"] = self._nemotron_parse_dflash_tokens
+        if self._parse_sampling_params:
+            model_kwargs["sampling_params"] = {
+                key: value for key, value in self._parse_sampling_params.items() if key != "max_tokens"
+            }
+            if "max_tokens" in self._parse_sampling_params:
+                model_kwargs["max_tokens"] = self._parse_sampling_params["max_tokens"]
+        self._model = NemotronParse35(**model_kwargs)
+
+    def cleanup(self) -> None:
+        """Shut down the local engine and its event-loop thread; repeated calls are safe."""
+        with self._model_lock:
+            if self._model is not None:
+                self._model.unload()
+                self._model = None
 
     def process(self, data: Any, **kwargs: Any) -> Any:
         self._ensure_model()

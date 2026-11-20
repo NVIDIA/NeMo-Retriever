@@ -4,13 +4,18 @@
 
 """Offline contracts for plugin MTP and DFlash2 Parse inference."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import asyncio
+import itertools
 import os
 import sys
+import threading
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 from PIL import Image
+import numpy as np
 import pytest
 import torch
 
@@ -40,7 +45,7 @@ def vllm_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> SimpleNames
     llm = MagicMock(return_value=engine)
     sampling = MagicMock()
     module = ModuleType("vllm")
-    module.LLM = llm
+    monkeypatch.setattr(adapter_module, "_AsyncParseEngine", llm)
     module.SamplingParams = sampling
     monkeypatch.setitem(sys.modules, "vllm", module)
     register = MagicMock()
@@ -91,27 +96,8 @@ def test_vllm_reports_length_limited_generation(vllm_runtime: SimpleNamespace) -
     assert parser.invoke_batch_results([]) == []
 
 
-def test_vllm_generation_survives_disabled_progress_bars(
-    vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from tqdm import tqdm
-
-    # Retriever's quiet CLI and benchmark harnesses set TQDM_DISABLE for Ray workers.
-    monkeypatch.setenv("TQDM_DISABLE", "1")
-
-    def generate(prompts: list[object], *args: object, use_tqdm: bool = True, **kwargs: object) -> list[object]:
-        if use_tqdm:
-            # vLLM's offline engine estimates speed from the bar after each request;
-            # a disabled bar reports zero elapsed time.
-            _ = 1 / tqdm(total=len(prompts)).format_dict["elapsed"]
-        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
-
-    vllm_runtime.engine.generate.side_effect = generate
-    assert NemotronParse35().invoke(Image.new("RGB", (16, 20))) == "page"
-
-
 @pytest.mark.parametrize("tokens", [None, 32])
-def test_vllm_converts_pages_only_as_generated(
+def test_vllm_converts_then_submits_batch(
     vllm_runtime: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, tokens: int | None
 ) -> None:
     parser = NemotronParse35(backend="vllm", dflash_tokens=tokens)
@@ -124,12 +110,14 @@ def test_vllm_converts_pages_only_as_generated(
 
     def generate(*args: object, **kwargs: object) -> list[SimpleNamespace]:
         events.append("generate")
-        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])]
+        return [SimpleNamespace(outputs=[SimpleNamespace(text="page", finish_reason="stop", token_ids=[1])])] * len(
+            args[0]
+        )
 
     monkeypatch.setattr(parser, "preprocess", preprocess)
     vllm_runtime.engine.generate.side_effect = generate
     assert parser.invoke_batch([Image.new("RGB", (16, 16))] * 2, task_prompt="custom") == ["page", "page"]
-    assert events == ["convert", "generate", "convert", "generate"]
+    assert events == ["convert", "convert", "generate"]
     assert vllm_runtime.engine.generate.call_args.args[0][0]["prompt"] == "<pad>custom"
 
 
@@ -138,7 +126,7 @@ def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespac
     page = Image.new("RGB", (16, 16))
     parser(page)
     parser.unload()
-    vllm_runtime.engine.llm_engine.engine_core.shutdown.assert_called_once_with(timeout=30.0)
+    vllm_runtime.engine.shutdown.assert_called_once_with(timeout=30.0)
     assert parser._model is None
     parser.unload()
     parser(page)
@@ -148,7 +136,7 @@ def test_vllm_unload_shuts_engine_down_then_reloads(vllm_runtime: SimpleNamespac
 def test_vllm_shutdown_failure_retains_engine(vllm_runtime: SimpleNamespace) -> None:
     parser = NemotronParse35(dflash_tokens=None, backend="vllm")
     parser(Image.new("RGB", (16, 16)))
-    vllm_runtime.engine.llm_engine.engine_core.shutdown.side_effect = RuntimeError("shutdown failed")
+    vllm_runtime.engine.shutdown.side_effect = RuntimeError("shutdown failed")
     with pytest.raises(RuntimeError, match="shutdown failed"):
         parser.unload()
     assert parser._model is vllm_runtime.engine
@@ -424,3 +412,151 @@ def test_default_vllm_backend_selects_dflash32(vllm_runtime):
 
 def test_transformers_auto_default_does_not_enable_dflash():
     assert NemotronParse35(backend="transformers", device="cpu")._dflash_tokens is None
+
+
+def _page(value: int = 1) -> np.ndarray:
+    return (np.arange(16 * 16 * 3, dtype=np.uint8).reshape(16, 16, 3) * value) % 255
+
+
+def test_vllm_engine_batches_pages_with_bounded_memory(vllm_runtime: SimpleNamespace) -> None:
+    NemotronParse35(dflash_tokens=16)(Image.new("RGB", (16, 16)))
+    engine = vllm_runtime.llm.call_args.kwargs
+    assert engine["max_num_seqs"] == NemotronParse35().input_batch_size == 128
+    assert engine["gpu_memory_utilization"] == 0.3
+    assert engine["kv_cache_memory_bytes"] == 24 * 1024**3
+    assert engine["mm_processor_cache_gb"] == 0
+    assert NemotronParse35(backend="transformers", device="cpu").input_batch_size == 1
+
+
+def test_vllm_skips_blank_pages_and_keeps_order(vllm_runtime: SimpleNamespace) -> None:
+    vllm_runtime.engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text="first", finish_reason="length", token_ids=[1, 2])]),
+        SimpleNamespace(outputs=[SimpleNamespace(text="second", finish_reason="stop", token_ids=[3])]),
+    ]
+    parser = NemotronParse35()
+    blank = np.full((16, 16, 3), 255, dtype=np.uint8)
+    assert parser.invoke_batch_results([_page(), blank, _page(2)]) == [
+        ParsePageResult(text="first", finish_reason="length", output_tokens=2),
+        ParsePageResult(text="", finish_reason="stop", output_tokens=0),
+        ParsePageResult(text="second", finish_reason="stop", output_tokens=1),
+    ]
+    assert len(vllm_runtime.engine.generate.call_args.args[0]) == 2
+
+
+def test_vllm_all_blank_batch_does_not_load_engine(vllm_runtime: SimpleNamespace) -> None:
+    assert NemotronParse35().invoke_batch([np.zeros((16, 16, 3), dtype=np.uint8)] * 2) == ["", ""]
+    vllm_runtime.llm.assert_not_called()
+    vllm_runtime.download.assert_not_called()
+
+
+def test_concurrent_callers_load_one_engine(vllm_runtime: SimpleNamespace) -> None:
+    parser = NemotronParse35()
+    with ThreadPoolExecutor(16) as pool:
+        assert (
+            list(pool.map(lambda _: parser.invoke(Image.new("RGB", (16, 16))), range(32))) == ["<class_Text>page"] * 32
+        )
+    vllm_runtime.llm.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["normal", "empty", "error", "abort", "error_finish"])
+def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    preprocess = ModuleType("vllm.renderers.inputs.preprocess")
+    preprocess.parse_model_prompt = lambda config, prompt: prompt
+    sampling = ModuleType("vllm.sampling_params")
+    sampling.RequestOutputKind = SimpleNamespace(FINAL_ONLY="final")
+    monkeypatch.setitem(sys.modules, preprocess.__name__, preprocess)
+    monkeypatch.setitem(sys.modules, sampling.__name__, sampling)
+    request_ids = []
+    cancelled = []
+
+    async def generate(item: str, params: SimpleNamespace, request_id: str):
+        request_ids.append(request_id)
+        assert params.output_kind == "final"
+        if mode == "error":
+            if item == "first":
+                raise RuntimeError("request failed")
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.append(item)
+                raise
+        if mode == "empty":
+            return
+        await asyncio.sleep(0.01 if item == "first" else 0)
+        reason = "error" if mode == "error_finish" and item == "second" else "stop"
+        yield SimpleNamespace(
+            outputs=[SimpleNamespace(finish_reason="abort" if mode == "abort" else reason)], item=item
+        )
+
+    engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
+    engine._loop = asyncio.new_event_loop()
+    engine._thread = threading.Thread(target=engine._loop.run_forever)
+    engine._thread.start()
+    engine._request_ids = itertools.count()
+    engine._render_lock = threading.Lock()
+    engine.engine = SimpleNamespace(
+        model_config=None,
+        renderer=SimpleNamespace(
+            default_cmpl_tok_params=SimpleNamespace(with_kwargs=lambda **kwargs: kwargs),
+            render_cmpl=lambda prompts, params: prompts,
+        ),
+        generate=generate,
+        shutdown=MagicMock(),
+    )
+    params = SimpleNamespace(clone=SimpleNamespace)
+    try:
+        if mode == "normal":
+            assert [output.item for output in engine.generate(["first", "second"], params)] == ["first", "second"]
+            assert len(set(request_ids)) == 2
+        else:
+            expected = {"empty": "no output", "error": "request failed"}.get(mode, "finished with reason")
+            with pytest.raises(RuntimeError, match=expected):
+                engine.generate(["first", "second"], params)
+            assert cancelled == (["second"] if mode == "error" else [])
+        unwound = []
+
+        async def output_handler() -> None:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0)
+                unwound.append(True)
+                raise
+
+        handler = asyncio.run_coroutine_threadsafe(output_handler(), engine._loop)
+        # Like vLLM, engine shutdown only schedules the handler's cancellation on the loop.
+        engine.engine.shutdown.side_effect = lambda timeout: handler.cancel()
+    finally:
+        engine.shutdown(timeout=30)
+    engine.engine.shutdown.assert_called_once_with(timeout=30)
+    assert unwound == [True]
+    assert engine._loop.is_closed()
+    assert not engine._thread.is_alive()
+
+
+def test_async_engine_shutdown_does_not_wait_past_timeout_for_stuck_tasks() -> None:
+    engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
+    engine._loop = asyncio.new_event_loop()
+    engine._thread = threading.Thread(target=engine._loop.run_forever, daemon=True)
+    engine._thread.start()
+    engine.engine = SimpleNamespace(shutdown=MagicMock())
+
+    async def ignores_cancellation() -> None:
+        while True:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run_coroutine_threadsafe(ignores_cancellation(), engine._loop)
+    shutdown = threading.Thread(target=engine.shutdown, kwargs={"timeout": 0.1}, daemon=True)
+    shutdown.start()
+    shutdown.join(timeout=5)
+    assert not shutdown.is_alive()
+    assert engine._loop.is_closed()
+    assert not engine._thread.is_alive()
+
+
+def test_vllm_validates_blank_pages(vllm_runtime: SimpleNamespace) -> None:
+    with pytest.raises(ValueError):
+        NemotronParse35().invoke_batch([np.zeros((16, 16, 2, 2), dtype=np.uint8)])

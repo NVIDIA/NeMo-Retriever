@@ -564,6 +564,7 @@ class InprocessExecutor(AbstractExecutor):
             ChartRoutingCPUActor,
             ChartRoutingGPUActor,
         )
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
 
         stages = (
             tqdm(operators, desc="Pipeline stages", unit="stage")
@@ -576,7 +577,9 @@ class InprocessExecutor(AbstractExecutor):
             try:
                 df = op.run(df)
             finally:
-                if isinstance(op, (ChartRoutingActor, ChartRoutingCPUActor, ChartRoutingGPUActor)):
+                if isinstance(
+                    op, (ChartRoutingActor, ChartRoutingCPUActor, ChartRoutingGPUActor, NemotronParseGPUActor)
+                ):
                     op.cleanup()
 
         return df
