@@ -838,6 +838,8 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
             "3",
             "--page-elements-batch-size",
             "8",
+            "--page-elements-inference-batch-size",
+            "16",
             "--page-elements-cpus-per-actor",
             "0.5",
             "--ocr-workers",
@@ -871,6 +873,8 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert extract_params.batch_tuning.pdf_extract_num_cpus == 1.5
     assert extract_params.batch_tuning.page_elements_workers == 3
     assert extract_params.batch_tuning.page_elements_batch_size == 8
+    assert extract_params.batch_tuning.page_elements_inference_batch_size == 16
+    assert extract_params.inference_batch_size == 8
     assert extract_params.batch_tuning.page_elements_cpus_per_actor == 0.5
     assert extract_params.batch_tuning.ocr_workers == 5
     assert extract_params.batch_tuning.ocr_inference_batch_size == 6
@@ -1349,6 +1353,7 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
         (["--ray-address", "ray://cluster:10001"], "--ray-address"),
         (["--no-ray-log-to-driver"], "--ray-log-to-driver"),
         (["--pdf-extract-workers", "2"], "--pdf-extract-workers"),
+        (["--page-elements-inference-batch-size", "16"], "--page-elements-inference-batch-size"),
     ],
 )
 def test_root_ingest_local_rejects_batch_only_options(tmp_path, args: list[str], expected_flag: str) -> None:
@@ -2140,3 +2145,16 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     assert b"nemo_retriever.embedding_model_name" not in table.schema.metadata
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)
+
+
+@pytest.mark.parametrize("size", ["0", "-1"])
+def test_root_ingest_rejects_nonpositive_page_elements_inference_batch(tmp_path, size: str) -> None:
+    document = tmp_path / "invalid-inference-batch.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(
+        cli_main.app, ["ingest", "batch", str(document), "--page-elements-inference-batch-size", size]
+    )
+
+    assert result.exit_code == 2
+    assert "--page-elements-inference-batch-size" in result.output

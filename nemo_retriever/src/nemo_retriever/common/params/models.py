@@ -510,6 +510,11 @@ class BatchTuningParams(_ParamsModel):
     pdf_extract_num_cpus: float = 1
     pdf_extract_workers: Optional[int] = None
     page_elements_batch_size: int = 24
+    page_elements_inference_batch_size: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Images per Page Elements model invocation. None uses ExtractParams.inference_batch_size.",
+    )
     page_elements_repartition: Optional[bool] = Field(
         default=None,
         description=(

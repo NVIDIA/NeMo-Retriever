@@ -627,6 +627,17 @@ In-process ingestion releases the routing model and HTTP client when the stage
 finishes. Direct routing actor users can call `cleanup()` to release these
 resources explicitly.
 
+### Set the Page Elements inference batch limit
+
+Pass a positive `BatchTuningParams.page_elements_inference_batch_size` through
+`.extract(batch_tuning=...)` to limit images per Page Elements model invocation.
+This optional override takes precedence over `ExtractParams.inference_batch_size`;
+leaving it `None` retains the general setting, which defaults to `8`.
+`BatchTuningParams.page_elements_batch_size` separately controls Ray page-row
+batches. Refer to
+[Tune Page Elements model batches separately from Ray batches](performance_guide.md#tune-page-elements-model-batches-separately-from-ray-batches)
+for a native batch CLI example and GPU memory considerations.
+
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when

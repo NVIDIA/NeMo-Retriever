@@ -103,6 +103,35 @@ Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI inge
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
 
+### Tune Page Elements model batches separately from Ray batches
+
+`page_elements_batch_size` controls page rows supplied to a Ray actor call.
+`page_elements_inference_batch_size` controls the maximum images in each model
+invocation within that call. Raising the Ray batch size alone does not increase
+the model invocation limit. Conversely, model batches cannot combine pages
+from separate actor calls.
+
+Set the positive optional inference limit through
+`.extract(batch_tuning=BatchTuningParams(page_elements_inference_batch_size=16))`.
+It takes precedence over `ExtractParams.inference_batch_size`. The default,
+`None`, retains that general setting, whose existing default is `8`.
+Typed ingest plans expose the override in `IngestExtractBatchOptions`.
+
+The following native batch CLI example supplies up to 32 page rows per actor
+call and up to 16 images per model invocation:
+
+```bash
+retriever ingest batch /path/to/your/pdfs \
+  --page-elements-batch-size 32 \
+  --page-elements-inference-batch-size 16
+```
+
+The inference CLI option is batch-only. Model weights, detection thresholds,
+rendering, and defaults remain unchanged. Larger inference batches can require
+more GPU memory. Compare complete ingestion throughput, memory use, and output
+counts before accepting a larger value; higher GPU utilization or throughput
+is not guaranteed.
+
 ### Tune embedding preparation and remote requests
 
 Embedding preparation, actor batches, and HTTP requests have separate concurrency and batch-size controls. Pass the following settings through `.embed(...)` in the Python API.

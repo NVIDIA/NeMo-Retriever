@@ -387,7 +387,15 @@ PageElementsWorkersOption = Annotated[
 PageElementsBatchSizeOption = Annotated[
     int | None,
     typer.Option(
-        "--page-elements-batch-size", min=1, help="Batch mode only. Page-element detection batch size per actor."
+        "--page-elements-batch-size", min=1, help="Batch mode only. Page-element detection batch size per Ray task."
+    ),
+]
+PageElementsInferenceBatchSizeOption = Annotated[
+    int | None,
+    typer.Option(
+        "--page-elements-inference-batch-size",
+        min=1,
+        help="Batch mode only. Maximum images per page-element model invocation; defaults to 8.",
     ),
 ]
 PageElementsCpusPerActorOption = Annotated[

@@ -948,8 +948,11 @@ def build_graph(
                 detect_kwargs["page_elements_invoke_url"] = extract_params.page_elements_invoke_url
             if extract_params.api_key:
                 detect_kwargs["api_key"] = extract_params.api_key
-            if extract_params.inference_batch_size:
-                detect_kwargs["inference_batch_size"] = int(extract_params.inference_batch_size)
+            detection_batch_size = (
+                getattr(tuning, "page_elements_inference_batch_size", None) or extract_params.inference_batch_size
+            )
+            if detection_batch_size:
+                detect_kwargs["inference_batch_size"] = int(detection_batch_size)
 
             ocr_kwargs: dict[str, Any] = {}
             if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:

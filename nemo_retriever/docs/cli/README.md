@@ -454,6 +454,8 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium`, experimental `cuda` with encoded images, or experimental `cuda_rdt` with native Ray GPU transport. Both CUDA modes require a separately built renderer package. |
 | `--pdf-split-workers` | unset | Batch mode only. Positive number of independent Ray actors for CPU PDF splitting; unset retains the existing single splitter. |
 | `--pdf-split-batch-size` | `1` | Batch mode only. Input PDF documents per splitter actor batch, separate from extraction page batches. |
+| `--page-elements-batch-size` | planner default | Batch mode only. Page rows supplied to each Ray Page Elements actor call. |
+| `--page-elements-inference-batch-size` | unset | Batch mode only. Positive maximum images per Page Elements model invocation. Overrides the general extraction inference batch size, which defaults to `8`. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -468,8 +470,9 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 
 Batch-only options include `--ray-address`, `--ray-log-to-driver`,
 `--pdf-split-batch-size`, `--pdf-split-workers`, `--pdf-extract-workers`, `--ocr-workers`,
-`--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
-related batch-size / CPU / GPU tuning flags.
+`--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`,
+`--page-elements-inference-batch-size`, and related batch-size / CPU / GPU tuning
+flags.
 
 ### Service ingest
 

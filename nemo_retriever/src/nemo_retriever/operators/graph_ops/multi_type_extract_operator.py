@@ -461,8 +461,10 @@ class _MultiTypeExtractBase(AbstractOperator):
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
         if extract_params.api_key:
             detect_kwargs["api_key"] = extract_params.api_key
-        inference_batch_size = getattr(extract_params, "inference_batch_size", None) or getattr(
-            tuning, "page_elements_batch_size", None
+        inference_batch_size = (
+            getattr(tuning, "page_elements_inference_batch_size", None)
+            or getattr(extract_params, "inference_batch_size", None)
+            or getattr(tuning, "page_elements_batch_size", None)
         )
         if inference_batch_size:
             detect_kwargs["inference_batch_size"] = int(inference_batch_size)

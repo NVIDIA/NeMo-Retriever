@@ -118,6 +118,7 @@ class IngestExtractBatchOptions:
     table_structure_repartition: bool | None = None
     pdf_extract_rows_per_block: int | None = None
     pdf_split_workers: int | None = None
+    page_elements_inference_batch_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -544,6 +545,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
             "pdf_extract_num_cpus": batch.pdf_extract_cpus_per_task,
             "page_elements_workers": batch.page_elements_workers,
             "page_elements_batch_size": batch.page_elements_batch_size,
+            "page_elements_inference_batch_size": batch.page_elements_inference_batch_size,
             "page_elements_repartition": batch.page_elements_repartition,
             "page_elements_cpus_per_actor": batch.page_elements_cpus_per_actor,
             "gpu_page_elements": batch.page_elements_gpus_per_actor,
