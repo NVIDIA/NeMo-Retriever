@@ -329,11 +329,19 @@ independent of `CUDA_PDF_RGB_POOL_BYTES` and
 or bound all GPU memory used by models and transport.
 
 Before rendering, the producer reserves its batch charge. A batch exceeding
-the entire owner limit fails before rendering. If other batches temporarily
-consume capacity, admission returns busy immediately so producer actor threads
-remain available for acknowledgements. The caller retries capacity admission
-for up to 120 seconds before raising a capacity-exhaustion error. This timeout
-limits waiting for capacity, not the rendering duration of an admitted batch.
+the entire owner limit fails before rendering. Admission uses a first-in,
+first-out (FIFO) queue of at most 1,024 pending requests per producer. Retries retain
+the same request identity, batch charge, and page count, so newer requests
+cannot bypass a queued request. Queue overflow raises an error.
+
+If capacity is unavailable, admission returns busy immediately so actor threads
+remain available for acknowledgements. The caller retries with bounded backoff.
+A 120-second idle watchdog resets when the producer reports newly acknowledged
+pages from final consumers. Duplicate acknowledgements do not count as progress.
+Total capacity waiting can exceed 120 seconds while consumption progresses;
+the watchdog does not limit an admitted batch's rendering duration. On error,
+the caller attempts to cancel its queued request without masking the original
+failure. Cancellation removes pending admission metadata, not published images.
 
 After publication, the producer retains the actual source `ObjectRef`.
 OCR, the final supported image consumer, waits for its scoped GPU work before
@@ -343,7 +351,8 @@ applies when receiver pooling is disabled. Source command-scene ownership
 through replay remains separate and unchanged.
 
 Producer status reports owner limits, active and peak charged bytes, active
-and retained batches, pending pages, completed batches, and capacity rejections.
+and retained batches, pending pages, acknowledged pages, completed batches,
+queued requests, and capacity rejections.
 Use those counters to distinguish outstanding consumers from ordinary GPU
 allocation pressure. No image is expired by age, and no unbounded reference
 cache is introduced. Capacity or ownership failures do not select CPU
@@ -355,8 +364,8 @@ overflow, slot reuse, and terminated encoding actors before consumer fetch;
 their source leases and owner entries drain. Four guarded Page Elements/OCR
 pages pass without image tensor readback or encoding.
 
-Normal pipeline completion additionally requires zero active owner batches;
-an undrained ledger raises an ownership error. This completion check does not
+Normal pipeline completion additionally requires zero active owner batches
+and queued admission requests; an undrained ledger raises an ownership error. This completion check does not
 replace an original model failure. The experimental mode does not guarantee
 replay or retry recovery after final acknowledgement releases a source.
 A full native CLI trial with owner leases fails with illegal GPU-memory access
@@ -371,7 +380,8 @@ This mode remains experimental and disabled by default. The failed trial does
 not complete retrieval and provides no valid full-run throughput or accuracy
 result. Bounded passes do not establish GPU memory safety or full-corpus
 reliability. Previously completed DC10K snapshots do not validate this ownership
-revision.
+revision. Full-pipeline validation of the FIFO admission and progress-watchdog
+revision remains pending; it does not establish resolution of earlier failures.
 
 ### Publish only completed RGB tensors
 

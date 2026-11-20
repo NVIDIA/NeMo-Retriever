@@ -261,7 +261,10 @@ For experimental bounded source ownership, set `CUDA_PDF_RGB_OWNER_BYTES` in
 the NRL driver environment. Unset or `0` disables explicit owner leases;
 positive integer values must be at least 3,145,728 bytes. This separate
 per-producer limit retains the actual source `ObjectRef` until final OCR
-consumption acknowledges every page in its batch. Refer to
+consumption acknowledges every page in its batch. Bounded first-in, first-out
+admission keeps request order across retries. A 120-second watchdog detects capacity waits
+without new final-consumer acknowledgements, rather than limiting total wait
+time while consumption progresses. Refer to
 [Bound source ownership through final consumption](performance_guide.md#bound-source-ownership-through-final-consumption)
 for byte charging, admission limits, and acknowledgement semantics. Bounded
 ownership and model checks pass, but a full native CLI trial fails with an

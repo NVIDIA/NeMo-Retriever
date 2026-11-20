@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Bounded producer references retained through final image consumption."""
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
 
@@ -20,10 +21,12 @@ class OwnerLeaseBook:
         self.limit = limit_bytes
         self._lock = threading.Lock()
         self._entries = {}
+        self._waiting = OrderedDict()
+        self._acknowledged_pages = 0
         self._next = 0
         self._bytes = self._peak = self._completed = self._rejections = 0
 
-    def reserve(self, charge, pages):
+    def reserve(self, charge, pages, request_id=None):
         if (
             not isinstance(charge, int)
             or isinstance(charge, bool)
@@ -35,16 +38,42 @@ class OwnerLeaseBook:
             raise ValueError("positive integer charge and page count required")
         if charge > self.limit:
             raise ValueError("one batch exceeds owner byte limit")
+        if request_id is not None and (not isinstance(request_id, str) or not 0 < len(request_id) <= 128):
+            raise ValueError("admission request ID must be a nonempty string of at most 128 characters")
         with self._lock:
-            if self._bytes + charge > self.limit:
+            if request_id is not None:
+                expected = (charge, pages)
+                if request_id in self._waiting:
+                    if self._waiting[request_id] != expected:
+                        raise ValueError("admission request changed its batch charge or page count")
+                else:
+                    if len(self._waiting) >= 1024:
+                        raise RuntimeError("GPU image owner admission queue limit exceeded")
+                    self._waiting[request_id] = expected
+                first = next(iter(self._waiting))
+                ahead = first != request_id
+            else:
+                ahead = bool(self._waiting)
+            if ahead or self._bytes + charge > self.limit:
                 self._rejections += 1
                 return None
+            if request_id is not None:
+                self._waiting.pop(request_id)
             self._next += 1
             token = self._next
             self._entries[token] = _Lease(charge, pages, set(range(pages)))
             self._bytes += charge
             self._peak = max(self._peak, self._bytes)
             return token
+
+    def cancel_request(self, request_id):
+        """Cancel only a queued request; published images still require ACKs."""
+        with self._lock:
+            return self._waiting.pop(request_id, None) is not None
+
+    def admission_progress(self):
+        with self._lock:
+            return self._acknowledged_pages
 
     def commit(self, token, reference):
         if reference is None:
@@ -77,7 +106,9 @@ class OwnerLeaseBook:
             # Full index domain is retained even after partial acknowledgement.
             if any(i >= entry.count for i in indices):
                 raise ValueError("page index outside source batch")
+            before = len(entry.remaining)
             entry.remaining.difference_update(indices)
+            self._acknowledged_pages += before - len(entry.remaining)
             if not entry.remaining:
                 released = self._entries.pop(token)
                 self._bytes -= entry.charge
@@ -96,5 +127,7 @@ class OwnerLeaseBook:
                 retained_batches=sum(e.reference is not None for e in self._entries.values()),
                 pending_pages=sum(len(e.remaining) for e in self._entries.values()),
                 completed_batches=self._completed,
+                acknowledged_pages=self._acknowledged_pages,
+                queued_requests=len(self._waiting),
                 capacity_rejections=self._rejections,
             )

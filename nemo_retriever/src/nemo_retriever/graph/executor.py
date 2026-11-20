@@ -868,7 +868,9 @@ class RayDataExecutor(AbstractExecutor):
                             + "\n"
                         )
                     if completed and any(
-                        (item.get("owner_leases") or {}).get("active_batches", 0) for item in statuses
+                        (item.get("owner_leases") or {}).get("active_batches", 0)
+                        or (item.get("owner_leases") or {}).get("queued_requests", 0)
+                        for item in statuses
                     ):
                         from nemo_retriever.operators.extract.pdf.gpu_transport import GpuTransportError
 

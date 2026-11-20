@@ -107,7 +107,7 @@ def test_producer_keeps_publication_until_consumer_ack(monkeypatch):
     del metadata
     gc.collect()
     assert refs[0]() is not None
-    assert producer.render([scene]) == {"busy": True}
+    assert producer.render([scene]) == {"busy": True, "owner_progress": 0}
     producer.acknowledge_images({token: [0]})
     gc.collect()
     assert refs[0]() is None
@@ -199,13 +199,18 @@ def test_credit_timeout_stops_instead_of_rendering_without_ownership(monkeypatch
     from nemo_retriever.operators.extract.pdf.gpu_transport import _render_with_credit, GpuTransportError
 
     calls = []
-    producer = SimpleNamespace(render_handles=SimpleNamespace(remote=lambda scenes: calls.append(scenes) or object()))
+    producer = SimpleNamespace(
+        render_handles=SimpleNamespace(
+            remote=lambda scenes, **kwargs: calls.append((scenes, kwargs["request_id"])) or object()
+        )
+    )
     clock = iter([0, 121])
     monkeypatch.setattr(time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(ray, "get", lambda result: {"busy": True})
     with pytest.raises(GpuTransportError, match="capacity remained exhausted"):
         _render_with_credit(producer, "render_handles", ["owned_scene"])
-    assert calls == [["owned_scene"]]
+    assert [item[0] for item in calls] == [["owned_scene"], ["owned_scene"]]
+    assert calls[0][1] == calls[1][1]
 
 
 def test_successful_executor_exit_requires_owner_drain_without_masking_original_failure(monkeypatch):
@@ -234,3 +239,89 @@ def test_successful_executor_exit_requires_owner_drain_without_masking_original_
     with pytest.raises(ValueError, match="original model failure"):
         executor._ingest(None, return_results=False)
     assert killed == [pool, pool]
+
+
+def test_waiting_requests_cannot_be_overtaken_when_credits_return():
+    book = OwnerLeaseBook(10)
+    current = book.reserve(10, 2)
+    book.commit(current, Reference())
+    assert book.reserve(10, 1, "first") is None
+    assert book.reserve(1, 1, "second") is None
+    assert book.reserve(1, 1, "third") is None
+    book.acknowledge(current, [0, 1])
+    assert book.reserve(1, 1, "third") is None
+    assert book.reserve(1, 1) is None
+    admitted = book.reserve(10, 1, "first")
+    assert admitted is not None
+    book.commit(admitted, Reference())
+    book.acknowledge(admitted, [0])
+    assert book.reserve(1, 1, "third") is None
+    assert book.reserve(1, 1, "second") is not None
+    assert book.reserve(1, 1, "third") is not None
+    assert book.status()["queued_requests"] == 0
+
+
+def test_abandoned_head_can_be_cancelled_without_releasing_published_images():
+    book = OwnerLeaseBook(10)
+    current = book.reserve(10, 1)
+    book.commit(current, Reference())
+    assert book.reserve(10, 1, "abandoned") is None
+    assert book.reserve(10, 1, "next") is None
+    assert book.cancel_request("abandoned")
+    assert not book.cancel_request("abandoned")
+    assert book.status()["active_bytes"] == 10
+    book.acknowledge(current, [0])
+    assert book.reserve(10, 1, "next") is not None
+
+
+def test_pending_queue_is_bounded_and_retries_cannot_change_batch():
+    book = OwnerLeaseBook(10)
+    current = book.reserve(10, 1)
+    book.commit(current, Reference())
+    assert book.reserve(10, 1, "first") is None
+    with pytest.raises(ValueError, match="changed its batch"):
+        book.reserve(1, 1, "first")
+    for i in range(1023):
+        assert book.reserve(1, 1, str(i)) is None
+    with pytest.raises(RuntimeError, match="queue limit"):
+        book.reserve(1, 1, "overflow")
+    assert book.status()["queued_requests"] == 1024
+    assert book.status()["active_bytes"] == 10
+
+
+def test_duplicate_acks_do_not_count_as_progress():
+    book = OwnerLeaseBook(10)
+    current = book.reserve(10, 2)
+    book.commit(current, Reference())
+    assert book.admission_progress() == 0
+    book.acknowledge(current, [0])
+    assert book.admission_progress() == 1
+    book.acknowledge(current, [0, 0])
+    assert book.admission_progress() == 1
+    book.acknowledge(current, [1])
+    assert book.admission_progress() == 2
+
+
+def test_progress_watchdog_allows_slow_fair_queue_and_cancels_on_stall(monkeypatch):
+    import time
+    import ray
+    from types import SimpleNamespace
+    from nemo_retriever.operators.extract.pdf.gpu_transport import _render_with_credit, GpuTransportError
+
+    calls, cancellations = [], []
+    producer = SimpleNamespace(
+        render_handles=SimpleNamespace(remote=lambda scenes, **kwargs: calls.append(kwargs["request_id"]) or "render"),
+        cancel_admission=SimpleNamespace(remote=lambda request: cancellations.append(request) or "cancel"),
+    )
+    clock = iter([0, 119, 238])
+    replies = iter([{"busy": True, "owner_progress": value} for value in [0, 1, 2]] + [{"reference": "complete"}])
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    monkeypatch.setattr(ray, "get", lambda result, **kwargs: next(replies) if result == "render" else True)
+    assert _render_with_credit(producer, "render_handles", ["scene"]) == {"reference": "complete"}
+    assert len(set(calls)) == 1 and not cancellations
+    clock = iter([0, 121])
+    replies = iter([{"busy": True, "owner_progress": 0}] * 2)
+    with pytest.raises(GpuTransportError, match="without final-consumer progress"):
+        _render_with_credit(producer, "render_handles", ["scene"])
+    assert cancellations == [calls[-1]]

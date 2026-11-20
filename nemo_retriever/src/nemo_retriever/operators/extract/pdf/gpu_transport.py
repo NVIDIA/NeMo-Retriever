@@ -198,12 +198,12 @@ class _GpuProducer:
         self._thread_state = threading.local()
         self._pages = ThreadPoolExecutor(max_workers=16, thread_name_prefix="cuda-page")
 
-    def _reserve(self, scenes):
+    def _reserve(self, scenes, request_id=None):
         if self._owner_leases is None:
             return None
         slot = 3 * 1024**2
         charge = sum(((scene.height * scene.width * 3 + slot - 1) // slot) * slot for scene in scenes)
-        return self._owner_leases.reserve(charge, len(scenes))
+        return self._owner_leases.reserve(charge, len(scenes), request_id)
 
     def _publish(self, results, events, token):
         import ray
@@ -221,6 +221,11 @@ class _GpuProducer:
             metadata["owner_token"] = token
         return metadata
 
+    def cancel_admission(self, request_id):
+        if self._owner_leases is not None:
+            return self._owner_leases.cancel_request(request_id)
+        return False
+
     def acknowledge_images(self, groups):
         if self._owner_leases is None:
             raise GpuTransportError("GPU image owner leases are disabled")
@@ -229,10 +234,10 @@ class _GpuProducer:
         return True
 
     @nvtx.annotate("nrl.cuda_rdt::render_device", color="green")
-    def render(self, scenes):
-        token = self._reserve(scenes)
+    def render(self, scenes, request_id=None):
+        token = self._reserve(scenes, request_id)
         if self._owner_leases is not None and token is None:
-            return {"busy": True}
+            return {"busy": True, "owner_progress": self._owner_leases.admission_progress()}
         try:
             results = []
             events = []
@@ -286,10 +291,10 @@ class _GpuProducer:
         return (rgb, event) if self._ready_transport else rgb
 
     @nvtx.annotate("nrl.cuda_rdt::render_shared_scene", color="green")
-    def render_handles(self, handles):
-        token = self._reserve(handles)
+    def render_handles(self, handles, request_id=None):
+        token = self._reserve(handles, request_id)
         if self._owner_leases is not None and token is None:
-            return {"busy": True}
+            return {"busy": True, "owner_progress": self._owner_leases.admission_progress()}
         futures = []
         try:
             for handle in handles:
@@ -483,16 +488,37 @@ def submit_scene_batch(scenes, pool):
 
 def _render_with_credit(producer, method, scenes):
     import time
+    import uuid
     import ray
 
-    deadline = time.monotonic() + 120
-    while True:
-        metadata = ray.get(getattr(producer, method).remote(scenes))
-        if not metadata.get("busy"):
-            return metadata
-        if time.monotonic() >= deadline:
-            raise GpuTransportError("GPU image owner capacity remained exhausted for 120 seconds")
-        time.sleep(0.01)
+    request_id = uuid.uuid4().hex
+    deadline = None
+    last_progress = None
+    delay = 0.01
+    try:
+        while True:
+            metadata = ray.get(getattr(producer, method).remote(scenes, request_id=request_id))
+            if not metadata.get("busy"):
+                return metadata
+            now = time.monotonic()
+            progress = metadata.get("owner_progress")
+            if deadline is None or progress != last_progress:
+                deadline = now + 120
+                last_progress = progress
+                delay = 0.01
+            elif now >= deadline:
+                raise GpuTransportError(
+                    "GPU image owner capacity remained exhausted without final-consumer progress for 120 seconds"
+                )
+            time.sleep(delay)
+            delay = min(0.05, delay * 1.5)
+    except BaseException:
+        try:
+            ray.get(producer.cancel_admission.remote(request_id), timeout=5)
+        except Exception:
+            # Preserve the original failure when its owner is already unavailable.
+            pass
+        raise
 
 
 def _image_metadata(metadata, producer, index, height, width, shapes):
