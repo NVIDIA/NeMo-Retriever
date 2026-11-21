@@ -458,7 +458,7 @@ def test_concurrent_callers_load_one_engine(vllm_runtime: SimpleNamespace) -> No
     vllm_runtime.llm.assert_called_once()
 
 
-@pytest.mark.parametrize("mode", ["normal", "empty", "error", "abort", "error_finish"])
+@pytest.mark.parametrize("mode", ["normal", "empty", "error", "abort", "error_finish", "return_abort"])
 def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     preprocess = ModuleType("vllm.renderers.inputs.preprocess")
     preprocess.parse_model_prompt = lambda config, prompt: prompt
@@ -485,7 +485,7 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
         await asyncio.sleep(0.01 if item == "first" else 0)
         reason = "error" if mode == "error_finish" and item == "second" else "stop"
         yield SimpleNamespace(
-            outputs=[SimpleNamespace(finish_reason="abort" if mode == "abort" else reason)], item=item
+            outputs=[SimpleNamespace(finish_reason="abort" if mode in ("abort", "return_abort") else reason)], item=item
         )
 
     engine = adapter_module._AsyncParseEngine.__new__(adapter_module._AsyncParseEngine)
@@ -508,6 +508,9 @@ def test_async_engine_keeps_prompt_order_and_propagates_failures(monkeypatch: py
         if mode == "normal":
             assert [output.item for output in engine.generate(["first", "second"], params)] == ["first", "second"]
             assert len(set(request_ids)) == 2
+        elif mode == "return_abort":
+            [output] = engine.generate(["first"], params, raise_on_failed_finish=False)
+            assert output.outputs[0].finish_reason == "abort"
         else:
             expected = {"empty": "no output", "error": "request failed"}.get(mode, "finished with reason")
             with pytest.raises(RuntimeError, match=expected):
@@ -560,3 +563,45 @@ def test_async_engine_shutdown_does_not_wait_past_timeout_for_stuck_tasks() -> N
 def test_vllm_validates_blank_pages(vllm_runtime: SimpleNamespace) -> None:
     with pytest.raises(ValueError):
         NemotronParse35().invoke_batch([np.zeros((16, 16, 2, 2), dtype=np.uint8)])
+
+
+def test_stage_response_preserves_finish_reason_and_default_settings(vllm_runtime):
+    vllm_runtime.sampling.side_effect = lambda **kwargs: SimpleNamespace(**kwargs)
+    parser = NemotronParse35()
+    page = Image.new("RGB", (16, 20))
+    parser.invoke(page)
+    original_config = parser._generation_config
+    vllm_runtime.engine.generate.return_value = [
+        SimpleNamespace(outputs=[SimpleNamespace(text=" partial ", finish_reason="length", token_ids=[1, 2, 3])])
+    ]
+    response = parser.invoke_response(
+        page,
+        task_prompt="detection",
+        sampling_params={
+            "temperature": 0.2,
+            "repetition_penalty": 1.05,
+            "max_tokens": 4096,
+            "top_k": 50,
+            "top_p": 1.0,
+            "seed": 0,
+        },
+    )
+    assert response == {"raw_out": "partial", "finish_reason": "length", "usage": {"completion_tokens": 3}}
+    assert vllm_runtime.engine.generate.call_args.kwargs["raise_on_failed_finish"] is False
+    request = vllm_runtime.engine.generate.call_args.args[0][0]
+    assert request["prompt"] == "<pad>detection"
+    assert vllm_runtime.sampling.call_args.kwargs["max_tokens"] == 4096
+    assert vllm_runtime.sampling.call_args.kwargs["skip_special_tokens"] is False
+    assert parser._generation_config is original_config
+    assert original_config.max_tokens == 9000
+    assert vllm_runtime.engine.generate.call_args.args[1].max_tokens == 4096
+    parser.invoke(page)
+    assert vllm_runtime.engine.generate.call_args.args[1] is original_config
+    assert vllm_runtime.llm.call_count == 1
+
+
+def test_stage_response_rejects_transformers_without_loading(vllm_runtime):
+    parser = NemotronParse35(backend="transformers", device="cpu")
+    with pytest.raises(ValueError, match="local vLLM backend"):
+        parser.invoke_response(Image.new("RGB", (16, 20)), task_prompt="p", sampling_params={})
+    vllm_runtime.download.assert_not_called()
