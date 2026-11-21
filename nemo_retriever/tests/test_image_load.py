@@ -110,6 +110,37 @@ class TestImageBytesToPagesDf:
         _assert_valid_page_df(df, "/tmp/photo.jpg")
         assert df.iloc[0]["page_image"]["orig_shape_hw"] == (15, 20)
 
+    def test_jpeg_exif_orientation_is_applied(self) -> None:
+        # Portrait page with a black band across its top edge.
+        upright = Image.new("RGB", (30, 40), color="white")
+        upright.paste((0, 0, 0), (0, 0, 30, 8))
+        # Cameras store the sensor frame sideways and tag it with
+        # Orientation=6 ("rotate 90 degrees clockwise to display").
+        exif = Image.Exif()
+        exif[0x0112] = 6
+        buf = BytesIO()
+        upright.transpose(Image.Transpose.ROTATE_90).save(buf, format="JPEG", exif=exif.tobytes())
+
+        df = image_bytes_to_pages_df(buf.getvalue(), "/tmp/IMG_0001.jpg")
+        _assert_valid_page_df(df, "/tmp/IMG_0001.jpg")
+        page_image = df.iloc[0]["page_image"]
+        assert page_image["orig_shape_hw"] == (40, 30)
+
+        decoded = Image.open(BytesIO(base64.b64decode(page_image["image_b64"]))).convert("L")
+        assert decoded.size == (30, 40)
+        assert decoded.crop((0, 0, 30, 6)).getextrema()[1] < 64
+
+    def test_jpeg_malformed_exif_still_loads(self) -> None:
+        data = _image_to_bytes(_make_image(20, 15), "JPEG")
+        # Splice an APP1 Exif segment with a broken TIFF header after SOI.
+        payload = b"Exif\x00\x00garbage!"
+        app1 = b"\xff\xe1" + (len(payload) + 2).to_bytes(2, "big") + payload
+        data = data[:2] + app1 + data[2:]
+
+        df = image_bytes_to_pages_df(data, "/tmp/photo.jpg")
+        _assert_valid_page_df(df, "/tmp/photo.jpg")
+        assert df.iloc[0]["page_image"]["orig_shape_hw"] == (15, 20)
+
     def test_bmp(self) -> None:
         img = _make_image(8, 8)
         data = _image_to_bytes(img, "BMP")
