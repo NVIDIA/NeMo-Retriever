@@ -1913,6 +1913,54 @@ class TestRayDataExecutor:
         assert call["compute"] == {**pool, "enable_true_multi_threading": True}
         assert call["max_concurrency"] == threads
 
+    @pytest.mark.parametrize(("batch_override", "expected"), [(None, 64), (1, 1), (4, 4)])
+    def test_build_dataset_preserves_explicit_parse_batch_size(self, monkeypatch, batch_override, expected):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+
+        captured = []
+
+        class _FakeDataContext:
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                return self
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset, DataContext=_FakeDataContext, ActorPoolStrategy=lambda **kwargs: kwargs
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 2),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = Graph() >> NemotronParseActor()
+        overrides = {"NemotronParseActor": {"concurrency": 2}}
+        if batch_override is not None:
+            overrides["NemotronParseActor"]["batch_size"] = batch_override
+        executor = RayDataExecutor(graph, node_overrides=overrides)
+        executor._resources_preflight_complete = True
+        executor.build_dataset(_FakeDataset())
+
+        assert captured[0]["batch_size"] == expected
+
     def test_node_overrides_stored(self):
 
         g = Graph()
