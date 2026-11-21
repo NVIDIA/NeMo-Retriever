@@ -898,10 +898,18 @@ class RayDataExecutor(AbstractExecutor):
         sink_operator = nodes[sink_index].operator
         has_downstream_nodes = sink_index + 1 < len(nodes)
 
+        self._resolved_stream_ingest_node = None
         dataset = self._build_dataset(
             data,
             segment="before_stream_ingest",
         )
+        resolved_sink = self._resolved_stream_ingest_node
+        if resolved_sink is not None and nodes[sink_index].operator_kwargs.get("_embedding_params") is not None:
+            # The driver writes outside the Dataset. Use the same checkpoint
+            # identity resolved for its embedding actors, rather than the
+            # provisional backend constructed before resource selection.
+            sink_operator = resolved_sink.operator_class(**resolved_sink.operator_kwargs)
+            nodes[sink_index] = Node(sink_operator, name=resolved_sink.name)
 
         if sink_operator._supports_worker_write():
             preserve_pandas_blocks = _requires_stable_pandas_blocks(nodes[:sink_index])
@@ -1045,6 +1053,7 @@ class RayDataExecutor(AbstractExecutor):
         all_nodes = self._linearize(resolved_graph)
         sink_index = self._stream_ingest_index(all_nodes)
         if sink_index is not None and segment == "before_stream_ingest":
+            self._resolved_stream_ingest_node = all_nodes[sink_index]
             nodes = all_nodes[:sink_index]
         elif sink_index is not None and segment == "after_stream_ingest":
             nodes = all_nodes[sink_index + 1 :]

@@ -38,6 +38,67 @@ def resolved_stages(tmp_path, params, *, gpu_count=1, vdb_kwargs=None, resources
     return embed_node.operator_kwargs["params"], sink_node.operator_kwargs
 
 
+@pytest.mark.parametrize("worker_write", [False, True])
+@pytest.mark.parametrize("native_nvfp4", [False, True])
+@pytest.mark.parametrize("vector_dim", [4, 2048])
+def test_batch_driver_sink_writes_resolved_checkpoint(tmp_path, monkeypatch, worker_write, native_nvfp4, vector_dim):
+    import pandas as pd
+    import lancedb
+    from types import SimpleNamespace
+
+    from nemo_retriever.graph.executor import RayDataExecutor
+
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: native_nvfp4)
+    graph = build_post_extract_graph(
+        embed_params=EmbedParams(),
+        vdb_upload_params=VdbUploadParams(vdb_kwargs={"uri": str(tmp_path), "build_index": False}),
+        stage_order=("embed",),
+        reshape_content_before_embed=False,
+    )
+    resolved = resolve_graph(graph, Resources(cpu_count=8, gpu_count=1))
+    embed_node = resolved.roots[0]
+    sink_node = embed_node.children[0]
+    frame = pd.DataFrame(
+        [
+            {
+                "text": "checkpoint regression",
+                "embedding": [0.25] * vector_dim,
+                "document_type": "text",
+                "metadata": {
+                    "content_metadata": {"type": "text", "id": "row-1", "page_number": 1},
+                    "source_metadata": {"source_id": "input.pdf", "source_name": "input.pdf"},
+                },
+            }
+        ]
+    )
+    executor = RayDataExecutor(graph)
+
+    def build_dataset(data, *, segment):
+        assert segment == "before_stream_ingest"
+        executor._resolved_stream_ingest_node = sink_node
+        return SimpleNamespace(iter_batches=lambda **kwargs: iter([frame]))
+
+    def write_from_worker(dataset, node, **kwargs):
+        with node.operator._worker_write() as writer:
+            receipt = writer._write_partition(frame)
+            count = writer._commit_partitions([receipt])
+        return pd.DataFrame([{"input_rows": len(frame), "submitted_records": count}])
+
+    monkeypatch.setattr(executor, "_build_dataset", build_dataset)
+    monkeypatch.setattr(executor, "_worker_write_ingest", write_from_worker)
+    monkeypatch.setattr(IngestVdbOperator, "_supports_worker_write", lambda self: worker_write)
+    result = executor._ingest_graph(None, return_results=False)
+    assert result["submitted_records"].tolist() == [1]
+    table = lancedb.connect(str(tmp_path)).open_table("nemo-retriever")
+    metadata = table.schema.metadata
+    params = embed_node.operator_kwargs["params"]
+    assert metadata[b"nemo_retriever.embedding_model_name"].decode() == params.embed_model_name
+    assert metadata[b"nemo_retriever.embedding_model_revision"].decode() == params.embed_model_revision
+    assert table.schema.field("vector").type.list_size == vector_dim
+    # Resolution must not mutate the provisional graph's backend.
+    assert graph.roots[0].children[0].operator._vdb.embedding_model_revision is None
+
+
 @pytest.mark.parametrize(
     "backend,native_nvfp4,expected",
     [

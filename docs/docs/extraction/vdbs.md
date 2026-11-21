@@ -85,6 +85,23 @@ New local Nemotron 3.5 indexes record the resolved precision-specific checkpoint
 
 Single-node Ray batch execution uses the driver's visible CUDA devices for automatic checkpoint selection. With `vllm`, it selects NVFP4 only when every visible device has compute capability major 10 or later, and BF16 otherwise. An explicit precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision.
 
+This identity also applies to streaming and worker-native batch writes. To inspect the identity recorded on a local table, read its schema metadata:
+
+```python
+import lancedb
+
+table = lancedb.connect("./lancedb").open_table("nemo-retriever")
+metadata = table.schema.metadata or {}
+for key in (
+    b"nemo_retriever.embedding_model_name",
+    b"nemo_retriever.embedding_model_revision",
+):
+    value = metadata.get(key)
+    print(key.decode(), value.decode() if value else None)
+```
+
+Compare these values with the checkpoint and revision used during ingestion. If they differ, rebuild and re-ingest before evaluating retrieval quality. Changing metadata alone does not establish which model produced existing vectors.
+
 An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 
 ## LanceDB Overview { #why-lancedb }
