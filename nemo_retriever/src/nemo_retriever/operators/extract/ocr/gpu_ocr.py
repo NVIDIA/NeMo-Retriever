@@ -14,7 +14,11 @@ from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.common.modality.ocr.shared import Image, _error_payload, ocr_page_elements
+from nemo_retriever.common.modality.ocr.shared import (
+    Image,
+    _error_payload,
+    ocr_page_elements,
+)
 
 
 class OCRActor(AbstractOperator, GPUOperator):
@@ -28,6 +32,8 @@ class OCRActor(AbstractOperator, GPUOperator):
         if Image is not None:
             warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
+        self._cuda_rdt = bool(ocr_kwargs.pop("cuda_rdt", False))
+        self._cuda_rgb_receive_pool_bytes = int(ocr_kwargs.pop("_cuda_rgb_receive_pool_bytes", 0))
         self.ocr_kwargs = dict(ocr_kwargs)
         invoke_url = (
             str(self.ocr_kwargs.get("ocr_invoke_url") or "").strip()
@@ -71,14 +77,32 @@ class OCRActor(AbstractOperator, GPUOperator):
 
     @nvtx.annotate("nrl.batch::ocr.batch", color="blue")
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return ocr_page_elements(
-            data,
-            model=self._model,
-            remote_retry=self._remote_retry,
-            nim_client=self._nim_client,
-            **self.ocr_kwargs,
-            **kwargs,
-        )
+        from nemo_retriever.operators.extract.pdf.gpu_transport import gpu_image_scope
+
+        with gpu_image_scope(receive_pool_bytes=getattr(self, "_cuda_rgb_receive_pool_bytes", 0)):
+            result = ocr_page_elements(
+                data,
+                model=self._model,
+                remote_retry=self._remote_retry,
+                nim_client=self._nim_client,
+                **self.ocr_kwargs,
+                **kwargs,
+            )
+        if getattr(self, "_cuda_rdt", False):
+            from nemo_retriever.operators.extract.pdf.gpu_transport import acknowledge_gpu_images, raise_stage_errors
+
+            raise_stage_errors(result, "ocr")
+            acknowledge_gpu_images(result)
+            result = result.copy()
+            result["page_image"] = [
+                {
+                    "image_b64": None,
+                    "encoding": "gpu_consumed",
+                    "orig_shape_hw": image["orig_shape_hw"],
+                }
+                for image in result["page_image"]
+            ]
+        return result
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -87,6 +111,8 @@ class OCRActor(AbstractOperator, GPUOperator):
         try:
             return self.run(batch_df, **override_kwargs)
         except BaseException as exc:
+            if getattr(self, "_cuda_rdt", False):
+                raise
             if isinstance(batch_df, pd.DataFrame):
                 out = batch_df.copy()
                 payload = _error_payload(stage="actor_call", exc=exc)

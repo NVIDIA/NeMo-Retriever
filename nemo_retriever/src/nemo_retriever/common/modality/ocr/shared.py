@@ -28,7 +28,9 @@ import pandas as pd
 from requests import HTTPError
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.common.modality.table_and_chart import join_table_structure_and_ocr_output
+from nemo_retriever.common.modality.table_and_chart import (
+    join_table_structure_and_ocr_output,
+)
 
 try:
     from PIL import Image
@@ -143,6 +145,12 @@ def _crop_all_from_page(
     encoded PNG string — this avoids a wasteful numpy→PIL→PNG round-trip on
     the remote inference path.
     """
+    from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
+
+    if isinstance(page_image_b64, GpuPageImage):
+        if as_b64:
+            raise ValueError("GPU crops cannot be converted to encoded host images")
+        return _crop_gpu_page(page_image_b64, detections, wanted_labels)
     if Image is None:  # pragma: no cover
         raise ImportError("Cropping requires pillow.")
 
@@ -230,7 +238,12 @@ def _prepare_ocr_crop(crop_array: np.ndarray, padding: Optional[str] = None):
     if padding != "bottom_right":
         raise ValueError("OCR crop padding must be 'none' or 'bottom_right'.")
     side = max(height, width)
-    padded = np.full((side, side, 3), 255, dtype=np.uint8)
+    import torch
+
+    if isinstance(crop_array, torch.Tensor) and crop_array.is_cuda:
+        padded = torch.full((side, side, 3), 255, dtype=torch.uint8, device=crop_array.device)
+    else:
+        padded = np.full((side, side, 3), 255, dtype=np.uint8)
     padded[:height, :width] = crop_array
     return padded, original_hw, (side, side)
 
@@ -526,7 +539,11 @@ def concat_with_passthrough(processed: pd.DataFrame, passthrough: pd.DataFrame) 
     for col in passthrough.columns:
         if col not in processed.columns:
             processed = processed.assign(**{col: None})
-    return pd.concat([processed[passthrough.columns.tolist()], passthrough], ignore_index=True, sort=False)
+    return pd.concat(
+        [processed[passthrough.columns.tolist()], passthrough],
+        ignore_index=True,
+        sort=False,
+    )
 
 
 def is_full_image_batch(batch_df: pd.DataFrame) -> bool:
@@ -762,8 +779,14 @@ def _prepare_ocr_rows(
                 detections = []
 
             page_image = getattr(row, "page_image", None) or {}
-            page_image_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
-            if not isinstance(page_image_b64, str) or not page_image_b64:
+            from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
+
+            page_image_b64 = (
+                (page_image.get("gpu_image") or page_image.get("image_b64")) if isinstance(page_image, dict) else None
+            )
+            if not isinstance(page_image_b64, GpuPageImage) and (
+                not isinstance(page_image_b64, str) or not page_image_b64
+            ):
                 metadata = getattr(row, "metadata", None) or {}
                 upstream_error = metadata.get("error") if isinstance(metadata, dict) else None
                 page_num = getattr(row, "page_number", "?")
@@ -1026,16 +1049,19 @@ def _run_local_ocr_batches(
         for start in range(0, len(jobs), batch_size):
             batch_jobs = jobs[start : start + batch_size]
             batch_crops = [job.crop_array for job in batch_jobs]
+            # GPU RGB has an explicit HWC contract; invoke retains its legacy
+            # CHW/BCHW tensor conversion for callers outside this transport.
+            invoke = model.invoke_gpu_rgb if getattr(batch_crops[0], "is_cuda", False) else model.invoke
 
             try:
-                batch_preds = model.invoke(batch_crops, merge_level=merge_level)
+                batch_preds = invoke(batch_crops, merge_level=merge_level)
             except Exception:
                 batch_preds = None
 
             if not isinstance(batch_preds, list) or len(batch_preds) != len(batch_jobs):
                 for job in batch_jobs:
                     try:
-                        preds = model.invoke(job.crop_array, merge_level=merge_level)
+                        preds = invoke(job.crop_array, merge_level=merge_level)
                         _append_ocr_prediction(
                             row_results[job.row_index],
                             row=job.row,
@@ -1085,7 +1111,8 @@ def _build_ocr_page_elements_output(
     for result in row_results:
         if result.text_regions:
             regions = sorted(
-                result.text_regions, key=lambda item: (item["bbox_xyxy_norm"][1], item["bbox_xyxy_norm"][0])
+                result.text_regions,
+                key=lambda item: (item["bbox_xyxy_norm"][1], item["bbox_xyxy_norm"][0]),
             )
             all_text.append("\n".join(item["text"] for item in regions))
         else:
@@ -1262,7 +1289,14 @@ def _extract_parse_text(response_item: Any) -> str:
     if isinstance(response_item, str):
         return response_item.strip()
     if isinstance(response_item, dict):
-        for key in ("generated_text", "text", "output_text", "prediction", "output", "data"):
+        for key in (
+            "generated_text",
+            "text",
+            "output_text",
+            "prediction",
+            "output",
+            "data",
+        ):
             value = response_item.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
@@ -1352,8 +1386,14 @@ def nemotron_parse_page_elements(
                 dets = []
 
             page_image = getattr(row, "page_image", None) or {}
-            page_image_b64 = page_image.get("image_b64") if isinstance(page_image, dict) else None
-            if not isinstance(page_image_b64, str) or not page_image_b64:
+            from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
+
+            page_image_b64 = (
+                (page_image.get("gpu_image") or page_image.get("image_b64")) if isinstance(page_image, dict) else None
+            )
+            if not isinstance(page_image_b64, GpuPageImage) and (
+                not isinstance(page_image_b64, str) or not page_image_b64
+            ):
                 all_table.append(table_items)
                 all_chart.append(chart_items)
                 all_infographic.append(infographic_items)
@@ -1503,3 +1543,34 @@ def nemotron_parse_page_elements(
     out["infographic_parse"] = all_infographic
     out["nemotron_parse_v1_2"] = all_meta
     return out
+
+
+def _crop_gpu_page(image, detections, wanted_labels):
+    """Apply the existing normalized crop bounds directly to GPU RGB pixels."""
+    import math
+
+    rgb = image.tensor()
+    height, width = image.height, image.width
+    results = []
+    for detection in detections:
+        if not isinstance(detection, dict):
+            continue
+        label = str(detection.get("label_name") or "").strip()
+        bbox = detection.get("bbox_xyxy_norm")
+        if label not in wanted_labels or not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            continue
+        try:
+            values = [float(value) for value in bbox]
+        except (TypeError, ValueError):
+            continue
+
+        def bound(value, extent):
+            return 0 if math.isnan(value) else int(min(max(value * extent, 0), extent))
+
+        left, top, right, bottom = [
+            bound(value, extent) for value, extent in zip(values, (width, height, width, height))
+        ]
+        if right - left <= 1 or bottom - top <= 1:
+            continue
+        results.append((label, bbox, rgb[top:bottom, left:right].contiguous()))
+    return results

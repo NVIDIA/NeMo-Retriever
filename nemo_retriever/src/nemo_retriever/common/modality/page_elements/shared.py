@@ -93,7 +93,9 @@ def _error_payload(*, stage: str, exc: BaseException) -> Dict[str, Any]:
     }
 
 
-def _decode_b64_image_to_chw_tensor(image_b64: str) -> Tuple["torch.Tensor", Tuple[int, int]]:
+def _decode_b64_image_to_chw_tensor(
+    image_b64: str,
+) -> Tuple["torch.Tensor", Tuple[int, int]]:
     if torch is None or Image is None or np is None:  # pragma: no cover
         raise ImportError("page element detection requires torch, pillow, and numpy.")
 
@@ -254,7 +256,14 @@ def _postprocess_to_per_image_detections(
 
 
 # -- Label mapping between retriever ("text") and API ("paragraph") --
-_RETRIEVER_LABEL_NAMES = ["table", "chart", "title", "infographic", "text", "header_footer"]
+_RETRIEVER_LABEL_NAMES = [
+    "table",
+    "chart",
+    "title",
+    "infographic",
+    "text",
+    "header_footer",
+]
 _RETRIEVER_TO_API = {"text": "paragraph"}
 _API_TO_RETRIEVER = {"paragraph": "text"}
 
@@ -529,6 +538,18 @@ def detect_page_elements_v3(
 
     for _, row in pages_df.iterrows():
         try:
+            from nemo_retriever.operators.extract.pdf.gpu_transport import GpuPageImage
+
+            page_image = row.get("page_image")
+            gpu_image = page_image.get("gpu_image") if isinstance(page_image, dict) else None
+            if isinstance(gpu_image, GpuPageImage):
+                if use_remote:
+                    raise ValueError("GPU-resident pages require local models")
+                row_b64.append(None)
+                row_tensors.append(gpu_image.tensor())
+                row_shapes.append((gpu_image.height, gpu_image.width))
+                row_payloads.append({"detections": []})
+                continue
             b64 = row.get("page_image")["image_b64"]
             if not b64:
                 raise ValueError("No usable image_b64 found in row.")
@@ -586,7 +607,7 @@ def detect_page_elements_v3(
 
             if len(response_items) != len(valid_indices):
                 raise RuntimeError(
-                    "Remote response count mismatch: " f"expected {len(valid_indices)}, got {len(response_items)}"
+                    f"Remote response count mismatch: expected {len(valid_indices)}, got {len(response_items)}"
                 )
 
             for local_i, row_i in enumerate(valid_indices):
@@ -629,9 +650,18 @@ def detect_page_elements_v3(
             orig_shapes.append(sh)
             try:
                 # `preprocess` may accept/return torch.Tensor or np.ndarray.
-                from nemo_retriever.common.modality.page_postprocessing import prepare_detector_input
+                from nemo_retriever.common.modality.page_postprocessing import (
+                    prepare_detector_input,
+                )
 
-                pre = torch.from_numpy(prepare_detector_input(t, tuple(model.input_shape)))
+                if isinstance(t, torch.Tensor) and t.is_cuda:
+                    from nemo_retriever.common.modality.page_postprocessing import (
+                        prepare_detector_input_gpu,
+                    )
+
+                    pre = prepare_detector_input_gpu(t, tuple(model.input_shape))
+                else:
+                    pre = torch.from_numpy(prepare_detector_input(t, tuple(model.input_shape)))
 
                 # Normalize to a single-image CHW-like item (torch or numpy); we'll convert to torch at stack time.
                 if isinstance(pre, torch.Tensor):
@@ -656,12 +686,15 @@ def detect_page_elements_v3(
 
         batch = torch.stack([_ensure_chw_float_tensor(x) for x in pre_list], dim=0)
 
+        invoke = model
+        if all(isinstance(row_tensors[i], torch.Tensor) and row_tensors[i].is_cuda for i in chunk_idx):
+            invoke = getattr(model, "_invoke_cuda", invoke)
         t0 = time.perf_counter()
         try:
             # Best-effort: pass list of shapes for batching; fall back to per-image if unsupported.
             with torch.inference_mode():
                 with torch.autocast(device_type="cuda"):
-                    preds = model(batch, orig_shapes) if len(pre_list) > 1 else model(batch, orig_shapes[0])
+                    preds = invoke(batch, orig_shapes) if len(pre_list) > 1 else invoke(batch, orig_shapes[0])
             # Some local wrappers return only the first prediction dict even for batched inputs.
             # Detect that and force per-image invocation so every row gets its own detections.
             if len(pre_list) > 1:
@@ -675,7 +708,7 @@ def detect_page_elements_v3(
             print(f"Error invoking model: {ex}")
             preds_list: List[Any] = []
             for j in range(int(batch.shape[0])):
-                preds_list.append(model(batch[j : j + 1], orig_shapes[j]))
+                preds_list.append(invoke(batch[j : j + 1], orig_shapes[j]))
             preds = preds_list
         elapsed = time.perf_counter() - t0
 
@@ -690,7 +723,10 @@ def detect_page_elements_v3(
         try:
             # Preferred: allow model wrapper to handle batched postprocess.
             if hasattr(model, "postprocess"):
-                boxes, labels, scores = model.postprocess(preds_list2)  # type: ignore[attr-defined]
+                postprocess = model.postprocess
+                if batch.is_cuda:
+                    postprocess = getattr(model, "_postprocess_cuda", postprocess)
+                boxes, labels, scores = postprocess(preds_list2)
             else:
                 # Fallback: run upstream util per-image.
                 # `postprocess_preds_page_element` expects a single pred dict and returns numpy arrays.

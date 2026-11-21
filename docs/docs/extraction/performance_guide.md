@@ -28,7 +28,7 @@ Ray Data runs repartition steps as short tasks that each reserve 1 CPU. Repartit
 
 For example, the default PDF graph on a single-GPU node with 32 CPUs keeps 3 + 4 + 1 = 8 CPUs free. Without this reserve, actor pools can reserve every CPU and repartition tasks cannot start, so no rows reach the GPU stages. Pools that you size explicitly, for example with `pdf_extract_workers` or `node_overrides`, are not reduced. If explicit pools leave less than the reserve, preflight logs a warning.
 
-Each PDF extraction worker reserves 1 CPU by default because PDF page rendering is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
+Each PDF extraction worker reserves 1 CPU by default. With the default PDFium renderer, page rasterization is single-threaded. To change it, set `pdf_extract_num_cpus` in batch tuning or pass `--pdf-extract-cpus-per-task` to the CLI.
 
 On hosts with 2 or more GPUs, the default page elements, OCR, and embedding pools give every GPU the same set of actors. This applies when the graph runs all three stages locally and has no other local GPU stage except table structure. Local table structure adds 1 table structure actor to every GPU. Graphs with page elements off, captioning, Nemotron Parse, audio, or a remote endpoint for page elements, OCR, embedding, or table structure keep the previous defaults. Any explicit `page_elements_workers`, `ocr_workers`, `embed_workers`, `gpu_page_elements`, `gpu_ocr`, or `gpu_embed` value also keeps the previous defaults for the other two stages. With table structure on, an explicit `table_structure_workers` or `gpu_table_structure` value also keeps the previous defaults. Ray places actors with fractional GPU requests on the first GPU with room, one pool after another. Each default GPU share fits exactly its actor count in the room that earlier pools leave, and the shares add up to 1.0 per GPU, so the pools spread across all GPUs:
 
@@ -110,6 +110,35 @@ Related batch-size, CPU, and GPU-per-actor flags are documented in the [CLI inge
 
 Use the Ray dashboard to verify the available-resource snapshot and the planned worker allocation when you tune throughput.
 
+### Tune Page Elements model batches separately from Ray batches
+
+`page_elements_batch_size` controls page rows supplied to a Ray actor call.
+`page_elements_inference_batch_size` controls the maximum images in each model
+invocation within that call. Raising the Ray batch size alone does not increase
+the model invocation limit. Conversely, model batches cannot combine pages
+from separate actor calls.
+
+Set the positive optional inference limit through
+`.extract(batch_tuning=BatchTuningParams(page_elements_inference_batch_size=16))`.
+It takes precedence over `ExtractParams.inference_batch_size`. The default,
+`None`, retains that general setting, whose existing default is `8`.
+Typed ingest plans expose the override in `IngestExtractBatchOptions`.
+
+The following native batch CLI example supplies up to 32 page rows per actor
+call and up to 16 images per model invocation:
+
+```bash
+retriever ingest batch /path/to/your/pdfs \
+  --page-elements-batch-size 32 \
+  --page-elements-inference-batch-size 16
+```
+
+The inference CLI option is batch-only. Model weights, detection thresholds,
+rendering, and defaults remain unchanged. Larger inference batches can require
+more GPU memory. Compare complete ingestion throughput, memory use, and output
+counts before accepting a larger value; higher GPU utilization or throughput
+is not guaranteed.
+
 ### Tune embedding preparation and remote requests
 
 Embedding preparation, actor batches, and HTTP requests have separate concurrency and batch-size controls. Pass the following settings through `.embed(...)` in the Python API.
@@ -187,6 +216,67 @@ embedding skip their repartition steps when the default per-GPU pools apply.
 Compare throughput, memory use, errors, and extracted outputs against a
 representative baseline after changing these controls.
 
+### Tune PDF splitting separately from page extraction
+
+PDF splitting runs on the CPU before page extraction. Each splitter actor
+opens input PDF documents and emits single-page PDF packets. Page extraction
+then interprets and renders those packets. The splitter and extractor have
+separate worker and batch controls.
+
+In native Ray batch mode, use the following splitter settings:
+
+| Python batch tuning | CLI option | Default | Behavior |
+| --- | --- | --- | --- |
+| `pdf_split_workers` | `--pdf-split-workers` | `None` | Keeps the existing single splitter actor when unset. A positive value selects independent Ray splitter actors. |
+| `pdf_split_batch_size` | `--pdf-split-batch-size` | `1` | Sets input PDF documents per splitter actor batch. This is not rendered pages per batch. |
+
+Increase splitter workers when PDF input work queues up while page extraction
+and GPU model stages wait for input. Independent actor processes can split
+different documents concurrently. Increasing the document batch size alone
+does not add splitter processes or distribute one large PDF across workers.
+
+The following example selects four splitter actors with one document per
+splitter batch, retaining the other pipeline defaults:
+
+```bash
+retriever ingest batch /path/to/your/pdfs \
+  --pdf-split-workers 4 \
+  --pdf-split-batch-size 1
+```
+
+The equivalent Python configuration passes splitter tuning to `.extract()`:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import BatchTuningParams
+
+chunks = (
+    create_ingestor(run_mode="batch")
+    .files(["report.pdf", "appendix.pdf"])
+    .extract(
+        extraction_mode="pdf",
+        batch_tuning=BatchTuningParams(
+            pdf_split_workers=4,
+            pdf_split_batch_size=1,
+        ),
+    )
+    .embed()
+    .ingest()
+)
+```
+
+More actors and larger document batches can increase CPU use, open document
+state, buffered page packets, and Ray object-store memory. Leave capacity for
+file loading and downstream stages. Monitor CPU scheduling, memory, queue
+depths, completed page counts, and end-to-end throughput before increasing
+these settings further. No particular worker count guarantees higher GPU
+utilization or ingestion throughput.
+
+Use `pdf_extract_workers` and `pdf_extract_batch_size` for downstream page
+extraction. The splitter settings do not change CUDA page-stream concurrency
+or model inference batch sizes. Typed ingest plans expose both splitter
+settings in `IngestExtractBatchOptions`.
+
 ### Set the PDF extraction block size
 
 In batch mode, the library repartitions pages before PDF extraction, targeting
@@ -225,6 +315,344 @@ chunks = (
 
 For typed ingest plans, set `pdf_extract_rows_per_block` in
 `IngestExtractBatchOptions`.
+
+## Evaluate GPU-resident PDF ingestion
+
+The experimental `pdf_renderer="cuda_rdt"` mode moves page RGB directly between
+renderer and local GPU model actors through Ray Direct Transport. CPU PDF
+parsing and command preparation remain. Native shared-memory scene handles
+avoid copying large command buffers into Python `bytes`. The path requires a
+single Linux host, the same worker user, and a shared process namespace with
+access to the scene owners' `/proc` file descriptors. Refer to
+[GPU-resident Ray batch rendering](nemo-retriever-api-reference.md#gpu-resident-ray-batch-rendering)
+for dependencies, configuration, and supported outputs.
+
+Renderer children share their owning model pool's GPU reservation. These
+reservations control scheduling, not GPU memory consumption. Rendered page
+buffers remain owned until ingestion drains, so monitor GPU memory as well as
+throughput when increasing page batch sizes or worker counts. Separate model
+pools can also require GPU-to-GPU transfers.
+
+Each GPU renderer producer shares a pool of 16 page workers across up to
+16 concurrent batch requests. Each page worker uses its own nondefault
+PyTorch CUDA stream. Before publishing a page tensor, the worker waits for
+that page's stream to complete. This host wait does not copy RGB pixels to
+CPU memory or synchronize every page. These internal limits are separate from
+page batch size and do not guarantee simultaneous kernel execution.
+
+Measure complete ingestion through index writing and retain the same PDF
+inputs, model settings, and text embedding configuration. Record page and
+indexed-row counts, ingestion pages per second, GPU memory, and stage timings.
+GPU utilization alone does not identify the limiting stage.
+
+The historical DC10K measurements below predate automatic NVFP4 selection for
+single-node Ray batch ingestion. Current defaults can select a different
+embedding checkpoint on GPUs with native NVFP4 support. Record the resolved
+checkpoint and revision, and match them across runs when measuring renderer
+effects. Refer to [Local checkpoint defaults](embedding.md#local-checkpoint-defaults).
+
+The encoded renderers and GPU-resident mode present different model pixels
+because the latter avoids JPEG compression. Compare extracted outputs and
+retrieval accuracy before accepting a throughput result.
+
+### Bound source ownership through final consumption
+
+For native `cuda_rdt`, `CUDA_PDF_RGB_OWNER_BYTES` optionally enables explicit
+producer ownership of published RGB references. Set it in the NRL driver
+environment before ingestion. Unset or `0` disables owner leases. Positive
+integer values must be at least 3,145,728 bytes (3 MiB); invalid values fail
+setup. The driver forwards the value to renderer producers.
+
+The value limits charged outstanding bytes per producer. Each page's RGB
+byte size rounds up to a 3 MiB multiple, and a batch charges the sum of its
+pages. This accounting applies even without a source RGB pool. The limit is
+independent of `CUDA_PDF_RGB_POOL_BYTES` and
+`CUDA_PDF_RGB_RECEIVER_POOL_BYTES`; it does not allocate another image slab
+or bound all GPU memory used by models and transport.
+
+Before rendering, the producer reserves its batch charge. A batch exceeding
+the entire owner limit fails before rendering. Admission uses a first-in,
+first-out (FIFO) queue of at most 1,024 pending requests per producer. Retries retain
+the same request identity, batch charge, and page count, so newer requests
+cannot bypass a queued request. Queue overflow raises an error.
+
+If capacity is unavailable, admission returns busy immediately so actor threads
+remain available for acknowledgements. The caller retries with bounded backoff.
+A 120-second idle watchdog resets when the producer reports newly acknowledged
+pages from final consumers. Duplicate acknowledgements do not count as progress.
+Total capacity waiting can exceed 120 seconds while consumption progresses;
+the watchdog does not limit an admitted batch's rendering duration. On error,
+the caller attempts to cancel its queued request without masking the original
+failure. Cancellation removes pending admission metadata, not published images.
+
+Producer acknowledgements and admission cancellation use a dedicated Ray
+concurrency group with one control slot, scheduled independently of the
+16 rendering request slots. Occupied rendering slots therefore do not consume
+the control slot needed to release completed images or cancel queued admission.
+GPU completion fences, byte limits, and lease-release conditions remain
+unchanged. This requires no additional setting and does not establish an
+end-to-end throughput or GPU utilization improvement.
+
+After publication, the producer retains the actual source `ObjectRef`.
+OCR, the final supported image consumer, waits for its scoped GPU work before
+acknowledging page indices. The source batch releases its reference and charge
+only after every page index has been acknowledged. This completion wait also
+applies when receiver pooling is disabled. Source command-scene ownership
+through replay remains separate and unchanged.
+
+Producer status reports owner limits, active and peak charged bytes, active
+and retained batches, pending pages, acknowledged pages, completed batches,
+queued requests, and capacity rejections.
+Use those counters to distinguish outstanding consumers from ordinary GPU
+allocation pressure. No image is expired by age, and no unbounded reference
+cache is introduced. Capacity or ownership failures do not select CPU
+rasterization or host RGB transport.
+
+Synthetic GPU ownership stress checks finish with zero retained owner entries,
+charged bytes, and pending pages. Exact RGB gates also pass with GPU allocation
+overflow, slot reuse, and terminated encoding actors before consumer fetch;
+their source leases and owner entries drain. Four guarded Page Elements/OCR
+pages pass without image tensor readback or encoding.
+
+Normal pipeline completion additionally requires zero active owner batches
+and queued admission requests; an undrained ledger raises an ownership error. This completion check does not
+replace an original model failure. The experimental mode does not guarantee
+replay or retry recovery after final acknowledgement releases a source.
+A full native CLI trial with owner leases fails with illegal GPU-memory access
+under NVIDIA Multi-Process Service (MPS). The trial uses stock NIXL transport,
+an upstream Ray nightly, readiness-checked transport disabled, and a 64 GiB
+owner limit per producer across eight GPUs. No capacity rejections are recorded,
+so the failure does not indicate exhaustion of the configured owner limit.
+The originating kernel remains unknown; the observations do not establish that
+the ownership protocol caused or resolved the fault.
+
+A later experimental candidate, revision `f1d09da5`, completes all 213,538
+DC10K pages on eight GPUs without MPS. Ingestion takes 623.5897 seconds, with
+zero page RGB readback or CPU raster calls. Owner, admission, and RGB lease
+ledgers drain at completion. The following results compare this and a
+subsequent candidate with the saved CPU PDFium renderer baseline. Inference
+models run on GPUs in all cases.
+
+| Metric | Saved PDFium baseline | Initial ownership candidate | Subsequent kernel candidate |
+| --- | ---: | ---: | ---: |
+| Ingestion pages per second | 385.9195 | 342.4335 | 351.6552 |
+| Retrieval queries per second | 5.5287 | 4.9809 | 4.6714 |
+| nDCG@10 | 0.63006314 | 0.63086199 | 0.63171757 |
+| Recall@10 | 0.76169265 | 0.76391982 | 0.76391982 |
+
+For the initial ownership candidate, retrieval against the completed index
+succeeds after a telemetry failure requires a query-only retry. It completes all 1,347 queries with no unmapped
+hits; model warmup of 45.4222 seconds is separate from query throughput. Neither aggregate score
+decreases in this run, but that observation does not establish accuracy
+equivalence. Ingestion remains slower than the saved baseline.
+
+The initial natural run records zero busy admissions. A subsequent candidate
+with a CUDA kernel optimization and unchanged NRL runtime completes all
+213,538 pages on eight GPUs without MPS in 607.2369 seconds. It records 28,413
+busy admission returns, exercising owner backpressure on natural input. All
+source, owner, and admission ledgers drain, with zero page RGB readback or CPU
+raster calls. Retrieval completes all 1,347 queries with no unmapped hits;
+its separate model warmup takes 47.1631 seconds.
+
+Both candidate snapshots remain below the saved CPU renderer ingestion
+throughput. Their aggregate retrieval scores do not decrease relative to that
+baseline, but no accuracy-equivalence margin has been established. The 90%
+whole-CLI GPU utilization target remains unmet. These experimental snapshots
+do not select a new default; the mode remains disabled by default. Natural
+backpressure and successful drain do not establish general GPU memory safety,
+liveness under all workloads, or retry recovery after final acknowledgement.
+Earlier MPS faults and their originating kernel remain unresolved.
+
+### Publish only completed RGB tensors
+
+For native `cuda_rdt`, set `CUDA_PDF_READY_TRANSPORT=1` in the NRL driver
+environment to enable experimental readiness-checked RGB publication. Unset or
+`0` retains stock Ray NIXL transport. The driver accepts only `0` or `1` and
+registers the selected transport before creating renderer actors.
+
+This option requires the audited Ray version 2.56.1 exactly. Incompatible Ray
+versions fail setup. The implementation registers `NRL_READY_NIXL`, a separate
+transport that reuses Ray's NIXL transfers, descriptor ownership, and cleanup.
+It checks the exact original contiguous CUDA `uint8` HWC RGB tensor and a
+completed CUDA event on the same device before extracting publication metadata.
+Missing, mismatched, or pending completion proofs raise errors without a
+host-image fallback.
+
+Each page records and completes its own CUDA event before publication. The
+readiness-checked metadata path avoids the stock device-wide publication wait,
+which can include unrelated streams. It does not eliminate page completion
+waits or receiver model-scope synchronization. Original tensor and pool leases
+must still remain valid until all consumers and transfers finish.
+
+Source and receiver arenas register with the transport manager selected for
+the transferred reference. Pool settings, model configuration, actor counts,
+and the default renderer remain unchanged. Page RGB stays on the GPU.
+
+Bounded checks pass 384 exact RGB renders and four real-model pages. One
+full-corpus trial fails with illegal GPU-memory access that propagates to OCR
+and renderer clients. A later trial, after publication-thread CUDA device
+binding, fails with `RayReferenceCountingAssertionError` and a deleted GPU image
+reference during Page Elements fetch. That trial logs no illegal GPU-memory
+access, but it also does not complete.
+
+Publication-thread context binding passes bounded fresh-thread checks. Those
+checks do not establish broad memory or reference-lifetime safety. The
+originating kernel and causal sources of the full-run failures remain unresolved.
+This option is not validated for full ingestion. Neither failed trial provides
+a valid full-corpus throughput or accuracy result. Stock transport remains the
+default. Earlier DC10K results do not establish a speedup or GPU utilization
+improvement for this transport.
+
+### Reuse registered GPU RGB buffers
+
+For `cuda_rdt`, the following independent settings reserve reusable RGB
+storage. Set them in the NRL driver environment before ingestion. The driver
+validates the values and passes them to the relevant actors in the supported
+single-host native Ray path.
+
+| Environment variable | Allocation scope | Purpose |
+| --- | --- | --- |
+| `CUDA_PDF_RGB_POOL_BYTES` | Each GPU renderer producer. | Reuses registered source RGB storage. |
+| `CUDA_PDF_RGB_RECEIVER_POOL_BYTES` | Each Page Elements and OCR GPU actor. | Reuses registered destination RGB storage. |
+
+Both settings default to disabled when unset or `0`. Positive values must be
+at least 3,145,728 bytes (3 MiB); invalid values fail setup. Source and receiver
+pooling can be enabled independently.
+
+The pool divides its capacity into 3 MiB slots and rounds capacity down to a
+whole number of slots. Each slot fits a 1,024 × 1,024 RGB `uint8` image or a
+smaller image. For example, `100663296` bytes reserves 96 MiB, or 32 slots,
+per configured actor. These capacities are not shared pipeline budgets.
+Receiver memory multiplies by Page Elements and OCR actor counts. For example,
+32 Page Elements actors and 16 OCR actors create 48 receiver pools, independent
+of any source pools on eight GPU producers. Budget memory separately on each
+GPU for its model actors, receiver pools, and producer pool.
+
+NRL registers the slab with Ray NIXL once for its lifetime. Page tensors reuse
+views of that storage, avoiding repeated per-page registration and associated
+remote metadata changes. Pool ownership must remain valid until all GPU and
+transport consumers finish. If a page exceeds one slot or no slot is free,
+rendering uses an ordinary GPU allocation. This allocation fallback does not
+copy RGB pixels to the CPU or select CPU rasterization.
+
+Receiver actors allocate target tensors from complete CPU-side batch-shape
+metadata and register the targets with Ray through `set_target_for_ref`
+before fetching RGB. This reuses destination storage as well as source
+storage. Each model scope retains the original target leases, then waits for
+its GPU context before releasing them. This completion wait transfers no
+image pixels to host memory. Missing shape metadata or invalid received
+CUDA RGB tensors raise errors; these failures do not select a host-image path.
+Receiver slot exhaustion or oversized pages use ordinary GPU allocations.
+
+The NVTX ranges `nrl.cuda_rdt::receive_targets` and
+`nrl.cuda_rdt::receive_scope_ready` identify receive-target preparation and
+the scope's completion wait. These ranges can include allocation or waiting
+time and do not by themselves measure GPU kernel execution.
+
+Renderer status includes pool capacity, slot size, active and peak usage,
+allocation and release counts, and counts of exhausted or oversized requests.
+Monitor those counters alongside GPU memory and pipeline throughput. Increasing
+the reserved capacity consumes memory that models and other GPU stages need.
+
+Transport microbenchmarks do not establish complete ingestion performance.
+Bounded pooled-output checks pass exact RGB comparisons and delayed-consumer,
+slot-exhaustion, and slot-reuse tests without RGB readback or CPU rasterization.
+A guarded local-model test also passes without image tensor readback.
+Receiver pooling also passes bounded exact-pixel, cross-GPU lifetime and
+slot-reuse checks, plus a guarded local-model test. A full DC10K receiver-pool
+run completes ingestion and retrieval evaluation with zero CPU raster calls
+and page RGB readback. These checks do not establish exact pixel equality
+for every corpus page or identical model outputs. The historical DC10K
+results below precede both pool options and describe that earlier revision.
+
+### DC10K renderer comparison
+
+#### Initial GPU-resident snapshot
+
+A completed DC10K evaluation processes 10,000 PDFs containing 213,538 pages
+through native NRL ingestion, text embedding, index writing, and retrieval.
+The `cuda_rdt` run uses all eight GPUs and reports zero page RGB readback
+and zero CPU raster calls. The evaluated sources are NRL `be908600` and
+renderer `df7d8a5`.
+
+The following results compare that run with the saved default PDFium renderer
+baseline. Both pipelines use GPU model inference; CPU refers to rasterization
+in the baseline, not to the entire pipeline.
+
+| Metric | Default PDFium renderer | CUDA renderer with Ray Direct Transport |
+| --- | ---: | ---: |
+| Ingestion pages per second | 385.9195 | 347.2670 |
+| Retrieval queries per second | 5.5287 | 5.3764 |
+| nDCG@10 | 0.63006314 | 0.63241428 |
+| Recall@10 | 0.76169265 | 0.76391982 |
+
+CUDA ingestion is approximately 10% slower in this comparison. Observed
+retrieval quality is similar, with slightly higher aggregate nDCG@10 and
+Recall@10 for this run. These measurements do not establish exact accuracy
+equivalence, statistical significance, or a speedup. Paired analysis covers
+1,347 queries; 95% bootstrap confidence intervals for both quality differences
+include zero. The baseline is a saved run rather than a freshly repeated
+baseline measurement.
+
+Rendering every input page does not imply that every page produces index
+rows. The CUDA index contains 9,987 documents and 211,621 pages; the baseline
+contains 9,986 documents and 211,603 pages. No baseline indexed document is
+missing, but 15 baseline indexed pages lack CUDA rows, and 33 additional pages
+have CUDA rows. These output differences require consideration alongside the
+aggregate retrieval metrics.
+
+Full-corpus completion and retrieval metrics are separate from the bounded
+64-page exact RGB gate. These results do not establish pixel equality for
+every DC10K page or resolve the previously observed concurrent-profiling
+memory failures. Repeat validation after changing hardware, dependencies,
+concurrency, or model settings.
+
+#### Reference-lifetime fix snapshot
+
+A later completed run evaluates NRL `4ea60d78` with renderer `17ee48e`,
+including the native pandas metadata reference-lifetime fix. It processes all
+10,000 PDFs and 213,538 pages with eight GPU producers, zero CPU raster calls,
+and zero page RGB readback. The final ownership audit reports all source
+buffer leases released.
+
+The following measurements describe this revision separately from the initial
+snapshot and use the same saved default PDFium renderer baseline. Both
+pipelines run their inference models on GPUs.
+
+| Metric | Saved default PDFium renderer | Reference-lifetime fix snapshot |
+| --- | ---: | ---: |
+| Ingestion pages per second | 385.919537 | 422.444051 |
+| Retrieval queries per second | 5.5287 | 5.133720 |
+| nDCG@10 | 0.63006313719 | 0.63221404349 |
+| Recall@10 | 0.761692650334 | 0.763919821826 |
+
+The whole ingestion CLI completes in 505.4823 seconds. Its ingestion throughput
+is approximately 9.46% higher than the saved baseline. Retrieval evaluates all
+1,347 queries in 262.3828 seconds; its separate warmup takes 46.0295 seconds.
+The mean whole-CLI GPU utilization is 56.60%, calculated from time-weighted
+one-second NVML samples across all eight GPUs. The 90% utilization target
+remains unmet.
+
+Observed aggregate retrieval scores remain similar. Paired 95% confidence
+intervals for CUDA minus baseline include zero: [-0.00331831, 0.00757341]
+for nDCG@10 and [-0.00371195, 0.00816630] for Recall@10. These results do not
+establish exact accuracy equivalence or a statistically significant gain.
+
+The index contains 306,930 rows from 9,987 documents and 211,621 pages. No
+baseline indexed document is missing. However, 16 baseline indexed pages lack
+CUDA rows, and 34 additional pages have CUDA rows. Rendering completion and
+aggregate quality therefore do not establish identical extraction coverage.
+
+An earlier pooled snapshot remains the fastest observed run at 461.659 pages
+per second, with 61.09% mean whole-CLI GPU utilization. The reference-lifetime
+fix run is approximately 8.5% slower than that snapshot. These separate runs
+do not isolate an intrinsic performance effect of the metadata block format.
+
+The exact 64-page RGB gate remains distinct from full-corpus processing and
+retrieval validation. The previously observed illegal GPU-memory accesses and
+native heap corruption during concurrent profiling remain unresolved. This
+completed run does not establish production readiness or a 90% utilization
+result.
 
 ## Profile batch ingestion with Nsight Systems
 

@@ -12,7 +12,10 @@ import pandas as pd
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
-from nemo_retriever.common.modality.page_elements.shared import _error_payload, detect_page_elements_v3
+from nemo_retriever.common.modality.page_elements.shared import (
+    _error_payload,
+    detect_page_elements_v3,
+)
 
 
 class PageElementDetectionActor(AbstractOperator, GPUOperator):
@@ -26,6 +29,9 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
     @nvtx.annotate("nrl.batch::page_elements.startup", color="blue")
     def __init__(self, **detect_kwargs: Any) -> None:
         super().__init__(**detect_kwargs)
+        self._cuda_rdt = bool(detect_kwargs.pop("cuda_rdt", False))
+        self._cuda_rgb_receive_pool_bytes = int(detect_kwargs.pop("_cuda_rgb_receive_pool_bytes", 0))
+        self._cuda_renderer_pool = detect_kwargs.pop("_cuda_renderer_pool", None)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = (
             str(self.detect_kwargs.get("page_elements_invoke_url") or "").strip()
@@ -44,19 +50,43 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             warmed = get_warmed_model("page_elements")
             self._model = warmed if warmed is not None else NemotronPageElementsV3()
             self._nim_client = None
+        if self._cuda_rdt:
+            import ray
+            import torch
+
+            uuid = str(torch.cuda.get_device_properties(torch.cuda.current_device()).uuid)
+            uuid = uuid if uuid.startswith("GPU-") else "GPU-" + uuid
+            if self._cuda_renderer_pool is None:
+                raise RuntimeError("GPU-resident rendering requires the native Ray batch executor")
+            ray.get(self._cuda_renderer_pool.get.remote(ray.get_runtime_context().get_node_id(), uuid))
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
     @nvtx.annotate("nrl.batch::page_elements.batch", color="blue")
     def process(self, data: Any, **kwargs: Any) -> Any:
-        return detect_page_elements_v3(
-            data,
-            model=self._model,
-            nim_client=self._nim_client,
-            **self.detect_kwargs,
-            **kwargs,
+        from nemo_retriever.operators.extract.pdf.gpu_transport import (
+            gpu_image_scope,
+            render_page_batch,
         )
+
+        if getattr(self, "_cuda_rdt", False):
+            if self._cuda_renderer_pool is None:
+                raise RuntimeError("GPU-resident rendering requires the native Ray batch executor")
+            data = render_page_batch(data, self._cuda_renderer_pool)
+        with gpu_image_scope(receive_pool_bytes=getattr(self, "_cuda_rgb_receive_pool_bytes", 0)):
+            result = detect_page_elements_v3(
+                data,
+                model=self._model,
+                nim_client=self._nim_client,
+                **self.detect_kwargs,
+                **kwargs,
+            )
+        if getattr(self, "_cuda_rdt", False):
+            from nemo_retriever.operators.extract.pdf.gpu_transport import raise_stage_errors
+
+            raise_stage_errors(result, "page_elements_v3")
+        return result
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
@@ -65,6 +95,8 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
         try:
             return self.run(pages_df, **override_kwargs)
         except Exception as exc:
+            if getattr(self, "_cuda_rdt", False):
+                raise
             if isinstance(pages_df, pd.DataFrame):
                 out = pages_df.copy()
                 payload = _error_payload(stage="actor_call", exc=exc)

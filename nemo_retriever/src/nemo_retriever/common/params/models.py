@@ -508,6 +508,9 @@ class LanceDbParams(_ParamsModel):
 
 class BatchTuningParams(_ParamsModel):
     pdf_split_batch_size: int = 1
+    pdf_split_workers: Optional[int] = Field(
+        default=None, gt=0, description="Number of independent Ray actors that split PDF documents into page packets."
+    )
     pdf_extract_batch_size: int = 4
     pdf_extract_rows_per_block: Optional[int] = Field(
         default=None,
@@ -520,6 +523,11 @@ class BatchTuningParams(_ParamsModel):
     pdf_extract_num_cpus: float = 1
     pdf_extract_workers: Optional[int] = None
     page_elements_batch_size: int = 24
+    page_elements_inference_batch_size: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Images per Page Elements model invocation. None uses ExtractParams.inference_batch_size.",
+    )
     page_elements_repartition: Optional[bool] = Field(
         default=None,
         description=(
@@ -759,6 +767,14 @@ class ExtractParams(_ParamsModel):
     image_format: str = "jpeg"
     jpeg_quality: int = 100
     render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
+    pdf_renderer: Literal["pdfium", "cuda", "cuda_rdt"] = Field(
+        default="pdfium",
+        description=(
+            "PDF rasterizer: pdfium, experimental cuda with a local service, "
+            "or cuda_rdt with native Ray GPU transport. "
+            "CUDA modes require a separately built renderer package."
+        ),
+    )
     inference_batch_size: int = 8
     ocr_version: Literal["v1", "v2"] = "v2"
     ocr_lang: Optional[Literal["multi", "english"]] = None

@@ -451,6 +451,11 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--embed-model-name` | unset | Local GPU inference selects Nemotron 3.5 Embed 1B: NVFP4 with native-capable GPUs and vLLM, or BF16 otherwise. Ray batch GPU embedding automatically selects BF16. Explicit Nemotron 3.5 precision IDs remain unchanged. The CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16 for batch GPU embedding. Remote inference, including implicit hosted CPU fallback, retains `nvidia/nemotron-3-embed-1b`. |
 | `--local-ingest-embed-backend` | `vllm` | Local embedding backend. With no model override, explicit `hf` use selects the Nemotron 3.5 BF16 checkpoint. |
 | `--method` | profile default | PDF extraction method: `pdfium`, `pdfium_hybrid`, `ocr`, or `nemotron_parse`. The `auto` profile selects `pdfium_hybrid`; `fast-text` selects `pdfium`. An explicit value overrides the profile-selected method. |
+| `--pdf-renderer` | `pdfium` | PDF rasterizer: `pdfium`, experimental `cuda` with encoded images, or experimental `cuda_rdt` with native Ray GPU transport. Both CUDA modes require a separately built renderer package. |
+| `--pdf-split-workers` | unset | Batch mode only. Positive number of independent Ray actors for CPU PDF splitting; unset retains the existing single splitter. |
+| `--pdf-split-batch-size` | `1` | Batch mode only. Input PDF documents per splitter actor batch, separate from extraction page batches. |
+| `--page-elements-batch-size` | planner default | Batch mode only. Page rows supplied to each Ray Page Elements actor call. |
+| `--page-elements-inference-batch-size` | unset | Batch mode only. Positive maximum images per Page Elements model invocation. Overrides the general extraction inference batch size, which defaults to `8`. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
 | `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
@@ -464,9 +469,10 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--quiet/--no-quiet` | quiet | Suppress verbose progress output by default. |
 
 Batch-only options include `--ray-address`, `--ray-log-to-driver`,
-`--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers`,
-`--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
-related batch-size / CPU / GPU tuning flags.
+`--pdf-split-batch-size`, `--pdf-split-workers`, `--pdf-extract-workers`, `--ocr-workers`,
+`--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`,
+`--page-elements-inference-batch-size`, and related batch-size / CPU / GPU tuning
+flags.
 
 ### Service ingest
 
@@ -582,6 +588,75 @@ retriever query "What is in this corpus?" \
 Hugging Face remains the local query backend for checkpoints that do not require vLLM quantization support.
 Local directories must contain `config.json`, and their absolute path must be
 available to every Ray worker or service replica that loads the model.
+
+### Experimental CUDA PDF rendering
+
+Local and native batch ingestion can select CUDA page rasterization with
+`--pdf-renderer cuda`. The default remains `--pdf-renderer pdfium`.
+This option changes the page renderer independently of `--method`.
+
+Build and install the separate `cuda-pdf-renderer` package and start its local
+service before ingestion. Set `CUDA_PDF_RENDERER_LIBRARY` to the native client
+library and `CUDA_PDF_RENDER_SOCKET` to the service's Unix-domain socket.
+Every extraction worker needs access to the package, libraries, and socket.
+
+After configuring the renderer, run ingestion with the existing model and
+index settings:
+
+```bash
+retriever ingest /path/to/your/pdfs --pdf-renderer cuda
+```
+
+PDFium still interprets PDF objects on the CPU. CUDA rasterizes page commands,
+and NRL retains its existing image serialization and model preprocessing.
+This integration targets local and native batch PDF extraction. Service mode,
+NIM rendering, and Nemotron Parse are outside its validated scope.
+
+The renderer is experimental. Concurrent profiling has exposed illegal
+GPU-memory accesses and native heap corruption. Missing dependencies or CUDA
+rendering failures stop ingestion without silently switching to CPU rendering.
+
+#### GPU-resident Ray batch rendering
+
+Use `--pdf-renderer cuda_rdt` for native Ray batch PDF ingestion with local
+Page Elements and OCR v2. This mode keeps page RGB and model input crops on
+the GPU, bypassing page JPEG/base64 encoding and decoding. CPU PDFium parsing
+and command preparation remain.
+
+Install the renderer Python package and native libraries in every worker
+environment, and set `CUDA_PDF_RENDERER_LIBRARY` to the built client library.
+This mode does not use an externally started socket service. Run on a single
+Linux host with the same user and shared process namespace for CPU and GPU
+workers. Workers must be able to access each other's `/proc` file descriptors.
+Native shared-memory scene handles avoid copying large command buffers into
+Python `bytes`. Workers need CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL. Bounded integration tests
+use Ray 2.56.1, NIXL 1.5.2, and PyTorch 2.13 with CUDA 13.0.
+
+After configuring those dependencies, ingest PDF inputs into the default index:
+
+```bash
+retriever ingest batch /path/to/your/pdfs --pdf-renderer cuda_rdt
+```
+
+Keep local Page Elements, OCR v2, and text embedding enabled. Remote Page
+Elements or OCR endpoints, Nemotron Parse, table-structure routing, chart routing, and nested image
+extraction are unsupported. This mode also rejects explicit image extraction,
+captioning, image storage, and image or paired text-image embeddings. As on
+the default text-ingestion path, automatic image extraction resolves to off
+when no image consumer needs it. No encoded image artifacts are returned.
+
+NRL manages renderer actor placement, GPU tensor transport, and buffer lifetime.
+GPU image references are removed before text embedding and index writing.
+Unsupported configurations or failed GPU transport stop ingestion without a
+host-image fallback.
+
+Removing JPEG compression can change model outputs. A completed full DC10K
+comparison uses all eight GPUs without page RGB readback or CPU raster calls.
+Observed retrieval quality is similar to the saved default PDFium baseline,
+while ingestion is approximately 10% slower. GPU models run in both pipelines.
+These measurements establish neither exact accuracy equivalence nor a speedup.
+Refer to the [DC10K renderer comparison](../../../docs/docs/extraction/performance_guide.md#dc10k-renderer-comparison)
+for results and limitations.
 
 ### PDF extraction method
 

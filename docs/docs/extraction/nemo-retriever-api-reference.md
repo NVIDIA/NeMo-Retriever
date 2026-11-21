@@ -134,6 +134,200 @@ and server-side document failures are also available in
 `ServiceIngestResult.failures`. URL fetch and upload failures identify the
 submitted URL instead of an internal transport filename.
 
+### Select an experimental CUDA PDF renderer
+
+`ExtractParams.pdf_renderer` selects the PDF rasterizer. The default,
+`"pdfium"`, retains the existing CPU renderer. Set `pdf_renderer="cuda"`
+to evaluate CUDA rasterization with local or native batch PDF ingestion.
+This setting is independent of `method`, which selects the text extraction
+strategy.
+
+The experimental choices have different image transport paths:
+
+| `pdf_renderer` | Run mode | Image path |
+| --- | --- | --- |
+| `"pdfium"` | Existing supported modes | CPU rasterization and encoded images. |
+| `"cuda"` | Local or native batch PDF ingestion | CUDA rasterization, host RGB, and the existing encoded-image pipeline. |
+| `"cuda_rdt"` | Native Ray batch PDF ingestion | CUDA rasterization and GPU tensors delivered to local Page Elements and OCR through Ray Direct Transport. |
+
+#### Encoded CUDA rendering
+
+The `"cuda"` backend requires the separately built `cuda-pdf-renderer` Python
+package, its native client library, and a running local renderer service.
+Follow the renderer package build and startup instructions. Set
+`CUDA_PDF_RENDERER_LIBRARY` to the native client library and
+`CUDA_PDF_RENDER_SOCKET` to the service's Unix-domain socket. Make the package,
+libraries, and socket available to each extraction worker.
+
+For example, configure a local ingestor after starting the renderer service:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(ExtractParams(pdf_renderer="cuda"))
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+PDFium still parses PDF objects and prepares resources on the CPU. CUDA
+rasterizes page drawing commands. Rendered pixels return to host memory;
+the existing JPEG/base64 serialization and model preprocessing remain.
+Text-only extraction that needs no page raster does not invoke the CUDA backend.
+
+#### GPU-resident Ray batch rendering
+
+Set `pdf_renderer="cuda_rdt"` with `run_mode="batch"` for the dedicated PDF
+graph. This path requires local Page Elements, local Nemotron OCR v2, and text
+embeddings. It runs on a single Linux host. CPU scene producers and GPU actors
+must use the same user and a shared process namespace with access to each
+other's `/proc` file descriptors. It does not require an externally started
+renderer socket service.
+
+Install the separate renderer package and native libraries in every worker
+environment. Set `CUDA_PDF_RENDERER_LIBRARY` to the built native client library.
+Workers also need CUDA-enabled PyTorch, Ray 2.56 or later, and NIXL for Ray
+Direct Transport. Bounded integration tests use Ray 2.56.1, NIXL 1.5.2, and
+PyTorch 2.13 with CUDA 13.0. Other dependency combinations require validation.
+
+The following example explicitly selects the PDF graph and text embedding:
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="batch")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(pdf_renderer="cuda_rdt"),
+            extraction_mode="pdf",
+        )
+        .embed()
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+CPU PDFium parses pages and records drawing commands and resources in native
+shared-memory scenes. CPU workers retain scene owners while GPU actors map
+same-host descriptors for replay. Large command scenes are not copied into
+Python `bytes` or serialized as pixel payloads. Renderer actors rasterize into
+PyTorch-owned CUDA RGB tensors. Page Elements resizes
+those tensors on the GPU, and OCR consumes GPU crops. Page RGB does not return
+to host memory or pass through JPEG/base64 encoding. Text, region coordinates,
+and model results still use CPU processing where required.
+
+For compatible GPU prediction tensors, Page Elements packs boxes, labels, and
+scores into one metadata readback per inference batch. Existing CPU
+postprocessing and detection thresholds remain unchanged. This transfers
+detector results; page RGB and OCR crop pixels remain on the GPU.
+
+NRL enables tensor transport on both GPU actor endpoints. Renderer children
+share the owning model pool's GPU reservation and exact GPU UUID. The executor
+keeps renderer owners alive until ingestion drains, then releases them. GPU
+image references are removed before text embedding and index writing.
+
+The native Ray executor keeps transport metadata in pandas blocks so Ray can
+track GPU `ObjectRef` dependencies through downstream stages. Hiding those
+references in opaque Arrow pickled cells can release live images when an
+upstream worker exits. These metadata blocks retain references and dimensions;
+page pixels remain in CUDA memory and move through NIXL. This lifetime rule
+is managed by the executor and requires no additional configuration.
+
+Optional GPU RGB pooling uses `CUDA_PDF_RGB_POOL_BYTES` in the NRL driver
+environment. NRL validates the value and forwards it to renderer producers.
+Unset or `0` retains ordinary GPU allocations. A positive value reserves a
+reusable GPU buffer per producer; it must be at least 3,145,728 bytes.
+Independently, `CUDA_PDF_RGB_RECEIVER_POOL_BYTES` reserves reusable receive
+storage in each Page Elements and OCR actor. It uses the same driver-side
+validation and default-off behavior. Capacity multiplies by the number of
+model actors, not just the number of GPUs. Missing batch shapes or invalid
+received CUDA tensor shapes stop the GPU path without host-image fallback.
+Refer to
+[Reuse registered GPU RGB buffers](performance_guide.md#reuse-registered-gpu-rgb-buffers)
+for sizing, allocation behavior, and validation limits.
+
+For experimental bounded source ownership, set `CUDA_PDF_RGB_OWNER_BYTES` in
+the NRL driver environment. Unset or `0` disables explicit owner leases;
+positive integer values must be at least 3,145,728 bytes. This separate
+per-producer limit retains the actual source `ObjectRef` until final OCR
+consumption acknowledges every page in its batch. Bounded first-in, first-out
+admission keeps request order across retries. A 120-second watchdog detects capacity waits
+without new final-consumer acknowledgements, rather than limiting total wait
+time while consumption progresses. Refer to
+[Bound source ownership through final consumption](performance_guide.md#bound-source-ownership-through-final-consumption)
+for byte charging, admission limits, and acknowledgement semantics. A later
+experimental ownership revision completes full DC10K ingestion and retrieval
+without MPS, with no observed aggregate score decrease and below-baseline
+ingestion throughput. These results do not establish accuracy equivalence or
+resolve earlier MPS GPU-memory faults. The mode remains disabled by default;
+refer to the linked validation details before evaluating it.
+
+For experimental readiness-checked publication, set
+`CUDA_PDF_READY_TRANSPORT=1` in the NRL driver environment. Unset or `0`
+retains stock Ray NIXL transport; other values fail setup. This option requires
+Ray 2.56.1 exactly. It validates each original RGB tensor and its completed
+CUDA event before publication, while retaining existing reference and buffer
+ownership rules. Refer to
+[Publish only completed RGB tensors](performance_guide.md#publish-only-completed-rgb-tensors)
+for compatibility and synchronization limits. Bounded tests pass 384 exact
+RGB renders and four real-model pages. Full-corpus trials fail with illegal
+GPU-memory access or Ray reference-counting errors for deleted GPU image
+references. Bounded publication-thread CUDA context checks do not establish
+memory or reference-lifetime safety. The originating causes remain unresolved;
+this option is not validated for full ingestion.
+
+The supported configuration has the following restrictions:
+
+- Use PDF inputs and the native Ray batch executor. In-process, service,
+  mixed-file dispatch, and Nemotron Parse paths are outside this mode.
+- Keep Page Elements and OCR local, with `ocr_version="v2"`. Remote endpoints,
+  table-structure routing, chart routing, and nested image extraction are
+  unsupported.
+- Use text embeddings. Image and paired text-image embeddings, captioning,
+  image storage, and explicit `extract_images=True` are unsupported.
+- Retain the default image-extraction setting. Native text ingestion resolves
+  `extract_images=None` to `False` when no captioning, storage, or deduplication
+  consumer needs images. This mode does not return encoded image artifacts.
+
+Unsupported combinations raise configuration errors. Transport or rendering
+failures stop ingestion without materializing host images as a fallback.
+
+Removing JPEG compression changes the pixels presented to models. Raster
+pixel equivalence does not establish matching extraction or retrieval accuracy.
+Completed full DC10K runs use all eight GPUs without page RGB readback or
+CPU raster calls. The initial snapshot is approximately 10% slower than the
+saved PDFium baseline. A later reference-lifetime fix snapshot reaches
+422.4441 pages per second, approximately 9.46% above that baseline, with
+similar observed aggregate retrieval quality. Its mean whole-CLI GPU
+utilization is 56.60%, below the 90% target. Refer to the
+[DC10K renderer comparison](performance_guide.md#dc10k-renderer-comparison)
+for source revisions, historical results, and validation limits. These
+measurements do not establish exact accuracy equivalence or explain the
+performance differences between revisions.
+
+!!! warning "Experimental backend"
+    Concurrent profiling has exposed illegal GPU-memory accesses and native
+    heap corruption in the renderer. Use this backend for controlled evaluation.
+    Missing dependencies or CUDA rendering failures stop the job; NRL does not
+    silently switch to CPU rasterization. Service mode, NIM rendering, and
+    Nemotron Parse are outside this integration's validated scope.
+
 ### Select a supported extraction method
 
 `ExtractParams` validates `method` when you construct the model. For PDF
@@ -556,6 +750,17 @@ In-process ingestion releases the routing model and HTTP client when the stage
 finishes. Direct routing actor users can call `cleanup()` to release these
 resources explicitly.
 
+### Set the Page Elements inference batch limit
+
+Pass a positive `BatchTuningParams.page_elements_inference_batch_size` through
+`.extract(batch_tuning=...)` to limit images per Page Elements model invocation.
+This optional override takes precedence over `ExtractParams.inference_batch_size`;
+leaving it `None` retains the general setting, which defaults to `8`.
+`BatchTuningParams.page_elements_batch_size` separately controls Ray page-row
+batches. Refer to
+[Tune Page Elements model batches separately from Ray batches](performance_guide.md#tune-page-elements-model-batches-separately-from-ray-batches)
+for a native batch CLI example and GPU memory considerations.
+
 ### Choose raise or collect behavior
 
 For graph run modes, `error_policy="raise"` raises `GraphIngestionError` when
@@ -681,9 +886,23 @@ actions, and escalation criteria, refer to
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
 
-To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray actor batch size for the splitter stage). Refer to [Local and batch ingest](https://github.com/NVIDIA/NeMo-Retriever/tree/26.08.1/nemo_retriever/docs/cli#local-and-batch-ingest) in the CLI reference.
+For native Ray batch ingestion, pass splitter controls through
+`.extract(batch_tuning=BatchTuningParams(...))`. These controls apply before
+page extraction:
 
-**Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs are split automatically on the default graph ingest path without client-side configuration.
+| `BatchTuningParams` field | Default | Behavior |
+| --- | --- | --- |
+| `pdf_split_workers` | `None` | Keeps the existing single splitter actor when unset. A positive integer selects independent Ray splitter actors. |
+| `pdf_split_batch_size` | `1` | Sets the number of input PDF documents per splitter actor batch. |
+
+The CLI equivalents, `--pdf-split-workers` and `--pdf-split-batch-size`, apply
+only to `retriever ingest batch`. These settings differ from extraction
+workers and page batches. They also do not change page-chunking parameters
+for the remote service. Refer to
+[Tune PDF splitting separately from page extraction](performance_guide.md#tune-pdf-splitting-separately-from-page-extraction)
+for examples and CPU and memory tradeoffs.
+
+**Python client (`pdf_split_config`):** Only [`ServiceIngestor.pdf_split_config()`](#service-ingestor) records page-chunking settings in the request pipeline spec for the remote gateway. Obtain that object with `create_ingestor(run_mode="service")`. Local graph ingest (`run_mode="inprocess"` or `"batch"`) does not implement this method. PDFs split automatically on the default graph ingest path. Native Ray batch tuning controls splitter scheduling separately from this service-only method.
 
 ## One-shot text generation { #one-shot-text-generation }
 

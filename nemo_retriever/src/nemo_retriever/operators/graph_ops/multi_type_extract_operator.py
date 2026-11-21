@@ -468,8 +468,10 @@ class _MultiTypeExtractBase(AbstractOperator):
         page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
         if page_elements_api_key:
             detect_kwargs["api_key"] = page_elements_api_key
-        inference_batch_size = getattr(extract_params, "inference_batch_size", None) or getattr(
-            tuning, "page_elements_batch_size", None
+        inference_batch_size = (
+            getattr(tuning, "page_elements_inference_batch_size", None)
+            or getattr(extract_params, "inference_batch_size", None)
+            or getattr(tuning, "page_elements_batch_size", None)
         )
         if inference_batch_size:
             detect_kwargs["inference_batch_size"] = int(inference_batch_size)

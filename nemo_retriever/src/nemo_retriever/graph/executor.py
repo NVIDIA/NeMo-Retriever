@@ -221,7 +221,12 @@ def _make_arrow_pandas_operator_adapter(operator_class: type) -> type[_ArrowPand
 def _preserves_pandas_output(operator_class: type, operator_kwargs: dict[str, Any]) -> bool:
     """Return whether an operator's heterogeneous rows should stay in pandas."""
     return bool(
-        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False) or operator_kwargs.get("preserve_pandas_output", False)
+        getattr(operator_class, "PRESERVE_PANDAS_OUTPUT", False)
+        or operator_kwargs.get("preserve_pandas_output", False)
+        # GPU ObjectRefs must stay visible to Ray's serializer. Arrow's
+        # pickled-object cells hide those dependencies from its reference
+        # counter, so a completed upstream worker can release live images.
+        or operator_kwargs.get("pdf_renderer") == "cuda_rdt"
     )
 
 
@@ -830,13 +835,51 @@ class RayDataExecutor(AbstractExecutor):
         validate_batch: Callable[[pd.DataFrame], None] | None = None,
     ) -> Any:
         self._check_gpu_placement = True
+        completed = False
         try:
-            return self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+            result = self._ingest_graph(data, return_results=return_results, validate_batch=validate_batch)
+            completed = True
+            return result
         finally:
             self._check_gpu_placement = False
             check, self._gpu_placement_check = getattr(self, "_gpu_placement_check", None), None
             if check is not None:
                 check.stop()
+            pool, self._cuda_rdt_pool = getattr(self, "_cuda_rdt_pool", None), None
+            if pool is not None:
+                import ray
+
+                try:
+                    statuses = ray.get(pool.close.remote(), timeout=60)
+                    logger.info("CUDA RDT renderer summary: %s", statuses)
+                    import os
+
+                    audit_path = os.environ.get("CUDA_PDF_RDT_AUDIT_PATH")
+                    if audit_path:
+                        from pathlib import Path
+
+                        Path(audit_path).write_text(
+                            json.dumps(
+                                {
+                                    "producers": statuses,
+                                    "pages": sum(item["pages"] for item in statuses),
+                                    "rgb_readback_bytes": sum(item["rgb_readback_bytes"] for item in statuses),
+                                    "cpu_raster_calls": sum(item["cpu_raster_calls"] for item in statuses),
+                                },
+                                indent=2,
+                            )
+                            + "\n"
+                        )
+                    if completed and any(
+                        (item.get("owner_leases") or {}).get("active_batches", 0)
+                        or (item.get("owner_leases") or {}).get("queued_requests", 0)
+                        for item in statuses
+                    ):
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import GpuTransportError
+
+                        raise GpuTransportError("GPU source ownership did not drain after final image consumption")
+                finally:
+                    ray.kill(pool)
 
     @nvtx.annotate("nrl.batch::pipeline.ingest", color="blue")
     def _ingest_graph(
@@ -855,10 +898,18 @@ class RayDataExecutor(AbstractExecutor):
         sink_operator = nodes[sink_index].operator
         has_downstream_nodes = sink_index + 1 < len(nodes)
 
+        self._resolved_stream_ingest_node = None
         dataset = self._build_dataset(
             data,
             segment="before_stream_ingest",
         )
+        resolved_sink = self._resolved_stream_ingest_node
+        if resolved_sink is not None and nodes[sink_index].operator_kwargs.get("_embedding_params") is not None:
+            # The driver writes outside the Dataset. Use the same checkpoint
+            # identity resolved for its embedding actors, rather than the
+            # provisional backend constructed before resource selection.
+            sink_operator = resolved_sink.operator_class(**resolved_sink.operator_kwargs)
+            nodes[sink_index] = Node(sink_operator, name=resolved_sink.name)
 
         if sink_operator._supports_worker_write():
             preserve_pandas_blocks = _requires_stable_pandas_blocks(nodes[:sink_index])
@@ -1002,6 +1053,7 @@ class RayDataExecutor(AbstractExecutor):
         all_nodes = self._linearize(resolved_graph)
         sink_index = self._stream_ingest_index(all_nodes)
         if sink_index is not None and segment == "before_stream_ingest":
+            self._resolved_stream_ingest_node = all_nodes[sink_index]
             nodes = all_nodes[:sink_index]
         elif sink_index is not None and segment == "after_stream_ingest":
             nodes = all_nodes[sink_index + 1 :]
@@ -1099,6 +1151,43 @@ class RayDataExecutor(AbstractExecutor):
             map_operator_class = node.operator_class
             map_batch_format = batch_format
             constructor_kwargs = node.operator_kwargs
+            if constructor_kwargs.get("cuda_rdt") or constructor_kwargs.get("pdf_renderer") == "cuda_rdt":
+                from importlib.util import find_spec
+
+                if find_spec("nixl") is None:
+                    raise ImportError("cuda_rdt requires NIXL in every worker environment; install nixl")
+                if constructor_kwargs.get("cuda_rdt"):
+                    from nemo_retriever.operators.extract.pdf.gpu_transport import _rgb_pool_capacity
+
+                    overrides["enable_tensor_transport"] = True
+                    constructor_kwargs = dict(
+                        constructor_kwargs,
+                        _cuda_rgb_receive_pool_bytes=_rgb_pool_capacity("CUDA_PDF_RGB_RECEIVER_POOL_BYTES"),
+                    )
+                if (
+                    "page_elements" in node.operator_class.__module__
+                    or constructor_kwargs.get("pdf_renderer") == "cuda_rdt"
+                ):
+                    if getattr(self, "_cuda_rdt_pool", None) is None:
+                        from cuda_pdf_renderer.client import library_path
+                        from nemo_retriever.operators.extract.pdf.gpu_transport import (
+                            RendererPool,
+                            _rgb_pool_capacity,
+                            _ready_transport_enabled,
+                        )
+
+                        ready_transport = _ready_transport_enabled()
+                        if ready_transport:
+                            from nemo_retriever.operators.extract.pdf.gpu_ready_transport import register
+
+                            register()
+                        self._cuda_rdt_pool = ray.remote(num_cpus=0)(RendererPool).remote(
+                            str(library_path()),
+                            rgb_pool_bytes=_rgb_pool_capacity(),
+                            ready_transport=ready_transport,
+                            rgb_owner_bytes=_rgb_pool_capacity("CUDA_PDF_RGB_OWNER_BYTES"),
+                        )
+                    constructor_kwargs = dict(constructor_kwargs, _cuda_renderer_pool=self._cuda_rdt_pool)
             if batch_format == "pandas":
                 # Ray's Arrow-backed pandas conversion can preserve unsafe
                 # offsets for sliced structs with inferred null children.
@@ -1119,7 +1208,7 @@ class RayDataExecutor(AbstractExecutor):
                 map_batch_format = "pandas" if stable_pandas_input else "pyarrow"
                 constructor_kwargs = {
                     "operator_class": node.operator_class,
-                    "operator_kwargs": node.operator_kwargs,
+                    "operator_kwargs": constructor_kwargs,
                 }
 
             concurrency = overrides.get("concurrency")

@@ -45,6 +45,7 @@ def test_extract_batch_options_preserve_existing_positional_arguments() -> None:
     assert batch.page_elements_repartition is None
     assert batch.table_structure_repartition is None
     assert batch.pdf_extract_rows_per_block is None
+    assert batch.page_elements_inference_batch_size is None
 
 
 def _linear_nodes(graph):
@@ -1350,6 +1351,59 @@ def test_gpu_placement_check_reports_pending_and_stacked_actors() -> None:
         "OCRActor actors per GPU {'0': 2}, expected 1 on each of 2 GPUs"
     ]
     assert placement_problems(balanced[:1], {"OCRActor": 2}, 2) == ["OCRActor has 1 of 2 actors pending"]
+
+
+@pytest.mark.parametrize("general,override,expected", [(8, None, 8), (4, None, 4), (4, 16, 16), (8, 32, 32)])
+def test_page_elements_inference_batch_is_independent_of_ray_and_ocr(general, override, expected) -> None:
+    params = ExtractParams(
+        inference_batch_size=general,
+        batch_tuning=BatchTuningParams(
+            page_elements_batch_size=32,
+            page_elements_inference_batch_size=override,
+        ),
+    )
+    graph = build_graph(extract_params=params, stage_order=())
+    nodes = {node.name: node for node in _linear_nodes(graph)}
+    overrides = batch_tuning_to_node_overrides(extract_params=params, embed_params=None)
+
+    assert nodes["PageElementDetectionActor"].operator_kwargs["inference_batch_size"] == expected
+    assert nodes["OCRActor"].operator_kwargs["inference_batch_size"] == general
+    assert overrides["PageElementDetectionActor"]["batch_size"] == 32
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_page_elements_inference_batch_requires_positive_size(size) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="page_elements_inference_batch_size"):
+        BatchTuningParams(page_elements_inference_batch_size=size)
+
+
+@pytest.mark.parametrize("override,expected", [(None, 4), (16, 16)])
+def test_inprocess_page_elements_inference_override_leaves_ocr_unchanged(override, expected) -> None:
+    from types import SimpleNamespace
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import _MultiTypeExtractBase
+
+    params = ExtractParams(
+        inference_batch_size=4,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+        batch_tuning=BatchTuningParams(page_elements_batch_size=32, page_elements_inference_batch_size=override),
+    )
+    calls = []
+    batch = object()
+
+    def instantiate(actor, **kwargs):
+        calls.append((actor.__name__, kwargs))
+        return SimpleNamespace(run=lambda data: data)
+
+    host = SimpleNamespace(extract_params=params, _instantiate_resolved=instantiate)
+    assert _MultiTypeExtractBase._run_detection_pipeline(host, batch) is batch
+    assert calls[0][0] == "PageElementDetectionActor"
+    assert calls[0][1]["inference_batch_size"] == expected
+    assert calls[1][0] == "OCRActor"
+    assert calls[1][1]["inference_batch_size"] == 4
 
 
 @pytest.mark.parametrize(

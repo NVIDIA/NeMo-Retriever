@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -59,6 +59,13 @@ MethodOption = Annotated[
     ),
 ]
 DpiOption = Annotated[int | None, typer.Option("--dpi", min=72, help="Render DPI for PDF page images.")]
+PdfRendererOption = Annotated[
+    Literal["pdfium", "cuda", "cuda_rdt"] | None,
+    typer.Option(
+        "--pdf-renderer",
+        help="PDF rasterizer: pdfium (default), cuda (encoded images), or cuda_rdt (native Ray GPU transport).",
+    ),
+]
 ExtractTextOption = Annotated[
     bool | None,
     typer.Option("--extract-text/--no-extract-text", help="Enable or disable PDF text extraction."),
@@ -354,6 +361,10 @@ PdfSplitBatchSizeOption = Annotated[
     int | None,
     typer.Option("--pdf-split-batch-size", min=1, help="Batch mode only. PDF split batch size."),
 ]
+PdfSplitWorkersOption = Annotated[
+    int | None,
+    typer.Option("--pdf-split-workers", min=1, help="Batch mode only. Number of Ray actors for PDF splitting."),
+]
 PdfExtractWorkersOption = Annotated[
     int | None,
     typer.Option("--pdf-extract-workers", min=1, help="Batch mode only. Maximum Ray tasks for PDF extraction."),
@@ -377,7 +388,15 @@ PageElementsWorkersOption = Annotated[
 PageElementsBatchSizeOption = Annotated[
     int | None,
     typer.Option(
-        "--page-elements-batch-size", min=1, help="Batch mode only. Page-element detection batch size per actor."
+        "--page-elements-batch-size", min=1, help="Batch mode only. Page-element detection batch size per Ray task."
+    ),
+]
+PageElementsInferenceBatchSizeOption = Annotated[
+    int | None,
+    typer.Option(
+        "--page-elements-inference-batch-size",
+        min=1,
+        help="Batch mode only. Maximum images per page-element model invocation; defaults to 8.",
     ),
 ]
 PageElementsCpusPerActorOption = Annotated[

@@ -69,7 +69,19 @@ class NemotronOCRV2(BaseModel):
         # NemotronOCRV2 inherits checkpoint loading from NemotronOCR, whose
         # module owns the hf_hub_download global used by _download_checkpoints.
         install_pinned_hf_hub_download(_nemotron_ocr_pipeline)
-        _NemotronOCRV2 = _nemotron_ocr_pipeline_v2.NemotronOCRV2
+
+        class _NemotronOCRV2(_nemotron_ocr_pipeline_v2.NemotronOCRV2):
+            @staticmethod
+            def _load_image_to_tensor_uint8(image):
+                if (
+                    isinstance(image, torch.Tensor)
+                    and image.is_cuda
+                    and image.dtype == torch.uint8
+                    and image.ndim == 3
+                    and image.shape[0] == 3
+                ):
+                    return image.contiguous()
+                return _nemotron_ocr_pipeline_v2.NemotronOCRV2._load_image_to_tensor_uint8(image)
 
         if model_dir:
             self._model = _NemotronOCRV2(model_dir=model_dir, lang=lang)
@@ -213,6 +225,30 @@ class NemotronOCRV2(BaseModel):
             return self._model(input_data.encode("utf-8"), merge_level=merge_level)
 
         return self._model(input_data, merge_level=merge_level)
+
+    @nvtx.annotate("nrl.model::ocr_v2.invoke", color="blue")
+    def invoke_gpu_rgb(
+        self, input_data: Union[torch.Tensor, List[torch.Tensor]], merge_level: str = "paragraph"
+    ) -> Any:
+        """Run CUDA uint8 HWC RGB images without encoding or host copies.
+
+        This explicit entry point keeps the existing CHW/BCHW ``invoke``
+        contract intact, including images whose height or width is three.
+        """
+        if self._model is None:
+            raise RuntimeError("Local OCR model was not initialized.")
+        images = input_data if isinstance(input_data, list) else [input_data]
+        if not images or not all(
+            isinstance(image, torch.Tensor)
+            and image.is_cuda
+            and image.dtype == torch.uint8
+            and image.ndim == 3
+            and image.shape[-1] == 3
+            for image in images
+        ):
+            raise ValueError("GPU OCR expects nonempty CUDA uint8 HWC RGB images")
+        chw = [image.permute(2, 0, 1).contiguous() for image in images]
+        return self._model(chw if isinstance(input_data, list) else chw[0], merge_level=merge_level)
 
     @property
     def model_name(self) -> str:

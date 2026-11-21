@@ -116,11 +116,14 @@ class IngestExtractBatchOptions:
     page_elements_repartition: bool | None = None
     table_structure_repartition: bool | None = None
     pdf_extract_rows_per_block: int | None = None
+    pdf_split_workers: int | None = None
+    page_elements_inference_batch_size: int | None = None
 
 
 @dataclass(frozen=True)
 class IngestExtractOptions:
     method: str | None = None
+    pdf_renderer: Literal["pdfium", "cuda", "cuda_rdt"] | None = None
     dpi: int | None = None
     extract_text: bool | None = None
     extract_images: bool | None = None
@@ -533,6 +536,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
         key: value
         for key, value in {
             "pdf_split_batch_size": batch.pdf_split_batch_size,
+            "pdf_split_workers": batch.pdf_split_workers,
             "pdf_extract_workers": batch.pdf_extract_workers,
             "pdf_extract_batch_size": batch.pdf_extract_batch_size,
             "pdf_extract_rows_per_block": batch.pdf_extract_rows_per_block,
@@ -540,6 +544,7 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
             "pdf_extract_num_cpus": batch.pdf_extract_cpus_per_task,
             "page_elements_workers": batch.page_elements_workers,
             "page_elements_batch_size": batch.page_elements_batch_size,
+            "page_elements_inference_batch_size": batch.page_elements_inference_batch_size,
             "page_elements_repartition": batch.page_elements_repartition,
             "page_elements_cpus_per_actor": batch.page_elements_cpus_per_actor,
             "gpu_page_elements": batch.page_elements_gpus_per_actor,
@@ -645,6 +650,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
             key: value
             for key, value in {
                 "method": extract.method,
+                "pdf_renderer": extract.pdf_renderer,
                 "dpi": extract.dpi,
                 "extract_text": extract.extract_text,
                 "extract_images": extract.extract_images,

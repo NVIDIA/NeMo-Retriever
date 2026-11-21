@@ -187,6 +187,7 @@ def pdfium_pages_to_numpy(
     scale_tuple: Optional[Tuple[int, int]] = None,
     padding_tuple: Optional[Tuple[int, int]] = None,
     rotation: int = 0,
+    render_page=None,
 ) -> tuple[list[ndarray | ndarray[Any, dtype[Any]]], list[tuple[int, int]]]:
     """
     Converts a list of PdfPage objects to a list of NumPy arrays, where each array
@@ -241,7 +242,8 @@ def pdfium_pages_to_numpy(
         if scale_tuple:
             render_scale = min(base_scale, _compute_render_scale_to_fit(page, scale_tuple, rotation))
 
-        page_bitmap = page.render(scale=render_scale, rotation=rotation)
+        render = render_page if render_page is not None else lambda page, **kw: page.render(**kw)
+        page_bitmap = render(page, scale=render_scale, rotation=rotation)
         img_arr = convert_bitmap_to_corrected_numpy(page_bitmap)
 
         # Safety fallback for rounding edge cases - only scale down if needed
@@ -581,7 +583,7 @@ def extract_forms_from_pdfium_page(page, **kwargs):
     return results
 
 
-def extract_image_like_objects_from_pdfium_page(page, merge=True, **kwargs):
+def extract_image_like_objects_from_pdfium_page(page, merge=True, render_page=None, **kwargs):
     page_width = page.get_width()
     page_height = page.get_height()
     rotation = page.get_rotation()
@@ -591,6 +593,7 @@ def extract_image_like_objects_from_pdfium_page(page, merge=True, **kwargs):
             [page],  # A batch with a single image.
             render_dpi=72,  # dpi = 72 is equivalent to scale = 1.
             rotation=rotation,  # Without rotation, coordinates from page.get_pos() will not match.
+            render_page=render_page,
         )
         image_bboxes = extract_merged_images_from_pdfium_page(page, merge=merge, **kwargs)
         shape_bboxes = extract_merged_shapes_from_pdfium_page(page, merge=merge, **kwargs)

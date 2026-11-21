@@ -350,6 +350,8 @@ def batch_tuning_to_node_overrides(
     page_elements_concurrency: int = 0
     page_elements_cpus: float = 1.0
     if extract_params is not None:
+        _set(PDFSplitActor.__name__, "batch_size", getattr(extract_tuning, "pdf_split_batch_size", None))
+        _set(PDFSplitActor.__name__, "concurrency", getattr(extract_tuning, "pdf_split_workers", None))
         ocr_invoke_url = _positive(getattr(extract_params, "ocr_invoke_url", None))
         page_elements_invoke_url = _positive(getattr(extract_params, "page_elements_invoke_url", None))
         ocr_actor_name = resolve_ocr_archetype(extract_params).__name__
@@ -811,6 +813,23 @@ def build_graph(
         stage_order=stage_order,
     )
 
+    if getattr(extract_params, "pdf_renderer", "pdfium") == "cuda_rdt":
+        image_modalities = ("image", "text_image")
+        if extraction_mode != "pdf" or extract_params.method == "nemotron_parse":
+            raise ValueError("cuda_rdt requires the dedicated native Ray PDF pipeline")
+        if caption_params is not None or store_params is not None or extract_params.extract_images is True:
+            raise ValueError(
+                "cuda_rdt supports text retrieval and automatic image-region metadata; "
+                "encoded image outputs, storage and captions require an encoded renderer"
+            )
+        if any(
+            getattr(embed_params, name, None) in image_modalities
+            for name in ("embed_modality", "text_elements_modality", "structured_elements_modality")
+        ):
+            raise ValueError("cuda_rdt currently requires text embeddings")
+        if getattr(extract_params, "ocr_version", "v2") != "v2":
+            raise ValueError("cuda_rdt currently requires local OCR v2")
+
     sink_vdb: VdbUploadParams | None = None
     if execution_plan is not None:
         for sink in execution_plan.sinks:
@@ -933,8 +952,11 @@ def build_graph(
             page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
             if page_elements_api_key:
                 detect_kwargs["api_key"] = page_elements_api_key
-            if extract_params.inference_batch_size:
-                detect_kwargs["inference_batch_size"] = int(extract_params.inference_batch_size)
+            detection_batch_size = (
+                getattr(tuning, "page_elements_inference_batch_size", None) or extract_params.inference_batch_size
+            )
+            if detection_batch_size:
+                detect_kwargs["inference_batch_size"] = int(detection_batch_size)
 
             ocr_kwargs: dict[str, Any] = {}
             if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
@@ -981,6 +1003,26 @@ def build_graph(
             page_elements_needed = extract_params.use_page_elements and (
                 (extract_params.use_table_structure and extract_params.extract_tables) or needs_ocr
             )
+            if getattr(extract_params, "pdf_renderer", "pdfium") == "cuda_rdt":
+                if (
+                    not page_elements_needed
+                    or not needs_ocr
+                    or any(
+                        (
+                            extract_params.page_elements_invoke_url,
+                            extract_params.ocr_invoke_url,
+                            extract_params.use_table_structure,
+                            extract_params.chart_routing,
+                            extract_params.extract_nested_images,
+                        )
+                    )
+                ):
+                    raise ValueError("cuda_rdt requires local Page Elements and OCR with default region routing")
+                extract_kwargs["preserve_pandas_output"] = True
+                detect_kwargs["cuda_rdt"] = True
+                detect_kwargs["preserve_pandas_output"] = True
+                ocr_kwargs["cuda_rdt"] = True
+                ocr_kwargs["preserve_pandas_output"] = True
             graph = graph >> PDFExtractionActor(**extract_kwargs)
             if page_elements_needed:
                 graph = graph >> PageElementDetectionActor(**detect_kwargs)

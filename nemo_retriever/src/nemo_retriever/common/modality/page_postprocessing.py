@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import nvtx
 
 
 def prepare_detector_input(image: np.ndarray, size: tuple[int, int]) -> np.ndarray:
@@ -139,3 +140,26 @@ def finalize_page_regions(frame: pd.DataFrame) -> pd.DataFrame:
     out["ordered_page_text"] = pages
     out["ordered_page_text_source"] = source_texts
     return out
+
+
+@nvtx.annotate("nrl.cuda_rdt::detector_preprocess", color="purple")
+def prepare_detector_input_gpu(image, size):
+    """Resize and pad CUDA RGB HWC uint8 into detector CHW float32 (0..255)."""
+    import torch
+    import torch.nn.functional as functional
+
+    if (
+        not isinstance(image, torch.Tensor)
+        or not image.is_cuda
+        or image.dtype != torch.uint8
+        or image.ndim != 3
+        or image.shape[2] != 3
+    ):
+        raise ValueError("GPU detector preprocessing requires a CUDA HWC RGB uint8 tensor")
+    height, width = image.shape[:2]
+    ratio = min(size[0] / height, size[1] / width)
+    new_height, new_width = int(height * ratio), int(width * ratio)
+    chw = image.permute(2, 0, 1).unsqueeze(0).float()
+    resized = functional.interpolate(chw, size=(new_height, new_width), mode="bilinear", align_corners=False)
+    resized = resized.round().clamp_(0, 255).to(torch.uint8).float()[0]
+    return functional.pad(resized, (0, size[1] - new_width, 0, size[0] - new_height), value=114).contiguous()
