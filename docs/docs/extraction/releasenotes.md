@@ -30,6 +30,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 - `ExtractParams.page_elements_api_key` now reaches page-element detection. Earlier versions ignored it and sent `api_key`. Page-element detection still uses `api_key` when you do not set `page_elements_api_key`.
 - An explicit `ExtractParams.api_key` now takes precedence over `NVIDIA_API_KEY` or `NGC_API_KEY` for page-element detection and OCR when you do not set `page_elements_api_key` or `ocr_api_key`. Earlier versions filled the unset per-stage keys from the environment, so the environment key overrode the explicit `api_key` for OCR.
 - The hidden `retriever recall` command is removed. Use `retriever query` to retrieve results. To score a LanceDB table against a query CSV, call `evaluate_recall()` with a `RecallConfig` from `nemo_retriever.tools.recall`. For BEIR metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
+- `TextChunkParams` and `HtmlChunkParams` now raise a Pydantic `ValidationError` when `overlap_tokens` is not less than `max_tokens`. Previously, the text splitter accepted these values and advanced one token per chunk, which multiplied the number of chunks to embed. `retriever ingest` keeps its 150-token default overlap, so when you set `--text-chunk-max-tokens` to 150 or less, also set a smaller `--text-chunk-overlap-tokens`.
 
 ## 26.08.2 Helm Chart Patch { #release-26082 }
 
