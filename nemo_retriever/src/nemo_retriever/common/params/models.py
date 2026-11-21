@@ -28,8 +28,9 @@ from nemo_retriever.common.params.utils import (
     NEMOTRON_PARSE35_MODEL,
     NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL,
     NEMOTRON_PARSE_LOCAL_MODELS,
-    validate_nemotron_parse_endpoint_list,
     resolve_nemotron_parse_dflash_tokens,
+    validate_nemotron_parse_endpoint_list,
+    validate_nemotron_parse_mode,
 )
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -588,6 +589,7 @@ class ParseParams(_ParamsModel):
     Parse 3.5 chat-completions endpoint. Legacy models keep their defaults.
 
     Attributes:
+        mode: Single (default), double, or triple full-page parsing. Multi-pass requires Parse 3.5.
         model: Model identifier; explicitly select ``nvidia/Nemotron-3.5-Parse``
             for a remote Parse 3.5 service.
         invoke_url: Optional comma-separated remote service URLs; omit for local inference.
@@ -611,6 +613,13 @@ class ParseParams(_ParamsModel):
     """
 
     _auto_resolve_unset_api_keys: ClassVar[bool] = False
+    mode: Literal["single", "double", "triple"] = Field(
+        default="single",
+        description=(
+            "Full-page Parse mode. Single preserves backend defaults; double refines Table/Chart crops; "
+            "triple also detects regions with Parse 3.5. Multi-pass sampling overrides affect only the full page."
+        ),
+    )
     model: Optional[str] = Field(
         default=None,
         description=(
@@ -867,6 +876,16 @@ class ExtractParams(_ParamsModel):
                 )
                 if any(not url.rstrip("/").endswith("/v1/chat/completions") for url in endpoints):
                     raise ValueError("Parse task_prompt requires local inference or /v1/chat/completions URLs.")
+            if self.parse.mode != "single":
+                if self.method != "nemotron_parse" or self.chart_routing:
+                    raise ValueError("Multi-pass Parse requires method='nemotron_parse' without chart_routing.")
+                if self.parse.task_prompt is not None:
+                    raise ValueError("Multi-pass Parse uses the HF stage prompts; custom task_prompt is not supported.")
+                validate_nemotron_parse_mode(
+                    self.parse.mode,
+                    model=self.nemotron_parse_model,
+                    invoke_url=self.nemotron_parse_invoke_url or self.invoke_url,
+                )
             if self.parse._sampling_overrides():
                 endpoints = validate_nemotron_parse_endpoint_list(
                     self.nemotron_parse_invoke_url or (self.invoke_url if not self.chart_routing else None)

@@ -381,6 +381,48 @@ class NemotronParse35(BaseModel):
             )
         return results
 
+    def invoke_response(
+        self, input_data: ImageInput, *, task_prompt: str, sampling_params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Generate one multi-pass stage with independent settings and completion status.
+
+        Args:
+            input_data: Page image in a format accepted by :meth:`preprocess`.
+            task_prompt: Native control tokens for this stage.
+            sampling_params: vLLM sampling settings for this request. Special tokens
+                are always retained, so omit `skip_special_tokens`.
+
+        Returns:
+            A dictionary with tagged text in `raw_out`, the vLLM `finish_reason`,
+            and `usage` containing the number of `completion_tokens`.
+
+        Raises:
+            TypeError: If the image type or sampling arguments are unsupported.
+            ValueError: If the backend is not vLLM or image or sampling values are invalid.
+            OSError: If image or checkpoint assets cannot be loaded.
+            RuntimeError: If model loading or generation fails.
+        """
+        if self._backend != "vllm":
+            raise ValueError("Multi-pass Parse requires the local vLLM backend. Set backend='vllm'.")
+        page = self.preprocess(input_data)
+        self._ensure_model()
+        from vllm import SamplingParams
+
+        sampling = SamplingParams(**sampling_params, skip_special_tokens=False)
+        request = self._model.generate(
+            [{"prompt": "<pad>" + task_prompt, "multi_modal_data": {"image": page}}],
+            sampling,
+            tokenization_kwargs={"add_special_tokens": False},
+            # The HF parser checks the finish reason and records it with the stage.
+            raise_on_failed_finish=False,
+        )[0]
+        output = request.outputs[0]
+        return {
+            "raw_out": output.text.strip(),
+            "finish_reason": output.finish_reason,
+            "usage": {"completion_tokens": len(output.token_ids)},
+        }
+
     def __call__(self, input_data: ImageInput, task_prompt: str | None = None) -> str:
         """Generate tagged text for a single page, delegating to :meth:`invoke`.
 
@@ -489,8 +531,15 @@ class _AsyncParseEngine:
         self._request_ids = itertools.count()
         self._render_lock = threading.Lock()
 
-    def generate(self, prompts: list[Any], params: Any, *, tokenization_kwargs: dict | None = None) -> list[Any]:
-        """Return each prompt's final ``RequestOutput`` in prompt order; any request failure raises."""
+    def generate(
+        self,
+        prompts: list[Any],
+        params: Any,
+        *,
+        tokenization_kwargs: dict | None = None,
+        raise_on_failed_finish: bool = True,
+    ) -> list[Any]:
+        """Return final request outputs in prompt order, raising on failed finish reasons by default."""
         import asyncio
         import os
 
@@ -517,7 +566,7 @@ class _AsyncParseEngine:
                     "Check the vLLM engine logs for an error, then retry the batch."
                 )
             reason = output.outputs[0].finish_reason
-            if reason in ("abort", "error"):
+            if raise_on_failed_finish and reason in ("abort", "error"):
                 raise RuntimeError(
                     f"Parse engine request {request_id} finished with reason {reason!r}. "
                     "Check the vLLM engine logs for an error, then retry the batch."

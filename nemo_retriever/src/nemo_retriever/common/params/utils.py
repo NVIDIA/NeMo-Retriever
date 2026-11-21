@@ -81,6 +81,38 @@ def validate_nemotron_parse_endpoint_list(invoke_url: str | None) -> tuple[str, 
     return invoke_urls
 
 
+def validate_nemotron_parse_mode(mode: str, *, model: str | None, invoke_url: str | None) -> None:
+    """Validate that the selected Parse mode supports the model and transport.
+
+    Args:
+        mode: One of `single`, `double`, or `triple`.
+        model: Model ID. For local multi-pass, `None` selects Parse 3.5.
+        invoke_url: Remote endpoint or comma-separated endpoint list.
+            An empty value selects local inference.
+
+    Returns:
+        None if the configuration is supported.
+
+    Raises:
+        ValueError: If the mode is unknown or the model or endpoints are
+            incompatible with multi-pass inference.
+    """
+    if mode not in ("single", "double", "triple"):
+        raise ValueError("Parse mode must be single, double, or triple.")
+    if mode == "single":
+        return
+    endpoints = validate_nemotron_parse_endpoint_list(invoke_url)
+    selected_model = model or (NEMOTRON_PARSE35_MODEL if not endpoints else None)
+    if str(selected_model or "").lower() != NEMOTRON_PARSE35_MODEL.lower():
+        raise ValueError(f"Multi-pass Parse requires model='{NEMOTRON_PARSE35_MODEL}'.")
+    if any(
+        urlsplit(url).path.rstrip("/") != "/v1/chat/completions"
+        or (urlsplit(url).hostname or "").lower() == "integrate.api.nvidia.com"
+        for url in endpoints
+    ):
+        raise ValueError("Multi-pass Parse requires compatible Parse 3.5 /v1/chat/completions endpoints.")
+
+
 def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any]) -> T:
     """Merge *params* and *kwargs* into an instance of *model_cls*.
 
@@ -239,6 +271,8 @@ def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dic
         kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
     parse = params.parse
     if parse is not None:
+        if parse.mode != "single":
+            kwargs["parse_mode"] = parse.mode
         if parse.task_prompt is not None:
             kwargs["task_prompt"] = parse.task_prompt
         kwargs["parse_sampling_params"] = parse._sampling_overrides()
