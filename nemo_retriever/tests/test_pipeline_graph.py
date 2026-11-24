@@ -1132,6 +1132,11 @@ class TestMultiTypeExtractOperator:
             lambda self, data: data,
         )
 
+        monkeypatch.setattr(
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.PDFExtractionActor.run",
+            lambda self, data: data,
+        )
+
         def _fake_resolve(operator_class, resources, operator_kwargs=None):
             calls.append((operator_class.__name__, resources, operator_kwargs))
             return _IdentityStage
@@ -1849,6 +1854,113 @@ class TestRayDataExecutor:
         assert input_dataset.context.batch_to_block_arrow_format
         assert input_dataset.context.enable_tensor_extension_casting
 
+    @pytest.mark.parametrize(
+        ("concurrency", "pool", "extra", "threads"),
+        [
+            (3, {"size": 3}, {}, 2),
+            ((1, 4, 2), {"min_size": 1, "max_size": 4, "initial_size": 2}, {}, 2),
+            (3, {"size": 3}, {"max_concurrency": 1}, 1),
+        ],
+    )
+    def test_build_dataset_runs_udf_threads_on_a_true_multithreaded_pool(
+        self, monkeypatch, concurrency, pool, extra, threads
+    ):
+        import sys
+        from types import SimpleNamespace
+
+        captured: list[dict[str, Any]] = []
+
+        class _FakeDataContext:
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                return self
+
+        class _ThreadedUDF(UDFOperator):
+            UDF_THREADS = 2
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset, DataContext=_FakeDataContext, ActorPoolStrategy=lambda **kwargs: kwargs
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = Graph() >> _ThreadedUDF(lambda frame: frame)
+        (node,) = graph.roots
+        executor = RayDataExecutor(graph, node_overrides={node.name: {"concurrency": concurrency, **extra}})
+        executor._resources_preflight_complete = True
+        executor.build_dataset(_FakeDataset())
+
+        (call,) = captured
+        assert "concurrency" not in call
+        assert call["compute"] == {**pool, "enable_true_multi_threading": True}
+        assert call["max_concurrency"] == threads
+
+    @pytest.mark.parametrize(("batch_override", "expected"), [(None, 64), (1, 1), (4, 4)])
+    def test_build_dataset_preserves_explicit_parse_batch_size(self, monkeypatch, batch_override, expected):
+        import sys
+        from types import SimpleNamespace
+
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+
+        captured = []
+
+        class _FakeDataContext:
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        class _FakeDataset:
+            def __init__(self):
+                self.context = _FakeDataContext()
+
+            @classmethod
+            def copy(cls, _dataset, _deep_copy=False):
+                return cls()
+
+            def map_batches(self, _operator_class, **kwargs):
+                captured.append(kwargs)
+                return self
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset, DataContext=_FakeDataContext, ActorPoolStrategy=lambda **kwargs: kwargs
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda _ray: SimpleNamespace(available_gpu_count=lambda: 2),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        graph = Graph() >> NemotronParseActor()
+        overrides = {"NemotronParseActor": {"concurrency": 2}}
+        if batch_override is not None:
+            overrides["NemotronParseActor"]["batch_size"] = batch_override
+        executor = RayDataExecutor(graph, node_overrides=overrides)
+        executor._resources_preflight_complete = True
+        executor.build_dataset(_FakeDataset())
+
+        assert captured[0]["batch_size"] == expected
+
     def test_node_overrides_stored(self):
 
         g = Graph()
@@ -2387,3 +2499,49 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert result["val"].iloc[0] == 13
+
+
+@pytest.mark.parametrize("failure", [False, True])
+@pytest.mark.parametrize("routing", [False, True])
+def test_inprocess_executor_cleans_up_only_routing_before_next_stage(monkeypatch, failure, routing):
+    import nemo_retriever.graph.executor as module
+
+    expected = ["run", "cleanup"] if routing else ["run"]
+    events = []
+
+    class ResourceStage(AbstractOperator):
+        def preprocess(self, data, **kwargs):
+            return data
+
+        def process(self, data, **kwargs):
+            events.append("run")
+            if failure:
+                raise RuntimeError("stage failed")
+            return data
+
+        def postprocess(self, data, **kwargs):
+            return data
+
+        def cleanup(self):
+            events.append("cleanup")
+
+    class NextStage(ResourceStage):
+        def process(self, data, **kwargs):
+            assert events == expected
+            return data
+
+        def cleanup(self):
+            pass
+
+    if routing:
+        import nemo_retriever.operators.extract.parse.chart_routing as routing_module
+
+        monkeypatch.setattr(routing_module, "ChartRoutingCPUActor", ResourceStage)
+    monkeypatch.setattr(module, "resolve_graph", lambda graph, resources: graph)
+    executor = InprocessExecutor(Graph() >> ResourceStage() >> NextStage(), show_progress=False)
+    if failure:
+        with pytest.raises(RuntimeError, match="stage failed"):
+            executor.ingest(pd.DataFrame([{"text": "page"}]))
+    else:
+        executor.ingest(pd.DataFrame([{"text": "page"}]))
+    assert events == expected

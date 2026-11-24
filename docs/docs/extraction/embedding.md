@@ -11,9 +11,7 @@ When you omit the local embedding model, the library selects a checkpoint as fol
 - For in-process inference with the default `vllm` backend, it selects `nvidia/Nemotron-3.5-Embed-1B-NVFP4` when every visible CUDA device supports native NVFP4.
 - On other supported local GPUs, it selects `nvidia/Nemotron-3.5-Embed-1B-BF16`.
 - With the `hf` backend, it selects the BF16 checkpoint. The compressed-tensors NVFP4 checkpoint requires vLLM.
-- For Ray batch GPU execution, automatic selection uses BF16 because cluster GPU counts do not establish worker GPU architectures. Explicit Nemotron 3.5 precision checkpoint IDs remain unchanged; select Nemotron 3.5 NVFP4 only when every eligible worker supports it.
-
-The `retriever ingest batch` CLI treats explicit Nemotron 3 precision IDs as the logical Nemotron 3 model and selects BF16.
+- For single-node Ray batch GPU execution with `vllm`, automatic selection uses NVFP4 when every visible CUDA device has compute capability major 10 or later, and BF16 otherwise. Explicit Nemotron 3.5 precision checkpoint IDs remain unchanged.
 
 The default modality remains `text`. Nemotron 3.5 also supports `image` and `text_image` inputs when you explicitly select those modalities.
 
@@ -29,7 +27,7 @@ Before changing an existing index's model or precision, validate retrieval quali
 
 ## Hosted embedding defaults
 
-Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`. An explicitly selected Nemotron 3 model also retains its existing local resolution behavior.
+Hosted embedding retains the text-only Nemotron 3 Embed 1B default, with logical model ID `nvidia/nemotron-3-embed-1b`.
 
 When graph execution selects the CPU embedding actor without an explicit endpoint, it calls `https://integrate.api.nvidia.com/v1/embeddings`. This hosted fallback retains the Nemotron 3 default and records that model on the index. Set `NVIDIA_API_KEY` or `NGC_API_KEY` before ingest.
 
@@ -122,7 +120,8 @@ losslessly, not truncated.
 formatted embedding-input limit. `EmbedParams.query_max_length` controls the
 separate query limit.
 
-For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`, text
+For remote requests using the model name `nvidia/nemotron-3.5-embed-1b`,
+`nvidia/Nemotron-3.5-Embed-1B-BF16`, or `nvidia/Nemotron-3.5-Embed-1B-NVFP4`, text
 admission also enforces a safety limit of 65,536 UTF-8 bytes per formatted input.
 The budget includes template escaping and the server-added prefix, even when
 your content already starts with that prefix.

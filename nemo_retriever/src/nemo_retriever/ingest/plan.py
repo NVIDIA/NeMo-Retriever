@@ -49,12 +49,11 @@ from nemo_retriever.ingest.index_mode import (
     resolve_ingest_index_mode,
     validate_requested_index_mode,
 )
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL, resolve_embed_model, resolve_local_embed_model
-from nemo_retriever.models.embed_model_spec import resolve_embed_model_revision
+from nemo_retriever.models import resolve_embed_model, resolve_local_embed_model
 
 IngestRunModeValue = Literal["inprocess", "batch"]
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
-IngestProfileValue = Literal["auto", "fast-text"]
+IngestProfileValue = Literal["auto"]
 IngestIndexModeValue = RequestedIngestIndexMode
 AudioSplitTypeValue = Literal["size", "time", "frame"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
@@ -62,7 +61,7 @@ OcrLangValue = OCRLang
 OcrVersionValue = OCRVersion
 TableOutputFormatValue = Literal["pseudo_markdown", "markdown"]
 _SUPPORTED_RUN_MODES: tuple[IngestRunModeValue, ...] = ("inprocess", "batch")
-_SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto", "fast-text")
+_SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto",)
 _SUPPORTED_AUDIO_SPLIT_TYPES: tuple[AudioSplitTypeValue, ...] = ("size", "time", "frame")
 _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "auto",
@@ -332,40 +331,7 @@ def _branch_families(branches: Sequence[ExtractionBranchPlan]) -> set[str]:
     return {branch.family for branch in branches}
 
 
-def _require_branch_families(
-    *,
-    profile: IngestProfileValue,
-    branches: Sequence[ExtractionBranchPlan],
-    allowed: set[str],
-    description: str,
-) -> None:
-    observed = _branch_families(branches)
-    disallowed = observed - allowed
-    if disallowed:
-        allowed_text = ", ".join(sorted(allowed))
-        observed_text = ", ".join(sorted(observed))
-        raise ValueError(
-            f"--profile {profile} only supports {description} inputs ({allowed_text}); observed {observed_text}."
-        )
-
-
-def _validate_profile_manifest(profile: IngestProfileValue, branches: Sequence[ExtractionBranchPlan]) -> None:
-    if profile == "fast-text":
-        _require_branch_families(profile=profile, branches=branches, allowed={"pdf"}, description="PDF/document")
-
-
 def profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
-    if profile == "fast-text":
-        return {
-            "method": "pdfium",
-            "extract_text": True,
-            "extract_images": False,
-            "extract_tables": False,
-            "extract_charts": False,
-            "extract_infographics": False,
-            "extract_page_as_image": False,
-            "use_page_elements": False,
-        }
     return {"method": "pdfium_hybrid"}
 
 
@@ -638,7 +604,6 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     validated_audio_split_type = _validate_audio_split_type(media.audio_split_type)
     document_list = expand_ingest_documents(source.documents, input_type=validated_input_type)
     branches = plan_extraction_branches(build_input_manifest(document_list))
-    _validate_profile_manifest(validated_profile, branches)
 
     extract_kwargs = profile_extract_defaults(validated_profile)
     extract_kwargs.update(
@@ -675,39 +640,28 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         extract_kwargs["batch_tuning"] = extract_tuning
 
     remote_embedding = bool(str(embed.embed_invoke_url or "").strip())
-    legacy_n3 = bool(embed.embed_model_name) and resolve_embed_model(embed.embed_model_name) == NEMOTRON_3_EMBED_MODEL
-    # Unspecified defaults depend on the selected graph actor: GPU actors
-    # use local N3.5, while CPU actors supply the hosted N3 endpoint. The
-    # resolved graph shares that actor's identity with the index writer.
+    # Local index identities depend on the graph actor: GPU actors load the
+    # checkpoint resolved here and pin its revision, while CPU actors call the
+    # hosted endpoint. The resolved graph records the selected actor's identity.
     embedding_model_name = (
-        None
-        if resolved_index_mode == "sparse" or (not remote_embedding and not embed.embed_model_name)
-        else (
-            resolve_embed_model(embed.embed_model_name)
-            if remote_embedding or legacy_n3
-            else resolve_local_embed_model(
-                embed.embed_model_name,
-                backend=embed.local_ingest_embed_backend or "vllm",
-                allow_native_nvfp4=validated_run_mode != "batch",
-            )
-        )
+        resolve_embed_model(embed.embed_model_name) if remote_embedding and resolved_index_mode != "sparse" else None
     )
-    embedding_model_revision = None
-    if (
-        embedding_model_name is not None
-        and embedding_model_name != NEMOTRON_3_EMBED_MODEL
-        and not str(embed.embed_invoke_url or "").strip()
-    ):
-        embedding_model_revision = resolve_embed_model_revision(embedding_model_name, None)
     embed_runtime_model_name = (
-        embedding_model_name
-        if not remote_embedding or embed.embed_model_name is not None or embed.embed_model_provider_prefix is not None
-        else None
+        (
+            resolve_local_embed_model(embed.embed_model_name, backend=embed.local_ingest_embed_backend or "vllm")
+            if embed.embed_model_name
+            else None
+        )
+        if not remote_embedding
+        else (
+            embedding_model_name
+            if embed.embed_model_name is not None or embed.embed_model_provider_prefix is not None
+            else None
+        )
     )
     embed_kwargs = build_embed_option_kwargs(
         embed.embed_invoke_url,
         embed_runtime_model_name,
-        embed_model_revision=embedding_model_revision if embed_runtime_model_name is not None else None,
         local_ingest_embed_backend=embed.local_ingest_embed_backend,
         embed_api_key=embed.embed_api_key,
         embed_model_provider_prefix=embed.embed_model_provider_prefix,
@@ -736,8 +690,6 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         vdb_upload_kwargs["embedding_model_name"] = embedding_model_name
         if embed.embed_model_name is not None:
             vdb_upload_kwargs["vector_dim"] = None
-    if embedding_model_revision is not None:
-        vdb_upload_kwargs["embedding_model_revision"] = embedding_model_revision
     vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
     caption_params = build_caption_params(
         enabled=request.caption.enabled,

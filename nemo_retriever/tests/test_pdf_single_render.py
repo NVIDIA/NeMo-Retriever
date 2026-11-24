@@ -54,7 +54,7 @@ def _decode(b64: str) -> np.ndarray:
 @pytest.mark.parametrize("size", PAGE_SIZES)
 def test_crops_match_native_render(size, rotation):
     page = pdfium.PdfDocument(_make_pdf(*size, rotation))[0]
-    native = _pdfium.pdfium_pages_to_numpy([page], render_dpi=72, rotation=rotation)[0][0]
+    native = _pdfium.pdfium_pages_to_numpy([page], render_dpi=72)[0][0]
     bboxes = _pdfium.extract_merged_images_from_pdfium_page(page)
     expected = [(bbox, crop) for bbox in bboxes if (crop := _pdfium.crop_image(native, bbox)) is not None]
 
@@ -71,7 +71,7 @@ def test_crops_match_native_render(size, rotation):
 @pytest.mark.parametrize("rotation", ROTATIONS)
 def test_crops_without_page_image_render_at_scale_one(rotation):
     page = pdfium.PdfDocument(_make_pdf(612, 792, rotation))[0]
-    native = _pdfium.pdfium_pages_to_numpy([page], render_dpi=72, rotation=rotation)[0][0]
+    native = _pdfium.pdfium_pages_to_numpy([page], render_dpi=72)[0][0]
     bboxes = _pdfium.extract_merged_images_from_pdfium_page(page)
     expected = [crop for bbox in bboxes if (crop := _pdfium.crop_image(native, bbox)) is not None]
 
@@ -82,7 +82,7 @@ def test_crops_without_page_image_render_at_scale_one(rotation):
         assert np.array_equal(_decode(c.image), crop.astype(int))
 
 
-@pytest.mark.parametrize("rotation", [0, 180])
+@pytest.mark.parametrize("rotation", ROTATIONS)
 @pytest.mark.parametrize("size", PAGE_SIZES)
 def test_upright_pages_yield_a_crop(size, rotation):
     page = pdfium.PdfDocument(_make_pdf(*size, rotation))[0]

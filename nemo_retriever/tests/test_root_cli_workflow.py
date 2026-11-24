@@ -29,7 +29,7 @@ import nemo_retriever.cli.ingest.graph_commands as ingest_cli_graph
 import nemo_retriever.cli.ingest.shared as ingest_cli_shared
 import nemo_retriever.cli.shared as cli_shared
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
-from nemo_retriever.models import NEMOTRON_3_EMBED_MODEL
+from nemo_retriever.models import NEMOTRON_3_EMBED_BF16_MODEL, NEMOTRON_3_EMBED_MODEL
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -196,19 +196,22 @@ def test_root_ingest_without_mode_defaults_to_local(monkeypatch, tmp_path) -> No
     assert fake_ingestor.files.call_args.args == ([str(document)],)
 
 
-def test_explicit_n3_keeps_legacy_index_identity(monkeypatch, tmp_path) -> None:
+def test_explicit_n3_identity_comes_from_selected_actor(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "old-model.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **kwargs: fake_ingestor)
+    monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", lambda: False)
     result = RUNNER.invoke(
         cli_main.app,
         ["ingest", "local", str(document), "--embed-model-name", NEMOTRON_3_EMBED_MODEL],
     )
     assert result.exit_code == 0, result.output
-    params = fake_ingestor.vdb_upload.call_args.args[0]
-    assert params.vdb_kwargs["embedding_model_name"] == NEMOTRON_3_EMBED_MODEL
-    assert "embedding_model_revision" not in params.vdb_kwargs
+    assert fake_ingestor.embed.call_args.args[0].embed_model_name == NEMOTRON_3_EMBED_BF16_MODEL
+    assert fake_ingestor.embed.call_args.args[0].embed_model_revision is None
+    vdb_kwargs = fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs
+    assert "embedding_model_name" not in vdb_kwargs
+    assert "embedding_model_revision" not in vdb_kwargs
 
 
 def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeypatch, tmp_path) -> None:
@@ -464,8 +467,6 @@ def test_root_ingest_service_mode_rejects_local_only_options(tmp_path, flag: str
 
 @pytest.mark.parametrize("requested_model", [None, "nvidia/Nemotron-3.5-Embed-1B-NVFP4"])
 def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path, requested_model) -> None:
-    from nemo_retriever.models.hf_model_registry import get_hf_revision
-
     driver_probe = MagicMock(side_effect=AssertionError("Batch defaults must not probe driver CUDA"))
     monkeypatch.setattr("nemo_retriever.models._cuda_supports_native_nvfp4", driver_probe)
     fake_ingestor = _make_fake_ingestor()
@@ -513,15 +514,6 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path, requ
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
-        **(
-            {
-                "embedding_model_name": requested_model,
-                "embedding_model_revision": get_hf_revision(requested_model),
-                "vector_dim": None,
-            }
-            if requested_model
-            else {}
-        ),
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -1322,7 +1314,6 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     assert "--service-url" not in result.output
     assert "--ray-address" in result.output
     assert "--profile" in result.output
-    assert "<auto|fast-text>" in result.output
     assert "--extract-images" in result.output
     assert "--use-page" not in result.output
     assert "--use-graphic" not in result.output
@@ -1398,7 +1389,7 @@ def test_root_ingest_service_help_hides_local_only_options(monkeypatch: pytest.M
 
 
 def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, tmp_path) -> None:
-    document = tmp_path / "fast.pdf"
+    document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
     def fail_create_ingestor(**_kwargs: Any) -> Any:
@@ -1408,18 +1399,15 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["ingest", "local", str(document), "--profile", "fast-text", "--dry-run"],
+        ["ingest", "local", str(document), "--dry-run"],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["dry_run"] is True
-    assert payload["profile"] == "fast-text"
+    assert payload["profile"] == "auto"
     assert payload["create_ingestor"] == {"run_mode": "inprocess"}
-    assert payload["extract"]["method"] == "pdfium"
-    assert payload["extract"]["extract_images"] is False
-    assert payload["extract"]["use_page_elements"] is False
-    assert payload["extract"]["extract_tables"] is False
+    assert payload["extract"]["method"] == "pdfium_hybrid"
 
 
 @pytest.mark.parametrize("mode", ["local", "batch"])
@@ -1737,16 +1725,17 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert kwargs["av_fuse_params"].enabled is False
 
 
-def test_root_ingest_rejects_removed_profiles(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("profile", ["fast-text", "ocr"])
+def test_root_ingest_rejects_removed_profiles(profile: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
     monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", profile])
 
     assert result.exit_code == 2
-    assert "is not one of 'auto', 'fast-text'" in result.output
+    assert f"'{profile}' is not one of 'auto'" in result.output
 
 
 def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, tmp_path) -> None:

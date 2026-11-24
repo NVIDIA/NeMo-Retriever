@@ -38,7 +38,9 @@ from nemo_retriever.common.params import TextChunkParams
 from nemo_retriever.common.params import VideoFrameParams
 from nemo_retriever.common.params import VideoFrameTextDedupParams
 from nemo_retriever.common.params import resolve_split_params
+from nemo_retriever.common.params.utils import build_parse_actor_kwargs
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+from nemo_retriever.operators.extract.parse.chart_routing import ChartRoutingActor
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor, build_pdf_extraction_kwargs
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
@@ -94,7 +96,8 @@ def _default_video_frame_params() -> VideoFrameParams:
 def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
     tuning = getattr(extract_params, "batch_tuning", None)
     return extract_params.method == "nemotron_parse" or (
-        tuning is not None
+        not extract_params.chart_routing
+        and tuning is not None
         and all(
             getattr(tuning, name, None)
             for name in ("nemotron_parse_workers", "gpu_nemotron_parse", "nemotron_parse_batch_size")
@@ -131,6 +134,8 @@ def _extract_params_need_local_gpu(extraction_mode: str, extract_params: Extract
     if _parse_mode_enabled(extract_params):
         return not _has_endpoint(extract_params.nemotron_parse_invoke_url, extract_params.invoke_url)
 
+    if extract_params.chart_routing and not _has_endpoint(extract_params.nemotron_parse_invoke_url):
+        return True
     if _page_elements_stage_needed(extract_params) and not _has_endpoint(extract_params.page_elements_invoke_url):
         return True
     if (
@@ -297,6 +302,17 @@ class _MultiTypeExtractBase(AbstractOperator):
 
         return grouped
 
+    def _run_parse_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
+        extract_params = self.extract_params
+        parse_kwargs = build_parse_actor_kwargs(extract_params)
+        parse_actor = self._instantiate_resolved(NemotronParseActor, **parse_kwargs)
+        try:
+            return parse_actor.run(batch_df)
+        finally:
+            cleanup = getattr(parse_actor, "cleanup", None)
+            if callable(cleanup):
+                cleanup()
+
     def _run_pdf_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         split_actor = PDFSplitActor(
@@ -311,21 +327,10 @@ class _MultiTypeExtractBase(AbstractOperator):
         parse_mode = _parse_mode_enabled(extract_params)
 
         if parse_mode:
-            parse_kwargs: dict[str, Any] = {
-                "extract_text": extract_params.extract_text,
-                "extract_tables": extract_params.extract_tables,
-                "extract_charts": extract_params.extract_charts,
-                "extract_infographics": extract_params.extract_infographics,
-            }
-            if extract_params.nemotron_parse_invoke_url:
-                parse_kwargs["nemotron_parse_invoke_url"] = extract_params.nemotron_parse_invoke_url
-            elif extract_params.invoke_url:
-                parse_kwargs["invoke_url"] = extract_params.invoke_url
-            if extract_params.nemotron_parse_model:
-                parse_kwargs["nemotron_parse_model"] = extract_params.nemotron_parse_model
-            if extract_params.api_key:
-                parse_kwargs["api_key"] = extract_params.api_key
-            batch_df = self._instantiate_resolved(NemotronParseActor, **parse_kwargs).run(batch_df)
+            extract_kwargs = build_pdf_extraction_kwargs(extract_params)
+            extract_kwargs["extract_page_as_image"] = True
+            batch_df = PDFExtractionActor(**extract_kwargs).run(batch_df)
+            batch_df = self._run_parse_pipeline(batch_df)
         else:
             # standard non-parse path: continue with PDFExtractionActor and detection
             extract_kwargs = build_pdf_extraction_kwargs(extract_params)
@@ -335,7 +340,10 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _run_image_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         batch_df = ImageLoadActor().run(batch_df)
-        batch_df = self._run_detection_pipeline(batch_df)
+        if _parse_mode_enabled(self.extract_params):
+            batch_df = self._run_parse_pipeline(batch_df)
+        else:
+            batch_df = self._run_detection_pipeline(batch_df)
         return self._maybe_chunk(batch_df, "image")
 
     def _video_ocr_kwargs(self) -> dict[str, Any]:
@@ -350,7 +358,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             "ocr_invoke_url": ep.ocr_invoke_url,
             "ocr_version": getattr(ep, "ocr_version", "v2"),
             "ocr_lang": getattr(ep, "ocr_lang", None),
-            "api_key": ep.ocr_api_key or ep.api_key,
+            "api_key": ep.stage_api_key("ocr_api_key"),
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
@@ -454,11 +462,12 @@ class _MultiTypeExtractBase(AbstractOperator):
         ocr_version = getattr(extract_params, "ocr_version", "v2")
         ocr_lang = getattr(extract_params, "ocr_lang", None)
 
-        detect_kwargs: dict[str, Any] = {}
+        detect_kwargs: dict[str, Any] = {"extract_infographics": bool(extract_params.extract_infographics)}
         if extract_params.page_elements_invoke_url:
             detect_kwargs["invoke_url"] = extract_params.page_elements_invoke_url
-        if extract_params.api_key:
-            detect_kwargs["api_key"] = extract_params.api_key
+        page_elements_api_key = extract_params.stage_api_key("page_elements_api_key")
+        if page_elements_api_key:
+            detect_kwargs["api_key"] = page_elements_api_key
         inference_batch_size = getattr(extract_params, "inference_batch_size", None) or getattr(
             tuning, "page_elements_batch_size", None
         )
@@ -514,6 +523,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         ):
             ocr_archetype = resolve_ocr_archetype(extract_params)
             batch_df = self._instantiate_resolved(ocr_archetype, **ocr_kwargs).run(batch_df)
+        if extract_params.chart_routing:
+            routing_kwargs = build_parse_actor_kwargs(extract_params, chart_routing=True)
+            routing_actor = self._instantiate_resolved(ChartRoutingActor, **routing_kwargs)
+            try:
+                batch_df = routing_actor.run(batch_df)
+            finally:
+                cleanup = getattr(routing_actor, "cleanup", None)
+                if callable(cleanup):
+                    cleanup()
 
         return batch_df
 

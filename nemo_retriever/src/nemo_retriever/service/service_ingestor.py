@@ -276,7 +276,13 @@ def _wire_client_stage_params(
 ) -> None:
     """Serialize client overrides for one pipeline stage onto ``spec``."""
     params_dict = _filter_policy_allowed(
-        _strip_server_owned(_params_to_dict(merged), method),
+        _strip_server_owned(
+            _params_to_dict(
+                merged,
+                preserve_none=("nemotron_parse_dflash_tokens",) if spec_key == "extract_params" else (),
+            ),
+            method,
+        ),
         allowed,
     )
     _set_stage_params(spec, spec_key, params_dict)
@@ -314,7 +320,7 @@ def _require_remote_uri(uri: str, method: str, field: str) -> None:
         )
 
 
-def _params_to_dict(value: Any) -> dict[str, Any]:
+def _params_to_dict(value: Any, *, preserve_none: tuple[str, ...] = ()) -> dict[str, Any]:
     """Normalise a fluent-method argument (model | dict | None) to a dict.
 
     Serialises only fields the caller explicitly set on a Pydantic params
@@ -322,14 +328,18 @@ def _params_to_dict(value: Any) -> dict[str, Any]:
     model defaults or validator-populated server fields (API keys, timeouts,
     ``batch_tuning``, etc.) that the worker policy allowlist would reject.
 
-    Drops ``None`` values so the server's defaults can fill them in.
+    Drops ``None`` values so the server's defaults can fill them in, except
+    explicit opt-outs named by ``preserve_none``.
     """
     if value is None:
         return {}
     if hasattr(value, "model_dump"):
         d = value.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+        for key in preserve_none:
+            if key in getattr(value, "model_fields_set", ()) and getattr(value, key) is None:
+                d[key] = None
     elif isinstance(value, dict):
-        d = {k: v for k, v in value.items() if v is not None}
+        d = {k: v for k, v in value.items() if v is not None or k in preserve_none}
     else:
         raise TypeError(f"Cannot serialise {type(value).__name__!r} to a params dict")
     return d

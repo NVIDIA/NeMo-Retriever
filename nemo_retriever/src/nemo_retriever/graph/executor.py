@@ -554,14 +554,28 @@ class InprocessExecutor(AbstractExecutor):
         except ImportError:
             tqdm = None
 
-        if self._show_progress and tqdm is not None:
-            pbar = tqdm(operators, desc="Pipeline stages", unit="stage")
-            for name, op in pbar:
-                pbar.set_postfix_str(name)
+        from nemo_retriever.operators.extract.parse.chart_routing import (
+            ChartRoutingActor,
+            ChartRoutingCPUActor,
+            ChartRoutingGPUActor,
+        )
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
+
+        stages = (
+            tqdm(operators, desc="Pipeline stages", unit="stage")
+            if self._show_progress and tqdm is not None
+            else operators
+        )
+        for name, op in stages:
+            if stages is not operators:
+                stages.set_postfix_str(name)
+            try:
                 df = op.run(df)
-        else:
-            for _name, op in operators:
-                df = op.run(df)
+            finally:
+                if isinstance(
+                    op, (ChartRoutingActor, ChartRoutingCPUActor, ChartRoutingGPUActor, NemotronParseGPUActor)
+                ):
+                    op.cleanup()
 
         return df
 
@@ -1035,6 +1049,7 @@ class RayDataExecutor(AbstractExecutor):
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
+            explicit_batch_size = "batch_size" in overrides
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
@@ -1048,8 +1063,10 @@ class RayDataExecutor(AbstractExecutor):
             from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
             from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
 
-            if batch_size == self._default_batch_size and issubclass(
-                node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
+            if (
+                not explicit_batch_size
+                and batch_size == self._default_batch_size
+                and issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor))
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 
@@ -1118,6 +1135,19 @@ class RayDataExecutor(AbstractExecutor):
                     self._gpu_placement_check.expect(node.name, concurrency)
                     constructor_kwargs = {"operator_class": map_operator_class, "operator_kwargs": constructor_kwargs}
                     map_operator_class = with_placement_report(map_operator_class, node.name)
+
+            udf_threads = int(getattr(node.operator_class, "UDF_THREADS", 1))
+            if udf_threads > 1 and "compute" not in overrides:
+                from ray.data import ActorPoolStrategy
+
+                pool_concurrency = overrides.pop("concurrency")
+                if isinstance(pool_concurrency, tuple):
+                    minimum, maximum, initial = _concurrency_bounds(pool_concurrency)
+                    pool = {"min_size": minimum, "max_size": maximum, "initial_size": initial}
+                else:
+                    pool = {"size": int(pool_concurrency)}
+                overrides["compute"] = ActorPoolStrategy(**pool, enable_true_multi_threading=True)
+                overrides.setdefault("max_concurrency", udf_threads)
 
             ds = ds.map_batches(
                 map_operator_class,

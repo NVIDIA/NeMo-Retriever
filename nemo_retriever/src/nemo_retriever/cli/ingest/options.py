@@ -31,7 +31,7 @@ ProfileOption = Annotated[
     IngestProfileValue,
     typer.Option(
         "--profile",
-        help="Ingest profile: auto or fast-text. Use fast-text for large text-only PDF fallback.",
+        help="Ingest profile: auto.",
     ),
 ]
 LanceDbUriOption = Annotated[
@@ -51,9 +51,10 @@ MethodOption = Annotated[
     typer.Option(
         "--method",
         help=(
-            "PDF text extraction method: pdfium uses native PDF text only; pdfium_hybrid uses native text "
+            "How PDF pages are read: pdfium uses native PDF text only; pdfium_hybrid uses native text "
             "with OCR for scanned pages (the auto-profile default); ocr uses OCR for every page; "
-            "nemotron_parse uses the Nemotron Parse visual extraction path."
+            "nemotron_parse uses Nemotron Parse, which also extracts the enabled tables, charts, and "
+            "infographics. The --extract-* flags choose which content types to extract."
         ),
     ),
 ]

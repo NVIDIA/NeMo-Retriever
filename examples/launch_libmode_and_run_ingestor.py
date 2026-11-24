@@ -41,7 +41,6 @@ def run_ingestor():
             extract_images=True,
             table_output_format="markdown",
             extract_infographics=False,
-            text_depth="page",
         )
         .split(chunk_size=1024, chunk_overlap=150)
         .embed()

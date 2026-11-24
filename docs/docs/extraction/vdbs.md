@@ -83,7 +83,7 @@ The local checkpoint default on this development branch is Nemotron 3.5 Embed 1B
 
 New local Nemotron 3.5 indexes record the resolved precision-specific checkpoint and its pinned revision. Query uses that recorded identity rather than choosing a different precision from the current GPU. BF16 and NVFP4 checkpoint IDs remain distinct for index compatibility checks.
 
-Ray batch execution conservatively selects BF16 for an automatic checkpoint choice because the driver's CUDA devices do not establish worker GPU compatibility. An explicit precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision.
+Single-node Ray batch execution uses the driver's visible CUDA devices for automatic checkpoint selection. With `vllm`, it selects NVFP4 only when every visible device has compute capability major 10 or later, and BF16 otherwise. An explicit precision checkpoint remains unchanged. The worker, writer, and later query share the selected checkpoint and revision.
 
 An untagged dense or hybrid table must be rebuilt; selecting a model cannot establish which embedding space its existing vectors use. The dedicated VectorDB service checks its configured legacy table during startup and checks collection-scoped tables when they are read or written. Rebuild or replace persisted tables before access, or retain the old model configuration for a tagged table.
 
@@ -365,8 +365,9 @@ staging directory beside the table. The driver commit moves them into the table.
 A write that fails, is rejected (for example because searchable rows have no
 embeddings), or is interrupted before the commit leaves no files in the table: its staging
 directory is deleted, and the next write to the table deletes one left by a
-killed process. If the commit itself fails, the files it moved stay in the table
-unreferenced; rerun the ingest. As on the streaming path, writes to one table
+killed process. If the commit itself fails, the files it moved are deleted. They
+stay when the table version changed, because the commit can then have landed, or
+when the table can't be read. Files that stay but that no version references are unused. As on the streaming path, writes to one table
 run one at a time.
 
 Sparse (full-text only) tables and sidecar metadata use the same worker writes.

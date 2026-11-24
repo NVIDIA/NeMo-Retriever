@@ -240,35 +240,6 @@ def test_ingest_plan_explicit_pdf_method_with_ocr_selector(tmp_path, method) -> 
     assert plan.extract_params.method == method
 
 
-def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
-    pdf = tmp_path / "manual.pdf"
-    pdf.write_bytes(b"pdf")
-
-    plan = _resolve_plan([str(pdf)], profile="fast-text")
-
-    assert plan.extract_params.method == "pdfium"
-    assert plan.extract_params.extract_text is True
-    assert plan.extract_params.extract_images is False
-    assert plan.extract_params.extract_tables is False
-    assert plan.extract_params.extract_charts is False
-    assert plan.extract_params.extract_infographics is False
-    assert plan.extract_params.extract_page_as_image is False
-    assert plan.extract_params.use_page_elements is False
-
-
-def test_ingest_plan_fast_text_allows_extract_images_override(tmp_path) -> None:
-    pdf = tmp_path / "manual.pdf"
-    pdf.write_bytes(b"pdf")
-
-    plan = _resolve_plan([str(pdf)], profile="fast-text", extract=IngestExtractOptions(extract_images=True))
-
-    assert plan.extract_params.extract_images is True
-    assert plan.extract_params.extract_tables is False
-    assert plan.extract_params.extract_charts is False
-    assert plan.extract_params.extract_infographics is False
-    assert plan.extract_params.use_page_elements is False
-
-
 def test_ingest_plan_caption_auto_enables_default_dedup_for_pdf(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     pdf.write_bytes(b"pdf")
@@ -402,20 +373,12 @@ def test_ingest_plan_auto_allows_mixed_supported_branches(monkeypatch, tmp_path)
     assert plan.video_frame_params is not None
 
 
-def test_ingest_plan_fast_text_validates_input_family(tmp_path) -> None:
-    path = tmp_path / "scan.png"
-    path.write_bytes(b"data")
-
-    with pytest.raises(ValueError, match="--profile fast-text only supports PDF/document inputs"):
-        _resolve_plan([str(path)], profile="fast-text")
-
-
-@pytest.mark.parametrize("profile", ["ocr", "audio", "video", "multimodal"])
+@pytest.mark.parametrize("profile", ["fast-text", "ocr", "audio", "video", "multimodal"])
 def test_ingest_plan_rejects_removed_profiles(profile: str, tmp_path) -> None:
     path = tmp_path / "manual.pdf"
     path.write_bytes(b"data")
 
-    with pytest.raises(ValueError, match="profile must be one of auto, fast-text"):
+    with pytest.raises(ValueError, match="profile must be one of auto,"):
         _resolve_plan([str(path)], profile=profile)
 
 

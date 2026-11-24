@@ -240,3 +240,14 @@ class TestEmbedParamsGranularity:
                 structured_elements_modality="text_image",
             )
             assert len(w) == 0
+
+
+def test_embed_endpoint_aliases_accept_one_or_matching_values():
+    assert EmbedParams(embed_invoke_url="http://embed.example/v1").embed_invoke_url == "http://embed.example/v1"
+    assert EmbedParams(embedding_endpoint="http://embed.example/v1").embedding_endpoint == "http://embed.example/v1"
+    EmbedParams(embed_invoke_url="http://embed.example/v1", embedding_endpoint=" http://embed.example/v1 ")
+
+
+def test_embed_endpoint_aliases_reject_conflicting_values():
+    with pytest.raises(ValidationError, match="embed_invoke_url and embedding_endpoint"):
+        EmbedParams(embed_invoke_url="http://a.example/v1", embedding_endpoint="http://b.example/v1")
