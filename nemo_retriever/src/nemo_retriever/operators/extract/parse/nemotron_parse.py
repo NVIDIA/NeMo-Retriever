@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import threading
+import zlib
 import time
 import traceback
 
@@ -159,6 +160,70 @@ def _extract_parse_text(response_item: Any) -> str:
         return ""
 
 
+_LOOP_TAIL_CHARS = 2000
+_LOOP_MAX_COMPRESSION_RATIO = 0.1
+
+
+def _looks_repetitive(text: str) -> bool:
+    """Return True when the output tail compresses like a generation loop."""
+    tail = text[-_LOOP_TAIL_CHARS:].encode("utf-8")
+    return len(tail) >= _LOOP_TAIL_CHARS and len(zlib.compress(tail)) / len(tail) < _LOOP_MAX_COMPRESSION_RATIO
+
+
+_RE_WORD = re.compile(r"\w{2,}", re.UNICODE)
+_TEXT_LAYER_MIN_WORDS = 30
+
+
+def _words(text: Any) -> List[str]:
+    return _RE_WORD.findall(text.lower()) if isinstance(text, str) else []
+
+
+_RE_TOKEN = re.compile(r"\w+", re.UNICODE)
+_RE_STRUCTURED_ROW = re.compile(r"\n|</tr>", re.IGNORECASE)
+
+
+def _drop_structured_lines(native_text: str, structured_texts: List[str]) -> Tuple[str, int]:
+    """Remove native text-layer lines already present in Parse table, chart, or infographic text.
+
+    A line is removed only when every one of its tokens occurs in a single
+    structured row (a line, or an HTML table row), so fallback page text does
+    not repeat table cells that the page's structured regions already carry,
+    while tokens matched across different rows or regions keep the line.
+    """
+    rows = [set(_RE_TOKEN.findall(row.lower())) for text in structured_texts for row in _RE_STRUCTURED_ROW.split(text)]
+    rows = [row for row in rows if row]
+    if not rows:
+        return native_text, 0
+    kept: List[str] = []
+    dropped = 0
+    for line in native_text.splitlines():
+        tokens = set(_RE_TOKEN.findall(line.lower()))
+        if tokens and any(tokens <= row for row in rows):
+            dropped += 1
+            continue
+        kept.append(line)
+    return "\n".join(kept), dropped
+
+
+def _text_layer_fallback(parse_text: Optional[str], native_text: Any, min_overlap: float) -> bool:
+    """Return True when the native PDF text layer should replace Parse page text.
+
+    Applies when the page has at least ``_TEXT_LAYER_MIN_WORDS`` native words and
+    either Parse produced no page text or fewer than ``min_overlap`` of its
+    words occur in the native text layer (for example, pages whose embedded
+    fonts render as unreadable glyphs).
+    """
+    native_words = _words(native_text)
+    if min_overlap <= 0 or len(native_words) < _TEXT_LAYER_MIN_WORDS:
+        return False
+    parse_words = _words(parse_text)
+    if not parse_words:
+        return True
+    native_set = set(native_words)
+    overlap = sum(1 for word in parse_words if word in native_set) / len(parse_words)
+    return overlap < min_overlap
+
+
 def _route_parsed_elements(
     raw_text: str,
     *,
@@ -183,7 +248,7 @@ def _route_parsed_elements(
         elements = [
             (block["class"], block["bbox"], block["content"])
             for block in _postprocess_parse35_blocks(
-                raw_text, table_format=table_format or "HTML", document=parse35_document
+                raw_text, table_format=table_format or "markdown", document=parse35_document
             )
         ]
     else:
@@ -449,6 +514,8 @@ def nemotron_parse_pages(
     parse_sampling_params: Optional[Dict[str, Any]] = None,
     parse_mode: str = "single",
     task_prompt: Optional[str] = None,
+    text_layer_min_overlap: float = 0.0,
+    length_retry_max_tokens: Optional[int] = None,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -463,8 +530,8 @@ def nemotron_parse_pages(
     concatenated into the ``text`` column, replacing the upstream pdfium
     extraction when ``extract_text`` is ``True``.
 
-    ``nemotron_parse_table_format`` selects ``HTML`` (the 3.5 default),
-    ``simple_html``, ``markdown``, or ``latex`` for Parse 3.5 Table blocks only.
+    ``nemotron_parse_table_format`` selects ``markdown`` (the 3.5 default), ``HTML``,
+    ``simple_html``, or ``latex`` for Parse 3.5 Table blocks only.
     ``parse_sampling_params`` contains validated Parse 3.5 generation overrides
     (temperature, repetition_penalty, top_k, top_p, seed, max_tokens). Remote
     overrides require chat-completions URLs. In single mode, local adapters must
@@ -698,6 +765,40 @@ def nemotron_parse_pages(
                     results = invoke_batch_results(batch_images, task_prompt=task_prompt)
                     raw_texts = [str(result.text or "").strip() for result in results]
                     outcomes = [(result.finish_reason, result.output_tokens) for result in results]
+                    retry = [
+                        pos
+                        for pos, (reason, tokens) in enumerate(outcomes)
+                        if length_retry_max_tokens
+                        and reason == "length"
+                        and isinstance(tokens, int)
+                        and tokens < length_retry_max_tokens
+                        and not _looks_repetitive(raw_texts[pos])
+                    ]
+                    if retry:
+                        try:
+                            retried = invoke_batch_results(
+                                [batch_images[pos] for pos in retry],
+                                task_prompt=task_prompt,
+                                max_tokens=length_retry_max_tokens,
+                            )
+                        except Exception as retry_error:
+                            pages = ", ".join(_page_label(rows[batch_indices[pos]]) for pos in retry)
+                            logger.warning(
+                                f"Warning: Nemotron Parse length retry failed; keeping first-pass output: "
+                                f"max_tokens={length_retry_max_tokens} pages=[{pages}] "
+                                f"{type(retry_error).__name__}: {retry_error}",
+                                exc_info=retry_error,
+                            )
+                            for pos in retry:
+                                all_meta[batch_indices[pos]]["length_retry"] = {
+                                    "max_tokens": length_retry_max_tokens,
+                                    "retry_failure": f"{type(retry_error).__name__}: {retry_error}",
+                                }
+                        else:
+                            for pos, result in zip(retry, retried, strict=True):
+                                raw_texts[pos] = str(result.text or "").strip()
+                                outcomes[pos] = (result.finish_reason, result.output_tokens)
+                                all_meta[batch_indices[pos]]["length_retry"] = {"max_tokens": length_retry_max_tokens}
                 elif invoke_batch is not None:
                     raw_texts = [str(t or "").strip() for t in invoke_batch(batch_images, task_prompt=task_prompt)]
                 else:
@@ -736,6 +837,8 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
+    # Untagged Markdown keeps tables inline in page text, so it is never replaced.
+    untagged_pages: set[int] = set()
     route_fn = _route_tool_call_elements if uses_tool_call_routing else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
@@ -757,6 +860,8 @@ def nemotron_parse_pages(
                 if not extract_text:
                     raise ValueError("Untagged native Parse content requires extract_text=True.")
                 all_text[idx] = raw_text
+                if raw_text.strip():
+                    untagged_pages.add(idx)
                 continue
             ordered_regions: List[Dict[str, Any]] = []
             route_kwargs = (
@@ -799,6 +904,26 @@ def nemotron_parse_pages(
                 },
                 "completion": _completion(*outcomes[pos], failed=True),
             }
+
+    # Native /v1/parse endpoints serve Parse 3.5 and select the model server-side.
+    if extract_text and (parse35 or native_parse) and text_layer_min_overlap > 0 and "text" in batch_df.columns:
+        native_col = batch_df.columns.get_loc("text")
+        for idx in batch_indices:
+            if all_meta[idx].get("error") is not None or idx in untagged_pages:
+                continue
+            native_text = batch_df.iat[idx, native_col]
+            if not _text_layer_fallback(all_text[idx], native_text, text_layer_min_overlap):
+                continue
+            structured = [item["text"] for items in (all_table, all_chart, all_infographic) for item in items[idx]]
+            native_text, dropped = _drop_structured_lines(native_text, structured)
+            all_text[idx] = native_text
+            all_meta[idx]["text_source"] = "text_layer"
+            if dropped:
+                all_meta[idx]["text_layer_lines_dropped"] = dropped
+            if all_ordered_regions[idx] is not None:
+                all_ordered_regions[idx] = [
+                    {"bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0], "text": native_text, "label_name": "text"}
+                ] + [region for region in all_ordered_regions[idx] if region["label_name"] != "text"]
 
     elapsed = time.perf_counter() - t0_total
     for meta in all_meta:
@@ -854,6 +979,8 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         parse_mode: str = "single",
         invoke_url: Optional[str] = None,
@@ -870,6 +997,8 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._text_layer_min_overlap = float(text_layer_min_overlap)
+        self._length_retry_max_tokens = length_retry_max_tokens
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -948,6 +1077,8 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
             nemotron_parse_model=self._nemotron_parse_model,
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
+            text_layer_min_overlap=self._text_layer_min_overlap,
+            length_retry_max_tokens=self._length_retry_max_tokens,
             parse_mode=self._parse_mode,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
@@ -1005,6 +1136,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         parse_mode: str = "single",
         invoke_url: Optional[str] = None,
@@ -1023,6 +1156,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         self._nemotron_parse_model = nemotron_parse_model
         self._nemotron_parse_table_format = nemotron_parse_table_format
         self._parse_sampling_params = dict(parse_sampling_params or {})
+        self._text_layer_min_overlap = float(text_layer_min_overlap)
+        self._length_retry_max_tokens = length_retry_max_tokens
         self._nemotron_parse_dflash_tokens = resolve_nemotron_parse_dflash_tokens(
             nemotron_parse_dflash_tokens,
             model_id=nemotron_parse_model,
@@ -1058,6 +1193,8 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
             nemotron_parse_model=self._nemotron_parse_model,
             nemotron_parse_table_format=self._nemotron_parse_table_format,
             parse_sampling_params=self._parse_sampling_params,
+            text_layer_min_overlap=self._text_layer_min_overlap,
+            length_retry_max_tokens=self._length_retry_max_tokens,
             parse_mode=self._parse_mode,
             api_key=self._api_key,
             request_timeout_s=self._request_timeout_s,
@@ -1118,6 +1255,8 @@ class NemotronParseActor(ArchetypeOperator):
         nemotron_parse_model: Optional[str] = None,
         nemotron_parse_table_format: Optional[str] = None,
         parse_sampling_params: Optional[Dict[str, Any]] = None,
+        text_layer_min_overlap: float = 0.0,
+        length_retry_max_tokens: Optional[int] = None,
         nemotron_parse_dflash_tokens: int | Literal["auto"] | None = "auto",
         parse_mode: str = "single",
         invoke_url: Optional[str] = None,
@@ -1143,6 +1282,8 @@ class NemotronParseActor(ArchetypeOperator):
             nemotron_parse_model=nemotron_parse_model,
             nemotron_parse_table_format=nemotron_parse_table_format,
             parse_sampling_params=parse_sampling_params,
+            text_layer_min_overlap=text_layer_min_overlap,
+            length_retry_max_tokens=length_retry_max_tokens,
             parse_mode=parse_mode,
             invoke_url=invoke_url,
             api_key=api_key,

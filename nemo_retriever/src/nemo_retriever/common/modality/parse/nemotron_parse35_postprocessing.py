@@ -99,6 +99,9 @@ def _postprocess_parse35_blocks(
         if block["class"] != "Table":
             continue
         if table_format in ("markdown", "latex"):
+            if block.get("text") is None:
+                # Merged multi-pass blocks can carry only rendered content.
+                continue
             try:
                 block["content"] = helpers.postprocessing.postprocess_text(
                     block["text"], "Table", table_format=table_format

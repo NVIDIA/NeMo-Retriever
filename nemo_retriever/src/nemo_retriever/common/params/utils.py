@@ -270,6 +270,12 @@ def build_parse_actor_kwargs(params: Any, *, chart_routing: bool = False) -> dic
     if params.nemotron_parse_table_format is not None:
         kwargs["nemotron_parse_table_format"] = params.nemotron_parse_table_format
     parse = params.parse
+    if not chart_routing:
+        from nemo_retriever.common.params.models import ParseParams
+
+        resolved = parse or ParseParams()
+        kwargs["text_layer_min_overlap"] = resolved.text_layer_min_overlap
+        kwargs["length_retry_max_tokens"] = resolved.length_retry_max_tokens
     if parse is not None:
         if parse.mode != "single":
             kwargs["parse_mode"] = parse.mode

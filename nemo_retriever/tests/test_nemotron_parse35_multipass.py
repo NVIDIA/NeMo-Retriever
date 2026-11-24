@@ -166,11 +166,17 @@ def test_pipeline_routes_merged_content_and_records_metadata(monkeypatch, mode, 
     }
     monkeypatch.setattr(operator, "_parse35_multipass", Mock(return_value=[document]))
     render = Mock(side_effect=AssertionError("Merged output has already been rendered"))
-    monkeypatch.setattr(postprocessing, "_load_parse35_helpers", lambda: SimpleNamespace(postprocess_document=render))
+    convert = Mock(side_effect=AssertionError("Rendered-only blocks must keep their content"))
+    monkeypatch.setattr(
+        postprocessing,
+        "_load_parse35_helpers",
+        lambda: SimpleNamespace(postprocess_document=render, postprocessing=SimpleNamespace(postprocess_text=convert)),
+    )
     output = operator.nemotron_parse_pages(
         frame(), model=Mock(model_name=model_name), parse_mode=mode, extract_text=True, extract_tables=True
     )
     render.assert_not_called()
+    convert.assert_not_called()
     assert output.iloc[0]["text"] == "merged heading"
     assert output.iloc[0]["table"][0]["text"] == "merged table"
     assert output.iloc[0]["ordered_page_text"] == "merged heading\n\nmerged table"

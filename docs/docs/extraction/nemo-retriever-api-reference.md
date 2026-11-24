@@ -339,9 +339,11 @@ The following settings configure Parse independently of the OCR model.
 | `mode` | Select `single` (default), `double`, or `triple`. Double and triple require full-page Parse 3.5. Refer to [Multi-pass parsing](#parse-35-multi-pass). |
 | `model`, `invoke_url` | Select the model and optional remote endpoint. Omit the URL for local inference. Parse 3.5 sampling and chart routing use `/v1/chat/completions` endpoints. |
 | `api_key`, `request_timeout_s` | Override only Parse credentials and the positive request timeout. Unset values inherit extraction settings. `NO_API_KEY` disables authentication for Parse only. |
-| `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `HTML`; chart routing defaults to `simple_html`. |
+| `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `markdown`; chart routing defaults to `simple_html`. |
 | `task_prompt` | Override the native Parse control-token prompt for single-pass full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. Double and triple modes require `None` and use the Hugging Face stage prompts. |
 | `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. In double and triple modes, overrides affect only the full-page stage. Legacy models retain their defaults. |
+| `length_retry_max_tokens` | Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. Pages whose output ends in repeated text are not rerun. Applies only when the value is larger than the first limit. The local default first limit is 9,000 tokens, so set `max_tokens` below `length_retry_max_tokens` (for example, `4096`) to use the rerun. Defaults to `8192`. Set `None` to disable the rerun. |
+| `text_layer_min_overlap` | Use the native PDF text layer as page text when fewer than this fraction of the Parse page-text words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native words. Text-layer lines already present in the page's table, chart, or infographic output are left out. Defaults to `0.3`. Set `0` to keep Parse page text. |
 
 To include text inside pictures, pass the complete control-token prompt.
 This setting applies to single-pass full-page Parse and chart routing.

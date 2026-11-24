@@ -379,6 +379,7 @@ def test_native_output_uses_existing_pipeline_routing(
         extract_infographics=True,
         extract_charts=True,
         extract_tables=True,
+        nemotron_parse_table_format="HTML",
     )
     assert result.iloc[0]["text"] == "Body text"
     assert result.iloc[0]["infographic"][0]["text"] == "Picture text"
